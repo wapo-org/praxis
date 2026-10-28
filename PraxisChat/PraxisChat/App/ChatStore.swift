@@ -27,6 +27,10 @@ final class ChatStore {
     var connectorDiscovery = true
     var attachments: [Attachment] = []
     var draft: String = ""
+    /// Unsent drafts stashed per conversation (`switchSelection`): the
+    /// composer's text + attachments belong to the selected chat. Not
+    /// observed — every stash/restore already touches observed state.
+    @ObservationIgnored private var drafts: [UUID: ChatDraft] = [:]
     /// Id the draft's turn will get when sent. The composer tags the draft
     /// with it, so the new bubble can fly in from where the text was typed.
     private(set) var nextTurnID = UUID()
@@ -106,6 +110,7 @@ final class ChatStore {
         if UserDefaults.standard.bool(forKey: "PraxisResetData") { AppDirectories.reset() }
         let services = AgentServices.live()
         services.installTestProviderIfRequested()
+        services.connectors.installMockConnectorIfRequested()
         let override = EngineKind.launchOverride
         let kind = EngineKind.resolve(override: override, hasProvider: services.settings.hasProfiles)
         let engine: any ChatEngine = switch kind {
@@ -124,6 +129,15 @@ final class ChatStore {
             Task { @MainActor [weak voice] in voice?.retryTranscription(id: id) }
         }
         services.pruneRuntimeState(keeping: store.conversations.map(\.id))
+        #if DEBUG
+        // `-PraxisVoiceConsentDemo YES` (UI tests): present the voice
+        // transcription consent sheet standalone (no controller needed).
+        if UserDefaults.standard.bool(forKey: "PraxisVoiceConsentDemo"), let id = store.selectedID {
+            store.pendingConsent = ConsentRequest(host: GroqEndpoints.host, providerName: "Groq",
+                                                  connectorNames: [], conversationID: id,
+                                                  action: .transcribe(recordingID: UUID()))
+        }
+        #endif
         return store
     }
 
@@ -155,11 +169,30 @@ final class ChatStore {
     func newChat() {
         let c = Conversation(title: ConversationTitle.placeholder)
         conversations.insert(c, at: 0)
-        selectedID = c.id
+        switchSelection(to: c.id)
         saveIndex()
     }
 
-    func select(_ id: UUID) { selectedID = id }
+    func select(_ id: UUID) {
+        guard id != selectedID else { return }
+        switchSelection(to: id)
+    }
+
+    /// Moves the selection, stashing the composer's draft under the old
+    /// chat and restoring the new chat's (a fresh chat starts empty).
+    private func switchSelection(to id: UUID?) {
+        if let current = selectedID, current != id {
+            drafts[current] = ChatDraft(text: draft, attachments: attachments)
+        }
+        selectedID = id
+        if let id, let stashed = drafts[id] {
+            draft = stashed.text
+            attachments = stashed.attachments
+        } else {
+            draft = ""
+            attachments = []
+        }
+    }
 
     func togglePinned(_ id: UUID) {
         guard let conv = conversations.first(where: { $0.id == id }) else { return }
@@ -178,8 +211,11 @@ final class ChatStore {
         }
         conversations.removeAll { ids.contains($0.id) }
         if let selectedID, !conversations.contains(where: { $0.id == selectedID }) {
-            self.selectedID = conversations.first?.id
+            switchSelection(to: conversations.first?.id)
         }
+        // After the switch: it may have stashed the old draft under a
+        // deleted chat, which must not linger.
+        for id in ids { drafts.removeValue(forKey: id) }
         // Index first: a crash between the two then leaves orphan files
         // (ignored at load), not ghost chats (index entries whose files
         // are gone get synthesized back as empty conversations).
@@ -221,6 +257,9 @@ final class ChatStore {
         conv.updatedAt = Date()
         attachments = []
         draft = ""
+        // A sent draft is gone for good: switching away and back must
+        // not resurrect it from the stash.
+        drafts.removeValue(forKey: conv.id)
         haptics.fire(.light)
         save(conv)
         saveIndex()
@@ -345,7 +384,9 @@ final class ChatStore {
         // The answer belongs to the chat the send started in, not
         // necessarily the selected one.
         guard conversation(request.conversationID) != nil else { return }
-        selectedID = request.conversationID
+        // Stash the current chat's draft first; the held send's own
+        // text + attachments overwrite the restored draft below.
+        switchSelection(to: request.conversationID)
         guard allow else {
             haptics.fire(.soft)
             if case .send(let text, let held) = request.action {
@@ -361,8 +402,10 @@ final class ChatStore {
             send(text: text)
         case .retry(let turnID):
             retry(turnID: turnID)
-        case .transcribe:
-            break // STUB-LOSES-TO-VOICE-GROQ: the real branch is voice-groq's.
+        case .transcribe(let recordingID):
+            // Voice (voice-groq): the host is granted above; the controller
+            // retries the held transcription. Set by VoiceInputController.
+            voiceRetryTranscription?(recordingID)
         }
     }
 
@@ -532,6 +575,9 @@ final class ChatStore {
             // Unknown ids are ignored by the runtime, so the full set is
             // safe even when the setup is about to be (re-)frozen.
             disabledServerIDs: conv.disabledServerIDs,
+            // Read live: toggling a tool applies to existing chats'
+            // next run (their calls refuse) and to new chats' freeze.
+            disabledTools: services?.connectors.disabledTools ?? [:],
             onSetup: { setup, failures in
                 await MainActor.run { store.value?.adopt(setup, failures: failures, conversationID: conversationID) }
             },
@@ -852,6 +898,8 @@ enum SettingsPage: Hashable {
     case root, connectors, skills
     /// One connector's detail (e.g. "Sign in to Gmail" from a chat step).
     case connector(String)
+    /// Voice input (Groq key + model): 401s and missing-key hints link here.
+    case voice
 }
 
 /// A weak store reference the off-main reader can carry.

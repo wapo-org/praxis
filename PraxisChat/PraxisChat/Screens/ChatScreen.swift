@@ -13,7 +13,8 @@ struct ChatScreen: View {
     @Environment(ChatStore.self) private var store
     @Namespace private var glassNS
     @State private var sendLaunch = SendLaunch()
-    @State private var trayOpen = false
+    // `-PraxisOpenTray YES` (screenshots): launch with the tray open.
+    @State private var trayOpen = UserDefaults.standard.bool(forKey: "PraxisOpenTray")
     @State private var trayPage: TrayPage = .main
     @State private var showHistory = false
     @State private var filePreview: String?
@@ -178,7 +179,15 @@ struct ChatScreen: View {
                 store.voice?.refreshRecoverables()
             }
             .photosPicker(isPresented: $showPhotos, selection: $photoItems, matching: .images)
-            .onChange(of: photoItems) { _, items in loadPhotos(items) }
+            .onChange(of: photoItems) { _, items in
+                // The items are captured by value for the load; the picker's
+                // own selection clears at once so it never carries over to
+                // another chat (or a second open in this one).
+                guard !items.isEmpty else { return }
+                photoItems = []
+                loadPhotos(items)
+            }
+            .onChange(of: store.selectedID) { photoItems = [] }
             .fileImporter(isPresented: $showFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
                 if case .success(let urls) = result {
                     withAnimation(Motion.reflow) {

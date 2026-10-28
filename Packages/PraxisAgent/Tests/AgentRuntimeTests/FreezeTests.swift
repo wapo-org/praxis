@@ -97,6 +97,32 @@ import AgentTestSupport
         #expect(tools.nestedTool(named: "mcp__acme__a") != nil) // reachable from code
     }
 
+    @Test func prepareLeavesOutDisabledTools() async throws {
+        let server = FakeMCPServer(tools: [FakeMCPServer.tool("search"), FakeMCPServer.tool("delete_thing")])
+        let runtime = makeRuntime(connectors: Connectors([server.client()]))
+
+        let setup = await runtime.prepare(mcpServerIDs: ["s1"], includeJavaScript: false, includeSkills: false,
+                                          disabledTools: ["s1": ["delete_thing"]]).setup
+        #expect(setup.mcpServers.first?.tools.map(\.name) == ["search"])
+        #expect(setup.toolSpecs.map(\.name) == ["mcp__acme__search", "read_tool_output"])
+        #expect(setup.systemPrompt.contains("Acme (MCP connector): 1 tool."))
+
+        // Unknown servers and tools are ignored.
+        let unknown = await runtime.prepare(mcpServerIDs: ["s1"], includeJavaScript: false, includeSkills: false,
+                                            disabledTools: ["nope": ["x"], "s1": ["missing"]]).setup
+        #expect(unknown.toolSpecs.map(\.name) == ["mcp__acme__delete_thing", "mcp__acme__search", "read_tool_output"])
+    }
+
+    @Test func disabledToolsDontCountTowardsGatewayThreshold() async throws {
+        let server = FakeMCPServer(tools: ["a", "b", "c"].map { FakeMCPServer.tool($0) })
+        let runtime = makeRuntime(connectors: Connectors([server.client()]))
+
+        // Three tools would trip the gateway; with one off, two stay direct.
+        let setup = await runtime.prepare(mcpServerIDs: ["s1"], gatewayThreshold: 2,
+                                          disabledTools: ["s1": ["c"]]).setup
+        #expect(setup.toolSpecs.map(\.name) == ["mcp__acme__a", "mcp__acme__b", "read_tool_output", "run_javascript"])
+    }
+
     @Test func prepareToleratesFailingServers() async throws {
         let good = FakeMCPServer(id: "s1", tools: [FakeMCPServer.tool("search")])
         let locked = MCPClient(config: MCPServerConfig(id: "s2", name: "Locked", url: URL(string: "https://locked.test/mcp")!),

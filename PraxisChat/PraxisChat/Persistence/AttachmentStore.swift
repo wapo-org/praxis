@@ -129,6 +129,9 @@ enum AppDirectories {
     }
     /// Provider hosts the user allowed to receive chat data.
     static var consent: URL { root.appendingPathComponent("Consent.json") }
+    /// Groq voice settings: selected model, cached model list, language
+    /// (no key: that is a Keychain item). Owned by `GroqVoiceSettings`.
+    static var voiceSettings: URL { root.appendingPathComponent("voice-settings.json") }
     /// Per-conversation runtime state: spilled tool output, JS `kv`.
     static var runtimeScratch: URL { root.appendingPathComponent("RuntimeScratch", isDirectory: true) }
 
