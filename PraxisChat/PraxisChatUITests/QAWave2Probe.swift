@@ -325,8 +325,10 @@ final class QAWave2Probe: XCTestCase {
         let remove = el(.button, "Remove saved key")
         if remove.waitForExistence(timeout: 3) { remove.tap() }
         XCTAssertTrue(el(.secureTextField, "Groq API key").waitForExistence(timeout: 5))
-        app.navigationBars.buttons.firstMatch.tap()
-        el(.button, "Done").tap()
+        app.navigationBars.buttons["Settings"].tap()
+        let done = el(.button, "Done")
+        XCTAssertTrue(done.waitForExistence(timeout: 10))
+        done.tap()
         XCTAssertTrue(el(.button, "Record voice message").waitForExistence(timeout: 10))
         startRecording()
         save("qa-voice-0-recording")
