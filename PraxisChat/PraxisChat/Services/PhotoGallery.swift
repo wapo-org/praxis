@@ -165,9 +165,38 @@ final class PhotoGallery {
         return out
     }
 
+    /// The "Screenshot" quick tile: the newest shot in the screenshots
+    /// album (mock gate: the first mock tile), attached directly — the
+    /// strip itself is the mixed recent library, so its first tile is
+    /// usually not a screenshot at all.
+    func latestScreenshot() async -> Attachment? {
+        if UserDefaults.standard.bool(forKey: "PraxisMockGallery") {
+            guard let first = MockData.sampleScreenshots().first,
+                  let data = first.imageData else { return nil }
+            return Attachment(kind: .photo, name: first.name, imageData: data)
+        }
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else { return nil }
+        let collection = PHAssetCollection.fetchAssetCollections(with: .smartAlbum,
+                                                                 subtype: .smartAlbumScreenshots, options: nil)
+        guard let album = collection.firstObject else { return nil }
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.fetchLimit = 1
+        options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
+        guard let asset = PHAsset.fetchAssets(in: album, options: options).firstObject,
+              let data = await fullData(for: asset) else { return nil }
+        return Attachment(kind: .screenshot, name: "Screenshot", imageData: data)
+    }
+
     private func fullData(for item: Item) async -> Data? {
         if let mock = item.mock { return mock.imageData }
         guard let asset = item.asset else { return nil }
+        return await fullData(for: asset)
+    }
+
+    /// Original file bytes for one asset (iCloud allowed, with progress).
+    private func fullData(for asset: PHAsset) async -> Data? {
         return await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
             options.version = .current

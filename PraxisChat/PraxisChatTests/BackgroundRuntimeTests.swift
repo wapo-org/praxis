@@ -19,6 +19,8 @@ final class BackgroundRuntimeTests: XCTestCase {
         var added: [UNNotificationRequest] = []
         var removedPending: [[String]] = []
         var removedDelivered: [[String]] = []
+        var delivered: [String] = []
+        var pending: [String] = []
         var categories: Set<UNNotificationCategory> = []
         var delegate: (any UNUserNotificationCenterDelegate)?
 
@@ -38,6 +40,10 @@ final class BackgroundRuntimeTests: XCTestCase {
         func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {
             removedDelivered.append(identifiers)
         }
+
+        func deliveredIdentifiers() async -> [String] { delivered }
+
+        func pendingIdentifiers() async -> [String] { pending }
 
         func setNotificationCategories(_ categories: Set<UNNotificationCategory>) {
             self.categories = categories
@@ -582,6 +588,53 @@ final class BackgroundRuntimeTests: XCTestCase {
         rig.runtime.notifications.delegate.openURL = { opened.append($0) }
         rig.runtime.notifications.delegate.handle(.openChat(conversationID: rig.conv.id))
         XCTAssertEqual(opened, [URL(string: "praxis-app://chat/\(rig.conv.id.uuidString)")])
+    }
+
+    func testUntitledFinishNeverLeaksModelTextToTheLockScreen() async {
+        // The loop reports some failures (unknown tool, invalid JSON)
+        // with no start event; their summaries echo model-written
+        // arguments and must never become the lock-screen line.
+        let rig = rig(pausingEngine())
+        let conv = rig.conv
+        rig.store.send(text: "go")
+        await waitUntil { conv.turns.first?.blocks.count == 2 }
+        rig.runtime.reportBatch(
+            conversationID: conv.id, title: conv.displayTitle,
+            events: [.toolFinished(id: "no-such-call", ToolCompletion(
+                status: .failed, summary: "Invalid JSON arguments: {\"evil\": \"model text\"}"))])
+        await waitUntil { rig.reporter.updates.contains { $0.line == "Step failed" } }
+        XCTAssertFalse(rig.reporter.updates.contains { $0.line.contains("evil") })
+        let before = rig.reporter.updates.count
+        rig.runtime.reportBatch(
+            conversationID: conv.id, title: conv.displayTitle,
+            events: [.toolFinished(id: "no-such-call-either", ToolCompletion(status: .succeeded, summary: "ok"))])
+        await waitUntil { rig.reporter.updates.count > before }
+        XCTAssertEqual(rig.reporter.updates.last?.line, "Thinking…")
+        rig.store.stop()
+        await rig.store.settle()
+    }
+
+    func testLaunchClearsOrphanedRunNotifications() async {
+        let rig = rig(pausingEngine())
+        let conv = rig.conv
+        // A card posted pre-kill plus cards the dead process left in the
+        // center; an unrelated notification must survive.
+        await rig.runtime.notifications.postApproval(requestID: "r1", tool: "Run command",
+                                                     chatTitle: conv.displayTitle, conversationID: conv.id)
+        rig.center.delivered = ["praxis.approval.r1", "praxis.done.\(conv.id.uuidString)", "other.keep"]
+        rig.center.pending = ["praxis.approval.r2"]
+        rig.center.removedDelivered = []
+        rig.center.removedPending = []
+        rig.runtime.appDidLaunch()
+        await waitUntil { !rig.center.removedDelivered.isEmpty }
+        await waitUntil { !rig.center.removedPending.isEmpty }
+        XCTAssertEqual(rig.center.removedDelivered.flatMap { $0 }.sorted(),
+                       ["praxis.approval.r1", "praxis.done.\(conv.id.uuidString)"].sorted())
+        XCTAssertEqual(rig.center.removedPending.flatMap { $0 }, ["praxis.approval.r2"])
+        // ...and the posting record is forgotten with them.
+        await rig.runtime.notifications.withdrawApprovals(for: conv.id)
+        XCTAssertEqual(rig.center.removedDelivered.count, 1, "nothing left to withdraw")
+        await rig.store.settle()
     }
 
     func testOutcomeNoteAndCodable() throws {

@@ -98,6 +98,19 @@ final class PlusTrayUITests: XCTestCase {
         shot("composer-solid-buttons")
     }
 
+    /// The Screenshot tile quick-adds the newest screenshot and leaves
+    /// the tray open (a shortcut, not a flow).
+    func testScreenshotTileQuickAdds() {
+        app.buttons["New chat"].tap()
+        openTray()
+        el(.button, "Screenshot").tap()
+        XCTAssertTrue(elBegins(.button, "Remove").waitForExistence(timeout: 10),
+                      "tapping Screenshot attaches it to the composer")
+        XCTAssertTrue(el(.button, "Plan").exists, "the tray stays open after a quick-add")
+        shot("tray-screenshot-quickadd")
+        closeTray()
+    }
+
     /// Switching away stashes the draft; coming back restores its text
     /// and its attachments.
     func testDraftRestoredWhenReturningToChat() {

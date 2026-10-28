@@ -33,6 +33,15 @@ final class PhotoGalleryTests: XCTestCase {
         XCTAssertEqual(gallery.access, .library(limited: false))
     }
 
+    func testLatestScreenshotMockAttachesFirstTile() async {
+        UserDefaults.standard.set(true, forKey: "PraxisMockGallery")
+        addTeardownBlock { UserDefaults.standard.removeObject(forKey: "PraxisMockGallery") }
+        let gallery = PhotoGallery()
+        let shot = await gallery.latestScreenshot()
+        XCTAssertEqual(shot?.name, "Screenshot 1")
+        XCTAssertNotNil(shot?.imageData)
+    }
+
     func testMockAttachCopiesBytesUnderFreshIDs() async {
         UserDefaults.standard.set(true, forKey: "PraxisMockGallery")
         addTeardownBlock { UserDefaults.standard.removeObject(forKey: "PraxisMockGallery") }
