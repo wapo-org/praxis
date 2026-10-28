@@ -5,7 +5,7 @@ import SwiftUI
 /// the default is the correct empty state, so this screen compiles and tests
 /// standalone on the voice-groq branch.
 struct VoiceRecordingsListKey: EnvironmentKey {
-    static let defaultValue: AnyView = AnyView(VoiceRecordingsEmptyView())
+    static var defaultValue: AnyView { AnyView(VoiceRecordingsEmptyView()) }
 }
 
 extension EnvironmentValues {

@@ -1,5 +1,6 @@
 import Foundation
 import AgentCore
+import AgentMCP
 
 // MARK: - FROZEN voice interfaces (VOICE_PLAN §7, voice-groq owns this file)
 

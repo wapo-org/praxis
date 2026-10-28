@@ -59,10 +59,10 @@ final class AgentServices {
                                  registryCache: AppDirectories.skillRegistryCache),
             elicitations: elicitations,
             consent: AIDataConsent(fileURL: AppDirectories.consent),
-            voice: GroqVoiceSettings(fileURL: AppDirectories.voiceSettings,
-                                     secrets: KeychainSecretStore(service: GroqVoiceSettings.keychainService)),
             scratch: ScratchStore(root: AppDirectories.runtimeScratch,
-                                  writingOptions: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]))
+                                  writingOptions: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]),
+            voice: GroqVoiceSettings(fileURL: AppDirectories.voiceSettings,
+                                     secrets: KeychainSecretStore(service: GroqVoiceSettings.keychainService)))
         // Model lists cached before they carried image support (or more
         // than a day ago) are read again, so "can it see images?" is
         // answered from the server's current list, not a stale one.

@@ -23,13 +23,13 @@ protocol VoiceSettingsReader {
 @MainActor
 @Observable
 final class GroqVoiceSettings: VoiceSettingsReader {
-    static let keychainService = "PraxisChat.Voice"
-    static let keychainAccount = "groq.apiKey"
+    nonisolated static let keychainService = "PraxisChat.Voice"
+    nonisolated static let keychainAccount = "groq.apiKey"
     /// Sensible default when listed (fastest/cheapest per the Groq STT docs).
-    static let defaultModelID = "whisper-large-v3-turbo"
+    nonisolated static let defaultModelID = "whisper-large-v3-turbo"
     /// A model list older than this is read again on opening the screen,
     /// mirroring `ProviderSettings.modelListLifetime`.
-    static let modelListLifetime: TimeInterval = 24 * 3600
+    nonisolated static let modelListLifetime: TimeInterval = 24 * 3600
 
     private struct File: Codable {
         var version = 1
@@ -199,7 +199,7 @@ final class GroqVoiceSettings: VoiceSettingsReader {
     // MARK: Languages
 
     /// Common ISO-639-1 codes for the language row (nil = Auto).
-    static let supportedLanguages: [(code: String?, name: String)] = [
+    nonisolated static let supportedLanguages: [(code: String?, name: String)] = [
         (nil, "Auto"),
         ("en", "English"), ("es", "Spanish"), ("fr", "French"), ("de", "German"),
         ("it", "Italian"), ("pt", "Portuguese"), ("nl", "Dutch"), ("pl", "Polish"),
@@ -207,7 +207,7 @@ final class GroqVoiceSettings: VoiceSettingsReader {
         ("hi", "Hindi"), ("zh", "Chinese"), ("ja", "Japanese"), ("ko", "Korean"),
     ]
 
-    static func languageName(for code: String?) -> String {
+    nonisolated static func languageName(for code: String?) -> String {
         supportedLanguages.first { $0.code == code }?.name ?? code ?? "Auto"
     }
 
