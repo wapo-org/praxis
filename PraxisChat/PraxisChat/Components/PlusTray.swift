@@ -35,10 +35,13 @@ struct PlusTray: View {
     @State private var pageVisible = true
     @State private var pageRise: CGFloat = 0
     @State private var position = ScrollPosition(edge: .top)
-    @State private var screenshots: [Attachment] = MockData.sampleScreenshots()
+    @State private var gallery = PhotoGallery()
     @State private var selectedShots: Set<UUID> = []
     @State private var appeared = false
     @State private var pastThreshold = false
+    /// More rows lie below the viewport: the bottom blur band only
+    /// shows then, so a settled list ends sharp.
+    @State private var hasMoreBelow = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Pull distance that commits the dismiss on release.
@@ -70,6 +73,7 @@ struct PlusTray: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollPosition($position)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .accessibilityIdentifier("plusTray")
         // Hug the content: short pages (Model) get a short card, and page
         // switches morph the card height instead of jumping.
@@ -89,6 +93,13 @@ struct PlusTray: View {
             let past = distance > Self.dismissPull
             if past != pastThreshold { pastThreshold = past }
         }
+        // A boolean, so it only touches state when the bottom band
+        // must appear or disappear — never per frame while scrolling.
+        .onScrollGeometryChange(for: Bool.self) { geo in
+            geo.contentSize.height - (geo.contentOffset.y + geo.containerSize.height) > 24
+        } action: { _, more in
+            hasMoreBelow = more
+        }
         // Dismiss is decided once, on release — not on every frame of an
         // overscroll, and never by a fling's momentum bounce.
         .onScrollPhaseChange { old, new, context in
@@ -97,7 +108,11 @@ struct PlusTray: View {
             if distance > Self.dismissPull { onDismiss(false) }
         }
         .sensoryFeedback(trigger: pastThreshold) { _, past in past ? .impact(weight: .light) : nil }
-        .onChange(of: page) { _, _ in switchPage() }
+        .onChange(of: page) { _, _ in
+            // Leaving the Model page ends the search; the draft was untouched.
+            if page != .models { store.modelQuery = "" }
+            switchPage()
+        }
         // Content dissolves into the card glass at the bottom instead of
         // being cut off abruptly above the composer row; the rounded top
         // keeps scrolled rows inside the card's corners.
@@ -111,9 +126,23 @@ struct PlusTray: View {
                                               topTrailingRadius: Praxis.composerRadius,
                                               style: .continuous))
         }
-        .onAppear { appeared = true }
+        // Progressive blur where rows dive toward the composer row. The
+        // system edge effect has no bar to work with inside the card, so
+        // this band does it: untinted, since it floats over content.
+        .overlay(alignment: .bottom) {
+            if hasMoreBelow {
+                ProgressiveBlurScrim(edge: .bottom, length: 48, bands: 3, hold: 0.2, tint: 0)
+                    .frame(maxWidth: .infinity)
+                    .transition(.opacity)
+            }
+        }
+        .animation(Motion.snap, value: hasMoreBelow)
+        .onAppear { appeared = true; store.modelQuery = "" }
         .onDisappear { pull = 0 }
-        .task { await loadScreenshots() }
+        .task { await gallery.loadIfNeeded() }
+        // A chat switch behind the open tray drops the checked tiles:
+        // they belong to the chat they were picked in.
+        .onChange(of: store.selectedID) { selectedShots = [] }
     }
 
     /// Two-phase page change. A transition-based crossfade kept both pages
@@ -158,18 +187,22 @@ struct PlusTray: View {
             modelRow
                 .modifier(stagger(1))
 
-            VStack(alignment: .leading, spacing: 8) {
-                GlassSegmentedControl(
-                    options: Effort.allCases, selection: store.effort,
-                    title: { $0.title }
-                ) { store.effort = $0; store.haptics.fire(.selection) }
-                Text(store.effort.detail)
-                    .font(Type.inter(13, .footnote))
-                    .foregroundStyle(Praxis.mutedInk)
-                    .contentTransition(.opacity)
-                    .animation(Motion.snap, value: store.effort)
+            // Only the levels the model takes; unknown shows all four, and a
+            // model without reasoning hides the control entirely.
+            if store.supportedEfforts != [] {
+                VStack(alignment: .leading, spacing: 8) {
+                    GlassSegmentedControl(
+                        options: store.supportedEfforts ?? Effort.allCases, selection: store.effort,
+                        title: { $0.title }
+                    ) { store.effort = $0; store.haptics.fire(.selection) }
+                    Text(store.effort.detail)
+                        .font(Type.inter(13, .footnote))
+                        .foregroundStyle(Praxis.mutedInk)
+                        .contentTransition(.opacity)
+                        .animation(Motion.snap, value: store.effort)
+                }
+                .modifier(stagger(2))
             }
-            .modifier(stagger(2))
 
             addSection
                 .modifier(stagger(3))
@@ -278,7 +311,7 @@ struct PlusTray: View {
                     .opacity(isSimulator ? 0.45 : 1)
                 addTile("Files", symbol: "folder") { showFiles = true }
                 addTile("Screenshot", symbol: "rectangle.on.rectangle") {
-                    if let first = screenshots.first {
+                    if let first = gallery.items.first {
                         store.haptics.fire(.selection)
                         selectedShots.insert(first.id)
                     }
@@ -289,55 +322,57 @@ struct PlusTray: View {
                     // First gallery item is the live camera preview;
                     // tapping it opens the camera to attach a photo.
                     LiveCameraTile { showCamera = true }
-                    ForEach(screenshots) { shot in
-                        screenshotThumb(shot)
+                    ForEach(gallery.items) { item in
+                        let selected = selectedShots.contains(item.id)
+                        GalleryThumb(item: item, selected: selected) {
+                            store.haptics.fire(.selection)
+                            if selected { selectedShots.remove(item.id) } else { selectedShots.insert(item.id) }
+                        }
+                    }
+                    // Limited access: offer more; denied: the strip's only
+                    // other tile opens Settings.
+                    if gallery.access == .library(limited: true) {
+                        ManagePhotosTile { gallery.presentLimitedPicker() }
+                    }
+                    if gallery.access == .denied {
+                        AllowPhotosTile { gallery.openSettings() }
                     }
                 }
                 .padding(.horizontal, 4)
             }
             .frame(height: 64)
 
-            if !selectedShots.isEmpty {
+            if !selectedShots.isEmpty || gallery.adding != nil {
                 Button {
-                    // Fresh identities: adding the same screenshot twice
-                    // must not put duplicate IDs in the composer strip.
-                    let chosen = screenshots.filter { selectedShots.contains($0.id) }
-                        .map { Attachment(kind: $0.kind, name: $0.name, imageData: $0.imageData) }
-                    withAnimation(Motion.reflow) { store.attachments.append(contentsOf: chosen) }
-                    selectedShots = []
-                    onDismiss(true)
+                    attachSelected()
                 } label: {
-                    PraxisButtonLabel("Add \(selectedShots.count)")
-                        .contentTransition(.numericText())
+                    if let adding = gallery.adding {
+                        PraxisButtonLabel("Adding \(min(adding.done + 1, adding.total))/\(adding.total)…",
+                                          working: true)
+                    } else {
+                        PraxisButtonLabel("Add \(selectedShots.count)")
+                            .contentTransition(.numericText())
+                    }
                 }
                 .buttonStyle(.praxisPrimary(.compact))
+                .disabled(gallery.adding != nil)
                 .transition(reduceMotion ? .opacity : .praxisPop)
             }
         }
         .animation(reduceMotion ? Motion.reduced : Motion.pop, value: selectedShots)
     }
 
-    private func screenshotThumb(_ shot: Attachment) -> some View {
-        let selected = selectedShots.contains(shot.id)
-        return Button {
-            store.haptics.fire(.selection)
-            if selected { selectedShots.remove(shot.id) } else { selectedShots.insert(shot.id) }
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                AttachmentThumbnail(attachment: shot, size: 56)
-                if selected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Praxis.ink, Praxis.canvas)
-                        .padding(3)
-                        .transition(reduceMotion ? .opacity : .scale(scale: 0.4).combined(with: .opacity))
-                }
-            }
-            .scaleEffect(selected && !reduceMotion ? 0.92 : 1)
+    /// Attaches the checked tiles at full resolution (library photos
+    /// download, iCloud included) and closes the tray. The task holds the
+    /// gallery, so closing mid-attach still finishes.
+    private func attachSelected() {
+        let ids = selectedShots
+        selectedShots = []
+        Task {
+            let chosen = await gallery.fullAttachments(for: ids)
+            withAnimation(Motion.reflow) { store.attachments.append(contentsOf: chosen) }
+            onDismiss(true)
         }
-        .buttonStyle(PressScaleStyle(scale: 0.94))
-        .accessibilityLabel(shot.name)
-        .accessibilityValue(selected ? "Selected" : "Not selected")
     }
 
     private func addTile(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
@@ -427,17 +462,31 @@ struct PlusTray: View {
     private var modelsPage: some View {
         VStack(alignment: .leading, spacing: 12) {
             trayHeader("Model") { page = .main }
-            // One read of the list and the selection per render: the
+            // One read of the list, pins and selection per render: the
             // selection used to be looked up per row (O(n²) with a
             // provider's hundreds of models).
-            ModelList(models: store.availableModels, selectedID: store.model.id,
-                      emptyMessage: store.services?.settings.hasProfiles == true
-                          ? "This provider listed no models. Enter a model ID in Settings."
-                          : "Add a model provider in Settings to chat with a real model.") { model in
-                store.haptics.fire(.selection)
-                withAnimation(Motion.snap) { store.model = model }
+            let sections = ModelSections.make(models: store.availableModels,
+                                              pinnedIDs: store.pinnedModelIDs(),
+                                              query: store.modelQuery)
+            let pinned = Set(store.pinnedModelIDs())
+            if !sections.favorites.isEmpty || !sections.unavailableIDs.isEmpty {
+                favoritesHeader
+                ModelList(models: sections.favorites + sections.unavailableIDs.map(Self.unavailableModel),
+                          selectedID: store.model.id, emptyMessage: "",
+                          onSelect: selectModel,
+                          pinnedIDs: pinned, unavailableIDs: Set(sections.unavailableIDs),
+                          onTogglePin: togglePin)
+                .equatable()
             }
-            .equatable()
+            let emptyMessage = modelsEmptyMessage(sections: sections)
+            if !sections.rest.isEmpty || !emptyMessage.isEmpty {
+                ModelList(models: sections.rest, selectedID: store.model.id,
+                          emptyMessage: emptyMessage,
+                          onSelect: selectModel,
+                          pinnedIDs: pinned, unavailableIDs: [],
+                          onTogglePin: togglePin)
+                .equatable()
+            }
             if store.services != nil {
                 groupedCard {
                     Button {
@@ -461,6 +510,42 @@ struct PlusTray: View {
                 }
             }
         }
+    }
+
+    private var favoritesHeader: some View {
+        Text("Favorites")
+            .font(Type.inter(13, weight: .semibold, .footnote))
+            .foregroundStyle(Praxis.mutedInk)
+            .padding(.horizontal, 14)
+    }
+
+    /// A pinned id with no listed model: dimmed, unpinnable, unselectable.
+    private static func unavailableModel(id: String) -> AIModel {
+        AIModel(id: id, name: id, tagline: "Unavailable", speed: 0, intelligence: 0, streamMultiplier: 1)
+    }
+
+    private func modelsEmptyMessage(sections: ModelSections) -> String {
+        if !ModelSearch.normalized(store.modelQuery).isEmpty {
+            let found = !sections.favorites.isEmpty || !sections.unavailableIDs.isEmpty
+            let query = store.modelQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            return found ? "" : "No models match “\(query)”."
+        }
+        return store.services?.settings.hasProfiles == true
+            ? "This provider listed no models. Enter a model ID in Settings."
+            : "Add a model provider in Settings to chat with a real model."
+    }
+
+    /// Picking a model clears the search; the page stays open.
+    private func selectModel(_ model: AIModel) {
+        store.haptics.fire(.selection)
+        withAnimation(Motion.snap) { store.model = model }
+        store.modelQuery = ""
+    }
+
+    private func togglePin(_ model: AIModel) {
+        let pinned = store.isModelPinned(model.id)
+        store.haptics.fire(pinned ? .selection : .success)
+        store.setModelPinned(model.id, pinned: !pinned)
     }
 
     // MARK: Connectors page
@@ -587,25 +672,6 @@ struct PlusTray: View {
         #endif
     }
 
-    /// Photos fetch runs off the main thread; the cached sample tiles show
-    /// immediately, so the strip never pops in mid-animation.
-    private func loadScreenshots() async {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        guard status == .authorized || status == .limited else { return }
-        let names: [String] = await Task.detached(priority: .userInitiated) {
-            let options = PHFetchOptions()
-            options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-            options.fetchLimit = 12
-            let collection = PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: .smartAlbumScreenshots, options: nil)
-            guard let album = collection.firstObject else { return [] }
-            let assets = PHAsset.fetchAssets(in: album, options: options)
-            var names: [String] = []
-            assets.enumerateObjects { asset, _, _ in names.append(String(asset.localIdentifier.prefix(8))) }
-            return names
-        }.value
-        guard !names.isEmpty else { return }
-        screenshots = names.map { Attachment(kind: .screenshot, name: $0) }
-    }
 }
 
 /// The model page's list. Lazy: a provider can list hundreds of models,
@@ -616,9 +682,13 @@ private struct ModelList: View, Equatable {
     let selectedID: String
     let emptyMessage: String
     var onSelect: (AIModel) -> Void
+    var pinnedIDs: Set<String> = []
+    var unavailableIDs: Set<String> = []
+    var onTogglePin: (AIModel) -> Void = { _ in }
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.selectedID == rhs.selectedID && lhs.emptyMessage == rhs.emptyMessage && lhs.models == rhs.models
+            && lhs.pinnedIDs == rhs.pinnedIDs && lhs.unavailableIDs == rhs.unavailableIDs
     }
 
     var body: some View {
@@ -632,9 +702,11 @@ private struct ModelList: View, Equatable {
             }
             let firstID = models.first?.id
             ForEach(models) { model in
-                ModelRow(model: model, isSelected: model.id == selectedID, showsDivider: model.id != firstID) {
-                    onSelect(model)
-                }
+                ModelRow(model: model, isSelected: model.id == selectedID, showsDivider: model.id != firstID,
+                         onSelect: { onSelect(model) },
+                         isPinned: pinnedIDs.contains(model.id),
+                         isUnavailable: unavailableIDs.contains(model.id),
+                         onTogglePin: { onTogglePin(model) })
                 .equatable()
             }
         }
@@ -646,10 +718,14 @@ private struct ModelRow: View, Equatable {
     let isSelected: Bool
     let showsDivider: Bool
     var onSelect: () -> Void
+    var isPinned: Bool = false
+    var isUnavailable: Bool = false
+    var onTogglePin: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.model == rhs.model && lhs.isSelected == rhs.isSelected && lhs.showsDivider == rhs.showsDivider
+            && lhs.isPinned == rhs.isPinned && lhs.isUnavailable == rhs.isUnavailable
     }
 
     var body: some View {
@@ -658,7 +734,8 @@ private struct ModelRow: View, Equatable {
                 Rectangle().fill(Praxis.hairline).frame(height: 1)
                     .padding(.leading, 44)
             }
-            Button(action: onSelect) {
+            // Unavailable pins (no longer listed) can't be picked, only unpinned.
+            Button(action: { if !isUnavailable { onSelect() } }) {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(model.name).font(Type.inter(15, weight: .semibold, .body)).foregroundStyle(Praxis.ink)
@@ -681,7 +758,11 @@ private struct ModelRow: View, Equatable {
             .buttonStyle(PressHighlightStyle())
             .accessibilityLabel("\(model.name), \(model.tagline)")
             .accessibilityValue(isSelected ? "Selected" : "")
+            .contextMenu {
+                Button(isPinned ? "Unpin" : "Pin to Favorites") { onTogglePin() }
+            }
         }
+        .opacity(isUnavailable ? 0.55 : 1)
     }
 }
 

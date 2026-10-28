@@ -13,13 +13,15 @@ struct ConsentSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Share this chat with \(request.host)?")
+                        Text(isTranscribe ? "Share this voice recording with \(request.host)?" : "Share this chat with \(request.host)?")
                             .font(Type.inter(22, weight: .semibold, .title2))
                             .foregroundStyle(Praxis.ink)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityAddTraits(.isHeader)
                             .accessibilityIdentifier("consentTitle")
-                        Text("To answer, Praxis sends your chat to \(request.providerName) at \(request.host). It goes straight from this iPhone to that server; Praxis has no server of its own in between.")
+                        Text(isTranscribe
+                            ? "To transcribe, Praxis sends your voice recording to \(request.providerName) at \(request.host). It goes straight from this iPhone to that server; Praxis has no server of its own in between."
+                            : "To answer, Praxis sends your chat to \(request.providerName) at \(request.host). It goes straight from this iPhone to that server; Praxis has no server of its own in between.")
                             .font(Type.inter(15, .body))
                             .foregroundStyle(Praxis.secondaryInk)
                             .lineSpacing(4)
@@ -29,13 +31,17 @@ struct ConsentSheet: View {
                     VStack(alignment: .leading, spacing: 8) {
                         SettingsSectionTitle("What's sent")
                         SettingsCard {
-                            item("text.bubble", "Your messages", "This chat's messages so far, and each new one.")
-                            SettingsDivider()
-                            item("paperclip", "Attachments", "Photos and files you add to the chat.")
-                            SettingsDivider()
-                            item("wrench.and.screwdriver", "Tool results", "What the agent's tools return, like web pages it reads or code output.")
-                            SettingsDivider()
-                            item("link", "Connector data", connectorDetail)
+                            if isTranscribe {
+                                item("waveform", "Voice recordings", "The audio you recorded, to turn into text. Nothing else from your chats.")
+                            } else {
+                                item("text.bubble", "Your messages", "This chat's messages so far, and each new one.")
+                                SettingsDivider()
+                                item("paperclip", "Attachments", "Photos and files you add to the chat.")
+                                SettingsDivider()
+                                item("wrench.and.screwdriver", "Tool results", "What the agent's tools return, like web pages it reads or code output.")
+                                SettingsDivider()
+                                item("link", "Connector data", connectorDetail)
+                            }
                         }
                     }
 
@@ -47,10 +53,10 @@ struct ConsentSheet: View {
 
                     VStack(spacing: 10) {
                         Button { store.resolveConsent(allow: true) } label: {
-                            PraxisButtonLabel("Allow and send")
+                            PraxisButtonLabel(isTranscribe ? "Allow and transcribe" : "Allow and send")
                         }
                         .buttonStyle(.praxisPrimary(fillsWidth: true))
-                        .accessibilityLabel("Allow and send")
+                        .accessibilityLabel(isTranscribe ? "Allow and transcribe" : "Allow and send")
 
                         Button { store.resolveConsent(allow: false) } label: {
                             PraxisButtonLabel("Don't allow")
@@ -61,6 +67,7 @@ struct ConsentSheet: View {
                 }
                 .padding(20)
             }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .background(Praxis.canvas)
             .navigationTitle("AI data sharing")
             .navigationBarTitleDisplayMode(.inline)
@@ -70,6 +77,12 @@ struct ConsentSheet: View {
         .onDisappear {
             if store.pendingConsent?.id == request.id { store.resolveConsent(allow: false) }
         }
+    }
+
+    /// A held voice transcription (voice-groq): different copy, same sheet.
+    private var isTranscribe: Bool {
+        if case .transcribe = request.action { return true }
+        return false
     }
 
     private var connectorDetail: String {

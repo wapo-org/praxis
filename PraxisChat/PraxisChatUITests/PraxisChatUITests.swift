@@ -10,7 +10,8 @@ final class PraxisChatUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         // Conversations persist now: every test starts from the seed.
-        app.launchArguments += ["-PraxisResetData", "YES"]
+        // The gallery shows mocks: deterministic tiles, no photo prompt.
+        app.launchArguments += ["-PraxisResetData", "YES", "-PraxisMockGallery", "YES"]
         app.launch()
         XCTAssertTrue(el(.button, "History").waitForExistence(timeout: 15))
     }
@@ -339,15 +340,25 @@ final class PraxisChatUITests: XCTestCase {
         XCTAssertTrue(el(.button, "Record voice message").waitForExistence(timeout: 8))
     }
 
-    // MARK: Recording: mic → waveform → mock transcription
+    // MARK: Recording: mic → recording UI → transcription in the draft
 
     func testRecordingTypesTranscription() {
+        // The placeholder is gone: capture is simulated from the bundled
+        // fixture and the transcript is scripted (DEBUG seams, no mic or
+        // network), but the flow is the real one.
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments += ["-PraxisResetData", "YES",
+                                "-PraxisFakeRecording", "voice-fake.m4a",
+                                "-PraxisFakeTranscript", "Draft a follow-up on the glass contrast audit"]
+        app.launch()
+        XCTAssertTrue(el(.button, "History").waitForExistence(timeout: 15))
         el(.button, "Record voice message").tap()
         XCTAssertTrue(el(.button, "Stop recording").waitForExistence(timeout: 8))
         shot("11-recording")
         el(.button, "Stop recording").tap()
-        XCTAssertTrue(el(.button, "Send message").waitForExistence(timeout: 8),
-                      "stopping should type a transcription and morph mic into send")
+        XCTAssertTrue(el(.button, "Send message").waitForExistence(timeout: 15),
+                      "stopping should transcribe into the draft and morph mic into send")
         shot("12-transcribed")
     }
 

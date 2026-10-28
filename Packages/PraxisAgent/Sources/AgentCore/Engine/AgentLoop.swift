@@ -13,6 +13,10 @@ public struct AgentRunConfiguration: Sendable {
     /// the retry itself fails. Nil means unbounded (old behavior).
     public var modelMaxTokens: Int?
     public var maxIterations: Int
+    /// The model's supported effort wire values, when known. Builders clamp
+    /// the outgoing value to these; nil sends the effort unchanged, empty
+    /// drops the parameter.
+    public var supportedEffortValues: [String]?
     public var serverWebSearch: Bool
     public var toolTimeout: Duration
     public var maxConcurrentTools: Int
@@ -39,7 +43,8 @@ public struct AgentRunConfiguration: Sendable {
     public var elicitationScope: UUID?
 
     public init(conversationID: String, model: String, system: String, mode: AgentMode = .auto, effort: Effort = .high,
-                maxTokens: Int? = nil, modelMaxTokens: Int? = nil, maxIterations: Int? = nil, serverWebSearch: Bool = false,
+                maxTokens: Int? = nil, modelMaxTokens: Int? = nil, maxIterations: Int? = nil,
+                supportedEffortValues: [String]? = nil, serverWebSearch: Bool = false,
                 toolTimeout: Duration = .seconds(120), maxConcurrentTools: Int = 4, maxRetries: Int = 4,
                 maxPauseContinuations: Int = 5, context: ContextPolicy = ContextPolicy(),
                 compaction: ContextCompaction? = nil, measurement: ContextMeasurement? = nil,
@@ -54,6 +59,7 @@ public struct AgentRunConfiguration: Sendable {
         self.maxTokens = maxTokens ?? effort.defaultMaxTokens
         self.modelMaxTokens = modelMaxTokens
         self.maxIterations = maxIterations ?? effort.defaultMaxIterations
+        self.supportedEffortValues = supportedEffortValues
         self.isCancelled = isCancelled
         self.elicitationScope = elicitationScope
         self.serverWebSearch = serverWebSearch
@@ -344,7 +350,8 @@ private struct LoopRun: Sendable {
             model: config.model, system: config.system, messages: messages,
             tools: requestTools,
             maxTokens: maxTokens, effort: config.effort,
-            serverWebSearch: config.serverWebSearch && loop.provider.capabilities.serverWebSearch)
+            serverWebSearch: config.serverWebSearch && loop.provider.capabilities.serverWebSearch,
+            supportedEffortValues: config.supportedEffortValues)
         var attempt = 0
         while true {
             var emittedBlocks: [String] = []

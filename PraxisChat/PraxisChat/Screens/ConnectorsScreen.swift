@@ -23,6 +23,7 @@ struct ConnectorsScreen: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .background(Praxis.canvas)
         .navigationTitle("Connectors")
         .navigationBarTitleDisplayMode(.inline)
@@ -227,6 +228,7 @@ struct ConnectorDetailScreen: View {
                     .padding(.vertical, 12)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .scrollEdgeEffectStyle(.soft, for: .top)
                 .navigationTitle(server.name)
             } else {
                 Color.clear
@@ -381,10 +383,7 @@ struct ConnectorDetailScreen: View {
     @ViewBuilder
     private var toolsSection: some View {
         if let tools = library.tools[serverID] {
-            VStack(alignment: .leading, spacing: 8) {
-                SettingsSectionTitle(tools.count == 1 ? "1 tool" : "\(tools.count) tools")
-                ToolList(tools: tools)
-            }
+            ConnectorToolToggles(library: library, serverID: serverID, tools: tools)
         }
     }
 
@@ -560,7 +559,7 @@ struct ToolList: View {
                     HStack(spacing: 6) {
                         Text(tool.displayTitle).font(Type.inter(15, weight: .medium, .body)).foregroundStyle(Praxis.ink)
                         Spacer(minLength: 4)
-                        Text(hint(tool)).font(Type.inter(11, weight: .medium, .caption2)).foregroundStyle(Praxis.mutedInk)
+                        Text(tool.trustHint).font(Type.inter(11, weight: .medium, .caption2)).foregroundStyle(Praxis.mutedInk)
                     }
                     if tool.displayTitle != tool.name {
                         Text(tool.name).font(Type.mono(11, .caption2)).foregroundStyle(Praxis.mutedInk)
@@ -575,14 +574,6 @@ struct ToolList: View {
                 .accessibilityElement(children: .combine)
             }
         }
-    }
-
-    /// The server's own claim — believed only once it's trusted.
-    private func hint(_ tool: MCPToolDefinition) -> String {
-        let traits = tool.annotations.traits
-        if traits.contains(.readOnly) { return "Says read-only" }
-        if traits.contains(.destructive) { return "Can change things" }
-        return "Says safe"
     }
 }
 

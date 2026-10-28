@@ -56,7 +56,8 @@ public struct OpenAIChatProvider: ModelProvider {
                              contextWindow: m["context_length"]?.intValue ?? m["context_window"]?.intValue ?? m["max_model_len"]?.intValue,
                              maxOutputTokens: m["top_provider"]?["max_completion_tokens"]?.intValue,
                              supportsImages: HTTPSupport.imageSupport(in: m),
-                             supportsTools: HTTPSupport.toolSupport(in: m))
+                             supportsTools: HTTPSupport.toolSupport(in: m),
+                             reasoningEfforts: HTTPSupport.reasoningEfforts(in: m, defaultLevels: EffortLevels.openAIFamilyDefault))
         }
     }
 }

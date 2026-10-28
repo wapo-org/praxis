@@ -80,6 +80,9 @@ struct ConsentRequest: Identifiable, Equatable {
         /// The composer's text and attachments, restored on decline.
         case send(text: String, attachments: [Attachment])
         case retry(UUID)
+        /// A held voice transcription: allowing grants the host and retries
+        /// it; declining keeps the audio queued. (voice-groq)
+        case transcribe(recordingID: UUID)
     }
 
     let id = UUID()
