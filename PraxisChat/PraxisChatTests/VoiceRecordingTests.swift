@@ -32,14 +32,21 @@ final class VoiceRecordingTests: XCTestCase {
         return recording
     }
 
-    func testSidecarRoundTrip() {
+    func testSidecarRoundTrip() throws {
         var recording = VoiceRecording(conversationID: UUID())
         recording.state = .paused
         recording.duration = 95.5
         recording.transcriptPreview = "hello there"
         XCTAssertTrue(store.save(recording))
-        let loaded = store.load(id: recording.id)
-        XCTAssertEqual(loaded, recording)
+        let loaded = try XCTUnwrap(store.load(id: recording.id))
+        XCTAssertEqual(loaded.id, recording.id)
+        XCTAssertEqual(loaded.conversationID, recording.conversationID)
+        XCTAssertEqual(loaded.state, recording.state)
+        XCTAssertEqual(loaded.createdAt.timeIntervalSince1970,
+                       recording.createdAt.timeIntervalSince1970, accuracy: 1)
+        XCTAssertEqual(loaded.duration, recording.duration)
+        XCTAssertEqual(loaded.fileName, recording.fileName)
+        XCTAssertEqual(loaded.transcriptPreview, recording.transcriptPreview)
     }
 
     func testScanFindsUnfinishedButNotTranscribed() {
