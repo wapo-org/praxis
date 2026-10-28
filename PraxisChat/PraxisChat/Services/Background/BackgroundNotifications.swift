@@ -110,10 +110,12 @@ final class BackgroundNotificationDelegate: NSObject, UNUserNotificationCenterDe
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let route = NotificationRoute.resolve(actionID: response.actionIdentifier,
                                               userInfo: response.notification.request.content.userInfo)
-        Task { @MainActor [weak self] in
-            self?.handle(route)
-            completionHandler()
-        }
+        // The completion handler can't cross into the hop below (it isn't
+        // Sendable), so it runs here: every route foregrounds the app
+        // (`.foreground` actions, taps), which keeps the process alive
+        // for the scheduled handling.
+        Task { @MainActor [weak self] in self?.handle(route) }
+        completionHandler()
     }
 
     nonisolated func userNotificationCenter(_: UNUserNotificationCenter,
