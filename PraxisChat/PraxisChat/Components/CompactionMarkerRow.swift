@@ -104,6 +104,7 @@ struct CompactionSummarySheet: View {
                 }
                 .padding(20)
             }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .background(Praxis.canvas)
             .navigationTitle(marker.state == .done ? "What the model remembers" : "Summary failed")
             .navigationBarTitleDisplayMode(.inline)

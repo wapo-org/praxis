@@ -211,6 +211,19 @@ final class GroqVoiceSettings: VoiceSettingsReader {
         supportedLanguages.first { $0.code == code }?.name ?? code ?? "Auto"
     }
 
+    // MARK: Transcriber (final voice integration wiring)
+
+    /// Builds a transcriber snapshotting the CURRENT model and language.
+    /// Build one per transcription call: the model, language and consent
+    /// may all have changed since the controller was created (in particular
+    /// the consent allow-path retries after a grant). The key itself is read
+    /// per call inside `transcribe`, never held here.
+    func makeTranscriber(consentGranted: Bool,
+                         onEvent: (@Sendable (TranscriptionEvent) -> Void)? = nil) -> GroqTranscriber {
+        GroqTranscriber(transport: transport, secrets: secrets, modelID: selectedModelID,
+                       language: language, consentGranted: consentGranted, onEvent: onEvent)
+    }
+
     // MARK: Persistence (no secrets in the JSON, ever)
 
     private func persist() {

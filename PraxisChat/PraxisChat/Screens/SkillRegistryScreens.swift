@@ -50,6 +50,7 @@ struct SkillRegistryBrowserScreen: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .background(Praxis.canvas)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search skills")
         .navigationTitle("Browse skills")
@@ -339,6 +340,7 @@ struct RegistrySkillDetailScreen: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .background(Praxis.canvas)
         .navigationTitle(skill.name)
         .navigationBarTitleDisplayMode(.inline)

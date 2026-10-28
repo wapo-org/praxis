@@ -39,6 +39,9 @@ struct PlusTray: View {
     @State private var selectedShots: Set<UUID> = []
     @State private var appeared = false
     @State private var pastThreshold = false
+    /// More rows lie below the viewport: the bottom blur band only
+    /// shows then, so a settled list ends sharp.
+    @State private var hasMoreBelow = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Pull distance that commits the dismiss on release.
@@ -70,6 +73,7 @@ struct PlusTray: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollPosition($position)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .accessibilityIdentifier("plusTray")
         // Hug the content: short pages (Model) get a short card, and page
         // switches morph the card height instead of jumping.
@@ -88,6 +92,13 @@ struct PlusTray: View {
             pull = distance
             let past = distance > Self.dismissPull
             if past != pastThreshold { pastThreshold = past }
+        }
+        // A boolean, so it only touches state when the bottom band
+        // must appear or disappear — never per frame while scrolling.
+        .onScrollGeometryChange(for: Bool.self) { geo in
+            geo.contentSize.height - (geo.contentOffset.y + geo.containerSize.height) > 24
+        } action: { _, more in
+            hasMoreBelow = more
         }
         // Dismiss is decided once, on release — not on every frame of an
         // overscroll, and never by a fling's momentum bounce.
@@ -115,6 +126,17 @@ struct PlusTray: View {
                                               topTrailingRadius: Praxis.composerRadius,
                                               style: .continuous))
         }
+        // Progressive blur where rows dive toward the composer row. The
+        // system edge effect has no bar to work with inside the card, so
+        // this band does it: untinted, since it floats over content.
+        .overlay(alignment: .bottom) {
+            if hasMoreBelow {
+                ProgressiveBlurScrim(edge: .bottom, length: 48, bands: 3, hold: 0.2, tint: 0)
+                    .frame(maxWidth: .infinity)
+                    .transition(.opacity)
+            }
+        }
+        .animation(Motion.snap, value: hasMoreBelow)
         .onAppear { appeared = true; store.modelQuery = "" }
         .onDisappear { pull = 0 }
         .task { await gallery.loadIfNeeded() }

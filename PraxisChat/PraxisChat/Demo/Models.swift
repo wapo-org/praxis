@@ -356,6 +356,9 @@ struct CompactionMarker: Identifiable, Equatable, Codable {
 enum TurnOutcome: Equatable, Codable {
     case completed
     case stopped
+    /// The system expired the run's background time; the turn keeps its
+    /// partial answer and a Continue button resumes from the transcript.
+    case pausedBackground
     case truncated
     case maxIterations
     case refused(String?)
@@ -380,6 +383,7 @@ enum TurnOutcome: Equatable, Codable {
         switch self {
         case .completed: return nil
         case .stopped: return "Stopped"
+        case .pausedBackground: return "Paused in background"
         case .truncated: return "Cut off — the answer hit the output limit"
         case .maxIterations: return "Paused — reached the step limit for this effort"
         case .refused(let category): return category.map { "Declined to answer (\($0))" } ?? "Declined to answer"

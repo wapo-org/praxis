@@ -53,6 +53,7 @@ struct ImageReaderScreen: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .background(Praxis.canvas)
         .navigationTitle("Image reading model")
         .navigationBarTitleDisplayMode(.inline)

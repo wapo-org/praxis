@@ -86,6 +86,7 @@ struct AddConnectorByURLScreen: View {
             .padding(.vertical, 12)
         }
         .scrollDismissesKeyboard(.interactively)
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .background(Praxis.canvas)
         .navigationTitle("Add by URL")
         .navigationBarTitleDisplayMode(.inline)
@@ -184,6 +185,7 @@ struct PasteConnectorConfigScreen: View {
             .padding(.vertical, 12)
         }
         .scrollDismissesKeyboard(.interactively)
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .background(Praxis.canvas)
         .navigationTitle("Paste a config")
         .navigationBarTitleDisplayMode(.inline)
@@ -331,6 +333,7 @@ struct ConnectorRegistryScreen: View {
             .padding(.vertical, 12)
         }
         .scrollDismissesKeyboard(.interactively)
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .background(Praxis.canvas)
         .navigationTitle("MCP registry")
         .navigationBarTitleDisplayMode(.inline)
@@ -476,6 +479,7 @@ struct InstallConnectorScreen: View {
             .animation(Motion.reflow, value: phase)
         }
         .scrollDismissesKeyboard(.interactively)
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .background(Praxis.canvas)
         .navigationTitle("Add connector")
         .navigationBarTitleDisplayMode(.inline)

@@ -51,13 +51,17 @@ final class ChatStore {
     /// A live send waiting on the AI-data consent sheet. Nothing has
     /// been sent or added to the thread while this is set.
     var pendingConsent: ConsentRequest?
-    // TEMPORARY-VOICE-DUP: declared identically on wave2/voice-rec + wave2/voice-groq; second integrator keeps one copy.
+    /// Voice consent allow-path: the controller sets this; allowing retries
+    /// the held transcription, declining is a no-op (audio stays queued).
     @ObservationIgnored var voiceRetryTranscription: ((UUID) -> Void)?
     /// Whether the selected conversation is running.
     var isRunning: Bool { selectedID.map(isRunning(_:)) ?? false }
 
     let approvals = ApprovalCenter()
     let haptics = HapticCenter()
+    /// Background execution for runs in flight (continued tasks, fallback
+    /// grace, pause/resume, notifications). Never touches request building.
+    @ObservationIgnored let background: BackgroundRuntime
     /// Voice input state (nil in previews and store-only tests). Set by
     /// `forLaunch`; the composer and banners read it from here.
     @ObservationIgnored var voice: VoiceInputController?
@@ -84,7 +88,11 @@ final class ChatStore {
     ///     profile is added (no `-PraxisEngine` override).
     init(engine: any ChatEngine = DemoAgentEngine(), conversations: [Conversation]? = nil,
          persistence: ConversationStore? = nil, attachments: AttachmentStore = .shared,
-         services: AgentServices? = nil, picksEngineAutomatically: Bool = false) {
+         services: AgentServices? = nil, picksEngineAutomatically: Bool = false,
+         background: BackgroundRuntime? = nil) {
+        // Integration wiring (BACKGROUND_PLAN.md §6): the live ActivityKit
+        // reporter; tests inject fakes via the `background` parameter.
+        self.background = background ?? BackgroundRuntime(reporter: LiveRunActivityReporter())
         self.engine = engine
         self.engineKind = engine.kind
         self.services = services
@@ -104,6 +112,7 @@ final class ChatStore {
             }
         }
         selectedID = self.conversations.first?.id
+        self.background.store = self
     }
 
     /// The app's store: conversations from Application Support
@@ -119,15 +128,18 @@ final class ChatStore {
         let kind = EngineKind.resolve(override: override, hasProvider: services.settings.hasProfiles)
         let engine: any ChatEngine = switch kind {
         case .demo: DemoAgentEngine()
-        case .scripted: ScriptedChatEngine.echo()
+        case .scripted:
+            UserDefaults.standard.bool(forKey: "PraxisLongRun") ? ScriptedChatEngine.longRun() : ScriptedChatEngine.echo()
         case .live: services.makeEngine()
         }
         Task { await services.skills.reload() }
         let store = ChatStore(engine: engine, persistence: ConversationStore(directory: AppDirectories.conversations),
                               services: services, picksEngineAutomatically: override == nil)
+        store.background.installNotificationDelegate()
+        store.background.appDidLaunch()
         // Voice input (voice-rec; right after creation — voice-groq's seam
         // sits before `return store`, so these hunks stay separate).
-        let voice = VoiceInputController.production(chatStore: store)
+        let voice = VoiceInputController.production(chatStore: store, services: services)
         store.voice = voice
         store.voiceRetryTranscription = { [weak voice] id in
             Task { @MainActor [weak voice] in voice?.retryTranscription(id: id) }
@@ -327,6 +339,7 @@ final class ChatStore {
     /// then the turn settles as stopped and is saved.
     func stop(conversationID: UUID) {
         guard let handle = runs.removeValue(forKey: conversationID) else { return }
+        background.runStopped(conversationID: conversationID)
         handle.task?.cancel()
         handle.cancelled.cancel()
         services?.elicitations.cancel(scope: handle.elicitationScope)
@@ -375,6 +388,46 @@ final class ChatStore {
     func resolveApproval(_ requestID: String, decision: ApprovalDecision) {
         haptics.fire(decision == .deny ? .soft : .light)
         approvals.resolve(requestID, with: decision)
+    }
+
+    // MARK: Background
+
+    /// Resumes a background-paused turn as a NEW turn: its replayed
+    /// history includes the paused turn's committed transcript, so the
+    /// run continues from the last completed step without re-executing
+    /// finished tools (BACKGROUND_PLAN.md §2.7). Partial (uncommitted)
+    /// stream text stays visible on the old turn and is not replayed.
+    func continueRun(conversationID: UUID) {
+        guard let conv = conversation(conversationID),
+              conv.turns.last?.outcome == .pausedBackground,
+              runs[conversationID] == nil else { return }
+        selectedID = conversationID
+        send(text: "Continue")
+    }
+
+    /// Expiry path (the continued task or the fallback grace ran out):
+    /// settles exactly like `stop()` — drain, deny approvals, keep
+    /// partial blocks and the committed transcript — then marks the
+    /// turn paused-in-background and saves again.
+    func pauseRunForBackground(conversationID: UUID) {
+        guard let handle = runs[conversationID] else { return }
+        let turnID = handle.turnID
+        background.beginPause(conversationID: conversationID)
+        stop(conversationID: conversationID)
+        if let conv = conversation(conversationID),
+           let ti = conv.turns.firstIndex(where: { $0.id == turnID }) {
+            conv.turns[ti].outcome = .pausedBackground
+            save(conv)
+        }
+        background.runPaused(conversationID: conversationID)
+    }
+
+    func appDidEnterBackground() {
+        background.appDidEnterBackground(running: Set(runs.keys))
+    }
+
+    func appDidBecomeActive() {
+        background.appDidBecomeActive(running: Set(runs.keys))
     }
 
     // MARK: AI-data consent
@@ -444,6 +497,7 @@ final class ChatStore {
         request.isCancelled = { flag.isCancelled }
         request.elicitationScope = handle.elicitationScope
         runs[conv.id] = handle
+        background.runStarted(conversationID: conv.id, turnID: turnID, title: conv.displayTitle, modelName: model.name)
         let stream = AgentEventCoalescer.coalesce(engine.run(request), interval: coalesceInterval)
         let inbox = handle.inbox
         let store = WeakStore(value: self)
@@ -460,6 +514,7 @@ final class ChatStore {
     /// collected ids plus approvals whose events never reached a drain.
     private func cancelRun(_ conversationID: UUID) {
         guard let handle = runs.removeValue(forKey: conversationID) else { return }
+        background.runStopped(conversationID: conversationID)
         handle.task?.cancel()
         handle.cancelled.cancel()
         services?.elicitations.cancel(scope: handle.elicitationScope)
@@ -491,6 +546,7 @@ final class ChatStore {
         // Text-only batches leave the turn alone, so the transcript
         // doesn't re-render per token.
         if change.effects.contains(.turn) { conv.turns[ti] = turn }
+        background.reportBatch(conversationID: conv.id, title: conv.displayTitle, events: events)
 
         handle.approvalIDs.formUnion(change.approvalIDs)
         handle.approvalIDs.subtract(change.resolvedApprovalIDs)
@@ -503,6 +559,7 @@ final class ChatStore {
 
         if change.effects.contains(.finished) || (ended && !turn.isRunning) {
             runs.removeValue(forKey: conv.id)
+            background.runFinished(conversationID: conv.id, title: conv.displayTitle, turn: turn)
             approvals.denyAll(handle.approvalIDs)
             switch turn.outcome {
             case .completed?, nil: haptics.fire(.success)

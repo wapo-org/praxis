@@ -26,34 +26,33 @@ struct HistorySheet: View {
 
     var body: some View {
         let rows = visible
-        VStack(spacing: 0) {
-            header
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 26) {
-                    ForEach(rows) { conv in
-                        row(conv)
-                            .transition(.opacity.combined(with: .offset(y: 6)))
-                    }
-                    if rows.isEmpty {
-                        Text(filter == .pinned ? "No pinned chats yet" : "No chats match")
-                            .font(Type.inter(15, .body))
-                            .foregroundStyle(Praxis.mutedInk)
-                            .padding(.top, 12)
-                            .transition(.opacity)
-                    }
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 26) {
+                ForEach(rows) { conv in
+                    row(conv)
+                        .transition(.opacity.combined(with: .offset(y: 6)))
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 18)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .animation(listAnimation, value: rows.map(\.id))
-                .animation(listAnimation, value: selecting)
+                if rows.isEmpty {
+                    Text(filter == .pinned ? "No pinned chats yet" : "No chats match")
+                        .font(Type.inter(15, .body))
+                        .foregroundStyle(Praxis.mutedInk)
+                        .padding(.top, 12)
+                        .transition(.opacity)
+                }
             }
-            .scrollDismissesKeyboard(.interactively)
-            .scrollEdgeEffectStyle(.soft, for: .bottom)
-            // Rows scroll under the glass search bar instead of stopping
-            // at an opaque edge above it.
-            .safeAreaBar(edge: .bottom) { bottomBar }
+            .padding(.horizontal, 24)
+            .padding(.top, 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(listAnimation, value: rows.map(\.id))
+            .animation(listAnimation, value: selecting)
         }
+        .scrollDismissesKeyboard(.interactively)
+        .scrollEdgeEffectStyle(.soft, for: .top)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        // Rows scroll under the header and the glass search bar instead
+        // of stopping at opaque edges, blurring progressively at both.
+        .safeAreaBar(edge: .top) { header }
+        .safeAreaBar(edge: .bottom) { bottomBar }
         .background(Praxis.canvas)
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
@@ -238,6 +237,7 @@ struct FilePreviewSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(20)
             }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .background(Praxis.canvas)
             .navigationTitle(name)
             .navigationBarTitleDisplayMode(.inline)

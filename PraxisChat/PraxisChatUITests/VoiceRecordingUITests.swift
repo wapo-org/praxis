@@ -10,14 +10,16 @@ final class VoiceRecordingUITests: XCTestCase {
     // MARK: Launch
 
     /// Launches with the voice seams. `resetData` false keeps Application
-    /// Support (recordings) across a relaunch inside one test.
-    private func launch(transcript: String = "buy oat milk", elapsed: String? = nil,
+    /// Support (recordings) across a relaunch inside one test. `transcript`
+    /// nil omits `-PraxisFakeTranscript`, so the REAL transcriber runs (no
+    /// network happens before the consent sheet, so this stays hermetic).
+    private func launch(transcript: String? = "buy oat milk", elapsed: String? = nil,
                         resetData: Bool = true) {
         continueAfterFailure = false
         app = XCUIApplication()
         if resetData { app.launchArguments += ["-PraxisResetData", "YES"] }
-        app.launchArguments += ["-PraxisFakeRecording", "voice-fake.m4a",
-                                "-PraxisFakeTranscript", transcript]
+        app.launchArguments += ["-PraxisFakeRecording", "voice-fake.m4a"]
+        if let transcript { app.launchArguments += ["-PraxisFakeTranscript", transcript] }
         if let elapsed { app.launchArguments += ["-PraxisFakeElapsed", elapsed] }
         app.launch()
         XCTAssertTrue(el(.button, "History").waitForExistence(timeout: 15))
@@ -224,5 +226,61 @@ final class VoiceRecordingUITests: XCTestCase {
             alert.buttons["Discard"].tap()
         }
         XCTAssertTrue(el(.button, "Record voice message").waitForExistence(timeout: 8))
+    }
+
+    // MARK: Real transcriber E2E (final voice integration)
+
+    /// History → ⋯ → Settings → Voice input (local copy: the settings
+    /// suite's helpers are private to its file).
+    private func openVoiceSettings() {
+        el(.button, "History").tap()
+        let options = el(.button, "History options")
+        XCTAssertTrue(options.waitForExistence(timeout: 10))
+        options.tap()
+        let settings = el(.button, "Settings")
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
+        let row = el(.button, "Voice input")
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        if !row.isHittable { app.swipeUp() }
+        row.tap()
+        XCTAssertTrue(app.navigationBars["Voice input"].waitForExistence(timeout: 10))
+    }
+
+    /// The production path, no fake transcript: with a key saved, the first
+    /// transcribe must hold for the api.groq.com consent sheet (the fake
+    /// would transcribe instantly, so the sheet proves the real transcriber
+    /// ran). Declining keeps the audio queued with Retry; nothing uploads.
+    func testRealTranscriberConsentDeclineKeepsQueued() {
+        launch(transcript: nil)
+        openVoiceSettings()
+        let keyField = el(.secureTextField, "Groq API key")
+        XCTAssertTrue(keyField.waitForExistence(timeout: 10))
+        keyField.tap()
+        keyField.typeText("gsk-ui-e2e")
+        el(.button, "Save API key").tap()
+        app.navigationBars.buttons["Settings"].tap()
+        let done = el(.button, "Done")
+        XCTAssertTrue(done.waitForExistence(timeout: 10))
+        done.tap()
+        XCTAssertTrue(el(.button, "Record voice message").waitForExistence(timeout: 10))
+
+        startRecording()
+        el(.button, "Stop and transcribe").tap()
+        let allow = el(.button, "Allow and transcribe")
+        XCTAssertTrue(allow.waitForExistence(timeout: 15),
+                      "first upload to api.groq.com holds for consent")
+        XCTAssertTrue(app.staticTexts["Voice recordings"].exists)
+        shot("voice-e2e-consent")
+        el(.button, "Don't allow").tap()
+        XCTAssertFalse(allow.waitForExistence(timeout: 5))
+
+        // Declined: the audio stays, Retry (Transcribe) is offered, the
+        // draft is untouched (review replaces the field; no send morph).
+        XCTAssertTrue(el(.button, "Transcribe recording").waitForExistence(timeout: 8))
+        XCTAssertTrue(el(.button, "Play recording").exists)
+        XCTAssertTrue(el(.button, "Delete recording").exists)
+        XCTAssertFalse(el(.button, "Send message").exists)
     }
 }

@@ -26,6 +26,11 @@ the tray's model page; `-PraxisSimulateKeyboardCommit YES` plays a late
 keystroke committing after send (guards the composer-clear fix);
 `-PraxisMockConnector YES` installs a hermetic connector with scripted
 tools (plus `-PraxisMockConnectorNewTool YES` for one unseen tool).
+With `-PraxisEngine scripted`, `-PraxisLongRun YES` runs a multi-minute
+scripted run (tool steps, streamed text, an approval) for background
+tests; `-PraxisSimulateBackgroundExpiry YES` pauses a backgrounded run
+seconds after the fallback task opens instead of waiting out the grace
+(DEBUG only).
 Screenshot probes are env-gated (`TEST_RUNNER_<NAME>=1` forwards `<NAME>`
 to the runner): `PRAXIS_SHOTS` (activity), `PRAXIS_SENDPROBE` (send
 flight), `PRAXIS_BLURSHOTS` / `PRAXIS_BUTTONSHOTS` / `PRAXIS_TOOLSHOTS`
