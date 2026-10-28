@@ -451,11 +451,11 @@ final class QAWave2Probe: XCTestCase {
         return false
     }
 
-    /// Cover sheet first (foregrounded: no background-expiry race),
-    /// then the island (backgrounded). The operator shoots both with
-    /// simctl from the Mac side while the sleeps hold the poses.
-    /// Swipes go through SpringBoard coordinates — app coordinates
-    /// don't dispatch while the app is backgrounded.
+    /// Home first (the activity only enters the SpringBoard tree
+    /// backgrounded), then the cover sheet. Prints QAMARK lines so
+    /// the Mac-side driver can screenshot each pose in sync instead
+    /// of polling blind. Swipes go through SpringBoard coordinates
+    /// — app coordinates don't dispatch while backgrounded.
     func testQABackgroundIslandAndCover() {
         launch(["-PraxisEngine", "scripted", "-PraxisLongRun", "YES"])
         let probe = "island-\(UUID().uuidString.prefix(6))"
@@ -466,25 +466,26 @@ final class QAWave2Probe: XCTestCase {
         el(.button, "Send message").tap()
         XCTAssertTrue(el(.button, "Stop generating").waitForExistence(timeout: 15),
                       "the long run should start")
-        // Pose 1: cover sheet over the foreground app.
-        let top = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.02))
-        let mid = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+        XCUIDevice.shared.press(.home)
+        print("QAMARK home")
+        XCTAssertTrue(activityVisible(title: probe, timeout: 20),
+                      "the run's activity should appear in the island once backgrounded")
+        print("QAMARK island-live")
+        Thread.sleep(forTimeInterval: 10) // pose 1: island on the home screen
+        // Swipe from the top-left: center-top expands the island
+        // instead of opening the cover sheet.
+        let top = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.02))
+        let mid = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.6))
         top.press(forDuration: 0.1, thenDragTo: mid, withVelocity: .slow, thenHoldForDuration: 0.3)
         Thread.sleep(forTimeInterval: 2.0)
-        XCTAssertTrue(activityVisible(title: probe, timeout: 15),
-                      "the cover sheet should show the running chat")
-        Thread.sleep(forTimeInterval: 10) // pose 1: cover sheet with the activity
+        print("QAMARK cover-open")
+        XCTAssertTrue(activityVisible(title: probe, timeout: 10),
+                      "the cover sheet should show the chat title")
+        Thread.sleep(forTimeInterval: 12) // pose 2: cover sheet with the activity
         let up = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
         let edge = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05))
         up.press(forDuration: 0.1, thenDragTo: edge, withVelocity: .fast, thenHoldForDuration: 0.1)
         Thread.sleep(forTimeInterval: 1.0)
-        // Pose 2: the island (own-app activities render only
-        // backgrounded, so Home first, then shoot fast — sim
-        // background grace is short and unpredictable).
-        XCUIDevice.shared.press(.home)
-        XCTAssertTrue(activityVisible(title: probe, timeout: 15),
-                      "the run's activity should appear in the island once backgrounded")
-        Thread.sleep(forTimeInterval: 8) // pose 2: island on the home screen
         app.activate()
         if el(.button, "Stop generating").waitForExistence(timeout: 10) {
             el(.button, "Stop generating").tap()
