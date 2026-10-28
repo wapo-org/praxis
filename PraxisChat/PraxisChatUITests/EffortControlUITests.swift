@@ -39,6 +39,7 @@ final class EffortControlUITests: XCTestCase {
         }
         button("Max").tap()
         XCTAssertEqual(button("Max").value as? String, "Selected")
+        shot("effort-all-four")
 
         // A three-level model: Max disappears, the dial snaps to High.
         openModelPage()
@@ -48,6 +49,7 @@ final class EffortControlUITests: XCTestCase {
         XCTAssertEqual(button("High").value as? String, "Selected", "max snaps to the nearest supported level")
         XCTAssertFalse(button("Max").exists, "unsupported levels are not shown")
         XCTAssertTrue(button("Low").exists && button("Medium").exists)
+        shot("effort-three-levels")
 
         // A model without reasoning hides the control entirely.
         openModelPage()
@@ -59,6 +61,7 @@ final class EffortControlUITests: XCTestCase {
         for level in ["Low", "Medium", "High", "Max"] {
             XCTAssertFalse(button(level).exists, "\(level) should hide for a model without reasoning")
         }
+        shot("effort-hidden")
 
         // …and back to an unknown model restores all four, keeping the dial.
         openModelPage()
@@ -68,5 +71,13 @@ final class EffortControlUITests: XCTestCase {
             XCTAssertTrue(button(level).waitForExistence(timeout: 10), "\(level) should return")
         }
         XCTAssertEqual(button("High").value as? String, "Selected")
+    }
+
+    private func shot(_ name: String) {
+        let shot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: shot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 }
