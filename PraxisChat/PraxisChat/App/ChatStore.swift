@@ -43,6 +43,8 @@ final class ChatStore {
     /// A live send waiting on the AI-data consent sheet. Nothing has
     /// been sent or added to the thread while this is set.
     var pendingConsent: ConsentRequest?
+    // TEMPORARY-VOICE-DUP: declared identically on wave2/voice-rec + wave2/voice-groq; second integrator keeps one copy.
+    @ObservationIgnored var voiceRetryTranscription: ((UUID) -> Void)?
     /// Whether the selected conversation is running.
     var isRunning: Bool { selectedID.map(isRunning(_:)) ?? false }
 
@@ -112,6 +114,15 @@ final class ChatStore {
         let store = ChatStore(engine: engine, persistence: ConversationStore(directory: AppDirectories.conversations),
                               services: services, picksEngineAutomatically: override == nil)
         services.pruneRuntimeState(keeping: store.conversations.map(\.id))
+        #if DEBUG
+        // `-PraxisVoiceConsentDemo YES` (UI tests): present the voice
+        // transcription consent sheet standalone (no controller needed).
+        if UserDefaults.standard.bool(forKey: "PraxisVoiceConsentDemo"), let id = store.selectedID {
+            store.pendingConsent = ConsentRequest(host: GroqEndpoints.host, providerName: "Groq",
+                                                  connectorNames: [], conversationID: id,
+                                                  action: .transcribe(recordingID: UUID()))
+        }
+        #endif
         return store
     }
 
@@ -348,6 +359,10 @@ final class ChatStore {
             send(text: text)
         case .retry(let turnID):
             retry(turnID: turnID)
+        case .transcribe(let recordingID):
+            // Voice (voice-groq): the host is granted above; the controller
+            // retries the held transcription. Set by VoiceInputController.
+            voiceRetryTranscription?(recordingID)
         }
     }
 
@@ -837,6 +852,8 @@ enum SettingsPage: Hashable {
     case root, connectors, skills
     /// One connector's detail (e.g. "Sign in to Gmail" from a chat step).
     case connector(String)
+    /// Voice input (Groq key + model): 401s and missing-key hints link here.
+    case voice
 }
 
 /// A weak store reference the off-main reader can carry.

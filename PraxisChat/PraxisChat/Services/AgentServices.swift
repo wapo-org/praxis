@@ -19,19 +19,23 @@ final class AgentServices {
     let attachments: AttachmentStore
     /// Provider hosts allowed to receive chat data.
     let consent: AIDataConsent
+    /// Groq voice settings (Keychain key + model list + language).
+    let voice: GroqVoiceSettings
 
     /// `consent` defaults to an in-memory store with nothing allowed:
     /// live sends ask first unless the caller grants a host.
     init(settings: ProviderSettings, connectors: ConnectorLibrary, skills: SkillLibrary,
          elicitations: ElicitationCenter, providerTransport: any HTTPTransport = URLSessionTransport(),
          attachments: AttachmentStore = .shared, consent: AIDataConsent = AIDataConsent(fileURL: nil),
-         scratch: ScratchStore? = nil) {
+         scratch: ScratchStore? = nil,
+         voice: GroqVoiceSettings = GroqVoiceSettings(fileURL: nil, secrets: InMemorySecretStore())) {
         self.settings = settings
         self.connectors = connectors
         self.skills = skills
         self.elicitations = elicitations
         self.attachments = attachments
         self.consent = consent
+        self.voice = voice
         // The runtime asks for a server's client on every prepare/run, so
         // removing or reconfiguring a connector takes effect immediately.
         // `scratch` keeps spilled tool output and JS `kv` across launches.
@@ -55,6 +59,8 @@ final class AgentServices {
                                  registryCache: AppDirectories.skillRegistryCache),
             elicitations: elicitations,
             consent: AIDataConsent(fileURL: AppDirectories.consent),
+            voice: GroqVoiceSettings(fileURL: AppDirectories.voiceSettings,
+                                     secrets: KeychainSecretStore(service: GroqVoiceSettings.keychainService)),
             scratch: ScratchStore(root: AppDirectories.runtimeScratch,
                                   writingOptions: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]))
         // Model lists cached before they carried image support (or more
