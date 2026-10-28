@@ -161,6 +161,24 @@ final class QAWave2Probe: XCTestCase {
         save("qa-settings-3-connectors")
     }
 
+    /// The provider editor is the longest settings form: content scrolling
+    /// under its nav bar proves the pinned top edge on nav-bar screens.
+    func testQAProviderEditor() {
+        launch()
+        openSettings()
+        el(.button, "Add provider").tap()
+        Thread.sleep(forTimeInterval: 0.8)
+        let preset = el(.any, "Anthropic")
+        XCTAssertTrue(preset.waitForExistence(timeout: 5))
+        preset.tap()
+        XCTAssertTrue(app.navigationBars["Add provider"].waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 0.8)
+        save("qa-settings-4-editor-top")
+        app.swipeUp()
+        Thread.sleep(forTimeInterval: 0.8)
+        save("qa-settings-5-editor-scrolled")
+    }
+
     // MARK: Item 2 — per-chat drafts + photo selection
 
     func testQATrayDraftIsolation() {
@@ -182,7 +200,10 @@ final class QAWave2Probe: XCTestCase {
         el(.button, "Add 1").tap()
         XCTAssertTrue(elBegins(.button, "Remove").waitForExistence(timeout: 8))
         save("qa-tray-0-chatA-attached")
-        el(.button, "Close add menu").tap()
+        // Attaching auto-dismisses the tray; close only if still open.
+        if el(.button, "Close add menu").waitForExistence(timeout: 2) {
+            el(.button, "Close add menu").tap()
+        }
 
         // New chat: composer empty, tray fresh, system picker unselected.
         app.buttons["New chat"].tap()
@@ -201,7 +222,9 @@ final class QAWave2Probe: XCTestCase {
         let cancel = app.buttons["Cancel"]
         if cancel.waitForExistence(timeout: 3) { cancel.tap() } else { app.tap() }
         Thread.sleep(forTimeInterval: 1.0)
-        el(.button, "Close add menu").tap()
+        if el(.button, "Close add menu").waitForExistence(timeout: 2) {
+            el(.button, "Close add menu").tap()
+        }
 
         // Back to chat A via History: draft + attachment restored.
         el(.button, "History").tap()
@@ -278,9 +301,27 @@ final class QAWave2Probe: XCTestCase {
 
     // MARK: Item 5 — voice
 
+    private func openVoiceSettings() {
+        openSettings()
+        let row = el(.button, "Voice input")
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        if !row.isHittable { app.swipeUp() }
+        row.tap()
+        XCTAssertTrue(app.navigationBars["Voice input"].waitForExistence(timeout: 10))
+    }
+
     func testQAVoiceNoKeyRoutesToSettings() {
-        // Real transcriber (no fake transcript), no key saved.
+        // Real transcriber (no fake transcript), no key saved. The Keychain
+        // survives -PraxisResetData by design, so remove any leftover key
+        // from earlier runs first.
         launch(["-PraxisFakeRecording", "voice-fake.m4a"])
+        openVoiceSettings()
+        let remove = el(.button, "Remove saved key")
+        if remove.waitForExistence(timeout: 3) { remove.tap() }
+        XCTAssertTrue(el(.secureTextField, "Groq API key").waitForExistence(timeout: 5))
+        app.navigationBars.buttons.firstMatch.tap()
+        el(.button, "Done").tap()
+        XCTAssertTrue(el(.button, "Record voice message").waitForExistence(timeout: 10))
         startRecording()
         save("qa-voice-0-recording")
         el(.button, "Stop and transcribe").tap()
@@ -298,12 +339,7 @@ final class QAWave2Probe: XCTestCase {
 
     func testQAVoiceSettings() {
         launch(["-PraxisFakeGroqModels", "YES"])
-        openSettings()
-        let row = el(.button, "Voice input")
-        XCTAssertTrue(row.waitForExistence(timeout: 10))
-        if !row.isHittable { app.swipeUp() }
-        row.tap()
-        XCTAssertTrue(app.navigationBars["Voice input"].waitForExistence(timeout: 10))
+        openVoiceSettings()
         XCTAssertTrue(el(.button, "Use model whisper-large-v3-turbo").waitForExistence(timeout: 10))
         XCTAssertTrue(el(.secureTextField, "Groq API key").exists)
         save("qa-voice-3-settings")
