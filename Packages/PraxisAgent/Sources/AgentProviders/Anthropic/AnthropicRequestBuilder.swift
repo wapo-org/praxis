@@ -61,11 +61,14 @@ struct AnthropicRequestBuilder: Sendable {
         // a model that can't do tool use can't answer those either.
         if capabilities.tools, !tools.isEmpty { body["tools"] = .array(tools) }
 
-        if capabilities.reasoningEffort {
+        // Only a value the model takes goes out; unknown sends the effort
+        // unchanged, and no reasoning drops thinking and effort together
+        // (a model without adaptive thinking rejects both).
+        if capabilities.reasoningEffort, let wire = EffortLevels.clamp(request.effort.rawValue, to: request.supportedEffortValues) {
             var thinking: [String: JSONValue] = ["type": "adaptive"]
             if let display = options.thinkingDisplay { thinking["display"] = .string(display) }
             body["thinking"] = .object(thinking)
-            body["output_config"] = ["effort": .string(request.effort.rawValue)]
+            body["output_config"] = ["effort": .string(wire)]
         }
         return .object(body)
     }

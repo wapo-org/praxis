@@ -47,6 +47,12 @@
 	<string>Praxis Chat connects to model servers you set up on your local network, such as LM Studio or Ollama.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Praxis Chat shows your recent photos so you can attach them to a message.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Praxis Chat uses the microphone to record voice messages you can transcribe into the composer.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

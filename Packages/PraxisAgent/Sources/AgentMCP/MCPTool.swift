@@ -210,7 +210,12 @@ public struct MCPToolset: Sendable {
 
     /// Lists every enabled server's tools concurrently. A failing server
     /// is reported in `failures`; the others still contribute.
-    public static func build(servers: [MCPClient], threshold: Int = 30) async -> MCPToolset {
+    ///
+    /// - Parameter disabledTools: tool names the user turned off, by
+    ///   server id. They're left out (new conversations never offer
+    ///   them), and they don't count towards the gateway `threshold`.
+    public static func build(servers: [MCPClient], threshold: Int = 30,
+                             disabledTools: [String: Set<String>] = [:]) async -> MCPToolset {
         let enabled = servers.filter { $0.config.enabled }
         let results = await withTaskGroup(of: (Int, Result<[MCPToolDefinition], Error>).self) { group in
             for (i, client) in enabled.enumerated() {
@@ -229,7 +234,8 @@ public struct MCPToolset: Sendable {
             let client = enabled[i]
             switch result {
             case .success(let tools):
-                listings.append((client, tools))
+                let off = disabledTools[client.config.id, default: []]
+                listings.append((client, tools.filter { !off.contains($0.name) }))
                 features[client.config.id] = await client.features
             case .failure(let error):
                 var requirement: MCPAuthRequirement?

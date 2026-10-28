@@ -23,7 +23,9 @@ Tests: `xcodebuild ... test` (`PraxisChatTests` unit tests,
 UI-test seeds: `-PraxisLongThread YES` opens on a long thread (tall answers,
 then short failed turns); `-PraxisDemoModels 500` adds 500 demo models to
 the tray's model page; `-PraxisSimulateKeyboardCommit YES` plays a late
-keystroke committing after send (guards the composer-clear fix).
+keystroke committing after send (guards the composer-clear fix);
+`-PraxisMockConnector YES` installs a hermetic connector with scripted
+tools (plus `-PraxisMockConnectorNewTool YES` for one unseen tool).
 Screenshot probes are env-gated (`TEST_RUNNER_<NAME>=1` forwards `<NAME>`
 to the runner): `PRAXIS_SHOTS` (activity), `PRAXIS_SENDPROBE` (send
 flight), `PRAXIS_BLURSHOTS` / `PRAXIS_BUTTONSHOTS` / `PRAXIS_TOOLSHOTS`
@@ -157,8 +159,10 @@ moves, slides or fades (`DesignSystem/Motion.swift`,
 
 ## Known preview limits
 
-- Recording is simulated (waveform + timer); stopping types a mock
-  transcription. No audio is captured.
+- Voice input records real microphone audio (AAC 16 kHz mono) with
+  crash-safe recovery; transcription is scripted in DEBUG
+  (`-PraxisFakeTranscript`) until the Groq client lands, and the
+  `-PraxisFakeRecording` seam simulates capture in UI tests.
 - Screenshots strip uses limited Photos access when granted and falls
   back to bundled sample screenshots when denied.
 - Camera is disabled on the Simulator and falls back to the library on

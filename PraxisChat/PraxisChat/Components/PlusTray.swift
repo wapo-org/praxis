@@ -165,18 +165,22 @@ struct PlusTray: View {
             modelRow
                 .modifier(stagger(1))
 
-            VStack(alignment: .leading, spacing: 8) {
-                GlassSegmentedControl(
-                    options: Effort.allCases, selection: store.effort,
-                    title: { $0.title }
-                ) { store.effort = $0; store.haptics.fire(.selection) }
-                Text(store.effort.detail)
-                    .font(Type.inter(13, .footnote))
-                    .foregroundStyle(Praxis.mutedInk)
-                    .contentTransition(.opacity)
-                    .animation(Motion.snap, value: store.effort)
+            // Only the levels the model takes; unknown shows all four, and a
+            // model without reasoning hides the control entirely.
+            if store.supportedEfforts != [] {
+                VStack(alignment: .leading, spacing: 8) {
+                    GlassSegmentedControl(
+                        options: store.supportedEfforts ?? Effort.allCases, selection: store.effort,
+                        title: { $0.title }
+                    ) { store.effort = $0; store.haptics.fire(.selection) }
+                    Text(store.effort.detail)
+                        .font(Type.inter(13, .footnote))
+                        .foregroundStyle(Praxis.mutedInk)
+                        .contentTransition(.opacity)
+                        .animation(Motion.snap, value: store.effort)
+                }
+                .modifier(stagger(2))
             }
-            .modifier(stagger(2))
 
             addSection
                 .modifier(stagger(3))

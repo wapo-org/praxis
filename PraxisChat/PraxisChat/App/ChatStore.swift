@@ -58,6 +58,9 @@ final class ChatStore {
 
     let approvals = ApprovalCenter()
     let haptics = HapticCenter()
+    /// Voice input state (nil in previews and store-only tests). Set by
+    /// `forLaunch`; the composer and banners read it from here.
+    @ObservationIgnored var voice: VoiceInputController?
     /// Trust and "always allow" grants (persisted with the index).
     private(set) var policy = ToolPolicy()
 
@@ -111,6 +114,7 @@ final class ChatStore {
         if UserDefaults.standard.bool(forKey: "PraxisResetData") { AppDirectories.reset() }
         let services = AgentServices.live()
         services.installTestProviderIfRequested()
+        services.connectors.installMockConnectorIfRequested()
         let override = EngineKind.launchOverride
         let kind = EngineKind.resolve(override: override, hasProvider: services.settings.hasProfiles)
         let engine: any ChatEngine = switch kind {
@@ -121,6 +125,13 @@ final class ChatStore {
         Task { await services.skills.reload() }
         let store = ChatStore(engine: engine, persistence: ConversationStore(directory: AppDirectories.conversations),
                               services: services, picksEngineAutomatically: override == nil)
+        // Voice input (voice-rec; right after creation — voice-groq's seam
+        // sits before `return store`, so these hunks stay separate).
+        let voice = VoiceInputController.production(chatStore: store)
+        store.voice = voice
+        store.voiceRetryTranscription = { [weak voice] id in
+            Task { @MainActor [weak voice] in voice?.retryTranscription(id: id) }
+        }
         services.pruneRuntimeState(keeping: store.conversations.map(\.id))
         #if DEBUG
         // `-PraxisVoiceConsentDemo YES` (UI tests): present the voice
@@ -257,6 +268,7 @@ final class ChatStore {
         save(conv)
         saveIndex()
         startRun(in: conv, turnID: turn.id)
+        voice?.noteDidSend(text: trimmed)
     }
 
     func retry(turnID: UUID) {
@@ -567,6 +579,9 @@ final class ChatStore {
             // Unknown ids are ignored by the runtime, so the full set is
             // safe even when the setup is about to be (re-)frozen.
             disabledServerIDs: conv.disabledServerIDs,
+            // Read live: toggling a tool applies to existing chats'
+            // next run (their calls refuse) and to new chats' freeze.
+            disabledTools: services?.connectors.disabledTools ?? [:],
             onSetup: { setup, failures in
                 await MainActor.run { store.value?.adopt(setup, failures: failures, conversationID: conversationID) }
             },
@@ -653,8 +668,28 @@ final class ChatStore {
     var model: AIModel {
         get { isLive ? liveModel : demoModel }
         set {
-            if isLive { selectModel(id: newValue.id) } else { demoModel = newValue }
+            if isLive { selectModel(id: newValue.id) } else { demoModel = newValue; snapEffortToSupportedLevels() }
         }
+    }
+
+    /// Reasoning levels the tray offers for the current model. Nil = unknown
+    /// (all four); empty = no reasoning (the control hides). Live models
+    /// resolve this from the provider's list or a learned rejection.
+    var supportedEfforts: [Effort]? {
+        if isLive {
+            guard let wire = services?.settings.selectedEffortWireValues else { return nil }
+            return EffortLevels.map(wire)
+        }
+        return demoModel.effortLevels
+    }
+
+    /// After a model change, moves the effort to the nearest level the new
+    /// model takes; unknown or unreasoning models keep it. The tray's
+    /// control animates to the new selection, which is the subtle show.
+    private func snapEffortToSupportedLevels() {
+        guard let levels = supportedEfforts, !levels.isEmpty, !levels.contains(effort),
+              let snapped = EffortLevels.nearest(to: effort, in: levels) else { return }
+        effort = snapped
     }
 
     /// What the tray's model page lists.
@@ -684,6 +719,7 @@ final class ChatStore {
     private func selectModel(id: String) {
         guard let settings = services?.settings, let profile = settings.selectedProfile else { return }
         settings.setModel(id, for: profile.id)
+        snapEffortToSupportedLevels()
     }
 
     private static func aiModel(_ info: ModelInfo, profile: ProviderProfile) -> AIModel {
