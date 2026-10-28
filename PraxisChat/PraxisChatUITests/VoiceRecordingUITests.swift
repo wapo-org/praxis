@@ -198,23 +198,6 @@ final class VoiceRecordingUITests: XCTestCase {
 
     // MARK: Settings list
 
-    /// History → ⋯ → Settings → Voice input (voice-groq's nav).
-    private func openVoiceSettings() {
-        el(.button, "History").tap()
-        let options = el(.button, "History options")
-        XCTAssertTrue(options.waitForExistence(timeout: 10))
-        options.tap()
-        let settings = el(.button, "Settings")
-        XCTAssertTrue(settings.waitForExistence(timeout: 5))
-        settings.tap()
-        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
-        let row = el(.button, "Voice input")
-        XCTAssertTrue(row.waitForExistence(timeout: 10))
-        if !row.isHittable { app.swipeUp() }
-        row.tap()
-        XCTAssertTrue(app.navigationBars["Voice input"].waitForExistence(timeout: 10))
-    }
-
     func testRecordingsListInSettings() {
         launch()
         startRecording()
