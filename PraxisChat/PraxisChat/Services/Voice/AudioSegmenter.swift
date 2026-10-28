@@ -320,7 +320,7 @@ struct PartTranscriptCache: Sendable {
 
     func store(_ transcript: PartTranscript, plan: SegmentationPlan, fileName: String, index: Int) {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [
-            .protectionKey: FileProtectionType.completeFileProtectionUntilFirstUserAuthentication,
+            .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
         ])
         let manifest = Manifest(count: plan.parts.count, starts: plan.parts.map(\.audioRange.lowerBound),
                                 duration: plan.duration)

@@ -361,20 +361,19 @@ final class VoiceGroqTests: XCTestCase {
         XCTAssertTrue(cache.load(matching: plan, fileName: "r.m4a").allSatisfy { $0 == nil })
     }
 
-    /// Review fix F5: cached transcripts carry Data Protection like the
-    /// audio they came from, and clear removes them.
-    func testPartCacheUsesDataProtection() {
+    /// Review fix F5: clear removes cached transcripts (instance and the
+    /// static entry `RecordingStore.delete` uses). The protection class
+    /// itself is pinned at the source level in DataProtectionAppTests: the
+    /// simulator doesn't record protection attributes.
+    func testPartCacheClearRemovesFiles() {
         let dir = directory.appendingPathComponent("parts")
         let cache = PartTranscriptCache(directory: dir)
         cache.store(PartTranscript(text: "x", language: nil, segments: []),
                     plan: samplePlan(), fileName: "r.m4a", index: 0)
         let partURL = dir.appendingPathComponent("r.m4a.part0.json")
-        let attributes = try? FileManager.default.attributesOfItem(atPath: partURL.path)
-        XCTAssertEqual(attributes?[.protectionKey] as? FileProtectionType,
-                       .completeFileProtectionUntilFirstUserAuthentication)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: partURL.path))
         cache.clear(fileName: "r.m4a")
         XCTAssertFalse(FileManager.default.fileExists(atPath: partURL.path))
-        // The static entry `RecordingStore.delete` uses clears too.
         cache.store(PartTranscript(text: "x", language: nil, segments: []),
                     plan: samplePlan(), fileName: "r.m4a", index: 0)
         XCTAssertTrue(FileManager.default.fileExists(atPath: partURL.path))
@@ -416,7 +415,7 @@ final class VoiceGroqTests: XCTestCase {
 
     // MARK: Transcribe end to end (scripted transport, real file)
 
-    static let verboseJSON = #"{"text":"hello world","language":"en","duration":2.0,"segments":[{"id":0,"start":0.0,"end":1.0,"text":"hello"},{"id":1,"start":1.0,"end":2.0,"text":"world"}]}"#
+    nonisolated static let verboseJSON = #"{"text":"hello world","language":"en","duration":2.0,"segments":[{"id":0,"start":0.0,"end":1.0,"text":"hello"},{"id":1,"start":1.0,"end":2.0,"text":"world"}]}"#
 
     /// A real 2 s WAV (hand-written header): exercises plan → export →
     /// upload → stitch against `ScriptedTransport`. The upload still uses
