@@ -83,6 +83,19 @@ final class BlurWave2Shots: XCTestCase {
         }
     }
 
+    /// Fine nudges: catches a paragraph spanning the feather zone,
+    /// showing several blur levels at once.
+    func testChatBottomFine() {
+        launch(["-PraxisLongThread", "YES"])
+        for i in 0..<6 {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.63))
+            start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+            Thread.sleep(forTimeInterval: 0.8)
+            save("chat-fine-\(i)")
+        }
+    }
+
     // MARK: History
 
     func testHistory() {
