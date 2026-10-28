@@ -52,7 +52,7 @@ public enum AgentEventCoalescer {
         }
 
         func push(_ event: AgentEvent) {
-            emit.withLock {
+            emit.withLock { _ in
                 let due = state.withLock { s -> [AgentEvent] in
                     var due: [AgentEvent] = []
                     if let current = s.pending {
@@ -82,7 +82,7 @@ public enum AgentEventCoalescer {
         }
 
         func flush(timerFired: Bool = false) {
-            emit.withLock {
+            emit.withLock { _ in
                 let due = state.withLock { s -> AgentEvent? in
                     defer { if timerFired { s.timer = nil } }
                     let due = s.pending
@@ -104,7 +104,7 @@ public enum AgentEventCoalescer {
         /// Serialized with emission so no computed batch can be yielded
         /// after the finish and dropped.
         func finish() {
-            emit.withLock { continuation.finish() }
+            emit.withLock { _ in continuation.finish() }
         }
     }
 
