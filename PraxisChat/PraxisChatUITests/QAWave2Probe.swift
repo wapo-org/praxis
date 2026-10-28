@@ -23,6 +23,11 @@ final class QAWave2Probe: XCTestCase {
 
     private func launch(_ extra: [String] = [], resetData: Bool = true) {
         app = XCUIApplication()
+        // A previous xcodebuild invocation may have left the app running;
+        // launch() on a running app is a no-op and the stale process keeps
+        // its old launch args (this ran the demo engine under scripted
+        // args once). Always terminate first so the args below take.
+        app.terminate()
         if resetData { app.launchArguments += ["-PraxisResetData", "YES"] }
         app.launchArguments += extra
         app.launch()
@@ -451,9 +456,13 @@ final class QAWave2Probe: XCTestCase {
         up.press(forDuration: 0.1, thenDragTo: edge, withVelocity: .fast, thenHoldForDuration: 0.1)
         Thread.sleep(forTimeInterval: 1.0)
         app.activate()
-        XCTAssertTrue(el(.button, "Stop generating").waitForExistence(timeout: 10)
-                      || el(.staticText, "Currently working…").waitForExistence(timeout: 5),
-                      "the run survives the background excursion")
+        // A ~60s excursion exceeds sim background time, so the run may
+        // have paused via real expiry instead of surviving: both are
+        // correct; only a silent death is not.
+        let survived = el(.button, "Stop generating").waitForExistence(timeout: 5)
+            || el(.staticText, "Currently working…").waitForExistence(timeout: 2)
+        let pausedCleanly = el(.staticText, "Paused in background").waitForExistence(timeout: 5)
+        XCTAssertTrue(survived || pausedCleanly, "the run survives the background excursion")
         if el(.button, "Stop generating").exists { el(.button, "Stop generating").tap() }
     }
 
