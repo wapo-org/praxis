@@ -13,7 +13,8 @@ struct ChatScreen: View {
     @Environment(ChatStore.self) private var store
     @Namespace private var glassNS
     @State private var sendLaunch = SendLaunch()
-    @State private var trayOpen = false
+    // `-PraxisOpenTray YES` (screenshots): launch with the tray open.
+    @State private var trayOpen = UserDefaults.standard.bool(forKey: "PraxisOpenTray")
     @State private var trayPage: TrayPage = .main
     @State private var showHistory = false
     @State private var filePreview: String?
