@@ -260,7 +260,10 @@ final class VoiceRecordingUITests: XCTestCase {
         keyField.tap()
         keyField.typeText("gsk-ui-e2e")
         el(.button, "Save API key").tap()
-        el(.button, "Done").tap()
+        app.navigationBars.buttons["Settings"].tap()
+        let done = el(.button, "Done")
+        XCTAssertTrue(done.waitForExistence(timeout: 10))
+        done.tap()
         XCTAssertTrue(el(.button, "Record voice message").waitForExistence(timeout: 10))
 
         startRecording()
