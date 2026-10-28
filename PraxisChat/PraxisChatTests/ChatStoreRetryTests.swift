@@ -5,9 +5,13 @@ import XCTest
 /// below the retried one is removed before the fresh run starts.
 @MainActor
 final class ChatStoreRetryTests: XCTestCase {
+    /// Seeded threads, the demo engine without pauses, nothing on disk.
+    private func makeStore() -> ChatStore {
+        ChatStore(engine: DemoAgentEngine(timeScale: 0))
+    }
 
     func testRetryRemovesTurnsBelow() throws {
-        let store = ChatStore()
+        let store = makeStore()
         let conv = try XCTUnwrap(store.selected)
         XCTAssertEqual(conv.turns.count, 2, "seeded conversation has two turns")
         let first = conv.turns[0]
@@ -22,7 +26,7 @@ final class ChatStoreRetryTests: XCTestCase {
     }
 
     func testRetryLastTurnKeepsCount() throws {
-        let store = ChatStore()
+        let store = makeStore()
         let conv = try XCTUnwrap(store.selected)
         let last = try XCTUnwrap(conv.turns.last)
 
@@ -32,8 +36,22 @@ final class ChatStoreRetryTests: XCTestCase {
         store.stop()
     }
 
+    func testRetryRerunsToCompletion() async throws {
+        let store = makeStore()
+        let conv = try XCTUnwrap(store.selected)
+        let last = try XCTUnwrap(conv.turns.last)
+        store.retry(turnID: last.id)
+        XCTAssertTrue(store.isRunning)
+        XCTAssertTrue(conv.turns[1].blocks.isEmpty, "the retried turn starts from scratch")
+        await waitUntil { !store.isRunning }
+        XCTAssertEqual(conv.turns[1].outcome, .completed)
+        XCTAssertFalse(conv.turns[1].markdownSources.isEmpty)
+        // The retried user message follows the first turn's history.
+        XCTAssertEqual(conv.turns[1].transcript.first?.role, .user)
+    }
+
     func testSendWithManyAttachmentsAndLongMessage() throws {
-        let store = ChatStore()
+        let store = makeStore()
         store.newChat()
         store.attachments = (1...12).map {
             Attachment(kind: .screenshot, name: "Screenshot \($0)", imageData: nil)

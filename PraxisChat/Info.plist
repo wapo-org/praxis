@@ -38,6 +38,13 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Praxis Chat uses the camera to attach a photo to your message.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Praxis Chat connects to model servers you set up on your local network, such as LM Studio or Ollama.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Praxis Chat shows your recent screenshots so you can attach them to a message.</string>
 	<key>UIApplicationSceneManifest</key>

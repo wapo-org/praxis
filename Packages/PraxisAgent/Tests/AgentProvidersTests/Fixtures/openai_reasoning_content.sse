@@ -1,0 +1,14 @@
+: keep-alive
+
+data: {"id":"9f1c","object":"chat.completion.chunk","created":1761123002,"model":"deepseek-reasoner","choices":[{"index":0,"delta":{"role":"assistant","content":null,"reasoning_content":""},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"9f1c","object":"chat.completion.chunk","created":1761123002,"model":"deepseek-reasoner","choices":[{"index":0,"delta":{"content":null,"reasoning_content":"9.11 vs 9.9: compare tenths. "},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"9f1c","object":"chat.completion.chunk","created":1761123002,"model":"deepseek-reasoner","choices":[{"index":0,"delta":{"content":null,"reasoning_content":"9 > 1, so 9.9 is larger."},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"9f1c","object":"chat.completion.chunk","created":1761123002,"model":"deepseek-reasoner","choices":[{"index":0,"delta":{"content":"9.9 is larger.","reasoning_content":null},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"9f1c","object":"chat.completion.chunk","created":1761123002,"model":"deepseek-reasoner","choices":[{"index":0,"delta":{"content":"","reasoning_content":null},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":18,"completion_tokens":60,"total_tokens":78,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":18}}
+
+data: [DONE]
+

@@ -1,0 +1,12 @@
+data: {"id":"chatcmpl-AQ1","object":"chat.completion.chunk","created":1761123000,"model":"gpt-5.1","system_fingerprint":"fp_1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-AQ1","object":"chat.completion.chunk","created":1761123000,"model":"gpt-5.1","system_fingerprint":"fp_1","choices":[{"index":0,"delta":{"content":"Hello"},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-AQ1","object":"chat.completion.chunk","created":1761123000,"model":"gpt-5.1","system_fingerprint":"fp_1","choices":[{"index":0,"delta":{"content":", world! ✨"},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-AQ1","object":"chat.completion.chunk","created":1761123000,"model":"gpt-5.1","system_fingerprint":"fp_1","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}],"usage":null}
+
+data: {"id":"chatcmpl-AQ1","object":"chat.completion.chunk","created":1761123000,"model":"gpt-5.1","system_fingerprint":"fp_1","choices":[],"usage":{"prompt_tokens":25,"completion_tokens":7,"total_tokens":32,"prompt_tokens_details":{"cached_tokens":10,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0}}}
+
+data: [DONE]
+

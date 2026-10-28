@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct PraxisChatApp: App {
-    @State private var store = ChatStore()
+    @State private var store = ChatStore.forLaunch()
 
     var body: some Scene {
         WindowGroup {

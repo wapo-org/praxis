@@ -4,7 +4,9 @@ import SwiftUI
 /// Mock catalogue (spec §7). Everything here is demo data; every control
 /// bound to it applies live through `ChatStore`.
 enum MockData {
-    static let models: [AIModel] = [
+    static let models: [AIModel] = catalogue + extraModels(UserDefaults.standard.integer(forKey: "PraxisDemoModels"))
+
+    private static let catalogue: [AIModel] = [
         AIModel(id: "atlas-pro", name: "Atlas Pro", tagline: "Deepest reasoning",
                 speed: 2, intelligence: 5, streamMultiplier: 0.8),
         AIModel(id: "atlas", name: "Atlas", tagline: "Balanced for everyday work",
@@ -14,6 +16,16 @@ enum MockData {
         AIModel(id: "atlas-code", name: "Atlas Code", tagline: "Tuned for large refactors",
                 speed: 3, intelligence: 4, streamMultiplier: 1.1),
     ]
+
+    /// `-PraxisDemoModels N` (UI/perf tests): a provider-sized list, like
+    /// the hundreds of models OpenRouter returns.
+    private static func extraModels(_ count: Int) -> [AIModel] {
+        (0..<max(count, 0)).map { i in
+            AIModel(id: "vendor/model-\(i)", name: String(format: "Vendor Model %03d", i),
+                    tagline: "Demo provider · \(32 << (i % 4))K context", speed: 0, intelligence: 0,
+                    streamMultiplier: 1)
+        }
+    }
 
     static let connectors: [Connector] = [
         Connector(id: "superblocks", name: "Superblocks", monogram: "S", isOn: true),
@@ -32,11 +44,12 @@ enum MockData {
     ]
 
     /// Bundled fallback screenshots (spec §7): rendered swatches used when
-    /// Photos access is denied. 12 calm monochrome tiles.
-    static func sampleScreenshots() -> [Attachment] {
-        (1...12).map { i in
-            Attachment(kind: .screenshot, name: "Screenshot \(i)", imageData: sampleImageData(seed: i))
-        }
+    /// Photos access is denied. 12 calm monochrome tiles, rendered once —
+    /// the tray used to redraw and PNG-encode all 12 on every open.
+    static func sampleScreenshots() -> [Attachment] { cachedSamples }
+
+    private static let cachedSamples: [Attachment] = (1...12).map { i in
+        Attachment(kind: .screenshot, name: "Screenshot \(i)", imageData: sampleImageData(seed: i))
     }
 
     private static func sampleImageData(seed: Int) -> Data? {

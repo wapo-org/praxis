@@ -10,40 +10,54 @@ struct HistorySheet: View {
     @State private var filter: Filter = .all
     @State private var selecting = false
     @State private var selectedIDs: Set<UUID> = []
+    @State private var showSettings = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Filter { case all, pinned }
+
+    private var listAnimation: Animation { reduceMotion ? Motion.reduced : Motion.reflow }
 
     private var visible: [Conversation] {
         store.conversations.filter { conv in
             (filter == .all || conv.isPinned)
-                && (query.isEmpty || conv.title.localizedCaseInsensitiveContains(query))
+                && (query.isEmpty || conv.displayTitle.localizedCaseInsensitiveContains(query))
         }
     }
 
     var body: some View {
+        let rows = visible
         VStack(spacing: 0) {
             header
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 26) {
-                    ForEach(visible) { conv in
+                    ForEach(rows) { conv in
                         row(conv)
+                            .transition(.opacity.combined(with: .offset(y: 6)))
                     }
-                    if visible.isEmpty {
+                    if rows.isEmpty {
                         Text(filter == .pinned ? "No pinned chats yet" : "No chats match")
                             .font(Type.inter(15, .body))
                             .foregroundStyle(Praxis.mutedInk)
                             .padding(.top, 12)
+                            .transition(.opacity)
                     }
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 18)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .animation(listAnimation, value: rows.map(\.id))
+                .animation(listAnimation, value: selecting)
             }
-            bottomBar
+            .scrollDismissesKeyboard(.interactively)
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
+            // Rows scroll under the glass search bar instead of stopping
+            // at an opaque edge above it.
+            .safeAreaBar(edge: .bottom) { bottomBar }
         }
         .background(Praxis.canvas)
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
+        .sheet(isPresented: $showSettings) { SettingsSheet() }
     }
 
     private var header: some View {
@@ -54,42 +68,41 @@ struct HistorySheet: View {
             HStack {
                 Button { dismiss() } label: {
                     Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 14, weight: .medium))
-                        .frame(width: 40, height: 40).contentShape(Circle())
                 }
-                .buttonStyle(PressScaleStyle())
-                .praxisGlass(in: Circle())
+                .buttonStyle(.praxisIcon)
                 .accessibilityLabel("Close history")
                 Spacer()
                 if selecting {
-                    Button("Done") {
-                        selecting = false
-                        selectedIDs = []
-                    }
-                    .font(Type.inter(15, weight: .semibold, .body))
-                    .foregroundStyle(Praxis.ink)
+                    Button {
+                        withAnimation(listAnimation) {
+                            selecting = false
+                            selectedIDs = []
+                        }
+                    } label: { PraxisButtonLabel("Done") }
+                    .buttonStyle(.praxisSecondary(.compact))
                     .accessibilityLabel("Done selecting")
                 } else {
                     Menu {
                         Button {
-                            selecting = true
+                            withAnimation(listAnimation) { selecting = true }
                         } label: { Label("Select chats", systemImage: "checkmark.circle") }
                         Divider()
                         Button {
-                            filter = .all
+                            withAnimation(listAnimation) { filter = .all }
                         } label: {
                             Label("All", systemImage: filter == .all ? "checkmark" : "bubble.left.and.bubble.right")
                         }
                         Button {
-                            filter = .pinned
+                            withAnimation(listAnimation) { filter = .pinned }
                         } label: { Label("Pinned", systemImage: "pin") }
+                        if store.services != nil {
+                            Divider()
+                            Button { showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
+                        }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 14, weight: .semibold))
-                            .frame(width: 40, height: 40).contentShape(Circle())
                     }
-                    .buttonStyle(PressScaleStyle())
-                    .praxisGlass(in: Circle())
+                    .buttonStyle(.praxisIcon)
                     .accessibilityLabel("History options")
                 }
             }
@@ -101,10 +114,15 @@ struct HistorySheet: View {
     private func row(_ conv: Conversation) -> some View {
         Button {
             if selecting {
-                if selectedIDs.contains(conv.id) { selectedIDs.remove(conv.id) }
-                else { selectedIDs.insert(conv.id) }
+                store.haptics.fire(.selection)
+                withAnimation(Motion.snap) {
+                    if selectedIDs.contains(conv.id) { selectedIDs.remove(conv.id) }
+                    else { selectedIDs.insert(conv.id) }
+                }
             } else {
-                withAnimation(Motion.morph) { store.select(conv.id) }
+                // Crossfade the transcript under the closing sheet; a
+                // morph spring here animated the whole thread's layout.
+                withAnimation(reduceMotion ? Motion.reduced : Motion.reveal) { store.select(conv.id) }
                 dismiss()
             }
         } label: {
@@ -113,6 +131,8 @@ struct HistorySheet: View {
                     Image(systemName: selectedIDs.contains(conv.id) ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 20))
                         .foregroundStyle(selectedIDs.contains(conv.id) ? Praxis.ink : Praxis.pressedMuted)
+                        .contentTransition(.symbolEffect(.replace))
+                        .transition(.scale(scale: 0.5).combined(with: .opacity))
                 }
                 Image(systemName: "message")
                     .font(.system(size: 15))
@@ -120,7 +140,7 @@ struct HistorySheet: View {
                     .padding(.top, 3)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
-                        Text(conv.title)
+                        Text(conv.displayTitle)
                             .font(Type.inter(17, .body))
                             .foregroundStyle(Praxis.ink)
                             .lineLimit(1)
@@ -144,55 +164,45 @@ struct HistorySheet: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(PressScaleStyle(scale: 0.99))
+        .buttonStyle(PressHighlightStyle())
         .contextMenu {
             Button {
-                store.togglePinned(conv.id)
+                withAnimation(listAnimation) { store.togglePinned(conv.id) }
             } label: {
                 Label(conv.isPinned ? "Unpin" : "Pin", systemImage: conv.isPinned ? "pin.slash" : "pin")
             }
         }
-        .accessibilityLabel(conv.title)
+        .accessibilityLabel(conv.displayTitle)
     }
 
     private var bottomBar: some View {
         VStack(spacing: 12) {
-            HStack {
+            HStack(spacing: 10) {
                 if selecting {
                     Button(role: .destructive) {
-                        store.conversations.removeAll { selectedIDs.contains($0.id) }
-                        if let first = store.conversations.first { store.select(first.id) }
-                        selectedIDs = []
-                        selecting = false
+                        store.haptics.fire(.warning)
+                        withAnimation(listAnimation) {
+                            // Stops their runs and drops their files too.
+                            store.deleteConversations(selectedIDs)
+                            selectedIDs = []
+                            selecting = false
+                        }
                     } label: {
-                        Text("Delete")
-                            .font(Type.inter(15, weight: .semibold, .body))
-                            .foregroundStyle(Praxis.destructive)
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 11)
+                        PraxisButtonLabel("Delete")
                     }
-                    .buttonStyle(PressScaleStyle())
-                    .praxisGlass(in: Capsule())
+                    .buttonStyle(.praxisSecondary(fillsWidth: true))
                     .disabled(selectedIDs.isEmpty)
-                    .opacity(selectedIDs.isEmpty ? 0.45 : 1)
                     .accessibilityLabel("Delete selected chats")
+                    .transition(reduceMotion ? .opacity : .praxisPop)
                 }
-                Spacer()
                 Button {
-                    store.newChat()
+                    store.haptics.fire(.light)
+                    withAnimation(reduceMotion ? Motion.reduced : Motion.reveal) { store.newChat() }
                     dismiss()
                 } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: "plus").font(.system(size: 13, weight: .semibold))
-                        Text("New chat").font(Type.inter(15, weight: .semibold, .body))
-                    }
-                    .foregroundStyle(Praxis.canvas)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 11)
+                    PraxisButtonLabel("New chat", systemImage: "plus")
                 }
-                .buttonStyle(.glassProminent)
-                .buttonBorderShape(.capsule)
-                .tint(Praxis.ink)
+                .buttonStyle(.praxisPrimary(fillsWidth: true))
                 .accessibilityLabel("New chat")
             }
             HStack(spacing: 9) {
@@ -258,11 +268,9 @@ struct LinkPreviewSheet: View {
                 }
                 Spacer()
                 Button { dismiss() } label: {
-                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold))
-                        .frame(width: 30, height: 30).contentShape(Circle())
+                    Image(systemName: "xmark")
                 }
-                .buttonStyle(PressScaleStyle())
-                .praxisGlass(in: Circle())
+                .buttonStyle(.praxisIcon(.compact))
                 .accessibilityLabel("Close preview")
             }
             Text("Reference from the Praxis design system — materials, agent activity and inline chips, rendered as live previews.")
@@ -272,14 +280,9 @@ struct LinkPreviewSheet: View {
             Button {
                 showSafari = true
             } label: {
-                Text("Open")
-                    .font(Type.inter(15, weight: .semibold, .body))
-                    .foregroundStyle(Praxis.canvas)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                PraxisButtonLabel("Open")
             }
-            .buttonStyle(.glassProminent)
-            .tint(Praxis.ink)
+            .buttonStyle(.praxisPrimary(fillsWidth: true))
         }
         .padding(16)
         .presentationDetents([.height(218)])

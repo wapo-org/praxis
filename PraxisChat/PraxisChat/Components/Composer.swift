@@ -5,8 +5,11 @@ import SwiftUI
 /// Buttons stay pinned to the bottom line; radius stays concentric.
 struct ComposerView: View {
     @Environment(ChatStore.self) private var store
-    @Binding var trayOpen: Bool
+    var trayOpen: Bool
     var namespace: Namespace.ID
+    /// Opening/closing goes through the owner so haptics, spring and page
+    /// reset are the same from every trigger.
+    var onToggleTray: () -> Void = {}
     var onSend: () -> Void
     var onAttachmentTap: (Attachment) -> Void = { _ in }
     var onCamera: () -> Void = {}
@@ -15,9 +18,12 @@ struct ComposerView: View {
     var showsGlass: Bool = true
 
     @FocusState private var focused: Bool
+    /// The text just sent, for a short while: see `send()`.
+    @State private var lastSend: (text: String, at: Date)?
     @State private var isRecording = false
     @State private var recordingStart = Date()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.sendLaunch) private var sendLaunch
 
     private var hasText: Bool { !store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var canSend: Bool { hasText || !store.attachments.isEmpty }
@@ -34,14 +40,17 @@ struct ComposerView: View {
                 composerRow
             }
         }
-        .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.morph, value: canSend)
-        .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.reflow, value: store.attachments.count)
-        .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.morph, value: isRecording)
+        .animation(reduceMotion ? Motion.reduced : Motion.morph, value: canSend)
+        .animation(reduceMotion ? Motion.reduced : Motion.morph, value: isStreaming)
+        .animation(reduceMotion ? Motion.reduced : Motion.reflow, value: store.attachments.count)
+        .animation(reduceMotion ? Motion.reduced : Motion.morph, value: isRecording)
     }
 
     private var composerRow: some View {
         VStack(spacing: 0) {
             if !store.attachments.isEmpty { attachmentStrip }
+            if let hint = store.imageInputHint { ImageInputHintRow(hint: hint) }
+            if let hint = store.toolSupportHint { ToolSupportHintRow(hint: hint) }
             HStack(alignment: .bottom, spacing: 8) {
                 plusButton
                 middle
@@ -55,14 +64,14 @@ struct ComposerView: View {
 
     private var plusButton: some View {
         Button {
-            store.haptics.fire(.light)
-            withAnimation(reduceMotion ? .easeOut(duration: 0.15) : Motion.morph) { trayOpen.toggle() }
             focused = false
+            onToggleTray()
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(Praxis.ink)
                 .rotationEffect(.degrees(trayOpen ? 45 : 0))
+                .animation(reduceMotion ? Motion.reduced : Motion.pop, value: trayOpen)
                 .frame(width: 38, height: 38)
                 .contentShape(Circle())
         }
@@ -98,11 +107,52 @@ struct ComposerView: View {
                 .focused($focused)
                 .submitLabel(.send)
                 .frame(minHeight: 38)
+                // Where a sent bubble rises from.
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sendLaunch?.track($0) }
                 .padding(.leading, 6)
-                .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.reflow, value: store.draft)
+                // Animate the field only when a line wraps, not per keystroke.
+                .animation(reduceMotion ? Motion.reduced : Motion.reflow, value: lineEstimate)
                 .accessibilityLabel("Message")
                 .accessibilityHint(store.mode.placeholder)
+                .onChange(of: store.draft) { _, text in rejectRecommit(text) }
         }
+    }
+
+    // MARK: Sending
+
+    /// Sends, then makes sure the field is really empty.
+    ///
+    /// Clearing `draft` alone loses a race with the keyboard: the binding's
+    /// "" only reaches the text view on SwiftUI's next update, and any edit
+    /// the keyboard makes before that — committing a candidate or marked
+    /// text, an autocorrect replacement, a late keystroke — makes SwiftUI
+    /// copy the view's text (still the whole sent message) back into
+    /// `draft`. The update then finds the two agreeing and clears nothing.
+    /// Emptying the text view in the same turn as the send leaves nothing
+    /// stale for such an edit to copy back.
+    private func send() {
+        let text = store.draft
+        onSend()
+        // Held for consent (or nothing to send): the draft stays.
+        guard store.draft.isEmpty, !text.isEmpty else { return }
+        lastSend = (text, Date())
+        ComposerInput.clearFocusedTextView()
+        #if DEBUG
+        ComposerInput.simulateKeyboardEditIfTesting()
+        #endif
+    }
+
+    /// Backstop for the same race: the keyboard committing the old text
+    /// right after a send. A user can't retype most of a message in under
+    /// a second, so a draft that reappears that fast is the sent text.
+    private func rejectRecommit(_ text: String) {
+        guard let sent = lastSend, !text.isEmpty else { return }
+        guard Date().timeIntervalSince(sent.at) < 1 else { lastSend = nil; return }
+        let shared = zip(text, sent.text).prefix { $0 == $1 }.count
+        guard text.count >= 2, shared * 2 >= sent.text.count else { return }
+        lastSend = nil
+        store.draft = ""
+        ComposerInput.clearFocusedTextView()
     }
 
     // MARK: Trailing — camera + mic ↔ send ↔ stop morph
@@ -135,6 +185,12 @@ struct ComposerView: View {
         }
     }
 
+    /// Coarse line count driving the growth animation: changes when the
+    /// draft wraps or gains a newline, not on every character.
+    private var lineEstimate: Int {
+        store.draft.reduce(into: 1) { if $1 == "\n" { $0 += 1 } } + store.draft.count / 34
+    }
+
     private var trailingMorph: some View {
         Group {
             if isStreaming {
@@ -149,7 +205,7 @@ struct ComposerView: View {
                 .tint(Praxis.ink)
                 .accessibilityLabel("Stop generating")
             } else if canSend {
-                Button { onSend() } label: {
+                Button { send() } label: {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(Praxis.canvas)
@@ -158,6 +214,7 @@ struct ComposerView: View {
                 .buttonBorderShape(.circle)
                 .frame(width: 38, height: 38)
                 .tint(Praxis.ink)
+                .transition(reduceMotion ? .opacity : .scale(scale: 0.5).combined(with: .opacity))
                 .accessibilityLabel("Send message")
             } else if isRecording {
                 Button { stopRecording() } label: {
@@ -195,6 +252,9 @@ struct ComposerView: View {
                 ForEach(store.attachments) { att in
                     ZStack(alignment: .topTrailing) {
                         AttachmentThumbnail(attachment: att, size: 56)
+                            .codeAccessMenu(att) { hidden in
+                                withAnimation(Motion.snap) { store.setHiddenFromCode(hidden, attachmentID: att.id) }
+                            }
                             .onTapGesture { onAttachmentTap(att) }
                             .matchedTransitionSource(id: att.id, in: namespace)
                         Button {
@@ -228,11 +288,12 @@ struct ComposerView: View {
     private func startRecording() {
         store.haptics.fire(.light)
         recordingStart = Date()
-        withAnimation(Motion.morph) { isRecording = true }
+        withAnimation(reduceMotion ? Motion.reduced : Motion.morph) { isRecording = true }
     }
 
     private func stopRecording() {
-        withAnimation(Motion.morph) { isRecording = false }
+        store.haptics.fire(.soft)
+        withAnimation(reduceMotion ? Motion.reduced : Motion.morph) { isRecording = false }
         // Mock transcription types into the field (§6).
         let transcript = "Draft a follow-up on the glass contrast audit"
         store.draft = transcript
@@ -240,25 +301,69 @@ struct ComposerView: View {
     }
 }
 
-/// Live waveform with simulated amplitudes (§6). Bars fill
-/// whatever width the composer middle offers.
+/// Live waveform with simulated amplitudes (§6). Bars fill whatever
+/// width the composer middle offers. Drawn in one Canvas pass: no
+/// per-bar views, no layout, 30 times a second.
 private struct Waveform: View {
     var body: some View {
-        GeometryReader { geo in
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
-                let t = tl.date.timeIntervalSinceReferenceDate
-                let count = max(8, Int(geo.size.width / 7))
-                HStack(spacing: 3) {
-                    ForEach(0..<count, id: \.self) { i in
-                        RoundedRectangle(cornerRadius: 2, style: .continuous)
-                            .fill(Praxis.ink)
-                            .frame(width: 3, height: 6 + 14 * abs(sin(t * 3 + Double(i) * 0.7)))
-                    }
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
+            let t = tl.date.timeIntervalSinceReferenceDate
+            Canvas { ctx, size in
+                let count = max(8, Int(size.width / 7))
+                for i in 0..<count {
+                    let h = 6 + 14 * abs(sin(t * 3 + Double(i) * 0.7))
+                    let rect = CGRect(x: Double(i) * 6, y: (size.height - h) / 2, width: 3, height: h)
+                    ctx.fill(RoundedRectangle(cornerRadius: 2, style: .continuous).path(in: rect),
+                             with: .color(Praxis.ink))
                 }
-                .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
             }
         }
         .frame(height: 26)
         .accessibilityLabel("Recording")
+    }
+}
+
+/// The UIKit text view behind the focused composer field (SwiftUI's
+/// vertical `TextField` is a `UITextView` subclass while it's focused).
+@MainActor
+enum ComposerInput {
+    fileprivate static weak var reported: UIResponder?
+
+    /// The current first responder, if any.
+    static func firstResponder() -> UIResponder? {
+        reported = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.praxisReportFirstResponder), to: nil, from: nil, for: nil)
+        return reported
+    }
+
+    /// Empties the first responder's text if it's a text view, dropping
+    /// any marked text (composition, inline prediction) with it. The
+    /// field's binding is already "" by then, so the two agree at once.
+    static func clearFocusedTextView() {
+        guard let textView = firstResponder() as? UITextView,
+              textView.markedTextRange != nil || !textView.text.isEmpty else { return }
+        // Replacing the text ends the composition without committing it
+        // (`unmarkText()` would commit it and echo it back through the
+        // delegate into the draft).
+        textView.text = ""
+    }
+}
+
+#if DEBUG
+extension ComposerInput {
+    /// UI tests (`-PraxisSimulateKeyboardCommit YES`): play the edit a
+    /// device keyboard makes right after a send — committing its
+    /// candidate — inside the race window, before SwiftUI's next update.
+    static func simulateKeyboardEditIfTesting() {
+        guard UserDefaults.standard.bool(forKey: "PraxisSimulateKeyboardCommit"),
+              let textView = firstResponder() as? UITextView else { return }
+        textView.delegate?.textViewDidChange?(textView)
+    }
+}
+#endif
+
+extension UIResponder {
+    @objc fileprivate func praxisReportFirstResponder() {
+        ComposerInput.reported = self
     }
 }

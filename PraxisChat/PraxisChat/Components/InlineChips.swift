@@ -1,14 +1,25 @@
 import SwiftUI
 
 /// Draws CodePill + IntegrationAvatar backgrounds behind inline runs and
-/// the per-word streaming reveal (spec §9.2/§10): new words fade from 0
-/// with a 2pt rise over ~180ms, per text run — never a view per word.
+/// the streaming reveal (spec §9.2/§10): new glyphs fade from 0 with a
+/// 2pt rise and blur as the reveal front sweeps past — never a view per
+/// word, and no timeline: `revealedLength` is animatable, so the caller
+/// animates it toward the received length and SwiftUI interpolates.
 struct ChipTextRenderer: TextRenderer {
-    /// Words with fadeIndex below this are fully visible.
-    var revealedWords: Double = .infinity
+    /// Characters a glyph needs behind the front to be fully visible —
+    /// roughly three words of soft leading edge.
+    static let fadeSpan: Double = 18
+
+    /// Glyphs whose offset is below this (minus the span) are fully visible.
+    var revealedLength: Double = .infinity
     var animatableData: Double {
-        get { revealedWords }
-        set { revealedWords = newValue }
+        get { revealedLength }
+        set { revealedLength = newValue }
+    }
+
+    private func progress(at offset: Double) -> Double {
+        guard revealedLength.isFinite else { return 1 }
+        return min(max((revealedLength - offset) / Self.fadeSpan, 0), 1)
     }
 
     func draw(layout: Text.Layout, in ctx: inout GraphicsContext) {
@@ -16,6 +27,12 @@ struct ChipTextRenderer: TextRenderer {
         for line in layout {
             for run in line {
                 let rect = run.typographicBounds.rect
+                var ctx = ctx
+                if let fade = run[FadeMarker.self] {
+                    let t = progress(at: fade.index)
+                    if t <= 0 { continue }
+                    ctx.opacity = t
+                }
                 if run[PillMarker.self] != nil {
                     let pill = RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .path(in: rect.insetBy(dx: -6, dy: -2))
@@ -49,20 +66,24 @@ struct ChipTextRenderer: TextRenderer {
                 }
             }
         }
-        // Runs, with the streaming reveal per word run.
+        // Glyphs. Finished text draws whole runs; only glyphs inside the
+        // soft front pay for per-slice opacity, rise and blur.
         for line in layout {
             for run in line {
-                for slice in run {
-                    var runCtx = ctx
-                    if let fade = slice[FadeMarker.self] {
-                        let t = min(max(revealedWords - fade.index, 0), 1)
-                        runCtx.opacity = t
-                        if t < 1 {
-                            runCtx.translateBy(x: 0, y: (1 - t) * 2)
-                            runCtx.addFilter(.blur(radius: (1 - t) * 4))
-                        }
-                    }
-                    runCtx.draw(slice)
+                guard let fade = run[FadeMarker.self], revealedLength.isFinite,
+                      progress(at: fade.index + Double(run.count)) < 1 else {
+                    ctx.draw(run)
+                    continue
+                }
+                for (offset, slice) in run.enumerated() {
+                    let t = progress(at: fade.index + Double(offset))
+                    if t <= 0 { break }
+                    if t >= 1 { ctx.draw(slice); continue }
+                    var sliceCtx = ctx
+                    sliceCtx.opacity = t
+                    sliceCtx.translateBy(x: 0, y: (1 - t) * 2)
+                    sliceCtx.addFilter(.blur(radius: (1 - t) * 4))
+                    sliceCtx.draw(slice)
                 }
             }
         }
