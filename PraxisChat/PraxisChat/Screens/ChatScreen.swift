@@ -594,7 +594,7 @@ private struct TranscriptRow: Identifiable, Equatable {
         case activity(turnID: UUID, ActivityData)
         case text(MDBlockItem, selectable: Bool)
         case live(LiveText, index: Int)
-        case note(Turn)
+        case note(Turn, canContinue: Bool)
         case actions(Turn)
         case compaction(CompactionMarker)
     }
@@ -621,8 +621,8 @@ private struct TranscriptRow: Identifiable, Equatable {
             return a == b && sa == sb
         case (.live(let a, let ia), .live(let b, let ib)):
             return a === b && ia == ib
-        case (.note(let a), .note(let b)):
-            return a.outcome == b.outcome
+        case (.note(let a, let ca), .note(let b, let cb)):
+            return a.outcome == b.outcome && ca == cb
         case (.actions(let a), .actions(let b)):
             return a.id == b.id && a.feedback == b.feedback && a.userText == b.userText
         case (.compaction(let a), .compaction(let b)):
@@ -668,7 +668,10 @@ private struct TranscriptRow: Identifiable, Equatable {
                 }
             }
             if turn.isFinished, turn.outcome?.note != nil {
-                rows.append(TranscriptRow(id: .note(turn.id), top: gap, content: .note(turn), fades: fades))
+                let canContinue = turn.outcome == .pausedBackground && n == turns.count - 1
+                    && !store.isRunning(conv.id)
+                rows.append(TranscriptRow(id: .note(turn.id), top: gap, content: .note(turn, canContinue: canContinue),
+                                          fades: fades))
             }
             if turn.isFinished && !turn.blocks.isEmpty {
                 rows.append(TranscriptRow(id: .actions(turn.id), top: gap, content: .actions(turn), fades: fades))
@@ -733,7 +736,7 @@ private struct TranscriptRowView: View, Equatable {
         case .live(let live, let index):
             LiveMarkdownRowView(live: live, index: index, onChipAction: onChipAction)
                 .equatable()
-        case .note(let turn):
+        case .note(let turn, let canContinue):
             if turn.outcome == .needsProvider, let note = turn.outcome?.note {
                 Button { store.isSettingsPresented = true } label: {
                     HStack(spacing: 6) {
@@ -747,10 +750,24 @@ private struct TranscriptRowView: View, Equatable {
                 .accessibilityLabel("Open Settings to add a model provider")
                 .appearFade(row.fades)
             } else if let note = turn.outcome?.note {
-                Text(note)
-                    .font(Type.inter(13, .caption))
-                    .foregroundStyle(Praxis.mutedInk)
-                    .appearFade(row.fades)
+                VStack(spacing: 6) {
+                    Text(note)
+                        .font(Type.inter(13, .caption))
+                        .foregroundStyle(Praxis.mutedInk)
+                    // A background-paused last turn offers Continue (plan
+                    // §2.7); the gate lives in the row so the Equatable
+                    // diff sees it change.
+                    if canContinue, let selectedID = store.selectedID {
+                        Button { store.continueRun(conversationID: selectedID) } label: {
+                            Text("Continue")
+                                .font(Type.inter(13, weight: .semibold, .caption))
+                                .foregroundStyle(Praxis.ink)
+                        }
+                        .buttonStyle(PressScaleStyle())
+                        .accessibilityLabel("Continue")
+                    }
+                }
+                .appearFade(row.fades)
             }
         case .actions(let turn):
             MessageActionRow(
