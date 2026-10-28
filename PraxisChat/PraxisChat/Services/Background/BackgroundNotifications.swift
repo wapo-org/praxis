@@ -15,6 +15,10 @@ protocol NotificationScheduling: Sendable {
     func add(_ request: UNNotificationRequest) async throws
     func removePendingNotificationRequests(withIdentifiers: [String])
     func removeDeliveredNotifications(withIdentifiers: [String])
+    /// Identifiers only (the requests themselves aren't Sendable):
+    /// launch cleanup lists and filters by our prefixes.
+    func deliveredIdentifiers() async -> [String]
+    func pendingIdentifiers() async -> [String]
     func setNotificationCategories(_ categories: Set<UNNotificationCategory>)
     var delegate: (any UNUserNotificationCenterDelegate)? { get set }
 }
@@ -55,6 +59,22 @@ final class LiveNotificationCenter: NotificationScheduling {
 
     func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {
         center.removeDeliveredNotifications(withIdentifiers: identifiers)
+    }
+
+    func deliveredIdentifiers() async -> [String] {
+        await withCheckedContinuation { (continuation: CheckedContinuation<[String], Never>) in
+            center.getDeliveredNotifications { notifications in
+                continuation.resume(returning: notifications.map(\.request.identifier))
+            }
+        }
+    }
+
+    func pendingIdentifiers() async -> [String] {
+        await withCheckedContinuation { (continuation: CheckedContinuation<[String], Never>) in
+            center.getPendingNotificationRequests { requests in
+                continuation.resume(returning: requests.map(\.identifier))
+            }
+        }
     }
 
     func setNotificationCategories(_ categories: Set<UNNotificationCategory>) {
@@ -220,6 +240,21 @@ final class BackgroundNotifications: Sendable {
         center.removePendingNotificationRequests(withIdentifiers: [identifier])
         center.removeDeliveredNotifications(withIdentifiers: [identifier])
         postedApprovals[conversationID]?.remove(requestID)
+    }
+
+    /// Launch cleanup: a kill leaves delivered approval/completion cards
+    /// behind as dead cards (their waiters are gone — taps would no-op),
+    /// and the in-memory posting record with them. Drops everything under
+    /// our prefixes; nothing else is touched.
+    func clearRunNotifications() async {
+        postedApprovals.removeAll()
+        let ours = { (id: String) in
+            id.hasPrefix("praxis.approval.") || id.hasPrefix("praxis.done.")
+        }
+        let delivered = await center.deliveredIdentifiers().filter(ours)
+        if !delivered.isEmpty { center.removeDeliveredNotifications(withIdentifiers: delivered) }
+        let pending = await center.pendingIdentifiers().filter(ours)
+        if !pending.isEmpty { center.removePendingNotificationRequests(withIdentifiers: pending) }
     }
 
     /// Withdraws every approval posted for a conversation (run end, or

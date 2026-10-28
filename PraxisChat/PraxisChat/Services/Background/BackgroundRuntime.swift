@@ -233,8 +233,12 @@ final class BackgroundRuntime: Sendable {
                     line = titles.finished
                     tool = nil
                 } else if phase != .needsApproval {
+                    // No titles: the loop reports some failures (unknown
+                    // tool, invalid JSON) without a start event. Never
+                    // surface the summary — it can echo model-written
+                    // arguments or raw error text onto the lock screen.
                     phase = .thinking
-                    line = completion.summary.isEmpty ? "Thinking…" : completion.summary
+                    line = completion.status == .succeeded ? "Thinking…" : "Step failed"
                     tool = nil
                 }
             case .textDelta:
@@ -417,10 +421,13 @@ final class BackgroundRuntime: Sendable {
         Task { await reporter.reconcile(activeConversationIDs: running) }
     }
 
-    /// Launch: no runs yet — just reconcile orphaned activities.
+    /// Launch: no runs yet — reconcile orphaned activities and drop
+    /// notification cards orphaned by a kill (their waiters are gone).
     func appDidLaunch() {
         let reporter = reporter
         Task { await reporter.reconcile(activeConversationIDs: []) }
+        let center = notifications
+        Task { await center.clearRunNotifications() }
     }
 
     func installNotificationDelegate() {
