@@ -10,7 +10,8 @@ final class PraxisChatUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         // Conversations persist now: every test starts from the seed.
-        app.launchArguments += ["-PraxisResetData", "YES"]
+        // The gallery shows mocks: deterministic tiles, no photo prompt.
+        app.launchArguments += ["-PraxisResetData", "YES", "-PraxisMockGallery", "YES"]
         app.launch()
         XCTAssertTrue(el(.button, "History").waitForExistence(timeout: 15))
     }
