@@ -176,15 +176,16 @@ final class VoiceInputController: VoiceSendObserver {
     func micTapped() {
         guard !showsRecordingUI else { return }
         guard transcriptionTask == nil else { return }
+        // Synchronous guard: a double-tap must not start two recordings
+        // (the second would orphan the first engine mid-record). This runs
+        // in the tap's own turn, before any suspension point.
+        guard !starting else { return }
+        starting = true
         stopPlayback()
         Task { await startFlow() }
     }
 
     private func startFlow() async {
-        // A double-tap races the permission prompt: the second start must
-        // not orphan the first engine mid-record.
-        guard !starting else { return }
-        starting = true
         defer { starting = false }
         let engine = makeEngine()
         let granted = await engine.requestPermission()
