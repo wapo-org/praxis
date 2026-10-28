@@ -74,7 +74,7 @@ final class BlurWave2Shots: XCTestCase {
     /// the composer, one pose per nudge.
     func testChatBottomDense() {
         launch(["-PraxisLongThread", "YES"])
-        for i in 0..<4 {
+        for i in 0..<6 {
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
             let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
             start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
