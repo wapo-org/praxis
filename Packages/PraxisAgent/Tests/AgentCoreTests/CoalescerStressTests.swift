@@ -41,11 +41,10 @@ import Testing
             // a random moment; the rest drain fully and assert exactly.
             let cancel = i % 3 != 0
             let delay = cancel ? Duration.microseconds(rng.next(in: 0..<2000)) : nil
-            guard let (sent, received) = await withWatchdog("iteration \(i)") {
+            let result = await withWatchdog("iteration \(i)") {
                 await Self.runOnce(alternating: alternating, cancelAfter: delay)
-            } else {
-                return
             }
+            guard let (sent, received) = result else { return }
             let sentJoined = sent.joined()
             var receivedJoined = ""
             for event in received {
