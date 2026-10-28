@@ -51,15 +51,18 @@ struct ChatScreen: View {
                 TranscriptView(conversation: conversation, trayOpen: trayOpen,
                                bottomReserve: composerReserve, onChipAction: handleChip)
 
-                // Progressive scrims (§3): full strength under the toolbar
-                // (title + model name, ~105pt from the top edge) and the
-                // composer, feathering out ~50pt past them. No visible edge.
+                // The top edge is the system's own progressive blur: the
+                // transcript's `.scrollEdgeEffectStyle(.soft, for: .top)`
+                // blurs text scrolling under the toolbar (title + model
+                // name). The bottom needs a custom scrim: the composer dock
+                // floats in this ZStack instead of a bar, so the system
+                // effect can't see it. Full strength under the composer,
+                // feathering out ~50pt past it. No visible edge.
                 VStack {
-                    ProgressiveBlurScrim(edge: .top, length: 160, maxRadius: 18, hold: 0.52)
                     Spacer()
-                    ProgressiveBlurScrim(edge: .bottom, length: 150, maxRadius: 18, hold: 0.36)
+                    ProgressiveBlurScrim(edge: .bottom, length: 150, hold: 0.36)
                 }
-                .ignoresSafeArea(edges: [.top, .bottom])
+                .ignoresSafeArea(edges: .bottom)
                 .allowsHitTesting(false)
 
                 // Open tray behaves like a menu: a tap or drag anywhere on

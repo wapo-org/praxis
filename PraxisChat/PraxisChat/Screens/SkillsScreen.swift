@@ -46,6 +46,7 @@ struct SkillsScreen: View {
             .padding(.vertical, 12)
             .animation(Motion.reflow, value: report)
         }
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .background(Praxis.canvas)
         .navigationTitle("Skills")
         .navigationBarTitleDisplayMode(.inline)
@@ -435,6 +436,7 @@ private struct SkillEditorSheet: View {
                 }
                 .padding(16)
             }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .background(Praxis.canvas)
             .navigationTitle(draft.name)
             .navigationBarTitleDisplayMode(.inline)
