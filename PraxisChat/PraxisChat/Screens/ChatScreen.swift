@@ -227,8 +227,8 @@ struct ChatScreen: View {
     /// Anything else — other hosts, bad UUIDs, other schemes —
     /// returns nil and is ignored. Internal for unit tests.
     static func chatDeepLinkConversationID(from url: URL) -> UUID? {
-        guard url.scheme == "praxis-app",
-              url.host() == "chat",
+        guard url.scheme?.lowercased() == "praxis-app",
+              url.host()?.lowercased() == "chat",
               let first = url.pathComponents.dropFirst().first else { return nil }
         return UUID(uuidString: first)
     }

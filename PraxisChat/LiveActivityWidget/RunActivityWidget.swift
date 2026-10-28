@@ -92,11 +92,11 @@ private struct RunLockScreenView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack {
                 Text(context.attributes.chatTitle)
                     .font(.headline)
                     .lineLimit(1)
-                Spacer()
+                Spacer(minLength: 8)
                 // A running timer is only truthful mid-run; terminal
                 // states show the step count instead (the state has
                 // no end time to freeze a timer against).
@@ -110,10 +110,12 @@ private struct RunLockScreenView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Text(context.state.lastLine)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 4) {
                 Text(context.attributes.modelName)
                 if context.state.stepCount > 0 {
@@ -125,7 +127,13 @@ private struct RunLockScreenView: View {
             }
             .font(.caption)
             .foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // The lock card provides ~no leading inset of its own: without
+        // this the top and bottom rows' first glyphs clip on the
+        // card's rounded corners (verified on-device).
+        .padding(.horizontal)
         .opacity(context.isStale ? 0.6 : 1)
         .widgetURL(context.chatURL)
         .accessibilityLabel(context.voiceOverSummary)
