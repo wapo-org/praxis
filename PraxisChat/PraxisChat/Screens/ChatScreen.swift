@@ -174,6 +174,9 @@ struct ChatScreen: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background { store.voice?.appDidEnterBackground() }
             }
+            .onChange(of: store.selectedID) { _, _ in
+                store.voice?.refreshRecoverables()
+            }
             .photosPicker(isPresented: $showPhotos, selection: $photoItems, matching: .images)
             .onChange(of: photoItems) { _, items in loadPhotos(items) }
             .fileImporter(isPresented: $showFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in

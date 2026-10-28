@@ -76,8 +76,25 @@ final class VoiceInputController: VoiceSendObserver {
     private(set) var playingID: UUID?
 
     /// The composer middle shows voice UI instead of the text field.
+    /// Live/review/transcribing UI belongs to the originating chat only —
+    /// other chats keep their field (plus the pill for live recordings),
+    /// and stopping always happens where the recording started. The
+    /// permission/start notices are global (no chat owns them).
     var showsRecordingUI: Bool {
-        phase != .idle || permissionDenied || startError != nil
+        if permissionDenied || startError != nil { return true }
+        switch phase {
+        case .idle:
+            return false
+        case .recording, .paused, .transcribing, .review:
+            guard let active = activeRecording, let selected = chatStore?.selectedID else { return false }
+            return active.conversationID == selected
+        }
+    }
+
+    /// The trailing red stop button: live recordings in their own chat.
+    /// Review, transcribing and notices own their actions in the middle.
+    var showsStopButton: Bool {
+        (phase == .recording || isPausedPhase) && showsRecordingUI
     }
 
     /// A live recording from another chat: the pill ("tap to return").
@@ -176,6 +193,11 @@ final class VoiceInputController: VoiceSendObserver {
     func micTapped() {
         guard !showsRecordingUI else { return }
         guard transcriptionTask == nil else { return }
+        // One live session: starting over a recording, a review or an
+        // active transcription would orphan its engine or clobber its
+        // phase. (Banner transcriptions leave the phase idle, so recording
+        // during those stays allowed.)
+        guard phase == .idle else { return }
         // Synchronous guard: a double-tap must not start two recordings
         // (the second would orphan the first engine mid-record). This runs
         // in the tap's own turn, before any suspension point.
@@ -719,10 +741,18 @@ final class VoiceInputController: VoiceSendObserver {
     }
 
     /// Reloads the banner/list, excluding recordings that have their own
-    /// UI (live, transcribing, under review).
+    /// UI (live, transcribing, under review in its own chat). A review left
+    /// behind in another chat falls back to the banner — ChatScreen calls
+    /// this on every chat switch so it can't get stuck either way.
     func refreshRecoverables() {
         var excluded: Set<UUID> = []
-        if let active = activeRecording { excluded.insert(active.id) }
+        if let active = activeRecording {
+            if phase == .review, active.conversationID != chatStore?.selectedID {
+                // Seen from another chat: the banner lists it.
+            } else {
+                excluded.insert(active.id)
+            }
+        }
         if let transcribing = transcribingID { excluded.insert(transcribing) }
         recoverable = store.scan(excluding: excluded)
     }

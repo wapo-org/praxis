@@ -206,6 +206,13 @@ final class VoiceRecordingUITests: XCTestCase {
         XCTAssertTrue(pill.waitForExistence(timeout: 10),
                       "leaving the chat shows the recording pill")
         shot("voice-pill")
+        // The other chat keeps its field; its mic can't hijack the live
+        // recording (one live session — the pill returns to it).
+        XCTAssertTrue(el(.button, "Record voice message").waitForExistence(timeout: 8))
+        el(.button, "Record voice message").tap()
+        Thread.sleep(forTimeInterval: 1.0)
+        XCTAssertFalse(el(.button, "Stop and transcribe").exists)
+        XCTAssertTrue(pill.exists)
         pill.tap()
         XCTAssertTrue(el(.button, "Stop and transcribe").waitForExistence(timeout: 10),
                       "the pill returns to the originating chat")

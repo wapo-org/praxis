@@ -55,13 +55,16 @@ struct VoiceRecordingMiddle: View {
                 cancelButton
             }
             .frame(minHeight: 38)
-            HStack(spacing: 8) {
+            // Stacked full-width: side by side they squeeze to
+            // unreadable wrapped pills in the narrow middle.
+            VStack(spacing: 6) {
                 Button { voice.stopAndTranscribe() } label: {
                     Text("Stop & transcribe")
                         .font(Type.inter(14, weight: .semibold, .subheadline))
                         .foregroundStyle(Praxis.canvas)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.glassProminent)
@@ -72,8 +75,9 @@ struct VoiceRecordingMiddle: View {
                     Text("Stop & review")
                         .font(Type.inter(14, weight: .medium, .subheadline))
                         .foregroundStyle(Praxis.ink)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
                         .contentShape(Capsule())
                 }
                 .buttonStyle(PressScaleStyle())
@@ -196,14 +200,18 @@ struct VoiceRecordingMiddle: View {
                     .foregroundStyle(Praxis.mutedInk)
                     .monospacedDigit()
                 Spacer()
+            }
+            .frame(minHeight: 38)
+            HStack(spacing: 8) {
                 Button {
                     if let id = voice.activeRecording?.id { voice.transcribeTapped(id: id) }
                 } label: {
                     Text(voice.errorMessage == nil ? "Transcribe" : "Retry")
                         .font(Type.inter(14, weight: .semibold, .subheadline))
                         .foregroundStyle(Praxis.canvas)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.glassProminent)
@@ -217,15 +225,15 @@ struct VoiceRecordingMiddle: View {
                     Text("Delete")
                         .font(Type.inter(14, weight: .medium, .subheadline))
                         .foregroundStyle(Praxis.destructive)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
+                        .lineLimit(1)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
                         .contentShape(Capsule())
                 }
                 .buttonStyle(PressScaleStyle())
                 .praxisGlass(in: Capsule())
                 .accessibilityLabel("Delete recording")
             }
-            .frame(minHeight: 38)
             if let error = voice.errorMessage {
                 Text(error)
                     .font(Type.inter(13, .caption))

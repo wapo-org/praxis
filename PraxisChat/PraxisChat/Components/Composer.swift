@@ -206,7 +206,7 @@ struct ComposerView: View {
                 .tint(Praxis.ink)
                 .transition(reduceMotion ? .opacity : .scale(scale: 0.5).combined(with: .opacity))
                 .accessibilityLabel("Send message")
-            } else if voiceShowsUI {
+            } else if voice?.showsStopButton == true {
                 Button { voice?.stopAndTranscribe() } label: {
                     Image(systemName: "stop.fill")
                         .font(.system(size: 12, weight: .bold))
@@ -217,7 +217,9 @@ struct ComposerView: View {
                 .frame(width: 38, height: 38)
                 .tint(Praxis.destructive)
                 .accessibilityLabel("Stop recording")
-            } else {
+                // Review, transcribing and notices own their actions in the
+                // middle; nothing trails them.
+            } else if !voiceShowsUI {
                 Button { voice?.micTapped() } label: {
                     Image(systemName: "mic")
                         .font(.system(size: 15, weight: .medium))

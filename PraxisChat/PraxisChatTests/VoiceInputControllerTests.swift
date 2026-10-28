@@ -325,6 +325,52 @@ final class VoiceInputControllerTests: XCTestCase {
                      "sent transcript deletes its audio")
     }
 
+    // MARK: Origin-chat scoping
+
+    func testRecordingUIOnlyInOriginChat() async {
+        let chat = makeChat()
+        chat.newChat()
+        let chatB = chat.selectedID!
+        let (controller, _, _) = makeController(chat: chat)
+        _ = await startRecording(controller)
+        XCTAssertTrue(controller.showsRecordingUI)
+        XCTAssertTrue(controller.showsStopButton)
+        XCTAssertNil(controller.pillRecording)
+        let chatA = chat.conversations.first { $0.id != chatB }!.id
+        chat.select(chatA)
+        XCTAssertFalse(controller.showsRecordingUI, "other chats keep their field")
+        XCTAssertFalse(controller.showsStopButton)
+        XCTAssertNotNil(controller.pillRecording)
+        chat.select(chatB)
+        XCTAssertTrue(controller.showsRecordingUI)
+        XCTAssertNil(controller.pillRecording)
+    }
+
+    func testMicDuringLiveSessionDoesNothing() async {
+        let (controller, _, engine) = makeController()
+        _ = await startRecording(controller)
+        controller.stopAndReview()
+        controller.micTapped() // the review owns the session
+        try? await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(engine.startedURLs.count, 1)
+        XCTAssertEqual(controller.phase, .review)
+    }
+
+    func testReviewFallsBackToBannerFromOtherChat() async {
+        let chat = makeChat()
+        chat.newChat()
+        let chatB = chat.selectedID!
+        let (controller, _, _) = makeController(chat: chat)
+        let recording = await startRecording(controller)
+        controller.stopAndReview()
+        controller.refreshRecoverables()
+        XCTAssertTrue(controller.recoverable.isEmpty, "the review row owns it in its own chat")
+        let chatA = chat.conversations.first { $0.id != chatB }!.id
+        chat.select(chatA)
+        controller.refreshRecoverables() // ChatScreen does this on selection change
+        XCTAssertEqual(controller.recoverable.map(\.id), [recording.id])
+    }
+
     // MARK: Recovery
 
     func testRecoveryListedOnInit() async {
