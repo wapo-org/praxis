@@ -254,7 +254,8 @@ final class LiveRunActivityReporter: RunActivityReporter {
         for id in current.keys where active.contains(id) {
             liveIDs.insert(id) // fresh instance: adopt live activities.
         }
-        for id in attributes.keys where !active.contains(id) && current[id] == nil {
+        // Snapshot the keys: forget() mutates the table we enumerate.
+        for id in Array(attributes.keys) where !active.contains(id) && current[id] == nil {
             forget(id) // began but neither live nor reporting: stale.
         }
         guard store.activitiesEnabled else { return }
