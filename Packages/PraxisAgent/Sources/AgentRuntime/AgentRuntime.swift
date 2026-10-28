@@ -49,13 +49,18 @@ public struct RunRequest: Sendable {
     /// The run's elicitation scope, fresh per run (nil leaves
     /// elicitations unscoped).
     public var elicitationScope: UUID?
+    /// The model's supported effort wire values, when known. Builders clamp
+    /// the outgoing value to these; nil sends the effort unchanged, empty
+    /// drops the parameter.
+    public var supportedEffortValues: [String]?
 
     public init(conversationID: String, model: String, setup: ConversationSetup, transcript: [Message],
                 mode: AgentMode, effort: Effort, webSearch: Bool = false, policy: ToolPolicy = ToolPolicy(),
                 approvals: any ApprovalHandler, files: (any VirtualFileSystem)? = nil, maxOutputTokens: Int? = nil,
                 disabledServerIDs: Set<String> = [], contextWindow: Int? = nil, compaction: ContextCompaction? = nil,
                 imageReader: ImageReaderAccess = .notConfigured, measurement: ContextMeasurement? = nil,
-                isCancelled: @escaping @Sendable () -> Bool = { false }, elicitationScope: UUID? = nil) {
+                isCancelled: @escaping @Sendable () -> Bool = { false }, elicitationScope: UUID? = nil,
+                supportedEffortValues: [String]? = nil) {
         self.measurement = measurement
         self.conversationID = conversationID
         self.model = model
@@ -74,6 +79,7 @@ public struct RunRequest: Sendable {
         self.imageReader = imageReader
         self.isCancelled = isCancelled
         self.elicitationScope = elicitationScope
+        self.supportedEffortValues = supportedEffortValues
     }
 }
 
@@ -377,6 +383,7 @@ public struct AgentRuntime: Sendable {
             mode: request.mode, effort: request.effort,
             maxTokens: min(request.effort.defaultMaxTokens, request.maxOutputTokens ?? .max),
             modelMaxTokens: request.maxOutputTokens,
+            supportedEffortValues: request.supportedEffortValues,
             serverWebSearch: request.webSearch && isWebSearchAvailable(on: capabilities),
             context: ContextPolicy(contextWindow: request.contextWindow), compaction: request.compaction,
             measurement: request.measurement, isCancelled: request.isCancelled,

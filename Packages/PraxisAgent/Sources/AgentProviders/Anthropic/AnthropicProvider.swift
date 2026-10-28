@@ -68,7 +68,8 @@ public struct AnthropicProvider: ModelProvider {
                                         contextWindow: m["max_input_tokens"]?.intValue,
                                         maxOutputTokens: m["max_tokens"]?.intValue,
                                         supportsImages: HTTPSupport.imageSupport(in: m),
-                                        supportsTools: HTTPSupport.toolSupport(in: m)))
+                                        supportsTools: HTTPSupport.toolSupport(in: m),
+                                        reasoningEfforts: HTTPSupport.reasoningEfforts(in: m, defaultLevels: EffortLevels.anthropicFamilyDefault)))
             }
             guard page["has_more"]?.boolValue == true, let last = page["last_id"]?.stringValue, last != after else { break }
             after = last
