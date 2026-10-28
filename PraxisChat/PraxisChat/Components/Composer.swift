@@ -133,8 +133,7 @@ struct ComposerView: View {
     /// separate branch from the draft field, so the two never share a
     /// text view.
     private var searchField: some View {
-        @Bindable var store = store
-        TextField("Search models", text: $store.modelQuery)
+        TextField("Search models", text: Binding(get: { store.modelQuery }, set: { store.modelQuery = $0 }))
             .font(Type.inter(17))
             .foregroundStyle(Praxis.ink)
             .submitLabel(.search)

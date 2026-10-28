@@ -12,11 +12,15 @@ enum ModelSearch {
     static func filter(_ models: [AIModel], query: String) -> [AIModel] {
         let needle = normalized(query)
         guard !needle.isEmpty else { return models }
-        return models.enumerated().compactMap { index, model in
-            tier(of: model, needle: needle).map { (tier: $0, index: index, model: model) }
+        var scored: [(tier: Int, index: Int, model: AIModel)] = []
+        scored.reserveCapacity(models.count)
+        for (index, model) in models.enumerated() {
+            if let tier = tier(of: model, needle: needle) {
+                scored.append((tier: tier, index: index, model: model))
+            }
         }
-        .sorted { $0.tier == $1.tier ? $0.index < $1.index : $0.tier < $1.tier }
-        .map(\.model)
+        scored.sort { $0.tier == $1.tier ? $0.index < $1.index : $0.tier < $1.tier }
+        return scored.map(\.model)
     }
 
     /// Whether one line of text matches (for pinned ids with no row).

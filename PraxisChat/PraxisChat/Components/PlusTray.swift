@@ -442,16 +442,18 @@ struct PlusTray: View {
                 favoritesHeader
                 ModelList(models: sections.favorites + sections.unavailableIDs.map(Self.unavailableModel),
                           selectedID: store.model.id, emptyMessage: "",
+                          onSelect: selectModel,
                           pinnedIDs: pinned, unavailableIDs: Set(sections.unavailableIDs),
-                          onSelect: selectModel, onTogglePin: togglePin)
+                          onTogglePin: togglePin)
                 .equatable()
             }
             let emptyMessage = modelsEmptyMessage(sections: sections)
             if !sections.rest.isEmpty || !emptyMessage.isEmpty {
                 ModelList(models: sections.rest, selectedID: store.model.id,
                           emptyMessage: emptyMessage,
+                          onSelect: selectModel,
                           pinnedIDs: pinned, unavailableIDs: [],
-                          onSelect: selectModel, onTogglePin: togglePin)
+                          onTogglePin: togglePin)
                 .equatable()
             }
             if store.services != nil {
@@ -689,9 +691,9 @@ private struct ModelList: View, Equatable {
             let firstID = models.first?.id
             ForEach(models) { model in
                 ModelRow(model: model, isSelected: model.id == selectedID, showsDivider: model.id != firstID,
+                         onSelect: { onSelect(model) },
                          isPinned: pinnedIDs.contains(model.id),
                          isUnavailable: unavailableIDs.contains(model.id),
-                         onSelect: { onSelect(model) },
                          onTogglePin: { onTogglePin(model) })
                 .equatable()
             }
