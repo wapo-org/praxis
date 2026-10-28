@@ -259,7 +259,9 @@ final class QAWave2Probe: XCTestCase {
         el(.button, "Add 1").tap()
         XCTAssertTrue(elBegins(.button, "Remove").waitForExistence(timeout: 15),
                       "full-res attach lands in the composer")
-        el(.button, "Close add menu").tap()
+        if el(.button, "Close add menu").waitForExistence(timeout: 2) {
+            el(.button, "Close add menu").tap()
+        }
         save("qa-composer-0-solid-buttons")
     }
 
