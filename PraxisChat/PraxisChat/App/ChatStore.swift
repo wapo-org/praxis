@@ -198,6 +198,26 @@ final class ChatStore {
         }
     }
 
+    /// Deposits attachments picked for one chat. A slow attach (an iCloud
+    /// photo, a picker transfer) can finish after the user switched chats,
+    /// so callers capture the target id before awaiting: when it is still
+    /// selected the composer takes them live (returns true), otherwise
+    /// they join that chat's stashed draft and surface on return (false).
+    /// A chat that no longer exists drops them (false).
+    @discardableResult
+    func deposit(_ attachments: [Attachment], for conversationID: UUID) -> Bool {
+        guard conversations.contains(where: { $0.id == conversationID }) else { return false }
+        guard !attachments.isEmpty else { return selectedID == conversationID }
+        if selectedID == conversationID {
+            self.attachments.append(contentsOf: attachments)
+            return true
+        }
+        var stashed = drafts[conversationID] ?? ChatDraft()
+        stashed.attachments.append(contentsOf: attachments)
+        drafts[conversationID] = stashed
+        return false
+    }
+
     func togglePinned(_ id: UUID) {
         guard let conv = conversations.first(where: { $0.id == id }) else { return }
         conv.isPinned.toggle()

@@ -289,9 +289,14 @@ struct PlusTray: View {
                     .opacity(isSimulator ? 0.45 : 1)
                 addTile("Files", symbol: "folder") { showFiles = true }
                 addTile("Screenshot", symbol: "rectangle.on.rectangle") {
-                    if let first = gallery.items.first {
+                    // Quick-adds the newest screenshot (a shortcut, not a
+                    // flow: the tray stays open either way). The target chat
+                    // is captured up front, like `attachSelected`.
+                    let target = store.selectedID
+                    Task {
+                        guard let target, let shot = await gallery.latestScreenshot() else { return }
                         store.haptics.fire(.selection)
-                        selectedShots.insert(first.id)
+                        withAnimation(Motion.reflow) { _ = store.deposit([shot], for: target) }
                     }
                 }
             }
@@ -342,14 +347,20 @@ struct PlusTray: View {
 
     /// Attaches the checked tiles at full resolution (library photos
     /// download, iCloud included) and closes the tray. The task holds the
-    /// gallery, so closing mid-attach still finishes.
+    /// gallery, so closing mid-attach still finishes — and the target chat
+    /// is captured up front, so a chat switch mid-download deposits into
+    /// that chat's stashed draft instead of the new chat's composer (and
+    /// leaves the new chat's tray alone).
     private func attachSelected() {
         let ids = selectedShots
         selectedShots = []
+        let target = store.selectedID
         Task {
             let chosen = await gallery.fullAttachments(for: ids)
-            withAnimation(Motion.reflow) { store.attachments.append(contentsOf: chosen) }
-            onDismiss(true)
+            guard let target else { return }
+            var landed = false
+            withAnimation(Motion.reflow) { landed = store.deposit(chosen, for: target) }
+            if landed { onDismiss(true) }
         }
     }
 

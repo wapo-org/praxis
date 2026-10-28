@@ -260,15 +260,21 @@ struct ChatScreen: View {
     }
 
     private func loadPhotos(_ items: [PhotosPickerItem]) {
+        // The target chat is captured up front: a transfer finishing after
+        // a chat switch deposits into that chat's stashed draft instead of
+        // the new chat's composer (and leaves the new chat's tray alone).
+        let target = store.selectedID
         Task {
+            var fresh: [Attachment] = []
             for item in items {
                 if let data = try? await item.loadTransferable(type: Data.self) {
-                    withAnimation(Motion.reflow) {
-                        store.attachments.append(Attachment(kind: .photo, name: "Photo", imageData: data))
-                    }
+                    fresh.append(Attachment(kind: .photo, name: "Photo", imageData: data))
                 }
             }
-            if !items.isEmpty { setTray(false) }
+            guard let target, !items.isEmpty else { return }
+            var landed = false
+            withAnimation(Motion.reflow) { landed = store.deposit(fresh, for: target) }
+            if landed { setTray(false) }
         }
     }
 

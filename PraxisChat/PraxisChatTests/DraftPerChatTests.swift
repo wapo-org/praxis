@@ -77,6 +77,32 @@ final class DraftPerChatTests: XCTestCase {
         XCTAssertTrue(store.attachments.isEmpty)
     }
 
+    func testDepositLandsLiveWhenStillSelected() {
+        let store = makeStore()
+        let a = store.conversations[0].id
+        XCTAssertTrue(store.deposit([photo()], for: a))
+        XCTAssertEqual(store.attachments.count, 1)
+    }
+
+    func testDepositStashesWhenChatSwitchedMidAttach() {
+        let store = makeStore()
+        let a = store.conversations[0].id, b = store.conversations[1].id
+        // A slow attach captured A, then the user switched to B.
+        store.select(b)
+        XCTAssertFalse(store.deposit([photo()], for: a))
+        XCTAssertTrue(store.attachments.isEmpty, "B's composer must stay clean")
+        store.select(a)
+        XCTAssertEqual(store.attachments.count, 1, "returning to A surfaces the late attach")
+    }
+
+    func testDepositToDeletedChatDrops() {
+        let store = makeStore()
+        let a = store.conversations[0].id
+        store.deleteConversations([a])
+        XCTAssertFalse(store.deposit([photo()], for: a))
+        XCTAssertTrue(store.attachments.isEmpty)
+    }
+
     func testDeleteConversationDropsItsDraft() {
         let store = makeStore()
         let a = store.conversations[0].id, b = store.conversations[1].id
