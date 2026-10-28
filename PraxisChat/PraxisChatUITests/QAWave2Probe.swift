@@ -364,6 +364,17 @@ final class QAWave2Probe: XCTestCase {
         let banner = elContains(.button, "Review")
         XCTAssertTrue(banner.waitForExistence(timeout: 10), "untranscribed audio banners on next launch")
         save("qa-voice-4-recovery-banner")
+
+        // Review fix R6: the same pending recording must also appear in
+        // Settings → Voice input → Recordings (used to always say "No
+        // recordings").
+        openVoiceSettings()
+        el(.button, "Recordings").tap()
+        XCTAssertTrue(app.navigationBars["Recordings"].waitForExistence(timeout: 10))
+        XCTAssertFalse(elContains(.staticText, "No recordings").exists,
+                       "the pending recording is listed, not an empty state")
+        XCTAssertTrue(elContains(.button, "Transcribe recording from").waitForExistence(timeout: 8))
+        save("qa-voice-5-recordings-list")
     }
 
     // MARK: Item 6 — per-tool MCP toggles
