@@ -517,6 +517,43 @@ final class QAWave2Probe: XCTestCase {
         XCTAssertTrue(el(.button, "Record voice message").waitForExistence(timeout: 15))
     }
 
+    /// Diagnostic: after backgrounding a long run, dump every
+    /// SpringBoard element matching the probe title (type + frame),
+    /// so we know whether the poll sees the island, the cover view,
+    /// or a delivered notification. Prints to the runner log.
+    func testQADumpActivityTree() {
+        launch(["-PraxisEngine", "scripted", "-PraxisLongRun", "YES"])
+        let probe = "treedump-\(UUID().uuidString.prefix(6))"
+        el(.button, "New chat").tap()
+        XCTAssertTrue(el(.staticText, "How can I help?").waitForExistence(timeout: 10))
+        field("Message").tap()
+        field("Message").typeText(probe)
+        el(.button, "Send message").tap()
+        XCTAssertTrue(el(.button, "Stop generating").waitForExistence(timeout: 15))
+        XCUIDevice.shared.press(.home)
+        Thread.sleep(forTimeInterval: 5)
+        let query = springboard.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", probe))
+        print("QADUMP count=\(query.count)")
+        for i in 0..<min(query.count, 12) {
+            let e = query.element(boundBy: i)
+            print("QADUMP [\(i)] \(e.elementType.rawValue) frame=\(e.frame) label=\(e.label.prefix(80))")
+        }
+        Thread.sleep(forTimeInterval: 5)
+        let query2 = springboard.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", probe))
+        print("QADUMP t+10s count=\(query2.count)")
+        app.activate()
+        if el(.button, "Stop generating").waitForExistence(timeout: 10) {
+            el(.button, "Stop generating").tap()
+            print("QADUMP run was in flight at return")
+        } else if el(.staticText, "Paused in background").waitForExistence(timeout: 5) {
+            print("QADUMP run had paused via real expiry")
+        } else {
+            print("QADUMP run state at return: neither in flight nor paused")
+        }
+    }
+
     // MARK: Cross-feature
 
     /// Recording wins over model search: opening the Model page mid-recording
