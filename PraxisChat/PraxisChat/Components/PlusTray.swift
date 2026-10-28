@@ -35,7 +35,7 @@ struct PlusTray: View {
     @State private var pageVisible = true
     @State private var pageRise: CGFloat = 0
     @State private var position = ScrollPosition(edge: .top)
-    @State private var screenshots: [Attachment] = MockData.sampleScreenshots()
+    @State private var gallery = PhotoGallery()
     @State private var selectedShots: Set<UUID> = []
     @State private var appeared = false
     @State private var pastThreshold = false
@@ -113,7 +113,10 @@ struct PlusTray: View {
         }
         .onAppear { appeared = true }
         .onDisappear { pull = 0 }
-        .task { await loadScreenshots() }
+        .task { await gallery.loadIfNeeded() }
+        // A chat switch behind the open tray drops the checked tiles:
+        // they belong to the chat they were picked in.
+        .onChange(of: store.selectedID) { selectedShots = [] }
     }
 
     /// Two-phase page change. A transition-based crossfade kept both pages
@@ -278,7 +281,7 @@ struct PlusTray: View {
                     .opacity(isSimulator ? 0.45 : 1)
                 addTile("Files", symbol: "folder") { showFiles = true }
                 addTile("Screenshot", symbol: "rectangle.on.rectangle") {
-                    if let first = screenshots.first {
+                    if let first = gallery.items.first {
                         store.haptics.fire(.selection)
                         selectedShots.insert(first.id)
                     }
@@ -289,55 +292,57 @@ struct PlusTray: View {
                     // First gallery item is the live camera preview;
                     // tapping it opens the camera to attach a photo.
                     LiveCameraTile { showCamera = true }
-                    ForEach(screenshots) { shot in
-                        screenshotThumb(shot)
+                    ForEach(gallery.items) { item in
+                        let selected = selectedShots.contains(item.id)
+                        GalleryThumb(item: item, selected: selected) {
+                            store.haptics.fire(.selection)
+                            if selected { selectedShots.remove(item.id) } else { selectedShots.insert(item.id) }
+                        }
+                    }
+                    // Limited access: offer more; denied: the strip's only
+                    // other tile opens Settings.
+                    if gallery.access == .library(limited: true) {
+                        ManagePhotosTile { gallery.presentLimitedPicker() }
+                    }
+                    if gallery.access == .denied {
+                        AllowPhotosTile { gallery.openSettings() }
                     }
                 }
                 .padding(.horizontal, 4)
             }
             .frame(height: 64)
 
-            if !selectedShots.isEmpty {
+            if !selectedShots.isEmpty || gallery.adding != nil {
                 Button {
-                    // Fresh identities: adding the same screenshot twice
-                    // must not put duplicate IDs in the composer strip.
-                    let chosen = screenshots.filter { selectedShots.contains($0.id) }
-                        .map { Attachment(kind: $0.kind, name: $0.name, imageData: $0.imageData) }
-                    withAnimation(Motion.reflow) { store.attachments.append(contentsOf: chosen) }
-                    selectedShots = []
-                    onDismiss(true)
+                    attachSelected()
                 } label: {
-                    PraxisButtonLabel("Add \(selectedShots.count)")
-                        .contentTransition(.numericText())
+                    if let adding = gallery.adding {
+                        PraxisButtonLabel("Adding \(min(adding.done + 1, adding.total))/\(adding.total)…",
+                                          working: true)
+                    } else {
+                        PraxisButtonLabel("Add \(selectedShots.count)")
+                            .contentTransition(.numericText())
+                    }
                 }
                 .buttonStyle(.praxisPrimary(.compact))
+                .disabled(gallery.adding != nil)
                 .transition(reduceMotion ? .opacity : .praxisPop)
             }
         }
         .animation(reduceMotion ? Motion.reduced : Motion.pop, value: selectedShots)
     }
 
-    private func screenshotThumb(_ shot: Attachment) -> some View {
-        let selected = selectedShots.contains(shot.id)
-        return Button {
-            store.haptics.fire(.selection)
-            if selected { selectedShots.remove(shot.id) } else { selectedShots.insert(shot.id) }
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                AttachmentThumbnail(attachment: shot, size: 56)
-                if selected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Praxis.ink, Praxis.canvas)
-                        .padding(3)
-                        .transition(reduceMotion ? .opacity : .scale(scale: 0.4).combined(with: .opacity))
-                }
-            }
-            .scaleEffect(selected && !reduceMotion ? 0.92 : 1)
+    /// Attaches the checked tiles at full resolution (library photos
+    /// download, iCloud included) and closes the tray. The task holds the
+    /// gallery, so closing mid-attach still finishes.
+    private func attachSelected() {
+        let ids = selectedShots
+        selectedShots = []
+        Task {
+            let chosen = await gallery.fullAttachments(for: ids)
+            withAnimation(Motion.reflow) { store.attachments.append(contentsOf: chosen) }
+            onDismiss(true)
         }
-        .buttonStyle(PressScaleStyle(scale: 0.94))
-        .accessibilityLabel(shot.name)
-        .accessibilityValue(selected ? "Selected" : "Not selected")
     }
 
     private func addTile(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
@@ -587,25 +592,6 @@ struct PlusTray: View {
         #endif
     }
 
-    /// Photos fetch runs off the main thread; the cached sample tiles show
-    /// immediately, so the strip never pops in mid-animation.
-    private func loadScreenshots() async {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        guard status == .authorized || status == .limited else { return }
-        let names: [String] = await Task.detached(priority: .userInitiated) {
-            let options = PHFetchOptions()
-            options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-            options.fetchLimit = 12
-            let collection = PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: .smartAlbumScreenshots, options: nil)
-            guard let album = collection.firstObject else { return [] }
-            let assets = PHAsset.fetchAssets(in: album, options: options)
-            var names: [String] = []
-            assets.enumerateObjects { asset, _, _ in names.append(String(asset.localIdentifier.prefix(8))) }
-            return names
-        }.value
-        guard !names.isEmpty else { return }
-        screenshots = names.map { Attachment(kind: .screenshot, name: $0) }
-    }
 }
 
 /// The model page's list. Lazy: a provider can list hundreds of models,
