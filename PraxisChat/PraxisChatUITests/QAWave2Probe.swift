@@ -433,37 +433,58 @@ final class QAWave2Probe: XCTestCase {
 
     // MARK: Item 11 — background + Live Activity
 
-    /// Holds a long run backgrounded while the operator shoots the island
-    /// and cover sheet with simctl from the Mac side. Sleeps are the pose:
-    /// island visible ~10-30s in, cover sheet open ~40-70s in.
+    private var springboard: XCUIApplication {
+        XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    }
+
+    /// The compact island's trailing text carries the run summary;
+    /// the cover sheet shows the chat title. Either proves the
+    /// activity is live (same predicate as LiveActivityUITests).
+    private func activityVisible(title: String, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let hit = springboard.descendants(matching: .any)
+                .matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
+            if hit.exists { return true }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return false
+    }
+
+    /// Holds a long run backgrounded while the operator shoots the
+    /// island and cover sheet with simctl from the Mac side: pose 1
+    /// (island) right after the poll below succeeds, pose 2 (cover
+    /// sheet) for the 20s after the swipe. Swipes go through
+    /// SpringBoard coordinates — app coordinates don't dispatch
+    /// while the app is backgrounded.
     func testQABackgroundIslandAndCover() {
         launch(["-PraxisEngine", "scripted", "-PraxisLongRun", "YES"])
+        let probe = "island-\(UUID().uuidString.prefix(6))"
         el(.button, "New chat").tap()
+        XCTAssertTrue(el(.staticText, "How can I help?").waitForExistence(timeout: 10))
         field("Message").tap()
-        field("Message").typeText("island probe run")
+        field("Message").typeText(probe)
         el(.button, "Send message").tap()
-        XCTAssertTrue(el(.button, "Stop generating").waitForExistence(timeout: 15)
-                      || el(.staticText, "Currently working…").waitForExistence(timeout: 15))
+        XCTAssertTrue(el(.button, "Stop generating").waitForExistence(timeout: 15),
+                      "the long run should start")
         XCUIDevice.shared.press(.home)
-        Thread.sleep(forTimeInterval: 30) // pose 1: island on the home screen
-        // Pose 2: cover sheet (swipe down from the top edge).
-        let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.02))
-        let mid = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+        XCTAssertTrue(activityVisible(title: probe, timeout: 20),
+                      "the run's activity should appear in the island once backgrounded")
+        Thread.sleep(forTimeInterval: 10) // pose 1: island on the home screen
+        let top = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.02))
+        let mid = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
         top.press(forDuration: 0.1, thenDragTo: mid, withVelocity: .slow, thenHoldForDuration: 0.3)
-        Thread.sleep(forTimeInterval: 30) // pose 2: cover sheet with the activity
-        let up = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
-        let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05))
+        XCTAssertTrue(activityVisible(title: probe, timeout: 10),
+                      "the cover sheet should show the chat title")
+        Thread.sleep(forTimeInterval: 15) // pose 2: cover sheet with the activity
+        let up = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
+        let edge = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05))
         up.press(forDuration: 0.1, thenDragTo: edge, withVelocity: .fast, thenHoldForDuration: 0.1)
         Thread.sleep(forTimeInterval: 1.0)
         app.activate()
-        // A ~60s excursion exceeds sim background time, so the run may
-        // have paused via real expiry instead of surviving: both are
-        // correct; only a silent death is not.
-        let survived = el(.button, "Stop generating").waitForExistence(timeout: 5)
-            || el(.staticText, "Currently working…").waitForExistence(timeout: 2)
-        let pausedCleanly = el(.staticText, "Paused in background").waitForExistence(timeout: 5)
-        XCTAssertTrue(survived || pausedCleanly, "the run survives the background excursion")
-        if el(.button, "Stop generating").exists { el(.button, "Stop generating").tap() }
+        if el(.button, "Stop generating").waitForExistence(timeout: 10) {
+            el(.button, "Stop generating").tap()
+        }
     }
 
     func testQABackgroundPausedContinue() {
