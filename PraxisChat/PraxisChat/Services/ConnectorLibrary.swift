@@ -539,6 +539,12 @@ final class ConnectorLibrary {
                               annotations: MCPToolAnnotations(destructiveHint: true)),
         ]
         seenTools[seeded.id] = Set(tools[seeded.id, default: []].map(\.name))
+        // `-PraxisMockConnectorNewTool YES`: one more tool the user
+        // hasn't seen, for the "New" badge.
+        if UserDefaults.standard.bool(forKey: "PraxisMockConnectorNewTool") {
+            tools[seeded.id]?.append(MCPToolDefinition(name: "summarize_thread", title: "Summarize thread",
+                                                       description: "Summarizes the current support thread."))
+        }
         persist()
     }
 
