@@ -313,7 +313,7 @@ final class VoiceInputControllerTests: XCTestCase {
     // MARK: Sent-message rule
 
     func testNoteDidSendDeletesOnlyMatchingTranscripts() async {
-        let (controller, _, _) = makeController()
+        let (controller, chat, _) = makeController()
         let recording = await startRecording(controller)
         controller.stopAndTranscribe()
         await waitUntil { controller.phase == .idle }
@@ -323,6 +323,9 @@ final class VoiceInputControllerTests: XCTestCase {
         controller.noteDidSend(text: "please hello world")
         XCTAssertNil(RecordingStore(directory: directory).load(id: recording.id),
                      "sent transcript deletes its audio")
+        // Keep the chat alive to the end: the rule reads the sending chat
+        // from it (the controller holds it weakly).
+        _ = chat
     }
 
     // MARK: Origin-chat scoping
