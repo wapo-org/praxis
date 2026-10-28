@@ -58,8 +58,9 @@ struct AIModel: Identifiable, Equatable {
     /// Reasoning levels the tray offers for this model. Nil = unknown (all
     /// four); empty = no reasoning (the control hides). Live models resolve
     /// this from the provider (`ChatStore.supportedEfforts`); the demo
-    /// catalogue hard-codes interesting cases.
-    let effortLevels: [Effort]? = nil
+    /// catalogue hard-codes interesting cases. (`var`: a `let` with a
+    /// default is left out of the memberwise initializer.)
+    var effortLevels: [Effort]? = nil
 }
 
 struct Connector: Identifiable, Equatable {
