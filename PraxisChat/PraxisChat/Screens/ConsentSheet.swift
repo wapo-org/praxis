@@ -61,6 +61,7 @@ struct ConsentSheet: View {
                 }
                 .padding(20)
             }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .background(Praxis.canvas)
             .navigationTitle("AI data sharing")
             .navigationBarTitleDisplayMode(.inline)

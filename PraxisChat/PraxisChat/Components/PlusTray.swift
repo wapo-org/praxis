@@ -70,6 +70,7 @@ struct PlusTray: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollPosition($position)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .accessibilityIdentifier("plusTray")
         // Hug the content: short pages (Model) get a short card, and page
         // switches morph the card height instead of jumping.

@@ -23,6 +23,7 @@ struct ConnectorsScreen: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .background(Praxis.canvas)
         .navigationTitle("Connectors")
         .navigationBarTitleDisplayMode(.inline)
@@ -227,6 +228,7 @@ struct ConnectorDetailScreen: View {
                     .padding(.vertical, 12)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .scrollEdgeEffectStyle(.soft, for: .top)
                 .navigationTitle(server.name)
             } else {
                 Color.clear
