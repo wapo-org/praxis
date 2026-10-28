@@ -279,16 +279,18 @@ enum HTTPSupport {
 
     /// Reasoning-effort levels from a model-list entry, when it says.
     /// Understands OpenRouter (`reasoning.supported_efforts`, descending;
-    /// an explicit null there means every gateway value is accepted),
+    /// an explicit null there means every gateway value is accepted, while
+    /// a `reasoning` object without the key means no effort selection),
     /// Anthropic (`capabilities.effort` per-level `supported` flags) and LM
     /// Studio (`capabilities.reasoning.allowed_options`). Empty when the
     /// entry positively rules reasoning out (Anthropic
     /// `capabilities.effort.supported: false`; OpenRouter
-    /// `supported_parameters` naming no reasoning key). An entry that says
-    /// "reasoning supported" but names no levels gets `defaultLevels`, the
-    /// API family's documented default. Nil when the entry says nothing at
-    /// all (OpenAI-direct, LM Studio / Ollama over the OpenAI-compat list,
-    /// OpenRouter routers whose parameter list is empty).
+    /// `supported_parameters` naming no reasoning key, or a levelless
+    /// `reasoning` object). An entry that says "reasoning supported" but
+    /// names no levels gets `defaultLevels`, the API family's documented
+    /// default. Nil when the entry says nothing at all (OpenAI-direct, LM
+    /// Studio / Ollama over the OpenAI-compat list, OpenRouter routers
+    /// whose parameter list is empty).
     static func reasoningEfforts(in model: JSONValue, defaultLevels: [String]) -> [String]? {
         // Explicit level lists first.
         if let reasoning = model["reasoning"], !reasoning.isNull {
@@ -298,6 +300,11 @@ enum HTTPSupport {
             if reasoning["supported_efforts"]?.isNull == true {
                 return EffortLevels.openRouterGatewayAll
             }
+            // A `reasoning` object without `supported_efforts`: the model
+            // does not expose effort selection (OpenRouter docs). A bare
+            // `reasoning` flag is not an object and falls through to the
+            // supported/unsupported checks below.
+            if reasoning.objectValue != nil { return [] }
         }
         if let effort = model["capabilities"]?["effort"], !effort.isNull {
             if effort["supported"]?.boolValue == false { return [] }
@@ -332,11 +339,9 @@ enum HTTPSupport {
             guard !params.isEmpty else { return nil }
             return params.contains { ["reasoning", "include_reasoning", "reasoning_effort"].contains($0.stringValue?.lowercased() ?? "") }
         }
-        // A bare `reasoning` flag (no supported_efforts object handled above).
+        // A bare `reasoning` flag (a `reasoning` object is decided above:
+        // with levels it returns them, without it rules effort out).
         if let flag = model["reasoning"]?.boolValue { return flag }
-        // A `reasoning` object without level info still marks a reasoning
-        // model (OpenRouter omits it for non-reasoning models).
-        if model["reasoning"]?.objectValue != nil { return true }
         if let caps = model["capabilities"] {
             if let list = caps.arrayValue {
                 return list.contains { ["thinking", "think", "reasoning", "reason"].contains($0.stringValue?.lowercased() ?? "") }
