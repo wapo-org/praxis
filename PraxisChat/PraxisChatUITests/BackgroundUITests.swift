@@ -86,6 +86,7 @@ final class BackgroundUITests: XCTestCase {
 
         // Settle: stop the (minutes-long) scripted run, don't wait it out.
         if el(.button, "Stop generating").exists { el(.button, "Stop generating").tap() }
-        XCTAssertTrue(el(.button, "Send message").waitForExistence(timeout: 15))
+        XCTAssertTrue(el(.button, "Record voice message").waitForExistence(timeout: 15),
+                      "stopping the continued run should settle the composer back to mic")
     }
 }
