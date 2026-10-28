@@ -158,8 +158,9 @@ final class BlurWave2Shots: XCTestCase {
         openSettings()
         el(.button, "Add provider").tap()
         Thread.sleep(forTimeInterval: 0.8)
-        let preset = app.menuItems.element(boundBy: 0)
-        if preset.waitForExistence(timeout: 5) { preset.tap() }
+        let preset = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Anthropic")).firstMatch
+        XCTAssertTrue(preset.waitForExistence(timeout: 5))
+        preset.tap()
         XCTAssertTrue(app.navigationBars["Add provider"].waitForExistence(timeout: 10))
         Thread.sleep(forTimeInterval: 0.8)
         save("settings-7-editor-top")

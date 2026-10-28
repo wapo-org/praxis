@@ -28,8 +28,8 @@ final class ProgressiveBlurTests: XCTestCase {
     }
 
     func testMaskStopsAreAValidFeather() {
-        for reach in [1.0, 0.7, 0.4, 0.25] {
-            let stops = ProgressiveBlurScrim.maskStops(reach: reach)
+        for (reach, innerFull) in [(1.0, 0.75), (0.7, 0.4), (0.4, 0.2), (0.25, 0.0)] {
+            let stops = ProgressiveBlurScrim.maskStops(reach: reach, innerFull: innerFull)
             XCTAssertEqual(stops.first?.location, 0)
             XCTAssertEqual(stops.first?.strength, 1)
             XCTAssertEqual(stops.last?.location ?? 0, reach, accuracy: 0.001)
@@ -38,6 +38,20 @@ final class ProgressiveBlurTests: XCTestCase {
                 XCTAssertGreaterThanOrEqual(stops[i].location, stops[i - 1].location)
                 XCTAssertLessThanOrEqual(stops[i].strength, stops[i - 1].strength)
             }
+        }
+    }
+
+    func testEachLayerRampsOverExactlyItsOwnBand() {
+        // Layer i is full where layer i+1 starts ramping: the total blur
+        // climbs without a step at any band boundary.
+        let reaches = ProgressiveBlurScrim.bandReach(bands: 4, hold: 0.36)
+        for i in 0..<(reaches.count - 1) {
+            let stops = ProgressiveBlurScrim.maskStops(reach: reaches[i], innerFull: reaches[i + 1])
+            XCTAssertEqual(stops.count, 3)
+            XCTAssertEqual(stops[1].location, reaches[i + 1], accuracy: 0.001)
+            XCTAssertEqual(stops[1].strength, 1)
+            XCTAssertEqual(stops[2].location, reaches[i], accuracy: 0.001)
+            XCTAssertEqual(stops[2].strength, 0)
         }
     }
 

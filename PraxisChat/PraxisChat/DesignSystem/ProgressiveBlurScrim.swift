@@ -72,13 +72,18 @@ struct ProgressiveBlurScrim: View {
     }
 
     /// Alpha-mask stops for one blur layer: full from the edge (location
-    /// 0) to `reach - feather`, feathering to clear at `reach` so band
-    /// steps never read as lines. Locations ascend in 0...1.
-    static func maskStops(reach: CGFloat, feather: CGFloat = 0.10) -> [(location: CGFloat, strength: CGFloat)] {
+    /// 0) to `innerFull`, then ramping to clear at `reach`. Each layer
+    /// ramps over exactly its own band — full where the next deeper layer
+    /// starts, clear where it ends — so the total blur climbs smoothly
+    /// from zero at the tail to every layer at the edge, with no step
+    /// (a short feather instead landed the first full-strength pass all
+    /// at once, and rows hit it like a wall). Locations ascend in 0...1.
+    static func maskStops(reach: CGFloat, innerFull: CGFloat) -> [(location: CGFloat, strength: CGFloat)] {
         let reach = min(max(reach, 0.01), 1)
-        let knee = max(reach - feather, 0)
-        if knee <= 0.001 { return [(0, 1), (reach, 0)] }
-        return [(0, 1), (knee, 1), (reach, 0)]
+        let innerFull = min(max(innerFull, 0), reach)
+        if innerFull <= 0.001 { return [(0, 1), (reach, 0)] }
+        if reach - innerFull <= 0.001 { return [(0, 1), (reach, 0)] }
+        return [(0, 1), (innerFull, 1), (reach, 0)]
     }
 
     /// Strength from the edge (location 0) inward: flat over the held
@@ -161,13 +166,18 @@ private final class VariableBlurContainer: UIView {
     private func rebuild() {
         layers.forEach { $0.view.removeFromSuperview() }
         layers = []
-        for reach in ProgressiveBlurScrim.bandReach(bands: bands, hold: hold) {
+        let reaches = ProgressiveBlurScrim.bandReach(bands: bands, hold: hold)
+        // The innermost layer ramps down to the hold band's inner edge,
+        // so the held band gets every layer at full strength.
+        let holdClamped = min(max(hold, 0), 0.8)
+        for (i, reach) in reaches.enumerated() {
+            let innerFull = i + 1 < reaches.count ? reaches[i + 1] : holdClamped
             let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
             view.isUserInteractionEnabled = false
             view.frame = bounds
             view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             let mask = CAGradientLayer()
-            let stops = ProgressiveBlurScrim.maskStops(reach: reach)
+            let stops = ProgressiveBlurScrim.maskStops(reach: reach, innerFull: innerFull)
             mask.colors = stops.map { UIColor.white.withAlphaComponent($0.strength).cgColor }
             mask.locations = stops.map { NSNumber(value: Double($0.location)) }
             switch edge {
