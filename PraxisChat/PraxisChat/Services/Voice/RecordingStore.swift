@@ -77,6 +77,8 @@ struct RecordingStore: Sendable {
     func delete(id: UUID) {
         try? FileManager.default.removeItem(at: directory.appendingPathComponent(id.uuidString + ".m4a"))
         try? FileManager.default.removeItem(at: directory.appendingPathComponent(id.uuidString + ".json"))
+        // Plus any cached part transcripts (voice-groq review fix F5).
+        PartTranscriptCache.clearSharedCache(fileName: id.uuidString + ".m4a")
     }
 
     func audioExists(for recording: VoiceRecording) -> Bool {

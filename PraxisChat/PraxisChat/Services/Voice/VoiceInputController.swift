@@ -166,11 +166,53 @@ final class VoiceInputController: VoiceSendObserver {
         #endif
         let settings = services.voice
         let consent = services.consent
+        // Queue events (review fix F4): the relay exists before the
+        // controller does; the handler is set right after (events only flow
+        // during a transcription, strictly later).
+        let relay = TranscriptionEventRelay()
         let live = LiveGroqTranscriber {
             settings.makeTranscriber(consentGranted: consent.isGranted(GroqEndpoints.host))
+        } onEvent: { relay.send($0) }
+        let controller = VoiceInputController(store: .production(), transcriber: live,
+                                              settings: settings, chatStore: chatStore)
+        let weakController = WeakVoiceController(controller: controller)
+        relay.setHandler { event in
+            Task { @MainActor in weakController.controller?.handleTranscriptionEvent(event) }
         }
-        return VoiceInputController(store: .production(), transcriber: live,
-                                    settings: settings, chatStore: chatStore)
+        return controller
+    }
+
+    // MARK: Transcription queue events (review fix F4)
+
+    /// Sendable weak handle so the transcription-event relay (off the main
+    /// actor) can reach the controller. Mirrors ChatStore's WeakStore.
+    private struct WeakVoiceController: Sendable {
+        weak var controller: VoiceInputController?
+    }
+
+    /// Queue lifecycle notice while transcribing ("Waiting for network…",
+    /// "Retrying in Ns…"). Cleared by progress and on finish.
+    private(set) var transcriptionNotice: String?
+
+    /// Transcription queue events: the offline wait and backoff would
+    /// otherwise look like a stuck "Transcribing…". On
+    /// `.waitingForNetwork` the sidecar is restowed `.queued` (persisted:
+    /// a relaunch lists it with Retry) while the in-flight call keeps
+    /// waiting and auto-retries when the network returns.
+    func handleTranscriptionEvent(_ event: TranscriptionEvent) {
+        guard transcribingID != nil else { return }
+        switch event {
+        case .waitingForNetwork:
+            if let id = transcribingID, var current = store.load(id: id) {
+                current.state = .queued
+                store.save(current)
+                if activeRecording?.id == id { activeRecording = current }
+                refreshRecoverables()
+            }
+            transcriptionNotice = "Waiting for network…"
+        case .retrying(_, let after):
+            transcriptionNotice = "Retrying in \(max(1, Int(after.rounded())))s…"
+        }
     }
 
     // MARK: Machinery (not observed)
@@ -528,6 +570,7 @@ final class VoiceInputController: VoiceSendObserver {
                     [weak self] fraction, part, parts in
                     Task { @MainActor [weak self] in
                         self?.transcriptionProgress = (fraction, part, parts)
+                        self?.transcriptionNotice = nil
                     }
                 }
             } catch is CancellationError {
@@ -547,6 +590,7 @@ final class VoiceInputController: VoiceSendObserver {
         transcriptionTask = nil
         transcribingID = nil
         transcriptionProgress = nil
+        transcriptionNotice = nil
         let origin = transcribeOrigin
         transcribeOrigin = nil
 

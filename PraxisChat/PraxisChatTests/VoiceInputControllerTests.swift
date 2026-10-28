@@ -1,3 +1,4 @@
+import Synchronization
 import XCTest
 @testable import PraxisChat
 
@@ -57,6 +58,39 @@ struct StubTranscriber: Transcriber, Sendable {
         case .success(let transcript): return transcript
         case .failure(let error): throw error
         }
+    }
+}
+
+/// A transcriber that waits for `release()` (review fix F4 test).
+final class GatedTranscriber: Transcriber, Sendable {
+    private let state = Mutex<(released: Bool, waiter: CheckedContinuation<Void, Never>?)>((false, nil))
+    let transcript = VoiceTranscript(text: "hello", language: nil, segments: [])
+
+    func transcribe(file: URL, fileName: String,
+                    progress: @Sendable @escaping (Double, Int, Int) -> Void) async throws -> VoiceTranscript {
+        let proceed = state.withLock { $0.released }
+        if !proceed {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let resumeNow = state.withLock { s -> Bool in
+                    if s.released { return true }
+                    s.waiter = continuation
+                    return false
+                }
+                if resumeNow { continuation.resume() }
+            }
+        }
+        progress(1.0, 1, 1)
+        return transcript
+    }
+
+    func release() {
+        let waiter = state.withLock { s -> CheckedContinuation<Void, Never>? in
+            s.released = true
+            let pending = s.waiter
+            s.waiter = nil
+            return pending
+        }
+        waiter?.resume()
     }
 }
 
@@ -409,5 +443,41 @@ final class VoiceInputControllerTests: XCTestCase {
             arguments: ["app", "-PraxisFakeElapsed", "15"]), 15)
         XCTAssertEqual(VoiceInputController.fakeElapsed(
             arguments: ["app", "-PraxisFakeElapsed", "junk"]), 0)
+    }
+
+    // MARK: Queue events (review fix F4)
+
+    func testWaitingForNetworkRestowsQueuedAndShowsNotice() async {
+        let gate = GatedTranscriber()
+        let (controller, chat, _) = makeController(transcriber: gate)
+        let recording = await startRecording(controller)
+        controller.stopAndTranscribe()
+        await waitUntil { controller.transcribingID != nil }
+        controller.handleTranscriptionEvent(.waitingForNetwork)
+        XCTAssertEqual(controller.transcriptionNotice, "Waiting for network…")
+        XCTAssertEqual(RecordingStore(directory: directory).load(id: recording.id)?.state, .queued)
+        gate.release()
+        await waitUntil { controller.phase == .idle }
+        XCTAssertEqual(chat.draft, "hello")
+        XCTAssertNil(controller.transcriptionNotice)
+    }
+
+    func testRetryingEventShowsNoticeThenClears() async {
+        let gate = GatedTranscriber()
+        let (controller, _, _) = makeController(transcriber: gate)
+        _ = await startRecording(controller)
+        controller.stopAndTranscribe()
+        await waitUntil { controller.transcribingID != nil }
+        controller.handleTranscriptionEvent(.retrying(attempt: 2, after: 4))
+        XCTAssertEqual(controller.transcriptionNotice, "Retrying in 4s…")
+        gate.release()
+        await waitUntil { controller.phase == .idle }
+        XCTAssertNil(controller.transcriptionNotice)
+    }
+
+    func testQueueEventWithNoTranscriptionIsIgnored() async {
+        let (controller, _, _) = makeController()
+        controller.handleTranscriptionEvent(.waitingForNetwork)
+        XCTAssertNil(controller.transcriptionNotice)
     }
 }

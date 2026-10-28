@@ -146,7 +146,11 @@ struct VoiceRecordingMiddle: View {
             ProgressView(value: voice.transcriptionProgress?.fraction ?? 0)
                 .tint(Praxis.ink)
                 .frame(maxWidth: .infinity)
-            if let progress = voice.transcriptionProgress, progress.parts > 1 {
+            if let notice = voice.transcriptionNotice {
+                Text(notice)
+                    .font(Type.inter(13, .caption))
+                    .foregroundStyle(Praxis.mutedInk)
+            } else if let progress = voice.transcriptionProgress, progress.parts > 1 {
                 Text("Transcribing \(progress.part)/\(progress.parts)")
                     .font(Type.inter(13, .caption))
                     .foregroundStyle(Praxis.mutedInk)
@@ -173,6 +177,9 @@ struct VoiceRecordingMiddle: View {
     }
 
     private var transcribingLabel: String {
+        if let notice = voice.transcriptionNotice {
+            return notice
+        }
         if let progress = voice.transcriptionProgress, progress.parts > 1 {
             return "Transcribing part \(progress.part) of \(progress.parts)"
         }
@@ -449,6 +456,13 @@ private struct VoiceRecoveryRow: View {
                 }
                 Spacer()
                 if isTranscribing {
+                    // The controller runs one transcription at a time, so a
+                    // notice (if any) belongs to this row's recording.
+                    if let notice = voice.transcriptionNotice {
+                        Text(notice)
+                            .font(Type.inter(12, .caption2))
+                            .foregroundStyle(Praxis.mutedInk)
+                    }
                     if let progress = voice.transcriptionProgress, progress.parts > 1 {
                         Text("\(progress.part)/\(progress.parts)")
                             .font(Type.mono(12, .caption2))

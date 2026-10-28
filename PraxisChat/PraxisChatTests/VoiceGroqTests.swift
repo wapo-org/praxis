@@ -361,6 +361,27 @@ final class VoiceGroqTests: XCTestCase {
         XCTAssertTrue(cache.load(matching: plan, fileName: "r.m4a").allSatisfy { $0 == nil })
     }
 
+    /// Review fix F5: cached transcripts carry Data Protection like the
+    /// audio they came from, and clear removes them.
+    func testPartCacheUsesDataProtection() {
+        let dir = directory.appendingPathComponent("parts")
+        let cache = PartTranscriptCache(directory: dir)
+        cache.store(PartTranscript(text: "x", language: nil, segments: []),
+                    plan: samplePlan(), fileName: "r.m4a", index: 0)
+        let partURL = dir.appendingPathComponent("r.m4a.part0.json")
+        let attributes = try? FileManager.default.attributesOfItem(atPath: partURL.path)
+        XCTAssertEqual(attributes?[.protectionKey] as? FileProtectionType,
+                       .completeFileProtectionUntilFirstUserAuthentication)
+        cache.clear(fileName: "r.m4a")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: partURL.path))
+        // The static entry `RecordingStore.delete` uses clears too.
+        cache.store(PartTranscript(text: "x", language: nil, segments: []),
+                    plan: samplePlan(), fileName: "r.m4a", index: 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: partURL.path))
+        PartTranscriptCache.clearSharedCache(fileName: "r.m4a", in: dir)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: partURL.path))
+    }
+
     // MARK: Wire format
 
     func testMultipartBodyFields() {
@@ -417,12 +438,12 @@ final class VoiceGroqTests: XCTestCase {
     }
 
     private func transcriber(transport: ScriptedTransport, consentGranted: Bool = true,
-                             key: String? = "gsk-test") -> GroqTranscriber {
+                             key: String? = "gsk-test", sleep: SleepRecorder? = nil) -> GroqTranscriber {
         if let key { try? secrets.setSecret(key, for: GroqVoiceSettings.keychainAccount) }
         return GroqTranscriber(transport: transport, secrets: secrets, modelID: "whisper-large-v3-turbo",
                                consentGranted: consentGranted,
                                queue: TranscriptionQueue(network: FakeNetwork(usable: true),
-                                                         sleep: SleepRecorder().sleep),
+                                                         sleep: (sleep ?? SleepRecorder()).sleep),
                                partCache: PartTranscriptCache(directory: directory.appendingPathComponent("parts")))
     }
 
@@ -495,30 +516,94 @@ final class VoiceGroqTests: XCTestCase {
 
     func testTranscribe401And413() async {
         let file = try! writeWAV()
+        let unauth = ScriptedTransport(replies: [
+            .json(#"{"error":{"message":"invalid_api_key"}}"#, status: 401),
+        ])
         do {
-            _ = try await transcriber(transport: ScriptedTransport(replies: [
-                .json(#"{"error":{"message":"invalid_api_key"}}"#, status: 401),
-            ])).transcribe(file: file, fileName: "r.m4a") { _, _, _ in }
+            _ = try await transcriber(transport: unauth).transcribe(file: file, fileName: "r.m4a") { _, _, _ in }
             XCTFail("401 must throw")
         } catch let error as VoiceTranscriptionError {
             guard case .unauthorized = error else { return XCTFail("wrong error \(error)") }
         } catch {
             return XCTFail("wrong error \(error)")
         }
+        XCTAssertEqual(unauth.requests.count, 1, "401 never retries")
         // A 2 s part is below the halving floor: 413 surfaces as .tooLarge.
+        let large = ScriptedTransport(replies: [
+            .json(#"{"error":{"message":"too big"}}"#, status: 413),
+        ])
         do {
-            _ = try await transcriber(transport: ScriptedTransport(replies: [
-                .json(#"{"error":{"message":"too big"}}"#, status: 413),
-            ])).transcribe(file: file, fileName: "r.m4a") { _, _, _ in }
+            _ = try await transcriber(transport: large).transcribe(file: file, fileName: "r.m4a") { _, _, _ in }
             XCTFail("413 must throw")
         } catch let error as VoiceTranscriptionError {
             guard case .tooLarge = error else { return XCTFail("wrong error \(error)") }
         } catch {
             return XCTFail("wrong error \(error)")
         }
+        XCTAssertEqual(large.requests.count, 1, "413 below the floor never retries")
         XCTAssertTrue(FileManager.default.fileExists(atPath: file.path), "failures keep the audio")
         XCTAssertEqual(try? secrets.secret(for: GroqVoiceSettings.keychainAccount), "gsk-test",
                        "a 401 never clears the key")
+    }
+
+    /// Review fix F3: a real 429 must flow through the retry queue (honour
+    /// retry-after), not fail past it.
+    func testTranscribeRetries429ThenSucceeds() async throws {
+        let file = try writeWAV()
+        let sleep = SleepRecorder()
+        let transport = ScriptedTransport(replies: [
+            .json(#"{"error":{"message":"rate limited"}}"#, status: 429, headers: ["retry-after": "3"]),
+            .json(Self.verboseJSON),
+        ])
+        let transcript = try await transcriber(transport: transport, sleep: sleep)
+            .transcribe(file: file, fileName: "r.m4a") { _, _, _ in }
+        XCTAssertEqual(transcript.text, "hello world")
+        XCTAssertEqual(transport.requests.count, 2)
+        XCTAssertEqual(sleep.all, [3])
+    }
+
+    func testTranscribeGivesUpAfterMax429s() async {
+        let file = try! writeWAV()
+        let sleep = SleepRecorder()
+        let transport = ScriptedTransport(replies: Array(repeating:
+            .json(#"{"error":{"message":"slow down"}}"#, status: 429), count: 6))
+        do {
+            _ = try await transcriber(transport: transport, sleep: sleep)
+                .transcribe(file: file, fileName: "r.m4a") { _, _, _ in }
+            XCTFail("sustained 429 must throw")
+        } catch let error as VoiceTranscriptionError {
+            guard case .rateLimited = error else { return XCTFail("wrong error \(error)") }
+        } catch {
+            return XCTFail("wrong error \(error)")
+        }
+        XCTAssertEqual(transport.requests.count, TranscriptionQueue.maxAttempts)
+        XCTAssertEqual(sleep.all, [1, 2, 4, 8])
+    }
+
+    /// Review fix F4: the queue's offline wait surfaces as
+    /// `.waitingForNetwork` on the transcriber's event handler.
+    func testTranscribeForwardsWaitingForNetwork() async throws {
+        let file = try writeWAV()
+        let network = FakeNetwork(usable: false)
+        let events = Mutex<[TranscriptionEvent]>([])
+        let transport = ScriptedTransport { _, n in
+            if n == 0 { throw ProviderError.network("offline") }
+            return .json(Self.verboseJSON)
+        }
+        try? secrets.setSecret("gsk-test", for: GroqVoiceSettings.keychainAccount)
+        let transcriber = GroqTranscriber(transport: transport, secrets: secrets, modelID: "whisper-large-v3-turbo",
+                                          consentGranted: true,
+                                          queue: TranscriptionQueue(network: network, sleep: SleepRecorder().sleep),
+                                          partCache: PartTranscriptCache(directory: directory.appendingPathComponent("parts")),
+                                          onEvent: { event in events.withLock { $0.append(event) } })
+        Task {
+            try? await Task.sleep(for: .milliseconds(30))
+            await network.setUsable()
+        }
+        let transcript = try await transcriber.transcribe(file: file, fileName: "r.m4a") { _, _, _ in }
+        XCTAssertEqual(transcript.text, "hello world")
+        XCTAssertEqual(transport.requests.count, 2)
+        XCTAssertTrue(events.withLock { $0.contains { if case .waitingForNetwork = $0 { return true }; return false } })
     }
 
     // MARK: Consent branch in ChatStore

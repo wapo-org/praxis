@@ -118,6 +118,13 @@ actor TranscriptionQueue {
                         guard attempt < Self.maxAttempts else { throw error }
                         try await pause(attempt: attempt, retryAfter: nil, onEvent: onEvent)
                     } else {
+                        // Sustained outage: suspend (no attempt consumed)
+                        // and auto-retry when the path is usable again. The
+                        // controller shows "Waiting for network…" and restows
+                        // the sidecar `.queued` (persisted: a relaunch lists
+                        // it with Retry, and the part cache resumes), so the
+                        // wait is never a silent stuck "Transcribing…".
+                        // Cancel stays responsive: it throws CancellationError.
                         onEvent?(.waitingForNetwork)
                         try await network.waitForUsable()
                     }

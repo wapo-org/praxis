@@ -202,9 +202,12 @@ struct GroqTranscriber: Transcriber {
         let contentType = "multipart/form-data; boundary=\(body.boundary)"
         let events = onEvent
 
-        let (data, head): (Data, HTTPResponseHead)
+        // The HTTP mapping lives INSIDE the queue: the transport returns a
+        // head for any status and throws only below HTTP, so mapping past
+        // the queue would let 429/5xx skip the backoff policy entirely.
+        let (data, _): (Data, HTTPResponseHead)
         do {
-            (data, head) = try await queue.run {
+            (data, _) = try await queue.run {
                 var request = URLRequest(url: GroqEndpoints.transcriptionsURL,
                                          cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 600)
                 request.httpMethod = "POST"
@@ -212,8 +215,10 @@ struct GroqTranscriber: Transcriber {
                 request.setValue("application/json", forHTTPHeaderField: "accept")
                 request.setValue(contentType, forHTTPHeaderField: "content-type")
                 request.httpBody = payload
+                let data: Data
+                let head: HTTPResponseHead
                 do {
-                    return try await transport.data(request)
+                    (data, head) = try await transport.data(request)
                 } catch let error as ProviderError {
                     throw Self.mapProviderError(error)
                 } catch is CancellationError {
@@ -221,6 +226,11 @@ struct GroqTranscriber: Transcriber {
                 } catch {
                     throw VoiceTranscriptionError.server(message: "The transcription request failed.")
                 }
+                guard head.isSuccess else {
+                    throw mapGroqError(status: head.status, retryAfter: head.retryAfter?.timeInterval,
+                                       message: Self.groqMessage(in: data))
+                }
+                return (data, head)
             } onEvent: { event in
                 switch event {
                 case .waitingForNetwork: events?(.waitingForNetwork)
@@ -229,11 +239,6 @@ struct GroqTranscriber: Transcriber {
             }
         } catch is CancellationError {
             throw VoiceTranscriptionError.cancelled
-        }
-        // HTTP errors surface here (the queue only retries; mapping stays pure).
-        guard head.isSuccess else {
-            throw mapGroqError(status: head.status, retryAfter: head.retryAfter?.timeInterval,
-                               message: groqMessage(in: data))
         }
         do {
             return try PartTranscript(verboseJSON: data)
@@ -253,7 +258,7 @@ struct GroqTranscriber: Transcriber {
         }
     }
 
-    private func groqMessage(in data: Data) -> String? {
+    private static func groqMessage(in data: Data) -> String? {
         guard let json = try? JSONDecoder().decode(GroqErrorEnvelope.self, from: data) else { return nil }
         let message = json.error.message.trimmingCharacters(in: .whitespacesAndNewlines)
         return message.isEmpty ? nil : String(message.prefix(300))
