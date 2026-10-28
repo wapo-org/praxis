@@ -277,6 +277,80 @@ enum HTTPSupport {
         return nil
     }
 
+    /// Reasoning-effort levels from a model-list entry, when it says.
+    /// Understands OpenRouter (`reasoning.supported_efforts`, descending;
+    /// an explicit null there means every gateway value is accepted),
+    /// Anthropic (`capabilities.effort` per-level `supported` flags) and LM
+    /// Studio (`capabilities.reasoning.allowed_options`). Empty when the
+    /// entry positively rules reasoning out (Anthropic
+    /// `capabilities.effort.supported: false`; OpenRouter
+    /// `supported_parameters` naming no reasoning key). An entry that says
+    /// "reasoning supported" but names no levels gets `defaultLevels`, the
+    /// API family's documented default. Nil when the entry says nothing at
+    /// all (OpenAI-direct, LM Studio / Ollama over the OpenAI-compat list,
+    /// OpenRouter routers whose parameter list is empty).
+    static func reasoningEfforts(in model: JSONValue, defaultLevels: [String]) -> [String]? {
+        // Explicit level lists first.
+        if let reasoning = model["reasoning"], !reasoning.isNull {
+            if let efforts = reasoning["supported_efforts"]?.arrayValue {
+                return efforts.compactMap(\.stringValue)
+            }
+            if reasoning["supported_efforts"]?.isNull == true {
+                return EffortLevels.openRouterGatewayAll
+            }
+        }
+        if let effort = model["capabilities"]?["effort"], !effort.isNull {
+            if effort["supported"]?.boolValue == false { return [] }
+            let flags = ["low", "medium", "high", "xhigh", "max"]
+            let levels = flags.filter { effort[$0]?["supported"]?.boolValue == true }
+            // Supported with per-level flags: exactly those. Supported
+            // without them: the family default. A bare `effort: false` is
+            // covered by the `supported == false` check via `boolValue`.
+            if !levels.isEmpty || effort["supported"]?.boolValue == true { return levels.isEmpty ? defaultLevels : levels }
+            if effort.boolValue == false { return [] }
+            if effort.boolValue == true { return defaultLevels }
+        }
+        if let options = model["capabilities"]?["reasoning"]?["allowed_options"]?.arrayValue {
+            return options.compactMap(\.stringValue)
+        }
+        // "Supported" without levels, then "not supported", then silence.
+        switch reasoningSupported(in: model) {
+        case true: return defaultLevels
+        case false: return []
+        case nil: return nil
+        }
+    }
+
+    /// Whether a model-list entry says the model reasons, without naming
+    /// levels. OpenRouter `supported_parameters` containing a reasoning key
+    /// (a non-empty list without one rules reasoning out; an empty list, a
+    /// router, states nothing), Anthropic `capabilities.thinking.supported`,
+    /// an LM Studio `capabilities.reasoning` object, or a capability-name
+    /// list containing a thinking name.
+    static func reasoningSupported(in model: JSONValue) -> Bool? {
+        if let params = model["supported_parameters"]?.arrayValue {
+            guard !params.isEmpty else { return nil }
+            return params.contains { ["reasoning", "include_reasoning", "reasoning_effort"].contains($0.stringValue?.lowercased() ?? "") }
+        }
+        // A bare `reasoning` flag (no supported_efforts object handled above).
+        if let flag = model["reasoning"]?.boolValue { return flag }
+        // A `reasoning` object without level info still marks a reasoning
+        // model (OpenRouter omits it for non-reasoning models).
+        if model["reasoning"]?.objectValue != nil { return true }
+        if let caps = model["capabilities"] {
+            if let list = caps.arrayValue {
+                return list.contains { ["thinking", "think", "reasoning", "reason"].contains($0.stringValue?.lowercased() ?? "") }
+            }
+            if caps["thinking"]?["supported"]?.boolValue == true { return true }
+            if caps["thinking"]?.boolValue == true { return true }
+            if let reasoning = caps["reasoning"], !reasoning.isNull {
+                if reasoning.boolValue == false { return false }
+                return true
+            }
+        }
+        return nil
+    }
+
     static func omittedStub(_ kind: String, _ media: MediaData) -> String {
         let name = media.name.map { " \"\($0)\"" } ?? ""
         return "[\(kind)\(name) (\(media.mediaType)) omitted: this model can't read it]"

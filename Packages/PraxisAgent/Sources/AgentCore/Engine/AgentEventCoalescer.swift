@@ -16,7 +16,7 @@ public enum AgentEventCoalescer {
                 for await event in upstream { buffer.push(event) }
                 buffer.flush()
                 buffer.cancelTimer()
-                continuation.finish()
+                buffer.finish()
             }
             continuation.onTermination = { _ in
                 reader.cancel()
@@ -32,7 +32,17 @@ public enum AgentEventCoalescer {
             var timer: Task<Void, Never>?
         }
 
+        // Locking: `emit` is always taken before `state`, and the stream
+        // is only touched while holding `emit`. `state` is held solely to
+        // compute what to emit — never across `yield`/`finish`/`cancel`.
+        // That used to deadlock: cancelling the consumer runs `onTermination`
+        // (-> `cancelTimer`) synchronously while holding the consumer task's
+        // status lock, and `yield` takes that same lock to resume the
+        // consumer — so yielding while holding `state` wedged both threads.
+        // Holding `emit` across compute-then-yield also keeps the reader's
+        // pushes and the timer's flushes ordered with respect to each other.
         private let state = Mutex(State())
+        private let emit = Mutex(())
         private let continuation: AsyncStream<AgentEvent>.Continuation
         private let interval: Duration
 
@@ -42,45 +52,59 @@ public enum AgentEventCoalescer {
         }
 
         func push(_ event: AgentEvent) {
-            state.withLock { s in
-                if let current = s.pending {
-                    if let merged = AgentEventCoalescer.merge(current, event) {
-                        s.pending = merged
-                        return
-                    }
-                    continuation.yield(current)
-                    s.pending = nil
-                }
-                if AgentEventCoalescer.isMergeable(event) {
-                    s.pending = event
-                    if s.timer == nil {
-                        let interval = interval
-                        s.timer = Task { [self] in
-                            try? await Task.sleep(for: interval)
-                            if !Task.isCancelled { flush(timerFired: true) }
+            emit.withLock { _ in
+                let due = state.withLock { s -> [AgentEvent] in
+                    var due: [AgentEvent] = []
+                    if let current = s.pending {
+                        if let merged = AgentEventCoalescer.merge(current, event) {
+                            s.pending = merged
+                            return []
                         }
+                        due.append(current)
+                        s.pending = nil
                     }
-                } else {
-                    continuation.yield(event)
+                    if AgentEventCoalescer.isMergeable(event) {
+                        s.pending = event
+                        if s.timer == nil {
+                            let interval = interval
+                            s.timer = Task { [self] in
+                                try? await Task.sleep(for: interval)
+                                if !Task.isCancelled { flush(timerFired: true) }
+                            }
+                        }
+                    } else {
+                        due.append(event)
+                    }
+                    return due
                 }
+                for event in due { continuation.yield(event) }
             }
         }
 
         func flush(timerFired: Bool = false) {
-            state.withLock { s in
-                if let current = s.pending {
-                    continuation.yield(current)
+            emit.withLock { _ in
+                let due = state.withLock { s -> AgentEvent? in
+                    defer { if timerFired { s.timer = nil } }
+                    let due = s.pending
                     s.pending = nil
+                    return due
                 }
-                if timerFired { s.timer = nil }
+                if let due { continuation.yield(due) }
             }
         }
 
         func cancelTimer() {
-            state.withLock { s in
-                s.timer?.cancel()
-                s.timer = nil
+            let timer = state.withLock { s -> Task<Void, Never>? in
+                defer { s.timer = nil }
+                return s.timer
             }
+            timer?.cancel()
+        }
+
+        /// Serialized with emission so no computed batch can be yielded
+        /// after the finish and dropped.
+        func finish() {
+            emit.withLock { _ in continuation.finish() }
         }
     }
 

@@ -13,7 +13,8 @@ struct ChatScreen: View {
     @Environment(ChatStore.self) private var store
     @Namespace private var glassNS
     @State private var sendLaunch = SendLaunch()
-    @State private var trayOpen = false
+    // `-PraxisOpenTray YES` (screenshots): launch with the tray open.
+    @State private var trayOpen = UserDefaults.standard.bool(forKey: "PraxisOpenTray")
     @State private var trayPage: TrayPage = .main
     @State private var showHistory = false
     @State private var filePreview: String?
@@ -32,6 +33,7 @@ struct ChatScreen: View {
     /// transcript reserves exactly this, whether or not the tray is open.
     @State private var composerReserve: CGFloat = 72
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     private var conversation: Conversation? { store.selected }
 
@@ -86,6 +88,23 @@ struct ChatScreen: View {
                              maxTrayHeight: maxTrayHeight,
                              setTray: { open, page, haptic in setTray(open, page: page, haptic: haptic) })
                     .zIndex(2)
+
+                // Voice banners float in the ZStack like the dock (a
+                // safeAreaBar would clip their tap targets): the cross-chat
+                // recording pill, then the recovery banner.
+                if let voice = store.voice {
+                    VStack(spacing: 8) {
+                        if let pill = voice.pillRecording {
+                            VoiceRecordingPill(voice: voice, recording: pill) {
+                                store.select(pill.conversationID)
+                            }
+                        }
+                        VoiceRecoveryBanner(voice: voice)
+                    }
+                    .padding(.bottom, composerReserve + 8)
+                    .padding(.horizontal, 20)
+                    .zIndex(2)
+                }
 
                 if showCopied {
                     CopiedToast()
@@ -156,8 +175,22 @@ struct ChatScreen: View {
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
                 withAnimation(Motion.reflow) { keyboardUp = false }
             }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background { store.voice?.appDidEnterBackground() }
+            }
+            .onChange(of: store.selectedID) { _, _ in
+                store.voice?.refreshRecoverables()
+            }
             .photosPicker(isPresented: $showPhotos, selection: $photoItems, matching: .images)
-            .onChange(of: photoItems) { _, items in loadPhotos(items) }
+            .onChange(of: photoItems) { _, items in
+                // The items are captured by value for the load; the picker's
+                // own selection clears at once so it never carries over to
+                // another chat (or a second open in this one).
+                guard !items.isEmpty else { return }
+                photoItems = []
+                loadPhotos(items)
+            }
+            .onChange(of: store.selectedID) { photoItems = [] }
             .fileImporter(isPresented: $showFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
                 if case .success(let urls) = result {
                     withAnimation(Motion.reflow) {
@@ -328,7 +361,9 @@ private struct ComposerDock: View {
                              onSend: send,
                              onAttachmentTap: { viewerAttachment = $0 },
                              onCamera: { showCamera = true },
-                             showsGlass: false)
+                             showsGlass: false,
+                             isModelSearch: trayOpen && trayPage == .models,
+                             onModelSearchSubmit: submitModelSearch)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowHeight = $0 }
             }
             .praxisGlass(in: cardShape, interactive: !trayOpen)
@@ -351,6 +386,15 @@ private struct ComposerDock: View {
     private func send() {
         sendLaunch?.arm(turnID: store.nextTurnID)
         store.send(text: store.draft)
+    }
+
+    /// Return in model search: picks the top result, like tapping its
+    /// row. The query clears; the page stays open and the draft is intact.
+    private func submitModelSearch() {
+        guard let top = ModelSearch.filter(store.availableModels, query: store.modelQuery).first else { return }
+        store.haptics.fire(.selection)
+        withAnimation(Motion.snap) { store.model = top }
+        store.modelQuery = ""
     }
 }
 

@@ -16,18 +16,25 @@ struct ComposerView: View {
     /// False when the composer row lives inside the morphed tray
     /// card, which supplies the shared glass instead.
     var showsGlass: Bool = true
+    /// True while the tray's Model page is open: the field becomes the
+    /// model search (bound to `store.modelQuery`, the draft untouched)
+    /// and the send button hides. Recording keeps precedence (voice).
+    var isModelSearch: Bool = false
+    /// Return in search mode: the owner selects the top result.
+    var onModelSearchSubmit: () -> Void = {}
 
     @FocusState private var focused: Bool
     /// The text just sent, for a short while: see `send()`.
     @State private var lastSend: (text: String, at: Date)?
-    @State private var isRecording = false
-    @State private var recordingStart = Date()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.sendLaunch) private var sendLaunch
 
     private var hasText: Bool { !store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var canSend: Bool { hasText || !store.attachments.isEmpty }
     private var isStreaming: Bool { store.isRunning }
+    /// Voice input state (nil in previews: the mic then does nothing).
+    private var voice: VoiceInputController? { store.voice }
+    private var voiceShowsUI: Bool { voice?.showsRecordingUI == true }
 
     var body: some View {
         @Bindable var store = store
@@ -43,7 +50,7 @@ struct ComposerView: View {
         .animation(reduceMotion ? Motion.reduced : Motion.morph, value: canSend)
         .animation(reduceMotion ? Motion.reduced : Motion.morph, value: isStreaming)
         .animation(reduceMotion ? Motion.reduced : Motion.reflow, value: store.attachments.count)
-        .animation(reduceMotion ? Motion.reduced : Motion.morph, value: isRecording)
+        .animation(reduceMotion ? Motion.reduced : Motion.morph, value: voiceShowsUI)
     }
 
     private var composerRow: some View {
@@ -69,15 +76,16 @@ struct ComposerView: View {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Praxis.ink)
+                .foregroundStyle(Praxis.canvas)
                 .rotationEffect(.degrees(trayOpen ? 45 : 0))
                 .animation(reduceMotion ? Motion.reduced : Motion.pop, value: trayOpen)
                 .frame(width: 38, height: 38)
                 .contentShape(Circle())
         }
         .buttonStyle(PressScaleStyle())
-        .praxisGlass(in: Circle())
-        .glassEffectID("plusButton", in: namespace)
+        // Solid ink, not glass: the composer field stays glass, its
+        // satellite buttons read as solid black/white (item 10).
+        .background(Praxis.ink, in: Circle())
         .accessibilityLabel(trayOpen ? "Close add menu" : "Add photos, files and more")
     }
 
@@ -85,19 +93,10 @@ struct ComposerView: View {
 
     @ViewBuilder
     private var middle: some View {
-        if isRecording {
-            HStack(spacing: 10) {
-                Waveform()
-                    .frame(maxWidth: .infinity)
-                TimelineView(.periodic(from: .now, by: 0.5)) { tl in
-                    Text(DurationFormatter.live(tl.date.timeIntervalSince(recordingStart)))
-                        .font(Type.mono(13, .footnote))
-                        .foregroundStyle(Praxis.mutedInk)
-                        .monospacedDigit()
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 38)
-            .padding(.leading, 6)
+        if let voice, voice.showsRecordingUI {
+            VoiceRecordingMiddle(voice: voice)
+        } else if isModelSearch {
+            searchField
         } else {
             @Bindable var store = store
             TextField(store.mode.placeholder, text: $store.draft, axis: .vertical)
@@ -116,6 +115,25 @@ struct ComposerView: View {
                 .accessibilityHint(store.mode.placeholder)
                 .onChange(of: store.draft) { _, text in rejectRecommit(text) }
         }
+    }
+
+    // MARK: Model search (tray Model page open)
+
+    /// The field rebound as the model search: single line, no
+    /// autocorrection (model ids), Return picks the top result. A
+    /// separate branch from the draft field, so the two never share a
+    /// text view.
+    private var searchField: some View {
+        TextField("Search models", text: Binding(get: { store.modelQuery }, set: { store.modelQuery = $0 }))
+            .font(Type.inter(17))
+            .foregroundStyle(Praxis.ink)
+            .submitLabel(.search)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+            .frame(minHeight: 38)
+            .padding(.leading, 6)
+            .accessibilityLabel("Search models")
+            .onSubmit { onModelSearchSubmit() }
     }
 
     // MARK: Sending
@@ -161,13 +179,12 @@ struct ComposerView: View {
         Button { onCamera() } label: {
             Image(systemName: "camera")
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Praxis.ink)
+                .foregroundStyle(Praxis.canvas)
                 .frame(width: 38, height: 38)
                 .contentShape(Circle())
         }
         .buttonStyle(PressScaleStyle())
-        .praxisGlass(in: Circle())
-        .glassEffectID("cameraButton", in: namespace)
+        .background(Praxis.ink, in: Circle())
         .accessibilityLabel("Take photo")
     }
 
@@ -175,7 +192,8 @@ struct ComposerView: View {
         HStack(spacing: 8) {
             // Camera sits left of the mic while idle; once typing
             // starts it fades out to the right as send takes over.
-            if !isStreaming && !canSend && !isRecording {
+            // Search mode shows neither camera nor mic.
+            if !isStreaming && !canSend && !voiceShowsUI && !isModelSearch {
                 cameraButton
                     .transition(reduceMotion ? .opacity : .asymmetric(
                         insertion: .opacity.combined(with: .offset(x: 8)),
@@ -204,6 +222,24 @@ struct ComposerView: View {
                 .frame(width: 38, height: 38)
                 .tint(Praxis.ink)
                 .accessibilityLabel("Stop generating")
+            } else if isModelSearch {
+                // Search mode: no send, no mic — a clear button while
+                // there's a query, else a spacer holding the row shape.
+                // (Stop above still wins while streaming.)
+                if !store.modelQuery.isEmpty {
+                    Button { store.modelQuery = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 17))
+                            .foregroundStyle(Praxis.mutedInk)
+                            .frame(width: 38, height: 38)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(PressScaleStyle())
+                    .accessibilityLabel("Clear search")
+                } else {
+                    Color.clear.frame(width: 38, height: 38)
+                        .accessibilityHidden(true)
+                }
             } else if canSend {
                 Button { send() } label: {
                     Image(systemName: "arrow.up")
@@ -216,8 +252,8 @@ struct ComposerView: View {
                 .tint(Praxis.ink)
                 .transition(reduceMotion ? .opacity : .scale(scale: 0.5).combined(with: .opacity))
                 .accessibilityLabel("Send message")
-            } else if isRecording {
-                Button { stopRecording() } label: {
+            } else if voice?.showsStopButton == true {
+                Button { voice?.stopAndTranscribe() } label: {
                     Image(systemName: "stop.fill")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(.white)
@@ -227,16 +263,18 @@ struct ComposerView: View {
                 .frame(width: 38, height: 38)
                 .tint(Praxis.destructive)
                 .accessibilityLabel("Stop recording")
-            } else {
-                Button { startRecording() } label: {
+                // Review, transcribing and notices own their actions in the
+                // middle; nothing trails them.
+            } else if !voiceShowsUI {
+                Button { voice?.micTapped() } label: {
                     Image(systemName: "mic")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Praxis.ink)
+                        .foregroundStyle(Praxis.canvas)
                         .frame(width: 38, height: 38)
                         .contentShape(Circle())
                 }
                 .buttonStyle(PressScaleStyle())
-                .praxisGlass(in: Circle())
+                .background(Praxis.ink, in: Circle())
                 .accessibilityLabel("Record voice message")
             }
         }
@@ -283,44 +321,8 @@ struct ComposerView: View {
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
-    // MARK: Recording (simulated amplitudes, §6)
-
-    private func startRecording() {
-        store.haptics.fire(.light)
-        recordingStart = Date()
-        withAnimation(reduceMotion ? Motion.reduced : Motion.morph) { isRecording = true }
-    }
-
-    private func stopRecording() {
-        store.haptics.fire(.soft)
-        withAnimation(reduceMotion ? Motion.reduced : Motion.morph) { isRecording = false }
-        // Mock transcription types into the field (§6).
-        let transcript = "Draft a follow-up on the glass contrast audit"
-        store.draft = transcript
-        focused = true
-    }
-}
-
-/// Live waveform with simulated amplitudes (§6). Bars fill whatever
-/// width the composer middle offers. Drawn in one Canvas pass: no
-/// per-bar views, no layout, 30 times a second.
-private struct Waveform: View {
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
-            let t = tl.date.timeIntervalSinceReferenceDate
-            Canvas { ctx, size in
-                let count = max(8, Int(size.width / 7))
-                for i in 0..<count {
-                    let h = 6 + 14 * abs(sin(t * 3 + Double(i) * 0.7))
-                    let rect = CGRect(x: Double(i) * 6, y: (size.height - h) / 2, width: 3, height: h)
-                    ctx.fill(RoundedRectangle(cornerRadius: 2, style: .continuous).path(in: rect),
-                             with: .color(Praxis.ink))
-                }
-            }
-        }
-        .frame(height: 26)
-        .accessibilityLabel("Recording")
-    }
+    // MARK: Recording — VoiceInputController owns it (see
+    // Services/Voice/); the mic button above only calls into it.
 }
 
 /// The UIKit text view behind the focused composer field (SwiftUI's

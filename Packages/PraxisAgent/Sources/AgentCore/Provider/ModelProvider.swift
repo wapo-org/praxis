@@ -77,14 +77,24 @@ public struct ModelInfo: Sendable, Codable, Hashable, Identifiable {
     /// LM Studio / Ollama style `capabilities`).
     /// Nil = unknown: try with tools; the endpoint's `Capabilities.tools` decides.
     public var supportsTools: Bool?
+    /// The provider's raw reasoning-effort level names for this model, when
+    /// the model list says (OpenRouter `reasoning.supported_efforts`,
+    /// Anthropic `capabilities.effort` flags, LM Studio
+    /// `capabilities.reasoning.allowed_options`).
+    /// - Nil = unknown: the list says nothing about reasoning.
+    /// - Empty = the list positively rules reasoning out.
+    /// - A list that says "reasoning supported" but names no levels gets
+    ///   the API family's documented default (`EffortLevels`).
+    public var reasoningEfforts: [String]?
     public init(id: String, displayName: String? = nil, contextWindow: Int? = nil, maxOutputTokens: Int? = nil,
-                supportsImages: Bool? = nil, supportsTools: Bool? = nil) {
+                supportsImages: Bool? = nil, supportsTools: Bool? = nil, reasoningEfforts: [String]? = nil) {
         self.id = id
         self.displayName = displayName ?? id
         self.contextWindow = contextWindow
         self.maxOutputTokens = maxOutputTokens
         self.supportsImages = supportsImages
         self.supportsTools = supportsTools
+        self.reasoningEfforts = reasoningEfforts
     }
 }
 
@@ -110,9 +120,14 @@ public struct ProviderRequest: Sendable {
     /// Ask the provider to run its hosted web search/fetch (only honoured
     /// when `Capabilities.serverWebSearch`).
     public var serverWebSearch: Bool
+    /// The model's supported effort wire values, when known
+    /// (`ModelInfo.reasoningEfforts` or learned from a rejection). Builders
+    /// clamp the outgoing value to these (`EffortLevels.clamp`); nil sends
+    /// the effort unchanged, empty drops the parameter.
+    public var supportedEffortValues: [String]?
 
     public init(model: String, system: String, messages: [Message], tools: [ToolSpec], maxTokens: Int,
-                effort: Effort, serverWebSearch: Bool = false) {
+                effort: Effort, serverWebSearch: Bool = false, supportedEffortValues: [String]? = nil) {
         self.model = model
         self.system = system
         self.messages = messages
@@ -120,6 +135,7 @@ public struct ProviderRequest: Sendable {
         self.maxTokens = maxTokens
         self.effort = effort
         self.serverWebSearch = serverWebSearch
+        self.supportedEffortValues = supportedEffortValues
     }
 }
 
@@ -210,6 +226,8 @@ public enum ProviderError: Error, Sendable, Equatable, CustomStringConvertible {
         if isImageInputUnsupported { return false }
         // Same for tool use: resend without tools instead.
         if isToolUseUnsupported { return false }
+        // Same for effort: resend clamped or without the parameter instead.
+        if isEffortRejection { return false }
         switch self {
         case .http(let status, _, _):
             return status == 408 || status == 409 || status == 429 || (500...599).contains(status)
@@ -242,6 +260,15 @@ public enum ProviderError: Error, Sendable, Equatable, CustomStringConvertible {
     public var isToolUseUnsupported: Bool {
         switch self {
         case .http(_, let message, _), .stream(_, let message): return ToolSupport.isToolUseRejection(message)
+        case .network, .decoding, .invalidConfiguration: return false
+        }
+    }
+
+    /// The provider rejected the effort control (`EffortLevels.rejection`).
+    /// Not worth retrying as is; resend clamped or without the parameter.
+    public var isEffortRejection: Bool {
+        switch self {
+        case .http(_, let message, _), .stream(_, let message): return EffortLevels.rejection(in: message) != nil
         case .network, .decoding, .invalidConfiguration: return false
         }
     }

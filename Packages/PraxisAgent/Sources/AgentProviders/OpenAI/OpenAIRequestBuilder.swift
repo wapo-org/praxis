@@ -38,7 +38,11 @@ struct OpenAIRequestBuilder: Sendable {
         }
         if capabilities.reasoningEffort {
             let value = request.effort == .max ? options.maxEffortValue : request.effort.rawValue
-            body["reasoning_effort"] = .string(value)
+            // Only a value the model takes goes out; unknown sends the
+            // effort unchanged, and no reasoning drops the parameter.
+            if let wire = EffortLevels.clamp(value, to: request.supportedEffortValues) {
+                body["reasoning_effort"] = .string(wire)
+            }
         }
         return .object(body)
     }

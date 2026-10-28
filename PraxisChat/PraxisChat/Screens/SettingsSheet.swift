@@ -28,6 +28,7 @@ struct SettingsSheet: View {
         case skillBrowser
         case registrySkill(RegistrySkill, SkillRegistry)
         case imageReader
+        case voice
     }
 
     var body: some View {
@@ -73,6 +74,7 @@ struct SettingsSheet: View {
                 case .connectors: path = [.connectors]
                 case .connector(let id): path = [.connectors, .connector(id)]
                 case .skills: path = [.skills]
+                case .voice: path = [.voice]
                 }
             }
         }
@@ -108,6 +110,8 @@ struct SettingsSheet: View {
             RegistrySkillDetailScreen(library: services.skills, skill: skill, registry: registry)
         case .imageReader:
             ImageReaderScreen(settings: settings, consent: services.consent)
+        case .voice:
+            VoiceSettingsScreen(settings: services.voice)
         }
     }
 
@@ -125,6 +129,9 @@ struct SettingsSheet: View {
                 SettingsDivider()
                 navigationRow(.imageReader, symbol: "eye", title: "Image reading model",
                               value: services.settings.imageReaderDisplayName ?? "Off")
+                SettingsDivider()
+                navigationRow(.voice, symbol: "waveform", title: "Voice input",
+                              value: services.voice.isConfigured ? services.voice.selectedModelID : "Off")
             }
         }
     }
@@ -403,16 +410,14 @@ private struct ProviderEditor: View {
                         Text("\(models.count) available").font(Type.inter(15, .body)).foregroundStyle(Praxis.ink)
                         Spacer()
                         Menu {
-                            ForEach(models) { model in
-                                Button {
-                                    draft.defaultModel = model.id
-                                } label: {
-                                    let label = model.displayName
-                                        + (settings.toolSupport(profileID: draft.id, model: model.id) == .unsupported ? " · No tools" : "")
-                                    if model.id == draft.defaultModel { Label(label, systemImage: "checkmark") }
-                                    else { Text(label) }
+                            let pinned = settings.pinnedModels(for: draft.id)
+                                .compactMap { id in models.first { $0.id == id } }
+                            if !pinned.isEmpty {
+                                Section("Favorites") {
+                                    ForEach(pinned) { modelMenuButton($0) }
                                 }
                             }
+                            ForEach(models) { modelMenuButton($0) }
                         } label: {
                             HStack(spacing: 4) {
                                 Text("Choose").font(Type.inter(15, weight: .medium, .body))
@@ -432,6 +437,17 @@ private struct ProviderEditor: View {
                 Text("Run Test connection to list the server's models, or type a model ID.")
                     .font(Type.inter(13, .footnote)).foregroundStyle(Praxis.mutedInk).padding(.horizontal, 4)
             }
+        }
+    }
+
+    private func modelMenuButton(_ model: ModelInfo) -> some View {
+        Button {
+            draft.defaultModel = model.id
+        } label: {
+            let label = model.displayName
+                + (settings.toolSupport(profileID: draft.id, model: model.id) == .unsupported ? " · No tools" : "")
+            if model.id == draft.defaultModel { Label(label, systemImage: "checkmark") }
+            else { Text(label) }
         }
     }
 

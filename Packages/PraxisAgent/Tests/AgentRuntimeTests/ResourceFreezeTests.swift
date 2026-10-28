@@ -64,6 +64,27 @@ import AgentTestSupport
         #expect(gone.unavailableReason(for: ["uri": "note://1"]).contains("removed"))
     }
 
+    @Test func disabledToolsLeaveResourcesAlone() async throws {
+        let runtime = makeRuntime(connectors: Connectors([resourceServer()]))
+
+        // Disabling every tool still freezes the resource tools.
+        let setup = await runtime.prepare(mcpServerIDs: ["r1"], includeJavaScript: false, includeSkills: false,
+                                          disabledTools: ["r1": ["find"]]).setup
+        #expect(setup.mcpServers.first?.tools.isEmpty == true)
+        #expect(setup.mcpServers.first?.offersResources == true)
+        let names = setup.toolSpecs.map(\.name)
+        #expect(names.contains(MCPResourceTools.listName))
+        #expect(names.contains(MCPResourceTools.readName))
+        #expect(!names.contains { $0.contains("__find") })
+
+        // And in an old conversation they still execute.
+        let registry = await runtime.tools(for: setup, conversationID: "c", disabledTools: ["r1": ["find"]])
+        let tool = try #require(registry.tool(named: MCPResourceTools.readName))
+        let output = try await tool.execute(ToolInvocation(id: "1", name: tool.spec.name, arguments: ["uri": "note://1"]),
+                                            context: ToolContext(conversationID: "c", mode: .auto))
+        #expect(output.text.contains("hello"))
+    }
+
     @Test func noResourceServersNoResourceTools() async throws {
         let runtime = makeRuntime(connectors: Connectors([FakeMCPServer(tools: [FakeMCPServer.tool("search")]).client()]))
         let setup = await runtime.prepare(mcpServerIDs: ["s1"], includeJavaScript: false, includeSkills: false).setup
