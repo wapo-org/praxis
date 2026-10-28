@@ -157,8 +157,10 @@ moves, slides or fades (`DesignSystem/Motion.swift`,
 
 ## Known preview limits
 
-- Recording is simulated (waveform + timer); stopping types a mock
-  transcription. No audio is captured.
+- Voice input records real microphone audio (AAC 16 kHz mono) with
+  crash-safe recovery; transcription is scripted in DEBUG
+  (`-PraxisFakeTranscript`) until the Groq client lands, and the
+  `-PraxisFakeRecording` seam simulates capture in UI tests.
 - Screenshots strip uses limited Photos access when granted and falls
   back to bundled sample screenshots when denied.
 - Camera is disabled on the Simulator and falls back to the library on
