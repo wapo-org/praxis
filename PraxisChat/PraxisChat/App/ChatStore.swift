@@ -101,6 +101,7 @@ final class ChatStore {
         if UserDefaults.standard.bool(forKey: "PraxisResetData") { AppDirectories.reset() }
         let services = AgentServices.live()
         services.installTestProviderIfRequested()
+        services.connectors.installMockConnectorIfRequested()
         let override = EngineKind.launchOverride
         let kind = EngineKind.resolve(override: override, hasProvider: services.settings.hasProfiles)
         let engine: any ChatEngine = switch kind {
@@ -517,6 +518,9 @@ final class ChatStore {
             // Unknown ids are ignored by the runtime, so the full set is
             // safe even when the setup is about to be (re-)frozen.
             disabledServerIDs: conv.disabledServerIDs,
+            // Read live: toggling a tool applies to existing chats'
+            // next run (their calls refuse) and to new chats' freeze.
+            disabledTools: services?.connectors.disabledTools ?? [:],
             onSetup: { setup, failures in
                 await MainActor.run { store.value?.adopt(setup, failures: failures, conversationID: conversationID) }
             },

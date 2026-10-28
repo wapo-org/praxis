@@ -38,6 +38,10 @@ struct ChatRunRequest: Sendable {
     /// Frozen connectors turned off in this conversation only: their
     /// tools stay offered but refuse to run.
     var disabledServerIDs: Set<String> = []
+    /// Tools the user turned off in connector settings, by server id
+    /// (read live from the library at send time): frozen ones stay
+    /// offered but refuse to run; new conversations leave them out.
+    var disabledTools: [String: Set<String>] = [:]
     /// Called once a live engine freezes a setup, before anything is sent:
     /// the store persists it with the conversation.
     var onSetup: @Sendable (ConversationSetup, [MCPToolset.Failure]) async -> Void = { _, _ in }

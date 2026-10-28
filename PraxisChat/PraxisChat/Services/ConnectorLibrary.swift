@@ -22,6 +22,12 @@ final class ConnectorLibrary {
         var version = 1
         var servers: [MCPServerConfig] = []
         var eras = MCPEraCache.Snapshot()
+        /// Tool names the user turned off, by server id. A denylist, so
+        /// tools a server adds later start on.
+        var disabledTools: [String: Set<String>] = [:]
+        /// Tool names the user has seen in the detail screen, by server
+        /// id. Names outside it get a "New" badge once.
+        var seenTools: [String: Set<String>] = [:]
     }
 
     private(set) var servers: [MCPServerConfig] = []
@@ -45,6 +51,13 @@ final class ConnectorLibrary {
     /// When a server's tool list last changed (`tools/list_changed`).
     /// Conversations keep their frozen tools; new chats get the new ones.
     private(set) var toolsChangedAt: [String: Date] = [:]
+    /// Tool names the user turned off, by server id (persisted). New
+    /// conversations leave them out; chats that froze them refuse
+    /// their calls. Tools a server adds later start on.
+    private(set) var disabledTools: [String: Set<String>] = [:]
+    /// Tool names the user has seen in the detail screen, by server id
+    /// (persisted). Anything else listed gets a "New" badge once.
+    private(set) var seenTools: [String: Set<String>] = [:]
 
     @ObservationIgnored let fileURL: URL
     @ObservationIgnored let secrets: any SecretStore
@@ -70,6 +83,8 @@ final class ConnectorLibrary {
         self.listensForChanges = listensForChanges
         let file = (try? Data(contentsOf: fileURL)).flatMap { try? JSONDecoder().decode(File.self, from: $0) } ?? File()
         servers = file.servers
+        disabledTools = file.disabledTools
+        seenTools = file.seenTools
         eraCache = MCPEraCache(snapshot: file.eras)
         lastEras = file.eras
     }
@@ -119,7 +134,18 @@ final class ConnectorLibrary {
     private func refreshTools(_ id: String) async {
         guard let client = client(for: id), let list = try? await client.listTools(refresh: true) else { return }
         if let old = tools[id], old != list { toolsChangedAt[id] = Date() }
+        adoptListing(id, list)
+    }
+
+    /// Keeps a fresh listing. The first listing is the baseline (nothing
+    /// in it is "New"); names that appear in later listings badge until
+    /// the user looks at them (`markToolsSeen`).
+    private func adoptListing(_ id: String, _ list: [MCPToolDefinition]) {
+        if tools[id] == nil {
+            seenTools[id, default: []].formUnion(list.map(\.name))
+        }
         tools[id] = list
+        persist()
     }
 
     // MARK: Installing
@@ -158,7 +184,7 @@ final class ConnectorLibrary {
             let tools = try await client.listTools(refresh: true)
             lastErrors[id] = nil
             authRequirements[id] = nil
-            self.tools[id] = tools
+            adoptListing(id, tools)
             await saveEraSnapshot()
             await checkSignIn(id, client)
             await loadPrompts(id)
@@ -202,6 +228,8 @@ final class ConnectorLibrary {
         signedIn[id] = nil
         prompts[id] = nil
         toolsChangedAt[id] = nil
+        disabledTools[id] = nil
+        seenTools[id] = nil
         persist()
         if let client = clients.removeValue(forKey: id) {
             await client.signOut()
@@ -323,6 +351,58 @@ final class ConnectorLibrary {
         await clients.removeValue(forKey: id)?.close()
     }
 
+    // MARK: Per-tool switches
+
+    func isToolEnabled(_ id: String, tool: String) -> Bool {
+        !(disabledTools[id]?.contains(tool) ?? false)
+    }
+
+    /// Turns one tool off (or back on). Off tools are left out of new
+    /// conversations; chats that froze them refuse their calls. Unlike
+    /// `update`, this never rebuilds the client: the runtime reads the
+    /// live set on every run.
+    func setToolEnabled(_ id: String, tool: String, on: Bool) {
+        guard server(id) != nil else { return }
+        var off = disabledTools[id, default: []]
+        if on { off.remove(tool) } else { off.insert(tool) }
+        let next: Set<String>? = off.isEmpty ? nil : off
+        guard disabledTools[id] != next else { return }
+        disabledTools[id] = next
+        persist()
+    }
+
+    /// "Enable all" clears the list (tools the server adds later start
+    /// on); "Disable all" turns off every currently listed tool.
+    func setAllToolsEnabled(_ id: String, on: Bool) {
+        guard server(id) != nil else { return }
+        if on {
+            guard disabledTools[id] != nil else { return }
+            disabledTools[id] = nil
+        } else {
+            let names = Set((tools[id] ?? []).map(\.name))
+            guard !names.isEmpty, disabledTools[id] != names else { return }
+            disabledTools[id] = names
+        }
+        persist()
+    }
+
+    /// Whether the tool arrived after the user last looked at the list
+    /// (it gets a "New" badge once).
+    func isToolNew(_ id: String, tool: String) -> Bool {
+        tools[id] != nil && !(seenTools[id]?.contains(tool) ?? false)
+    }
+
+    /// The user looked at the connector's tools: nothing in the current
+    /// list is "New" anymore.
+    func markToolsSeen(_ id: String) {
+        guard let list = tools[id] else { return }
+        var seen = seenTools[id, default: []]
+        seen.formUnion(list.map(\.name))
+        guard seen != seenTools[id, default: []] else { return }
+        seenTools[id] = seen
+        persist()
+    }
+
     // MARK: Sign-in
 
     /// Signs in through the OAuth presenter ("Sign in"). Connecting may
@@ -432,6 +512,38 @@ final class ConnectorLibrary {
         }
     }
 
+    // MARK: UI-test seed
+
+    /// `-PraxisMockConnector YES` (UI tests): installs a hermetic
+    /// connector with scripted tools. Nothing reaches the network: the
+    /// install only parses a URL, and the detail screen never refreshes
+    /// it because a listing is already there.
+    func installMockConnectorIfRequested() {
+        guard UserDefaults.standard.bool(forKey: "PraxisMockConnector") else { return }
+        guard !servers.contains(where: { $0.id == Self.mockConnectorID }) else { return }
+        guard let candidate = try? Self.candidate(url: "https://mock.invalid/mcp", name: "Mock Server"),
+              let config = try? install(candidate) else { return }
+        // A stable id, so tests can find it.
+        servers.removeAll { $0.id == config.id }
+        var seeded = config
+        seeded.id = Self.mockConnectorID
+        servers.append(seeded)
+        tools[seeded.id] = [
+            MCPToolDefinition(name: "search_docs", title: "Search docs",
+                              description: "Searches the documentation for an answer.",
+                              annotations: MCPToolAnnotations(readOnlyHint: true)),
+            MCPToolDefinition(name: "list_projects",
+                              description: "Lists your projects with their status."),
+            MCPToolDefinition(name: "create_ticket", title: "Create ticket",
+                              description: "Files a new support ticket.",
+                              annotations: MCPToolAnnotations(destructiveHint: true)),
+        ]
+        seenTools[seeded.id] = Set(tools[seeded.id, default: []].map(\.name))
+        persist()
+    }
+
+    static let mockConnectorID = "mock-connector"
+
     // MARK: Persistence
 
     /// Writes the detected eras so relaunches skip the probe.
@@ -442,7 +554,7 @@ final class ConnectorLibrary {
 
     private func persist(eras: MCPEraCache.Snapshot? = nil) {
         if let eras { lastEras = eras }
-        let file = File(servers: servers, eras: lastEras)
+        let file = File(servers: servers, eras: lastEras, disabledTools: disabledTools, seenTools: seenTools)
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             let encoder = JSONEncoder()
