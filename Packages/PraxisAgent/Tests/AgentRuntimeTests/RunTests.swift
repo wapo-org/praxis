@@ -74,6 +74,44 @@ import AgentTestSupport
         #expect(provider.requests[0].tools.map(\.name) == setup.toolSpecs.map(\.name))
     }
 
+    @Test(arguments: [false, true])
+    func toolTurnedOffRefusesButStaysOffered(gateway: Bool) async throws {
+        let server = FakeMCPServer(tools: [FakeMCPServer.tool("search", readOnly: true)])
+        let runtime = makeRuntime(connectors: Connectors([server.client()]))
+        let setup = await runtime.prepare(mcpServerIDs: ["s1"], gatewayThreshold: gateway ? 0 : 30).setup
+        let approver = RecordingApprover(.allowOnce)
+        let provider = ScriptedProvider(steps: [
+            gateway
+                ? ScriptedProvider.toolCalls([("t1", "mcp_call_tool", #"{"tool":"mcp__acme__search","arguments":{"q":"x"}}"#)])
+                : ScriptedProvider.toolCalls([("t1", "mcp__acme__search", #"{"q":"x"}"#)]),
+            ScriptedProvider.text("done"),
+        ])
+        var run = request(setup, approvals: approver)
+        run.disabledTools = ["s1": ["search"]]
+        let events = await runtime.run(run, provider: provider).collect()
+        let result = try #require(events.toolResults.first)
+        #expect(result.isError)
+        #expect(result.content.first?.text?.contains("The user turned this tool off") == true)
+        #expect(approver.requests.isEmpty) // no approval card for a call that can't run
+        #expect(server.calls.isEmpty)
+        #expect(provider.requests[0].tools.map(\.name) == setup.toolSpecs.map(\.name))
+    }
+
+    @Test func siblingToolStillRunsWhileAnotherIsOff() async throws {
+        let server = FakeMCPServer(tools: [FakeMCPServer.tool("search", readOnly: true), FakeMCPServer.tool("other", readOnly: true)])
+        let runtime = makeRuntime(connectors: Connectors([server.client()]))
+        let setup = await runtime.prepare(mcpServerIDs: ["s1"]).setup
+        var run = request(setup)
+        run.disabledTools = ["s1": ["search"]]
+        let provider = ScriptedProvider(steps: [
+            ScriptedProvider.toolCalls([("t1", "mcp__acme__other", #"{"q":"x"}"#)]),
+            ScriptedProvider.text("done"),
+        ])
+        let events = await runtime.run(run, provider: provider).collect()
+        #expect(events.toolResults.first?.isError == false)
+        #expect(server.calls.map(\.name) == ["other"])
+    }
+
     @Test func deletedSkillMakesLoadSkillFail() async throws {
         let skills = SkillFolder(["alpha": "Alpha things."])
         let runtime = makeRuntime(skills: skills.store)

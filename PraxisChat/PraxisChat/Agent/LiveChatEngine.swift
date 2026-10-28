@@ -115,7 +115,7 @@ struct LiveChatEngine: ChatEngine {
             // as placeholders, the tool is already there.
             let reading = selection.imageSupport != .supported && selection.endpoint.capabilities.tools
             let preparation = await runtime.prepare(mcpServerIDs: request.connectorIDs, includeImageReader: reading,
-                                                    instructions: instructions)
+                                                    instructions: instructions, disabledTools: request.disabledTools)
             setup = preparation.setup
             preparationFailures = preparation.failures
             await request.onSetup(setup, preparation.failures)
@@ -160,7 +160,8 @@ struct LiveChatEngine: ChatEngine {
                                  transcript: previous + [user], mode: request.mode.agentMode, effort: request.effort,
                                  webSearch: request.webSearch, policy: request.policy, approvals: request.approvals,
                                  files: files.isEmpty ? nil : files, maxOutputTokens: selection.maxOutputTokens,
-                                 disabledServerIDs: request.disabledServerIDs, contextWindow: selection.contextWindow,
+                                 disabledServerIDs: request.disabledServerIDs, disabledTools: request.disabledTools,
+                                 contextWindow: selection.contextWindow,
                                  compaction: request.compaction, imageReader: reader,
                                  measurement: request.contextMeasurement, isCancelled: request.isCancelled,
                                  elicitationScope: request.elicitationScope)

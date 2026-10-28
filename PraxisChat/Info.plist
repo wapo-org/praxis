@@ -46,7 +46,7 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Praxis Chat connects to model servers you set up on your local network, such as LM Studio or Ollama.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Praxis Chat shows your recent screenshots so you can attach them to a message.</string>
+	<string>Praxis Chat shows your recent photos so you can attach them to a message.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
