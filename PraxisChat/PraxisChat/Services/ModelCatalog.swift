@@ -66,7 +66,10 @@ struct ModelSections: Equatable {
     static func make(models: [AIModel], pinnedIDs: [String], query: String) -> ModelSections {
         var listedByID: [String: AIModel] = [:]
         for model in models where listedByID[model.id] == nil { listedByID[model.id] = model }
-        let pinned = pinnedIDs.filter { !$0.isEmpty }
+        // The setter never stores empties or duplicates, but a hand-edited
+        // file might: drop them here so a row never shows twice.
+        var seen: Set<String> = []
+        let pinned = pinnedIDs.filter { !$0.isEmpty && seen.insert($0).inserted }
         let listed = pinned.compactMap { listedByID[$0] }
         let missing = pinned.filter { listedByID[$0] == nil }
         let pinnedSet = Set(pinned)

@@ -111,55 +111,55 @@ final class ModelCatalogTests: XCTestCase {
 
     private var providersFile: URL { directory.appendingPathComponent("Providers.json") }
 
-    private func settings() -> ProviderSettings {
+    private func makeSettings() -> ProviderSettings {
         ProviderSettings(fileURL: providersFile, secrets: secrets)
     }
 
     func testPinsRoundTripThroughDisk() {
-        let settings = settings()
-        settings.setPinned(true, profileID: .demoProfileID, model: "atlas")
-        settings.setPinned(true, profileID: .demoProfileID, model: "mini")
-        settings.setPinned(false, profileID: .demoProfileID, model: "atlas")
-        XCTAssertEqual(settings.pinnedModels(for: .demoProfileID), ["mini"])
-        let reopened = settings()
-        XCTAssertEqual(reopened.pinnedModels(for: .demoProfileID), ["mini"])
-        XCTAssertTrue(reopened.isPinned(profileID: .demoProfileID, model: "mini"))
-        XCTAssertFalse(reopened.isPinned(profileID: .demoProfileID, model: "atlas"))
+        let settings = makeSettings()
+        settings.setPinned(true, profileID: ProviderSettings.demoProfileID, model: "atlas")
+        settings.setPinned(true, profileID: ProviderSettings.demoProfileID, model: "mini")
+        settings.setPinned(false, profileID: ProviderSettings.demoProfileID, model: "atlas")
+        XCTAssertEqual(settings.pinnedModels(for: ProviderSettings.demoProfileID), ["mini"])
+        let reopened = makeSettings()
+        XCTAssertEqual(reopened.pinnedModels(for: ProviderSettings.demoProfileID), ["mini"])
+        XCTAssertTrue(reopened.isPinned(profileID: ProviderSettings.demoProfileID, model: "mini"))
+        XCTAssertFalse(reopened.isPinned(profileID: ProviderSettings.demoProfileID, model: "atlas"))
     }
 
     func testPinOrderAndNoDuplicates() {
-        let settings = settings()
-        settings.setPinned(true, profileID: .demoProfileID, model: "a")
-        settings.setPinned(true, profileID: .demoProfileID, model: "b")
-        settings.setPinned(true, profileID: .demoProfileID, model: "a")
-        settings.setPinned(false, profileID: .demoProfileID, model: "absent")
-        XCTAssertEqual(settings.pinnedModels(for: .demoProfileID), ["a", "b"])
+        let settings = makeSettings()
+        settings.setPinned(true, profileID: ProviderSettings.demoProfileID, model: "a")
+        settings.setPinned(true, profileID: ProviderSettings.demoProfileID, model: "b")
+        settings.setPinned(true, profileID: ProviderSettings.demoProfileID, model: "a")
+        settings.setPinned(false, profileID: ProviderSettings.demoProfileID, model: "absent")
+        XCTAssertEqual(settings.pinnedModels(for: ProviderSettings.demoProfileID), ["a", "b"])
     }
 
     func testPinsArePerProfile() throws {
-        let settings = settings()
+        let settings = makeSettings()
         var profile = ProviderProfile.draft(.openRouterOpenAI)
         profile.defaultModel = "x"
         try settings.save(profile, apiKey: nil)
         settings.setPinned(true, profileID: profile.id, model: "a")
-        settings.setPinned(true, profileID: .demoProfileID, model: "b")
+        settings.setPinned(true, profileID: ProviderSettings.demoProfileID, model: "b")
         XCTAssertEqual(settings.pinnedModels(for: profile.id), ["a"])
-        XCTAssertEqual(settings.pinnedModels(for: .demoProfileID), ["b"])
+        XCTAssertEqual(settings.pinnedModels(for: ProviderSettings.demoProfileID), ["b"])
         settings.delete(profile.id)
         XCTAssertTrue(settings.pinnedModels(for: profile.id).isEmpty)
-        XCTAssertEqual(settings.pinnedModels(for: .demoProfileID), ["b"])
+        XCTAssertEqual(settings.pinnedModels(for: ProviderSettings.demoProfileID), ["b"])
     }
 
     func testPinsForUnknownProfilesAndEmptyModelsAreIgnored() {
-        let settings = settings()
+        let settings = makeSettings()
         settings.setPinned(true, profileID: UUID(), model: "a")
-        settings.setPinned(true, profileID: .demoProfileID, model: "")
-        XCTAssertTrue(settings.pinnedModels(for: .demoProfileID).isEmpty)
+        settings.setPinned(true, profileID: ProviderSettings.demoProfileID, model: "")
+        XCTAssertTrue(settings.pinnedModels(for: ProviderSettings.demoProfileID).isEmpty)
     }
 
     func testFilesFromBeforePinsStillDecode() throws {
         try Data(#"{"version":1,"profiles":[]}"#.utf8).write(to: providersFile)
-        XCTAssertTrue(settings().pinnedModels(for: .demoProfileID).isEmpty)
+        XCTAssertTrue(makeSettings().pinnedModels(for: ProviderSettings.demoProfileID).isEmpty)
     }
 
     // MARK: Smoothness
@@ -176,8 +176,4 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertFalse(matches.isEmpty)
         XCTAssertLessThan(elapsed, 1.0, "filtering 5000 models took \(elapsed)s")
     }
-}
-
-private extension UUID {
-    static var demoProfileID: UUID { ProviderSettings.demoProfileID }
 }
