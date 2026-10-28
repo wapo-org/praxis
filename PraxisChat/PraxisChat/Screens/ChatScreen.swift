@@ -186,6 +186,14 @@ struct ChatScreen: View {
                 PhotoViewer(attachment: att)
                     .navigationTransition(.zoom(sourceID: att.id, in: glassNS))
             }
+            // Deep link from the Live Activity / notifications (§3.6).
+            // In-markdown integration tiles never reach here: the
+            // OpenURLAction override below returns .handled for them.
+            .onOpenURL { url in
+                if let id = Self.chatDeepLinkConversationID(from: url) {
+                    store.select(id)
+                }
+            }
         }
     }
 
@@ -213,6 +221,16 @@ struct ChatScreen: View {
         let data = size <= 25 << 20 ? try? Data(contentsOf: url, options: .mappedIfSafe) : nil
         let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
         return Attachment(kind: .file, name: url.lastPathComponent, fileData: data, mediaType: type)
+    }
+
+    /// Deep-link conversation id: `praxis-app://chat/<uuid>`.
+    /// Anything else — other hosts, bad UUIDs, other schemes —
+    /// returns nil and is ignored. Internal for unit tests.
+    static func chatDeepLinkConversationID(from url: URL) -> UUID? {
+        guard url.scheme?.lowercased() == "praxis-app",
+              url.host()?.lowercased() == "chat",
+              let first = url.pathComponents.dropFirst().first else { return nil }
+        return UUID(uuidString: first)
     }
 
     /// Single entry point for opening/closing the tray, so the haptic,
