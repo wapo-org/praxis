@@ -68,16 +68,43 @@ final class BlurWave2Shots: XCTestCase {
         save("tray-2-main")
     }
 
+    // MARK: Chat bottom, dense
+
+    /// Nudges dense paragraphs through the bottom feather zone above
+    /// the composer, one pose per nudge.
+    func testChatBottomDense() {
+        launch(["-PraxisLongThread", "YES"])
+        for i in 0..<4 {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
+            start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+            Thread.sleep(forTimeInterval: 0.8)
+            save("chat-bottom-\(i)")
+        }
+    }
+
     // MARK: History
 
     func testHistory() {
         launch(["-PraxisLongThread", "YES"])
+        // The seed lists 6 chats (no scroll); make 8 more so rows pass
+        // under the header.
+        for _ in 0..<8 {
+            el(.button, "History").tap()
+            Thread.sleep(forTimeInterval: 0.6)
+            let next = el(.button, "New chat")
+            if next.waitForExistence(timeout: 5) { next.tap() }
+            Thread.sleep(forTimeInterval: 0.6)
+        }
         el(.button, "History").tap()
         Thread.sleep(forTimeInterval: 0.8)
         save("history-0-top")
         app.swipeUp()
         Thread.sleep(forTimeInterval: 0.8)
         save("history-1-scrolled")
+        app.swipeUp()
+        Thread.sleep(forTimeInterval: 0.8)
+        save("history-2-scrolled-far")
     }
 
     // MARK: Settings
@@ -122,6 +149,23 @@ final class BlurWave2Shots: XCTestCase {
         el(.button, "Image reading model").tap()
         XCTAssertTrue(app.navigationBars["Image reading model"].waitForExistence(timeout: 10))
         save("settings-6-image-reader")
+    }
+
+    /// The provider editor is the longest settings form: content
+    /// scrolling under its nav bar proves the pinned top edge.
+    func testProviderEditor() {
+        launch()
+        openSettings()
+        el(.button, "Add provider").tap()
+        Thread.sleep(forTimeInterval: 0.8)
+        let preset = app.menuItems.element(boundBy: 0)
+        if preset.waitForExistence(timeout: 5) { preset.tap() }
+        XCTAssertTrue(app.navigationBars["Add provider"].waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 0.8)
+        save("settings-7-editor-top")
+        app.swipeUp()
+        Thread.sleep(forTimeInterval: 0.8)
+        save("settings-8-editor-scrolled")
     }
 
     // MARK: Consent
