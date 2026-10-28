@@ -47,6 +47,8 @@ final class ChatStore {
     /// A live send waiting on the AI-data consent sheet. Nothing has
     /// been sent or added to the thread while this is set.
     var pendingConsent: ConsentRequest?
+    // TEMPORARY-VOICE-DUP: declared identically on wave2/voice-rec + wave2/voice-groq; second integrator keeps one copy.
+    @ObservationIgnored var voiceRetryTranscription: ((UUID) -> Void)?
     /// Whether the selected conversation is running.
     var isRunning: Bool { selectedID.map(isRunning(_:)) ?? false }
 
@@ -105,6 +107,7 @@ final class ChatStore {
         if UserDefaults.standard.bool(forKey: "PraxisResetData") { AppDirectories.reset() }
         let services = AgentServices.live()
         services.installTestProviderIfRequested()
+        services.connectors.installMockConnectorIfRequested()
         let override = EngineKind.launchOverride
         let kind = EngineKind.resolve(override: override, hasProvider: services.settings.hasProfiles)
         let engine: any ChatEngine = switch kind {
@@ -116,6 +119,15 @@ final class ChatStore {
         let store = ChatStore(engine: engine, persistence: ConversationStore(directory: AppDirectories.conversations),
                               services: services, picksEngineAutomatically: override == nil)
         services.pruneRuntimeState(keeping: store.conversations.map(\.id))
+        #if DEBUG
+        // `-PraxisVoiceConsentDemo YES` (UI tests): present the voice
+        // transcription consent sheet standalone (no controller needed).
+        if UserDefaults.standard.bool(forKey: "PraxisVoiceConsentDemo"), let id = store.selectedID {
+            store.pendingConsent = ConsentRequest(host: GroqEndpoints.host, providerName: "Groq",
+                                                  connectorNames: [], conversationID: id,
+                                                  action: .transcribe(recordingID: UUID()))
+        }
+        #endif
         return store
     }
 
@@ -379,6 +391,10 @@ final class ChatStore {
             send(text: text)
         case .retry(let turnID):
             retry(turnID: turnID)
+        case .transcribe(let recordingID):
+            // Voice (voice-groq): the host is granted above; the controller
+            // retries the held transcription. Set by VoiceInputController.
+            voiceRetryTranscription?(recordingID)
         }
     }
 
@@ -548,6 +564,9 @@ final class ChatStore {
             // Unknown ids are ignored by the runtime, so the full set is
             // safe even when the setup is about to be (re-)frozen.
             disabledServerIDs: conv.disabledServerIDs,
+            // Read live: toggling a tool applies to existing chats'
+            // next run (their calls refuse) and to new chats' freeze.
+            disabledTools: services?.connectors.disabledTools ?? [:],
             onSetup: { setup, failures in
                 await MainActor.run { store.value?.adopt(setup, failures: failures, conversationID: conversationID) }
             },
@@ -889,6 +908,8 @@ enum SettingsPage: Hashable {
     case root, connectors, skills
     /// One connector's detail (e.g. "Sign in to Gmail" from a chat step).
     case connector(String)
+    /// Voice input (Groq key + model): 401s and missing-key hints link here.
+    case voice
 }
 
 /// A weak store reference the off-main reader can carry.

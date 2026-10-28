@@ -28,6 +28,12 @@ public struct RunRequest: Sendable {
     /// Frozen connectors the user turned off for this conversation. Their
     /// tools stay offered (the prefix can't change) but refuse to run.
     public var disabledServerIDs: Set<String>
+    /// Frozen tools the user turned off in connector settings, by server
+    /// id. Like `disabledServerIDs` they stay offered (the prefix can't
+    /// change) but refuse to run; new conversations leave them out at
+    /// `prepare` time instead. Read live on every run, so toggling a
+    /// tool applies to existing chats at once.
+    public var disabledTools: [String: Set<String>]
     /// The model's context window (`ModelInfo.contextWindow`) when known;
     /// compaction budgets against it (or a fallback).
     public var contextWindow: Int?
@@ -57,7 +63,8 @@ public struct RunRequest: Sendable {
     public init(conversationID: String, model: String, setup: ConversationSetup, transcript: [Message],
                 mode: AgentMode, effort: Effort, webSearch: Bool = false, policy: ToolPolicy = ToolPolicy(),
                 approvals: any ApprovalHandler, files: (any VirtualFileSystem)? = nil, maxOutputTokens: Int? = nil,
-                disabledServerIDs: Set<String> = [], contextWindow: Int? = nil, compaction: ContextCompaction? = nil,
+                disabledServerIDs: Set<String> = [], disabledTools: [String: Set<String>] = [:],
+                contextWindow: Int? = nil, compaction: ContextCompaction? = nil,
                 imageReader: ImageReaderAccess = .notConfigured, measurement: ContextMeasurement? = nil,
                 isCancelled: @escaping @Sendable () -> Bool = { false }, elicitationScope: UUID? = nil,
                 supportedEffortValues: [String]? = nil) {
@@ -74,6 +81,7 @@ public struct RunRequest: Sendable {
         self.files = files
         self.maxOutputTokens = maxOutputTokens
         self.disabledServerIDs = disabledServerIDs
+        self.disabledTools = disabledTools
         self.contextWindow = contextWindow
         self.compaction = compaction
         self.imageReader = imageReader
@@ -133,6 +141,10 @@ public struct AgentRuntime: Sendable {
     /// after the user signs in to a failed server — and persist the result.
     /// Never call it for a conversation that already has messages.
     ///
+    /// - Parameter disabledTools: tool names the user turned off, by
+    ///   server id. They're left out of the frozen setup (and don't
+    ///   count towards the gateway threshold).
+    ///
     /// - Parameter includeImageReader: offer `look_at_image`. Pass true when
     ///   the chat model has no image input, **or when that isn't known**
     ///   (and the model does have tools): if its images then have to go out
@@ -143,12 +155,13 @@ public struct AgentRuntime: Sendable {
     ///   rejected for images: `addingImageReader`.)
     public func prepare(mcpServerIDs: [String] = [], includeJavaScript: Bool = true, includeSkills: Bool = true,
                         includeImageReader: Bool = false,
-                        instructions: String? = nil, gatewayThreshold: Int = 30, now: Date = Date()) async -> Preparation {
+                        instructions: String? = nil, gatewayThreshold: Int = 30, now: Date = Date(),
+                        disabledTools: [String: Set<String>] = [:]) async -> Preparation {
         var clients: [MCPClient] = []
         for id in Set(mcpServerIDs).sorted() {
             if let client = await mcpClient(id) { clients.append(client) }
         }
-        let listed = await MCPToolset.build(servers: clients, threshold: gatewayThreshold)
+        let listed = await MCPToolset.build(servers: clients, threshold: gatewayThreshold, disabledTools: disabledTools)
         let failed = Set(listed.failures.map(\.serverID))
         let servers = clients.filter { $0.config.enabled && !failed.contains($0.config.id) }.map { client in
             MCPServerSnapshot(id: client.config.id, name: client.config.name,
@@ -225,8 +238,10 @@ public struct AgentRuntime: Sendable {
 
     /// The conversation's tools: exactly `setup.toolSpecs`, backed by live
     /// implementations where they still exist.
-    public func tools(for setup: ConversationSetup, conversationID: String) async -> ToolRegistry {
-        registry(setup, spill: spills.spill(for: conversationID), connectors: await connectors(for: setup))
+    public func tools(for setup: ConversationSetup, conversationID: String,
+                      disabledTools: [String: Set<String>] = [:]) async -> ToolRegistry {
+        registry(setup, spill: spills.spill(for: conversationID), connectors: await connectors(for: setup),
+                 disabledTools: disabledTools)
     }
 
     enum Connector: Sendable {
@@ -252,8 +267,10 @@ public struct AgentRuntime: Sendable {
     }
 
     func registry(_ setup: ConversationSetup, spill: OutputSpill, connectors: [String: Connector],
-                  images: ImageIndex = ImageIndex(), imageReader: ImageReaderAccess = .notConfigured) -> ToolRegistry {
-        let (offered, hidden) = assemble(setup, spill: spill, connectors: connectors, images: images, imageReader: imageReader)
+                  images: ImageIndex = ImageIndex(), imageReader: ImageReaderAccess = .notConfigured,
+                  disabledTools: [String: Set<String>] = [:]) -> ToolRegistry {
+        let (offered, hidden) = assemble(setup, spill: spill, connectors: connectors, images: images,
+                                         imageReader: imageReader, disabledTools: disabledTools)
         let live = Dictionary(offered.map { ($0.spec.name, $0) }, uniquingKeysWith: { a, _ in a })
         let pinned: [any AgentTool] = setup.toolSpecs.map { spec in
             guard let tool = live[spec.name] else { return RetiredTool(spec: spec) }
@@ -271,7 +288,8 @@ public struct AgentRuntime: Sendable {
     /// frozen `toolSpecs` name them offer them (`registry` pins the list).
     private func assemble(_ setup: ConversationSetup, spill: OutputSpill, connectors: [String: Connector],
                           images: ImageIndex = ImageIndex(),
-                          imageReader: ImageReaderAccess = .notConfigured) -> (offered: [any AgentTool], hidden: [any AgentTool]) {
+                          imageReader: ImageReaderAccess = .notConfigured,
+                          disabledTools: [String: Set<String>] = [:]) -> (offered: [any AgentTool], hidden: [any AgentTool]) {
         var offered: [any AgentTool] = [ReadToolOutputTool(spill: spill),
                                         LookAtImageTool(access: imageReader, images: images, transport: providerTransport)]
         if setup.includesSkills, let skillStore {
@@ -289,7 +307,14 @@ public struct AgentRuntime: Sendable {
         }
         let mcpTools = frozen.catalog.map { tool -> ConnectorTool in
             let id = if case .mcp(let id, _) = tool.source { id } else { "" }
-            if let live = executors[id]?[tool.definition.name] { return ConnectorTool(frozen: tool, target: .live(live)) }
+            if let live = executors[id]?[tool.definition.name] {
+                // The server is live but this tool was turned off: it
+                // stays offered (the prefix can't change) and refuses.
+                if disabledTools[id, default: []].contains(tool.definition.name) {
+                    return ConnectorTool(frozen: tool, target: .unavailable("The user turned this tool off"))
+                }
+                return ConnectorTool(frozen: tool, target: .live(live))
+            }
             let reason = switch connectors[id] {
             case .disabled?:
                 "The \(tool.serverName) connector is turned off, so its tools can't run. The user can turn it back on in connector settings."
@@ -358,7 +383,7 @@ public struct AgentRuntime: Sendable {
                 if provider.capabilities.tools {
                     let connectors = await connectors(for: request.setup, offHere: request.disabledServerIDs)
                     tools = registry(request.setup, spill: spill, connectors: connectors, images: images,
-                                     imageReader: request.imageReader)
+                                     imageReader: request.imageReader, disabledTools: request.disabledTools)
                     policy.trustedSources.formUnion(MCPToolset.trustedSources(connectors.values.compactMap(\.liveConfig)))
                 }
                 let loop = AgentLoop(provider: provider, tools: tools, policy: policy, approvals: request.approvals,
