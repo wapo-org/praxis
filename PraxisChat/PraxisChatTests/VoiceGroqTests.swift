@@ -169,7 +169,7 @@ final class VoiceGroqTests: XCTestCase {
         let result = try await queue.run({
             if calls.next() < 3 { throw VoiceTranscriptionError.rateLimited(retryAfter: nil) }
             return "done"
-        }, onEvent: { events.withLock { $0.append($1) } })
+        }, onEvent: { event in events.withLock { $0.append(event) } })
         XCTAssertEqual(result, "done")
         XCTAssertEqual(calls.count, 3)
         XCTAssertEqual(sleep.all, [1, 2])
@@ -185,7 +185,7 @@ final class VoiceGroqTests: XCTestCase {
             _ = try await queue.run({
                 _ = calls.next()
                 throw VoiceTranscriptionError.rateLimited(retryAfter: 9)
-            } as () async throws -> Void)
+            } as @Sendable () async throws -> Void)
             XCTFail("should throw after max attempts")
         } catch let error as VoiceTranscriptionError {
             guard case .rateLimited(let after) = error else { return XCTFail("wrong error \(error)") }
@@ -205,7 +205,7 @@ final class VoiceGroqTests: XCTestCase {
             _ = try await queue.run({
                 _ = calls.next()
                 throw VoiceTranscriptionError.server(message: "5xx")
-            } as () async throws -> Void)
+            } as @Sendable () async throws -> Void)
             XCTFail("should throw")
         } catch let error as VoiceTranscriptionError {
             guard case .server = error else { return XCTFail("wrong error \(error)") }
@@ -226,7 +226,7 @@ final class VoiceGroqTests: XCTestCase {
                 _ = try await queue.run({
                     _ = calls.next()
                     throw error
-                } as () async throws -> Void)
+                } as @Sendable () async throws -> Void)
                 XCTFail("should rethrow \(error)")
             } catch let thrown as VoiceTranscriptionError {
                 XCTAssertEqual(String(describing: thrown), String(describing: error))
@@ -252,7 +252,7 @@ final class VoiceGroqTests: XCTestCase {
         let result = try await queue.run({
             if calls.next() == 1 { throw VoiceTranscriptionError.offline }
             return "resumed"
-        }, onEvent: { events.withLock { $0.append($1) } })
+        }, onEvent: { event in events.withLock { $0.append(event) } })
         XCTAssertEqual(result, "resumed")
         XCTAssertEqual(calls.count, 2)
         XCTAssertTrue(sleep.all.isEmpty, "offline waits don't back off")
@@ -274,7 +274,9 @@ final class VoiceGroqTests: XCTestCase {
     // MARK: Segmentation (boundary scan, stitch, prompt tail)
 
     func testEnergiesRMS() {
-        XCTAssertEqual(AudioSegmenter.energies(samples: [1, -1, 1, -1], windowSize: 4), [1], accuracy: 1e-5)
+        let one = AudioSegmenter.energies(samples: [1, -1, 1, -1], windowSize: 4)
+        XCTAssertEqual(one.count, 1)
+        XCTAssertTrue(abs(one[0] - 1) < 1e-5)
         XCTAssertEqual(AudioSegmenter.energies(samples: [0, 0, 0, 0], windowSize: 2), [0, 0])
         XCTAssertTrue(AudioSegmenter.energies(samples: [], windowSize: 4).isEmpty)
     }
@@ -282,10 +284,10 @@ final class VoiceGroqTests: XCTestCase {
     func testBestBoundaryFindsSilence() {
         // Loud, quiet gap, loud: 0.5 s windows, nominal at 300 s.
         var energies = [Float](repeating: 0.8, count: 700)
-        for i in 295..<305 { energies[i] = 0.01 }
+        for i in 590..<610 { energies[i] = 0.01 }
         let found = AudioSegmenter.bestBoundary(energies: energies, windowDuration: 0.5, nominal: 300,
                                                 searchRadius: 30, limits: 60..<600)
-        XCTAssertTrue((147.0...153.0).contains(found), "got \(found)")
+        XCTAssertTrue((294.0...306.0).contains(found), "got \(found)")
     }
 
     func testBestBoundaryFallsBackToNominal() {
@@ -298,10 +300,10 @@ final class VoiceGroqTests: XCTestCase {
 
     func testNominalPartDuration() {
         XCTAssertEqual(AudioSegmenter.nominalPartDuration(fileBytes: 1 << 20, duration: 3600), 600)
-        // Dense file: 10 min would exceed 20 MB, so shrink (~100 MB/hour → 12 min… capped by size).
-        XCTAssertEqual(AudioSegmenter.nominalPartDuration(fileBytes: 100 << 20, duration: 3600), 720, accuracy: 5)
+        // Dense file: 10 min would exceed 20 MB, so shrink (100 MB in 30 min → 6 min parts).
+        XCTAssertEqual(AudioSegmenter.nominalPartDuration(fileBytes: 100 << 20, duration: 1800), 360, accuracy: 5)
         // Absurd density floors at 1 min parts (413-halving takes it further).
-        XCTAssertEqual(AudioSegmenter.nominalPartDuration(fileBytes: 1 << 30, duration: 3600), 60, accuracy: 5)
+        XCTAssertEqual(AudioSegmenter.nominalPartDuration(fileBytes: 2 << 30, duration: 3600), 60, accuracy: 5)
     }
 
     func testStitchStripsOverlapAndJoins() {
@@ -462,7 +464,8 @@ final class VoiceGroqTests: XCTestCase {
         let sent = transport.requests[0]
         XCTAssertEqual(sent.url?.absoluteString, "https://api.groq.com/openai/v1/audio/transcriptions")
         XCTAssertEqual(sent.method, "POST")
-        XCTAssertTrue(sent.headers["authorization"]?.hasPrefix("Bearer ") == true)
+        let auth = sent.headers.first { $0.key.lowercased() == "authorization" }?.value
+        XCTAssertTrue(auth?.hasPrefix("Bearer ") == true)
         let body = String(decoding: sent.body ?? Data(), as: UTF8.self)
         XCTAssertTrue(body.contains("whisper-large-v3-turbo"))
         XCTAssertTrue(body.contains("verbose_json"))
