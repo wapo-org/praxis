@@ -198,6 +198,7 @@ import AgentTestSupport
         #expect(EffortLevels.rejection(in: "'reasoning_effort' does not support 'none' with this model") == .valueUnsupported("none"))
         #expect(EffortLevels.rejection(in: "output_config.effort 'xhigh' is not supported when thinking is disabled on this model. Use effort 'high' or below, or enable thinking.") == .valueUnsupported("xhigh"))
         #expect(EffortLevels.rejection(in: "Model 'gpt-5-mini' does not support reasoning effort 'xhigh'. Supported: minimal, low, medium, high.") == .valueUnsupported("xhigh"))
+        #expect(EffortLevels.rejection(in: #"reasoning_effort "ultra" is not supported by this model"#) == .valueUnsupported("ultra"))
         #expect(EffortLevels.rejection(in: "No endpoints found that support tool use") == nil)
         #expect(EffortLevels.rejection(in: "rate_limited: slow down") == nil)
         #expect(EffortLevels.rejection(in: "output_config.format.schema: Invalid JSON Schema in output format") == nil)

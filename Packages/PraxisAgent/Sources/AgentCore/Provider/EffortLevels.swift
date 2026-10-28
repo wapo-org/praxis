@@ -96,8 +96,8 @@ public enum EffortLevels {
     public static func clamp(_ value: String, to supported: [String]?) -> String? {
         guard let supported else { return value }
         guard !supported.isEmpty else { return nil }
-        let lower = supported.map { $0.lowercased() }
-        if lower.contains(value.lowercased()) { return value }
+        // The list's own spelling: wire values are case-sensitive.
+        if let match = supported.first(where: { $0.lowercased() == value.lowercased() }) { return match }
         guard let want = canonicalOrder.firstIndex(of: value.lowercased()) else { return nil }
         var best: String?
         var bestDistance = Int.max
@@ -162,12 +162,9 @@ public enum EffortLevels {
     /// Matched on the message, like `ToolSupport.isToolUseRejection`.
     public static func rejection(in message: String) -> Rejection? {
         let text = message.lowercased()
-        let namesEffort = text.contains("reasoning_effort") || text.contains("reasoning effort")
-            || text.contains("output_config.effort") || text.contains("adaptive thinking")
-        guard namesEffort else { return nil }
         let readsAsRejection = rejectionHints.contains { text.contains($0) }
-        guard readsAsRejection else { return nil }
-        if let value = quotedValue(in: message), !isParameterName(value) {
+        guard readsAsRejection, let keywordEnd = effortKeywordEnd(in: message) else { return nil }
+        if let value = quotedValue(after: keywordEnd, in: message) {
             return .valueUnsupported(value)
         }
         return .parameterUnsupported
@@ -178,24 +175,46 @@ public enum EffortLevels {
         "unknown parameter", "invalid",
     ]
 
+    static let effortKeywords = [
+        "reasoning_effort", "reasoning effort", "output_config.effort", "adaptive thinking",
+    ]
+
+    /// End of the first effort keyword's match. Nil when no keyword is named.
+    private static func effortKeywordEnd(in message: String) -> String.Index? {
+        var best: String.Index?
+        for keyword in effortKeywords {
+            if let range = message.range(of: keyword, options: .caseInsensitive) {
+                if best == nil || range.upperBound < best! { best = range.upperBound }
+            }
+        }
+        return best
+    }
+
     /// Parameter spellings that must not be mistaken for a rejected value.
     private static func isParameterName(_ value: String) -> Bool {
         ["reasoning_effort", "reasoning effort", "output_config.effort", "output_config",
          "effort", "thinking", "adaptive thinking"].contains(value.lowercased())
     }
 
-    /// First single- or double-quoted token in the message, if any.
-    static func quotedValue(in message: String) -> String? {
+    /// The rejected value: a quoted token opening after the effort keyword
+    /// (model ids are quoted before it, as in "Model 'gpt-5-mini' does not
+    /// support reasoning effort 'xhigh'"). Prefers a known level name;
+    /// otherwise the first quoted token that isn't a parameter name. Nil
+    /// when the message names no value — the parameter itself is unsupported.
+    static func quotedValue(after keywordEnd: String.Index, in message: String) -> String? {
+        var tokens: [String] = []
         for quote in ["'", "\""] as [Character] {
             var rest = message[...]
             while let open = rest.firstIndex(of: quote) {
+                let start = open
                 rest = rest[rest.index(after: open)...]
                 guard let close = rest.firstIndex(of: quote) else { break }
                 let token = String(rest[..<close]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !token.isEmpty { return token }
+                if !token.isEmpty, start > keywordEnd { tokens.append(token) }
                 rest = rest[rest.index(after: close)...]
             }
         }
-        return nil
+        if let known = tokens.first(where: { canonicalOrder.contains($0.lowercased()) }) { return known }
+        return tokens.first { !isParameterName($0) }
     }
 }
