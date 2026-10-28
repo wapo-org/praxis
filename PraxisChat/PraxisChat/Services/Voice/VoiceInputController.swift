@@ -152,19 +152,25 @@ final class VoiceInputController: VoiceSendObserver {
         refreshRecoverables()
     }
 
-    /// Production wiring. Until voice-groq's `GroqTranscriber` lands, the
-    /// transcriber is a DEBUG fake under `-PraxisFakeTranscript`, else an
-    /// unconfigured stub that throws `.missingKey` (transcribe routes to
-    /// Settings; recording always works).
-    static func production(chatStore: ChatStore) -> VoiceInputController {
+    /// Production wiring (final `voice` integration): the real Groq settings
+    /// plus a transcriber that snapshots them fresh on every call, so a
+    /// consent grant or a model/language change after launch takes effect on
+    /// the next transcription (in particular the consent allow-path retry).
+    /// DEBUG `-PraxisFakeTranscript` still swaps in the fake for UI tests.
+    static func production(chatStore: ChatStore, services: AgentServices) -> VoiceInputController {
         #if DEBUG
         if let text = fakeTranscriptText() {
             return VoiceInputController(store: .production(), transcriber: FakeTranscriber(text: text),
                                         settings: FakeVoiceSettings(isConfigured: true), chatStore: chatStore)
         }
         #endif
-        return VoiceInputController(store: .production(), transcriber: UnconfiguredTranscriber(),
-                                    settings: UnconfiguredVoiceSettings(), chatStore: chatStore)
+        let settings = services.voice
+        let consent = services.consent
+        let live = LiveGroqTranscriber {
+            settings.makeTranscriber(consentGranted: consent.isGranted(GroqEndpoints.host))
+        }
+        return VoiceInputController(store: .production(), transcriber: live,
+                                    settings: settings, chatStore: chatStore)
     }
 
     // MARK: Machinery (not observed)

@@ -51,7 +51,8 @@ final class ChatStore {
     /// A live send waiting on the AI-data consent sheet. Nothing has
     /// been sent or added to the thread while this is set.
     var pendingConsent: ConsentRequest?
-    // TEMPORARY-VOICE-DUP: declared identically on wave2/voice-rec + wave2/voice-groq; second integrator keeps one copy.
+    /// Voice consent allow-path: the controller sets this; allowing retries
+    /// the held transcription, declining is a no-op (audio stays queued).
     @ObservationIgnored var voiceRetryTranscription: ((UUID) -> Void)?
     /// Whether the selected conversation is running.
     var isRunning: Bool { selectedID.map(isRunning(_:)) ?? false }
@@ -127,7 +128,7 @@ final class ChatStore {
                               services: services, picksEngineAutomatically: override == nil)
         // Voice input (voice-rec; right after creation — voice-groq's seam
         // sits before `return store`, so these hunks stay separate).
-        let voice = VoiceInputController.production(chatStore: store)
+        let voice = VoiceInputController.production(chatStore: store, services: services)
         store.voice = voice
         store.voiceRetryTranscription = { [weak voice] id in
             Task { @MainActor [weak voice] in voice?.retryTranscription(id: id) }
