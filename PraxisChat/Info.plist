@@ -52,6 +52,27 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.praxis.chat.preview.run.*</string>
+	</array>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>chat</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>praxis-app</string>
+			</array>
+		</dict>
+	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
