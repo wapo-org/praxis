@@ -12,9 +12,11 @@ enum MockData {
         AIModel(id: "atlas", name: "Atlas", tagline: "Balanced for everyday work",
                 speed: 3, intelligence: 4, streamMultiplier: 1.0),
         AIModel(id: "atlas-mini", name: "Atlas Mini", tagline: "Fastest answers",
-                speed: 5, intelligence: 3, streamMultiplier: 1.6),
+                speed: 5, intelligence: 3, streamMultiplier: 1.6, effortLevels: [.low, .medium, .high]),
         AIModel(id: "atlas-code", name: "Atlas Code", tagline: "Tuned for large refactors",
                 speed: 3, intelligence: 4, streamMultiplier: 1.1),
+        AIModel(id: "atlas-chat", name: "Atlas Chat", tagline: "Quick chat, no reasoning",
+                speed: 5, intelligence: 2, streamMultiplier: 1.8, effortLevels: []),
     ]
 
     /// `-PraxisDemoModels N` (UI/perf tests): a provider-sized list, like

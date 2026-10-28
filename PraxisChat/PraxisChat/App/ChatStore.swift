@@ -603,8 +603,28 @@ final class ChatStore {
     var model: AIModel {
         get { isLive ? liveModel : demoModel }
         set {
-            if isLive { selectModel(id: newValue.id) } else { demoModel = newValue }
+            if isLive { selectModel(id: newValue.id) } else { demoModel = newValue; snapEffortToSupportedLevels() }
         }
+    }
+
+    /// Reasoning levels the tray offers for the current model. Nil = unknown
+    /// (all four); empty = no reasoning (the control hides). Live models
+    /// resolve this from the provider's list or a learned rejection.
+    var supportedEfforts: [Effort]? {
+        if isLive {
+            guard let wire = services?.settings.selectedEffortWireValues else { return nil }
+            return EffortLevels.map(wire)
+        }
+        return demoModel.effortLevels
+    }
+
+    /// After a model change, moves the effort to the nearest level the new
+    /// model takes; unknown or unreasoning models keep it. The tray's
+    /// control animates to the new selection, which is the subtle show.
+    private func snapEffortToSupportedLevels() {
+        guard let levels = supportedEfforts, !levels.isEmpty, !levels.contains(effort),
+              let snapped = EffortLevels.nearest(to: effort, in: levels) else { return }
+        effort = snapped
     }
 
     /// What the tray's model page lists.
@@ -634,6 +654,7 @@ final class ChatStore {
     private func selectModel(id: String) {
         guard let settings = services?.settings, let profile = settings.selectedProfile else { return }
         settings.setModel(id, for: profile.id)
+        snapEffortToSupportedLevels()
     }
 
     private static func aiModel(_ info: ModelInfo, profile: ProviderProfile) -> AIModel {

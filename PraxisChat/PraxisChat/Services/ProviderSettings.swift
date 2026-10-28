@@ -65,6 +65,10 @@ struct ProviderSelection: Sendable {
     var toolSupport: ToolUseSupport = .supported
     /// The model's display name (its id when the list has none).
     var modelName: String = ""
+    /// The model's supported effort wire values, when known. Nil = unknown
+    /// (send the effort unchanged); empty = no reasoning (drop the
+    /// parameter). Builders clamp to these (`EffortLevels.clamp`).
+    var effortLevels: [String]?
 }
 
 /// Whether a chat model takes image input, as far as the app knows. Per
@@ -100,6 +104,15 @@ enum ToolUseSupport: Sendable, Equatable {
     case unsupported
 }
 
+/// A model's effort levels as learned from a provider rejection: the
+/// narrowed wire values plus when they were learned (they lapse, like the
+/// image/tool rejections, so a provider that changes is noticed).
+struct LearnedEffortLevels: Sendable, Equatable, Codable {
+    /// Supported wire values; empty = the parameter itself was rejected.
+    var levels: [String]
+    var learnedAt: Date
+}
+
 /// Provider profiles, the selected one, and each profile's model list.
 /// Non-secret parts are one JSON file in Application Support; API keys
 /// are Keychain items (`AfterFirstUnlockThisDeviceOnly`, via
@@ -121,6 +134,7 @@ final class ProviderSettings {
         var modelsFetchedAt: [UUID: Date]?
         var imageRejections: [UUID: [String: Date]]?
         var toolRejections: [UUID: [String: Date]]?
+        var learnedEffortLevels: [UUID: [String: LearnedEffortLevels]]?
     }
 
     private(set) var profiles: [ProviderProfile] = []
@@ -144,6 +158,10 @@ final class ProviderSettings {
     /// (`markToolsUnsupported`). Persisted: the next send already goes
     /// without tools instead of failing once more.
     private(set) var toolRejections: [UUID: [String: Date]] = [:]
+    /// Models whose effort levels were narrowed by a provider rejection,
+    /// by profile (`markEffortUnsupported`, `markEffortValueUnsupported`).
+    /// Persisted: the next send already clamps instead of failing once more.
+    private(set) var learnedEffortLevels: [UUID: [String: LearnedEffortLevels]] = [:]
 
     /// A model list older than this is read again in the background.
     static let modelListLifetime: TimeInterval = 24 * 3600
@@ -155,6 +173,10 @@ final class ProviderSettings {
     /// tool support later is noticed (the list flipping to tool-capable
     /// clears it sooner, `store(_:for:)`).
     static let toolRejectionLifetime: TimeInterval = 14 * 24 * 3600
+    /// Learned effort levels lapse after this, so a provider that changes
+    /// its levels is noticed (the list reporting different levels clears
+    /// them sooner, `store(_:for:)`).
+    static let effortRejectionLifetime: TimeInterval = 14 * 24 * 3600
     /// Minimum gap between two list requests to one profile in a session.
     static let refreshRetryGap: TimeInterval = 600
 
@@ -177,6 +199,7 @@ final class ProviderSettings {
             modelsFetchedAt = file.modelsFetchedAt ?? [:]
             imageRejections = file.imageRejections ?? [:]
             toolRejections = file.toolRejections ?? [:]
+            learnedEffortLevels = file.learnedEffortLevels ?? [:]
             migrateHeaderSecretsToKeychain()
         }
     }
@@ -331,6 +354,28 @@ final class ProviderSettings {
         return selectedToolSupport != .unsupported
     }
 
+    /// What the app knows about a model's reasoning-effort levels, as raw
+    /// wire values: empty when the profile's effort capability is off or a
+    /// past rejection ruled reasoning out (`markEffortUnsupported`),
+    /// otherwise the learned narrowing when fresh, otherwise what the model
+    /// list says (`ModelInfo.reasoningEfforts`); nil when nothing does
+    /// (unknown: send the effort unchanged and learn from a rejection).
+    func effortWireValues(profileID: UUID, model: String, now: Date = Date()) -> [String]? {
+        guard let profile = profile(profileID), profile.endpoint.capabilities.reasoningEffort else { return [] }
+        if let learned = learnedEffortLevels[profileID]?[model],
+           now.timeIntervalSince(learned.learnedAt) < Self.effortRejectionLifetime {
+            return learned.levels
+        }
+        return models(for: profileID).first { $0.id == model }?.reasoningEfforts
+    }
+
+    /// The selected chat model's effort levels as raw wire values (nil =
+    /// unknown, empty = no reasoning).
+    var selectedEffortWireValues: [String]? {
+        guard let profile = selectedProfile else { return nil }
+        return effortWireValues(profileID: profile.id, model: profile.defaultModel)
+    }
+
     /// The image reader's profile, endpoint (with key) and model, when set
     /// and still valid.
     func imageReaderSelection() -> (profile: ProviderProfile, endpoint: ProviderEndpoint, model: String, info: ModelInfo?)? {
@@ -364,7 +409,8 @@ final class ProviderSettings {
         endpoint.capabilities.tools = tools != .unsupported
         return ProviderSelection(profileID: profile.id, profileName: profile.name, endpoint: endpoint, model: model,
                                  maxOutputTokens: info?.maxOutputTokens, contextWindow: info?.contextWindow,
-                                 imageSupport: support, toolSupport: tools, modelName: info?.displayName ?? model)
+                                 imageSupport: support, toolSupport: tools, modelName: info?.displayName ?? model,
+                                 effortLevels: effortWireValues(profileID: profile.id, model: model))
     }
 
     // MARK: Editing
@@ -404,6 +450,7 @@ final class ProviderSettings {
                 modelsFetchedAt[profile.id] = nil
                 imageRejections[profile.id] = nil
                 toolRejections[profile.id] = nil
+                learnedEffortLevels[profile.id] = nil
             }
             profiles[i] = profile
         } else {
@@ -426,6 +473,7 @@ final class ProviderSettings {
         modelsFetchedAt[id] = nil
         imageRejections[id] = nil
         toolRejections[id] = nil
+        learnedEffortLevels[id] = nil
         refreshesInFlight.removeValue(forKey: id)?.cancel()
         if selectedProfileID == id { selectedProfileID = profiles.first?.id }
         if imageReader?.profileID == id { imageReader = nil }
@@ -555,6 +603,32 @@ final class ProviderSettings {
         persist()
     }
 
+    /// The provider turned the effort parameter down for this model (an
+    /// "Unrecognized request argument supplied: reasoning_effort" style
+    /// error): remember it, so this and later chats drop the parameter
+    /// from the start. Lapses on its own after `effortRejectionLifetime`,
+    /// or when the model list reports levels for the model.
+    func markEffortUnsupported(profileID: UUID, model: String, now: Date = Date()) {
+        guard profiles.contains(where: { $0.id == profileID }), !model.isEmpty else { return }
+        learnedEffortLevels[profileID, default: [:]][model] = LearnedEffortLevels(levels: [], learnedAt: now)
+        persist()
+    }
+
+    /// The provider turned one effort value down for this model (a
+    /// "'reasoning_effort' does not support 'xhigh'" style error):
+    /// narrow the known levels around the rejected value
+    /// (`EffortLevels.narrow`) and remember them, so this and later chats
+    /// clamp from the start. Lapses on its own after
+    /// `effortRejectionLifetime`, or when the model list reports different
+    /// levels for the model.
+    func markEffortValueUnsupported(profileID: UUID, model: String, value: String, now: Date = Date()) {
+        guard profiles.contains(where: { $0.id == profileID }), !model.isEmpty else { return }
+        let current = effortWireValues(profileID: profileID, model: model, now: now) ?? EffortLevels.unknownBaseline
+        learnedEffortLevels[profileID, default: [:]][model] =
+            LearnedEffortLevels(levels: EffortLevels.narrow(current, rejecting: value), learnedAt: now)
+        persist()
+    }
+
     /// "Test connection" for a draft that may not be saved yet.
     func test(_ endpoint: ProviderEndpoint, model: String?) async -> ProbeReport {
         await ProviderProbe(transport: transport).test(endpoint, model: model?.isEmpty == false ? model : nil)
@@ -581,6 +655,18 @@ final class ProviderSettings {
             }
             toolRejections[id] = learned.isEmpty ? nil : learned
         }
+        // Learned levels are forgotten when the list reports different
+        // levels for the model (it may have gained or lost support). A
+        // list that merely disagrees with an unchanged list stays learned:
+        // that's a provider whose routed endpoints lack what the list
+        // advertises.
+        if var learned = learnedEffortLevels[id], !learned.isEmpty {
+            let before = Dictionary((modelCache[id] ?? []).map { ($0.id, $0.reasoningEfforts) }, uniquingKeysWith: { a, _ in a })
+            for model in models where model.reasoningEfforts != (before[model.id] ?? nil) {
+                learned[model.id] = nil
+            }
+            learnedEffortLevels[id] = learned.isEmpty ? nil : learned
+        }
         modelCache[id] = models
         modelsFetchedAt[id] = now
         modelErrors[id] = nil
@@ -591,7 +677,8 @@ final class ProviderSettings {
 
     private func persist() {
         let file = File(profiles: profiles, selectedProfileID: selectedProfileID, models: modelCache, imageReader: imageReader,
-                       modelsFetchedAt: modelsFetchedAt, imageRejections: imageRejections, toolRejections: toolRejections)
+                       modelsFetchedAt: modelsFetchedAt, imageRejections: imageRejections, toolRejections: toolRejections,
+                       learnedEffortLevels: learnedEffortLevels)
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             let encoder = JSONEncoder()

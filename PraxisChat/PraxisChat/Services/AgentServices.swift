@@ -80,6 +80,12 @@ final class AgentServices {
         engine.onToolsRejected = { selection in
             await settings.markToolsUnsupported(profileID: selection.profileID, model: selection.model)
         }
+        engine.onEffortRejected = { selection in
+            await settings.markEffortUnsupported(profileID: selection.profileID, model: selection.model)
+        }
+        engine.onEffortValueRejected = { selection, value in
+            await settings.markEffortValueUnsupported(profileID: selection.profileID, model: selection.model, value: value)
+        }
         return engine
     }
 

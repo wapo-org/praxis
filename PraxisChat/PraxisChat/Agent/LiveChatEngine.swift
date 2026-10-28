@@ -31,6 +31,15 @@ import AgentRuntime
 /// and the same run is resent once with placeholders; the user sees a small
 /// step saying so, not a failure.
 ///
+/// Effort: a model whose levels the app knows gets only a value it takes;
+/// an unknown model is tried. If the provider turns the parameter down
+/// ("Unrecognized request argument supplied: reasoning_effort" and its
+/// kin), the model is remembered as unreasoning (`onEffortRejected`) and
+/// the same run is resent once without the parameter. If it turns one
+/// value down, the levels narrow around it (`onEffortValueRejected`) and
+/// the run is resent once clamped. The user sees a small step for the
+/// dropped parameter; a value fallback is silent.
+///
 /// Each run holds a background task so a turn in flight gets the system's
 /// grace period when the app is backgrounded; when that runs out, the run
 /// is stopped cleanly (it settles as stopped and is saved).
@@ -71,6 +80,12 @@ struct LiveChatEngine: ChatEngine {
     /// The provider turned tool use down for this model: remember it
     /// (persisted in Settings) so later sends go without tools from the start.
     var onToolsRejected: @Sendable (ProviderSelection) async -> Void = { _ in }
+    /// The provider turned the effort parameter down for this model:
+    /// remember it (persisted in Settings) so later sends drop it.
+    var onEffortRejected: @Sendable (ProviderSelection) async -> Void = { _ in }
+    /// The provider turned one effort value down: narrow the levels and
+    /// remember them so later sends clamp from the start.
+    var onEffortValueRejected: @Sendable (ProviderSelection, String) async -> Void = { _, _ in }
 
     var kind: EngineKind { .live }
     var buildsUserMessage: Bool { true }
@@ -144,6 +159,7 @@ struct LiveChatEngine: ChatEngine {
                                     store: attachments, hidden: request.hiddenFromCode)
         var fellBackImages = false
         var fellBackTools = false
+        var fellBackEffort = false
         let isCancelled = request.isCancelled
         while true {
             guard !isCancelled() else { return }
@@ -163,19 +179,24 @@ struct LiveChatEngine: ChatEngine {
                                  disabledServerIDs: request.disabledServerIDs, contextWindow: selection.contextWindow,
                                  compaction: request.compaction, imageReader: reader,
                                  measurement: request.contextMeasurement, isCancelled: request.isCancelled,
-                                 elicitationScope: request.elicitationScope)
+                                 elicitationScope: request.elicitationScope,
+                                 supportedEffortValues: selection.effortLevels)
             let provider = makeProvider(selection.endpoint, runtime.providerTransport)
             let sendsImages = provider.capabilities.vision && ImageReference.containsImages(run.transcript)
             // The request declared tools: the frozen specs (the loop sends
             // them when the model takes tools) or hosted web search.
             let sendsTools = provider.capabilities.tools
                 && (!setup.toolSpecs.isEmpty || (run.webSearch && provider.capabilities.serverWebSearch))
+            // The parameter goes out unless the endpoint or the model rules
+            // it out (builders clamp the value to `supportedEffortValues`).
+            let sendsEffort = provider.capabilities.reasoningEffort && selection.effortLevels != []
 
             // Whether the provider has answered (or the run has otherwise
             // moved on) tells whether the run can start over unseen.
             var progressed = false
             var imageRejection: AgentEvent?
             var toolRejection: AgentEvent?
+            var effortRejection: (event: AgentEvent, rejection: EffortLevels.Rejection)?
             for await event in runtime.run(run, provider: provider) {
                 guard !isCancelled() else { break }
                 // Persist before the UI hears of it: the next request may come
@@ -194,10 +215,14 @@ struct LiveChatEngine: ChatEngine {
                     toolRejection = event // decided below
                     continue
                 }
+                if sendsEffort, case .finished(.failed(let reason)) = event, let rejection = EffortLevels.rejection(in: reason) {
+                    effortRejection = (event, rejection) // decided below
+                    continue
+                }
                 if case .iterationStarted = event {} else { progressed = true }
                 out.yield(event)
             }
-            guard imageRejection != nil || toolRejection != nil else { return }
+            guard imageRejection != nil || toolRejection != nil || effortRejection != nil else { return }
 
             // Each kind is retried at most once; a request turned down for
             // images and then for tools retries twice in total, never more.
@@ -242,6 +267,45 @@ struct LiveChatEngine: ChatEngine {
                 selection.endpoint.capabilities.tools = false
                 selection.toolSupport = .unsupported
                 noteToolsOff(selection, out)
+            } else if let effortRejection {
+                // The provider turned effort down. Remember it either way.
+                let narrowed: [String]
+                let dropped: Bool
+                switch effortRejection.rejection {
+                case .parameterUnsupported:
+                    await onEffortRejected(selection)
+                    narrowed = []
+                    dropped = true
+                case .valueUnsupported(let value):
+                    let current = selection.effortLevels ?? EffortLevels.unknownBaseline
+                    let next = EffortLevels.narrow(current, rejecting: value)
+                    if next == current {
+                        // Narrowing changed nothing (the extraction caught a
+                        // suggestion, as in "set reasoning_effort to
+                        // 'none'"): drop the parameter instead of retrying
+                        // the identical request.
+                        await onEffortRejected(selection)
+                        narrowed = []
+                        dropped = true
+                    } else {
+                        await onEffortValueRejected(selection, value)
+                        narrowed = next
+                        dropped = false
+                    }
+                }
+                guard !fellBackEffort, !progressed, !Task.isCancelled else {
+                    out.yield(effortRejection.event)
+                    return
+                }
+
+                // Nothing was answered or shown yet: start the run over,
+                // this time clamped to the narrowed levels (or without the
+                // parameter). A value fallback is silent — the nearest
+                // valid level behaves nearly the same; a dropped parameter
+                // gets the small step, like tools off.
+                fellBackEffort = true
+                selection.effortLevels = narrowed
+                if dropped { noteEffortOff(selection, out) }
             }
         }
     }
@@ -269,6 +333,18 @@ struct LiveChatEngine: ChatEngine {
             presentation: ToolPresentation(category: .other, runningTitle: "Checking image support…",
                                            finishedTitle: "\(name) can't see images"))))
         out.yield(.toolFinished(id: id, ToolCompletion(status: .succeeded, summary: summary)))
+    }
+
+    /// The small step telling the user the model answered without effort.
+    private func noteEffortOff(_ selection: ProviderSelection,
+                               _ out: AsyncStream<AgentEvent>.Continuation) {
+        let name = selection.modelName.isEmpty ? selection.model : selection.modelName
+        let id = "effort-not-supported"
+        out.yield(.toolCallStarted(ToolActivity(
+            id: id, name: "effort_support", source: .builtin,
+            presentation: ToolPresentation(category: .other, runningTitle: "Checking reasoning support…",
+                                           finishedTitle: "\(name) doesn't take a reasoning effort — sending without it"))))
+        out.yield(.toolFinished(id: id, ToolCompletion(status: .succeeded, summary: "This model doesn't take a reasoning effort, so the chat continues without it. Switch to a reasoning model to use the effort dial.")))
     }
 
     /// The small step telling the user the model answered without tools.
