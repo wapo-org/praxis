@@ -79,11 +79,15 @@ final class AVAudioVoiceRecorder: NSObject, VoiceRecorderEngine, AVAudioRecorder
         observers = [
             center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) {
                 [weak self] note in
-                Task { @MainActor [weak self] in self?.handleInterruption(note) }
+                // Notification isn't Sendable: pull the reason out here
+                // (main queue already) and hop with a plain value.
+                let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+                Task { @MainActor [weak self] in self?.handleInterruption(rawValue: raw) }
             },
             center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) {
                 [weak self] note in
-                Task { @MainActor [weak self] in self?.handleRouteChange(note) }
+                let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+                Task { @MainActor [weak self] in self?.handleRouteChange(rawValue: raw) }
             },
         ]
     }
@@ -170,9 +174,9 @@ final class AVAudioVoiceRecorder: NSObject, VoiceRecorderEngine, AVAudioRecorder
 
     // MARK: Interruptions + routes
 
-    private func handleInterruption(_ note: Notification) {
+    private func handleInterruption(rawValue: UInt?) {
         guard isRecording else { return }
-        guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+        guard let raw = rawValue,
               let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
         switch type {
         case .began:
@@ -184,9 +188,9 @@ final class AVAudioVoiceRecorder: NSObject, VoiceRecorderEngine, AVAudioRecorder
         }
     }
 
-    private func handleRouteChange(_ note: Notification) {
+    private func handleRouteChange(rawValue: UInt?) {
         guard isRecording else { return }
-        guard let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+        guard let raw = rawValue,
               let reason = AVAudioSession.RouteChangeReason(rawValue: raw) else { return }
         switch reason {
         case .oldDeviceUnavailable:
@@ -296,12 +300,12 @@ final class SimulatedVoiceRecorder: VoiceRecorderEngine {
         tick?.invalidate()
         tick = nil
         // Stage the fixture as the recorded audio.
-        if let pendingURL {
-            try? FileManager.default.removeItem(at: pendingURL)
+        if let staged = pendingURL {
+            try? FileManager.default.removeItem(at: staged)
             if let fixtureURL, FileManager.default.fileExists(atPath: fixtureURL.path) {
-                try? FileManager.default.copyItem(at: fixtureURL, to: pendingURL)
+                try? FileManager.default.copyItem(at: fixtureURL, to: staged)
             } else {
-                _ = FileManager.default.createFile(atPath: pendingURL.path, contents: Data())
+                _ = FileManager.default.createFile(atPath: staged.path, contents: Data())
             }
             pendingURL = nil
         }

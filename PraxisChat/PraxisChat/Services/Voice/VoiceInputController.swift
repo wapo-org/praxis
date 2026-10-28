@@ -41,7 +41,7 @@ enum VoicePhase: Equatable {
 /// the `-PraxisFakeRecording` simulator in DEBUG UI tests).
 @MainActor
 @Observable
-final class VoiceInputController: VoiceSendObserver, AVAudioPlayerDelegate {
+final class VoiceInputController: VoiceSendObserver {
     // MARK: Observed UI state
 
     private(set) var phase: VoicePhase = .idle
@@ -128,6 +128,10 @@ final class VoiceInputController: VoiceSendObserver, AVAudioPlayerDelegate {
         #else
         self.makeEngine = makeEngine ?? { AVAudioVoiceRecorder() }
         #endif
+        playbackDelegate.onFinish = { [weak self] in
+            self?.player = nil
+            self?.playingID = nil
+        }
         refreshRecoverables()
     }
 
@@ -156,6 +160,7 @@ final class VoiceInputController: VoiceSendObserver, AVAudioPlayerDelegate {
     @ObservationIgnored private var transcriptionTask: Task<Void, Never>?
     @ObservationIgnored private var transcribeOrigin: TranscribeOrigin?
     @ObservationIgnored private var player: AVAudioPlayer?
+    @ObservationIgnored private let playbackDelegate = VoicePlaybackDelegate()
     /// (recording, inserted text) pairs awaiting the sent-message rule.
     @ObservationIgnored private var insertedTranscripts: [(id: UUID, text: String)] = []
 
@@ -661,7 +666,7 @@ final class VoiceInputController: VoiceSendObserver, AVAudioPlayerDelegate {
         }
         do {
             let player = try AVAudioPlayer(contentsOf: store.audioURL(for: recording))
-            player.delegate = self
+            player.delegate = playbackDelegate
             player.play()
             self.player = player
             playingID = id
@@ -675,13 +680,6 @@ final class VoiceInputController: VoiceSendObserver, AVAudioPlayerDelegate {
         player?.stop()
         player = nil
         playingID = nil
-    }
-
-    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        Task { @MainActor [weak self] in
-            self?.player = nil
-            self?.playingID = nil
-        }
     }
 
     // MARK: Lifecycle
@@ -723,6 +721,17 @@ final class VoiceInputController: VoiceSendObserver, AVAudioPlayerDelegate {
         if let active = activeRecording { excluded.insert(active.id) }
         if let transcribing = transcribingID { excluded.insert(transcribing) }
         recoverable = store.scan(excluding: excluded)
+    }
+}
+
+/// AVAudioPlayer's delegate must be an NSObject; this forwarder keeps
+/// the controller a plain `@Observable` class.
+@MainActor
+final class VoicePlaybackDelegate: NSObject, AVAudioPlayerDelegate {
+    var onFinish: (@MainActor () -> Void)?
+
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor [weak self] in self?.onFinish?() }
     }
 }
 
