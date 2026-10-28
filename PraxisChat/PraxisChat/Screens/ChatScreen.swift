@@ -51,15 +51,18 @@ struct ChatScreen: View {
                 TranscriptView(conversation: conversation, trayOpen: trayOpen,
                                bottomReserve: composerReserve, onChipAction: handleChip)
 
-                // Progressive scrims (§3): full strength under the toolbar
-                // (title + model name, ~105pt from the top edge) and the
-                // composer, feathering out ~50pt past them. No visible edge.
+                // The top edge is the system's own progressive blur: the
+                // transcript's `.scrollEdgeEffectStyle(.soft, for: .top)`
+                // blurs text scrolling under the toolbar (title + model
+                // name). The bottom needs a custom scrim: the composer dock
+                // floats in this ZStack instead of a bar, so the system
+                // effect can't see it. Full strength under the composer,
+                // feathering out ~50pt past it. No visible edge.
                 VStack {
-                    ProgressiveBlurScrim(edge: .top, length: 160, maxRadius: 18, hold: 0.52)
                     Spacer()
-                    ProgressiveBlurScrim(edge: .bottom, length: 150, maxRadius: 18, hold: 0.36)
+                    ProgressiveBlurScrim(edge: .bottom, length: 150, hold: 0.36)
                 }
-                .ignoresSafeArea(edges: [.top, .bottom])
+                .ignoresSafeArea(edges: .bottom)
                 .allowsHitTesting(false)
 
                 // Open tray behaves like a menu: a tap or drag anywhere on
@@ -219,6 +222,14 @@ struct ChatScreen: View {
                 PhotoViewer(attachment: att)
                     .navigationTransition(.zoom(sourceID: att.id, in: glassNS))
             }
+            // Deep link from the Live Activity / notifications (§3.6).
+            // In-markdown integration tiles never reach here: the
+            // OpenURLAction override below returns .handled for them.
+            .onOpenURL { url in
+                if let id = Self.chatDeepLinkConversationID(from: url) {
+                    store.select(id)
+                }
+            }
         }
     }
 
@@ -246,6 +257,16 @@ struct ChatScreen: View {
         let data = size <= 25 << 20 ? try? Data(contentsOf: url, options: .mappedIfSafe) : nil
         let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
         return Attachment(kind: .file, name: url.lastPathComponent, fileData: data, mediaType: type)
+    }
+
+    /// Deep-link conversation id: `praxis-app://chat/<uuid>`.
+    /// Anything else — other hosts, bad UUIDs, other schemes —
+    /// returns nil and is ignored. Internal for unit tests.
+    static func chatDeepLinkConversationID(from url: URL) -> UUID? {
+        guard url.scheme?.lowercased() == "praxis-app",
+              url.host()?.lowercased() == "chat",
+              let first = url.pathComponents.dropFirst().first else { return nil }
+        return UUID(uuidString: first)
     }
 
     /// Single entry point for opening/closing the tray, so the haptic,
@@ -644,7 +665,7 @@ private struct TranscriptRow: Identifiable, Equatable {
         case activity(turnID: UUID, ActivityData)
         case text(MDBlockItem, selectable: Bool)
         case live(LiveText, index: Int)
-        case note(Turn)
+        case note(Turn, canContinue: Bool)
         case actions(Turn)
         case compaction(CompactionMarker)
     }
@@ -671,8 +692,8 @@ private struct TranscriptRow: Identifiable, Equatable {
             return a == b && sa == sb
         case (.live(let a, let ia), .live(let b, let ib)):
             return a === b && ia == ib
-        case (.note(let a), .note(let b)):
-            return a.outcome == b.outcome
+        case (.note(let a, let ca), .note(let b, let cb)):
+            return a.outcome == b.outcome && ca == cb
         case (.actions(let a), .actions(let b)):
             return a.id == b.id && a.feedback == b.feedback && a.userText == b.userText
         case (.compaction(let a), .compaction(let b)):
@@ -718,7 +739,10 @@ private struct TranscriptRow: Identifiable, Equatable {
                 }
             }
             if turn.isFinished, turn.outcome?.note != nil {
-                rows.append(TranscriptRow(id: .note(turn.id), top: gap, content: .note(turn), fades: fades))
+                let canContinue = turn.outcome == .pausedBackground && n == turns.count - 1
+                    && !store.isRunning(conv.id)
+                rows.append(TranscriptRow(id: .note(turn.id), top: gap, content: .note(turn, canContinue: canContinue),
+                                          fades: fades))
             }
             if turn.isFinished && !turn.blocks.isEmpty {
                 rows.append(TranscriptRow(id: .actions(turn.id), top: gap, content: .actions(turn), fades: fades))
@@ -783,7 +807,7 @@ private struct TranscriptRowView: View, Equatable {
         case .live(let live, let index):
             LiveMarkdownRowView(live: live, index: index, onChipAction: onChipAction)
                 .equatable()
-        case .note(let turn):
+        case .note(let turn, let canContinue):
             if turn.outcome == .needsProvider, let note = turn.outcome?.note {
                 Button { store.isSettingsPresented = true } label: {
                     HStack(spacing: 6) {
@@ -797,10 +821,24 @@ private struct TranscriptRowView: View, Equatable {
                 .accessibilityLabel("Open Settings to add a model provider")
                 .appearFade(row.fades)
             } else if let note = turn.outcome?.note {
-                Text(note)
-                    .font(Type.inter(13, .caption))
-                    .foregroundStyle(Praxis.mutedInk)
-                    .appearFade(row.fades)
+                VStack(spacing: 6) {
+                    Text(note)
+                        .font(Type.inter(13, .caption))
+                        .foregroundStyle(Praxis.mutedInk)
+                    // A background-paused last turn offers Continue (plan
+                    // §2.7); the gate lives in the row so the Equatable
+                    // diff sees it change.
+                    if canContinue, let selectedID = store.selectedID {
+                        Button { store.continueRun(conversationID: selectedID) } label: {
+                            Text("Continue")
+                                .font(Type.inter(13, weight: .semibold, .caption))
+                                .foregroundStyle(Praxis.ink)
+                        }
+                        .buttonStyle(PressScaleStyle())
+                        .accessibilityLabel("Continue")
+                    }
+                }
+                .appearFade(row.fades)
             }
         case .actions(let turn):
             MessageActionRow(

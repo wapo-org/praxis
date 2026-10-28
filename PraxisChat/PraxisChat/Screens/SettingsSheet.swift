@@ -44,6 +44,7 @@ struct SettingsSheet: View {
                     .padding(.vertical, 12)
                 }
             }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .background(Praxis.canvas)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -316,6 +317,7 @@ private struct ProviderEditor: View {
             .padding(.vertical, 12)
         }
         .scrollDismissesKeyboard(.interactively)
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .background(Praxis.canvas)
         .navigationTitle(isNew ? "Add provider" : draft.name)
         .navigationBarTitleDisplayMode(.inline)

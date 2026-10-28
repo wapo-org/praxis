@@ -30,8 +30,15 @@ import AgentTestSupport
         #expect(HTTPSupport.reasoningEfforts(in: m, defaultLevels: openAI()) == ["low", "medium", "high"])
     }
 
-    @Test func openRouterReasoningObjectWithoutLevelsGetsTheFamilyDefault() throws {
+    @Test func openRouterReasoningObjectWithoutLevelsRulesOutEffortSelection() throws {
+        // Omitted supported_efforts: the model does not expose effort
+        // selection (OpenRouter reasoning-tokens guide).
         let m = try json(#"{"id":"x/y","reasoning":{"default_enabled":true,"mandatory":true}}"#)
+        #expect(HTTPSupport.reasoningEfforts(in: m, defaultLevels: openAI()) == [])
+    }
+
+    @Test func openRouterBareReasoningFlagGetsTheFamilyDefault() throws {
+        let m = try json(#"{"id":"x/y","reasoning":true}"#)
         #expect(HTTPSupport.reasoningEfforts(in: m, defaultLevels: openAI()) == ["low", "medium", "high"])
     }
 

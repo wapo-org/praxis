@@ -46,6 +46,7 @@ struct ElicitationSheet: View {
                 .padding(20)
             }
             .scrollDismissesKeyboard(.interactively)
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .background(Praxis.canvas)
             .navigationTitle("Connector request")
             .navigationBarTitleDisplayMode(.inline)
