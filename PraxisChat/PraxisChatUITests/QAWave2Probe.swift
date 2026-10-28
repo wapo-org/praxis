@@ -451,12 +451,11 @@ final class QAWave2Probe: XCTestCase {
         return false
     }
 
-    /// Holds a long run backgrounded while the operator shoots the
-    /// island and cover sheet with simctl from the Mac side: pose 1
-    /// (island) right after the poll below succeeds, pose 2 (cover
-    /// sheet) for the 20s after the swipe. Swipes go through
-    /// SpringBoard coordinates — app coordinates don't dispatch
-    /// while the app is backgrounded.
+    /// Cover sheet first (foregrounded: no background-expiry race),
+    /// then the island (backgrounded). The operator shoots both with
+    /// simctl from the Mac side while the sleeps hold the poses.
+    /// Swipes go through SpringBoard coordinates — app coordinates
+    /// don't dispatch while the app is backgrounded.
     func testQABackgroundIslandAndCover() {
         launch(["-PraxisEngine", "scripted", "-PraxisLongRun", "YES"])
         let probe = "island-\(UUID().uuidString.prefix(6))"
@@ -467,20 +466,25 @@ final class QAWave2Probe: XCTestCase {
         el(.button, "Send message").tap()
         XCTAssertTrue(el(.button, "Stop generating").waitForExistence(timeout: 15),
                       "the long run should start")
-        XCUIDevice.shared.press(.home)
-        XCTAssertTrue(activityVisible(title: probe, timeout: 20),
-                      "the run's activity should appear in the island once backgrounded")
-        Thread.sleep(forTimeInterval: 10) // pose 1: island on the home screen
+        // Pose 1: cover sheet over the foreground app.
         let top = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.02))
         let mid = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
         top.press(forDuration: 0.1, thenDragTo: mid, withVelocity: .slow, thenHoldForDuration: 0.3)
-        XCTAssertTrue(activityVisible(title: probe, timeout: 10),
-                      "the cover sheet should show the chat title")
-        Thread.sleep(forTimeInterval: 15) // pose 2: cover sheet with the activity
+        Thread.sleep(forTimeInterval: 2.0)
+        XCTAssertTrue(activityVisible(title: probe, timeout: 15),
+                      "the cover sheet should show the running chat")
+        Thread.sleep(forTimeInterval: 10) // pose 1: cover sheet with the activity
         let up = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
         let edge = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05))
         up.press(forDuration: 0.1, thenDragTo: edge, withVelocity: .fast, thenHoldForDuration: 0.1)
         Thread.sleep(forTimeInterval: 1.0)
+        // Pose 2: the island (own-app activities render only
+        // backgrounded, so Home first, then shoot fast — sim
+        // background grace is short and unpredictable).
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(activityVisible(title: probe, timeout: 15),
+                      "the run's activity should appear in the island once backgrounded")
+        Thread.sleep(forTimeInterval: 8) // pose 2: island on the home screen
         app.activate()
         if el(.button, "Stop generating").waitForExistence(timeout: 10) {
             el(.button, "Stop generating").tap()
