@@ -69,9 +69,15 @@ final class VoiceInputController: VoiceSendObserver {
     private(set) var errorRecordingID: UUID?
     /// "Add your Groq API key…" — transcribe needs the key, recording doesn't.
     private(set) var transcribeHint: String?
-    /// Recovery list (banner + rows), newest first. Live, transcribing and
-    /// under-review recordings are excluded — they have their own UI.
+    /// Recovery list (banner + rows), newest first. Live and
+    /// under-review-in-own-chat recordings are excluded — they have their
+    /// own UI. Transcribed recordings are excluded here (not news) but
+    /// listed in `listRecordings` with a delete path.
     private(set) var recoverable: [VoiceRecording] = []
+    /// Settings → Recordings destination: everything on disk, including
+    /// transcribed-but-unsent (which would otherwise leak with no delete
+    /// path). Only a live recording is excluded.
+    private(set) var listRecordings: [VoiceRecording] = []
     /// AVAudioPlayer review playback.
     private(set) var playingID: UUID?
 
@@ -108,6 +114,12 @@ final class VoiceInputController: VoiceSendObserver {
     var isPausedPhase: Bool {
         if case .paused = phase { return true }
         return false
+    }
+
+    /// Failure text for the review row. Banner failures carry their
+    /// recording's id and belong to that row only — never the review row.
+    var reviewError: String? {
+        errorRecordingID == nil ? errorMessage : nil
     }
 
     /// "Paused — tap to resume" style notice for the current pause reason.
@@ -184,8 +196,9 @@ final class VoiceInputController: VoiceSendObserver {
     @ObservationIgnored private var transcribeOrigin: TranscribeOrigin?
     @ObservationIgnored private var player: AVAudioPlayer?
     @ObservationIgnored private let playbackDelegate = VoicePlaybackDelegate()
-    /// (recording, inserted text) pairs awaiting the sent-message rule.
-    @ObservationIgnored private var insertedTranscripts: [(id: UUID, text: String)] = []
+    /// (recording, inserted text, deposit chat) tuples awaiting the
+    /// sent-message rule.
+    @ObservationIgnored private var insertedTranscripts: [(id: UUID, text: String, conversationID: UUID)] = []
 
     private enum TranscribeOrigin {
         case active, review, banner
@@ -198,11 +211,12 @@ final class VoiceInputController: VoiceSendObserver {
     /// Groq key — only transcribing does.
     func micTapped() {
         guard !showsRecordingUI else { return }
-        guard transcriptionTask == nil else { return }
         // One live session: starting over a recording, a review or an
         // active transcription would orphan its engine or clobber its
-        // phase. (Banner transcriptions leave the phase idle, so recording
-        // during those stays allowed.)
+        // phase. A banner transcription in flight leaves the phase idle
+        // and owns the other slot, so recording during one stays allowed
+        // (it just stops into review while the slot is busy).
+        if transcriptionTask != nil, transcribeOrigin != .banner { return }
         guard phase == .idle else { return }
         // Synchronous guard: a double-tap must not start two recordings
         // (the second would orphan the first engine mid-record). This runs
@@ -544,6 +558,13 @@ final class VoiceInputController: VoiceSendObserver {
     }
 
     private func finishTranscription(id: UUID, transcript: VoiceTranscript?, failure: VoiceTranscriptionError?) {
+        // Deleted mid-flight (deleteRecording is the only path that clears
+        // the origin before the finish): the sidecar is gone, so there is
+        // nothing to restow and no draft to append — never resurrect.
+        guard transcribeOrigin != nil else {
+            refreshRecoverables()
+            return
+        }
         transcriptionTask = nil
         transcribingID = nil
         transcriptionProgress = nil
@@ -565,17 +586,21 @@ final class VoiceInputController: VoiceSendObserver {
             handleTranscriptionFailure(id: id, error: .server(message: "Transcription was empty"), origin: origin)
             return
         }
-        var done = store.load(id: id) ?? activeRecording ?? VoiceRecording(
+        // The active fallback is gated by id: a banner finish must never
+        // grab a different live recording's sidecar.
+        let activeMatch = activeRecording?.id == id ? activeRecording : nil
+        var done = store.load(id: id) ?? activeMatch ?? VoiceRecording(
             id: id, conversationID: UUID(), state: .transcribed, createdAt: Date(),
             duration: elapsed, fileName: id.uuidString + ".m4a", transcriptPreview: nil)
         done.state = .transcribed
         done.transcriptPreview = String(text.prefix(120))
         store.save(done)
-        // Append, never replace: the draft is the user's.
+        // Deposit into the recording's own chat (live or stashed): a switch
+        // mid-transcription must not spill A's text into B's draft.
         if let chatStore {
-            chatStore.draft = chatStore.draft.isEmpty ? text : chatStore.draft + "\n" + text
+            chatStore.depositToDraft(text: text, conversationID: done.conversationID)
         }
-        insertedTranscripts.append((id: id, text: text))
+        insertedTranscripts.append((id: id, text: text, conversationID: done.conversationID))
         if insertedTranscripts.count > 20 { insertedTranscripts.removeFirst(insertedTranscripts.count - 20) }
         if activeRecording?.id == id { activeRecording = nil }
         if origin == .active || origin == .review {
@@ -663,13 +688,20 @@ final class VoiceInputController: VoiceSendObserver {
     // MARK: Sent-message rule (VoiceSendObserver)
 
     /// Deletes recordings whose inserted transcript is contained in the
-    /// sent text. Called by `ChatStore.send` after a successful send.
+    /// sent text — but only for sends from the chat the transcript was
+    /// deposited in, so an unrelated send elsewhere (or a short transcript
+    /// like "thanks") can't wipe another chat's audio. Called by
+    /// `ChatStore.send` after a successful send; the sending chat is the
+    /// selected one (send and the consent allow-path both operate on it).
     /// Transcribed-but-unsent recordings stay until the user deletes them.
     func noteDidSend(text: String) {
         guard !insertedTranscripts.isEmpty else { return }
         let sent = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sent.isEmpty else { return }
-        let due = insertedTranscripts.filter { !$0.text.isEmpty && sent.contains($0.text) }
+        let from = chatStore?.selectedID
+        let due = insertedTranscripts.filter {
+            !$0.text.isEmpty && $0.conversationID == from && sent.contains($0.text)
+        }
         guard !due.isEmpty else { return }
         for pair in due {
             store.delete(id: pair.id)
@@ -747,20 +779,40 @@ final class VoiceInputController: VoiceSendObserver {
     }
 
     /// Reloads the banner/list, excluding recordings that have their own
-    /// UI (live, transcribing, under review in its own chat). A review left
-    /// behind in another chat falls back to the banner — ChatScreen calls
-    /// this on every chat switch so it can't get stuck either way.
+    /// UI. A review left behind in another chat falls back to the banner —
+    /// ChatScreen calls this on every chat switch so it can't get stuck
+    /// either way. The in-flight transcription keeps its row (with progress
+    /// + cancel); the scan exclusion only shields its sidecar from the
+    /// stale-state normalization.
     func refreshRecoverables() {
-        var excluded: Set<UUID> = []
+        var bannerExcluded: Set<UUID> = []
         if let active = activeRecording {
-            if phase == .review, active.conversationID != chatStore?.selectedID {
-                // Seen from another chat: the banner lists it.
-            } else {
-                excluded.insert(active.id)
+            if phase != .review || active.conversationID == chatStore?.selectedID {
+                bannerExcluded.insert(active.id)
             }
         }
-        if let transcribing = transcribingID { excluded.insert(transcribing) }
-        recoverable = store.scan(excluding: excluded)
+        if let transcribing = transcribingID { bannerExcluded.insert(transcribing) }
+        recoverable = stitched(excluding: bannerExcluded, includeTranscribed: false)
+
+        var listExcluded: Set<UUID> = []
+        if let active = activeRecording, phase == .recording || isPausedPhase {
+            // A live recording transcribes a growing file: keep it out of
+            // the Settings list (the composer owns it).
+            listExcluded.insert(active.id)
+        }
+        if let transcribing = transcribingID { listExcluded.insert(transcribing) }
+        listRecordings = stitched(excluding: listExcluded, includeTranscribed: true)
+    }
+
+    /// Scan plus the in-flight transcription stitched back in from memory.
+    private func stitched(excluding: Set<UUID>, includeTranscribed: Bool) -> [VoiceRecording] {
+        var list = store.scan(excluding: excluding, includeTranscribed: includeTranscribed)
+        if let tid = transcribingID,
+           !list.contains(where: { $0.id == tid }),
+           let inFlight = store.load(id: tid) ?? (activeRecording?.id == tid ? activeRecording : nil) {
+            list.append(inFlight)
+        }
+        return list.sorted { $0.createdAt > $1.createdAt }
     }
 }
 

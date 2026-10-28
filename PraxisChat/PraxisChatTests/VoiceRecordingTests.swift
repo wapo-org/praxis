@@ -119,6 +119,12 @@ final class VoiceRecordingTests: XCTestCase {
         XCTAssertEqual(store.scan().map(\.id), [new.id, old.id])
     }
 
+    func testScanIncludeTranscribedAddsFinished() {
+        let done = seed(state: .transcribed)
+        XCTAssertTrue(store.scan().isEmpty)
+        XCTAssertEqual(store.scan(includeTranscribed: true).map(\.id), [done.id])
+    }
+
     func testDeleteRemovesAudioAndSidecar() {
         let recording = seed(state: .stopped)
         XCTAssertTrue(store.audioExists(for: recording))

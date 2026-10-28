@@ -194,6 +194,23 @@ final class ChatStore {
         switchSelection(to: id)
     }
 
+    /// Appends `text` to a conversation's draft (voice transcripts deposit
+    /// here): live when it's selected, else into its stash — so a
+    /// transcript that finishes after a chat switch still lands in its own
+    /// chat, attachments untouched. Unknown ids (chat deleted mid-flight)
+    /// are dropped; the audio stays recoverable.
+    func depositToDraft(text: String, conversationID: UUID) {
+        guard conversations.contains(where: { $0.id == conversationID }) else { return }
+        if conversationID == selectedID {
+            draft = draft.isEmpty ? text : draft + "\n" + text
+        } else if var stashed = drafts[conversationID] {
+            stashed.text = stashed.text.isEmpty ? text : stashed.text + "\n" + text
+            drafts[conversationID] = stashed
+        } else {
+            drafts[conversationID] = ChatDraft(text: text, attachments: [])
+        }
+    }
+
     /// Moves the selection, stashing the composer's draft under the old
     /// chat and restoring the new chat's (a fresh chat starts empty).
     private func switchSelection(to id: UUID?) {
