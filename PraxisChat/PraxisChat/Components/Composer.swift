@@ -69,15 +69,16 @@ struct ComposerView: View {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Praxis.ink)
+                .foregroundStyle(Praxis.canvas)
                 .rotationEffect(.degrees(trayOpen ? 45 : 0))
                 .animation(reduceMotion ? Motion.reduced : Motion.pop, value: trayOpen)
                 .frame(width: 38, height: 38)
                 .contentShape(Circle())
         }
         .buttonStyle(PressScaleStyle())
-        .praxisGlass(in: Circle())
-        .glassEffectID("plusButton", in: namespace)
+        // Solid ink, not glass: the composer field stays glass, its
+        // satellite buttons read as solid black/white (item 10).
+        .background(Praxis.ink, in: Circle())
         .accessibilityLabel(trayOpen ? "Close add menu" : "Add photos, files and more")
     }
 
@@ -161,13 +162,12 @@ struct ComposerView: View {
         Button { onCamera() } label: {
             Image(systemName: "camera")
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Praxis.ink)
+                .foregroundStyle(Praxis.canvas)
                 .frame(width: 38, height: 38)
                 .contentShape(Circle())
         }
         .buttonStyle(PressScaleStyle())
-        .praxisGlass(in: Circle())
-        .glassEffectID("cameraButton", in: namespace)
+        .background(Praxis.ink, in: Circle())
         .accessibilityLabel("Take photo")
     }
 
@@ -231,12 +231,12 @@ struct ComposerView: View {
                 Button { startRecording() } label: {
                     Image(systemName: "mic")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Praxis.ink)
+                        .foregroundStyle(Praxis.canvas)
                         .frame(width: 38, height: 38)
                         .contentShape(Circle())
                 }
                 .buttonStyle(PressScaleStyle())
-                .praxisGlass(in: Circle())
+                .background(Praxis.ink, in: Circle())
                 .accessibilityLabel("Record voice message")
             }
         }
