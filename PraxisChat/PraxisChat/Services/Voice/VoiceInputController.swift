@@ -461,6 +461,9 @@ final class VoiceInputController: VoiceSendObserver {
         }
         guard settings.isConfigured else {
             // Recording works without a key; transcribing routes to Settings.
+            // Restow first: the engine already stopped, so the phase must
+            // leave recording behind (review owns the retry).
+            restow(id: recording.id, state: .stopped, origin: origin)
             transcribeHint = "Add your Groq API key to use voice input"
             chatStore?.haptics.fire(.soft)
             chatStore?.isSettingsPresented = true
