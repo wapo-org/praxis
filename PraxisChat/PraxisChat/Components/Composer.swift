@@ -20,14 +20,15 @@ struct ComposerView: View {
     @FocusState private var focused: Bool
     /// The text just sent, for a short while: see `send()`.
     @State private var lastSend: (text: String, at: Date)?
-    @State private var isRecording = false
-    @State private var recordingStart = Date()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.sendLaunch) private var sendLaunch
 
     private var hasText: Bool { !store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var canSend: Bool { hasText || !store.attachments.isEmpty }
     private var isStreaming: Bool { store.isRunning }
+    /// Voice input state (nil in previews: the mic then does nothing).
+    private var voice: VoiceInputController? { store.voice }
+    private var voiceShowsUI: Bool { voice?.showsRecordingUI == true }
 
     var body: some View {
         @Bindable var store = store
@@ -43,7 +44,7 @@ struct ComposerView: View {
         .animation(reduceMotion ? Motion.reduced : Motion.morph, value: canSend)
         .animation(reduceMotion ? Motion.reduced : Motion.morph, value: isStreaming)
         .animation(reduceMotion ? Motion.reduced : Motion.reflow, value: store.attachments.count)
-        .animation(reduceMotion ? Motion.reduced : Motion.morph, value: isRecording)
+        .animation(reduceMotion ? Motion.reduced : Motion.morph, value: voiceShowsUI)
     }
 
     private var composerRow: some View {
@@ -85,19 +86,8 @@ struct ComposerView: View {
 
     @ViewBuilder
     private var middle: some View {
-        if isRecording {
-            HStack(spacing: 10) {
-                Waveform()
-                    .frame(maxWidth: .infinity)
-                TimelineView(.periodic(from: .now, by: 0.5)) { tl in
-                    Text(DurationFormatter.live(tl.date.timeIntervalSince(recordingStart)))
-                        .font(Type.mono(13, .footnote))
-                        .foregroundStyle(Praxis.mutedInk)
-                        .monospacedDigit()
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 38)
-            .padding(.leading, 6)
+        if let voice, voice.showsRecordingUI {
+            VoiceRecordingMiddle(voice: voice)
         } else {
             @Bindable var store = store
             TextField(store.mode.placeholder, text: $store.draft, axis: .vertical)
@@ -175,7 +165,7 @@ struct ComposerView: View {
         HStack(spacing: 8) {
             // Camera sits left of the mic while idle; once typing
             // starts it fades out to the right as send takes over.
-            if !isStreaming && !canSend && !isRecording {
+            if !isStreaming && !canSend && !voiceShowsUI {
                 cameraButton
                     .transition(reduceMotion ? .opacity : .asymmetric(
                         insertion: .opacity.combined(with: .offset(x: 8)),
@@ -216,8 +206,8 @@ struct ComposerView: View {
                 .tint(Praxis.ink)
                 .transition(reduceMotion ? .opacity : .scale(scale: 0.5).combined(with: .opacity))
                 .accessibilityLabel("Send message")
-            } else if isRecording {
-                Button { stopRecording() } label: {
+            } else if voiceShowsUI {
+                Button { voice?.stopAndTranscribe() } label: {
                     Image(systemName: "stop.fill")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(.white)
@@ -228,7 +218,7 @@ struct ComposerView: View {
                 .tint(Praxis.destructive)
                 .accessibilityLabel("Stop recording")
             } else {
-                Button { startRecording() } label: {
+                Button { voice?.micTapped() } label: {
                     Image(systemName: "mic")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(Praxis.ink)
@@ -283,44 +273,8 @@ struct ComposerView: View {
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
-    // MARK: Recording (simulated amplitudes, §6)
-
-    private func startRecording() {
-        store.haptics.fire(.light)
-        recordingStart = Date()
-        withAnimation(reduceMotion ? Motion.reduced : Motion.morph) { isRecording = true }
-    }
-
-    private func stopRecording() {
-        store.haptics.fire(.soft)
-        withAnimation(reduceMotion ? Motion.reduced : Motion.morph) { isRecording = false }
-        // Mock transcription types into the field (§6).
-        let transcript = "Draft a follow-up on the glass contrast audit"
-        store.draft = transcript
-        focused = true
-    }
-}
-
-/// Live waveform with simulated amplitudes (§6). Bars fill whatever
-/// width the composer middle offers. Drawn in one Canvas pass: no
-/// per-bar views, no layout, 30 times a second.
-private struct Waveform: View {
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
-            let t = tl.date.timeIntervalSinceReferenceDate
-            Canvas { ctx, size in
-                let count = max(8, Int(size.width / 7))
-                for i in 0..<count {
-                    let h = 6 + 14 * abs(sin(t * 3 + Double(i) * 0.7))
-                    let rect = CGRect(x: Double(i) * 6, y: (size.height - h) / 2, width: 3, height: h)
-                    ctx.fill(RoundedRectangle(cornerRadius: 2, style: .continuous).path(in: rect),
-                             with: .color(Praxis.ink))
-                }
-            }
-        }
-        .frame(height: 26)
-        .accessibilityLabel("Recording")
-    }
+    // MARK: Recording — VoiceInputController owns it (see
+    // Services/Voice/); the mic button above only calls into it.
 }
 
 /// The UIKit text view behind the focused composer field (SwiftUI's
