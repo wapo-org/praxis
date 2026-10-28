@@ -216,8 +216,13 @@ final class VoiceRecordingUITests: XCTestCase {
         pill.tap()
         XCTAssertTrue(el(.button, "Stop and transcribe").waitForExistence(timeout: 10),
                       "the pill returns to the originating chat")
-        // Cleanup: the recording is seconds old, so cancel asks nothing.
+        // Cleanup: by now the recording may be over 10 s (cancel asks)
+        // or under (cancel discards at once) — handle either.
         el(.button, "Cancel recording").tap()
+        let alert = app.alerts["Discard this recording?"]
+        if alert.waitForExistence(timeout: 3) {
+            alert.buttons["Discard"].tap()
+        }
         XCTAssertTrue(el(.button, "Record voice message").waitForExistence(timeout: 8))
     }
 }
