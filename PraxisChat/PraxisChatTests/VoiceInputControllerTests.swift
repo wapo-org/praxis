@@ -1,3 +1,4 @@
+import Synchronization
 import XCTest
 @testable import PraxisChat
 
@@ -57,6 +58,39 @@ struct StubTranscriber: Transcriber, Sendable {
         case .success(let transcript): return transcript
         case .failure(let error): throw error
         }
+    }
+}
+
+/// A transcriber that waits for `release()` (review fix F4 test).
+final class GatedTranscriber: Transcriber, Sendable {
+    private let state = Mutex<(released: Bool, waiter: CheckedContinuation<Void, Never>?)>((false, nil))
+    let transcript = VoiceTranscript(text: "hello", language: nil, segments: [])
+
+    func transcribe(file: URL, fileName: String,
+                    progress: @Sendable @escaping (Double, Int, Int) -> Void) async throws -> VoiceTranscript {
+        let proceed = state.withLock { $0.released }
+        if !proceed {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let resumeNow = state.withLock { s -> Bool in
+                    if s.released { return true }
+                    s.waiter = continuation
+                    return false
+                }
+                if resumeNow { continuation.resume() }
+            }
+        }
+        progress(1.0, 1, 1)
+        return transcript
+    }
+
+    func release() {
+        let waiter = state.withLock { s -> CheckedContinuation<Void, Never>? in
+            s.released = true
+            let pending = s.waiter
+            s.waiter = nil
+            return pending
+        }
+        waiter?.resume()
     }
 }
 
@@ -313,7 +347,7 @@ final class VoiceInputControllerTests: XCTestCase {
     // MARK: Sent-message rule
 
     func testNoteDidSendDeletesOnlyMatchingTranscripts() async {
-        let (controller, _, _) = makeController()
+        let (controller, chat, _) = makeController()
         let recording = await startRecording(controller)
         controller.stopAndTranscribe()
         await waitUntil { controller.phase == .idle }
@@ -323,6 +357,9 @@ final class VoiceInputControllerTests: XCTestCase {
         controller.noteDidSend(text: "please hello world")
         XCTAssertNil(RecordingStore(directory: directory).load(id: recording.id),
                      "sent transcript deletes its audio")
+        // Keep the chat alive to the end: the rule reads the sending chat
+        // from it (the controller holds it weakly).
+        _ = chat
     }
 
     // MARK: Origin-chat scoping
@@ -383,6 +420,119 @@ final class VoiceInputControllerTests: XCTestCase {
         XCTAssertEqual(controller.recoverable.map(\.id), [recording.id])
     }
 
+    // MARK: Review findings (F6–F11)
+
+    func testTranscriptDepositsIntoOriginChatAfterSwitch() async {
+        let chat = makeChat()
+        let chatA = chat.selectedID!
+        chat.newChat()
+        chat.select(chatA)
+        let (controller, _, _) = makeController(chat: chat)
+        _ = await startRecording(controller)
+        controller.stopAndTranscribe()
+        chat.select(chat.conversations.first { $0.id != chatA }!.id)
+        await waitUntil { controller.phase == .idle }
+        XCTAssertTrue(chat.draft.isEmpty, "the other chat's live draft is untouched")
+        chat.select(chatA)
+        XCTAssertEqual(chat.draft, "hello", "the transcript lands in its own chat")
+    }
+
+    func testDeleteMidTranscriptionNeverResurrects() async {
+        let (controller, chat, _) = makeController()
+        let recording = await startRecording(controller)
+        controller.stopAndTranscribe()
+        controller.deleteRecording(id: recording.id)
+        try? await Task.sleep(for: .milliseconds(600)) // past the fake's late finish
+        XCTAssertNil(RecordingStore(directory: directory).load(id: recording.id))
+        XCTAssertTrue(RecordingStore(directory: directory).scan().isEmpty)
+        XCTAssertTrue(chat.draft.isEmpty, "no late draft append")
+        XCTAssertEqual(controller.phase, .idle)
+    }
+
+    func testBannerFailureDoesNotPolluteReviewRow() async {
+        let transcriber = StubTranscriber(result: .failure(.server(message: "boom")))
+        let (controller, _, _) = makeController(transcriber: transcriber)
+        _ = await startRecording(controller)
+        controller.stopAndReview()
+        let store = RecordingStore(directory: directory)
+        var other = VoiceRecording(conversationID: controller.activeRecording!.conversationID)
+        other.state = .stopped
+        XCTAssertTrue(store.save(other))
+        FileManager.default.createFile(atPath: store.audioURL(for: other).path, contents: Data([0x00]))
+        controller.refreshRecoverables()
+        controller.transcribeTapped(id: other.id)
+        await waitUntil { controller.transcribingID == nil && controller.errorMessage != nil }
+        XCTAssertEqual(controller.phase, .review)
+        XCTAssertNil(controller.reviewError, "a banner failure stays on its row")
+        XCTAssertEqual(controller.errorRecordingID, other.id)
+    }
+
+    func testNoteDidSendIgnoresOtherChats() async {
+        let chat = makeChat()
+        let chatA = chat.selectedID!
+        chat.newChat()
+        let chatB = chat.conversations.first { $0.id != chatA }!.id
+        chat.select(chatA)
+        let (controller, _, _) = makeController(chat: chat)
+        let recording = await startRecording(controller)
+        controller.stopAndTranscribe()
+        await waitUntil { controller.phase == .idle }
+        chat.select(chatB)
+        controller.noteDidSend(text: "hello there")
+        XCTAssertNotNil(RecordingStore(directory: directory).load(id: recording.id),
+                        "a send from another chat must not delete this audio")
+        chat.select(chatA)
+        controller.noteDidSend(text: "hello there")
+        XCTAssertNil(RecordingStore(directory: directory).load(id: recording.id))
+    }
+
+    func testMicStartsDuringBannerTranscription() async {
+        let (controller, chat, _) = makeController()
+        let store = RecordingStore(directory: directory)
+        var other = VoiceRecording(conversationID: chat.selectedID!)
+        other.state = .stopped
+        XCTAssertTrue(store.save(other))
+        FileManager.default.createFile(atPath: store.audioURL(for: other).path, contents: Data([0x00]))
+        controller.refreshRecoverables()
+        controller.transcribeTapped(id: other.id) // banner origin: phase stays idle
+        XCTAssertEqual(controller.phase, .idle)
+        controller.micTapped()
+        await waitUntil { controller.phase == .recording }
+        XCTAssertNotNil(controller.transcribingID, "both slots live at once")
+        await waitUntil(timeout: 5) { chat.draft == "hello" }
+        XCTAssertEqual(controller.phase, .recording, "the banner finish leaves live UI alone")
+        controller.cancelTapped() // seconds old: discards at once
+        XCTAssertEqual(controller.phase, .idle)
+    }
+
+    func testListIncludesTranscribedButBannerDoesNot() async {
+        let store = RecordingStore(directory: directory)
+        var done = VoiceRecording(conversationID: UUID())
+        done.state = .transcribed
+        done.transcriptPreview = "hi"
+        XCTAssertTrue(store.save(done))
+        FileManager.default.createFile(atPath: store.audioURL(for: done).path, contents: Data([0x00]))
+        let (controller, _, _) = makeController()
+        XCTAssertTrue(controller.recoverable.isEmpty)
+        XCTAssertEqual(controller.listRecordings.map(\.id), [done.id])
+    }
+
+    func testBannerKeepsTranscribingRow() async {
+        let (controller, _, _) = makeController()
+        let store = RecordingStore(directory: directory)
+        var other = VoiceRecording(conversationID: UUID())
+        other.state = .stopped
+        XCTAssertTrue(store.save(other))
+        FileManager.default.createFile(atPath: store.audioURL(for: other).path, contents: Data([0x00]))
+        controller.refreshRecoverables()
+        controller.transcribeTapped(id: other.id)
+        XCTAssertEqual(controller.recoverable.map(\.id), [other.id],
+                       "the in-flight row stays, with progress + cancel")
+        XCTAssertNotNil(controller.transcribingID)
+        await waitUntil { controller.transcribingID == nil }
+        XCTAssertTrue(controller.recoverable.isEmpty, "transcribed rows leave the banner")
+    }
+
     // MARK: DEBUG seams (argument parsing)
 
     func testFakeTranscriptFlagParsing() {
@@ -409,5 +559,41 @@ final class VoiceInputControllerTests: XCTestCase {
             arguments: ["app", "-PraxisFakeElapsed", "15"]), 15)
         XCTAssertEqual(VoiceInputController.fakeElapsed(
             arguments: ["app", "-PraxisFakeElapsed", "junk"]), 0)
+    }
+
+    // MARK: Queue events (review fix F4)
+
+    func testWaitingForNetworkRestowsQueuedAndShowsNotice() async {
+        let gate = GatedTranscriber()
+        let (controller, chat, _) = makeController(transcriber: gate)
+        let recording = await startRecording(controller)
+        controller.stopAndTranscribe()
+        await waitUntil { controller.transcribingID != nil }
+        controller.handleTranscriptionEvent(.waitingForNetwork)
+        XCTAssertEqual(controller.transcriptionNotice, "Waiting for network…")
+        XCTAssertEqual(RecordingStore(directory: directory).load(id: recording.id)?.state, .queued)
+        gate.release()
+        await waitUntil { controller.phase == .idle }
+        XCTAssertEqual(chat.draft, "hello")
+        XCTAssertNil(controller.transcriptionNotice)
+    }
+
+    func testRetryingEventShowsNoticeThenClears() async {
+        let gate = GatedTranscriber()
+        let (controller, _, _) = makeController(transcriber: gate)
+        _ = await startRecording(controller)
+        controller.stopAndTranscribe()
+        await waitUntil { controller.transcribingID != nil }
+        controller.handleTranscriptionEvent(.retrying(attempt: 2, after: 4))
+        XCTAssertEqual(controller.transcriptionNotice, "Retrying in 4s…")
+        gate.release()
+        await waitUntil { controller.phase == .idle }
+        XCTAssertNil(controller.transcriptionNotice)
+    }
+
+    func testQueueEventWithNoTranscriptionIsIgnored() async {
+        let (controller, _, _) = makeController()
+        controller.handleTranscriptionEvent(.waitingForNetwork)
+        XCTAssertNil(controller.transcriptionNotice)
     }
 }

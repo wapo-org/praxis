@@ -196,6 +196,21 @@ final class VoiceRecordingUITests: XCTestCase {
         XCTAssertEqual(fieldText, "typed first\nbuy oat milk")
     }
 
+    // MARK: Settings list
+
+    func testRecordingsListInSettings() {
+        launch()
+        startRecording()
+        el(.button, "Stop and review").tap()
+        XCTAssertTrue(el(.button, "Transcribe recording").waitForExistence(timeout: 8))
+        openVoiceSettings()
+        el(.button, "Recordings").tap()
+        XCTAssertTrue(app.navigationBars["Recordings"].waitForExistence(timeout: 10))
+        XCTAssertTrue(elContains(.button, "Transcribe recording from").waitForExistence(timeout: 8),
+                      "the Settings list shows the same recording")
+        shot("voice-recordings-list")
+    }
+
     // MARK: Cross-chat pill
 
     func testRecordingPillReturnsToOriginChat() {

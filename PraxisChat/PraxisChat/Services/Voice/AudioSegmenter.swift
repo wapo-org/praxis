@@ -319,15 +319,28 @@ struct PartTranscriptCache: Sendable {
     }
 
     func store(_ transcript: PartTranscript, plan: SegmentationPlan, fileName: String, index: Int) {
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [
+            .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
+        ])
         let manifest = Manifest(count: plan.parts.count, starts: plan.parts.map(\.audioRange.lowerBound),
                                 duration: plan.duration)
         if let data = try? JSONEncoder().encode(manifest) {
-            try? data.write(to: manifestURL(fileName), options: [.atomic])
+            try? data.write(to: manifestURL(fileName), options: Self.writingOptions)
         }
         if let data = try? JSONEncoder().encode(transcript) {
-            try? data.write(to: partURL(fileName, index: index), options: [.atomic])
+            try? data.write(to: partURL(fileName, index: index), options: Self.writingOptions)
         }
+    }
+
+    /// Matches the app standard (recordings, conversations, attachments):
+    /// transcripts are user content, protected like the audio they came from.
+    private static let writingOptions: Data.WritingOptions = [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+
+    /// Clears the shared (production-directory) cache for one recording.
+    /// Called by `RecordingStore.delete`, so deleting a recording leaves no
+    /// transcript behind in Caches. `directory` is test-only.
+    static func clearSharedCache(fileName: String, in directory: URL? = nil) {
+        PartTranscriptCache(directory: directory).clear(fileName: fileName)
     }
 
     func clear(fileName: String) {

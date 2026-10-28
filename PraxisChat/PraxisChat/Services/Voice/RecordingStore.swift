@@ -77,6 +77,8 @@ struct RecordingStore: Sendable {
     func delete(id: UUID) {
         try? FileManager.default.removeItem(at: directory.appendingPathComponent(id.uuidString + ".m4a"))
         try? FileManager.default.removeItem(at: directory.appendingPathComponent(id.uuidString + ".json"))
+        // Plus any cached part transcripts (voice-groq review fix F5).
+        PartTranscriptCache.clearSharedCache(fileName: id.uuidString + ".m4a")
     }
 
     func audioExists(for recording: VoiceRecording) -> Bool {
@@ -91,8 +93,9 @@ struct RecordingStore: Sendable {
     ///
     /// `excluding` skips live/transcribing/under-review ids: their states
     /// are owned by the controller right now, and scan's stale-state
-    /// normalization must not rewrite them.
-    func scan(excluding: Set<UUID> = []) -> [VoiceRecording] {
+    /// normalization must not rewrite them. `includeTranscribed` adds
+    /// finished-but-unsent recordings (the Settings list; never the banner).
+    func scan(excluding: Set<UUID> = [], includeTranscribed: Bool = false) -> [VoiceRecording] {
         let files = (try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: [.creationDateKey],
             options: [.skipsHiddenFiles])) ?? []
@@ -104,7 +107,7 @@ struct RecordingStore: Sendable {
             guard let data = try? Data(contentsOf: url),
                   var recording = Self.decode(data) else { continue }
             guard !excluding.contains(recording.id) else { continue }
-            guard recording.needsAttention else { continue }
+            guard recording.needsAttention || includeTranscribed else { continue }
             // Stale in-flight states: no recorder is alive at scan time.
             switch recording.state {
             case .recording:

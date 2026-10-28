@@ -146,7 +146,11 @@ struct VoiceRecordingMiddle: View {
             ProgressView(value: voice.transcriptionProgress?.fraction ?? 0)
                 .tint(Praxis.ink)
                 .frame(maxWidth: .infinity)
-            if let progress = voice.transcriptionProgress, progress.parts > 1 {
+            if let notice = voice.transcriptionNotice {
+                Text(notice)
+                    .font(Type.inter(13, .caption))
+                    .foregroundStyle(Praxis.mutedInk)
+            } else if let progress = voice.transcriptionProgress, progress.parts > 1 {
                 Text("Transcribing \(progress.part)/\(progress.parts)")
                     .font(Type.inter(13, .caption))
                     .foregroundStyle(Praxis.mutedInk)
@@ -173,6 +177,9 @@ struct VoiceRecordingMiddle: View {
     }
 
     private var transcribingLabel: String {
+        if let notice = voice.transcriptionNotice {
+            return notice
+        }
         if let progress = voice.transcriptionProgress, progress.parts > 1 {
             return "Transcribing part \(progress.part) of \(progress.parts)"
         }
@@ -206,7 +213,7 @@ struct VoiceRecordingMiddle: View {
                 Button {
                     if let id = voice.activeRecording?.id { voice.transcribeTapped(id: id) }
                 } label: {
-                    Text(voice.errorMessage == nil ? "Transcribe" : "Retry")
+                    Text(voice.reviewError == nil ? "Transcribe" : "Retry")
                         .font(Type.inter(14, weight: .semibold, .subheadline))
                         .foregroundStyle(Praxis.canvas)
                         .lineLimit(1)
@@ -234,7 +241,7 @@ struct VoiceRecordingMiddle: View {
                 .praxisGlass(in: Capsule())
                 .accessibilityLabel("Delete recording")
             }
-            if let error = voice.errorMessage {
+            if let error = voice.reviewError {
                 Text(error)
                     .font(Type.inter(13, .caption))
                     .foregroundStyle(Praxis.destructive)
@@ -428,7 +435,9 @@ struct VoiceRecoveryBanner: View {
     }
 }
 
-private struct VoiceRecoveryRow: View {
+/// One recording's Transcribe / Play / Delete row, shared by the banner's
+/// expanded list and the Settings → Recordings destination.
+struct VoiceRecoveryRow: View {
     var voice: VoiceInputController
     var recording: VoiceRecording
 
@@ -449,6 +458,13 @@ private struct VoiceRecoveryRow: View {
                 }
                 Spacer()
                 if isTranscribing {
+                    // The controller runs one transcription at a time, so a
+                    // notice (if any) belongs to this row's recording.
+                    if let notice = voice.transcriptionNotice {
+                        Text(notice)
+                            .font(Type.inter(12, .caption2))
+                            .foregroundStyle(Praxis.mutedInk)
+                    }
                     if let progress = voice.transcriptionProgress, progress.parts > 1 {
                         Text("\(progress.part)/\(progress.parts)")
                             .font(Type.mono(12, .caption2))
@@ -525,6 +541,36 @@ private struct VoiceRecoveryRow: View {
             return "Transcribed"
         case .failed:
             return "Couldn't transcribe — audio kept"
+        }
+    }
+}
+
+/// Settings → Voice input → Recordings destination: everything on disk,
+/// including transcribed-but-unsent (which would otherwise leak with no
+/// delete path). Injected at the app root into voice-groq's
+/// `voiceRecordingsList` environment slot; the empty state is theirs.
+struct VoiceRecordingsListView: View {
+    var voice: VoiceInputController
+
+    var body: some View {
+        let recordings = voice.listRecordings
+        if recordings.isEmpty {
+            VoiceRecordingsEmptyView()
+        } else {
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(recordings) { recording in
+                        VoiceRecoveryRow(voice: voice, recording: recording)
+                        if recording.id != recordings.last?.id {
+                            Divider().padding(.horizontal, 14)
+                        }
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+            .background(Praxis.canvas)
+            .navigationTitle("Recordings")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }

@@ -50,6 +50,14 @@ final class DataProtectionAppTests: XCTestCase {
         try assertDataProtection(in: persistenceSource("AttachmentStore.swift"))
     }
 
+    /// Review fix F5: cached part transcripts are user content, protected
+    /// like the audio they came from.
+    func testPartCacheWritesCarryDataProtection() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("PraxisChat/Services/Voice/AudioSegmenter.swift", isDirectory: false)
+        try assertDataProtection(in: String(contentsOf: url, encoding: .utf8))
+    }
+
     // MARK: R3-M4 — persist/remove race
 
     func testPersistRacingRemoveCannotResurrectTheFile() async throws {
