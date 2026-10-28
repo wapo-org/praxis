@@ -28,6 +28,7 @@ struct SettingsSheet: View {
         case skillBrowser
         case registrySkill(RegistrySkill, SkillRegistry)
         case imageReader
+        case voice
     }
 
     var body: some View {
@@ -72,6 +73,7 @@ struct SettingsSheet: View {
                 case .connectors: path = [.connectors]
                 case .connector(let id): path = [.connectors, .connector(id)]
                 case .skills: path = [.skills]
+                case .voice: path = [.voice]
                 }
             }
         }
@@ -107,6 +109,8 @@ struct SettingsSheet: View {
             RegistrySkillDetailScreen(library: services.skills, skill: skill, registry: registry)
         case .imageReader:
             ImageReaderScreen(settings: settings, consent: services.consent)
+        case .voice:
+            VoiceSettingsScreen(settings: services.voice)
         }
     }
 
@@ -124,6 +128,9 @@ struct SettingsSheet: View {
                 SettingsDivider()
                 navigationRow(.imageReader, symbol: "eye", title: "Image reading model",
                               value: services.settings.imageReaderDisplayName ?? "Off")
+                SettingsDivider()
+                navigationRow(.voice, symbol: "waveform", title: "Voice input",
+                              value: services.voice.isConfigured ? services.voice.selectedModelID : "Off")
             }
         }
     }
