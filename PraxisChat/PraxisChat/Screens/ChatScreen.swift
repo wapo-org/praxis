@@ -33,6 +33,7 @@ struct ChatScreen: View {
     /// transcript reserves exactly this, whether or not the tray is open.
     @State private var composerReserve: CGFloat = 72
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     private var conversation: Conversation? { store.selected }
 
@@ -84,6 +85,23 @@ struct ChatScreen: View {
                              maxTrayHeight: maxTrayHeight,
                              setTray: { open, page, haptic in setTray(open, page: page, haptic: haptic) })
                     .zIndex(2)
+
+                // Voice banners float in the ZStack like the dock (a
+                // safeAreaBar would clip their tap targets): the cross-chat
+                // recording pill, then the recovery banner.
+                if let voice = store.voice {
+                    VStack(spacing: 8) {
+                        if let pill = voice.pillRecording {
+                            VoiceRecordingPill(voice: voice, recording: pill) {
+                                store.select(pill.conversationID)
+                            }
+                        }
+                        VoiceRecoveryBanner(voice: voice)
+                    }
+                    .padding(.bottom, composerReserve + 8)
+                    .padding(.horizontal, 20)
+                    .zIndex(2)
+                }
 
                 if showCopied {
                     CopiedToast()
@@ -153,6 +171,12 @@ struct ChatScreen: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
                 withAnimation(Motion.reflow) { keyboardUp = false }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background { store.voice?.appDidEnterBackground() }
+            }
+            .onChange(of: store.selectedID) { _, _ in
+                store.voice?.refreshRecoverables()
             }
             .photosPicker(isPresented: $showPhotos, selection: $photoItems, matching: .images)
             .onChange(of: photoItems) { _, items in

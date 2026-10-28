@@ -54,6 +54,9 @@ final class ChatStore {
 
     let approvals = ApprovalCenter()
     let haptics = HapticCenter()
+    /// Voice input state (nil in previews and store-only tests). Set by
+    /// `forLaunch`; the composer and banners read it from here.
+    @ObservationIgnored var voice: VoiceInputController?
     /// Trust and "always allow" grants (persisted with the index).
     private(set) var policy = ToolPolicy()
 
@@ -118,6 +121,13 @@ final class ChatStore {
         Task { await services.skills.reload() }
         let store = ChatStore(engine: engine, persistence: ConversationStore(directory: AppDirectories.conversations),
                               services: services, picksEngineAutomatically: override == nil)
+        // Voice input (voice-rec; right after creation — voice-groq's seam
+        // sits before `return store`, so these hunks stay separate).
+        let voice = VoiceInputController.production(chatStore: store)
+        store.voice = voice
+        store.voiceRetryTranscription = { [weak voice] id in
+            Task { @MainActor [weak voice] in voice?.retryTranscription(id: id) }
+        }
         services.pruneRuntimeState(keeping: store.conversations.map(\.id))
         #if DEBUG
         // `-PraxisVoiceConsentDemo YES` (UI tests): present the voice
@@ -254,6 +264,7 @@ final class ChatStore {
         save(conv)
         saveIndex()
         startRun(in: conv, turnID: turn.id)
+        voice?.noteDidSend(text: trimmed)
     }
 
     func retry(turnID: UUID) {
