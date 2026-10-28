@@ -211,7 +211,11 @@ final class QAWave2Probe: XCTestCase {
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Remove")).count, 0)
         XCTAssertEqual(fieldText(), "")
         openTray()
-        XCTAssertFalse(elBegins(.button, "Add ").exists, "nothing stays checked in the new chat")
+        // The tray's "Add N" attach button only (not the empty state's
+        // "Add haptics to buttons" suggestion, which also begins with "Add ").
+        let addCount = app.descendants(matching: .button)
+            .matching(NSPredicate(format: "label MATCHES %@", "Add [0-9]+")).firstMatch
+        XCTAssertFalse(addCount.exists, "nothing stays checked in the new chat")
         save("qa-tray-1-newchat-fresh")
 
         // The system photo picker also opens with no selection carried over.
