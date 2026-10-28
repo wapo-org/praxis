@@ -76,7 +76,9 @@ final class ChatStore {
          persistence: ConversationStore? = nil, attachments: AttachmentStore = .shared,
          services: AgentServices? = nil, picksEngineAutomatically: Bool = false,
          background: BackgroundRuntime? = nil) {
-        self.background = background ?? BackgroundRuntime()
+        // Integration wiring (BACKGROUND_PLAN.md §6): the live ActivityKit
+        // reporter; tests inject fakes via the `background` parameter.
+        self.background = background ?? BackgroundRuntime(reporter: LiveRunActivityReporter())
         self.engine = engine
         self.engineKind = engine.kind
         self.services = services

@@ -11,10 +11,8 @@ import XCTest
 /// searches custom schemes instead of opening them, and simctl needs
 /// a Mac-side driver.
 ///
-/// The two activity tests need the reporter wired to sends
-/// (bg-runtime's part, swapped at integration): until then they skip
-/// when no activity appears — bg DELETES the `guardActivityWired`
-/// skips at integration so a regression fails instead of skipping.
+/// The two activity tests assert on the live reporter (wired at
+/// integration): a regression fails instead of skipping.
 final class LiveActivityUITests: XCTestCase {
     var app: XCUIApplication!
 
@@ -59,7 +57,7 @@ final class LiveActivityUITests: XCTestCase {
                       "sent text should lift into a user bubble")
     }
 
-    // MARK: Activity lifecycle (skip-guarded until integration wires the reporter)
+    // MARK: Activity lifecycle
 
     private var springboard: XCUIApplication {
         XCUIApplication(bundleIdentifier: "com.apple.springboard")
@@ -79,35 +77,27 @@ final class LiveActivityUITests: XCTestCase {
         return false
     }
 
-    /// DELETE AT INTEGRATION (see class doc): throws XCTSkip unless
-    /// an activity is already visible for this run.
-    private func guardActivityWired(title: String) throws {
-        if !activityVisible(title: title, timeout: 8) {
-            throw XCTSkip("no Live Activity appeared: reporter not wired pre-integration")
-        }
-    }
-
     func testActivityStartsOnSend() throws {
         // The title seeds from the first message, so the probe is in
         // the activity's label; the run lasts seconds, so look fast.
         let probe = "activity-probe-\(UUID().uuidString.prefix(8))"
         newChat()
         send(probe)
-        try guardActivityWired(title: probe)
         XCTAssertTrue(activityVisible(title: probe, timeout: 10),
-                      "the run's activity should stay visible while it runs")
+                      "the run's activity should appear and stay visible while it runs")
     }
 
     func testNeedsApprovalShowsInActivity() throws {
-        // Needs a scripted approval run; until bg-runtime's long-run
-        // seed exists this can only assert the start path. DELETE AT
-        // INTEGRATION along with the skip (see class doc).
+        // The demo "ship" scenario asks to merge PR #42 and holds the
+        // run until decided: the activity must stay visible throughout
+        // the wait, showing the needs-approval phase.
         let probe = "approval-probe-\(UUID().uuidString.prefix(8))"
         newChat()
-        send(probe)
-        try guardActivityWired(title: probe)
-        let island = springboard.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", probe)).firstMatch
-        XCTAssertTrue(island.waitForExistence(timeout: 10))
+        send("ship \(probe)")
+        XCTAssertTrue(elContains(.any, "Approval needed").waitForExistence(timeout: 60),
+                      "the ship scenario should ask for approval")
+        XCTAssertTrue(activityVisible(title: probe, timeout: 10),
+                      "the activity should stay visible while awaiting approval")
+        el(.button, "Deny").tap()
     }
 }
