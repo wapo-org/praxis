@@ -401,16 +401,14 @@ private struct ProviderEditor: View {
                         Text("\(models.count) available").font(Type.inter(15, .body)).foregroundStyle(Praxis.ink)
                         Spacer()
                         Menu {
-                            ForEach(models) { model in
-                                Button {
-                                    draft.defaultModel = model.id
-                                } label: {
-                                    let label = model.displayName
-                                        + (settings.toolSupport(profileID: draft.id, model: model.id) == .unsupported ? " · No tools" : "")
-                                    if model.id == draft.defaultModel { Label(label, systemImage: "checkmark") }
-                                    else { Text(label) }
+                            let pinned = settings.pinnedModels(for: draft.id)
+                                .compactMap { id in models.first { $0.id == id } }
+                            if !pinned.isEmpty {
+                                Section("Favorites") {
+                                    ForEach(pinned) { modelMenuButton($0) }
                                 }
                             }
+                            ForEach(models) { modelMenuButton($0) }
                         } label: {
                             HStack(spacing: 4) {
                                 Text("Choose").font(Type.inter(15, weight: .medium, .body))
@@ -430,6 +428,17 @@ private struct ProviderEditor: View {
                 Text("Run Test connection to list the server's models, or type a model ID.")
                     .font(Type.inter(13, .footnote)).foregroundStyle(Praxis.mutedInk).padding(.horizontal, 4)
             }
+        }
+    }
+
+    private func modelMenuButton(_ model: ModelInfo) -> some View {
+        Button {
+            draft.defaultModel = model.id
+        } label: {
+            let label = model.displayName
+                + (settings.toolSupport(profileID: draft.id, model: model.id) == .unsupported ? " · No tools" : "")
+            if model.id == draft.defaultModel { Label(label, systemImage: "checkmark") }
+            else { Text(label) }
         }
     }
 

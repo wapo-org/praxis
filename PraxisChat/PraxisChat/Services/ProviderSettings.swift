@@ -121,6 +121,8 @@ final class ProviderSettings {
         var modelsFetchedAt: [UUID: Date]?
         var imageRejections: [UUID: [String: Date]]?
         var toolRejections: [UUID: [String: Date]]?
+        /// Pinned model ids per profile, in pin order.
+        var pinnedModels: [UUID: [String]]?
     }
 
     private(set) var profiles: [ProviderProfile] = []
@@ -144,6 +146,10 @@ final class ProviderSettings {
     /// (`markToolsUnsupported`). Persisted: the next send already goes
     /// without tools instead of failing once more.
     private(set) var toolRejections: [UUID: [String: Date]] = [:]
+    /// Pinned model ids per profile, in pin order. A pin whose model is
+    /// no longer listed stays (shown dimmed) until unpinned or deleted
+    /// with its profile.
+    private(set) var pinnedModelIDs: [UUID: [String]] = [:]
 
     /// A model list older than this is read again in the background.
     static let modelListLifetime: TimeInterval = 24 * 3600
@@ -177,6 +183,7 @@ final class ProviderSettings {
             modelsFetchedAt = file.modelsFetchedAt ?? [:]
             imageRejections = file.imageRejections ?? [:]
             toolRejections = file.toolRejections ?? [:]
+            pinnedModelIDs = file.pinnedModels ?? [:]
             migrateHeaderSecretsToKeychain()
         }
     }
@@ -195,6 +202,10 @@ final class ProviderSettings {
         }
         if moved { persist() }
     }
+
+    /// Pins for the demo catalogue (no profile while no provider is
+    /// configured) live under this fixed key.
+    static let demoProfileID = UUID(uuidString: "00000000-0000-0000-0000-0000000000a1")!
 
     static let keychainService = "PraxisChat.Providers"
 
@@ -331,6 +342,32 @@ final class ProviderSettings {
         return selectedToolSupport != .unsupported
     }
 
+    // MARK: Pinned models
+
+    /// Pinned model ids for the profile, in pin order.
+    func pinnedModels(for id: UUID) -> [String] { pinnedModelIDs[id] ?? [] }
+
+    func isPinned(profileID: UUID, model: String) -> Bool {
+        pinnedModelIDs[profileID]?.contains(model) ?? false
+    }
+
+    /// Pins or unpins a model. New pins go last; unpinning keeps the order
+    /// of the rest. The demo key needs no profile; real profiles must exist.
+    func setPinned(_ pinned: Bool, profileID: UUID, model: String) {
+        guard !model.isEmpty,
+              profileID == Self.demoProfileID || profiles.contains(where: { $0.id == profileID }) else { return }
+        var ids = pinnedModelIDs[profileID] ?? []
+        if pinned {
+            guard !ids.contains(model) else { return }
+            ids.append(model)
+        } else {
+            guard ids.contains(model) else { return }
+            ids.removeAll { $0 == model }
+        }
+        pinnedModelIDs[profileID] = ids.isEmpty ? nil : ids
+        persist()
+    }
+
     /// The image reader's profile, endpoint (with key) and model, when set
     /// and still valid.
     func imageReaderSelection() -> (profile: ProviderProfile, endpoint: ProviderEndpoint, model: String, info: ModelInfo?)? {
@@ -426,6 +463,7 @@ final class ProviderSettings {
         modelsFetchedAt[id] = nil
         imageRejections[id] = nil
         toolRejections[id] = nil
+        pinnedModelIDs[id] = nil
         refreshesInFlight.removeValue(forKey: id)?.cancel()
         if selectedProfileID == id { selectedProfileID = profiles.first?.id }
         if imageReader?.profileID == id { imageReader = nil }
@@ -591,7 +629,8 @@ final class ProviderSettings {
 
     private func persist() {
         let file = File(profiles: profiles, selectedProfileID: selectedProfileID, models: modelCache, imageReader: imageReader,
-                       modelsFetchedAt: modelsFetchedAt, imageRejections: imageRejections, toolRejections: toolRejections)
+                       modelsFetchedAt: modelsFetchedAt, imageRejections: imageRejections, toolRejections: toolRejections,
+                       pinnedModels: pinnedModelIDs)
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             let encoder = JSONEncoder()

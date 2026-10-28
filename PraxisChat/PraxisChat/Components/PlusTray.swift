@@ -97,7 +97,11 @@ struct PlusTray: View {
             if distance > Self.dismissPull { onDismiss(false) }
         }
         .sensoryFeedback(trigger: pastThreshold) { _, past in past ? .impact(weight: .light) : nil }
-        .onChange(of: page) { _, _ in switchPage() }
+        .onChange(of: page) { _, _ in
+            // Leaving the Model page ends the search; the draft was untouched.
+            if page != .models { store.modelQuery = "" }
+            switchPage()
+        }
         // Content dissolves into the card glass at the bottom instead of
         // being cut off abruptly above the composer row; the rounded top
         // keeps scrolled rows inside the card's corners.
@@ -111,7 +115,7 @@ struct PlusTray: View {
                                               topTrailingRadius: Praxis.composerRadius,
                                               style: .continuous))
         }
-        .onAppear { appeared = true }
+        .onAppear { appeared = true; store.modelQuery = "" }
         .onDisappear { pull = 0 }
         .task { await loadScreenshots() }
     }
@@ -427,17 +431,29 @@ struct PlusTray: View {
     private var modelsPage: some View {
         VStack(alignment: .leading, spacing: 12) {
             trayHeader("Model") { page = .main }
-            // One read of the list and the selection per render: the
+            // One read of the list, pins and selection per render: the
             // selection used to be looked up per row (O(n²) with a
             // provider's hundreds of models).
-            ModelList(models: store.availableModels, selectedID: store.model.id,
-                      emptyMessage: store.services?.settings.hasProfiles == true
-                          ? "This provider listed no models. Enter a model ID in Settings."
-                          : "Add a model provider in Settings to chat with a real model.") { model in
-                store.haptics.fire(.selection)
-                withAnimation(Motion.snap) { store.model = model }
+            let sections = ModelSections.make(models: store.availableModels,
+                                              pinnedIDs: store.pinnedModelIDs(),
+                                              query: store.modelQuery)
+            let pinned = Set(store.pinnedModelIDs())
+            if !sections.favorites.isEmpty || !sections.unavailableIDs.isEmpty {
+                favoritesHeader
+                ModelList(models: sections.favorites + sections.unavailableIDs.map(Self.unavailableModel),
+                          selectedID: store.model.id, emptyMessage: "",
+                          pinnedIDs: pinned, unavailableIDs: Set(sections.unavailableIDs),
+                          onSelect: selectModel, onTogglePin: togglePin)
+                .equatable()
             }
-            .equatable()
+            let emptyMessage = modelsEmptyMessage(sections: sections)
+            if !sections.rest.isEmpty || !emptyMessage.isEmpty {
+                ModelList(models: sections.rest, selectedID: store.model.id,
+                          emptyMessage: emptyMessage,
+                          pinnedIDs: pinned, unavailableIDs: [],
+                          onSelect: selectModel, onTogglePin: togglePin)
+                .equatable()
+            }
             if store.services != nil {
                 groupedCard {
                     Button {
@@ -461,6 +477,42 @@ struct PlusTray: View {
                 }
             }
         }
+    }
+
+    private var favoritesHeader: some View {
+        Text("Favorites")
+            .font(Type.inter(13, weight: .semibold, .footnote))
+            .foregroundStyle(Praxis.mutedInk)
+            .padding(.horizontal, 14)
+    }
+
+    /// A pinned id with no listed model: dimmed, unpinnable, unselectable.
+    private static func unavailableModel(id: String) -> AIModel {
+        AIModel(id: id, name: id, tagline: "Unavailable", speed: 0, intelligence: 0, streamMultiplier: 1)
+    }
+
+    private func modelsEmptyMessage(sections: ModelSections) -> String {
+        if !ModelSearch.normalized(store.modelQuery).isEmpty {
+            let found = !sections.favorites.isEmpty || !sections.unavailableIDs.isEmpty
+            let query = store.modelQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            return found ? "" : "No models match “\(query)”."
+        }
+        return store.services?.settings.hasProfiles == true
+            ? "This provider listed no models. Enter a model ID in Settings."
+            : "Add a model provider in Settings to chat with a real model."
+    }
+
+    /// Picking a model clears the search; the page stays open.
+    private func selectModel(_ model: AIModel) {
+        store.haptics.fire(.selection)
+        withAnimation(Motion.snap) { store.model = model }
+        store.modelQuery = ""
+    }
+
+    private func togglePin(_ model: AIModel) {
+        let pinned = store.isModelPinned(model.id)
+        store.haptics.fire(pinned ? .selection : .success)
+        store.setModelPinned(model.id, pinned: !pinned)
     }
 
     // MARK: Connectors page
@@ -616,9 +668,13 @@ private struct ModelList: View, Equatable {
     let selectedID: String
     let emptyMessage: String
     var onSelect: (AIModel) -> Void
+    var pinnedIDs: Set<String> = []
+    var unavailableIDs: Set<String> = []
+    var onTogglePin: (AIModel) -> Void = { _ in }
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.selectedID == rhs.selectedID && lhs.emptyMessage == rhs.emptyMessage && lhs.models == rhs.models
+            && lhs.pinnedIDs == rhs.pinnedIDs && lhs.unavailableIDs == rhs.unavailableIDs
     }
 
     var body: some View {
@@ -632,9 +688,11 @@ private struct ModelList: View, Equatable {
             }
             let firstID = models.first?.id
             ForEach(models) { model in
-                ModelRow(model: model, isSelected: model.id == selectedID, showsDivider: model.id != firstID) {
-                    onSelect(model)
-                }
+                ModelRow(model: model, isSelected: model.id == selectedID, showsDivider: model.id != firstID,
+                         isPinned: pinnedIDs.contains(model.id),
+                         isUnavailable: unavailableIDs.contains(model.id),
+                         onSelect: { onSelect(model) },
+                         onTogglePin: { onTogglePin(model) })
                 .equatable()
             }
         }
@@ -646,10 +704,14 @@ private struct ModelRow: View, Equatable {
     let isSelected: Bool
     let showsDivider: Bool
     var onSelect: () -> Void
+    var isPinned: Bool = false
+    var isUnavailable: Bool = false
+    var onTogglePin: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.model == rhs.model && lhs.isSelected == rhs.isSelected && lhs.showsDivider == rhs.showsDivider
+            && lhs.isPinned == rhs.isPinned && lhs.isUnavailable == rhs.isUnavailable
     }
 
     var body: some View {
@@ -658,7 +720,8 @@ private struct ModelRow: View, Equatable {
                 Rectangle().fill(Praxis.hairline).frame(height: 1)
                     .padding(.leading, 44)
             }
-            Button(action: onSelect) {
+            // Unavailable pins (no longer listed) can't be picked, only unpinned.
+            Button(action: { if !isUnavailable { onSelect() } }) {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(model.name).font(Type.inter(15, weight: .semibold, .body)).foregroundStyle(Praxis.ink)
@@ -681,7 +744,11 @@ private struct ModelRow: View, Equatable {
             .buttonStyle(PressHighlightStyle())
             .accessibilityLabel("\(model.name), \(model.tagline)")
             .accessibilityValue(isSelected ? "Selected" : "")
+            .contextMenu {
+                Button(isPinned ? "Unpin" : "Pin to Favorites") { onTogglePin() }
+            }
         }
+        .opacity(isUnavailable ? 0.55 : 1)
     }
 }
 

@@ -325,7 +325,9 @@ private struct ComposerDock: View {
                              onSend: send,
                              onAttachmentTap: { viewerAttachment = $0 },
                              onCamera: { showCamera = true },
-                             showsGlass: false)
+                             showsGlass: false,
+                             isModelSearch: trayOpen && trayPage == .models,
+                             onModelSearchSubmit: submitModelSearch)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowHeight = $0 }
             }
             .praxisGlass(in: cardShape, interactive: !trayOpen)
@@ -348,6 +350,15 @@ private struct ComposerDock: View {
     private func send() {
         sendLaunch?.arm(turnID: store.nextTurnID)
         store.send(text: store.draft)
+    }
+
+    /// Return in model search: picks the top result, like tapping its
+    /// row. The query clears; the page stays open and the draft is intact.
+    private func submitModelSearch() {
+        guard let top = ModelSearch.filter(store.availableModels, query: store.modelQuery).first else { return }
+        store.haptics.fire(.selection)
+        withAnimation(Motion.snap) { store.model = top }
+        store.modelQuery = ""
     }
 }
 

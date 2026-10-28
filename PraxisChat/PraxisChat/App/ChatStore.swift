@@ -27,6 +27,10 @@ final class ChatStore {
     var connectorDiscovery = true
     var attachments: [Attachment] = []
     var draft: String = ""
+    /// The model picker's search text. The composer binds to this (not the
+    /// draft) while the tray's Model page is open; cleared when the page
+    /// closes or a model is picked. The draft is never touched.
+    var modelQuery: String = ""
     /// Id the draft's turn will get when sent. The composer tags the draft
     /// with it, so the new bubble can fly in from where the text was typed.
     private(set) var nextTurnID = UUID()

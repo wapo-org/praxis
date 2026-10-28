@@ -16,6 +16,12 @@ struct ComposerView: View {
     /// False when the composer row lives inside the morphed tray
     /// card, which supplies the shared glass instead.
     var showsGlass: Bool = true
+    /// True while the tray's Model page is open: the field becomes the
+    /// model search (bound to `store.modelQuery`, the draft untouched)
+    /// and the send button hides. Recording keeps precedence (voice).
+    var isModelSearch: Bool = false
+    /// Return in search mode: the owner selects the top result.
+    var onModelSearchSubmit: () -> Void = {}
 
     @FocusState private var focused: Bool
     /// The text just sent, for a short while: see `send()`.
@@ -98,6 +104,8 @@ struct ComposerView: View {
             }
             .frame(maxWidth: .infinity, minHeight: 38)
             .padding(.leading, 6)
+        } else if isModelSearch {
+            searchField
         } else {
             @Bindable var store = store
             TextField(store.mode.placeholder, text: $store.draft, axis: .vertical)
@@ -116,6 +124,26 @@ struct ComposerView: View {
                 .accessibilityHint(store.mode.placeholder)
                 .onChange(of: store.draft) { _, text in rejectRecommit(text) }
         }
+    }
+
+    // MARK: Model search (tray Model page open)
+
+    /// The field rebound as the model search: single line, no
+    /// autocorrection (model ids), Return picks the top result. A
+    /// separate branch from the draft field, so the two never share a
+    /// text view.
+    private var searchField: some View {
+        @Bindable var store = store
+        TextField("Search models", text: $store.modelQuery)
+            .font(Type.inter(17))
+            .foregroundStyle(Praxis.ink)
+            .submitLabel(.search)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+            .frame(minHeight: 38)
+            .padding(.leading, 6)
+            .accessibilityLabel("Search models")
+            .onSubmit { onModelSearchSubmit() }
     }
 
     // MARK: Sending
@@ -175,7 +203,8 @@ struct ComposerView: View {
         HStack(spacing: 8) {
             // Camera sits left of the mic while idle; once typing
             // starts it fades out to the right as send takes over.
-            if !isStreaming && !canSend && !isRecording {
+            // Search mode shows neither camera nor mic.
+            if !isStreaming && !canSend && !isRecording && !isModelSearch {
                 cameraButton
                     .transition(reduceMotion ? .opacity : .asymmetric(
                         insertion: .opacity.combined(with: .offset(x: 8)),
@@ -204,6 +233,24 @@ struct ComposerView: View {
                 .frame(width: 38, height: 38)
                 .tint(Praxis.ink)
                 .accessibilityLabel("Stop generating")
+            } else if isModelSearch {
+                // Search mode: no send, no mic — a clear button while
+                // there's a query, else a spacer holding the row shape.
+                // (Stop above still wins while streaming.)
+                if !store.modelQuery.isEmpty {
+                    Button { store.modelQuery = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 17))
+                            .foregroundStyle(Praxis.mutedInk)
+                            .frame(width: 38, height: 38)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(PressScaleStyle())
+                    .accessibilityLabel("Clear search")
+                } else {
+                    Color.clear.frame(width: 38, height: 38)
+                        .accessibilityHidden(true)
+                }
             } else if canSend {
                 Button { send() } label: {
                     Image(systemName: "arrow.up")
