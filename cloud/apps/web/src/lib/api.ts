@@ -91,6 +91,23 @@ export class PraxisApiClient {
     return `${this.baseUrl}${path}`;
   }
 
+  private isApiOriginUrl(targetUrl: string): boolean {
+    if (targetUrl.startsWith('/')) return true;
+    try {
+      const fallbackOrigin =
+        typeof window !== 'undefined' && window.location?.origin
+          ? window.location.origin
+          : 'http://127.0.0.1';
+      const apiOrigin = this.baseUrl
+        ? new URL(this.baseUrl, fallbackOrigin).origin
+        : fallbackOrigin;
+      const parsedTarget = new URL(targetUrl, apiOrigin);
+      return parsedTarget.origin === apiOrigin;
+    } catch {
+      return false;
+    }
+  }
+
   private headers(extra?: Record<string, string>): Record<string, string> {
     const h: Record<string, string> = {
       Authorization: `Bearer ${this.bearerToken}`,
@@ -222,6 +239,19 @@ export class PraxisApiClient {
     return this.request<{ type: 'ok' }>(`/v1/chats/${encodeURIComponent(chatId)}`, {
       method: 'DELETE',
     });
+  }
+
+  async truncateChat(chatId: string, messageId?: string): Promise<{ type: 'ok' } | Chat> {
+    return this.request<{ type: 'ok' } | Chat>(
+      `/v1/chats/${encodeURIComponent(chatId)}/truncate`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'chat.truncate',
+          ...(messageId ? { messageId } : {}),
+        }),
+      },
+    );
   }
 
   async listMessages(chatId: string, limit = 100) {
@@ -765,35 +795,68 @@ export class PraxisApiClient {
 
   // Uploads & Voice Transcription
   async uploadAttachment(file: File, chatId?: string): Promise<Attachment> {
-    const req = await this.request<{ type: 'upload.url'; uploadUrl: string; expiresAt: string }>(
-      '/v1/uploads',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          type: 'upload.request',
-          name: file.name,
-          mediaType: file.type || 'application/octet-stream',
-          size: Math.max(1, file.size),
-          ...(chatId ? { chatId } : {}),
-        }),
-      },
-    );
+    const req = await this.request<{
+      type: 'upload.url';
+      uploadUrl: string;
+      expiresAt: string;
+      method?: 'POST' | 'PUT';
+    }>('/v1/uploads', {
+      method: 'POST',
+      body: JSON.stringify({
+        type: 'upload.request',
+        name: file.name,
+        mediaType: file.type || 'application/octet-stream',
+        size: Math.max(1, file.size),
+        ...(chatId ? { chatId } : {}),
+      }),
+    });
 
-    const putRes = await fetch(req.uploadUrl, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': file.type || 'application/octet-stream',
-        ...this.headers(),
-      },
+    const uploadTargetUrl = req.uploadUrl.startsWith('/')
+      ? this.url(req.uploadUrl)
+      : req.uploadUrl;
+    const isApiOrigin = this.isApiOriginUrl(req.uploadUrl);
+    const uploadHeaders: Record<string, string> = {
+      'Content-Type': file.type || 'application/octet-stream',
+      ...(isApiOrigin ? this.headers() : {}),
+    };
+
+    const uploadRes = await fetch(uploadTargetUrl, {
+      method: req.method ?? 'PUT',
+      headers: uploadHeaders,
       body: file,
     });
 
-    let storageId = `local-${Date.now()}`;
-    if (putRes.ok) {
+    if (!uploadRes.ok) {
+      let code = 'upload_failed';
+      let message = `Upload failed with HTTP ${uploadRes.status}`;
+      let requestId: string | undefined;
       try {
-        const putJson = (await putRes.json()) as { storageId?: string };
-        if (putJson.storageId) storageId = putJson.storageId;
+        const err = (await uploadRes.json()) as {
+          code?: string;
+          message?: string;
+          requestId?: string;
+        };
+        if (err.code) code = err.code;
+        if (err.message) message = err.message;
+        if (err.requestId) requestId = err.requestId;
       } catch {}
+      throw new PraxisApiError(uploadRes.status, code, message, requestId);
+    }
+
+    let storageId = '';
+    try {
+      const receipt = (await uploadRes.json()) as { storageId?: string };
+      if (typeof receipt.storageId === 'string' && receipt.storageId.trim()) {
+        storageId = receipt.storageId.trim();
+      }
+    } catch {}
+
+    if (!storageId) {
+      throw new PraxisApiError(
+        502,
+        'upload_invalid_receipt',
+        'Upload target did not return a valid storageId receipt',
+      );
     }
 
     return this.request<Attachment>('/v1/uploads/complete', {
