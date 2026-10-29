@@ -42,7 +42,7 @@ export class AgentRunner {
     if(typeof id==='number')cp.run.lastEventId=id;
   }
   private message(cp:AgentCheckpoint,role:Message['role'],parts:MessagePart[]):Message {
-    const now=this.now();return {type:'message',id:this.id(),chatId:cp.chat.id,runId:cp.run.id,role,parts,createdAt:now,updatedAt:now};
+    const now=this.now();return {type:'message',id:this.id(),chatId:cp.chat.id,runId:cp.run.id,...(cp.run.clientTurnId?{clientTurnId:cp.run.clientTurnId}:{}),role,parts,createdAt:now,updatedAt:now};
   }
   private async commit(cp:AgentCheckpoint,message:Message) {
     if(cp.messages.some(m=>m.id===message.id))throw new Error('Duplicate message id');
@@ -191,7 +191,7 @@ export class AgentRunner {
     }
     let response:ProviderResponse|undefined;let expanded=false,compacted=false;
     for(let attempt=0;attempt<=cp.maxRetries+4;attempt++) {
-      const blocks:string[]=[],callIds:string[]=[],calls=new Map<number,{id:string;name:string}>();let bytes=0;
+      const blocks:string[]=[],reasoningBlocks=new Set<string>(),callIds:string[]=[],calls=new Map<number,{id:string;name:string}>();let bytes=0;
       try {
         response=await this.controlled(cp,async signal=>{
           let completed:ProviderResponse|undefined;
@@ -202,7 +202,7 @@ export class AgentRunner {
             if(e.type==='completed'){completed=ProviderResponseSchema.parse(e.response);continue;}
             const blockId=`${cp.run.id}.${cp.iteration}.${attempt}.${e.index}`;
             if(e.type==='text'||e.type==='reasoning') {
-              if(!blocks.includes(blockId))blocks.push(blockId);
+              if(!blocks.includes(blockId))blocks.push(blockId);if(e.type==='reasoning')reasoningBlocks.add(blockId);
               await this.emit(cp,{type:e.type==='text'?'text.delta':'reasoning.delta',blockId,text:e.text});
             }else if(e.type==='tool') {
               calls.set(e.index,{id:e.id,name:e.name});callIds.push(e.id);
@@ -211,7 +211,7 @@ export class AgentRunner {
             }else if(e.type==='arguments') {
               const call=calls.get(e.index);if(call)await this.emit(cp,{type:'tool.arguments.delta',callId:call.id,json:e.json});
             }else if(e.type==='blockEnd') {
-              if(blocks.includes(blockId))await this.emit(cp,{type:'text.finished',blockId});
+              if(blocks.includes(blockId))await this.emit(cp,{type:reasoningBlocks.has(blockId)?'reasoning.finished':'text.finished',blockId});
             }
           }
           if(!completed)throw new ProviderFailure('Provider stream ended without a completed response','retryable');
