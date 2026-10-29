@@ -1,0 +1,9 @@
+{
+  "name": "Praxis Chat",
+  "short_name": "Praxis",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FBFBF9",
+  "theme_color": "#FBFBF9",
+  "description": "Praxis Cloud AI Workspace"
+}
