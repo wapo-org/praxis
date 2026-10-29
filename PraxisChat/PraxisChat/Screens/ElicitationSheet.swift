@@ -64,8 +64,8 @@ struct ElicitationSheet: View {
         }
         // Swiped away without an answer: the asking call gets `cancel`.
         .onDisappear {
-            if store.services?.elicitations.queue.contains(where: { $0.id == pending.id }) == true {
-                store.services?.elicitations.respond(pending.id, with: .cancel)
+            if store.elicitationCenter.queue.contains(where: { $0.id == pending.id }) == true {
+                store.elicitationCenter.respond(pending.id, with: .cancel)
             }
         }
         .fullScreenCover(item: $showSafari, onDismiss: { respond(.accept(nil)) }) { url in
@@ -193,7 +193,7 @@ struct ElicitationSheet: View {
 
     private func respond(_ result: MCPElicitationResult) {
         store.haptics.fire(.selection)
-        store.services?.elicitations.respond(pending.id, with: result)
+        store.elicitationCenter.respond(pending.id, with: result)
     }
 }
 
