@@ -5,14 +5,15 @@ import {streamSSE} from 'hono/streaming';
 import {getCookie,setCookie,deleteCookie} from 'hono/cookie';
 import {z} from 'zod';
 import {
- ApprovalDecisionSchema,ChatInputSchema,ChatPatchSchema,ChatSchema,ConsentSchema,ElicitationResponseSchema,ModelPreferenceSchema,PageQuerySchema,PreferencesInputSchema,PreferencesSchema,ProviderInputSchema,ProviderSchema,RunEventSchema,RunSnapshotSchema,StartRunSchema,
+ ApprovalDecisionSchema,ChatTruncateSchema,ChatInputSchema,ChatPatchSchema,ChatSchema,ConsentSchema,ElicitationResponseSchema,ModelPreferenceSchema,PageQuerySchema,PreferencesInputSchema,PreferencesSchema,ProviderInputSchema,ProviderSchema,RunEventSchema,RunSnapshotSchema,StartRunSchema,
  type Chat,type JsonObject,type Message,type Model,type Provider,type Run,type RunSnapshot,type User,
 } from '@praxis/protocol';
 import {ApiError,ApiService} from './service.js';
 import {seal} from './secrets.js';
+import {ApiProviders} from './providers.js';
 type Env={Variables:{userId:string;requestId:string}};
 export interface AppOptions {
- service:ApiService;encryptionKey?:string;
+ service:ApiService;encryptionKey?:string;fetcher?:typeof fetch;
  resolveSession?:(request:Request)=>Promise<{user:User;expiresAt:string}|null>;
  authHandler?:(request:Request)=>Promise<Response>;
  allowedOrigins?:string[];
@@ -20,6 +21,7 @@ export interface AppOptions {
 }
 export function createApp(options:AppOptions){
  const {service}=options;const app=new Hono<Env>();
+ service.providers=new ApiProviders(service,options.encryptionKey,options.fetcher);
  if(service.local&&(process.env.NODE_ENV==='production'||process.env.VERCEL))throw new Error('Local adapters and auth are forbidden in production');
  const origins=options.allowedOrigins??(service.local?['http://localhost:5173','http://127.0.0.1:5173']:[]);
  app.use('*',cors({origin:origin=>origins.includes(origin)?origin:'',credentials:true,allowHeaders:['Content-Type','Authorization','Last-Event-ID','Idempotency-Key'],allowMethods:['GET','POST','PATCH','DELETE','OPTIONS'],exposeHeaders:['X-Request-ID']}));
@@ -29,7 +31,7 @@ export function createApp(options:AppOptions){
  app.get('/health',c=>c.json({type:'health',ok:true,mode:service.local?'local':'production'}));
  const devTokens=new Map<string,string>([['dev-local','local-user']]);
  async function session(request:Request){
-  if(service.local){const token=request.headers.get('authorization')?.replace(/^Bearer /i,'')??getCookie({req:{raw:request}} as any,'praxis_session');const id=token?devTokens.get(token):undefined;if(id)return {user:{type:'user' as const,id,name:'Local developer'},expiresAt:new Date(Date.now()+86400000).toISOString()};return null;}
+  if(service.local){const token=request.headers.get('authorization')?.replace(/^Bearer /i,'')??request.headers.get('cookie')?.split(';').map(x=>x.trim()).find(x=>x.startsWith('praxis_session='))?.slice('praxis_session='.length);const id=token?devTokens.get(token):undefined;if(id)return {user:{type:'user' as const,id,name:'Local developer'},expiresAt:new Date(Date.now()+86400000).toISOString()};return null;}
   if(!options.resolveSession)throw new ApiError(503,'auth_unconfigured','Production authentication is not configured');return options.resolveSession(request);
  }
  app.post('/v1/auth/dev',async c=>{
@@ -47,7 +49,7 @@ export function createApp(options:AppOptions){
  app.get('/v1/chats/:id',async c=>c.json(await service.require<Chat>(c.get('userId'),'chat',c.req.param('id'))));
  app.patch('/v1/chats/:id',async c=>{const chat=await service.require<Chat>(c.get('userId'),'chat',c.req.param('id'));const input=await body(c,ChatPatchSchema);const result=ChatSchema.parse({...chat,...input,type:'chat',id:chat.id,updatedAt:service.now()});await service.write(c.get('userId'),'chat',chat.id,result);return c.json(result);});
  app.delete('/v1/chats/:id',async c=>{const user=c.get('userId'),id=c.req.param('id');const chat=await service.require<Chat>(user,'chat',id);if(chat.activeRunId)await service.cancel(user,chat.activeRunId);await service.remove(user,'chat',id);for(const m of await service.list<Message>(user,'message'))if(m.chatId===id)await service.remove(user,'message',m.id);return c.json({type:'ok'});});
- app.get('/v1/chats/:id/messages',async c=>{const id=c.req.param('id'),user=c.get('userId');await service.require(user,'chat',id);const rows=(await service.list<Message>(user,'message')).filter(m=>m.chatId===id).sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id));return c.json(page(rows,PageQuerySchema.parse(c.req.query()),`messages:${id}`));});
+ app.get('/v1/chats/:id/messages',async c=>{const id=c.req.param('id'),user=c.get('userId');await service.require(user,'chat',id);const rows=(await service.list<Message>(user,'message')).filter(m=>m.chatId===id).sort((a,b)=>(a.sequence??0)-(b.sequence??0)||a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id));return c.json(page(rows,PageQuerySchema.parse(c.req.query()),`messages:${id}`));});
  app.post('/v1/runs',async c=>{const input=await body(c,StartRunSchema);input.idempotencyKey??=c.req.header('Idempotency-Key');if(!service.local&&input.script)throw new ApiError(400,'local_only','Scripted runs are local only');return c.json(await service.start(c.get('userId'),input),202);});
  app.get('/v1/runs/:id',async c=>c.json(await service.require<Run>(c.get('userId'),'run',c.req.param('id'))));
  app.get('/v1/runs/:id/snapshot',async c=>c.json(RunSnapshotSchema.parse(await service.require(c.get('userId'),'snapshot',c.req.param('id')))));
@@ -66,11 +68,14 @@ export function createApp(options:AppOptions){
  });
  app.get('/v1/events',async c=>{const user=c.get('userId');let after=eventCursor(c);c.header('Cache-Control','no-cache, no-transform');c.header('X-Accel-Buffering','no');return streamSSE(c,async stream=>{let heartbeat=Date.now();while(!stream.aborted){for(const e of await service.adapters.events.read(user,'user',after,100)){await stream.writeSSE({id:String(e.id),event:'user.event',data:JSON.stringify({type:'user.event',id:e.id,...e.payload,syncCursor:String(e.id),...(e.payload.type?{type:'user.event'}:{})})});after=e.id;}if(Date.now()-heartbeat>15000){await stream.write(': keepalive\n\n');heartbeat=Date.now();}await stream.sleep(100);}},async()=>{});});
  app.get('/v1/providers',async c=>c.json(page(await service.list<Provider>(c.get('userId'),'provider'),PageQuerySchema.parse(c.req.query()),'providers')));
- app.post('/v1/providers',async c=>{const input=await body(c,ProviderInputSchema);if(!input.apiKey)throw new ApiError(400,'key_required','An API key is required');const id=randomUUID(),user=c.get('userId');await saveProviderSecret(user,id,input);const provider=ProviderSchema.parse({...input,type:'provider',id,maskedKey:mask(input.apiKey),headerNames:Object.keys(input.extraHeaders??{}),capabilities:input.capabilities??{},updatedAt:service.now()});await service.write(user,'provider',id,provider);return c.json(provider,201);});
+ app.post('/v1/providers',async c=>{const input=await body(c,ProviderInputSchema);const id=randomUUID(),user=c.get('userId');await saveProviderSecret(user,id,input);const provider=ProviderSchema.parse({...input,type:'provider',id,maskedKey:input.apiKey?mask(input.apiKey):'Not configured',headerNames:Object.keys(input.extraHeaders??{}),capabilities:input.capabilities??{},updatedAt:service.now()});await service.write(user,'provider',id,provider);return c.json(provider,201);});
  app.get('/v1/providers/:id',async c=>c.json(await service.require<Provider>(c.get('userId'),'provider',c.req.param('id'))));
  app.patch('/v1/providers/:id',async c=>{const user=c.get('userId'),id=c.req.param('id');const prior=await service.require<Provider>(user,'provider',id);const input=await body(c,ProviderInputSchema);if(input.apiKey||input.extraHeaders)await saveProviderSecret(user,id,input);const provider=ProviderSchema.parse({...prior,...input,type:'provider',id,maskedKey:input.apiKey?mask(input.apiKey):prior.maskedKey,headerNames:input.extraHeaders?Object.keys(input.extraHeaders):prior.headerNames,updatedAt:service.now()});await service.write(user,'provider',id,provider);return c.json(provider);});
  app.delete('/v1/providers/:id',async c=>{const user=c.get('userId'),id=c.req.param('id');await service.remove(user,'provider',id);await service.adapters.store.delete(user,'providerSecret',id);return c.json({type:'ok'});});
  async function saveProviderSecret(user:string,id:string,input:z.infer<typeof ProviderInputSchema>){const existing=await service.adapters.store.get(user,'providerSecret',id);const value={...existing?.value};if(input.apiKey)value.apiKey=seal(input.apiKey,user,`provider:${id}:key`,options.encryptionKey);if(input.extraHeaders)value.extraHeaders=seal(JSON.stringify(input.extraHeaders),user,`provider:${id}:headers`,options.encryptionKey);await service.put(user,'providerSecret',id,value);}
+ app.post('/v1/providers/:id/test',async c=>{await body(c,z.object({type:z.literal('provider.test')}));const models=await service.providers!.refresh(c.get('userId'),c.req.param('id'));return c.json({type:'provider.test.result',ok:true,models});});
+ app.post('/v1/providers/:id/refresh-models',async c=>{await body(c,z.object({type:z.literal('models.refresh')}));const models=await service.providers!.refresh(c.get('userId'),c.req.param('id'));return c.json({type:'page',items:models.slice(0,100),nextCursor:null});});
+ app.post('/v1/chats/:id/truncate',async c=>{const input=await body(c,ChatTruncateSchema);return c.json(await service.truncate(c.get('userId'),c.req.param('id'),input.clientTurnId));});
  app.get('/v1/models',async c=>{const query=PageQuerySchema.parse(c.req.query());let models=await service.list<Model>(c.get('userId'),'model');const provider=c.req.query('providerId');if(provider)models=models.filter(m=>m.providerId===provider);if(query.q)models=models.filter(m=>`${m.displayName} ${m.id}`.toLowerCase().includes(query.q!.toLowerCase()));if(c.req.query('pinned')==='true')models=models.filter(m=>m.pinned);if(c.req.query('favorite')==='true')models=models.filter(m=>m.favorite);models.sort((a,b)=>Number(b.pinned)-Number(a.pinned)||a.displayName.localeCompare(b.displayName)||a.id.localeCompare(b.id));return c.json(page(models,query,`models:${provider??''}:${query.q??''}:${c.req.query('pinned')??''}:${c.req.query('favorite')??''}`));});
  app.patch('/v1/models/preferences',async c=>{const input=await body(c,ModelPreferenceSchema);const id=`${input.providerId}:${input.modelId}`,user=c.get('userId');const model=await service.require<Model>(user,'model',id);if(input.pinned!==undefined)model.pinned=input.pinned;if(input.favorite!==undefined)model.favorite=input.favorite;await service.write(user,'model',id,model);return c.json(model);});
  app.get('/v1/consents',async c=>c.json(page(await service.list(c.get('userId'),'consent'),PageQuerySchema.parse(c.req.query()),'consents')));

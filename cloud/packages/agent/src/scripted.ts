@@ -7,6 +7,7 @@ export function createScriptedProvider(script:Script='text'):ModelProvider {
   return {flavor:'openAIChat',capabilities:CapabilitiesSchema.parse({tools:true,vision:true,reasoningEffort:true}),
     async *stream(request:ProviderRequest,signal:AbortSignal):AsyncGenerator<ProviderEvent> {
       if(signal.aborted)throw new Error('Aborted');
+      yield {type:'reasoning',index:100,text:'Checking the scripted scenario.'};yield {type:'blockEnd',index:100};
       if(script==='error')throw new ProviderFailure('Scripted provider error');
       let start=0;
       for(let i=request.messages.length-1;i>=0;i--)if(request.messages[i]!.role==='user'&&request.messages[i]!.parts.some(p=>p.type==='text')){start=i;break;}

@@ -30,3 +30,37 @@ The transcript is append-only, including repair results after interrupted tool c
 Local scenarios: `text`, `tools`, `approval`, `nestedApproval`, `elicitation`, `error`, `long`, `compaction`, `vision`. `createScriptedRunner(ports, script)` supplies provider/tools/summary for immediate local API integration. `createScriptedProvider(script)` and `scriptedTools()` can be composed separately. Script state derives from the request transcript, so reconstructing the provider after a parked function works.
 
 Dependencies: `@praxis/protocol` supplies authoritative DTOs/event schemas; `zod` validates checkpoint, provider, tool and resume boundaries. No additional runtime dependency.
+
+## HTTP providers and model discovery
+
+```ts
+import {createHTTPProvider, AgentRunner} from '@praxis/agent';
+const provider = createHTTPProvider({
+  providerId: savedProvider.id,
+  flavor: savedProvider.flavor, // anthropicMessages | openAIChat | openAIResponses
+  baseUrl: savedProvider.baseUrl,
+  apiKey: decryptedKey,
+  capabilities: savedProvider.capabilities,
+  extraHeaders: decryptedHeaders,
+}, injectedFetch);
+const models = await provider.listModels(abortSignal); // protocol Model[]
+const runner = new AgentRunner({provider, tools, ports});
+```
+
+`createHTTPProvider(config, fetcher?)` validates configuration with Zod and returns an `HTTPProvider`: existing `ModelProvider.stream(request, signal)` plus `listModels(signal?)`. It adds API-family auth headers, uses a fixed Anthropic `2023-06-01` compatibility version unless `extraHeaders` overrides it, and preserves custom base URL prefixes. Known full endpoint URLs are normalized. HTTP redirects are rejected to prevent credentials moving to another endpoint. HTTP/stream error messages redact configured secrets. No key is stored in a checkpoint or returned in a model DTO.
+
+Optional config: `systemRole: 'system'|'developer'`, `maxTokensField: 'max_tokens'|'max_completion_tokens'|'omit'`, `replayReasoning`, `webSearchToolType`, `maxStreamBytes`, `maxEventBytes`. Chat defaults to `max_tokens` for compatible servers; select `max_completion_tokens` when the endpoint requires it. Model lists expose known capabilities and raw effort values; unknown metadata inherits configured capability defaults. Anthropic list pagination is bounded. Names-only lists cannot establish a model's exact capabilities or efforts.
+
+`buildProviderRequest(flavor, request, options?)`, `clampEffort`, `parseModelMetadata`, `providerURL`, `parseSSE` and each decoder are exported for focused integration/tests. Streaming uses incremental UTF-8 decoding and CR/LF/CRLF SSE framing with bounded total, event and line buffers. Responses API completed encrypted reasoning items and Anthropic signatures/opaque blocks are retained for same-flavor raw replay. Request-time tool/image/effort fallbacks never mutate the frozen prefix or transcript.
+
+Scripted scenarios now emit reasoning deltas/finished events. Newly committed messages inherit `run.clientTurnId`. The `compaction` script uses a deliberately low threshold but still requires at least two messages, with an earlier prefix to summarize; a first-ever single-message conversation has no history to compact. Seed history or send a second turn to exercise it.
+
+Wire formats were verified against official documentation and the frozen Swift fixture corpus:
+
+- [Anthropic streaming](https://platform.claude.com/docs/en/build-with-claude/streaming)
+- [Anthropic model listing](https://platform.claude.com/docs/en/api/models/list)
+- [OpenAI Chat streaming events](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events)
+- [OpenAI Responses streaming events](https://developers.openai.com/api/reference/resources/responses/streaming-events)
+- [OpenAI model listing](https://developers.openai.com/api/reference/resources/models/methods/list)
+
+No additional runtime dependency was added for HTTP providers: injected native fetch and Web Streams perform transport and streaming.
