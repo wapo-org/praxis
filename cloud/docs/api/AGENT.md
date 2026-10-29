@@ -64,3 +64,5 @@ Wire formats were verified against official documentation and the frozen Swift f
 - [OpenAI model listing](https://developers.openai.com/api/reference/resources/models/methods/list)
 
 No additional runtime dependency was added for HTTP providers: injected native fetch and Web Streams perform transport and streaming.
+
+Argument-sensitive tool policy: `AgentTool.classify?(args): {traits: ToolSpec['traits']; policyKey?: string}` lets trusted adapters classify a resolved target (for example `save_skill` create vs replacement). The runner applies those traits to the frozen spec for policy only. Classification traits plus `policyKey` are hashed into the approval key alongside the frozen description/schema. The frozen catalog stays byte-identical. A classification change during parking revokes the one-shot approval and asks again. The adapter must enforce the actual effect, including rejecting an existing-skill write when `replace` is false; classification does not replace execution-time checks.
