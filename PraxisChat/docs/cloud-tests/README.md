@@ -1,6 +1,6 @@
 # Deterministic cloud acceptance harness
 
-`Cloud/Testing/CloudTestBackend.swift` is DEBUG-only. It is a protocol-v0 server
+`Cloud/Testing/CloudTestBackend.swift` is DEBUG-only. It is a protocol-v1 server
 implemented through a session-scoped URLProtocol. It intercepts every request
 in its injected session; an unknown route returns a typed 404 locally. No
 external server, account, provider key, npm dependency or package change is
@@ -41,9 +41,9 @@ server (`cloudAccountServer`). It uses the settings agent's identifiers
 ## Scripts and transport behavior
 
 `PraxisCloudScenario` supports `text`, `tools`, `approval`, `nestedApproval`,
-`elicitation`, `compaction`, `vision`, `cancel`, `reconnect`, and `error`.
+`elicitation`, `compaction`, `vision`, `cancel`, `reconnect`, `cursorExpired`, and `error`.
 A `run.start.script` field can override the session's script, using A's v0 script
-names (`nestedApproval`, not an invented alias). `cancel` and `reconnect` are
+names (`nestedApproval`, not an invented alias). `cancel`, `reconnect`, and `cursorExpired` are
 harness-only selectors and are not asserted to exist on the real API.
 
 The fixtures use A's schemas in `cloud/packages/protocol/src/index.ts` and routes
@@ -61,6 +61,14 @@ an approval/cancel race with replay. `reconnect` drops the first connection afte
 the first text delta (event 4); a second connection must resume and finish the
 answer once. The harness records HTTP methods, paths, bodies and resume headers
 without logging credentials.
+
+`cursorExpired` drops after event 4, then responds once with 409
+`cursor_expired` on resume. `GET /v1/runs/:id/snapshot` returns v1's authoritative
+blocks, tools, pending approvals/elicitations, committed messages and accepted
+lastEventId. Snapshot recovery resumes after that ID. Bootstrap reports v1 and
+includes preferences, consents and registries. GET/PATCH preferences returns
+voice configuration without echoing the write-only key. Model list queries
+honor search/provider/pinned/favorite filters.
 
 ## Test ownership and legacy launches
 

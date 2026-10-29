@@ -1,13 +1,13 @@
 #if DEBUG
 import Foundation
 
-/// Deterministic protocol-v0 server behind URLSession. The production HTTP and
+/// Deterministic protocol-v1 server behind URLSession. The production HTTP and
 /// SSE decoders still consume real status codes, headers and fragmented bytes.
 /// All mutable server/connection state belongs to `queue`; callbacks never run
 /// under a lock used by URLSession cancellation.
 final class CloudTestBackend: @unchecked Sendable {
     enum Scenario: String, CaseIterable, Sendable {
-        case text, tools, approval, nestedApproval, elicitation, compaction, vision, cancel, reconnect, error
+        case text, tools, approval, nestedApproval, elicitation, compaction, vision, cancel, reconnect, cursorExpired, error
     }
     struct Request: Sendable {
         let method: String
@@ -17,6 +17,7 @@ final class CloudTestBackend: @unchecked Sendable {
     }
     static let baseURL = URL(string: "https://cloud.praxis.test")!
     static let token = "dev-local"
+    static let protocolVersion = 1
     static let timestamp = "2026-10-29T14:00:00.000Z"
     private static let registry = Registry()
     private static let launchBackend = CloudTestBackend(
@@ -42,6 +43,12 @@ final class CloudTestBackend: @unchecked Sendable {
         var outcome: String?
         var events: [Data] = []
         var messages: [[String: Any]] = []
+        var blocks: [[String: Any]] = []
+        var tools: [[String: Any]] = []
+        var approvals: [[String: Any]] = []
+        var elicitations: [[String: Any]] = []
+        var expiredCursorDelivered = false
+        var clientTurnID: String?
         var streams: [Connection] = []
         var openedStreams = 0
         var decisions: [String: String] = [:]
@@ -104,6 +111,10 @@ final class CloudTestBackend: @unchecked Sendable {
     private var runs: [String: Run] = [:]
     private var idempotency: [String: (Data, String)] = [:]
     private var authenticated = true
+    private var preferences: [String: Any] = ["type": "preferences",
+        "vision": ["type": "vision.preferences", "enabled": true],
+        "voice": ["type": "voice.preferences", "model": "whisper-large-v3-turbo", "configured": false],
+        "updatedAt": CloudTestBackend.timestamp]
     private var nextChat = 0
     private var nextRun = 0
 
@@ -181,9 +192,9 @@ final class CloudTestBackend: @unchecked Sendable {
         func parameter(_ name: String) -> String? { query.first { $0.name == name }?.value }
         switch (method, path) {
         case ("GET", "/v1/bootstrap"):
-            reply(["type": "bootstrap", "protocolVersion": 0, "user": user,
+            reply(["type": "bootstrap", "protocolVersion": Self.protocolVersion, "user": user,
                    "chats": Array(chats.values), "providers": [provider], "models": [model],
-                   "connectors": [], "skills": [], "activeRuns": runs.values.filter { $0.outcome == nil }.map(descriptor),
+                   "connectors": [], "skills": [], "consents": [], "registries": [], "preferences": preferences, "activeRuns": runs.values.filter { $0.outcome == nil }.map(descriptor),
                    "syncCursor": "stub-0", "syncRoot": "stub-root", "serverTime": Self.timestamp])
         case ("POST", "/v1/chats"):
             nextChat += 1
@@ -198,12 +209,25 @@ final class CloudTestBackend: @unchecked Sendable {
         case ("GET", "/v1/providers"): reply(page([provider]))
         case ("GET", "/v1/models"):
             let matches = [model].filter { item in
+                if parameter("pinned") == "true", item["pinned"] as? Bool != true { return false }
+                if parameter("favorite") == "true", item["favorite"] as? Bool != true { return false }
+                if let provider = parameter("providerId"), item["providerId"] as? String != provider { return false }
                 guard let q = parameter("q"), !q.isEmpty else { return true }
                 return (item["displayName"] as? String ?? "").localizedCaseInsensitiveContains(q)
             }
             reply(page(parameter("cursor") == nil ? matches : []))
         case ("GET", "/v1/connectors"), ("GET", "/v1/skills"), ("GET", "/v1/skill-registries"), ("GET", "/v1/consents"):
             reply(page([]))
+        case ("GET", "/v1/preferences"): reply(preferences)
+        case ("PATCH", "/v1/preferences"):
+            for section in ["vision", "voice"] {
+                guard let changes = input[section] as? [String: Any] else { continue }
+                var saved = preferences[section] as? [String: Any] ?? [:]
+                for (key, value) in changes where key != "apiKey" { saved[key] = value }
+                if let key = changes["apiKey"] as? String { saved["configured"] = !key.isEmpty }
+                preferences[section] = saved
+            }
+            reply(preferences)
         case ("GET", "/v1/sync/root"):
             reply(["type": "sync.root", "root": "stub-root", "cursor": "stub-0", "strategy": "cursor"])
         case ("POST", "/v1/sync/pull"), ("POST", "/v1/sync/tree"):
@@ -228,16 +252,22 @@ final class CloudTestBackend: @unchecked Sendable {
             nextRun += 1
             let script = (input["script"] as? String).flatMap(Scenario.init(rawValue:)) ?? scenario
             let run = Run(id: "stub-run-\(nextRun)", chatID: chatID, scenario: script, prompt: input["text"] as? String ?? "")
+            run.clientTurnID = input["clientTurnId"] as? String
             runs[run.id] = run
             if let key { idempotency[chatID + key] = (canonical, run.id) }
             prepare(run); reply(descriptor(run), 202)
         default:
             if components.count >= 3, components[1] == "runs", let run = runs[components[2]] {
                 if method == "GET", components.count == 3 { reply(descriptor(run)); return }
+                if method == "GET", components.last == "snapshot" { reply(snapshot(run)); return }
                 if method == "GET", components.last == "events" {
                     let cursor = request.value(forHTTPHeaderField: "Last-Event-ID") ?? parameter("after") ?? "0"
                     guard let after = Int(cursor), after >= 0, after <= run.events.count else {
                         failure("cursor_expired", "Invalid event cursor", 409); return
+                    }
+                    if run.scenario == .cursorExpired, after > 0, !run.expiredCursorDelivered {
+                        run.expiredCursorDelivered = true
+                        failure("cursor_expired", "Refetch the authoritative run snapshot.", 409); return
                     }
                     stream(connection, run: run, after: after); return
                 }
@@ -331,7 +361,7 @@ final class CloudTestBackend: @unchecked Sendable {
             emit(run, ["type": "vision.activity", "id": "stub-vision", "phase": "started", "attachmentId": "stub-image", "modelId": "stub-vision-model", "question": "What is in this image?"])
             emit(run, ["type": "vision.activity", "id": "stub-vision", "phase": "finished", "attachmentId": "stub-image", "answer": "A fixture image."])
             finish(run, answer: answer(run))
-        case .text, .reconnect: finish(run, answer: answer(run))
+        case .text, .reconnect, .cursorExpired: finish(run, answer: answer(run))
         }
     }
     private func activity(id: String, name: String) -> [String: Any] {
@@ -342,6 +372,7 @@ final class CloudTestBackend: @unchecked Sendable {
     }
     private func answer(_ run: Run) -> String {
         switch run.scenario {
+        case .cursorExpired: "Cloud snapshot recovered without duplicate text."
         case .reconnect: "Cloud reconnect: one 🌍 answer, no duplicate text."
         case .compaction: "Cloud context compacted."
         case .vision: "Cloud vision fallback complete."
@@ -365,6 +396,7 @@ final class CloudTestBackend: @unchecked Sendable {
         if payload["type"] as? String == "messages.committed", let messages = payload["messages"] as? [[String: Any]] {
             run.messages.append(contentsOf: messages)
         }
+        foldSnapshot(run, payload)
         let eventID = run.events.count + 1
         let envelope: [String: Any] = ["type": "run.event", "id": eventID, "runId": run.id, "chatId": run.chatID, "createdAt": Self.timestamp, "event": payload]
         let data = Self.json(envelope)
@@ -381,7 +413,7 @@ final class CloudTestBackend: @unchecked Sendable {
         connection.response(contentType: "text/event-stream; charset=utf-8")
         connection.bytes(Data(": fixture keepalive\r\nretry: 10\r\n\r\n".utf8))
         run.openedStreams += 1
-        let disconnect = run.scenario == .reconnect && run.openedStreams == 1
+        let disconnect = [Scenario.reconnect, .cursorExpired].contains(run.scenario) && run.openedStreams == 1
         // Drop after the first text delta: this catches both duplicate text and
         // implementations that incorrectly treat a broken stream as completion.
         let end = disconnect ? min(run.events.count, 4) : run.events.count
@@ -412,11 +444,56 @@ final class CloudTestBackend: @unchecked Sendable {
         var value: [String: Any] = ["type": "run", "id": run.id, "chatId": run.chatID, "status": run.status,
                                   "createdAt": Self.timestamp, "updatedAt": Self.timestamp, "lastEventId": run.events.count]
         if let outcome = run.outcome { value["outcome"] = outcome }
+        if let turnID = run.clientTurnID { value["clientTurnId"] = turnID }
         return value
     }
     private func message(_ run: Run, role: String, text: String) -> [String: Any] {
-        ["type": "message", "id": "\(run.id)-\(role)", "chatId": run.chatID, "runId": run.id, "role": role,
+        var value: [String: Any] = ["type": "message", "id": "\(run.id)-\(role)", "chatId": run.chatID, "runId": run.id, "role": role,
          "parts": [["type": "text", "text": text]], "createdAt": Self.timestamp, "updatedAt": Self.timestamp]
+        if let turnID = run.clientTurnID { value["clientTurnId"] = turnID }
+        return value
+    }
+    private func snapshot(_ run: Run) -> [String: Any] {
+        ["type": "run.snapshot", "run": descriptor(run), "lastEventId": run.events.count,
+         "blocks": run.blocks, "tools": run.tools, "pendingApprovals": run.approvals,
+         "pendingElicitations": run.elicitations, "messages": run.messages]
+    }
+    private func foldSnapshot(_ run: Run, _ payload: [String: Any]) {
+        let type = payload["type"] as? String ?? ""
+        switch type {
+        case "text.delta", "reasoning.delta":
+            let id = payload["blockId"] as? String ?? ""
+            let index = run.blocks.firstIndex { $0["id"] as? String == id }
+            if let index {
+                run.blocks[index]["text"] = (run.blocks[index]["text"] as? String ?? "") + (payload["text"] as? String ?? "")
+            } else { run.blocks.append(["type": type == "text.delta" ? "text" : "reasoning", "id": id, "text": payload["text"] ?? "", "finished": false]) }
+        case "text.finished", "reasoning.finished":
+            if let index = run.blocks.firstIndex(where: { $0["id"] as? String == payload["blockId"] as? String }) { run.blocks[index]["finished"] = true }
+        case "tool.started", "tool.ready":
+            guard let activity = payload["activity"] as? [String: Any] else { return }
+            if let index = run.tools.firstIndex(where: { ($0["activity"] as? [String: Any])?["id"] as? String == activity["id"] as? String }) {
+                run.tools[index]["activity"] = activity
+            } else { run.tools.append(["type": "tool.state", "activity": activity, "argumentsJson": "", "running": false, "progress": []]) }
+        case "tool.running", "tool.finished", "tool.progress":
+            guard let index = run.tools.firstIndex(where: { ($0["activity"] as? [String: Any])?["id"] as? String == payload["callId"] as? String }) else { return }
+            if type == "tool.progress" {
+                var progress = run.tools[index]["progress"] as? [[String: Any]] ?? []
+                progress.append(payload); run.tools[index]["progress"] = Array(progress.suffix(200))
+            } else {
+                run.tools[index]["running"] = type == "tool.running"
+                if let completion = payload["completion"] { run.tools[index]["completion"] = completion }
+            }
+        case "approval.requested":
+            if let approval = payload["approval"] as? [String: Any] { run.approvals.append(approval) }
+        case "approval.resolved": run.approvals.removeAll { $0["id"] as? String == payload["approvalId"] as? String }
+        case "elicitation.requested":
+            if let elicitation = payload["elicitation"] as? [String: Any] { run.elicitations.append(elicitation) }
+        case "elicitation.resolved": run.elicitations.removeAll { $0["id"] as? String == payload["elicitationId"] as? String }
+        case "run.finished":
+            run.approvals.removeAll(); run.elicitations.removeAll()
+            for index in run.tools.indices { run.tools[index]["running"] = false }
+        default: break
+        }
     }
     private var user: [String: Any] { ["type": "user", "id": "stub-user", "name": "Cloud Tester", "email": "cloud@example.test"] }
     private func session(includeToken: Bool) -> [String: Any] {
