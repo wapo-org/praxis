@@ -89,14 +89,20 @@ extension ChatStore {
     var modelPinProfileID: UUID { services?.settings.selectedProfile?.id ?? ProviderSettings.demoProfileID }
 
     func pinnedModelIDs() -> [String] {
-        services?.settings.pinnedModels(for: modelPinProfileID) ?? []
+        if let cloud = cloudServices { return cloud.pinnedModelIDs }
+        return services?.settings.pinnedModels(for: modelPinProfileID) ?? []
     }
 
     func isModelPinned(_ id: String) -> Bool {
-        services?.settings.isPinned(profileID: modelPinProfileID, model: id) ?? false
+        if let cloud = cloudServices { return cloud.pinnedModelIDs.contains(id) }
+        return services?.settings.isPinned(profileID: modelPinProfileID, model: id) ?? false
     }
 
     func setModelPinned(_ id: String, pinned: Bool) {
+        if let cloud = cloudServices, let model = cloud.model(selectionID: id) {
+            Task { try? await cloud.setModelPreference(model, pinned: pinned) }
+            return
+        }
         services?.settings.setPinned(pinned, profileID: modelPinProfileID, model: id)
     }
 }

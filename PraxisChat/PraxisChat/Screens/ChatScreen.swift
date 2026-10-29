@@ -237,7 +237,7 @@ struct ChatScreen: View {
     /// request (swiping it away cancels it), so the setter has nothing to
     /// do — by the time it runs, `current` may already be the next one.
     private var elicitationBinding: Binding<ElicitationCenter.Pending?> {
-        let center = store.services?.elicitations
+        let center = store.elicitationCenter
         return Binding(get: { center?.current }, set: { _ in })
     }
 
