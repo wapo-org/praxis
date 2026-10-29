@@ -97,6 +97,7 @@ struct CloudAPIClient: Sendable {
               origin.origin == configuration.origin else { throw CloudAPIError.invalidPath }
         var request = URLRequest(url: url)
         request.httpMethod = method; request.httpBody = body
+        request.httpShouldHandleCookies = false
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if body != nil { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
         if let token = try await tokens.token(for: configuration.origin) {

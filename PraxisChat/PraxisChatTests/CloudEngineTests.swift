@@ -141,6 +141,57 @@ final class CloudEngineTests: XCTestCase {
         let progress = await mapper.map(.progress("tool", "trace", nil, ["trace line"], .api))
         XCTAssertTrue(progress.contains { if case .toolProgress("tool", .trace(.api, "trace line")) = $0 { true } else { false } })
     }
+    func testOpaqueRemoteChatIDUsedForStartAndStream() async throws {
+        let backend = CloudTestBackend(chunkDelay: 0.001); defer { backend.shutdown() }
+        var request = request(); request.cloudChatID = "opaque-remote-chat"
+        let events = await collect(CloudChatEngine(client: try client(backend)).run(request))
+        XCTAssertTrue(events.contains { if case .finished(.completed) = $0 { true } else { false } })
+        let start = try XCTUnwrap(backend.recordedRequests().first { $0.path == "/v1/runs" })
+        let body = try JSONDecoder().decode(JSONValue.self, from: start.body)
+        XCTAssertEqual(body["chatId"]?.stringValue, "opaque-remote-chat")
+    }
+    func testStopImmediatelyBeforeConsumerCancellationStillPostsDurableCancel() async throws {
+        let backend = CloudTestBackend(scenario: .cancel, chunkDelay: 0.001); defer { backend.shutdown() }
+        let flag = RunCancelFlag()
+        var request = request(); request.isCancelled = { flag.isCancelled }
+        let received = expectation(description: "receiving stream")
+        let engine = CloudChatEngine(client: try client(backend), onCursor: { _, _, _, _ in received.fulfill() })
+        let task = Task { for await _ in engine.run(request) {} }
+        await fulfillment(of: [received], timeout: 4)
+        flag.cancel(); task.cancel() // deliberately faster than the watcher
+        await task.value
+        await waitUntil { backend.recordedRequests().contains { $0.path.hasSuffix("/cancel") } }
+        XCTAssertTrue(backend.recordedRequests().contains { $0.path.hasSuffix("/cancel") })
+    }
+    func testRestoredApprovalHandlerRespondsAfterCursorWithoutReplay() async throws {
+        let backend = CloudTestBackend(scenario: .nestedApproval, chunkDelay: 0.001); defer { backend.shutdown() }
+        let client = try client(backend)
+        let request = request()
+        let chat = CloudChatInput(id: request.conversationID.uuidString, title: "Restored", mode: "auto", connectorIds: [], disabledConnectorIds: [])
+        let _: CloudChatIdentity = try await client.send("/v1/chats", method: "POST", body: JSONEncoder().encode(chat))
+        let run: CloudRun = try await client.send("/v1/runs", method: "POST", body: Data(("{\"type\":\"run.start\",\"chatId\":\"" + request.conversationID.uuidString + "\",\"text\":\"Restore\"}").utf8))
+        let snapshot: JSONValue = try await client.send("/v1/runs/" + run.id + "/snapshot")
+        let approvalJSON = try XCTUnwrap(snapshot["pendingApprovals"]?.arrayValue?.first)
+        let approval = try JSONDecoder().decode(CloudApproval.self, from: Data(approvalJSON.encodedString().utf8))
+        let cursor = Int(snapshot["lastEventId"]?.doubleValue ?? 0)
+        let events = await collect(CloudChatEngine(client: client).resume(request: request, runID: run.id, cursor: cursor, pendingEvents: [.approval(approval)]))
+        XCTAssertTrue(events.contains { if case .finished(.completed) = $0 { true } else { false } })
+        XCTAssertEqual(backend.recordedRequests().filter { $0.path.hasSuffix("/approvals") }.count, 1)
+        XCTAssertFalse(events.contains { if case .toolAwaitingApproval = $0 { true } else { false } }, "Restoration registers the waiter; the journal already restored the card")
+    }
+    func testLocalAPI8808RunThroughProductionTransportWhenEnabled() async throws {
+        guard ProcessInfo.processInfo.environment["PRAXIS_LOCAL_API"] == "1" else { throw XCTSkip("Set TEST_RUNNER_PRAXIS_LOCAL_API=1 with the C-net API on port 8808") }
+        let config = try CloudServerConfiguration(baseURL: URL(string: "http://127.0.0.1:8808")!)
+        let client = CloudAPIClient(configuration: config, session: URLSession(configuration: .ephemeral), tokens: CloudSessionStore(inMemory: true))
+        try await client.tokens.setToken("dev-local", for: config.origin)
+        var request = request(); request.modelID = "scripted"
+        let events = await collect(CloudChatEngine(client: client).run(request))
+        XCTAssertTrue(events.contains { if case .finished(.completed) = $0 { true } else { false } })
+        let messages: [Message] = events.flatMap { event -> [Message] in if case .committed(let m) = event { m } else { [] } }
+        XCTAssertEqual(messages.first?.role, .user)
+        XCTAssertEqual(messages.last?.role, .assistant)
+        XCTAssertTrue(messages.last?.text.contains("Hello cloud") == true)
+    }
     func testCloudSelectionDecodesProviderAndModelPair() throws {
         let pair = try JSONEncoder().encode(["provider", "model"])
         let selection = CloudChatEngine.modelSelection("cloud:" + pair.base64EncodedString())
