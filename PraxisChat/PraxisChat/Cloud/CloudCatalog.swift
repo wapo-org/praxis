@@ -34,6 +34,8 @@ struct CloudCatalogProvider: Codable, Identifiable, Sendable, Equatable {
     var maskedKey: String
     var capabilities: CloudCatalogCapabilities
     var updatedAt: String
+    var defaultModel: String?
+    var headerNames: [String]?
 }
 
 /// Never persisted. Only the editor's short-lived request owns apiKey.
@@ -45,6 +47,7 @@ struct CloudCatalogProviderInput: Encodable, Sendable {
     var apiKey: String?
     var capabilities: CloudCatalogCapabilities?
     var extraHeaders: [String: String]?
+    var defaultModel: String?
 }
 
 struct CloudCatalogModel: Codable, Identifiable, Sendable, Equatable {
@@ -58,6 +61,12 @@ struct CloudCatalogModel: Codable, Identifiable, Sendable, Equatable {
     var reasoningEfforts: [String]
     var pinned: Bool
     var favorite: Bool
+    var tagline: String?
+    var speed: Int?
+    var intelligence: Int?
+    var supportsImages: Bool?
+
+    var canReadImages: Bool { supportsImages ?? capabilities.vision }
 
     /// Provider IDs and model IDs are opaque. A JSON pair avoids collisions
     /// even when a model ID contains slashes or is offered by two providers.
@@ -68,7 +77,7 @@ struct CloudCatalogModel: Codable, Identifiable, Sendable, Equatable {
 
     func aiModel(providerName: String?) -> AIModel {
         AIModel(id: selectionID, name: displayName,
-                tagline: providerName ?? providerId, speed: 0, intelligence: 0,
+                tagline: tagline ?? providerName ?? providerId, speed: speed ?? 0, intelligence: intelligence ?? 0,
                 streamMultiplier: 1,
                 effortLevels: reasoningEfforts.compactMap(Effort.init(rawValue:)))
     }

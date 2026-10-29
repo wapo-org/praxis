@@ -140,10 +140,21 @@ struct CloudSettingsRegistryScreen: View {
     @State private var error: String?
     @State private var searching = false
     @State private var deleting = false
+    @State private var registryName = ""
+    @State private var registryURL = ""
     private var current: CloudCatalogRegistry { services.registries.first { $0.id == registry.id } ?? registry }
     var body: some View {
         CloudSettingsPage(title: current.name) {
-            Text(current.url).font(Type.mono(12, .caption)).foregroundStyle(Praxis.mutedInk)
+            SettingsCard {
+                SettingsField(title: "Name", text: $registryName)
+                SettingsDivider()
+                SettingsField(title: "Registry URL", text: $registryURL, keyboard: .URL, monospaced: true)
+            }
+            CloudSettingsAction("Save registry") {
+                _ = try await services.saveRegistry(id: current.id, input: CloudCatalogRegistryInput(
+                    name: registryName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    url: registryURL.trimmingCharacters(in: .whitespacesAndNewlines), enabled: current.enabled))
+            }.disabled(registryName.isEmpty || registryURL.isEmpty)
             SettingsCard {
                 CloudSettingsToggle("Enabled", isOn: current.enabled) {
                     _ = try await services.saveRegistry(id: current.id, input: CloudCatalogRegistryInput(name: current.name, url: current.url, enabled: $0))
@@ -181,7 +192,8 @@ struct CloudSettingsRegistryScreen: View {
             }
         }
         .searchable(text: $query, prompt: "Search registry on server")
-        .task(id: query) {
+        .onAppear { registryName = current.name; registryURL = current.url }
+        .task(id: query + "\u{0}" + current.url) {
             let expected = query
             do {
                 try await Task.sleep(for: .milliseconds(250))

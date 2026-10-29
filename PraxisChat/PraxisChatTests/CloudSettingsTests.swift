@@ -268,6 +268,87 @@ final class CloudSettingsTests: XCTestCase {
         XCTAssertTrue(String(decoding: uploads[0].body, as: UTF8.self).contains("name=\"file\""))
     }
 
+    func testHeaderDraftValuesReturnsValidHeadersAndTrimsNames() throws {
+        let values = try CloudSettingsHeaderDraft.values([
+            CloudSettingsHeaderDraft(name: "  X-Api-Key  ", value: "secret"),
+            CloudSettingsHeaderDraft(name: "X-Trace", value: "  spaced value  ")
+        ])
+        XCTAssertEqual(values, ["X-Api-Key": "secret", "X-Trace": "  spaced value  "])
+        XCTAssertEqual(try CloudSettingsHeaderDraft.values([]), [:])
+    }
+
+    func testHeaderDraftValuesRejectsDuplicateCaseInsensitiveNames() {
+        XCTAssertThrowsError(try CloudSettingsHeaderDraft.values([
+            CloudSettingsHeaderDraft(name: "X-Key", value: "a"),
+            CloudSettingsHeaderDraft(name: "x-key", value: "b")
+        ]))
+        XCTAssertThrowsError(try CloudSettingsHeaderDraft.values([
+            CloudSettingsHeaderDraft(name: " X-Key ", value: "a"),
+            CloudSettingsHeaderDraft(name: "X-KEY", value: "b")
+        ]))
+    }
+
+    func testHeaderDraftValuesRejectsLineBreaksInValues() {
+        for bad in ["a\rb", "a\nb", "a\r\nb"] {
+            XCTAssertThrowsError(try CloudSettingsHeaderDraft.values([
+                CloudSettingsHeaderDraft(name: "X-Key", value: bad)
+            ]), bad.debugDescription)
+        }
+    }
+
+    func testSaveProviderSendsDefaultModelAndExtraHeadersAndDecodesHeaderNames() async throws {
+        let requests = Mutex<[URLRequest]>([])
+        let reply = #"{"type":"provider","id":"p1","name":"My provider","flavor":"openAIChat","baseUrl":"https://api.example.com/v1","maskedKey":"••••1234","capabilities":{"type":"capabilities","tools":true,"parallelToolCalls":false,"vision":false,"documents":false,"imagesInToolResults":false,"reasoningEffort":false,"streamUsage":false,"explicitPromptCaching":false,"serverWebSearch":false,"midConversationSystem":false,"serverCompaction":false,"toolSearch":false},"updatedAt":"2026-10-29T14:00:00.000Z","defaultModel":"my-model","headerNames":["X-Api-Key","X-Trace"]}"#
+        let client = try cloudNetClient { request in requests.withLock { $0.append(request) }; return CloudNetReply(reply) }
+        let services = CloudServices(client: client)
+        let saved = try await services.saveProvider(input: CloudCatalogProviderInput(
+            name: "My provider", flavor: "openAIChat", baseUrl: "https://api.example.com/v1",
+            apiKey: "secret", capabilities: CloudCatalogCapabilities(),
+            extraHeaders: ["X-Api-Key": "secret", "X-Trace": "1"], defaultModel: "my-model"))
+        XCTAssertEqual(saved.id, "p1")
+        XCTAssertEqual(saved.defaultModel, "my-model")
+        XCTAssertEqual(saved.headerNames, ["X-Api-Key", "X-Trace"])
+        XCTAssertEqual(services.providers.map(\.id), ["p1"])
+        let request = try XCTUnwrap(requests.withLock { $0.first })
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/v1/providers")
+        let sent = try JSONSerialization.jsonObject(with: requestBody(request)) as! [String: Any]
+        XCTAssertEqual(sent["defaultModel"] as? String, "my-model")
+        XCTAssertEqual(sent["extraHeaders"] as? [String: String], ["X-Api-Key": "secret", "X-Trace": "1"])
+    }
+
+    func testCanReadImagesPrefersExplicitSupportsImages() {
+        var noVision = CloudCatalogCapabilities(); noVision.vision = false
+        var vision = CloudCatalogCapabilities(); vision.vision = true
+        func make(capabilities: CloudCatalogCapabilities, supportsImages: Bool?) -> CloudCatalogModel {
+            CloudCatalogModel(id: "m", providerId: "p", displayName: "M", capabilities: capabilities,
+                              reasoningEfforts: [], pinned: false, favorite: false, supportsImages: supportsImages)
+        }
+        XCTAssertTrue(make(capabilities: noVision, supportsImages: true).canReadImages)
+        XCTAssertFalse(make(capabilities: vision, supportsImages: false).canReadImages)
+        XCTAssertTrue(make(capabilities: vision, supportsImages: nil).canReadImages)
+        XCTAssertFalse(make(capabilities: noVision, supportsImages: nil).canReadImages)
+    }
+
+    func testSaveRegistryWithIDPatchesExistingRegistry() async throws {
+        let requests = Mutex<[URLRequest]>([])
+        let reply = #"{"type":"skill.registry","id":"reg-1","name":"Updated registry","url":"https://example.com/skills","enabled":false}"#
+        let client = try cloudNetClient { request in requests.withLock { $0.append(request) }; return CloudNetReply(reply) }
+        let services = CloudServices(client: client)
+        let saved = try await services.saveRegistry(id: "reg-1", input: CloudCatalogRegistryInput(name: "Updated registry", url: "https://example.com/skills", enabled: false))
+        XCTAssertEqual(saved.id, "reg-1")
+        XCTAssertEqual(saved.name, "Updated registry")
+        XCTAssertEqual(saved.enabled, false)
+        XCTAssertEqual(services.registries.map(\.id), ["reg-1"])
+        let request = try XCTUnwrap(requests.withLock { $0.first })
+        XCTAssertEqual(request.httpMethod, "PATCH")
+        XCTAssertEqual(request.url?.path, "/v1/skill-registries/reg-1")
+        let sent = try JSONSerialization.jsonObject(with: requestBody(request)) as! [String: Any]
+        XCTAssertEqual(sent["name"] as? String, "Updated registry")
+        XCTAssertEqual(sent["url"] as? String, "https://example.com/skills")
+        XCTAssertEqual(sent["enabled"] as? Bool, false)
+    }
+
     private func requestBody(_ request: URLRequest) throws -> Data {
         if let body = request.httpBody { return body }
         guard let stream = request.httpBodyStream else { return Data() }
