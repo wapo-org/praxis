@@ -1,0 +1,144 @@
+:root,
+[data-theme="light"] {
+  --paper-canvas: #FBFBF9;
+  --paper-card: #FFFFFF;
+  --paper-ink: #15140F;
+  --paper-muted-ink: #8A877E;
+  --paper-pressed-muted: #B3AFA3;
+  --paper-secondary-ink: #6E6B62;
+  --paper-hairline: #E9E6DF;
+  --paper-fill-1: #F4F2EC;
+  --paper-fill-2: #E9E6DF;
+  --paper-tile: #2A2926;
+  --paper-tile-glyph: #F4F2EC;
+  --paper-success: #17653F;
+  --paper-destructive: #B3382E;
+
+  --glass-tint: rgba(251, 251, 249, 0.74);
+  --glass-tile-bg: rgba(251, 251, 249, 0.56);
+  --dropdown-highlight: rgba(21, 20, 15, 0.075);
+
+  --rhythm-margin: 20px;
+  --rhythm-turn-gap: 32px;
+  --rhythm-bubble-to-answer: 16px;
+  --rhythm-activity-to-answer: 20px;
+  --rhythm-composer-radius: 28px;
+  --rhythm-max-reading-width: 680px;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  --font-serif: 'Source Serif 4', 'Newsreader', Georgia, serif;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --paper-canvas: #0B0B0A;
+  --paper-card: #151513;
+  --paper-ink: #F1EFE9;
+  --paper-muted-ink: #8F8C84;
+  --paper-pressed-muted: #6E6B62;
+  --paper-secondary-ink: #A8A49A;
+  --paper-hairline: #2A2926;
+  --paper-fill-1: #151513;
+  --paper-fill-2: #2A2926;
+  --paper-tile: #DDD9CF;
+  --paper-tile-glyph: #151513;
+  --paper-success: #4CC38A;
+  --paper-destructive: #FF7A6E;
+
+  --glass-tint: rgba(21, 21, 19, 0.76);
+  --glass-tile-bg: rgba(28, 28, 25, 0.62);
+  --dropdown-highlight: rgba(241, 239, 233, 0.11);
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--paper-canvas);
+  color: var(--paper-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--paper-ink) 16%, transparent);
+}
+
+/* Subtle custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--paper-fill-2);
+  border-radius: 9999px;
+}
+
+@keyframes praxis-breathe {
+  0%, 100% {
+    transform: scale(0.78);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes praxis-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.praxis-breathing-dot {
+  animation: praxis-breathe 1.6s ease-in-out infinite;
+}
+
+.praxis-shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--paper-secondary-ink) 0%,
+    var(--paper-ink) 50%,
+    var(--paper-secondary-ink) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: praxis-shimmer 1.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .praxis-breathing-dot,
+  .praxis-shimmer-text {
+    animation: none !important;
+  }
+}
