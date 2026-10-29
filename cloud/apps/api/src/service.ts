@@ -16,6 +16,8 @@ export interface ExecutionDriver{
 export class ApiService{
  driver?:ExecutionDriver;
  providers?:ApiProviders;
+ /** Keeps background work alive past the response (Vercel waitUntil). Local runs need nothing. */
+ defer?:(work:Promise<unknown>)=>void;
  private locks=new Map<string,Promise<unknown>>();
  private work=new Set<Promise<unknown>>();
  constructor(public adapters:AdapterBundle,public local:boolean){}
@@ -67,7 +69,7 @@ export class ApiService{
   this.enqueue(userId,run.id,()=>this.driver!.start(userId,run,chat,messages,input));return run;
  });}
  enqueue(userId:string,runId:string,task:()=>Promise<void>){
-  const work=Promise.resolve().then(task).catch(async()=>{const run=await this.require<Run>(userId,'run',runId).catch(()=>null);if(run&&!this.terminal(run)){run.status='failed';run.outcome='failed';run.error='Run execution failed';await this.put(userId,'run',runId,run);await this.emit(userId,runId,{type:'run.finished',outcome:'failed',message:'Run execution failed'});}}).finally(()=>this.work.delete(work));this.work.add(work);
+  const work=Promise.resolve().then(task).catch(async()=>{const run=await this.require<Run>(userId,'run',runId).catch(()=>null);if(run&&!this.terminal(run)){run.status='failed';run.outcome='failed';run.error='Run execution failed';await this.put(userId,'run',runId,run);await this.emit(userId,runId,{type:'run.finished',outcome:'failed',message:'Run execution failed'});}}).finally(()=>this.work.delete(work));this.work.add(work);this.defer?.(work);
  }
  async drain(){await Promise.all([...this.work]);}
  async emit(userId:string,runId:string,event:RunEventPayload){

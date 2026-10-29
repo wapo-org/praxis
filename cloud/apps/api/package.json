@@ -10,24 +10,25 @@
     "smoke:local": "node scripts/smoke-local.mjs"
   },
   "dependencies": {
-    "@praxis/protocol": "*",
-    "hono": "^4.0.0",
     "@hono/node-server": "^2.1.3",
-    "@praxis/agent": "*",
-    "zod": "^4.0.0",
     "@modelcontextprotocol/sdk": "1.32.2",
-    "yaml": "^2.8.1",
-    "quickjs-emscripten": "^0.31.0",
-    "convex": "1.48.0",
-    "better-auth": "1.7.14",
-    "@upstash/redis": "1.40.0",
+    "@praxis/agent": "*",
+    "@praxis/protocol": "*",
     "@upstash/qstash": "2.12.1",
     "@upstash/ratelimit": "2.2.0",
-    "undici": "7.30.1"
+    "@upstash/redis": "1.40.0",
+    "@vercel/functions": "^3.10.5",
+    "better-auth": "1.7.14",
+    "convex": "1.48.0",
+    "hono": "^4.0.0",
+    "quickjs-emscripten": "^0.31.0",
+    "undici": "7.30.1",
+    "yaml": "^2.8.1",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
-    "tsx": "^4.0.0",
+    "convex-test": "0.0.66",
     "esbuild": "^0.28.2",
-    "convex-test": "0.0.66"
+    "tsx": "^4.0.0"
   }
 }
