@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { serve, type ServerType } from '@hono/node-server';
 import type { AddressInfo } from 'node:net';
@@ -7,7 +7,7 @@ import { createApp } from '../../api/src/app.js';
 import { ApiService } from '../../api/src/service.js';
 import { createLocalAdapters } from '../../api/src/local-memory.js';
 import { localDriver } from '../../api/src/runtime.js';
-import { PraxisApiClient } from './lib/api.js';
+import { PraxisApiClient, PraxisApiError } from './lib/api.js';
 import { subscribeRunEvents } from './lib/sse.js';
 
 describe('@praxis/web client flows against Lead A local API', () => {
@@ -167,5 +167,131 @@ describe('@praxis/web client flows against Lead A local API', () => {
 
     const sync = await client.syncPull('0');
     expect(sync.entities.length).toBeGreaterThan(0);
+  });
+
+  it('uploadAttachment honors response.method??PUT, omits Bearer on third-party signed URLs, and rejects failed uploads', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const origFetch = globalThis.fetch;
+
+    try {
+      // 1. Third-party Convex signed POST upload URL -> no Authorization header sent to uploadUrl
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (url.endsWith('/v1/uploads')) {
+          return new Response(
+            JSON.stringify({
+              type: 'upload.url',
+              uploadUrl: 'https://upload.convex.cloud/api/storage/upload?token=signed',
+              method: 'POST',
+              expiresAt: '2026-10-30T00:00:00.000Z',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (url.startsWith('https://upload.convex.cloud/')) {
+          return new Response(
+            JSON.stringify({ type: 'upload.receipt', storageId: 'kg2convexstorage99' }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (url.endsWith('/v1/uploads/complete')) {
+          const body = JSON.parse(String(init?.body ?? '{}')) as { storageId: string; name: string };
+          return new Response(
+            JSON.stringify({
+              type: 'attachment',
+              id: 'att-convex-1',
+              name: body.name,
+              mediaType: 'image/png',
+              size: 4,
+              hiddenFromCode: false,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response('Not found', { status: 404 });
+      }) as typeof fetch;
+
+      const testClient = new PraxisApiClient({
+        baseUrl: 'http://127.0.0.1:8797',
+        bearerToken: 'dev-local',
+      });
+      const file = new File(['test'], 'glass.png', { type: 'image/png' });
+      const att = await testClient.uploadAttachment(file, 'welcome');
+      expect(att.id).toBe('att-convex-1');
+
+      const convexCall = calls.find((c) => c.url.startsWith('https://upload.convex.cloud/'));
+      expect(convexCall?.init?.method).toBe('POST');
+      const convexHeaders = (convexCall?.init?.headers ?? {}) as Record<string, string>;
+      expect(convexHeaders.Authorization).toBeUndefined();
+
+      const completeCall = calls.find((c) => c.url.endsWith('/v1/uploads/complete'));
+      expect(JSON.parse(String(completeCall?.init?.body)).storageId).toBe('kg2convexstorage99');
+
+      // 2. API-origin upload URL with default method -> uses PUT and sends Bearer token
+      calls.length = 0;
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (url.endsWith('/v1/uploads')) {
+          return new Response(
+            JSON.stringify({
+              type: 'upload.url',
+              uploadUrl: 'http://127.0.0.1:8797/v1/uploads/put/local-1',
+              expiresAt: '2026-10-30T00:00:00.000Z',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (url.includes('/v1/uploads/put/')) {
+          return new Response(
+            JSON.stringify({ type: 'upload.receipt', storageId: 'local-storage-1' }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            type: 'attachment',
+            id: 'att-local-1',
+            name: 'glass.png',
+            mediaType: 'image/png',
+            size: 4,
+            hiddenFromCode: false,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }) as typeof fetch;
+
+      await testClient.uploadAttachment(file, 'welcome');
+      const apiPutCall = calls.find((c) => c.url.includes('/v1/uploads/put/'));
+      expect(apiPutCall?.init?.method).toBe('PUT');
+      expect(((apiPutCall?.init?.headers ?? {}) as Record<string, string>).Authorization).toBe(
+        'Bearer dev-local',
+      );
+
+      // 3. Failed upload -> rejects with PraxisApiError instead of fabricating storageId
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/v1/uploads')) {
+          return new Response(
+            JSON.stringify({
+              type: 'upload.url',
+              uploadUrl: 'https://upload.convex.cloud/api/storage/fail',
+              method: 'POST',
+              expiresAt: '2026-10-30T00:00:00.000Z',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response(
+          JSON.stringify({ code: 'storage_error', message: 'Quota exceeded' }),
+          { status: 507, headers: { 'Content-Type': 'application/json' } },
+        );
+      }) as typeof fetch;
+
+      await expect(testClient.uploadAttachment(file, 'welcome')).rejects.toThrow(PraxisApiError);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
   });
 });
