@@ -28,7 +28,7 @@ final class SendFlightProbe: XCTestCase {
 
     private func launch(_ extra: [String] = []) {
         app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES"] + extra
+        app.launchArguments += ["-PraxisResetData", "YES"] + (extra.contains("-PraxisEngine") || extra.contains("-PraxisTestProviderURL") ? [] : ["-PraxisEngine", "demo"]) + extra
         app.launch()
         XCTAssertTrue(app.buttons["History"].waitForExistence(timeout: 15))
     }

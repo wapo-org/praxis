@@ -28,7 +28,7 @@ final class PerfProbe: XCTestCase {
     /// then the streamed answer), then the settled thread.
     func testPerfDemoRun() {
         let app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES"]
         app.launch()
         let newChat = app.buttons["New chat"]
         XCTAssertTrue(newChat.waitForExistence(timeout: 15))
@@ -50,7 +50,7 @@ final class PerfProbe: XCTestCase {
     /// Then a retry of its last turn: a run at the bottom of a long thread.
     func testPerfLongThread() {
         let app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES", "-PraxisLongThread", "YES"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES", "-PraxisLongThread", "YES"]
         app.launch()
         let retry = app.buttons.matching(identifier: "Retry")
         XCTAssertTrue(retry.firstMatch.waitForExistence(timeout: 15))

@@ -12,7 +12,7 @@ final class ActivityShots: XCTestCase {
 
     func testShots() throws {
         let app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES", "-PraxisEngine", "demo"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES"]
         app.launch()
         try? FileManager.default.createDirectory(atPath: "/tmp/praxis-activity-shots", withIntermediateDirectories: true)
         func save(_ name: String) {
