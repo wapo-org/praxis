@@ -31,7 +31,7 @@ actor CloudEventMapper {
         case .progress(let id, let kind, let text, let lines, let trace):
             let progress: ToolProgress = switch kind {
             case "output": .output(lines ?? text.map { [$0] } ?? [])
-            case "trace": .trace(trace ?? .note, text ?? "")
+            case "trace": .trace(trace ?? .note, text ?? lines?.joined(separator: "\n") ?? "")
             default: .status(text ?? "")
             }
             return [.toolProgress(id: id, progress)]
