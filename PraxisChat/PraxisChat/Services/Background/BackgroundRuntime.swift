@@ -34,6 +34,8 @@ struct BackgroundProgressDriver: Equatable, Sendable {
 /// `BackgroundRuntime` so `RunHandle` stays untouched (plan §2.1).
 struct RunBackgroundState {
     var taskRequestID: String
+    /// Cloud execution survives suspension without a device background task.
+    var continuesOnServer = false
     var title: String
     var startedAt: Date
     var continuedTask: BGContinuedProcessingTask?
@@ -126,9 +128,10 @@ final class BackgroundRuntime: Sendable {
     /// Called after the run is registered, so `stop()` settling still
     /// works when submission throws. Any failure just means the
     /// scene-phase fallback (§2.2) covers this run.
-    func runStarted(conversationID: UUID, turnID _: UUID, title: String, modelName: String) {
+    func runStarted(conversationID: UUID, turnID _: UUID, title: String, modelName: String,
+                    continuesOnServer: Bool = false) {
         let taskID = Self.taskIDPrefix + String(UUID().uuidString.prefix(8)).lowercased()
-        states[conversationID] = RunBackgroundState(taskRequestID: taskID, title: title, startedAt: Date())
+        states[conversationID] = RunBackgroundState(taskRequestID: taskID, continuesOnServer: continuesOnServer, title: title, startedAt: Date())
         // Dynamic registration is exempt from the register-before-launch
         // rule for continued tasks; the random suffix keeps every id
         // unique, so no id is ever registered twice (the system kills
@@ -138,7 +141,8 @@ final class BackgroundRuntime: Sendable {
             let boxed = UncheckedBGTask(task: continued)
             Task { @MainActor in self?.bindLaunchedTask(boxed.task, id: taskID) }
         }
-        if registerHandler(taskID, handler) {
+        // SUNSET(native-loop): only device execution requests continued processing.
+        if !continuesOnServer, registerHandler(taskID, handler) {
             let request = BGContinuedProcessingTaskRequest(identifier: taskID, title: title, subtitle: "Starting…")
             // `.queue` (the default) vs `.fail` only changes which error
             // we get under load — both fall back identically. Case name
@@ -317,7 +321,7 @@ final class BackgroundRuntime: Sendable {
             task.progress.completedUnitCount = driver.completed
             task.setTaskCompleted(success: true)
         }
-        cancelRequest(state.taskRequestID)
+        if !state.continuesOnServer { cancelRequest(state.taskRequestID) }
         if let fallback = state.fallbackTask, fallback != .invalid {
             endFallbackTask(fallback)
         }
@@ -335,7 +339,7 @@ final class BackgroundRuntime: Sendable {
         if let task = state.continuedTask {
             task.setTaskCompleted(success: true)
         }
-        cancelRequest(state.taskRequestID)
+        if !state.continuesOnServer { cancelRequest(state.taskRequestID) }
         if let fallback = state.fallbackTask, fallback != .invalid {
             endFallbackTask(fallback)
         }
@@ -346,6 +350,7 @@ final class BackgroundRuntime: Sendable {
     }
 
     func beginPause(conversationID: UUID) {
+        guard states[conversationID]?.continuesOnServer != true else { return }
         states[conversationID]?.pausing = true
     }
 
@@ -359,7 +364,7 @@ final class BackgroundRuntime: Sendable {
         if let task = state.continuedTask {
             task.setTaskCompleted(success: true)
         }
-        cancelRequest(state.taskRequestID)
+        if !state.continuesOnServer { cancelRequest(state.taskRequestID) }
         if let fallback = state.fallbackTask, fallback != .invalid {
             endFallbackTask(fallback)
         }
@@ -380,7 +385,9 @@ final class BackgroundRuntime: Sendable {
         Task { await center.ensureFirstRunPermission() }
         var opened: [UUID] = []
         for conversationID in active {
-            guard states[conversationID]?.continuedTask == nil,
+            // Cloud runs remain active on the server; suspension only detaches SSE.
+            guard states[conversationID]?.continuesOnServer == false,
+                  states[conversationID]?.continuedTask == nil,
                   states[conversationID]?.fallbackTask == nil else { continue }
             let expiration: @Sendable () -> Void = { [weak self, conversationID] in
                 Task { @MainActor in self?.expireFallbackTask(id: conversationID) }
@@ -439,10 +446,12 @@ final class BackgroundRuntime: Sendable {
     // MARK: Expiry
 
     private func expireContinuedTask(id: UUID) {
+        guard states[id]?.continuesOnServer != true else { return }
         store?.pauseRunForBackground(conversationID: id)
     }
 
     private func expireFallbackTask(id: UUID) {
+        guard states[id]?.continuesOnServer != true else { return }
         store?.pauseRunForBackground(conversationID: id)
     }
 

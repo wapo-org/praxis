@@ -58,6 +58,9 @@ final class ChatStore {
     var isRunning: Bool { selectedID.map(isRunning(_:)) ?? false }
 
     let approvals = ApprovalCenter()
+    let cloudElicitations = ElicitationCenter()
+    private var cloudModelID = ""
+    var elicitationCenter: ElicitationCenter? { engineKind == .cloud ? cloudElicitations : services?.elicitations }
     let haptics = HapticCenter()
     /// Background execution for runs in flight (continued tasks, fallback
     /// grace, pause/resume, notifications). Never touches request building.
@@ -126,15 +129,34 @@ final class ChatStore {
         if UserDefaults.standard.bool(forKey: "PraxisResetData") { AppDirectories.reset() }
         let override = EngineKind.launchOverride
         if EngineKind.resolve(override: override, hasProvider: false) == .cloud {
-            let engine: any ChatEngine
             do {
-                let client = CloudAPIClient(configuration: try .forLaunch())
-                engine = CloudChatEngine(client: client)
-            } catch { engine = CloudConfigurationErrorEngine(message: error.localizedDescription) }
-            let store = ChatStore(engine: engine, persistence: ConversationStore(directory: AppDirectories.conversations))
-            store.background.installNotificationDelegate()
-            store.background.appDidLaunch()
-            return store
+                let configuration = try CloudServerConfiguration.forLaunch()
+                var session = URLSession.shared
+                var tokens = CloudSessionStore()
+                #if DEBUG
+                if let stub = CloudTestBackend.makeLaunchSessionIfEnabled() {
+                    session = stub
+                    // Harness credentials are ephemeral; never read a real
+                    // Keychain entry or let it override this test session.
+                    tokens = CloudSessionStore(inMemory: true)
+                }
+                #endif
+                let client = CloudAPIClient(configuration: configuration, session: session, tokens: tokens)
+                let cloud = CloudServices(client: client)
+                let store = ChatStore(engine: CloudChatEngine(client: client),
+                                      persistence: ConversationStore(directory: AppDirectories.conversations),
+                                      cloudServices: cloud)
+                store.use(CloudChatEngine(client: client, elicitations: store.cloudElicitations))
+                store.voice = VoiceInputController.production(chatStore: store, cloudServices: cloud)
+                store.voiceRetryTranscription = { [weak store] id in store?.voice?.retryTranscription(id: id) }
+                store.background.installNotificationDelegate()
+                store.background.appDidLaunch()
+                Task { await cloud.loadIfNeeded() }
+                return store
+            } catch {
+                return ChatStore(engine: CloudConfigurationErrorEngine(message: error.localizedDescription),
+                                 persistence: ConversationStore(directory: AppDirectories.conversations))
+            }
         }
         // SUNSET(native-loop): only explicit demo/scripted launches or the
         // hidden native developer opt-in reach native service construction.
@@ -396,7 +418,7 @@ final class ChatStore {
         background.runStopped(conversationID: conversationID)
         handle.task?.cancel()
         handle.cancelled.cancel()
-        services?.elicitations.cancel(scope: handle.elicitationScope)
+        elicitationCenter?.cancel(scope: handle.elicitationScope)
         // Drain first: an approval event may have arrived without a
         // main-actor drain yet, and its waiter must be released too —
         // denying before the drain would miss it and hang the engine.
@@ -551,7 +573,8 @@ final class ChatStore {
         request.isCancelled = { flag.isCancelled }
         request.elicitationScope = handle.elicitationScope
         runs[conv.id] = handle
-        background.runStarted(conversationID: conv.id, turnID: turnID, title: conv.displayTitle, modelName: model.name)
+        background.runStarted(conversationID: conv.id, turnID: turnID, title: conv.displayTitle, modelName: model.name,
+                              continuesOnServer: engine.kind == .cloud)
         let stream = AgentEventCoalescer.coalesce(engine.run(request), interval: coalesceInterval)
         let inbox = handle.inbox
         let store = WeakStore(value: self)
@@ -571,7 +594,7 @@ final class ChatStore {
         background.runStopped(conversationID: conversationID)
         handle.task?.cancel()
         handle.cancelled.cancel()
-        services?.elicitations.cancel(scope: handle.elicitationScope)
+        elicitationCenter?.cancel(scope: handle.elicitationScope)
         approvals.denyAll(handle.approvalIDs.union(approvalIDs(in: handle.inbox.drain().events)))
     }
 
@@ -676,7 +699,7 @@ final class ChatStore {
         let conversationID = conv.id
         let store = WeakStore(value: self)
         return ChatRunRequest(
-            conversationID: conv.id, history: replayed.flatMap(\.transcript), userMessage: user,
+            conversationID: conv.id, turnID: turn.id, history: replayed.flatMap(\.transcript), userMessage: user,
             userText: turn.userText, mode: mode, effort: effort,
             modelID: model.id, webSearch: webSearch, attachments: turn.attachments,
             conversationAttachments: conv.turns[...turnIndex].flatMap(\.attachments),
@@ -773,13 +796,22 @@ final class ChatStore {
 
     // MARK: Live settings (model, connectors, toggles)
 
-    var isLive: Bool { engineKind == .live }
+    var isCloud: Bool { engineKind == .cloud }
+    var isLive: Bool { engineKind == .live || isCloud }
 
     /// The model new turns use: the demo pick, or the selected provider's.
     var model: AIModel {
-        get { isLive ? liveModel : demoModel }
+        get {
+            if let cloud = cloudServices {
+                return cloud.model(selectionID: cloudModelID).map(cloud.adapter)
+                    ?? cloud.availableModels.first
+                    ?? AIModel(id: "", name: "Choose a model", tagline: "Account / Server in Settings", speed: 0, intelligence: 0, streamMultiplier: 1)
+            }
+            return isLive ? liveModel : demoModel
+        }
         set {
-            if isLive { selectModel(id: newValue.id) } else { demoModel = newValue; snapEffortToSupportedLevels() }
+            if cloudServices != nil { cloudModelID = newValue.id; snapEffortToSupportedLevels() }
+            else if isLive { selectModel(id: newValue.id) } else { demoModel = newValue; snapEffortToSupportedLevels() }
         }
     }
 
@@ -787,6 +819,9 @@ final class ChatStore {
     /// (all four); empty = no reasoning (the control hides). Live models
     /// resolve this from the provider's list or a learned rejection.
     var supportedEfforts: [Effort]? {
+        if let cloud = cloudServices {
+            return cloud.model(selectionID: model.id).map { EffortLevels.map($0.reasoningEfforts) }
+        }
         if isLive {
             guard let wire = services?.settings.selectedEffortWireValues else { return nil }
             return EffortLevels.map(wire)
@@ -805,6 +840,7 @@ final class ChatStore {
 
     /// What the tray's model page lists.
     var availableModels: [AIModel] {
+        if let cloud = cloudServices { return cloud.availableModels }
         guard isLive else { return MockData.models }
         guard let settings = services?.settings, let profile = settings.selectedProfile else { return [] }
         var models = settings.models(for: profile.id).map { Self.aiModel($0, profile: profile) }
@@ -843,7 +879,10 @@ final class ChatStore {
     var showsDemoToggles: Bool { !isLive }
 
     /// The web-search toggle only shows where the provider can search.
-    var showsWebSearch: Bool { !isLive || services?.isWebSearchAvailable == true }
+    var showsWebSearch: Bool {
+        if let cloud = cloudServices { return cloud.model(selectionID: model.id)?.capabilities.serverWebSearch == true }
+        return !isLive || services?.isWebSearchAvailable == true
+    }
 
     /// The tray's connector list: demo data, or the installed servers with
     /// this conversation's enablement when live. Once the chat has frozen
@@ -851,6 +890,11 @@ final class ChatStore {
     /// this chat only); servers outside the frozen setup are listed
     /// separately (`newChatOnlyConnectors`).
     var trayConnectors: [Connector] {
+        if let cloud = cloudServices {
+            let off = selected?.disabledServerIDs ?? []
+            let picked = selected?.connectorIDs
+            return cloud.connectors.map { $0.adapter(isOn: $0.enabled && !off.contains($0.id) && (picked?.contains($0.id) ?? true)) }
+        }
         guard isLive else { return connectors }
         guard let library = services?.connectors else { return [] }
         let conv = selected
@@ -887,6 +931,11 @@ final class ChatStore {
     }
 
     func setConnector(_ id: String, isOn: Bool) {
+        if cloudServices != nil, let conv = selected {
+            if isOn { conv.disabledServerIDs.remove(id) } else { conv.disabledServerIDs.insert(id) }
+            save(conv)
+            return
+        }
         guard isLive else {
             if let i = connectors.firstIndex(where: { $0.id == id }) { connectors[i].isOn = isOn }
             return
@@ -910,6 +959,10 @@ final class ChatStore {
 
     /// Connectors to freeze into the conversation's setup.
     private func enabledConnectorIDs(for conv: Conversation) -> [String] {
+        if let cloud = cloudServices {
+            let installed = Set(cloud.connectors.filter(\.enabled).map(\.id))
+            return (conv.connectorIDs ?? Array(installed)).filter(installed.contains).sorted()
+        }
         let installed = services?.connectors.servers.map(\.id) ?? []
         let ids = conv.connectorIDs ?? services?.connectors.defaultConversationServerIDs ?? []
         return ids.filter(installed.contains)
