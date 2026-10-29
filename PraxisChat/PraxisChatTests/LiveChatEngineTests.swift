@@ -566,13 +566,17 @@ final class AgentServicesPersistenceTests: XCTestCase {
     }
 
     func testEngineSelection() {
-        XCTAssertEqual(EngineKind.resolve(override: nil, hasProvider: false), .demo)
-        XCTAssertEqual(EngineKind.resolve(override: nil, hasProvider: true), .live)
-        XCTAssertEqual(EngineKind.resolve(override: .demo, hasProvider: true), .demo)
-        XCTAssertEqual(EngineKind.resolve(override: .live, hasProvider: false), .live)
+        XCTAssertEqual(EngineKind.resolve(override: nil, hasProvider: false, nativeLoopEnabled: false), .cloud)
+        XCTAssertEqual(EngineKind.resolve(override: nil, hasProvider: true, nativeLoopEnabled: false), .cloud)
+        XCTAssertEqual(EngineKind.resolve(override: .demo, hasProvider: true, nativeLoopEnabled: false), .demo)
+        XCTAssertEqual(EngineKind.resolve(override: .live, hasProvider: false, nativeLoopEnabled: false), .cloud)
     }
 
     func testFirstProviderSwitchesTheDemoToLive() throws {
+        // Explicit sunset regression: automatic native selection is opt-in.
+        let previous = UserDefaults.standard.object(forKey: "PraxisNativeLoopEnabled")
+        UserDefaults.standard.set(true, forKey: "PraxisNativeLoopEnabled")
+        defer { UserDefaults.standard.set(previous, forKey: "PraxisNativeLoopEnabled") }
         let settings = ProviderSettings(fileURL: directory.appendingPathComponent("P.json"), secrets: InMemorySecretStore())
         let services = AgentServices(
             settings: settings,

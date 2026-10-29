@@ -8,6 +8,8 @@ import AgentRuntime
 /// it, retry/edit only cut the tail).
 struct ChatRunRequest: Sendable {
     var conversationID: UUID
+    /// Stable persisted turn id used for cloud start idempotency.
+    var turnID: UUID = UUID()
     /// Messages of the turns before this one.
     var history: [Message]
     /// The new turn's user message, built by the store — nil for engines
@@ -92,18 +94,25 @@ extension ChatEngine {
     var buildsUserMessage: Bool { false }
 }
 
-/// Which engine the app runs. `-PraxisEngine demo|scripted|live`
-/// overrides; otherwise live once a provider profile exists, else demo
-/// (previews, UI tests and App Review never need a key).
+/// Cloud is the default. Explicit demo/scripted modes remain deterministic.
 enum EngineKind: String, Codable, Sendable {
-    case demo, scripted, live
+    case cloud, demo, scripted, live
 
-    /// The launch-argument override, if any.
     static var launchOverride: EngineKind? {
         UserDefaults.standard.string(forKey: "PraxisEngine").flatMap(EngineKind.init(rawValue:))
     }
 
-    static func resolve(override: EngineKind?, hasProvider: Bool) -> EngineKind {
-        override ?? (hasProvider ? .live : .demo)
+    static var nativeLoopEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "PraxisNativeLoopEnabled")
+    }
+
+    static func resolve(override: EngineKind?, hasProvider: Bool,
+                        nativeLoopEnabled: Bool = Self.nativeLoopEnabled) -> EngineKind {
+        // SUNSET(native-loop): a saved provider or live override alone cannot
+        // construct the native runtime. This hidden opt-in defaults to false.
+        if override == .demo || override == .scripted { return override! }
+        if override == .cloud { return .cloud }
+        if nativeLoopEnabled && (override == .live || hasProvider) { return .live }
+        return .cloud
     }
 }
