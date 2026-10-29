@@ -94,7 +94,7 @@ struct HistorySheet: View {
                         Button {
                             withAnimation(listAnimation) { filter = .pinned }
                         } label: { Label("Pinned", systemImage: "pin") }
-                        if store.services != nil {
+                        if store.services != nil || store.cloudServices != nil {
                             Divider()
                             Button { showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
                         }
