@@ -11,7 +11,7 @@ final class VoiceSettingsUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES"]
     }
 
     private func launch(_ extra: [String] = []) {
@@ -79,7 +79,7 @@ final class VoiceSettingsUITests: XCTestCase {
         model.tap()
 
         app.terminate()
-        app.launchArguments = ["-PraxisFakeGroqModels", "YES"]
+        app.launchArguments = ["-PraxisEngine", "demo", "-PraxisFakeGroqModels", "YES"]
         app.launch()
         XCTAssertTrue(el(.button, "History").waitForExistence(timeout: 15))
         openVoiceSettings()

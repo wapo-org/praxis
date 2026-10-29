@@ -11,7 +11,7 @@ final class TableScrollHangUITests: XCTestCase {
 
     func testOpenDetailThenScrollTablesDoesNotHang() {
         let app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES", "-PraxisEngine", "demo"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES"]
         app.launch()
 
         XCTAssertTrue(app.buttons["New chat"].waitForExistence(timeout: 15))
