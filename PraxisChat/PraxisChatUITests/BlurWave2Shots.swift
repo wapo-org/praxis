@@ -18,7 +18,7 @@ final class BlurWave2Shots: XCTestCase {
     }
 
     private func launch(_ extra: [String] = []) {
-        app.launchArguments += ["-PraxisResetData", "YES"] + extra
+        app.launchArguments += ["-PraxisResetData", "YES"] + (extra.contains("-PraxisEngine") || extra.contains("-PraxisTestProviderURL") ? [] : ["-PraxisEngine", "demo"]) + extra
         app.launch()
         XCTAssertTrue(app.buttons["History"].waitForExistence(timeout: 15))
         Thread.sleep(forTimeInterval: 1.0)
@@ -185,7 +185,7 @@ final class BlurWave2Shots: XCTestCase {
     // MARK: Consent
 
     func testConsent() {
-        launch(["-PraxisTestProviderURL", "https://blur-consent.invalid/v1"])
+        launch(["-PraxisNativeLoopEnabled", "YES", "-PraxisEngine", "live", "-PraxisTestProviderURL", "https://blur-consent.invalid/v1"])
         let field = app.textViews["Message"].exists ? app.textViews["Message"] : app.textFields["Message"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.tap()

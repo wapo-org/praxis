@@ -10,7 +10,7 @@ final class TranscriptScrollUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         // A seeded long thread: tall answers, then short failed turns.
-        app.launchArguments += ["-PraxisResetData", "YES", "-PraxisLongThread", "YES"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES", "-PraxisLongThread", "YES"]
         app.launch()
         XCTAssertTrue(app.buttons["History"].waitForExistence(timeout: 15))
     }

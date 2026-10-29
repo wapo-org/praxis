@@ -9,7 +9,7 @@ final class ConnectorToolToggleUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES", "-PraxisMockConnector", "YES"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES", "-PraxisMockConnector", "YES"]
     }
 
     private func launch(_ extra: [String] = []) {

@@ -10,7 +10,7 @@ final class ComposerClearUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = true
         app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES"]
         app.launch()
         XCTAssertTrue(app.buttons["History"].waitForExistence(timeout: 15))
         app.buttons["New chat"].tap()
@@ -73,7 +73,7 @@ final class ComposerClearUITests: XCTestCase {
     func testSendClearsFieldWhenKeyboardCommitsAfterSend() {
         app.terminate()
         app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES", "-PraxisSimulateKeyboardCommit", "YES"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES", "-PraxisSimulateKeyboardCommit", "YES"]
         app.launch()
         XCTAssertTrue(app.buttons["History"].waitForExistence(timeout: 15))
         app.buttons["New chat"].tap()

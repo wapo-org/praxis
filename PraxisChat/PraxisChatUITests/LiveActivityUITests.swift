@@ -26,7 +26,7 @@ final class LiveActivityUITests: XCTestCase {
 
     /// Launch with ResetData plus per-test engine args; wait for idle.
     private func launch(extraArgs: [String] = []) {
-        app.launchArguments += ["-PraxisResetData", "YES"] + extraArgs
+        app.launchArguments += ["-PraxisResetData", "YES"] + (extraArgs.contains("-PraxisEngine") ? [] : ["-PraxisEngine", "demo"]) + extraArgs
         app.launch()
         XCTAssertTrue(el(.button, "History").waitForExistence(timeout: 15))
     }
