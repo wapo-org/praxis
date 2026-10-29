@@ -69,7 +69,7 @@ export const PlusTray: React.FC<PlusTrayProps> = ({ onPickFiles }) => {
         gap: 12,
       }}
     >
-      {/* Top 3 Media Tiles: Camera, Photos, Files */}
+      {/* Top 3 Media Action Tiles: Camera, Photos, Files */}
       <div
         style={{
           display: 'grid',
@@ -188,11 +188,11 @@ export const PlusTray: React.FC<PlusTrayProps> = ({ onPickFiles }) => {
             </button>
           </div>
 
-          <GlassDropdown.Root
+          <GlassDropdown
             open={modelPickerOpen}
             onOpenChange={setModelPickerOpen}
-            searchQuery={modelSearch}
-            onSearchQueryChange={setModelSearch}
+            align="end"
+            side="top"
           >
             <GlassDropdown.Trigger
               data-testid="tray-model-picker-trigger"
@@ -211,11 +211,14 @@ export const PlusTray: React.FC<PlusTrayProps> = ({ onPickFiles }) => {
               }}
             >
               <span>{currentModel?.displayName ?? selectedModelId}</span>
-              <span style={{ fontSize: 11, color: 'var(--paper-ink-3)' }}>⌄</span>
             </GlassDropdown.Trigger>
 
-            <GlassDropdown.Content width={320} maxHeight={420} align="end" side="top">
-              <GlassDropdown.Search placeholder="Search models..." />
+            <GlassDropdown.Content minWidth={320} maxHeight={420}>
+              <GlassDropdown.Search
+                value={modelSearch}
+                onValueChange={setModelSearch}
+                placeholder="Search models..."
+              />
 
               {pinnedModels.length > 0 && (
                 <>
@@ -229,7 +232,7 @@ export const PlusTray: React.FC<PlusTrayProps> = ({ onPickFiles }) => {
                       onSelect={() => {
                         setSelectedModel(m.providerId, m.id);
                       }}
-                      trailing={
+                      trailingAction={
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           {typeof m.speed === 'number' && (
                             <DotMeter value={m.speed} label={`Speed ${m.speed}`} />
@@ -273,7 +276,7 @@ export const PlusTray: React.FC<PlusTrayProps> = ({ onPickFiles }) => {
                         m.providerId
                       }
                       onSelect={() => setSelectedModel(m.providerId, m.id)}
-                      trailing={
+                      trailingAction={
                         <span
                           role="button"
                           tabIndex={0}
@@ -302,7 +305,7 @@ export const PlusTray: React.FC<PlusTrayProps> = ({ onPickFiles }) => {
                     selected={m.providerId === selectedProviderId && m.id === selectedModelId}
                     subtitle={m.tagline ?? m.providerId}
                     onSelect={() => setSelectedModel(m.providerId, m.id)}
-                    trailing={
+                    trailingAction={
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         {typeof m.intelligence === 'number' && (
                           <DotMeter value={m.intelligence} label={`Intelligence ${m.intelligence}`} />
@@ -329,7 +332,7 @@ export const PlusTray: React.FC<PlusTrayProps> = ({ onPickFiles }) => {
                 ))
               )}
             </GlassDropdown.Content>
-          </GlassDropdown.Root>
+          </GlassDropdown>
         </div>
 
         {/* Reasoning Effort Row */}
@@ -348,7 +351,12 @@ export const PlusTray: React.FC<PlusTrayProps> = ({ onPickFiles }) => {
             Reasoning effort
           </span>
 
-          <GlassDropdown.Root open={effortPickerOpen} onOpenChange={setEffortPickerOpen}>
+          <GlassDropdown
+            open={effortPickerOpen}
+            onOpenChange={setEffortPickerOpen}
+            align="end"
+            side="top"
+          >
             <GlassDropdown.Trigger
               data-testid="tray-effort-picker-trigger"
               style={{
@@ -367,10 +375,9 @@ export const PlusTray: React.FC<PlusTrayProps> = ({ onPickFiles }) => {
               }}
             >
               <span>{selectedEffort}</span>
-              <span style={{ fontSize: 11, color: 'var(--paper-ink-3)' }}>⌄</span>
             </GlassDropdown.Trigger>
 
-            <GlassDropdown.Content width={200} align="end" side="top">
+            <GlassDropdown.Content minWidth={200}>
               <GlassDropdown.Label>Reasoning Effort</GlassDropdown.Label>
               <GlassDropdown.RadioGroup
                 value={selectedEffort}
@@ -383,7 +390,7 @@ export const PlusTray: React.FC<PlusTrayProps> = ({ onPickFiles }) => {
                 ))}
               </GlassDropdown.RadioGroup>
             </GlassDropdown.Content>
-          </GlassDropdown.Root>
+          </GlassDropdown>
         </div>
 
         {/* Mode Segmented Row */}

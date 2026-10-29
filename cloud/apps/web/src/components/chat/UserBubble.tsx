@@ -1,6 +1,5 @@
 import React from 'react';
 import type { Attachment, Message } from '@praxis/protocol';
-import { MOTION } from '@praxis/glass';
 
 export interface UserBubbleProps {
   message: Message;
@@ -15,7 +14,7 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
     (p) => p.type === 'image' || p.type === 'document',
   );
 
-  const combinedText = textParts.map((p) => (p.type === 'text' ? p.text : '')).join('\n');
+  const combinedText = textParts.map((p) => (p.type === 'text' ? p.text ?? '' : '')).join('\n');
 
   return (
     <>
@@ -26,7 +25,7 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
           flexDirection: 'column',
           alignItems: 'flex-end',
           marginBottom: 18,
-          animation: `praxisBubbleIn 260ms ${MOTION.send.cssEasing} both`,
+          animation: 'praxisBubbleIn 260ms cubic-bezier(0.22, 1, 0.36, 1) both',
         }}
       >
         {mediaParts.length > 0 && (
@@ -42,8 +41,10 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
           >
             {mediaParts.map((part, idx) => {
               const attId =
-                part.type === 'image' || part.type === 'document' ? part.attachmentId : '';
-              const att = attachmentsById[attId];
+                (part.type === 'image' || part.type === 'document'
+                  ? part.attachmentId
+                  : '') ?? '';
+              const att = attId ? attachmentsById[attId] : undefined;
               const isImage =
                 part.type === 'image' || (att?.mediaType?.startsWith('image/') ?? false);
 

@@ -297,7 +297,8 @@ export class PraxisApiClient {
         type: 'elicitation.response',
         elicitationId,
         action,
-        ...(content ? { content } : {}),\n      }),
+        ...(content ? { content } : {}),
+      }),
     });
   }
 

@@ -136,7 +136,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
     >
       {/* Level 0: Folded / Expandable Pill Header */}
       <GlassSurface
-        as="button"
+        role="button" tabIndex={0}
         material="thin"
         intensity="subtle"
         radius={18}

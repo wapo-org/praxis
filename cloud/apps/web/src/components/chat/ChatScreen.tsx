@@ -164,7 +164,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
     >
       {/* Top Progressive Blur Scrim */}
       <ProgressiveBlurScrim
-        direction="top"
+        edge="top"
         height={96}
         style={{
           position: 'absolute',
@@ -264,7 +264,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
 
         {/* Center Title Pill */}
         <GlassSurface
-          as="button"
+          role="button" tabIndex={0}
           material="thin"
           intensity="subtle"
           radius={999}
@@ -599,7 +599,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
 
       {/* Bottom Progressive Blur Scrim */}
       <ProgressiveBlurScrim
-        direction="bottom"
+        edge="bottom"
         height={148}
         style={{
           position: 'absolute',
