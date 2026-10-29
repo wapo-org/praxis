@@ -72,6 +72,7 @@ final class ChatStore {
     /// Providers, connectors, skills and the runtime (nil in previews and
     /// most tests: demo data only).
     @ObservationIgnored let services: AgentServices?
+    @ObservationIgnored let cloudServices: CloudServices?
     @ObservationIgnored private let picksEngineAutomatically: Bool
     @ObservationIgnored private let persistence: ConversationStore?
     @ObservationIgnored private let attachmentStore: AttachmentStore
@@ -89,6 +90,7 @@ final class ChatStore {
     init(engine: any ChatEngine = DemoAgentEngine(), conversations: [Conversation]? = nil,
          persistence: ConversationStore? = nil, attachments: AttachmentStore = .shared,
          services: AgentServices? = nil, picksEngineAutomatically: Bool = false,
+         cloudServices: CloudServices? = nil,
          background: BackgroundRuntime? = nil) {
         // Integration wiring (BACKGROUND_PLAN.md §6): the live ActivityKit
         // reporter; tests inject fakes via the `background` parameter.
@@ -96,6 +98,7 @@ final class ChatStore {
         self.engine = engine
         self.engineKind = engine.kind
         self.services = services
+        self.cloudServices = cloudServices
         self.picksEngineAutomatically = picksEngineAutomatically
         self.persistence = persistence
         self.attachmentStore = attachments

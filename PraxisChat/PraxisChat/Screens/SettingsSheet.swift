@@ -32,6 +32,15 @@ struct SettingsSheet: View {
     }
 
     var body: some View {
+        if let cloud = store.cloudServices {
+            CloudSettingsSheet(services: cloud)
+        } else {
+            // SUNSET(native-loop): original device settings stay available in developer mode.
+            nativeBody
+        }
+    }
+
+    private var nativeBody: some View {
         NavigationStack(path: $path) {
             ScrollView {
                 if let services = store.services {

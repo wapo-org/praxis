@@ -225,7 +225,7 @@ struct PlusTray: View {
             groupedCard {
                 connectorsRow
                 // Connector prompts (MCP), when the chat's connectors offer any.
-                if !store.connectorPrompts.isEmpty {
+                if !store.connectorPrompts.isEmpty || store.cloudServices?.connectors.contains(where: { $0.enabled }) == true {
                     rowDivider
                     promptsRow
                 }
@@ -470,7 +470,34 @@ struct PlusTray: View {
 
     // MARK: Model page
 
+    @ViewBuilder
     private var modelsPage: some View {
+        if let cloud = store.cloudServices {
+            VStack(alignment: .leading, spacing: 12) {
+                trayHeader("Model") { page = .main }
+                CloudCatalogModelList(services: cloud, selectedID: store.model.id) { model in
+                    selectModel(cloud.adapter(model))
+                }
+                Button {
+                    onDismiss(true)
+                    store.isSettingsPresented = true
+                } label: {
+                    CloudSettingsRow(title: "Model providers", symbol: "gearshape")
+                }.buttonStyle(PressHighlightStyle()).accessibilityLabel("Model providers")
+            }
+            .task(id: store.modelQuery) {
+                do {
+                    try await Task.sleep(for: .milliseconds(250))
+                    try await cloud.searchModels(query: store.modelQuery)
+                } catch is CancellationError { } catch { }
+            }
+        } else {
+            // SUNSET(native-loop): native model catalog remains intact.
+            nativeModelsPage
+        }
+    }
+
+    private var nativeModelsPage: some View {
         VStack(alignment: .leading, spacing: 12) {
             trayHeader("Model") { page = .main }
             // One read of the list, pins and selection per render: the
@@ -498,7 +525,7 @@ struct PlusTray: View {
                           onTogglePin: togglePin)
                 .equatable()
             }
-            if store.services != nil {
+            if store.services != nil || store.cloudServices != nil {
                 groupedCard {
                     Button {
                         onDismiss(true)
@@ -612,7 +639,7 @@ struct PlusTray: View {
                         .padding(.horizontal, 4)
                 }
             }
-            if store.services != nil {
+            if store.services != nil || store.cloudServices != nil {
                 groupedCard {
                     Button {
                         onDismiss(true)
