@@ -78,6 +78,9 @@ export function storeFromRPC(rpc: ConvexRPC): ConvexStore {
     async delete(userId, kind, id) {
       await rpc.mutation('store:remove', address(userId, kind, id));
     },
+    async head(userId) {
+      return Revision.parse(await rpc.query('store:head', { userId: Scope.parse(userId) }));
+    },
     async changes(userId, after, limit) {
       const args = { userId: Scope.parse(userId), after: Revision.parse(after), limit: Limit.parse(limit) };
       const page = ChangePageSchema.parse(await rpc.query('store:changes', args));

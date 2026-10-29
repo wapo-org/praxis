@@ -95,6 +95,21 @@ export const changes = query({
   },
 });
 
+/** Latest revision for the owner (0 when none): newest entry of the owner's revision index. */
+export const head = query({
+  args: scope,
+  handler: async (ctx, a) => {
+    await requireServer(a.serverToken);
+    bounded(a.userId);
+    const latest = await ctx.db
+      .query('changes')
+      .withIndex('owner_revision', (q) => q.eq('userId', a.userId))
+      .order('desc')
+      .first();
+    return latest?.revision ?? 0;
+  },
+});
+
 interface WriteInput {
   userId: string;
   kind: string;

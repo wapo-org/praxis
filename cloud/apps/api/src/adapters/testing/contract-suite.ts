@@ -39,6 +39,21 @@ export function storeContract(name: string, factory: () => Store | Promise<Store
       expect(await store.list(alice, 'chat')).toEqual([]);
     });
 
+    it('reports the owner head revision, 0 when empty, unaffected by other owners', async () => {
+      const [alice, bob] = [owner('alice'), owner('bob')];
+      expect(await store.head(alice)).toBe(0);
+      await store.put(alice, 'chat', 'x', { n: 1 });
+      await store.put(bob, 'chat', 'y', { n: 1 });
+      await store.delete(alice, 'chat', 'x');
+      const head = await store.head(alice);
+      const log = await store.changes(alice, 0, 1000);
+      expect(head).toBe(log.records.at(-1)?.revision);
+      expect(head).toBe(log.cursor);
+      await store.put(bob, 'chat', 'z', { n: 2 });
+      expect(await store.head(alice)).toBe(head);
+      expect((await store.changes(alice, head, 10)).records).toEqual([]);
+    });
+
     it('returns owned data without leaking mutable references', async () => {
       const alice = owner('alice');
       const value = { nested: { n: 1 } };
