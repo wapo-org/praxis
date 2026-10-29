@@ -49,12 +49,12 @@ export class ApiService{
   if(key){const prior=await this.adapters.store.get(userId,'idempotency',`${chat.id}:${key}`);if(prior){if(prior.value.body!==JSON.stringify(input))throw new ApiError(409,'idempotency_conflict','This turn ID was used with different content');return this.require<Run>(userId,'run',String(prior.value.runId));}}
   if((await this.list<Run>(userId,'run')).some(r=>r.chatId===chat.id&&!this.terminal(r)))throw new ApiError(409,'run_active','A run is already active in this chat');
   if(!this.driver)throw new ApiError(503,'runner_unavailable','Run executor is not configured');
+  for(const id of input.attachmentIds)await this.require(userId,'attachment',id);
   const now=this.now();const run=RunSchema.parse({type:'run',id:randomUUID(),chatId:chat.id,status:'queued',createdAt:now,updatedAt:now,lastEventId:0,clientTurnId:input.clientTurnId??key});
   await this.put(userId,'run',run.id,run);await this.put(userId,'snapshot',run.id,initialSnapshot(run));
   if(key)await this.put(userId,'idempotency',`${chat.id}:${key}`,{body:JSON.stringify(input),runId:run.id});
   const messages=(await this.list<Message>(userId,'message')).filter(m=>m.chatId===chat.id).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   const message:Message={type:'message',id:randomUUID(),chatId:chat.id,runId:run.id,clientTurnId:run.clientTurnId,role:'user',parts:[{type:'text',text:input.text},...input.attachmentIds.map(attachmentId=>({type:'image' as const,attachmentId}))],createdAt:now,updatedAt:now};
-  for(const id of input.attachmentIds)await this.require(userId,'attachment',id);
   await this.write(userId,'message',message.id,message);messages.push(message);
   chat.activeRunId=run.id;chat.updatedAt=now;await this.write(userId,'chat',chat.id,chat);
   this.enqueue(userId,run.id,()=>this.driver!.start(userId,run,chat,messages,input));return run;
@@ -87,5 +87,5 @@ export class ApiService{
   if(!exists||this.terminal(run))throw new ApiError(409,'decision_stale','Pending request no longer exists');
   await this.put(userId,'decision',`${runId}:${id}`,decision);run.status='running';await this.put(userId,'run',runId,run);this.enqueue(userId,runId,()=>this.driver!.resume(userId,runId,decision));return run;
  });}
- async cancel(userId:string,runId:string){const run=await this.require<Run>(userId,'run',runId);if(this.terminal(run))return run;await this.adapters.kv.set(`cancel:${userId}:${runId}`,true,86400);await this.driver?.cancel?.(userId,runId);if(run.status==='awaitingApproval'||run.status==='awaitingElicitation'||run.status==='queued')await this.emit(userId,runId,{type:'run.finished',outcome:'cancelled'});return this.require<Run>(userId,'run',runId);}
+ async cancel(userId:string,runId:string){const run=await this.require<Run>(userId,'run',runId);if(this.terminal(run))return run;await this.adapters.kv.set(`cancel:${userId}:${runId}`,true,86400);await this.driver?.cancel?.(userId,runId);if(!this.terminal(await this.require<Run>(userId,'run',runId))&&(run.status==='awaitingApproval'||run.status==='awaitingElicitation'||run.status==='queued'))await this.emit(userId,runId,{type:'run.finished',outcome:'cancelled'});return this.require<Run>(userId,'run',runId);}
 }
