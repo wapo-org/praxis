@@ -23,15 +23,15 @@ struct CloudChatEngine: ChatEngine {
         self.onRunStarted = onRunStarted; self.onEvent = onEvent; self.onCursor = onCursor; self.onRunFinished = onRunFinished
     }
 
-    func run(_ request: ChatRunRequest) -> AsyncStream<AgentEvent> { stream(request, runID: nil, cursor: 0) }
-    func resume(request: ChatRunRequest, runID: String, cursor: Int) -> AsyncStream<AgentEvent> {
-        stream(request, runID: runID, cursor: cursor)
+    func run(_ request: ChatRunRequest) -> AsyncStream<AgentEvent> { stream(request, runID: nil, cursor: 0, pendingEvents: []) }
+    func resume(request: ChatRunRequest, runID: String, cursor: Int, pendingEvents: [CloudEventPayload] = []) -> AsyncStream<AgentEvent> {
+        stream(request, runID: runID, cursor: cursor, pendingEvents: pendingEvents)
     }
     func cancel(runID: String) async throws {
         try await client.sendVoid("/v1/runs/\(CloudAPIClient.segment(runID))/cancel", method: "POST", body: Data(#"{"type":"run.cancel"}"#.utf8))
     }
 
-    private func stream(_ request: ChatRunRequest, runID: String?, cursor: Int) -> AsyncStream<AgentEvent> {
+    private func stream(_ request: ChatRunRequest, runID: String?, cursor: Int, pendingEvents: [CloudEventPayload]) -> AsyncStream<AgentEvent> {
         AsyncStream { out in
             let control = CloudRunControl()
             let pending = CloudPendingActions()
@@ -43,48 +43,20 @@ struct CloudChatEngine: ChatEngine {
                     await onRunStarted(request.conversationID, request.turnID, id)
                     let wasCancelled = await control.wasCancelled()
                     if request.isCancelled() || wasCancelled {
-                        try await cancel(runID: id)
+                        if let cancellation = await control.requestCancel(client: client) { try await cancellation.value }
                         out.yield(.finished(.cancelled)); out.finish(); return
                     }
+                    for event in pendingEvents {
+                        await respond(to: event, runID: id, request: request, pending: pending, out: out)
+                    }
                     let mapper = CloudEventMapper(request: request)
-                    try await CloudSSEClient(client: client).consume(runID: id, chatID: request.conversationID.uuidString, after: cursor,
+                    try await CloudSSEClient(client: client).consume(runID: id, chatID: request.cloudChatID ?? request.conversationID.uuidString, after: cursor,
                         onCursor: { cursor in await onCursor(request.conversationID, request.turnID, id, cursor) },
                         onEvent: { _, raw in await onEvent(request.conversationID, request.turnID, id, raw) }) { event in
                         for mapped in await mapper.map(event.event) {
                             if case .terminated = out.yield(mapped) { throw CancellationError() }
                         }
-                        switch event.event {
-                        case .approval(let approval):
-                            await pending.start("approval:" + approval.callId) {
-                                let decision = await request.approvals.decide(approval.native)
-                                guard !Task.isCancelled, !request.isCancelled() else { return }
-                                do {
-                                    let body = try JSONEncoder().encode(CloudApprovalDecision(approvalId: approval.id, decision: CloudEventMapper.decisionString(decision)))
-                                    try await client.sendVoid("/v1/runs/\(CloudAPIClient.segment(id))/approvals", method: "POST", body: body)
-                                } catch { if !Task.isCancelled { out.yield(.finished(.failed(error.localizedDescription))); out.finish() } }
-                            }
-                        case .approvalResolved(let callID, _): await pending.cancel("approval:" + callID)
-                        case .elicitation(let elicitation):
-                            await pending.start("elicitation:" + elicitation.id) {
-                                let kind: MCPElicitation.Kind
-                                if elicitation.mode == "url", let url = elicitation.url, ["https", "http"].contains(url.scheme?.lowercased() ?? "") {
-                                    kind = .url(url)
-                                } else { kind = .form(schema: elicitation.schema) }
-                                let result = await elicitations.elicit(MCPElicitation(serverID: elicitation.connectorId ?? "cloud", serverName: elicitation.connectorName ?? "Cloud connector", message: elicitation.message, kind: kind), scope: request.elicitationScope)
-                                guard !Task.isCancelled, !request.isCancelled() else { return }
-                                let action: String, content: JSONValue?
-                                switch result {
-                                case .accept(let value): action = "accept"; content = value
-                                case .decline: action = "decline"; content = nil
-                                case .cancel: action = "cancel"; content = nil
-                                }
-                                do {
-                                    try await client.sendVoid("/v1/runs/\(CloudAPIClient.segment(id))/elicitations", method: "POST", body: JSONEncoder().encode(CloudElicitationResponse(elicitationId: elicitation.id, action: action, content: content)))
-                                } catch { if !Task.isCancelled { out.yield(.finished(.failed(error.localizedDescription))); out.finish() } }
-                            }
-                        case .elicitationResolved(let id): await pending.cancel("elicitation:" + id)
-                        default: break
-                        }
+                        await respond(to: event.event, runID: id, request: request, pending: pending, out: out)
                     }
                     await onRunFinished(request.conversationID, request.turnID, id)
                 } catch {
@@ -98,8 +70,8 @@ struct CloudChatEngine: ChatEngine {
             let watcher = Task {
                 while !Task.isCancelled {
                     if request.isCancelled() {
-                        if let id = await control.requestCancel() {
-                            try? await cancel(runID: id)
+                        if let cancellation = await control.requestCancel(client: client) {
+                            try? await cancellation.value
                             worker.cancel()
                             await pending.cancelAll()
                             out.yield(.finished(.cancelled)); out.finish()
@@ -111,12 +83,65 @@ struct CloudChatEngine: ChatEngine {
                     do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
                 }
             }
-            out.onTermination = { _ in worker.cancel(); watcher.cancel() }
+            out.onTermination = { _ in
+                watcher.cancel()
+                if request.isCancelled() {
+                    // Stop can terminate the consumer before the 50ms watcher
+                    // observes its flag. This uncancelled task owns the durable
+                    // POST, independently of the now-terminated stream.
+                    Task {
+                        if let cancellation = await control.requestCancel(client: client) {
+                            _ = try? await cancellation.value
+                            worker.cancel()
+                        }
+                        // Start still in flight: let it obtain the durable id,
+                        // observe the flag and cancel that run before attaching.
+                    }
+                } else { worker.cancel() } // detach only
+            }
+        }
+    }
+
+    /// Restores outstanding human-response tasks from a durable journal without
+    /// blocking the event reader. Resolved requests are cancelled by SSE events.
+    private func respond(to payload: CloudEventPayload, runID id: String, request: ChatRunRequest,
+                         pending: CloudPendingActions, out: AsyncStream<AgentEvent>.Continuation) async {
+        switch payload {
+        case .approval(let approval):
+            await pending.start("approval:" + approval.callId) {
+                let decision = await request.approvals.decide(approval.native)
+                guard !Task.isCancelled, !request.isCancelled() else { return }
+                do {
+                    let body = try JSONEncoder().encode(CloudApprovalDecision(approvalId: approval.id, decision: CloudEventMapper.decisionString(decision)))
+                    try await client.sendVoid("/v1/runs/\(CloudAPIClient.segment(id))/approvals", method: "POST", body: body)
+                } catch { if !Task.isCancelled { out.yield(.finished(.failed(error.localizedDescription))); out.finish() } }
+            }
+        case .approvalResolved(let callID, _): await pending.cancel("approval:" + callID)
+        case .elicitation(let elicitation):
+            await pending.start("elicitation:" + elicitation.id) {
+                let kind: MCPElicitation.Kind
+                if elicitation.mode == "url", let url = elicitation.url, ["https", "http"].contains(url.scheme?.lowercased() ?? "") {
+                    kind = .url(url)
+                } else { kind = .form(schema: elicitation.schema) }
+                let result = await elicitations.elicit(MCPElicitation(serverID: elicitation.connectorId ?? "cloud", serverName: elicitation.connectorName ?? "Cloud connector", message: elicitation.message, kind: kind), scope: request.elicitationScope)
+                guard !Task.isCancelled, !request.isCancelled() else { return }
+                let action: String, content: JSONValue?
+                switch result {
+                case .accept(let value): action = "accept"; content = value
+                case .decline: action = "decline"; content = nil
+                case .cancel: action = "cancel"; content = nil
+                }
+                do {
+                    try await client.sendVoid("/v1/runs/\(CloudAPIClient.segment(id))/elicitations", method: "POST", body: JSONEncoder().encode(CloudElicitationResponse(elicitationId: elicitation.id, action: action, content: content)))
+                } catch { if !Task.isCancelled { out.yield(.finished(.failed(error.localizedDescription))); out.finish() } }
+            }
+        case .elicitationResolved(let id): await pending.cancel("elicitation:" + id)
+        default: break
         }
     }
 
     private func start(_ request: ChatRunRequest) async throws -> String {
-        let chatID = request.conversationID.uuidString
+        let chatID = request.cloudChatID ?? request.conversationID.uuidString
         let selection = Self.modelSelection(request.modelID)
         let chat = CloudChatInput(id: chatID, title: String(request.userText.prefix(100)), mode: request.mode.rawValue,
             providerId: selection.provider, modelId: selection.model, effort: request.effort.rawValue,
@@ -181,9 +206,20 @@ struct CloudChatEngine: ChatEngine {
 private actor CloudRunControl {
     private var runID: String?
     private var cancelled = false
+    private var cancellation: Task<Void, Error>?
     func setRunID(_ id: String) { runID = id }
     func wasCancelled() -> Bool { cancelled }
-    func requestCancel() -> String? { cancelled = true; return runID }
+    func requestCancel(client: CloudAPIClient) -> Task<Void, Error>? {
+        cancelled = true
+        if let cancellation { return cancellation }
+        guard let runID else { return nil }
+        let task = Task {
+            try await client.sendVoid("/v1/runs/\(CloudAPIClient.segment(runID))/cancel", method: "POST",
+                                      body: Data(#"{"type":"run.cancel"}"#.utf8))
+        }
+        cancellation = task
+        return task
+    }
 }
 
 private actor CloudPendingActions {

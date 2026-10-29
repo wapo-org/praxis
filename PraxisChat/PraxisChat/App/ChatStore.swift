@@ -128,7 +128,18 @@ final class ChatStore {
         if EngineKind.resolve(override: override, hasProvider: false) == .cloud {
             let engine: any ChatEngine
             do {
-                let client = CloudAPIClient(configuration: try .forLaunch())
+                let configuration = try CloudServerConfiguration.forLaunch()
+                var session = URLSession.shared
+                var tokens = CloudSessionStore()
+                #if DEBUG
+                if let stub = CloudTestBackend.makeLaunchSessionIfEnabled() {
+                    session = stub
+                    // Harness credentials are ephemeral; never read a real
+                    // Keychain entry or let it override this test session.
+                    tokens = CloudSessionStore(inMemory: true)
+                }
+                #endif
+                let client = CloudAPIClient(configuration: configuration, session: session, tokens: tokens)
                 engine = CloudChatEngine(client: client)
             } catch { engine = CloudConfigurationErrorEngine(message: error.localizedDescription) }
             let store = ChatStore(engine: engine, persistence: ConversationStore(directory: AppDirectories.conversations))
