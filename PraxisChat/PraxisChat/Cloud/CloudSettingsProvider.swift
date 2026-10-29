@@ -10,7 +10,7 @@ struct CloudSettingsProviderEditor: View {
     @State private var apiKey = ""
     @State private var capabilities = CloudCatalogCapabilities()
     @State private var loaded = false
-    @State private var confirmDelete = false
+    
     @State private var probeMessage: String?
 
     var body: some View {
@@ -63,7 +63,7 @@ struct CloudSettingsProviderEditor: View {
                 }
                 if let probeMessage { Text(probeMessage).font(Type.inter(13, .footnote)).foregroundStyle(Praxis.secondaryInk) }
                 CloudSettingsAction("Refresh models") { try await services.refreshProviderModels(provider.id) }
-                Button("Delete provider", role: .destructive) { confirmDelete = true }.buttonStyle(.praxisText)
+                Button("Delete provider", role: .destructive) { deleting = true }.buttonStyle(.praxisText)
             }
         }
         .onAppear {
@@ -71,13 +71,6 @@ struct CloudSettingsProviderEditor: View {
             if let provider { name = provider.name; baseURL = provider.baseUrl; flavor = provider.flavor; capabilities = provider.capabilities }
         }
         .onDisappear { apiKey = "" }
-        .confirmationDialog("Delete this provider?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            if let provider {
-                // Deletion errors remain in a dedicated action on the page.
-                Button("Keep provider", role: .cancel) { }
-                Button("Delete provider", role: .destructive) { deleting = true }
-            }
-        }
         .overlay(alignment: .bottom) {
             if deleting, let provider {
                 SettingsCard {
