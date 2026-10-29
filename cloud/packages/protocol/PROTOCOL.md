@@ -1,6 +1,6 @@
-# Praxis Cloud protocol v0
+# Praxis Cloud protocol v1
 
-Review contract for web and Swift. Authoritative schemas and exported types: `src/index.ts`. JSON everywhere. Every resource, request, response and event payload has a string `type`. IDs are opaque strings except SSE event sequences, positive safe JSON integers. Dates are ISO-8601 UTC strings (`2026-10-29T14:00:00.000Z`). Swift should ignore unknown optional fields, and skip unknown events while advancing the event cursor. Additive changes are permitted; breaking changes require both client leads' acknowledgment.
+Client-reviewed contract for web and Swift. Authoritative schemas and exported types: `src/index.ts`. JSON everywhere. Every resource, request, response and event payload has a string `type`. IDs are opaque strings except SSE event sequences, positive safe JSON integers. Dates are ISO-8601 UTC strings (`2026-10-29T14:00:00.000Z`). Swift should ignore unknown optional fields, and skip unknown events while advancing the event cursor. Additive changes are permitted; breaking changes require both client leads' acknowledgment.
 
 API prefix `/v1`. Errors: `{type:"error",code,message,requestId?,details?}`. Missing authentication: 401; row outside session owner: 404; invalid input: 400; unresolved/racing operation: 409; consent missing: 403; unconfigured integration: 503. DELETE returns `{type:"ok"}`. PATCH requires the declared input discriminator, never a generic arbitrary document.
 
@@ -56,3 +56,9 @@ Events cover iteration.started; text.delta/finished; reasoning.delta/finished; t
 ## Pagination and versioning
 
 Lists are `{type:"page",items:[...],nextCursor:string|null}`. Cursors are opaque strings and scoped to the user, endpoint and filters. limit 1..100 (sync 1..1000). Missing cursor starts at the first page. Polling snapshots never resets the event cursor. Authentication, bootstrap and provider keys are never put into SSE URLs. Web may use fetch-based streaming for bearer/Last-Event-ID, iOS URLSession bytes; cookie EventSource supports the query after cursor.
+
+## v1 client review additions
+
+Runs and committed messages persist optional clientTurnId. Elicitation accepts mode form|url, url and connectorName. `GET /v1/runs/:id/snapshot` returns authoritative run.snapshot: run,lastEventId,blocks (text/reasoning),tools with activity/argumentsJson/progress/completion,pendingApprovals,pendingElicitations,usage?,messages. Use it on cursor_expired and resume SSE after snapshot.lastEventId. `GET /v1/preferences` returns preferences, `PATCH` accepts preferences.input for vision provider/model and voice model/language/write-only key. Keys remain masked/configured only. OAuth authorization, upload URL/receipt, model probe, registry entry and MCP resource/prompt DTOs have exported schemas.
+
+v1 also adds chat.pinned (default false), optional model tagline/speed/intelligence/supportsImages (null/absent = unknown), provider.defaultModel/headerNames (values never returned), connector error/toolCount/promptsCount/hasNewTools/headerNames, and optional bootstrap consents/registries/preferences. Both clients use preferences.vision for Image Reader and preferences.voice.model for voice model selection.
