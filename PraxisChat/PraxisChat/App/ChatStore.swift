@@ -121,16 +121,30 @@ final class ChatStore {
     /// provider profile exists and the demo before that.
     static func forLaunch() -> ChatStore {
         if UserDefaults.standard.bool(forKey: "PraxisResetData") { AppDirectories.reset() }
+        let override = EngineKind.launchOverride
+        if EngineKind.resolve(override: override, hasProvider: false) == .cloud {
+            let engine: any ChatEngine
+            do {
+                let client = CloudAPIClient(configuration: try .forLaunch())
+                engine = CloudChatEngine(client: client)
+            } catch { engine = CloudConfigurationErrorEngine(message: error.localizedDescription) }
+            let store = ChatStore(engine: engine, persistence: ConversationStore(directory: AppDirectories.conversations))
+            store.background.installNotificationDelegate()
+            store.background.appDidLaunch()
+            return store
+        }
+        // SUNSET(native-loop): only explicit demo/scripted launches or the
+        // hidden native developer opt-in reach native service construction.
         let services = AgentServices.live()
         services.installTestProviderIfRequested()
         services.connectors.installMockConnectorIfRequested()
-        let override = EngineKind.launchOverride
         let kind = EngineKind.resolve(override: override, hasProvider: services.settings.hasProfiles)
         let engine: any ChatEngine = switch kind {
         case .demo: DemoAgentEngine()
         case .scripted:
             UserDefaults.standard.bool(forKey: "PraxisLongRun") ? ScriptedChatEngine.longRun() : ScriptedChatEngine.echo()
         case .live: services.makeEngine()
+        case .cloud: CloudChatEngine(client: CloudAPIClient(configuration: try! .forLaunch()))
         }
         Task { await services.skills.reload() }
         let store = ChatStore(engine: engine, persistence: ConversationStore(directory: AppDirectories.conversations),
