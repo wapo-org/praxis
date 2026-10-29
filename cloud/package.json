@@ -1,0 +1,23 @@
+{
+  "name": "praxis-cloud",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "npm": ">=11"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run -ws --if-present typecheck",
+    "test": "vitest run --passWithNoTests",
+    "dev:local": "npm run dev:local -w @praxis/api"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.0",
+    "@types/node": "^24.0.0"
+  }
+}
