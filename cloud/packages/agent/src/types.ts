@@ -70,6 +70,7 @@ export const CheckpointSchema = z.object({
   setup:ConversationSetupSchema,messages:z.array(MessageSchema),modelId:IdSchema,
   effort:z.string().optional(),supportedEfforts:z.array(z.string()).optional(),webSearch:z.boolean().default(false),
   capabilities:CapabilitiesSchema,policy:PolicySchema,
+  hiddenTools:ConversationSetupSchema.shape.tools.default([]),
   phase:z.enum(['model','tools','terminal']),iteration:z.number().int().nonnegative(),
   pending:z.array(PendingCallSchema),
   calls:z.record(z.string(),z.object({call:PendingCallSchema,result:ToolResultSchema.optional(),key:z.string().optional()})),
