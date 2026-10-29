@@ -11,6 +11,7 @@ import {
 import {ApiError,ApiService} from './service.js';
 import {seal} from './secrets.js';
 import {ApiProviders} from './providers.js';
+import {registerSyncRoutes} from './sync-routes.js';
 type Env={Variables:{userId:string;requestId:string}};
 export interface AppOptions {
  service:ApiService;encryptionKey?:string;fetcher?:typeof fetch;
@@ -84,6 +85,7 @@ export function createApp(options:AppOptions){
  app.patch('/v1/preferences',async c=>{const user=c.get('userId'),input=await body(c,PreferencesInputSchema);const current=await preferences(user);if(input.vision)current.vision={...current.vision,...input.vision};if(input.voice){const {apiKey,...publicPrefs}=input.voice;current.voice={...current.voice,...publicPrefs};if(apiKey){await service.put(user,'voiceSecret','current',{key:seal(apiKey,user,'voice',options.encryptionKey)});current.voice.configured=true;}}current.updatedAt=service.now();await service.write(user,'preferences','current',current,'consent');return c.json(current);});
  async function preferences(user:string){const existing=await service.adapters.store.get(user,'preferences','current');return PreferencesSchema.parse(existing?.value??{type:'preferences',vision:{},voice:{configured:!!process.env.GROQ_API_KEY},updatedAt:service.now()});}
  app.get('/v1/runs/:runId/outputs/:id',async c=>{await service.require(c.get('userId'),'run',c.req.param('runId'));const output=await service.require<JsonObject>(c.get('userId'),'output',c.req.param('id'));if(output.runId!==c.req.param('runId'))throw new ApiError(404,'not_found','Output not found');const offset=z.coerce.number().int().nonnegative().parse(c.req.query('offset')??0),limit=z.coerce.number().int().min(1).max(100000).parse(c.req.query('limit')??16000);const text=String(output.text??'');return c.json({type:'tool.output',id:c.req.param('id'),text:text.slice(offset,offset+limit),offset,nextOffset:offset+limit<text.length?offset+limit:null});});
+ registerSyncRoutes(app,service);
  return {app,session};
 }
 async function body<T extends z.ZodType>(c:Context,schema:T):Promise<z.infer<T>>{const length=Number(c.req.header('content-length')??0);if(length>1000000)throw new ApiError(413,'too_large','Request is too large');let data:unknown;try{const text=await c.req.text();if(Buffer.byteLength(text)>1000000)throw new ApiError(413,'too_large','Request is too large');data=JSON.parse(text);}catch(e){if(e instanceof ApiError)throw e;throw new ApiError(400,'invalid_json','Expected a JSON request body');}return schema.parse(data);}

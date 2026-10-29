@@ -19,6 +19,7 @@ export function featureContext(service: ApiService, userId: string, options: {fe
     get: async (u, kind, id) => (pin(u), inner.get(u, kind, id)),
     list: async (u, kind, opts?: ListOptions) => (pin(u), inner.list(u, kind, opts)),
     changes: async (u, after, limit) => (pin(u), inner.changes(u, after, limit)),
+    head: async u => (pin(u), inner.head(u)),
     put: async (u, kind, id, value: JsonObject, opts?: ListOptions) => {
       pin(u);
       const row = await inner.put(u, kind, id, value, opts);
