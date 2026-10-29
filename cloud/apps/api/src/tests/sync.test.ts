@@ -49,3 +49,21 @@ describe('cursor sync', () => {
     expect(canonicalJSON({b: 1, a: [true, {d: null, c: 'x'}], u: undefined})).toBe('{"a":[true,{"c":"x","d":null}],"b":1}');
   });
 });
+
+describe('merkle sync over the API (flagged experiment)', () => {
+  it('converges a replica against the real store and detects nothing-changed in one round trip', async () => {
+    const {MemoryReplica, syncMerkle} = await import('@praxis/sync');
+    const f = setup();
+    for (let i = 0; i < 20; i++) await f.req('/v1/chats', {type: 'chat.input', title: `c${i}`});
+    const transport = async (r: unknown) => (await f.req('/v1/sync/tree', r)).json();
+    const replica = new MemoryReplica();
+    await syncMerkle(transport, replica);
+    expect([...replica.rows.keys()].filter(k => k.startsWith('chat:')).length).toBe(21);
+    await f.req('/v1/chats/welcome', {type: 'chat.patch', title: 'Renamed'}, 'PATCH');
+    const stats = await syncMerkle(transport, replica);
+    expect(stats.upserts).toBeGreaterThanOrEqual(1);
+    expect((replica.rows.get('chat:welcome')!.value as {title: string}).title).toBe('Renamed');
+    expect((await syncMerkle(transport, replica)).roundTrips).toBe(1);
+    expect((await f.req('/v1/sync/tree', {type: 'sync.request', strategy: 'merkle', prefixes: ['zz']})).status).toBe(400);
+  });
+});

@@ -1,0 +1,19 @@
+{
+  "name": "@praxis/sync",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "bench": "tsx bench/bench.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0"
+  }
+}
