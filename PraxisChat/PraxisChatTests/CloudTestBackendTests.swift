@@ -1,4 +1,5 @@
 import XCTest
+import Synchronization
 @testable import PraxisChat
 
 /// Contract tests for the deterministic server itself. Production transport and
@@ -78,7 +79,7 @@ final class CloudTestBackendTests: XCTestCase, @unchecked Sendable {
     }
     func testBootstrapAndServerSideModelSearchAreDeterministic() async throws {
         let bootstrap = try await json("/v1/bootstrap")
-        XCTAssertEqual(bootstrap["protocolVersion"] as? Int, 0)
+        XCTAssertEqual(bootstrap["protocolVersion"] as? Int, CloudTestBackend.protocolVersion)
         XCTAssertEqual(bootstrap["serverTime"] as? String, CloudTestBackend.timestamp)
         XCTAssertEqual((bootstrap["providers"] as? [[String: Any]])?.count, 1)
         let found = try await json("/v1/models?q=fixture")
@@ -86,6 +87,10 @@ final class CloudTestBackendTests: XCTestCase, @unchecked Sendable {
         let missing = try await json("/v1/models?q=missing")
         XCTAssertEqual((missing["items"] as? [[String: Any]])?.count, 0)
         XCTAssertTrue(missing["nextCursor"] is NSNull)
+        let favorites = try await json("/v1/models?favorite=true")
+        XCTAssertEqual((favorites["items"] as? [[String: Any]])?.count, 0)
+        let pinned = try await json("/v1/models?pinned=true")
+        XCTAssertEqual((pinned["items"] as? [[String: Any]])?.count, 1)
     }
     func testUnknownEndpointFailsLocally() async throws {
         let result = try await json("/v1/not-a-fixture", status: 404)
@@ -215,6 +220,64 @@ final class CloudTestBackendTests: XCTestCase, @unchecked Sendable {
         let id = try await start()
         let result = try await json("/v1/runs/\(id)/events?after=9999", status: 409)
         XCTAssertEqual(result["code"] as? String, "cursor_expired")
+    }
+    func testExpiredCursorRecoversFromAuthoritativeSnapshot() async throws {
+        let id = try await start("cursorExpired")
+        let first = try await stream(id)
+        XCTAssertNotNil(first.error)
+        XCTAssertEqual(first.envelopes.last?["id"] as? Int, 4)
+        let expired = try await json("/v1/runs/\(id)/events?after=4", status: 409)
+        XCTAssertEqual(expired["code"] as? String, "cursor_expired")
+        let snapshot = try await json("/v1/runs/\(id)/snapshot")
+        let lastID = try XCTUnwrap(snapshot["lastEventId"] as? Int)
+        XCTAssertGreaterThan(lastID, 4)
+        let blocks = try XCTUnwrap(snapshot["blocks"] as? [[String: Any]])
+        XCTAssertEqual(blocks.first?["text"] as? String, "Cloud snapshot recovered without duplicate text.")
+        XCTAssertEqual(blocks.first?["finished"] as? Bool, true)
+        XCTAssertEqual((snapshot["messages"] as? [[String: Any]])?.count, 2)
+        let resumed = try await stream(id, after: String(lastID))
+        XCTAssertTrue(resumed.envelopes.isEmpty)
+        XCTAssertNil(resumed.error)
+    }
+    func testParkedSnapshotPreservesNestedApprovalAndParentTool() async throws {
+        let id = try await start("nestedApproval")
+        let snapshot = try await json("/v1/runs/\(id)/snapshot")
+        let approvals = try XCTUnwrap(snapshot["pendingApprovals"] as? [[String: Any]])
+        XCTAssertEqual(approvals.first?["parentCallId"] as? String, "stub-parent")
+        XCTAssertEqual((snapshot["tools"] as? [[String: Any]])?.count, 2)
+        XCTAssertEqual((snapshot["messages"] as? [[String: Any]])?.count, 1)
+    }
+    func testPreferencesNeverReturnWriteOnlyVoiceKey() async throws {
+        let changed = try await json("/v1/preferences", method: "PATCH", body: ["type": "preferences.input", "voice": ["apiKey": "fixture-key", "model": "whisper-large-v3"]])
+        let voice = try XCTUnwrap(changed["voice"] as? [String: Any])
+        XCTAssertNil(voice["apiKey"])
+        XCTAssertEqual(voice["configured"] as? Bool, true)
+        XCTAssertEqual(voice["model"] as? String, "whisper-large-v3")
+    }
+    func testProductionSSETransportDecodesEveryCompletedFixture() async throws {
+        let client = CloudAPIClient(configuration: try CloudServerConfiguration(baseURL: CloudTestBackend.baseURL),
+                                    session: session, tokens: CloudSessionStore(inMemory: true))
+        for script in ["text", "tools", "compaction", "vision", "error", "reconnect"] {
+            let id = try await start(script)
+            let run: CloudRun = try await client.send("/v1/runs/\(id)")
+            let accepted = Mutex<[Int]>([])
+            try await CloudSSEClient(client: client, initialBackoff: .milliseconds(1)).consume(
+                runID: id, chatID: run.chatId, onCursor: { id in accepted.withLock { $0.append(id) } }) { _ in }
+            XCTAssertEqual(accepted.withLock { $0 }, Array(1...run.lastEventId), script)
+        }
+    }
+    func testProductionAccountClientSharesFixtureSession() async throws {
+        let client = CloudAPIClient(configuration: try CloudServerConfiguration(baseURL: CloudTestBackend.baseURL),
+                                    session: session, tokens: CloudSessionStore(inMemory: true))
+        let current = try await client.currentSession()
+        XCTAssertEqual(current.user.email, "cloud@example.test")
+        try await client.signOut()
+        do { _ = try await client.currentSession(); XCTFail("Expected signed-out session") }
+        catch let error as CloudAPIError { XCTAssertEqual(error.statusCode, 401) }
+        let restored = try await client.signIn(email: "cloud@example.test", password: "fixture-password")
+        XCTAssertEqual(restored.user.name, "Cloud Tester")
+        let token = try await client.tokens.token(for: client.configuration.origin)
+        XCTAssertEqual(token, CloudTestBackend.token)
     }
     func testIndependentSessionsNeverShareServerState() async throws {
         let other = CloudTestBackend(chunkDelay: 0.001)

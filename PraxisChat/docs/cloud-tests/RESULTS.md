@@ -23,14 +23,24 @@ Command prefix for every run:
   `-only-testing:PraxisChatUITests/ComposerClearUITests`
   `-only-testing:PraxisChatUITests/PlusTrayUITests`, bundle
   `/tmp/praxis-cloud-dd/C-tests-harness-baseline.xcresult`: **18 harness tests
-  passed, 0 failed, 0 skipped**, 0.477 seconds. The UI portion is still running
-  at this checkpoint.
+  passed, 0 failed, 0 skipped**, 0.477 seconds. The UI portion also passed: **5 passed, 0 failed, 0 skipped**
+  (ComposerClear 2, PlusTray 3), 151.766 seconds.
 
 The initial baseline command used default parallelism; Xcode made four clones
 and could not launch their UI runner (`FBSOpenApplicationServiceErrorDomain`).
 It was stopped with no test result claimed. A first harness compilation found
 and fixed a Swift 6 sending-closure test capture. Serial testing on the explicit
 private simulator works after first boot completed.
+
+- v1 fixtures + production client compatibility, same harness selection, bundle
+  `/tmp/praxis-cloud-dd/C-tests-v1-client.xcresult`: **23 passed, 0 failed,
+  0 skipped**, 0.880 seconds. Includes authoritative expired-cursor snapshots,
+  nested pending snapshots, preferences key redaction, production account
+  sign-in/out and production SSE consuming every completed fixture.
+
+- Final v1 filter verification, same selection, bundle
+  `/tmp/praxis-cloud-dd/C-tests-v1-final.xcresult`: **23 passed, 0 failed,
+  0 skipped**, 0.898 seconds. Includes pinned/favorite filtering.
 
 ## Acceptance status
 
