@@ -35,7 +35,7 @@ final class ButtonShots: XCTestCase {
 
     func testButtonWalk() {
         app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES"]
         app.launch()
         XCTAssertTrue(app.buttons["History"].waitForExistence(timeout: 15))
 

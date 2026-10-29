@@ -11,7 +11,7 @@ final class PraxisChatUITests: XCTestCase {
         app = XCUIApplication()
         // Conversations persist now: every test starts from the seed.
         // The gallery shows mocks: deterministic tiles, no photo prompt.
-        app.launchArguments += ["-PraxisResetData", "YES", "-PraxisMockGallery", "YES"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES", "-PraxisMockGallery", "YES"]
         app.launch()
         XCTAssertTrue(el(.button, "History").waitForExistence(timeout: 15))
     }
@@ -348,7 +348,7 @@ final class PraxisChatUITests: XCTestCase {
         // network), but the flow is the real one.
         app.terminate()
         app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES",
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES",
                                 "-PraxisFakeRecording", "voice-fake.m4a",
                                 "-PraxisFakeTranscript", "Draft a follow-up on the glass contrast audit"]
         app.launch()
