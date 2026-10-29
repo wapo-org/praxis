@@ -166,6 +166,6 @@ describe('@praxis/web client flows against Lead A local API', () => {
     expect(consent.allowed).toBe(true);
 
     const sync = await client.syncPull('0');
-    expect(sync.chats.length).toBeGreaterThan(0);
+    expect(sync.entities.length).toBeGreaterThan(0);
   });
 });

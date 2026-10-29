@@ -39,22 +39,63 @@ const STARTER_SUGGESTIONS: Array<{
 ];
 
 function extractMessageToolSteps(msg: Message): ActiveToolStep[] {
-  const steps: ActiveToolStep[] = [];
+  const byCallId = new Map<string, ActiveToolStep>();
   for (const part of msg.parts) {
-    if (part.type === 'tool') {
-      steps.push({
-        callId: part.activity.id,
-        activity: part.activity,
-        argumentsJson: part.activity.arguments
-          ? JSON.stringify(part.activity.arguments, null, 2)
-          : '{}',
+    if (part.type === 'toolCall' && part.callId) {
+      byCallId.set(part.callId, {
+        callId: part.callId,
+        activity: {
+          type: 'tool.activity',
+          id: part.callId,
+          name: part.name || 'tool',
+          source: { type: 'builtin' },
+          presentation: {
+            type: 'tool.presentation',
+            category: 'other',
+            runningTitle: part.name || 'Running tool',
+            finishedTitle: part.name || 'Completed tool',
+          },
+        },
+        argumentsJson: part.arguments ?? '{}',
         running: false,
         progressLines: [],
-        completion: part.completion,
       });
+    } else if (part.type === 'toolResult' && part.callId) {
+      const existing = byCallId.get(part.callId);
+      const preview = part.text ?? (part.content ? JSON.stringify(part.content) : '');
+      const completion = {
+        type: 'tool.completion' as const,
+        status: part.isError ? ('failed' as const) : ('succeeded' as const),
+        summary: part.isError ? 'Tool failed' : 'Tool completed',
+        preview,
+        outputRef: part.outputRef,
+      };
+      if (existing) {
+        existing.completion = completion;
+      } else {
+        byCallId.set(part.callId, {
+          callId: part.callId,
+          activity: {
+            type: 'tool.activity',
+            id: part.callId,
+            name: part.name || 'tool',
+            source: { type: 'builtin' },
+            presentation: {
+              type: 'tool.presentation',
+              category: 'other',
+              runningTitle: part.name || 'Running tool',
+              finishedTitle: part.name || 'Completed tool',
+            },
+          },
+          argumentsJson: '{}',
+          running: false,
+          progressLines: [],
+          completion,
+        });
+      }
     }
   }
-  return steps;
+  return Array.from(byCallId.values());
 }
 
 export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
@@ -485,12 +526,12 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
                 .filter((p) => p.type === 'reasoning')
                 .map((p, i) => ({
                   id: `${msg.id}-r-${i}`,
-                  text: p.type === 'reasoning' ? p.text : '',
+                  text: p.text ?? '',
                   finished: true,
                 }));
               const msgText = msg.parts
                 .filter((p) => p.type === 'text')
-                .map((p) => (p.type === 'text' ? p.text : ''))
+                .map((p) => p.text ?? '')
                 .join('\n\n');
 
               return (
@@ -505,14 +546,13 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
                   {msgText && (
                     <AgentMessageView
                       text={msgText}
-                      usage={msg.usage}
                       onRetry={() => {
                         const lastUser = [...activeMessages]
                           .reverse()
                           .find((m) => m.role === 'user');
                         const retryText = lastUser?.parts
                           .filter((p) => p.type === 'text')
-                          .map((p) => (p.type === 'text' ? p.text : ''))
+                          .map((p) => p.text ?? '')
                           .join('\n');
                         if (retryText) {
                           void sendMessage(retryText);

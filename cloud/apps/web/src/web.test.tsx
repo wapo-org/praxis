@@ -53,20 +53,25 @@ describe('@praxis/web core chat & lab components', () => {
             {
               callId: 'call-1',
               activity: {
-                type: 'toolActivity',
+                type: 'tool.activity',
                 id: 'call-1',
-                tool: 'workspace.search',
-                summary: 'Searching protocol definitions',
+                name: 'workspace.search',
+                source: { type: 'builtin' },
+                presentation: {
+                  type: 'tool.presentation',
+                  category: 'readFile',
+                  runningTitle: 'Searching protocol definitions',
+                  finishedTitle: 'Searched protocol definitions',
+                },
               },
               argumentsJson: '{"query":"RunEvent"}',
               running: false,
               progressLines: ['Found 4 matches'],
               completion: {
-                type: 'toolCompletion',
-                id: 'call-1',
-                tool: 'workspace.search',
-                output: '4 matches in index.ts',
-                isError: false,
+                type: 'tool.completion',
+                status: 'succeeded',
+                summary: 'Found 4 matches',
+                preview: '4 matches in index.ts',
               },
             },
           ]}
@@ -74,12 +79,12 @@ describe('@praxis/web core chat & lab components', () => {
             {
               type: 'approval',
               id: 'app-1',
-              runId: 'run-1',
               callId: 'call-2',
               toolName: 'bash.exec',
+              source: { type: 'builtin' },
               title: 'Run shell command',
-              detail: 'npm test',
-              argumentsJson: '{"cmd":"npm test"}',
+              reason: 'npm test',
+              arguments: { cmd: 'npm test' },
             },
           ]}
           pendingElicitations={[
@@ -125,7 +130,13 @@ describe('@praxis/web core chat & lab components', () => {
     const html = renderToStaticMarkup(
       <AgentMessageView
         text={markdown}
-        usage={{ type: 'usage', inputTokens: 120, outputTokens: 85 }}
+        usage={{
+          type: 'usage',
+          inputTokens: 120,
+          outputTokens: 85,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        }}
       />,
     );
     expect(html).toContain('Liquid Glass Optics');

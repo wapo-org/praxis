@@ -47,7 +47,7 @@ export class PraxisApiError extends Error {
     super(message);
     this.name = 'PraxisApiError';
     this.status = status;
-    this.code = code;
+    this.code = status === 404 && code === 'http_error' ? 'not_found' : code;
     this.requestId = requestId;
   }
 }
@@ -297,8 +297,7 @@ export class PraxisApiClient {
         type: 'elicitation.response',
         elicitationId,
         action,
-        ...(content ? { content } : {}),
-      }),
+        ...(content ? { content } : {}),\n      }),
     });
   }
 
@@ -449,11 +448,10 @@ export class PraxisApiClient {
         enabled: input.enabled ?? true,
         trusted: input.trusted ?? false,
         disabledTools: input.disabledTools ?? [],
-        hasCredentials: Boolean(input.token),
-        needsSignIn: false,
-        status: 'connected',
-        toolCount: 3,
-        newToolCount: 1,
+        authStatus: 'connected',
+        toolCount: 2,
+        promptsCount: 0,
+        hasNewTools: true,
         updatedAt: new Date().toISOString(),
       };
       this.localConnectors.set(created.id, created);
@@ -489,11 +487,10 @@ export class PraxisApiClient {
         enabled: patch.enabled ?? existing?.enabled ?? true,
         trusted: patch.trusted ?? existing?.trusted ?? false,
         disabledTools: patch.disabledTools ?? existing?.disabledTools ?? [],
-        hasCredentials: Boolean(patch.token) || (existing?.hasCredentials ?? false),
-        needsSignIn: false,
-        status: 'connected',
-        toolCount: existing?.toolCount ?? 3,
-        newToolCount: existing?.newToolCount ?? 0,
+        authStatus: existing?.authStatus ?? 'connected',
+        toolCount: existing?.toolCount ?? 2,
+        promptsCount: existing?.promptsCount ?? 0,
+        hasNewTools: existing?.hasNewTools ?? false,
         updatedAt: new Date().toISOString(),
       };
       this.localConnectors.set(connectorId, updated);
@@ -519,27 +516,24 @@ export class PraxisApiClient {
       );
     } catch {
       const conn = this.localConnectors.get(connectorId);
-      const disabled = new Set(conn?.disabledTools ?? []);
       return {
         type: 'page',
         items: [
           {
-            type: 'tool',
+            type: 'tool.spec',
             name: 'search_issues',
-            title: 'Search Issues',
             description: 'Search workspace issues and tickets',
             inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
-            enabled: !disabled.has('search_issues'),
-            isNew: true,
+            source: { type: 'mcp', serverId: connectorId, serverName: conn?.name ?? 'MCP' },
+            traits: ['readOnly'],
           },
           {
-            type: 'tool',
+            type: 'tool.spec',
             name: 'create_comment',
-            title: 'Create Comment',
             description: 'Post a markdown comment on an issue',
             inputSchema: { type: 'object', properties: { body: { type: 'string' } } },
-            enabled: !disabled.has('create_comment'),
-            isNew: false,
+            source: { type: 'mcp', serverId: connectorId, serverName: conn?.name ?? 'MCP' },
+            traits: ['openWorld'],
           },
         ],
         nextCursor: null,
@@ -683,7 +677,6 @@ export class PraxisApiClient {
         name: input.name,
         url: input.url,
         enabled: input.enabled ?? true,
-        updatedAt: new Date().toISOString(),
       };
       this.localRegistries.set(created.id, created);
       return created;
@@ -714,10 +707,9 @@ export class PraxisApiClient {
           {
             type: 'skill.registry.entry',
             id: 'entry-liquid-glass',
-            registryId,
             name: 'Liquid Glass Craft',
             description: 'Snell refraction & progressive blur best practices',
-            document: '# Liquid Glass Craft\nUse squircle surface profiles.',
+            url: 'https://skills.praxis.local/liquid-glass',
           },
         ],
         nextCursor: null,
@@ -849,17 +841,19 @@ export class PraxisApiClient {
       const boot = await this.bootstrap();
       return SyncResponseSchema.parse({
         type: 'sync.response',
+        strategy: 'cursor',
+        root: boot.syncRoot,
         cursor: boot.syncCursor,
-        hasMore: false,
-        chats: boot.chats,
-        messages: [],
-        runs: boot.activeRuns,
-        providers: boot.providers,
-        models: boot.models,
-        connectors: boot.connectors,
-        skills: boot.skills,
-        consents: boot.consents ?? [],
-        tombstones: [],
+        entities: boot.chats.map((c) => ({
+          type: 'sync.entity',
+          key: `chat:${c.id}`,
+          hash: c.updatedAt,
+          updatedAt: c.updatedAt,
+          deleted: false,
+          value: c,
+        })),
+        nextCursor: null,
+        nodes: [],
       });
     }
   }
