@@ -8,6 +8,8 @@ export interface Store {
  put(userId:string,kind:string,id:string,value:JsonObject,options?:ListOptions):Promise<StoredRecord>;
  delete(userId:string,kind:string,id:string):Promise<void>;
  changes(userId:string,after:number,limit:number):Promise<{records:StoredRecord[];cursor:number;hasMore:boolean}>;
+ /** Latest revision for the owner (0 when empty): the sync cursor a fresh bootstrap hands out. */
+ head(userId:string):Promise<number>;
 }
 export interface KV {
  get<T=JsonValue>(key:string):Promise<T|null>;

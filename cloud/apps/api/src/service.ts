@@ -7,6 +7,8 @@ export class ApiError extends Error{constructor(public status:number,public code
 export type RunDecision={type:'approval.decision';approvalId:string;decision:'allowOnce'|'allowAlways'|'deny'}|{type:'elicitation.response';elicitationId:string;action:'accept'|'decline'|'cancel';content?:JsonObject};
 export interface ExecutionDriver{
  validate?(userId:string,chat:Chat,input:StartRun):Promise<void>;
+ /** Context notes (mode/effort, new skills) for the new user turn; see conversation.ts. */
+ notes?(userId:string,chat:Chat,input:StartRun,previous:Message[]):Promise<string[]>;
  start(userId:string,run:Run,chat:Chat,messages:Message[],request:StartRun):Promise<void>;
  resume(userId:string,runId:string,decision:RunDecision):Promise<void>;
  cancel?(userId:string,runId:string):Promise<void>;
@@ -41,8 +43,8 @@ export class ApiService{
  }
  async bootstrap(userId:string):Promise<Bootstrap>{
   const cached=await this.adapters.kv.get<Bootstrap>(`bootstrap:${userId}`);if(cached)return cached;
-  const [chats,providers,models,connectors,skills,runs,consents,registries,preferences,changes]=await Promise.all([this.list<any>(userId,'chat'),this.list<any>(userId,'provider'),this.list<any>(userId,'model'),this.list<any>(userId,'connector'),this.list<any>(userId,'skill'),this.list<Run>(userId,'run'),this.list<any>(userId,'consent'),this.list<any>(userId,'registry'),this.adapters.store.get(userId,'preferences','current'),this.adapters.store.changes(userId,0,1)]);
-  const result:Bootstrap={type:'bootstrap',protocolVersion:PROTOCOL_VERSION,user:{type:'user',id:userId,name:this.local?'Local developer':'Praxis user'},chats:chats.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,50),providers,models:models.slice(0,50),connectors,skills,activeRuns:runs.filter(r=>!this.terminal(r)),consents,registries,preferences:preferences?.value as any,syncCursor:String(changes.cursor),syncRoot:'',serverTime:this.now()};
+  const [chats,providers,models,connectors,skills,runs,consents,registries,preferences,changes]=await Promise.all([this.list<any>(userId,'chat'),this.list<any>(userId,'provider'),this.list<any>(userId,'model'),this.list<any>(userId,'connector'),this.list<any>(userId,'skill'),this.list<Run>(userId,'run'),this.list<any>(userId,'consent'),this.list<any>(userId,'registry'),this.adapters.store.get(userId,'preferences','current'),this.adapters.store.head(userId)]);
+  const result:Bootstrap={type:'bootstrap',protocolVersion:PROTOCOL_VERSION,user:{type:'user',id:userId,name:this.local?'Local developer':'Praxis user'},chats:chats.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,50),providers,models:models.slice(0,50),connectors,skills,activeRuns:runs.filter(r=>!this.terminal(r)),consents,registries,preferences:preferences?.value as any,syncCursor:String(changes),syncRoot:'',serverTime:this.now()};
   await this.adapters.kv.set(`bootstrap:${userId}`,result,10);return result;
  }
  terminal(run:Run){return ['completed','cancelled','failed'].includes(run.status);}
@@ -58,7 +60,8 @@ export class ApiService{
   await this.put(userId,'run',run.id,run);await this.put(userId,'snapshot',run.id,initialSnapshot(run));
   if(key)await this.put(userId,'idempotency',`${chat.id}:${key}`,{body:JSON.stringify(input),runId:run.id});
   const messages=(await this.list<Message>(userId,'message',chat.id)).sort((a,b)=>(a.sequence??0)-(b.sequence??0)||a.createdAt.localeCompare(b.createdAt));
-  const message:Message={type:'message',id:randomUUID(),chatId:chat.id,runId:run.id,clientTurnId:run.clientTurnId,sequence:messages.length+1,role:'user',parts:[{type:'text',text:input.text},...input.attachmentIds.map(attachmentId=>({type:'image' as const,attachmentId}))],createdAt:now,updatedAt:now};
+  const notes=(await this.driver.notes?.(userId,chat,input,messages))??[];
+  const message:Message={type:'message',id:randomUUID(),chatId:chat.id,runId:run.id,clientTurnId:run.clientTurnId,sequence:messages.length+1,role:'user',parts:[...notes.map(text=>({type:'note' as const,text})),...input.attachmentIds.map(attachmentId=>({type:'image' as const,attachmentId})),...(input.text?[{type:'text' as const,text:input.text}]:[])],createdAt:now,updatedAt:now};
   await this.emit(userId,run.id,{type:'messages.committed',messages:[message]});messages.push(message);
   chat.activeRunId=run.id;chat.updatedAt=now;await this.write(userId,'chat',chat.id,chat);
   this.enqueue(userId,run.id,()=>this.driver!.start(userId,run,chat,messages,input));return run;
