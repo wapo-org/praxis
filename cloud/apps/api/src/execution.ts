@@ -76,7 +76,8 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       if (!service.local) throw new ApiError(400, 'local_only', 'Scripted runs are local only');
       return {provider: scriptedProvider(request.script), script: request.script};
     }
-    const providerId = request.providerId ?? chat.providerId;
+    // Local dev keeps M1 behaviour: a chat without a provider runs the scripted provider.
+    const providerId = request.providerId ?? chat.providerId ?? (service.local ? 'scripted' : undefined);
     if (!providerId) throw new ApiError(400, 'provider_required', 'Choose a model provider for this chat');
     if (providerId === 'scripted') {
       if (!service.local) throw new ApiError(400, 'local_only', 'Scripted runs are local only');
