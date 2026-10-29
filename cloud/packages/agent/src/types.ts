@@ -55,6 +55,8 @@ export interface AgentTool {
   /** Hidden tools are reachable through callTool only, never directly from a model. */
   hidden?:boolean;
   unavailableReason?:string;
+  /** Trusted adapter classification; the displayed frozen catalog stays unchanged. */
+  classify?(args:JsonValue):{traits:ToolSpec['traits'];policyKey?:string};
   execute(args:JsonValue,context:ToolContext):Promise<ToolResult>;
 }
 export const PolicySchema=z.object({trustedSources:z.array(z.string()).default([]),alwaysAllow:z.array(z.string()).default([])});

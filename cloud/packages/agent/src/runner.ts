@@ -283,8 +283,19 @@ export class AgentRunner {
     if(call.arguments===null||typeof call.arguments!=='object'||Array.isArray(call.arguments))return this.completeTool(cp,call,textResult('Tool arguments must be a valid JSON object.',true),'failed');
     // Zod validates the JSON boundary; schema-specific validation belongs to each injected tool.
     JsonObjectSchema.parse(call.arguments);
-    if(!entry.key)entry.key=await alwaysAllowKey(spec);
-    const decision=decideTool(spec,cp.chat.mode,cp.policy,entry.key);
+    let effectiveSpec=spec;
+    let key=await alwaysAllowKey(spec);
+    if(live.classify) {
+      try {
+        const classified=z.object({traits:ToolSpecSchema.shape.traits,policyKey:z.string().min(1).max(1000).optional()}).parse(live.classify(call.arguments));
+        effectiveSpec={...spec,traits:classified.traits};
+        key+=`/classification:${await fingerprint({traits:[...classified.traits].sort(),policyKey:classified.policyKey??null})}`;
+      }catch{return this.completeTool(cp,call,textResult('Tool policy classification failed.',true),'failed');}
+    }
+    // A changed live subject invalidates a parked one-shot approval too.
+    if(entry.key&&entry.key!==key)delete call.decision;
+    entry.key=key;
+    const decision=decideTool(effectiveSpec,cp.chat.mode,cp.policy,key);
     if(decision.decision==='refuse')return this.completeTool(cp,call,textResult(decision.reason,true),'denied');
     if(call.decision==='deny')return this.completeTool(cp,call,textResult('The user declined this tool call.',true),'denied');
     if(decision.decision==='ask'&&!call.decision) {
