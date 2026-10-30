@@ -80,6 +80,19 @@ final class CloudAuthTests: XCTestCase {
         let token = try await client.tokens.token(for: client.configuration.origin)
         XCTAssertEqual(token, "current")
     }
+    func testKeychainPersistsSessionAcrossStoreInstancesWithoutOriginLeak() async throws {
+        let service = "com.praxis.chat.cloud-session.test." + UUID().uuidString
+        let first = CloudSessionStore(service: service)
+        let second = CloudSessionStore(service: service)
+        try await first.setToken("test-session", for: "https://session.test")
+        let restored = try await second.token(for: "https://session.test")
+        let otherOrigin = try await second.token(for: "https://other-session.test")
+        try await second.setToken(nil, for: "https://session.test")
+        XCTAssertEqual(restored, "test-session")
+        XCTAssertNil(otherOrigin)
+        let deleted = try await first.token(for: "https://session.test")
+        XCTAssertNil(deleted)
+    }
     func testDefaultCloudAndNativeOptInSelection() {
         for hasProvider in [false, true] {
             XCTAssertEqual(EngineKind.resolve(override: nil, hasProvider: hasProvider, nativeLoopEnabled: false), .cloud)

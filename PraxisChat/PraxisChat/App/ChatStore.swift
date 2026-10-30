@@ -121,81 +121,6 @@ final class ChatStore {
         self.background.store = self
     }
 
-    /// The app's store: conversations from Application Support
-    /// (`-PraxisResetData YES` starts from the seed). The engine is
-    /// `-PraxisEngine demo|scripted|live` when given, else live once a
-    /// provider profile exists and the demo before that.
-    static func forLaunch() -> ChatStore {
-        if UserDefaults.standard.bool(forKey: "PraxisResetData") { AppDirectories.reset() }
-        let override = EngineKind.launchOverride
-        if EngineKind.resolve(override: override, hasProvider: false) == .cloud {
-            do {
-                let configuration = try CloudServerConfiguration.forLaunch()
-                var session = URLSession.shared
-                var tokens = CloudSessionStore()
-                #if DEBUG
-                if let stub = CloudTestBackend.makeLaunchSessionIfEnabled() {
-                    session = stub
-                    // Harness credentials are ephemeral; never read a real
-                    // Keychain entry or let it override this test session.
-                    tokens = CloudSessionStore(inMemory: true)
-                }
-                #endif
-                let client = CloudAPIClient(configuration: configuration, session: session, tokens: tokens)
-                let cloud = CloudServices(client: client)
-                let store = ChatStore(engine: CloudChatEngine(client: client),
-                                      persistence: ConversationStore(directory: AppDirectories.conversations),
-                                      cloudServices: cloud)
-                store.use(CloudChatEngine(client: client, elicitations: store.cloudElicitations))
-                store.voice = VoiceInputController.production(chatStore: store, cloudServices: cloud)
-                store.voiceRetryTranscription = { [weak store] id in store?.voice?.retryTranscription(id: id) }
-                store.background.installNotificationDelegate()
-                store.background.appDidLaunch()
-                Task { await cloud.loadIfNeeded() }
-                return store
-            } catch {
-                return ChatStore(engine: CloudConfigurationErrorEngine(message: error.localizedDescription),
-                                 persistence: ConversationStore(directory: AppDirectories.conversations))
-            }
-        }
-        // SUNSET(native-loop): only explicit demo/scripted launches or the
-        // hidden native developer opt-in reach native service construction.
-        let services = AgentServices.live()
-        services.installTestProviderIfRequested()
-        services.connectors.installMockConnectorIfRequested()
-        let kind = EngineKind.resolve(override: override, hasProvider: services.settings.hasProfiles)
-        let engine: any ChatEngine = switch kind {
-        case .demo: DemoAgentEngine()
-        case .scripted:
-            UserDefaults.standard.bool(forKey: "PraxisLongRun") ? ScriptedChatEngine.longRun() : ScriptedChatEngine.echo()
-        case .live: services.makeEngine()
-        case .cloud: CloudChatEngine(client: CloudAPIClient(configuration: try! .forLaunch()))
-        }
-        Task { await services.skills.reload() }
-        let store = ChatStore(engine: engine, persistence: ConversationStore(directory: AppDirectories.conversations),
-                              services: services, picksEngineAutomatically: override == nil)
-        store.background.installNotificationDelegate()
-        store.background.appDidLaunch()
-        // Voice input (voice-rec; right after creation — voice-groq's seam
-        // sits before `return store`, so these hunks stay separate).
-        let voice = VoiceInputController.production(chatStore: store, services: services)
-        store.voice = voice
-        store.voiceRetryTranscription = { [weak voice] id in
-            Task { @MainActor [weak voice] in voice?.retryTranscription(id: id) }
-        }
-        services.pruneRuntimeState(keeping: store.conversations.map(\.id))
-        #if DEBUG
-        // `-PraxisVoiceConsentDemo YES` (UI tests): present the voice
-        // transcription consent sheet standalone (no controller needed).
-        if UserDefaults.standard.bool(forKey: "PraxisVoiceConsentDemo"), let id = store.selectedID {
-            store.pendingConsent = ConsentRequest(host: GroqEndpoints.host, providerName: "Groq",
-                                                  connectorNames: [], conversationID: id,
-                                                  action: .transcribe(recordingID: UUID()))
-        }
-        #endif
-        return store
-    }
-
     /// Call after provider profiles change: the first profile switches the
     /// demo to live. Once live it stays live — with no provider left, runs
     /// point to Settings instead of quietly answering with demo scripts.
@@ -569,6 +494,7 @@ final class ChatStore {
 
         let handle = RunHandle(conversationID: conv.id, turnID: turnID, turnIndex: ti)
         var request = makeRequest(conv, turnIndex: ti)
+        request.cloudChatID = conv.cloudChatID
         let flag = handle.cancelled
         request.isCancelled = { flag.isCancelled }
         request.elicitationScope = handle.elicitationScope

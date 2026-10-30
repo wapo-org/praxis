@@ -24,6 +24,7 @@ struct CloudRun: Codable, Sendable {
     let outcome: String?
     let error: String?
     let lastEventId: Int
+    let clientTurnId: String?
 }
 struct CloudChatInput: Encodable, Sendable {
     let type = "chat.input"
