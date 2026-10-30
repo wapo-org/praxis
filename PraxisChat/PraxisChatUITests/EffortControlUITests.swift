@@ -10,7 +10,7 @@ final class EffortControlUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES"]
         app.launch()
         XCTAssertTrue(app.buttons["History"].waitForExistence(timeout: 15))
     }

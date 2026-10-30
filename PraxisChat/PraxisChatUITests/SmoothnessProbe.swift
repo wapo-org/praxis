@@ -5,7 +5,7 @@ import XCTest
 final class SmoothnessProbe: XCTestCase {
     func testProbeBuildFailingRun() {
         let app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES"]
         app.launch()
         let newChat = app.buttons["New chat"]
         XCTAssertTrue(newChat.waitForExistence(timeout: 15))
@@ -19,7 +19,7 @@ final class SmoothnessProbe: XCTestCase {
 
     func testProbeTrayConnectors() {
         let app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES"]
         app.launch()
         let plus = app.buttons["Add photos, files and more"]
         XCTAssertTrue(plus.waitForExistence(timeout: 15))
@@ -39,7 +39,7 @@ final class SmoothnessProbe: XCTestCase {
     // TEMP (send flight / command clip check)
     func testProbeSendFlightAndCommandToggle() {
         let app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES"]
         app.launch()
         let newChat = app.buttons["New chat"]
         XCTAssertTrue(newChat.waitForExistence(timeout: 15))

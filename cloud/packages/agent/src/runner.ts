@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import {
   ApprovalDecisionSchema,ElicitationResponseSchema,JsonObjectSchema,JsonValueSchema,
-  RunEventPayloadSchema,TimestampSchema,ToolSpecSchema,
+  ElicitationSchema,RunEventPayloadSchema,TimestampSchema,ToolSpecSchema,
   type JsonValue,type Message,type MessagePart,type Run,type RunEventPayload,type ToolSpec,
 } from '@praxis/protocol';
 import {
@@ -377,7 +377,7 @@ export class AgentRunner {
           if(signal.aborted)throw new Cancelled();
           const id=`${call.id}/elicitation/${elicitationIndex++}`;
           const old=cp.resolutions[id];if(old)return ElicitationResponseSchema.parse(old);
-          cp.elicitation={type:'elicitation',id,message:z.string().parse(request.message),schema:JsonObjectSchema.parse(request.schema),callId:call.id,parentCallId:call.parentCallId};
+          cp.elicitation=ElicitationSchema.parse({type:'elicitation',id,message:z.string().parse(request.message),schema:JsonObjectSchema.parse(request.schema),callId:call.id,parentCallId:call.parentCallId,...(request.mode?{mode:request.mode}:{}),...(request.url?{url:request.url}:{}),...(request.connectorId?{connectorId:request.connectorId}:{}),...(request.connectorName?{connectorName:request.connectorName}:{})});
           cp.run.status='awaitingElicitation';await this.save(cp);await this.emit(cp,{type:'elicitation.requested',elicitation:cp.elicitation});
           await this.emit(cp,{type:'run.parked',reason:'elicitation'});throw new Park();
         },

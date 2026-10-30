@@ -411,6 +411,8 @@ struct Turn: Identifiable, Equatable, Codable {
     /// Engine that ran the turn. Live runs only replay live turns: demo
     /// replies are scripted text no real model should see.
     var engine: EngineKind?
+    /// Durable server run identity; cloud recovery replays its wire journal.
+    var cloudRunID: String?
     enum Feedback: String, Equatable, Codable { case none, up, down }
 }
 
@@ -443,10 +445,13 @@ final class Conversation: Identifiable {
     /// prefix it measured: the next run budgets its first request from it
     /// (plus estimates for newer messages) instead of a byte count.
     var contextMeasurement: ContextMeasurement?
+    var cloudChatID: String?
 
     init(id: UUID = UUID(), title: String, updatedAt: Date = Date(), turns: [Turn] = [], isPinned: Bool = false,
          setup: ConversationSetup? = nil, connectorIDs: [String]? = nil, disabledServerIDs: Set<String> = [],
-         compaction: ContextCompaction? = nil, contextMeasurement: ContextMeasurement? = nil) {
+         compaction: ContextCompaction? = nil, contextMeasurement: ContextMeasurement? = nil,
+         cloudChatID: String? = nil) {
+        self.cloudChatID = cloudChatID
         self.contextMeasurement = contextMeasurement
         self.id = id
         self.title = title
@@ -463,14 +468,14 @@ final class Conversation: Identifiable {
     var record: ConversationRecord {
         ConversationRecord(id: id, title: title, updatedAt: updatedAt, isPinned: isPinned, turns: turns,
                            setup: setup, connectorIDs: connectorIDs, disabledServerIDs: disabledServerIDs,
-                           compaction: compaction, contextMeasurement: contextMeasurement)
+                           compaction: compaction, contextMeasurement: contextMeasurement, cloudChatID: cloudChatID)
     }
 
     convenience init(record: ConversationRecord) {
         self.init(id: record.id, title: record.title, updatedAt: record.updatedAt,
                   turns: record.turns, isPinned: record.isPinned, setup: record.setup,
                   connectorIDs: record.connectorIDs, disabledServerIDs: record.disabledServerIDs,
-                  compaction: record.compaction, contextMeasurement: record.contextMeasurement)
+                  compaction: record.compaction, contextMeasurement: record.contextMeasurement, cloudChatID: record.cloudChatID)
     }
 }
 
@@ -497,10 +502,13 @@ struct ConversationRecord: Codable, Sendable, Equatable {
     var disabledServerIDs: Set<String>
     var compaction: ContextCompaction?
     var contextMeasurement: ContextMeasurement?
+    var cloudChatID: String?
 
     init(id: UUID, title: String, updatedAt: Date, isPinned: Bool, turns: [Turn],
          setup: ConversationSetup? = nil, connectorIDs: [String]? = nil, disabledServerIDs: Set<String> = [],
-         compaction: ContextCompaction? = nil, contextMeasurement: ContextMeasurement? = nil) {
+         compaction: ContextCompaction? = nil, contextMeasurement: ContextMeasurement? = nil,
+         cloudChatID: String? = nil) {
+        self.cloudChatID = cloudChatID
         self.contextMeasurement = contextMeasurement
         self.id = id
         self.title = title
@@ -515,7 +523,7 @@ struct ConversationRecord: Codable, Sendable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case version, id, title, updatedAt, isPinned, turns, setup, connectorIDs, disabledServerIDs, compaction
-        case contextMeasurement
+        case contextMeasurement, cloudChatID
     }
 
     init(from decoder: Decoder) throws {
@@ -534,6 +542,7 @@ struct ConversationRecord: Codable, Sendable, Equatable {
         compaction = (try? c.decodeIfPresent(ContextCompaction.self, forKey: .compaction)) ?? nil
         // Disposable too: without it the next run just estimates.
         contextMeasurement = (try? c.decodeIfPresent(ContextMeasurement.self, forKey: .contextMeasurement)) ?? nil
+        cloudChatID = try c.decodeIfPresent(String.self, forKey: .cloudChatID)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -550,6 +559,7 @@ struct ConversationRecord: Codable, Sendable, Equatable {
         if !disabledServerIDs.isEmpty { try c.encode(disabledServerIDs.sorted(), forKey: .disabledServerIDs) }
         try c.encodeIfPresent(compaction, forKey: .compaction)
         try c.encodeIfPresent(contextMeasurement, forKey: .contextMeasurement)
+        try c.encodeIfPresent(cloudChatID, forKey: .cloudChatID)
     }
 }
 

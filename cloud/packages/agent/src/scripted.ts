@@ -13,7 +13,7 @@ export function createScriptedProvider(script:Script='text'):ModelProvider {
       for(let i=request.messages.length-1;i>=0;i--)if(request.messages[i]!.role==='user'&&request.messages[i]!.parts.some(p=>p.type==='text')){start=i;break;}
       const done=request.messages.slice(start).some(m=>m.parts.some(p=>p.type==='toolResult'));
       let parts:MessagePart[];
-      const toolName=({tools:'local_echo',approval:'local_write',nestedApproval:'local_nested',elicitation:'local_elicit',vision:'look_at_image'} as Partial<Record<Script,string>>)[script];
+      const toolName=({tools:'local_echo',approval:'local_write',nestedApproval:'local_nested',elicitation:'local_elicit',elicitationURL:'local_elicit_url',vision:'look_at_image'} as Partial<Record<Script,string>>)[script];
       if(toolName&&!done) {
         const id=crypto.randomUUID();yield {type:'tool',index:0,id,name:toolName};yield {type:'arguments',index:0,json:'{}'};
         parts=[{type:'toolCall',callId:id,name:toolName,arguments:'{}'}];
@@ -40,6 +40,11 @@ export function scriptedTools():AgentTool[] {
     {spec:spec('local_elicit',{type:'builtin'},['readOnly']),execute:async(_,ctx)=>{
       const reply=await ctx.elicit({message:'Provide a name',schema:{type:'object',properties:{name:{type:'string'}},required:['name']}});
       return textResult(reply.action==='accept'?JSON.stringify(reply.content??{}):'Elicitation declined',reply.action!=='accept');
+    }},
+    {spec:spec('local_elicit_url',{type:'builtin'},['readOnly']),execute:async(_,ctx)=>{
+      // Deterministic URL elicitation (protocol v1 mode:'url'): the client opens the URL, then responds accept/decline/cancel.
+      const reply=await ctx.elicit({message:'Sign in to Local Connector to continue.',schema:{type:'object',properties:{}},mode:'url',url:'https://example.com/praxis/local-oauth?state=scripted-elicitation',connectorId:'local-connector',connectorName:'Local Connector'});
+      return textResult(({accept:'Local Connector sign-in completed.',decline:'Local Connector sign-in declined.',cancel:'Local Connector sign-in cancelled.'})[reply.action],reply.action!=='accept');
     }},
     {spec:spec('look_at_image',{type:'builtin'},['readOnly']),execute:async(_,ctx)=>{
       const id=`${ctx.callId}/vision`;await ctx.emit({type:'vision.activity',id,phase:'started',attachmentId:'local-image'});

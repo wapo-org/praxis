@@ -47,7 +47,8 @@ export interface ToolContext {
   /** A stable execution id. Side-effecting tools must use it as their idempotency key. */
   callId:string;
   callTool(name:string,args:JsonValue):Promise<ToolResult>;
-  elicit(request:{message:string;schema:JsonObject}):Promise<z.infer<typeof import('@praxis/protocol').ElicitationResponseSchema>>;
+  /** `mode:'url'` asks the user to open `url` (e.g. a connector sign-in); the response carries no content. */
+  elicit(request:{message:string;schema:JsonObject;mode?:'form'|'url';url?:string;connectorId?:string;connectorName?:string}):Promise<z.infer<typeof import('@praxis/protocol').ElicitationResponseSchema>>;
   emit(event:RunEventPayload):Promise<void>;
 }
 export interface AgentTool {

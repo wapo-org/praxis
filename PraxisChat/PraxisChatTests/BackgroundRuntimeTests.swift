@@ -147,6 +147,54 @@ final class BackgroundRuntimeTests: XCTestCase {
         XCTAssertEqual(driver.completed, 1000)
     }
 
+    // MARK: Cloud execution
+
+    func testCloudRunDoesNotRequestDeviceExecutionOrExpireInBackground() async {
+        let rig = rig(pausingEngine())
+        let id = rig.conv.id
+        var registrations = 0
+        var submissions = 0
+        var fallbacks = 0
+        var cancellations = 0
+        rig.runtime.registerHandler = { _, _ in registrations += 1; return true }
+        rig.runtime.submitRequest = { _ in submissions += 1 }
+        rig.runtime.beginFallbackTask = { _, _ in fallbacks += 1; return .invalid }
+        rig.runtime.cancelRequest = { _ in cancellations += 1 }
+
+        rig.runtime.runStarted(conversationID: id, turnID: UUID(), title: "Cloud chat", modelName: "Cloud model",
+                               continuesOnServer: true)
+        rig.runtime.appDidEnterBackground(running: [id])
+        await waitUntil { rig.reporter.begans.count == 1 }
+        XCTAssertEqual(registrations, 0)
+        XCTAssertEqual(submissions, 0)
+        XCTAssertEqual(fallbacks, 0)
+        XCTAssertEqual(rig.runtime.states[id]?.continuesOnServer, true)
+        rig.runtime.beginPause(conversationID: id)
+        XCTAssertEqual(rig.runtime.states[id]?.pausing, false)
+        rig.runtime.runStopped(conversationID: id)
+        await waitUntil { rig.reporter.endeds.count == 1 }
+        XCTAssertEqual(cancellations, 0)
+        XCTAssertEqual(rig.reporter.endeds.first?.line, "Stopped")
+    }
+
+    func testCloudRunStillUpdatesLiveActivityAndReconcilesOnForeground() async {
+        let rig = rig(pausingEngine())
+        let id = rig.conv.id
+        rig.runtime.registerHandler = { _, _ in XCTFail("Cloud run registered a device task"); return false }
+        rig.runtime.runStarted(conversationID: id, turnID: UUID(), title: "Cloud chat", modelName: "Cloud model",
+                               continuesOnServer: true)
+        rig.runtime.reportBatch(conversationID: id, title: "Cloud chat", events: [
+            .textDelta(blockID: "answer", text: "Private answer text"),
+        ])
+        await waitUntil { !rig.reporter.updates.isEmpty }
+        XCTAssertEqual(rig.reporter.updates.last?.line, "Writing answer…")
+        XCTAssertFalse(rig.reporter.updates.contains { $0.line.contains("Private answer") })
+        rig.runtime.appDidBecomeActive(running: [id])
+        await waitUntil { rig.reporter.reconciles.last == [id] }
+        XCTAssertNotNil(rig.runtime.states[id])
+        rig.runtime.runStopped(conversationID: id)
+    }
+
     // MARK: Simulator fallback
 
     func testSubmitFailsUnavailableInSimulator() throws {

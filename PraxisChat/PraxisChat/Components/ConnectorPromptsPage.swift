@@ -22,6 +22,15 @@ struct ConnectorPromptsPage: View {
     }
 
     var body: some View {
+        if let cloud = store.cloudServices {
+            CloudCatalogPromptsPage(services: cloud, onBack: onBack, onInserted: onInserted)
+        } else {
+            // SUNSET(native-loop): MCP client-backed prompt browser.
+            nativeBody
+        }
+    }
+
+    private var nativeBody: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
             if let picked {

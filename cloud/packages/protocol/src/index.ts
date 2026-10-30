@@ -78,7 +78,7 @@ export const StartRunSchema = z.object({
   type:z.literal('run.start'),chatId:IdSchema,text:z.string().max(200000).default(''),
   providerId:IdSchema.optional(),modelId:z.string().optional(),mode:ModeSchema.optional(),effort:z.string().optional(),
   attachmentIds:z.array(IdSchema).default([]),webSearch:z.boolean().default(false),idempotencyKey:IdSchema.optional(),clientTurnId:IdSchema.optional(),
-  script:z.enum(['text','tools','approval','nestedApproval','elicitation','error','long','compaction','vision']).optional(),
+  script:z.enum(['text','tools','approval','nestedApproval','elicitation','elicitationURL','error','long','compaction','vision']).optional(),
 });
 export type StartRun = z.infer<typeof StartRunSchema>;
 export const ApprovalSchema = z.object({type:z.literal('approval'),id:IdSchema,callId:IdSchema,toolName:z.string(),source:ToolSourceSchema,arguments:JsonValueSchema,reason:z.string(),title:z.string(),parentCallId:IdSchema.optional()});

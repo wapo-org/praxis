@@ -9,7 +9,7 @@ final class ModelPickerUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES", "-PraxisDemoModels", "500"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES", "-PraxisDemoModels", "500"]
         app.launch()
         XCTAssertTrue(app.buttons["History"].waitForExistence(timeout: 15))
     }

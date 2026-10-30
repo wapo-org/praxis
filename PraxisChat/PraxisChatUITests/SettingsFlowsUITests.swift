@@ -14,7 +14,7 @@ final class SettingsFlowsUITests: XCTestCase {
     }
 
     private func launch(_ extra: [String] = []) {
-        app.launchArguments += extra
+        app.launchArguments += (extra.contains("-PraxisEngine") ? [] : ["-PraxisEngine", "demo"]) + extra
         app.launch()
         XCTAssertTrue(el(.button, "History").waitForExistence(timeout: 15))
     }
@@ -118,7 +118,7 @@ final class SettingsFlowsUITests: XCTestCase {
     /// A keyless profile at an unresolvable host (`.invalid` never
     /// resolves): consent must stop the send before any request.
     func testConsentSheetOnFirstLiveSendAndDeclineRestoresTheDraft() {
-        launch(["-PraxisTestProviderURL", "https://praxis-consent.invalid/v1"])
+        launch(["-PraxisNativeLoopEnabled", "YES", "-PraxisEngine", "live", "-PraxisTestProviderURL", "https://praxis-consent.invalid/v1"])
         el(.button, "New chat").tap()
         let field = app.textViews["Message"].exists ? app.textViews["Message"] : app.textFields["Message"]
         field.tap()
