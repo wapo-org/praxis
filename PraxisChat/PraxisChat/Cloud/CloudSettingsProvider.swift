@@ -8,9 +8,12 @@ struct CloudSettingsProviderEditor: View {
     @State private var baseURL = ""
     @State private var flavor = "openAIChat"
     @State private var apiKey = ""
+    @State private var defaultModel = ""
+    @State private var replaceHeaders = false
+    @State private var headers: [CloudSettingsHeaderDraft] = []
     @State private var capabilities = CloudCatalogCapabilities()
     @State private var loaded = false
-    @State private var confirmDelete = false
+    
     @State private var probeMessage: String?
 
     var body: some View {
@@ -37,6 +40,9 @@ struct CloudSettingsProviderEditor: View {
                     }
                 }.padding(14)
             }
+            SettingsSectionTitle("Model")
+            SettingsCard { SettingsField(title: "Default model ID", text: $defaultModel, placeholder: "Optional model ID", monospaced: true) }
+            CloudSettingsHeaderFields(replace: $replaceHeaders, headers: $headers, savedNames: provider?.headerNames ?? [])
             Text("Your cloud server encrypts this key. Praxis does not save provider keys on this device.")
                 .font(Type.inter(12, .caption)).foregroundStyle(Praxis.mutedInk)
             SettingsSectionTitle("Capabilities")
@@ -49,11 +55,13 @@ struct CloudSettingsProviderEditor: View {
             }
             CloudSettingsAction("Save provider", identifier: "cloudSaveProvider") {
                 let typed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                defer { apiKey = "" }
+                defer { apiKey = ""; headers = [] }
                 _ = try await services.saveProvider(id: provider?.id, input: CloudCatalogProviderInput(
                     name: name.trimmingCharacters(in: .whitespacesAndNewlines), flavor: flavor,
                     baseUrl: baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
-                    apiKey: typed.isEmpty ? nil : typed, capabilities: capabilities))
+                    apiKey: typed.isEmpty ? nil : typed, capabilities: capabilities,
+                    extraHeaders: replaceHeaders ? try CloudSettingsHeaderDraft.values(headers) : nil,
+                    defaultModel: defaultModel.trimmingCharacters(in: .whitespacesAndNewlines)))
                 dismiss()
             }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || baseURL.isEmpty)
             if let provider {
@@ -63,21 +71,14 @@ struct CloudSettingsProviderEditor: View {
                 }
                 if let probeMessage { Text(probeMessage).font(Type.inter(13, .footnote)).foregroundStyle(Praxis.secondaryInk) }
                 CloudSettingsAction("Refresh models") { try await services.refreshProviderModels(provider.id) }
-                Button("Delete provider", role: .destructive) { confirmDelete = true }.buttonStyle(.praxisText)
+                Button("Delete provider", role: .destructive) { deleting = true }.buttonStyle(.praxisText)
             }
         }
         .onAppear {
             guard !loaded else { return }; loaded = true
-            if let provider { name = provider.name; baseURL = provider.baseUrl; flavor = provider.flavor; capabilities = provider.capabilities }
+            if let provider { name = provider.name; baseURL = provider.baseUrl; flavor = provider.flavor; capabilities = provider.capabilities; defaultModel = provider.defaultModel ?? "" }
         }
-        .onDisappear { apiKey = "" }
-        .confirmationDialog("Delete this provider?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            if let provider {
-                // Deletion errors remain in a dedicated action on the page.
-                Button("Keep provider", role: .cancel) { }
-                Button("Delete provider", role: .destructive) { deleting = true }
-            }
-        }
+        .onDisappear { apiKey = ""; headers = [] }
         .overlay(alignment: .bottom) {
             if deleting, let provider {
                 SettingsCard {

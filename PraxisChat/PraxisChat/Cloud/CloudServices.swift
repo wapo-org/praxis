@@ -58,12 +58,17 @@ final class CloudServices: VoiceSettingsReader {
         guard !refreshing else { return }
         refreshing = true
         lastError = nil
-        let revision = accountRevision
+        var revision = accountRevision
         defer { if revision == accountRevision { refreshing = false } }
         do {
             let session = try await client.currentSession()
             guard revision == accountRevision else { return }
             let changed = account?.id != session.user.id
+            if changed {
+                clearAccount()
+                revision = accountRevision
+                refreshing = true
+            }
             account = session.user
             if changed { onSessionChanged?(account) }
             try await refreshCatalogs()
@@ -189,7 +194,9 @@ final class CloudServices: VoiceSettingsReader {
     }
 
     func deleteProvider(_ id: String) async throws {
+        let revision = accountRevision
         try await client.sendVoid("/v1/providers/" + CloudCatalogPath.component(id), method: "DELETE")
+        guard revision == accountRevision else { return }
         providers.removeAll { $0.id == id }; models.removeAll { $0.providerId == id }; favoriteModels.removeAll { $0.providerId == id }
     }
 
@@ -224,7 +231,9 @@ final class CloudServices: VoiceSettingsReader {
     }
 
     func deleteConnector(_ id: String) async throws {
+        let revision = accountRevision
         try await client.sendVoid("/v1/connectors/" + CloudCatalogPath.component(id), method: "DELETE")
+        guard revision == accountRevision else { return }
         connectors.removeAll { $0.id == id }
     }
 
@@ -245,6 +254,7 @@ final class CloudServices: VoiceSettingsReader {
         let authorization: CloudCatalogOAuthAuthorization = try await client.send("/v1/connectors/" + CloudCatalogPath.component(id) + "/oauth/start", method: "POST", body: encoded(Input()))
         _ = try await authorizer.authorize(authorization)
         let connector: CloudCatalogConnector = try await client.send("/v1/connectors/" + CloudCatalogPath.component(id))
+        guard connector.authStatus == "connected" else { throw CloudSettingsError.invalidOAuthCallback }
         if revision == accountRevision { replaceConnector(connector) }
     }
 
@@ -289,7 +299,9 @@ final class CloudServices: VoiceSettingsReader {
     }
 
     func deleteSkill(_ id: String) async throws {
+        let revision = accountRevision
         try await client.sendVoid("/v1/skills/" + CloudCatalogPath.component(id), method: "DELETE")
+        guard revision == accountRevision else { return }
         skills.removeAll { $0.id == id }
     }
 
@@ -303,7 +315,9 @@ final class CloudServices: VoiceSettingsReader {
     }
 
     func deleteRegistry(_ id: String) async throws {
+        let revision = accountRevision
         try await client.sendVoid("/v1/skill-registries/" + CloudCatalogPath.component(id), method: "DELETE")
+        guard revision == accountRevision else { return }
         registries.removeAll { $0.id == id }
     }
 

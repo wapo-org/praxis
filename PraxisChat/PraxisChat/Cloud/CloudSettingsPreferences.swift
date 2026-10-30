@@ -17,7 +17,7 @@ struct CloudSettingsImageReaderScreen: View {
                     .font(Type.inter(13, .footnote)).foregroundStyle(Praxis.secondaryInk)
             }
             Text("Choose a model with image support").font(Type.inter(13, weight: .semibold, .footnote))
-            ForEach(services.models.filter(\.capabilities.vision), id: \.selectionID) { model in
+            ForEach(services.models.filter(\.canReadImages), id: \.selectionID) { model in
                 CloudSettingsAction(model.displayName + " · " + services.providerName(model.providerId)) {
                     try await services.savePreferences(CloudCatalogPreferencesInput(vision: .init(providerId: model.providerId, modelId: model.id, enabled: true)))
                 }
