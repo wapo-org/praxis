@@ -128,7 +128,8 @@ struct CloudSettingsAccountScreen: View {
                     Text(services.serverURL.absoluteString)
                         .font(Type.mono(13, .body)).foregroundStyle(Praxis.ink)
                         .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(14)
-                        .accessibilityLabel("Server URL").accessibilityIdentifier("cloudServerURL")
+                        .accessibilityLabel("Server URL").accessibilityValue(services.serverURL.absoluteString)
+                        .accessibilityIdentifier("cloudServerURL")
                 }
                 SettingsSectionTitle("Account")
                 Text(services.account.map { $0.email ?? $0.name } ?? "Signed out")

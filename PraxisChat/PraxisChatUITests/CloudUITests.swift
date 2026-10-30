@@ -50,7 +50,7 @@ final class CloudUITests: XCTestCase {
 
     func testDefaultCloudSettingsShowServerAndAccount() {
         launch(); account()
-        XCTAssertTrue(app.staticTexts["cloudServerURL"].label.contains("cloud.praxis.test"))
+        XCTAssertTrue((app.staticTexts["cloudServerURL"].value as? String)?.contains("cloud.praxis.test") == true)
         let status = app.staticTexts["cloudAccountStatus"]
         XCTAssertTrue(status.waitForExistence(timeout: 10))
         XCTAssertTrue(status.label.contains("cloud@example.test") || status.label.contains("Cloud Tester"))
@@ -97,7 +97,10 @@ final class CloudUITests: XCTestCase {
         XCTAssertTrue(text("Cloud run is waiting for Stop.").waitForExistence(timeout: 15))
         stop.tap()
         XCTAssertTrue(stop.waitForNonExistence(timeout: 15))
-        XCTAssertTrue(text("Stopped after").waitForExistence(timeout: 10))
+        // This fixture streams text without a tool activity block. Stopping
+        // preserves that answer and exposes retry; no activity timer exists.
+        XCTAssertTrue(text("Cloud run is waiting for Stop.").exists)
+        XCTAssertTrue(app.buttons["Retry"].waitForExistence(timeout: 10))
         shot("cloud-cancelled")
     }
     func testReconnectResumesWithoutDuplicatingAnswer() {
