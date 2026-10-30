@@ -73,6 +73,7 @@ final class CloudTransportTests: XCTestCase {
         let client = try cloudNetClient { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer session-only")
             XCTAssertEqual(request.httpMethod, "PATCH")
+            XCTAssertFalse(request.httpShouldHandleCookies)
             return CloudNetReply(#"{"id":"ok"}"#)
         }
         try await client.tokens.setToken("session-only", for: client.configuration.origin)
