@@ -20,7 +20,7 @@ final class BlurShots: XCTestCase {
 
     private func launch() {
         app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES", "-PraxisLongThread", "YES"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES", "-PraxisLongThread", "YES"]
         app.launch()
         XCTAssertTrue(app.buttons["History"].waitForExistence(timeout: 15))
         Thread.sleep(forTimeInterval: 1.0)

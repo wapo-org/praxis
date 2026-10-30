@@ -138,6 +138,7 @@ final class VoiceInputController: VoiceSendObserver {
     @ObservationIgnored let transcriber: any Transcriber
     @ObservationIgnored let settings: any VoiceSettingsReader
     @ObservationIgnored private weak var chatStore: ChatStore?
+    @ObservationIgnored private var cloudMode = false
     @ObservationIgnored private let makeEngine: @MainActor () -> any VoiceRecorderEngine
 
     init(store: RecordingStore, transcriber: any Transcriber, settings: any VoiceSettingsReader,
@@ -191,6 +192,31 @@ final class VoiceInputController: VoiceSendObserver {
         relay.setHandler { event in
             Task { @MainActor in weakController.controller?.handleTranscriptionEvent(event) }
         }
+        return controller
+    }
+
+    /// Cloud production path: same recorder and recovery controller, with
+    /// session-only uploads. No GroqVoiceSettings or SecretStore is touched.
+    static func production(chatStore: ChatStore, cloudServices: CloudServices) -> VoiceInputController {
+        #if DEBUG
+        if let text = fakeTranscriptText() {
+            let controller = VoiceInputController(store: .production(), transcriber: FakeTranscriber(text: text),
+                                                  settings: FakeVoiceSettings(isConfigured: true), chatStore: chatStore)
+            controller.cloudMode = true
+            return controller
+        }
+        #endif
+        let relay = TranscriptionEventRelay()
+        let transcriber = LiveCloudVoiceTranscriber {
+            CloudVoiceTranscriber(client: cloudServices.client,
+                                  model: cloudServices.preferences?.voice.model ?? "whisper-large-v3-turbo",
+                                  language: cloudServices.preferences?.voice.language,
+                                  onEvent: { relay.send($0) })
+        }
+        let controller = VoiceInputController(store: .production(), transcriber: transcriber, settings: cloudServices, chatStore: chatStore)
+        controller.cloudMode = true
+        let weakController = WeakVoiceController(controller: controller)
+        relay.setHandler { event in Task { @MainActor in weakController.controller?.handleTranscriptionEvent(event) } }
         return controller
     }
 
@@ -549,8 +575,9 @@ final class VoiceInputController: VoiceSendObserver {
             // Restow first: the engine already stopped, so the phase must
             // leave recording behind (review owns the retry).
             restow(id: recording.id, state: .stopped, origin: origin)
-            transcribeHint = "Add your Groq API key to use voice input"
+            transcribeHint = cloudMode ? "Configure voice input on your cloud server in Settings" : "Add your Groq API key to use voice input"
             chatStore?.haptics.fire(.soft)
+            chatStore?.settingsPage = .voice
             chatStore?.isSettingsPresented = true
             return
         }
@@ -666,7 +693,7 @@ final class VoiceInputController: VoiceSendObserver {
         switch error {
         case .missingKey:
             restow(id: id, state: .stopped, origin: origin)
-            transcribeHint = "Add your Groq API key to use voice input"
+            transcribeHint = cloudMode ? "Configure voice input on your cloud server in Settings" : "Add your Groq API key to use voice input"
             chatStore?.haptics.fire(.soft)
             chatStore?.isSettingsPresented = true
         case .consentRequired(let host):
@@ -686,7 +713,7 @@ final class VoiceInputController: VoiceSendObserver {
             }
         case .unauthorized:
             restow(id: id, state: .failed, origin: origin)
-            showFailure("Check your Groq API key", id: id, origin: origin)
+            showFailure(cloudMode ? "Sign in to your cloud server to transcribe" : "Check your Groq API key", id: id, origin: origin)
             chatStore?.isSettingsPresented = true
         case .tooLarge:
             restow(id: id, state: .failed, origin: origin)

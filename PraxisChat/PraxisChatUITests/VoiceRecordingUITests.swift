@@ -17,6 +17,7 @@ final class VoiceRecordingUITests: XCTestCase {
                         resetData: Bool = true) {
         continueAfterFailure = false
         app = XCUIApplication()
+        app.launchArguments += ["-PraxisEngine", "demo"]
         if resetData { app.launchArguments += ["-PraxisResetData", "YES"] }
         app.launchArguments += ["-PraxisFakeRecording", "voice-fake.m4a"]
         if let transcript { app.launchArguments += ["-PraxisFakeTranscript", transcript] }

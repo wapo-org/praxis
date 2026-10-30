@@ -9,7 +9,7 @@ final class ModelSearchUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments += ["-PraxisResetData", "YES", "-PraxisDemoModels", "400"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES", "-PraxisDemoModels", "400"]
         app.launch()
         XCTAssertTrue(app.buttons["History"].waitForExistence(timeout: 15))
     }
@@ -104,7 +104,7 @@ final class ModelSearchUITests: XCTestCase {
         // Pins survive a relaunch (no data reset this time).
         app.terminate()
         app = XCUIApplication()
-        app.launchArguments += ["-PraxisDemoModels", "400"]
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisDemoModels", "400"]
         app.launch()
         XCTAssertTrue(app.buttons["History"].waitForExistence(timeout: 15))
         openModelPage()
