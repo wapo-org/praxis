@@ -5,6 +5,7 @@ export function fixtures():AdapterBundle{
   async get(u,k,id){return structuredClone(rows.get(key(u,k,id))??null);},
   async list(u,k,o){return [...rows.values()].filter(x=>x.userId===u&&x.kind===k&&!x.deleted&&(o?.parentId===undefined||x.parentId===o.parentId)).map(x=>structuredClone(x));},
   async put(u,k,id,value,o){const parentId=o?.parentId??rows.get(key(u,k,id))?.parentId;const r:StoredRecord={userId:u,kind:k,id,value:structuredClone(value),revision:++revision,updatedAt:new Date().toISOString(),deleted:false,...(parentId===undefined?{}:{parentId})};rows.set(key(u,k,id),r);changes.push(r);return structuredClone(r);},
+  async putIfRevision(u,k,id,value,expected,o){if((rows.get(key(u,k,id))?.revision??0)!==expected)return null;return this.put(u,k,id,value,o);},
   async delete(u,k,id){const r={userId:u,kind:k,id,value:{},revision:++revision,updatedAt:new Date().toISOString(),deleted:true};rows.set(key(u,k,id),r);changes.push(r);},
   async head(u){return changes.filter(r=>r.userId===u).at(-1)?.revision??0;},
   async changes(u,after,limit){const all=changes.filter(r=>r.userId===u&&r.revision>after),batch=all.slice(0,limit);return {records:structuredClone(batch),cursor:batch.at(-1)?.revision??after,hasMore:all.length>limit};},

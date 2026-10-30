@@ -1,5 +1,5 @@
 import {
-  AgentRunner, CheckpointSchema, ToolResultSchema, createScriptedProvider, scriptedTools, textResult,
+  AgentRunner, CheckpointSchema, ExecutionFenced, ToolResultSchema, createScriptedProvider, isRunControl, scriptedTools, textResult,
   type AgentCheckpoint, type AgentPorts, type AgentTool, type ModelProvider, type Script, type ToolResult,
 } from '@praxis/agent';
 import {
@@ -35,6 +35,30 @@ export interface ExecutionOptions {
   fetcher?: typeof fetch;
   clock?: () => number;
   instructions?: string;
+  /** One executor per run across instances (Upstash lease in production; process-local by default). */
+  lease?: RunLease;
+}
+
+export interface RunLease {
+  acquire(key: string, ttlMs: number): Promise<string | null>;
+  release(key: string, token: string): Promise<void>;
+}
+
+/** Process-local lease for dev/tests. Production passes the Redis lease (adapters/upstash.ts). */
+export function memoryLease(clock: () => number = Date.now): RunLease {
+  const held = new Map<string, {token: string; expires: number}>();
+  return {
+    async acquire(key, ttlMs) {
+      const current = held.get(key);
+      if (current && current.expires > clock()) return null;
+      const token = crypto.randomUUID();
+      held.set(key, {token, expires: clock() + ttlMs});
+      return token;
+    },
+    async release(key, token) {
+      if (held.get(key)?.token === token) held.delete(key);
+    },
+  };
 }
 
 type RunRequest = StartRun & {attachmentIds: string[]};
@@ -47,9 +71,25 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     schedule: async (userId, runId) => service.enqueue(userId, runId, () => driver.continue(userId, runId)),
   };
 
-  const ports: AgentPorts = {
+  const lease = options.lease ?? memoryLease();
+  const leaseTtlMs = budgetMs + 120_000;
+
+  /**
+   * Ports for one execution slice. Checkpoint writes are compare-and-set against the revision this slice
+   * last read or wrote, so an executor that lost its lease (or a duplicate delivery) can't overwrite newer
+   * state: its save throws ExecutionFenced and the slice stops without emitting anything else.
+   */
+  const slicePorts = (fence: {revision: number}): AgentPorts => ({
+    ...ports,
     save: async (userId, cp) => {
-      await service.put(userId, 'checkpoint', cp.run.id, cp);
+      const row = await service.adapters.store.putIfRevision(userId, 'checkpoint', cp.run.id, JSON.parse(JSON.stringify(cp)), fence.revision, {parentId: cp.chat.id});
+      if (!row) throw new ExecutionFenced();
+      fence.revision = row.revision;
+      await syncRun(userId, cp);
+    },
+  });
+
+  async function syncRun(userId: string, cp: AgentCheckpoint) {
       const current = await service.require<Run>(userId, 'run', cp.run.id);
       cp.run.lastEventId = Math.max(cp.run.lastEventId, current.lastEventId);
       await service.put(userId, 'run', cp.run.id, cp.run);
@@ -58,7 +98,33 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
         chat.setup = cp.setup;
         await service.write(userId, 'chat', chat.id, chat);
       }
-    },
+  }
+
+  /** Runs `fn` as the run's only executor; a concurrent or duplicate caller returns without doing anything. */
+  async function exclusive(userId: string, runId: string, fn: (fence: {revision: number}) => Promise<AgentCheckpoint | void>) {
+    const key = `run:${userId}:${runId}`;
+    const token = await lease.acquire(key, leaseTtlMs);
+    if (!token) return;
+    let cp: AgentCheckpoint | void = undefined;
+    try {
+      const row = await service.adapters.store.get(userId, 'checkpoint', runId);
+      cp = await fn({revision: row?.revision ?? 0});
+    } catch (error) {
+      if (!(error instanceof ExecutionFenced)) throw error;
+    } finally {
+      await lease.release(key, token);
+    }
+    // Schedule the next slice only after releasing the lease, or it would find the run still owned.
+    if (cp) await settle(userId, cp);
+  }
+
+  async function trustedSources(userId: string): Promise<string[]> {
+    return (await service.adapters.store.list(userId, 'connector'))
+      .filter(r => !r.deleted && r.value.trusted === true && r.value.enabled !== false)
+      .map(r => `mcp:${r.id}`);
+  }
+
+  const ports: Omit<AgentPorts, 'save'> = {
     emit: async (userId, runId, event) => service.emit(userId, runId, event),
     isCancelled: async (userId, runId) => !!(await service.adapters.kv.get(`cancel:${userId}:${runId}`)),
     spill: async (userId, runId, callId, text) => {
@@ -115,14 +181,14 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     return tools;
   }
 
-  async function runnerFor(userId: string, chat: Chat, run: Run, request: RunRequest) {
+  async function runnerFor(userId: string, chat: Chat, run: Run, request: RunRequest, fence: {revision: number}) {
     const {provider, script, model} = await resolveProvider(userId, chat, request);
     const tools = await agentTools(userId, chat, run, request, script);
     const started = clock();
     const runner = new AgentRunner({
       provider,
       tools,
-      ports: script ? {...ports, summarize: localSummary} : ports,
+      ports: script ? {...slicePorts(fence), summarize: localSummary} : slicePorts(fence),
       shouldYield: () => clock() - started > budgetMs,
       ...(script === 'compaction' ? {contextWindow: 1024} : model?.contextWindow ? {contextWindow: model.contextWindow} : {}),
     } as ConstructorParameters<typeof AgentRunner>[0]);
@@ -170,7 +236,8 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     async start(userId: string, run: Run, chat: Chat, messages: Message[], request: StartRun) {
       const stored: RunRequest = {...request, attachmentIds: request.attachmentIds ?? []};
       await service.put(userId, 'runRequest', run.id, stored);
-      const {runner, tools, model} = await runnerFor(userId, chat, run, stored);
+      await exclusive(userId, run.id, async fence => {
+      const {runner, tools, model} = await runnerFor(userId, chat, run, stored, fence);
       const setup = await freezeSetup(userId, chat, tools);
       const effort = request.effort ?? chat.effort;
       const modelId = request.modelId ?? chat.modelId;
@@ -183,19 +250,25 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
         ...(model?.reasoningEfforts.length ? {supportedEfforts: model.reasoningEfforts} : {}),
         ...(model?.maxOutputTokens ? {modelMaxTokens: model.maxOutputTokens} : {}),
         webSearch: request.webSearch,
+        policy: {trustedSources: await trustedSources(userId), alwaysAllow: []},
       });
-      await settle(userId, cp);
+      return cp;
+      });
     },
 
     async resume(userId: string, runId: string, decision: RunDecision) {
-      const {cp, runner} = await load(userId, runId);
-      await settle(userId, await runner.resume(cp, decision));
+      await exclusive(userId, runId, async fence => {
+        const {cp, runner} = await load(userId, runId, fence);
+        return runner.resume(cp, decision);
+      });
     },
 
     async continue(userId: string, runId: string) {
-      const {cp, runner} = await load(userId, runId);
-      if (cp.run.status !== 'continuing') return;
-      await settle(userId, await runner.advance(cp));
+      await exclusive(userId, runId, async fence => {
+        const {cp, runner} = await load(userId, runId, fence);
+        if (cp.run.status !== 'continuing') return;
+        return runner.advance(cp);
+      });
     },
 
     async cancel(userId: string, runId: string) {
@@ -203,17 +276,26 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       if (!row || row.deleted) return;
       const cp = CheckpointSchema.parse(row.value);
       if (cp.run.status === 'awaitingApproval' || cp.run.status === 'awaitingElicitation' || cp.run.status === 'continuing') {
-        const {runner} = await load(userId, runId);
-        await runner.cancel(cp);
+        // A running executor sees the cancel flag between chunks; parked/continuing runs are finished here under the lease.
+        await exclusive(userId, runId, async fence => {
+          const {cp: current, runner} = await load(userId, runId, fence);
+          await runner.cancel(current);
+          return undefined;
+        });
       }
     },
   };
 
-  async function load(userId: string, runId: string) {
-    const cp = CheckpointSchema.parse(await service.require(userId, 'checkpoint', runId));
+  async function load(userId: string, runId: string, fence: {revision: number}) {
+    const row = await service.adapters.store.get(userId, 'checkpoint', runId);
+    if (!row || row.deleted) throw new ApiError(404, 'not_found', 'checkpoint not found');
+    fence.revision = row.revision;
+    const cp = CheckpointSchema.parse(row.value);
+    // Trust is re-read every slice, so revoking a connector's trust applies to the rest of the run.
+    cp.policy.trustedSources = await trustedSources(userId);
     const request = await service.require<RunRequest>(userId, 'runRequest', runId);
     const chat = await service.require<Chat>(userId, 'chat', cp.chat.id);
-    const {runner} = await runnerFor(userId, {...chat, mode: cp.chat.mode}, cp.run, request);
+    const {runner} = await runnerFor(userId, {...chat, mode: cp.chat.mode}, cp.run, request, fence);
     return {cp, runner};
   }
 
@@ -258,7 +340,8 @@ export function adaptTool(tool: FeatureTool): AgentTool {
         });
         return toToolResult(value);
       } catch (error) {
-        if (context.signal.aborted) throw error;
+        // Park (nested approval/elicitation) and cancel are loop control flow, not tool failures.
+        if (isRunControl(error) || error instanceof ExecutionFenced || context.signal.aborted) throw error;
         const message = error instanceof ApiError || error instanceof Error ? error.message : 'Tool failed';
         return textResult(message, true);
       }
