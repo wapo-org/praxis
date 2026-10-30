@@ -55,6 +55,8 @@ export interface AgentTool {
   /** Hidden tools are reachable through callTool only, never directly from a model. */
   hidden?:boolean;
   unavailableReason?:string;
+  /** Trusted adapter classification; the displayed frozen catalog stays unchanged. */
+  classify?(args:JsonValue):{traits:ToolSpec['traits'];policyKey?:string};
   execute(args:JsonValue,context:ToolContext):Promise<ToolResult>;
 }
 export const PolicySchema=z.object({trustedSources:z.array(z.string()).default([]),alwaysAllow:z.array(z.string()).default([])});
@@ -68,6 +70,7 @@ export const CheckpointSchema = z.object({
   setup:ConversationSetupSchema,messages:z.array(MessageSchema),modelId:IdSchema,
   effort:z.string().optional(),supportedEfforts:z.array(z.string()).optional(),webSearch:z.boolean().default(false),
   capabilities:CapabilitiesSchema,policy:PolicySchema,
+  hiddenTools:ConversationSetupSchema.shape.tools.default([]),
   phase:z.enum(['model','tools','terminal']),iteration:z.number().int().nonnegative(),
   pending:z.array(PendingCallSchema),
   calls:z.record(z.string(),z.object({call:PendingCallSchema,result:ToolResultSchema.optional(),key:z.string().optional()})),
@@ -106,4 +109,5 @@ export interface AgentRunnerOptions {
   provider:ModelProvider;tools?:AgentTool[];ports:AgentPorts;
   maxResultCharacters?:number;toolTimeoutMs?:number;streamTimeoutMs?:number;
   contextWindow?:number;compactAt?:number;
+  shouldYield?:()=>boolean;
 }

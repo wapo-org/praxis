@@ -30,9 +30,10 @@ export async function* parseSSE(body:ReadableStream<Uint8Array>,signal?:AbortSig
 const zero=():Usage=>({type:'usage',inputTokens:0,outputTokens:0,cacheReadTokens:0,cacheWriteTokens:0});
 export function classifyProviderError(message:string,status=400,retryAfterMs?:number):ProviderFailure {
   const lower=message.toLowerCase();
-  const kind=/(image|vision|multimodal).*(not support|unsupported|not allowed|does not|cannot)|not support.*image/.test(lower)?'images':
-    /(?:tool|function)[ _-]?(?:use|call|calling|s)?.*(not support|unsupported|not allowed)|(?:not support|unsupported).*tool/.test(lower)?'tools':
-    /(?:reasoning_effort|reasoning effort|output_config.*effort|thinking|effort).*(invalid|unsupported|not support|not allowed|must be|should be)|(?:invalid|unsupported).*effort/.test(lower)?'effort':
+  const rejection=/not support|does not support|unsupported|not allowed|unrecognized|unknown parameter|invalid/;
+  const kind=/(?:image|vision|multimodal)/.test(lower)&&rejection.test(lower)?'images':
+    /no endpoints found that support tool use/.test(lower)||/(?:tools?|tool_choice|function calling)/.test(lower)&&rejection.test(lower)?'tools':
+    /(?:reasoning_effort|reasoning effort|output_config\.effort|adaptive thinking)/.test(lower)&&(rejection.test(lower)||/must be|should be/.test(lower))?'effort':
     /context[_ ]?(length|window)|prompt.{0,8}too long|too many (input )?tokens|maximum context|request_too_large/.test(lower)||status===413?'context':
     [408,409,429].includes(status)||status>=500?'retryable':'fatal';
   return new ProviderFailure(message,kind,retryAfterMs);

@@ -39,6 +39,15 @@ describe('scripted durable loop',()=>{
     const h=harness(),runner=createScriptedRunner(h.ports,'tools'),cp=await runner.run(input(),1);expect(cp.run.status).toBe('continuing');
     const done=await runner.advance(CheckpointSchema.parse(JSON.parse(JSON.stringify(cp))));expect(done.run.outcome).toBe('completed');
   });
+  it('yields for continuation when shouldYield flips after 2 steps',async()=>{
+    const h=harness();let checks=0;
+    const runner=new AgentRunner({ports:h.ports,provider:createScriptedProvider('tools'),tools:scriptedTools(),shouldYield:()=>++checks>=2});
+    const cp=await runner.run(input());
+    expect(cp.run.status).toBe('continuing');expect(cp.phase).toBe('model');expect(cp.iteration).toBe(1);
+    expect(h.events.at(-1)).toEqual({type:'run.parked',reason:'continuation'});
+    const done=await new AgentRunner({ports:h.ports,provider:createScriptedProvider('tools'),tools:scriptedTools()}).advance(cp);
+    expect(done.run.outcome).toBe('completed');
+  });
   it('cancel before provider and while parked is terminal',async()=>{
     const h=harness();h.cancel();const runner=createScriptedRunner(h.ports);const cp=await runner.run(input());expect(cp.run.outcome).toBe('cancelled');expect(cp.messages).toHaveLength(1);
     const h2=harness(),r2=createScriptedRunner(h2.ports,'approval'),park=await r2.run(input());expect((await r2.cancel(park)).run.status).toBe('cancelled');
@@ -89,4 +98,50 @@ describe('Swift policy matrix',()=>{
   it('does not trust remote traits by default or bypass plan refusal',()=>{expect(decideTool({...spec,traits:['readOnly']},'plan',{trustedSources:[],alwaysAllow:['key']},'key').decision).toBe('refuse');});
   it('always allow fingerprint changes with schema or description, never key order',async()=>{const a=await alwaysAllowKey(spec);expect(await alwaysAllowKey({...spec,description:'changed'})).not.toBe(a);expect(await alwaysAllowKey({...spec,inputSchema:{properties:{x:{type:'string'}},type:'object'}})).not.toBe(a);});
   it('sandboxed JS is refused in ask, skills that write use mode policy',()=>{expect(decideTool({...spec,source:{type:'javascript'},traits:['sandboxed']},'ask',policy,'key').decision).toBe('refuse');expect(decideTool({...spec,source:{type:'skill'}},'plan',policy,'key').decision).toBe('refuse');});
+});
+
+describe('durability and provider fallback regressions',()=>{
+  it('persists assistant messages with the phase that consumes them',async()=>{
+    const h=harness(),snapshots:AgentCheckpoint[]=[];
+    const cp=await new AgentRunner({provider:createScriptedProvider('tools'),tools:scriptedTools(),ports:{...h.ports,save:async(user,cp)=>{await h.ports.save(user,cp);snapshots.push(cp);}}}).run(input());
+    expect(cp.run.outcome).toBe('completed');
+    for(const saved of snapshots){const last=saved.messages.at(-1);if(last?.role==='assistant'&&last.parts.some(p=>p.type==='toolCall'))expect(saved.phase).toBe('tools');if(last?.role==='assistant'&&last.parts.some(p=>p.type==='text'))expect(saved.run.status).toBe('completed');}
+  });
+  it('does not repeat a completed nested side effect after parking',async()=>{
+    const h=harness(),tools=scriptedTools();let count=0;tools[0]!.execute=async()=>{count++;return textResult('first nested');};
+    tools[2]!.execute=async(_,ctx)=>{await ctx.callTool('local_echo',{});return ctx.callTool('local_write',{});};
+    const options={ports:h.ports,provider:createScriptedProvider('nestedApproval'),tools};
+    const cp=await new AgentRunner(options).run(input());expect(count).toBe(1);const done=await new AgentRunner(options).resume(cp,{type:'approval.decision',approvalId:cp.approval!.id,decision:'allowOnce'});
+    expect(count).toBe(1);expect(done.run.status).toBe('completed');
+  });
+  it('validates tool JSON Schema before approval or execution',async()=>{
+    const h=harness(),tools=scriptedTools();let executed=false;tools[0]!.spec.inputSchema={type:'object',properties:{required:{type:'string'}},required:['required'],additionalProperties:false};tools[0]!.execute=async()=>{executed=true;return textResult('bad');};
+    const cp=await new AgentRunner({ports:h.ports,provider:createScriptedProvider('tools'),tools}).run(input());expect(executed).toBe(false);expect(JSON.stringify(cp.messages)).toContain('frozen input schema');expect(cp.run.status).toBe('completed');
+  });
+  it('validates accepted elicitation content before consuming pending input',async()=>{
+    const h=harness(),runner=createScriptedRunner(h.ports,'elicitation'),cp=await runner.run(input());
+    await expect(runner.resume(cp,{type:'elicitation.response',elicitationId:cp.elicitation!.id,action:'accept',content:{name:123}})).rejects.toThrow();expect(cp.elicitation).toBeDefined();
+  });
+  it('uses a real provider to summarize when no summarize port was injected',async()=>{
+    const h=harness(),base=createScriptedProvider(),i=input();i.maxTokens=100;i.messages.unshift({...i.messages[0]!,id:'history',parts:[{type:'text',text:'Past context '.repeat(300)}]});let summaries=0;
+    const provider=custom(async function*(r,s){if(r.system.startsWith('Summarize')){summaries++;yield {type:'completed',response:{parts:[{type:'text',text:'Provider summary'}],stop:'endTurn',usage:{type:'usage',inputTokens:10,outputTokens:4,cacheReadTokens:0,cacheWriteTokens:0}}};}else yield* base.stream(r,s);});
+    const cp=await new AgentRunner({ports:h.ports,provider,contextWindow:1000}).run(i);expect(summaries).toBeGreaterThan(0);expect(cp.compaction?.summary).toBe('Provider summary');expect(cp.messages[0]).toEqual(i.messages[0]);
+  });
+  it('learns effort options from a rejection then retries with a supported effort',async()=>{
+    const h=harness(),i=input();i.effort='max';const requests:ProviderRequest[]=[];const base=createScriptedProvider();
+    const provider=custom(async function*(r,s){requests.push(structuredClone(r));if(requests.length===1)throw new ProviderFailure("Unsupported reasoning_effort 'max'. Supported: low, medium, high.",'effort');yield* base.stream(r,s);});
+    const cp=await new AgentRunner({ports:h.ports,provider}).run(i);expect(cp.run.status).toBe('completed');expect(requests[1]?.effort).toBe('high');expect(cp.supportedEfforts).toEqual(['low','medium','high']);
+  });
+  it('discards truncated calls, retries within the model maximum, and never executes partial arguments',async()=>{
+    const h=harness(),tools=scriptedTools(),requests:ProviderRequest[]=[];let ran=0;tools[0]!.execute=async()=>{ran++;return textResult('ran');};const base=createScriptedProvider('tools');
+    const provider=custom(async function*(r,s){requests.push(structuredClone(r));if(requests.length===1){yield {type:'text',index:0,text:'partial'};yield {type:'tool',index:1,id:'cut',name:'local_echo'};yield {type:'completed',response:{parts:[{type:'toolCall',callId:'cut',name:'local_echo',arguments:'{"x":'}],stop:'maxTokens',usage:{type:'usage',inputTokens:1,outputTokens:1,cacheReadTokens:0,cacheWriteTokens:0}}};}else yield* base.stream(r,s);});
+    const i=input();i.maxTokens=1000;i.modelMaxTokens=1500;const cp=await new AgentRunner({ports:h.ports,provider,tools}).run(i);expect(cp.run.status).toBe('completed');expect(requests[1]?.maxTokens).toBe(1500);expect(ran).toBe(1);expect(JSON.stringify(cp.messages)).not.toContain('"callId":"cut"');expect(h.events.some(e=>e.type==='attempt.discarded'&&e.toolCallIds.includes('cut'))).toBe(true);
+  });
+  it('strips partial tool calls without retry once already at model max',async()=>{
+    const h=harness();const i=input();i.maxTokens=100;i.modelMaxTokens=100;let count=0;const provider=custom(async function*(){count++;yield {type:'completed',response:{parts:[{type:'text',text:'Partial text'},{type:'toolCall',callId:'cut',name:'local_echo',arguments:'{"x":'}],stop:'maxTokens',usage:{type:'usage',inputTokens:1,outputTokens:1,cacheReadTokens:0,cacheWriteTokens:0}}};});
+    const cp=await new AgentRunner({ports:h.ports,provider,tools:scriptedTools()}).run(i);expect(count).toBe(1);expect(cp.run.outcome).toBe('truncated');expect(cp.messages.at(-1)?.parts).toEqual([{type:'text',text:'Partial text'}]);
+  });
+  it('emits matching reasoning finished events and carries client turn ids',async()=>{
+    const h=harness(),i=input();i.run.clientTurnId='client-turn';const cp=await createScriptedRunner(h.ports).run(i);const started=h.events.find(e=>e.type==='reasoning.delta');expect(started).toBeDefined();expect(h.events).toContainEqual({type:'reasoning.finished',blockId:started&&'blockId' in started?started.blockId:''});expect(cp.messages.at(-1)?.clientTurnId).toBe('client-turn');
+  });
 });

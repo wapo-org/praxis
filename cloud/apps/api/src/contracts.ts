@@ -1,11 +1,15 @@
 import type { JsonObject, JsonValue } from '@praxis/protocol';
-export interface StoredRecord { userId:string; kind:string; id:string; value:JsonObject; revision:number; updatedAt:string; deleted:boolean }
+export interface StoredRecord { userId:string; kind:string; id:string; value:JsonObject; revision:number; updatedAt:string; deleted:boolean; parentId?:string }
+/** `parentId` is a secondary index (e.g. a message's chatId) so per-chat reads never scan a user's whole kind. */
+export interface ListOptions { parentId?:string }
 export interface Store {
  get(userId:string,kind:string,id:string):Promise<StoredRecord|null>;
- list(userId:string,kind:string):Promise<StoredRecord[]>;
- put(userId:string,kind:string,id:string,value:JsonObject):Promise<StoredRecord>;
+ list(userId:string,kind:string,options?:ListOptions):Promise<StoredRecord[]>;
+ put(userId:string,kind:string,id:string,value:JsonObject,options?:ListOptions):Promise<StoredRecord>;
  delete(userId:string,kind:string,id:string):Promise<void>;
  changes(userId:string,after:number,limit:number):Promise<{records:StoredRecord[];cursor:number;hasMore:boolean}>;
+ /** Latest revision for the owner (0 when empty): the sync cursor a fresh bootstrap hands out. */
+ head(userId:string):Promise<number>;
 }
 export interface KV {
  get<T=JsonValue>(key:string):Promise<T|null>;

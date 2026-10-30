@@ -11,6 +11,9 @@ import {
 import {ApiError,ApiService} from './service.js';
 import {seal} from './secrets.js';
 import {ApiProviders} from './providers.js';
+import type {FeatureContext} from './contracts.js';
+import {featureContext} from './features.js';
+import {registerSyncRoutes} from './sync-routes.js';
 type Env={Variables:{userId:string;requestId:string}};
 export interface AppOptions {
  service:ApiService;encryptionKey?:string;fetcher?:typeof fetch;
@@ -18,15 +21,21 @@ export interface AppOptions {
  authHandler?:(request:Request)=>Promise<Response>;
  allowedOrigins?:string[];
  log?:(record:{requestId:string;method:string;path:string;status:number;durationMs:number})=>void;
+ /** Per-key limiter (Upstash in production). Keys are `user:<id>` after auth and `ip:<addr>` before it. */
+ rateLimit?:(key:string)=>Promise<{ok:boolean;retryAfterSeconds?:number}>;
+ /** Mount feature routers (MCP, tools) under /v1 after auth; `contextFor` resolves the request's owner-scoped context. */
+ mount?:(app:Hono<Env>,contextFor:(request:Request)=>Promise<FeatureContext>)=>void;
+ /** Paths under /v1 that skip session auth (OAuth callbacks, hosted CIMD). Exact match or prefix ending in '/'. */
+ publicPaths?:string[];
 }
 export function createApp(options:AppOptions){
  const {service}=options;const app=new Hono<Env>();
  service.providers=new ApiProviders(service,options.encryptionKey,options.fetcher);
  if(service.local&&(process.env.NODE_ENV==='production'||process.env.VERCEL))throw new Error('Local adapters and auth are forbidden in production');
- const origins=options.allowedOrigins??(service.local?['http://localhost:5173','http://127.0.0.1:5173']:[]);
- app.use('*',cors({origin:origin=>origins.includes(origin)?origin:'',credentials:true,allowHeaders:['Content-Type','Authorization','Last-Event-ID','Idempotency-Key'],allowMethods:['GET','POST','PATCH','DELETE','OPTIONS'],exposeHeaders:['X-Request-ID']}));
+ const allowed=options.allowedOrigins??[];const originOk=(origin:string)=>allowed.includes(origin)||(service.local&&/^http:\/\/(localhost|127\.0\.0\.1):\d{2,5}$/.test(origin));
+ app.use('*',cors({origin:origin=>originOk(origin)?origin:'',credentials:true,allowHeaders:['Content-Type','Authorization','Last-Event-ID','Idempotency-Key'],allowMethods:['GET','POST','PATCH','DELETE','OPTIONS'],exposeHeaders:['X-Request-ID']}));
  app.use('*',async(c,next)=>{const started=Date.now();c.set('requestId',randomUUID());c.header('X-Request-ID',c.get('requestId'));c.header('X-Content-Type-Options','nosniff');await next();options.log?.({requestId:c.get('requestId'),method:c.req.method,path:new URL(c.req.url).pathname,status:c.res.status,durationMs:Date.now()-started});});
- app.onError((e,c)=>{if(e instanceof ApiError)return c.json({type:'error',code:e.code,message:e.message,requestId:c.get('requestId')},e.status as 400);if(e instanceof z.ZodError)return c.json({type:'error',code:'validation_error',message:'Request does not match the protocol',requestId:c.get('requestId')},400);return c.json({type:'error',code:'internal_error',message:'Request could not be completed',requestId:c.get('requestId')},500);});
+ app.onError((e,c)=>{if(e instanceof ApiError){if(e.status===429)c.header('Retry-After','1');return c.json({type:'error',code:e.code,message:e.message,requestId:c.get('requestId')},e.status as 400);}if(e instanceof z.ZodError)return c.json({type:'error',code:'validation_error',message:'Request does not match the protocol',requestId:c.get('requestId')},400);return c.json({type:'error',code:'internal_error',message:'Request could not be completed',requestId:c.get('requestId')},500);});
  app.notFound(c=>c.json({type:'error',code:'not_found',message:'Endpoint not found'},404));
  app.get('/health',c=>c.json({type:'health',ok:true,mode:service.local?'local':'production'}));
  const devTokens=new Map<string,string>([['dev-local','local-user']]);
@@ -40,7 +49,10 @@ export function createApp(options:AppOptions){
  });
  app.post('/v1/auth/sign-up',c=>auth(c));app.post('/v1/auth/sign-in',c=>auth(c));
  async function auth(c:Context){if(!options.authHandler)throw new ApiError(503,'auth_unconfigured','Email authentication is not configured');return options.authHandler(c.req.raw);}
- app.use('/v1/*',async(c,next)=>{if(c.req.path.startsWith('/v1/connectors/oauth/callback')||c.req.path==='/v1/oauth/client-metadata.json'){await next();return;}const auth=await session(c.req.raw);if(!auth)throw new ApiError(401,'unauthorized','Sign in to continue');c.set('userId',auth.user.id);await service.seed(auth.user.id);if(c.req.method!=='GET'&&c.req.method!=='HEAD'){const origin=c.req.header('origin');if(origin&&!origins.includes(origin))throw new ApiError(403,'origin_rejected','Origin is not allowed');}await next();});
+ const publicPaths=['/v1/connectors/oauth/callback','/v1/oauth/client-metadata.json',...(options.publicPaths??[])];
+ const requestOwners=new WeakMap<Request,string>();
+ const limited=async(key:string)=>{if(!options.rateLimit)return;const r=await options.rateLimit(key);if(!r.ok)throw new ApiError(429,'rate_limited',`Too many requests; retry in ${r.retryAfterSeconds??1}s`);};
+ app.use('/v1/*',async(c,next)=>{if(publicPaths.some(p=>c.req.path===p||(p.endsWith('/')&&c.req.path.startsWith(p))||c.req.path.startsWith(`${p}?`))){await limited(`ip:${c.req.header('x-forwarded-for')?.split(',')[0]?.trim()??'unknown'}`);await next();return;}const auth=await session(c.req.raw);if(!auth)throw new ApiError(401,'unauthorized','Sign in to continue');c.set('userId',auth.user.id);requestOwners.set(c.req.raw,auth.user.id);await limited(`user:${auth.user.id}`);await service.seed(auth.user.id);if(c.req.method!=='GET'&&c.req.method!=='HEAD'){const origin=c.req.header('origin');if(origin&&!originOk(origin))throw new ApiError(403,'origin_rejected','Origin is not allowed');}await next();});
  app.get('/v1/auth/session',async c=>{const auth=await session(c.req.raw);return c.json({type:'session',...auth});});
  app.post('/v1/auth/sign-out',async c=>{if(options.authHandler&&!service.local)return options.authHandler(c.req.raw);const token=c.req.header('authorization')?.replace(/^Bearer /i,'')??getCookie(c,'praxis_session');if(token)devTokens.delete(token);deleteCookie(c,'praxis_session',{path:'/'});return c.json({type:'ok'});});
  app.get('/v1/bootstrap',async c=>{c.header('Cache-Control','private, no-store');return c.json(await service.bootstrap(c.get('userId')));});
@@ -48,8 +60,8 @@ export function createApp(options:AppOptions){
  app.post('/v1/chats',async c=>{const input=await body(c,ChatInputSchema);const now=service.now();const id=input.id??randomUUID();if(await service.adapters.store.get(c.get('userId'),'chat',id))throw new ApiError(409,'exists','Chat ID already exists');const chat=ChatSchema.parse({...input,type:'chat',id,createdAt:now,updatedAt:now});await service.write(c.get('userId'),'chat',id,chat);return c.json(chat,201);});
  app.get('/v1/chats/:id',async c=>c.json(await service.require<Chat>(c.get('userId'),'chat',c.req.param('id'))));
  app.patch('/v1/chats/:id',async c=>{const chat=await service.require<Chat>(c.get('userId'),'chat',c.req.param('id'));const input=await body(c,ChatPatchSchema);const result=ChatSchema.parse({...chat,...input,type:'chat',id:chat.id,updatedAt:service.now()});await service.write(c.get('userId'),'chat',chat.id,result);return c.json(result);});
- app.delete('/v1/chats/:id',async c=>{const user=c.get('userId'),id=c.req.param('id');const chat=await service.require<Chat>(user,'chat',id);if(chat.activeRunId)await service.cancel(user,chat.activeRunId);await service.remove(user,'chat',id);for(const m of await service.list<Message>(user,'message'))if(m.chatId===id)await service.remove(user,'message',m.id);return c.json({type:'ok'});});
- app.get('/v1/chats/:id/messages',async c=>{const id=c.req.param('id'),user=c.get('userId');await service.require(user,'chat',id);const rows=(await service.list<Message>(user,'message')).filter(m=>m.chatId===id).sort((a,b)=>(a.sequence??0)-(b.sequence??0)||a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id));return c.json(page(rows,PageQuerySchema.parse(c.req.query()),`messages:${id}`));});
+ app.delete('/v1/chats/:id',async c=>{const user=c.get('userId'),id=c.req.param('id');const chat=await service.require<Chat>(user,'chat',id);if(chat.activeRunId)await service.cancel(user,chat.activeRunId);await service.remove(user,'chat',id);for(const m of await service.list<Message>(user,'message',id))await service.remove(user,'message',m.id);return c.json({type:'ok'});});
+ app.get('/v1/chats/:id/messages',async c=>{const id=c.req.param('id'),user=c.get('userId');await service.require(user,'chat',id);const rows=(await service.list<Message>(user,'message',id)).sort((a,b)=>(a.sequence??0)-(b.sequence??0)||a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id));return c.json(page(rows,PageQuerySchema.parse(c.req.query()),`messages:${id}`));});
  app.post('/v1/runs',async c=>{const input=await body(c,StartRunSchema);input.idempotencyKey??=c.req.header('Idempotency-Key');if(!service.local&&input.script)throw new ApiError(400,'local_only','Scripted runs are local only');return c.json(await service.start(c.get('userId'),input),202);});
  app.get('/v1/runs/:id',async c=>c.json(await service.require<Run>(c.get('userId'),'run',c.req.param('id'))));
  app.get('/v1/runs/:id/snapshot',async c=>c.json(RunSnapshotSchema.parse(await service.require(c.get('userId'),'snapshot',c.req.param('id')))));
@@ -84,6 +96,8 @@ export function createApp(options:AppOptions){
  app.patch('/v1/preferences',async c=>{const user=c.get('userId'),input=await body(c,PreferencesInputSchema);const current=await preferences(user);if(input.vision)current.vision={...current.vision,...input.vision};if(input.voice){const {apiKey,...publicPrefs}=input.voice;current.voice={...current.voice,...publicPrefs};if(apiKey){await service.put(user,'voiceSecret','current',{key:seal(apiKey,user,'voice',options.encryptionKey)});current.voice.configured=true;}}current.updatedAt=service.now();await service.write(user,'preferences','current',current,'consent');return c.json(current);});
  async function preferences(user:string){const existing=await service.adapters.store.get(user,'preferences','current');return PreferencesSchema.parse(existing?.value??{type:'preferences',vision:{},voice:{configured:!!process.env.GROQ_API_KEY},updatedAt:service.now()});}
  app.get('/v1/runs/:runId/outputs/:id',async c=>{await service.require(c.get('userId'),'run',c.req.param('runId'));const output=await service.require<JsonObject>(c.get('userId'),'output',c.req.param('id'));if(output.runId!==c.req.param('runId'))throw new ApiError(404,'not_found','Output not found');const offset=z.coerce.number().int().nonnegative().parse(c.req.query('offset')??0),limit=z.coerce.number().int().min(1).max(100000).parse(c.req.query('limit')??16000);const text=String(output.text??'');return c.json({type:'tool.output',id:c.req.param('id'),text:text.slice(offset,offset+limit),offset,nextOffset:offset+limit<text.length?offset+limit:null});});
+ registerSyncRoutes(app,service);
+ options.mount?.(app,async request=>{const owner=requestOwners.get(request);const pathname=new URL(request.url).pathname;if(!owner&&!publicPaths.includes(pathname))throw new ApiError(401,'unauthorized','Sign in to continue');return featureContext(service,owner??'',{...(owner?{}:{unpinned:true}),...(options.fetcher?{fetch:options.fetcher}:{}),...(options.encryptionKey?{encryptionKey:options.encryptionKey}:{})});});
  return {app,session};
 }
 async function body<T extends z.ZodType>(c:Context,schema:T):Promise<z.infer<T>>{const length=Number(c.req.header('content-length')??0);if(length>1000000)throw new ApiError(413,'too_large','Request is too large');let data:unknown;try{const text=await c.req.text();if(Buffer.byteLength(text)>1000000)throw new ApiError(413,'too_large','Request is too large');data=JSON.parse(text);}catch(e){if(e instanceof ApiError)throw e;throw new ApiError(400,'invalid_json','Expected a JSON request body');}return schema.parse(data);}

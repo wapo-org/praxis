@@ -5,16 +5,25 @@ export function object(value:unknown):JsonObject {return value&&typeof value==='
 export function array(value:unknown):JsonValue[]{return Array.isArray(value)?value:[];}
 export function string(value:unknown):string{return typeof value==='string'?value:'';}
 export function number(value:unknown):number{return typeof value==='number'&&Number.isFinite(value)?value:0;}
+const effortOrder=['none','minimal','low','medium','high','xhigh','max'];
 export function clampEffort(want:string|undefined,supported:string[]|undefined):string|undefined {
-  if(!want||supported?.length===0)return undefined;if(!supported||supported.includes(want))return want;
-  const order=['none','minimal','low','medium','high','xhigh','max'],rank=order.indexOf(want);
-  return [...supported].filter(x=>order.includes(x)).sort((a,b)=>Math.abs(order.indexOf(a)-rank)-Math.abs(order.indexOf(b)-rank)||order.indexOf(a)-order.indexOf(b))[0];
+  if(!want||supported?.length===0)return undefined;want=want.toLowerCase();if(!supported)return want;
+  const values=supported.map(x=>x.toLowerCase());if(values.includes(want))return want;
+  const rank=effortOrder.indexOf(want);if(rank<0)return undefined;
+  return values.filter(x=>effortOrder.includes(x)).sort((a,b)=>Math.abs(effortOrder.indexOf(a)-rank)-Math.abs(effortOrder.indexOf(b)-rank)||effortOrder.indexOf(a)-effortOrder.indexOf(b))[0];
 }
+/** Supported values from a provider rejection, or [] when the parameter is unsupported/unknown. */
+export function parseEffortRejection(message:string):string[] {
+  const lower=message.toLowerCase(),match=/(?:\b(?:supported|allowed)(?: values)?\s*(?::|\bare\b|\bis\b)|\b(?:must|should) be one of)\s*(.*)/.exec(lower);
+  if(!match)return [];
+  return [...new Set(match[1]!.match(/\b(?:none|minimal|low|medium|high|xhigh|max)\b/g)??[])];
+}
+
 const text=(value:string):JsonObject=>({type:'text',text:value});
 const note=(p:MessagePart)=>`[Note]\n${p.text??''}`;
 const flattenCall=(p:MessagePart)=>`[Tool call ${p.name??''} ${p.callId??''}] ${p.arguments??'{}'}`;
-const resultText=(p:MessagePart)=>`${p.isError?'Error: ':''}${(p.content??[]).map(c=>string(c.text)||JSON.stringify(c)).join('\n')||'(no output)'}`;
-function mediaUrl(p:MessagePart):string{return p.url??`data:${p.mediaType??'image/png'};base64,${p.data??''}`;}
+const resultText=(p:MessagePart)=>`${p.isError?'Error: ':''}${(p.content??[]).map(c=>c.type==='image'?`[Image ${string(c.attachmentId)}]`:string(c.text)||JSON.stringify(c)).join('\n')||'(no output)'}`;
+function mediaUrl(p:MessagePart):string{return p.url??`data:${p.mediaType??(string((p as unknown as JsonObject).mimeType)||'image/png')};base64,${p.data??''}`;}
 function omitted(p:MessagePart,req:ProviderRequest):string {
   const offered=req.capabilities.tools&&req.tools.some(t=>t.name==='look_at_image');
   return `[${p.type} ${p.attachmentId??''} omitted${offered?'; use look_at_image to inspect it':''}]`;
@@ -22,14 +31,14 @@ function omitted(p:MessagePart,req:ProviderRequest):string {
 function anthropicContent(p:MessagePart,req:ProviderRequest):JsonObject|undefined {
   if(p.type==='text'||p.type==='note')return text(p.type==='note'?note(p):p.text??'');
   if(p.type==='toolCall')return req.capabilities.tools?{type:'tool_use',id:p.callId??'',name:p.name??'',input:safeArguments(p.arguments)}:text(flattenCall(p));
-  if(p.type==='toolResult')return req.capabilities.tools?{type:'tool_result',tool_use_id:p.callId??'',content:(p.content??[]).map(c=>c.type==='image'?req.capabilities.vision&&req.capabilities.imagesInToolResults?anthropicImage(c):text(omitted({type:'image',...c} as MessagePart,req)):c),is_error:p.isError??false}:text(`[Tool result ${p.callId??''}] ${resultText(p)}`);
+  if(p.type==='toolResult')return req.capabilities.tools?{type:'tool_result',tool_use_id:p.callId??'',content:(p.content??[]).map(c=>c.type==='image'?req.capabilities.vision&&req.capabilities.imagesInToolResults?anthropicImage(c):text(req.capabilities.vision?'[Image attached after tool results]':omitted({type:'image',...c} as MessagePart,req)):c),is_error:p.isError??false}:text(`[Tool result ${p.callId??''}] ${resultText(p)}`);
   if(p.type==='image')return req.capabilities.vision?anthropicImage(p):text(omitted(p,req));
   if(p.type==='document'&&req.capabilities.documents)return {type:'document',source:p.url?{type:'url',url:p.url}:{type:'base64',media_type:p.mediaType??'application/pdf',data:p.data??''}};
   if(p.type==='document')return text(p.text??omitted(p,req));
   return undefined; // Cross-flavor reasoning has no valid signature.
 }
-function anthropicImage(p:{url?:JsonValue;data?:JsonValue;mediaType?:JsonValue}):JsonObject {
-  return {type:'image',source:p.url?{type:'url',url:p.url}:{type:'base64',media_type:p.mediaType??'image/png',data:p.data??''}};
+function anthropicImage(p:{url?:JsonValue;data?:JsonValue;mediaType?:JsonValue;mimeType?:JsonValue}):JsonObject {
+  return {type:'image',source:p.url?{type:'url',url:p.url}:{type:'base64',media_type:p.mediaType??p.mimeType??'image/png',data:p.data??''}};
 }
 function safeArguments(value:string|undefined):JsonObject {try{return JsonObjectSchema.parse(JSON.parse(value??'{}'));}catch{return {};}}
 export interface RequestOptions {systemRole?:'system'|'developer';maxTokensField?:'max_tokens'|'max_completion_tokens'|'omit';replayReasoning?:boolean;webSearchToolType?:string}
@@ -42,6 +51,7 @@ export function buildProviderRequest(flavor:ProviderFlavor,raw:ProviderRequest,o
     for(const m of req.messages) {
       const native=m.role==='assistant'&&m.raw?.flavor===flavor&&c.tools?m.raw.data:undefined;
       const content=native?array(Array.isArray(native)?native:object(native).content):m.parts.map(p=>anthropicContent(p,req)).filter((p):p is JsonObject=>!!p);
+      if(m.role==='user'&&c.vision&&(!c.tools||!c.imagesInToolResults))for(const part of m.parts)if(part.type==='toolResult')for(const image of part.content??[])if(image.type==='image')content.push(anthropicImage(image));
       if(!content.length)continue;
       const last=messages.at(-1);if(last?.role===m.role)last.content=[...array(last.content),...content];else messages.push({role:m.role,content});
     }
@@ -105,7 +115,9 @@ export function buildProviderRequest(flavor:ProviderFlavor,raw:ProviderRequest,o
     const flush=()=>{if(content.length){input.push({role:m.role,content});content=[];}};
     for(const p of m.parts) {
       if(p.type==='toolCall'&&c.tools){flush();input.push({type:'function_call',call_id:p.callId??'',name:p.name??'',arguments:p.arguments??'{}'});}
-      else if(p.type==='toolResult'&&c.tools){flush();input.push({type:'function_call_output',call_id:p.callId??'',output:resultText(p)});}
+      else if(p.type==='toolResult'&&c.tools){flush();input.push({type:'function_call_output',call_id:p.callId??'',output:resultText(p)});
+        if(c.vision)for(const image of p.content??[])if(image.type==='image')content.push({type:'input_image',image_url:mediaUrl(image as MessagePart)});
+      }
       else if(p.type==='image')content.push(c.vision?{type:'input_image',image_url:mediaUrl(p)}:{type:'input_text',text:omitted(p,req)});
       else if(p.type==='document'&&c.documents)content.push({type:'input_file',...(p.url?{file_url:p.url}:{filename:p.attachmentId??'document.pdf',file_data:mediaUrl(p)})});
       else if(['text','note','toolCall','toolResult','document'].includes(p.type))content.push({type:m.role==='assistant'?'output_text':'input_text',text:p.type==='toolCall'?flattenCall(p):p.type==='toolResult'?`[Tool result ${p.callId??''}] ${resultText(p)}`:p.type==='note'?note(p):p.text??omitted(p,req)});
