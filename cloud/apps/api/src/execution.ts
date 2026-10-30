@@ -19,6 +19,8 @@ export interface ContinuationScheduler {
 /** Feature modules composed by the entry point (tools + MCP). All optional so tests can run the bare loop. */
 export interface ExecutionFeatures {
   tools?(ctx: FeatureContext, input: {chat: Chat; runId: string; attachmentIds: string[]}): Promise<FeatureTool[]>;
+  /** Tools already shaped for the loop (e.g. `look_at_image` from @praxis/agent). */
+  agentTools?(ctx: FeatureContext, input: {chat: Chat; runId: string; attachmentIds: string[]}): Promise<AgentTool[]>;
   skills?(ctx: FeatureContext): Promise<CatalogSkill[]>;
   toolNotes?(ctx: FeatureContext, chat: Chat): Promise<string[]>;
 }
@@ -105,6 +107,10 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     if (options.features?.tools) {
       const features = await options.features.tools(ctx(userId), {chat, runId: run.id, attachmentIds: request.attachmentIds});
       for (const tool of features) if (!tools.some(t => t.spec.name === tool.name)) tools.push(adaptTool(tool));
+    }
+    if (options.features?.agentTools) {
+      const extra = await options.features.agentTools(ctx(userId), {chat, runId: run.id, attachmentIds: request.attachmentIds});
+      for (const tool of extra) if (!tools.some(t => t.spec.name === tool.spec.name)) tools.push(tool);
     }
     return tools;
   }

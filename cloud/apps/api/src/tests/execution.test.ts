@@ -91,3 +91,19 @@ describe('execution driver with a real HTTP provider', () => {
     expect(JSON.stringify(fake.requests[1].messages)).toContain('echoed');
   });
 });
+
+describe('slice budget', () => {
+  it('parks a run as continuing when the budget is spent and finishes it in later slices', async () => {
+    const service = new ApiService(createLocalAdapters(), true);
+    let now = 0;
+    service.driver = createExecutionDriver({service, budgetMs: 500, clock: () => (now += 1000)});
+    const {app} = createApp({service, encryptionKey: randomBytes(32).toString('base64')});
+    const res = await app.request('/v1/runs', {method: 'POST', headers: {Authorization: 'Bearer dev-local', 'Content-Type': 'application/json'}, body: JSON.stringify({type: 'run.start', chatId: 'welcome', text: 'Hi', script: 'tools'})});
+    const run = await res.json();
+    for (let i = 0; i < 20; i++) await service.drain();
+    const events = await service.adapters.events.read('local-user', `run:${run.id}`, 0, 500);
+    const types = events.map(e => (e.payload.event as {type: string; reason?: string}));
+    expect(types.filter(e => e.type === 'run.parked' && e.reason === 'continuation').length).toBeGreaterThanOrEqual(1);
+    expect(types.at(-1)).toMatchObject({type: 'run.finished', outcome: 'completed'});
+  });
+});

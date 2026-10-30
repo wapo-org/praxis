@@ -10,10 +10,11 @@ const PUBLIC_KINDS = new Set(['chat', 'connector', 'skill', 'registry', 'attachm
  * directly still invalidate the bootstrap cache and fan out `user.change` events like the core routes do.
  * Every call is pinned to `userId`; a feature can't read or write another owner's rows through it.
  */
-export function featureContext(service: ApiService, userId: string, options: {fetch?: typeof fetch; encryptionKey?: string} = {}): FeatureContext {
+export function featureContext(service: ApiService, userId: string, options: {fetch?: typeof fetch; encryptionKey?: string; unpinned?: boolean} = {}): FeatureContext {
   const inner = service.adapters.store;
   const pin = (requested: string) => {
-    if (requested !== userId) throw new Error('Feature store access outside the authenticated owner');
+    // Unpinned only for public routes (OAuth callback), which bind the owner from a verified, single-use state record.
+    if (!options.unpinned && requested !== userId) throw new Error('Feature store access outside the authenticated owner');
   };
   const store: Store = {
     get: async (u, kind, id) => (pin(u), inner.get(u, kind, id)),

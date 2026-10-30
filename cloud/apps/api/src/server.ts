@@ -27,7 +27,8 @@ export interface PraxisDeps {
   /** Keeps background slices alive after the response (Vercel `waitUntil`). */
   defer?: (work: Promise<unknown>) => void;
   budgetMs?: number;
-  modules?: FeatureModule[];
+  /** Feature modules, or a factory that receives the service (modules need provider resolution). */
+  modules?: FeatureModule[] | ((service: ApiService) => FeatureModule[]);
   log?: (record: {requestId: string; method: string; path: string; status: number; durationMs: number}) => void;
 }
 
@@ -35,7 +36,7 @@ export interface PraxisDeps {
 export function createPraxisApp(deps: PraxisDeps) {
   const service = new ApiService(deps.adapters, deps.local);
   if (deps.defer) service.defer = deps.defer;
-  const modules = deps.modules ?? [];
+  const modules = typeof deps.modules === 'function' ? deps.modules(service) : (deps.modules ?? []);
   const features = mergeExecutionFeatures(modules.flatMap(m => (m.execution ? [m.execution] : [])));
   const driver = createExecutionDriver({
     service,
@@ -66,6 +67,7 @@ export function createPraxisApp(deps: PraxisDeps) {
 function mergeExecutionFeatures(list: ExecutionFeatures[]): ExecutionFeatures {
   return {
     tools: async (ctx, input) => (await Promise.all(list.map(f => f.tools?.(ctx, input) ?? []))).flat(),
+    agentTools: async (ctx, input) => (await Promise.all(list.map(f => f.agentTools?.(ctx, input) ?? []))).flat(),
     skills: async ctx => (await Promise.all(list.map(f => f.skills?.(ctx) ?? []))).flat(),
     toolNotes: async (ctx, chat) => (await Promise.all(list.map(f => f.toolNotes?.(ctx, chat) ?? []))).flat(),
   };
