@@ -11,7 +11,7 @@ let remote: Awaited<ReturnType<typeof fixtureServer>>;
 beforeAll(async () => { remote = await fixtureServer(); });
 afterAll(async () => { await remote.close(); });
 function setup(options: McpOptions = {}) {
-  const ctx: FeatureContext = { ...fixtures(), userId: 'alice', fetch, local: true, encryptionKey: randomBytes(32).toString('base64') };
+  const ctx: FeatureContext = { ...fixtures(), userId: 'alice', fetch, egress: fetch, local: true, encryptionKey: randomBytes(32).toString('base64') };
   const app = new Hono().route('/v1', createMcpRoutes(async req => ({ ...ctx, userId: req.headers.get('X-User') ?? 'alice' }), { publicOrigin: 'http://127.0.0.1:8788', ...options }));
   const request = (path: string, data?: unknown, method = data ? 'POST' : 'GET', user = 'alice') => app.request(`/v1${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-User': user }, ...(data ? { body: JSON.stringify(data) } : {}) });
   const add = async (input = {}) => { const response = await request('/connectors', { type: 'connector.input', name: 'Fixture', url: `${remote.base}/mcp`, ...input }); expect(response.status).toBe(201); return await response.json() as Connector; };

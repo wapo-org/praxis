@@ -22,7 +22,10 @@ export interface Events {
  read(userId:string,channel:string,after:number,limit?:number):Promise<EventRecord[]>;
 }
 export interface AdapterBundle {store:Store;kv:KV;events:Events}
-export interface FeatureContext {userId:string;store:Store;kv:KV;fetch:typeof fetch;local:boolean;encryptionKey?:string}
+export interface FeatureContext {userId:string;store:Store;kv:KV;fetch:typeof fetch;
+ /** SSRF-guarded fetch for user-controlled URLs: DNS validated and pinned per hop (adapters/security.ts createSafeFetch). */
+ egress:typeof fetch;
+ local:boolean;encryptionKey?:string}
 export interface FeatureTool {
  name:string;description:string;inputSchema:JsonObject;
  source:{type:'builtin'|'skill'|'javascript'|'mcp'|'server';serverId?:string;serverName?:string};
