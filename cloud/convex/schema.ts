@@ -14,6 +14,10 @@ const row = {
 };
 
 export default defineSchema({
+  toolSkillFiles: defineTable({userId:v.string(),skillId:v.string(),path:v.string(),content:v.string()})
+    .index('owner_skill', ['userId','skillId']),
+  toolState: defineTable({userId:v.string(),kind:v.string(),id:v.string(),value:v.any()})
+    .index('owner_kind_id', ['userId','kind','id']),
   // Current state of every record, including tombstones.
   records: defineTable(row)
     .index('owner_kind_id', ['userId', 'kind', 'id'])

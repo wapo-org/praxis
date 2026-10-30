@@ -52,3 +52,5 @@ Runtime dependency inventory (features add their package only when implemented):
 - esbuild: small production Node bundle verification (development).
 
 No accounts/projects are created or deployed by agents. Required credentials, external setup, callback URLs and rollout limits are listed in DEPLOY.md. Real adapter suites run only when their environment is supplied. Local tests and scripted smoke runs need none. Production feature claims must distinguish implemented contracts from credential-gated verification and known gaps.
+
+- sharp: server-side orientation-aware image cropping and scaling for the vision reader on Vercel.
