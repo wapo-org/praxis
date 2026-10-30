@@ -10,7 +10,9 @@ final class CloudStoreWiringTests: XCTestCase {
         let backend = CloudTestBackend(scenario: .text)
         let client = CloudAPIClient(configuration: try CloudServerConfiguration(baseURL: CloudTestBackend.baseURL),
                                     session: backend.makeSession(), tokens: CloudSessionStore(inMemory: true))
-        return ChatStore.makeCloudStore(client: client, conversations: [Conversation(title: "Cloud")])
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        return ChatStore.makeCloudStore(client: client, conversations: [Conversation(title: "Cloud")], replicaRoot: root)
     }
 
     func testCloudConstructionSharesServicesVoiceAndElicitationWithoutNativeGraph() async throws {

@@ -39,7 +39,7 @@ final class ChatStore {
     /// with it, so the new bubble can fly in from where the text was typed.
     private(set) var nextTurnID = UUID()
     /// Runs in flight, keyed by conversation.
-    private(set) var runs: [UUID: RunHandle] = [:]
+    var runs: [UUID: RunHandle] = [:]
     /// Engine the next run uses. Changes to live when the first provider
     /// is added (unless `-PraxisEngine` pinned it).
     private(set) var engineKind: EngineKind
@@ -59,6 +59,7 @@ final class ChatStore {
 
     let approvals = ApprovalCenter()
     let cloudElicitations = ElicitationCenter()
+    @ObservationIgnored var cloudReplica: CloudAccountReplica?
     private var cloudModelID = ""
     var elicitationCenter: ElicitationCenter? { engineKind == .cloud ? cloudElicitations : services?.elicitations }
     let haptics = HapticCenter()
@@ -69,7 +70,7 @@ final class ChatStore {
     /// `forLaunch`; the composer and banners read it from here.
     @ObservationIgnored var voice: VoiceInputController?
     /// Trust and "always allow" grants (persisted with the index).
-    private(set) var policy = ToolPolicy()
+    var policy = ToolPolicy()
 
     @ObservationIgnored private var engine: any ChatEngine
     /// Providers, connectors, skills and the runtime (nil in previews and
@@ -77,7 +78,7 @@ final class ChatStore {
     @ObservationIgnored let services: AgentServices?
     @ObservationIgnored let cloudServices: CloudServices?
     @ObservationIgnored private let picksEngineAutomatically: Bool
-    @ObservationIgnored private let persistence: ConversationStore?
+    @ObservationIgnored var persistence: ConversationStore?
     @ObservationIgnored private let attachmentStore: AttachmentStore
     /// Streaming blocks' text, by block id. Not observed: the turn change
     /// that adds a block already re-renders its turn, which looks it up.
@@ -119,6 +120,13 @@ final class ChatStore {
         }
         selectedID = self.conversations.first?.id
         self.background.store = self
+    }
+
+    func clearCloudDrafts() {
+        drafts.removeAll(); draft = ""; attachments = []; pendingConsent = nil; cloudModelID = ""
+        liveTexts.removeAll()
+        for task in collapseTasks.values { task.cancel() }
+        collapseTasks.removeAll()
     }
 
     /// Call after provider profiles change: the first profile switches the
@@ -341,8 +349,8 @@ final class ChatStore {
     func stop(conversationID: UUID) {
         guard let handle = runs.removeValue(forKey: conversationID) else { return }
         background.runStopped(conversationID: conversationID)
-        handle.task?.cancel()
         handle.cancelled.cancel()
+        handle.task?.cancel()
         elicitationCenter?.cancel(scope: handle.elicitationScope)
         // Drain first: an approval event may have arrived without a
         // main-actor drain yet, and its waiter must be released too —
@@ -424,10 +432,12 @@ final class ChatStore {
     }
 
     func appDidEnterBackground() {
+        cloudReplica?.background()
         background.appDidEnterBackground(running: Set(runs.keys))
     }
 
     func appDidBecomeActive() {
+        cloudReplica?.foreground()
         background.appDidBecomeActive(running: Set(runs.keys))
     }
 
@@ -481,7 +491,7 @@ final class ChatStore {
         return ids.filter { !conv.disabledServerIDs.contains($0) }.compactMap { library.server($0)?.name }.sorted()
     }
 
-    private func startRun(in conv: Conversation, turnID: UUID) {
+    func startRun(in conv: Conversation, turnID: UUID) {
         // Settle-then-supersede: replacing a run without settling it would
         // abandon its turn as running forever (resend while streaming).
         stop(conversationID: conv.id)
@@ -518,8 +528,8 @@ final class ChatStore {
     private func cancelRun(_ conversationID: UUID) {
         guard let handle = runs.removeValue(forKey: conversationID) else { return }
         background.runStopped(conversationID: conversationID)
-        handle.task?.cancel()
         handle.cancelled.cancel()
+        handle.task?.cancel()
         elicitationCenter?.cancel(scope: handle.elicitationScope)
         approvals.denyAll(handle.approvalIDs.union(approvalIDs(in: handle.inbox.drain().events)))
     }
@@ -572,6 +582,12 @@ final class ChatStore {
             autoCollapseActivities(turnID: handle.turnID)
         }
         if change.effects.contains(.commit) || change.effects.contains(.finished) { save(conv) }
+        if change.effects.contains(.finished), let lifecycle = cloudReplica?.lifecycle, let persistence {
+            Task {
+                await persistence.flush()
+                await lifecycle.projectionCommitted(turnID: handle.turnID)
+            }
+        }
     }
 
     private func applyLiveText(_ change: TurnReducer.Change) {

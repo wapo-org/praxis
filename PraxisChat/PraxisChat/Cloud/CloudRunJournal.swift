@@ -40,6 +40,7 @@ actor CloudRunJournal {
         var events: [Data]
         var cursor: Int
         var byteCount: UInt64
+        var snapshot: Data? = nil
     }
     private struct WireRecord: Codable { let data: Data }
     private struct Envelope: Decodable {
@@ -108,28 +109,46 @@ actor CloudRunJournal {
     }
 
     func replay(runID: String) -> Replay {
-        guard let data = try? Data(contentsOf: eventsURL(runID)) else {
-            return Replay(events: [], cursor: 0, byteCount: 0)
-        }
-        var replay = Replay(events: [], cursor: 0, byteCount: 0)
+        let snapshotData = try? Data(contentsOf: snapshotURL(runID))
+        let snapshot = snapshotData.flatMap { try? JSONDecoder().decode(CloudRunSnapshot.self, from: $0) }
+        var replay = Replay(events: [], cursor: snapshot?.lastEventId ?? 0, byteCount: 0, snapshot: snapshotData)
+        guard let data = try? Data(contentsOf: eventsURL(runID)) else { return replay }
         var start = data.startIndex
         while let newline = data[start...].firstIndex(of: 10) {
             guard let record = try? JSONDecoder().decode(WireRecord.self, from: Data(data[start..<newline])),
                   let envelope = try? JSONDecoder().decode(Envelope.self, from: record.data),
                   envelope.type == "run.event", envelope.runId == runID,
-                  envelope.id > replay.cursor, envelope.id <= 9_007_199_254_740_991 else { break }
-            replay.events.append(record.data)
-            replay.cursor = envelope.id
+                  envelope.id > 0, envelope.id <= 9_007_199_254_740_991 else { break }
+            if envelope.id > replay.cursor {
+                replay.events.append(record.data)
+                replay.cursor = envelope.id
+            }
             start = data.index(after: newline)
             replay.byteCount = UInt64(start)
         }
         return replay
     }
 
+    func checkpoint(_ data: Data, runID: String) throws {
+        let snapshot = try JSONDecoder().decode(CloudRunSnapshot.self, from: data)
+        guard snapshot.run.id == runID else { throw Failure.invalidEvent }
+        _ = try snapshot.presentationEvents()
+        try prepareDirectory()
+        // Snapshot first: a crash before deleting the old log is safe because
+        // replay ignores entries already covered by this checkpoint.
+        try data.write(to: snapshotURL(runID), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        try Data().write(to: eventsURL(runID), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        cursors[runID] = snapshot.lastEventId
+        blocked.remove(runID)
+    }
+    private func snapshotURL(_ runID: String) -> URL {
+        directory.appendingPathComponent(CloudReplicaScope.digest(runID)).appendingPathExtension("snapshot")
+    }
+
     /// Call only after the terminal turn projection has been persisted. Keeping
     /// a journal longer is safe; deleting it before that commit loses recovery.
     func remove(runID: String) throws {
-        for url in [eventsURL(runID), metadataURL(runID)] where FileManager.default.fileExists(atPath: url.path) {
+        for url in [eventsURL(runID), metadataURL(runID), snapshotURL(runID)] where FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)
         }
         cursors.removeValue(forKey: runID)

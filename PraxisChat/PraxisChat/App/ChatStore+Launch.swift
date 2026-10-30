@@ -24,7 +24,10 @@ extension ChatStore {
                                            persistence: ConversationStore(directory: AppDirectories.conversations))
                 store.background.installNotificationDelegate()
                 store.background.appDidLaunch()
-                Task { await store.cloudServices?.loadIfNeeded() }
+                Task {
+                    await store.cloudReplica?.restoreBeforeNetwork()
+                    await store.cloudServices?.loadIfNeeded()
+                }
                 return store
             } catch {
                 return ChatStore(engine: CloudConfigurationErrorEngine(message: error.localizedDescription),
@@ -71,11 +74,14 @@ extension ChatStore {
 
     /// Injectable construction shared by the launch path and wiring tests.
     static func makeCloudStore(client: CloudAPIClient, persistence: ConversationStore? = nil,
-                               conversations: [Conversation]? = nil) -> ChatStore {
+                               conversations: [Conversation]? = nil, replicaRoot: URL = AppDirectories.root) -> ChatStore {
         let cloud = CloudServices(client: client)
-        let store = ChatStore(engine: CloudChatEngine(client: client), conversations: conversations,
+        let store = ChatStore(engine: CloudChatEngine(client: client), conversations: conversations ?? [],
                               persistence: persistence, cloudServices: cloud)
         store.use(CloudChatEngine(client: client, elicitations: store.cloudElicitations))
+        let replica = CloudAccountReplica(store: store, client: client, root: replicaRoot)
+        store.cloudReplica = replica
+        cloud.onSessionChanged = { [weak replica] user in replica?.sessionChanged(user) }
         store.voice = VoiceInputController.production(chatStore: store, cloudServices: cloud)
         store.voiceRetryTranscription = { [weak store] id in store?.voice?.retryTranscription(id: id) }
         return store
