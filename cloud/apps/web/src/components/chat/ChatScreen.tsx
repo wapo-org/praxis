@@ -1,10 +1,13 @@
+import { extractMessageToolSteps } from './messageTools';
+import { MessageActivity } from './MessageActivity';
 import React from 'react';
 import type { Message } from '@praxis/protocol';
-import { GlassChip, GlassSurface, ProgressiveBlurScrim } from '@praxis/glass';
+import { GlassChip, ProgressiveBlurScrim } from '@praxis/glass';
 import { usePraxisStore, type ActiveToolStep } from '../../state/store';
 import { UserBubble } from './UserBubble';
 import { AgentActivityView } from './AgentActivityView';
 import { AgentMessageView } from './AgentMessageView';
+import { ChatHeader } from './ChatHeader';
 import { Composer } from './Composer';
 
 export interface ChatScreenProps {
@@ -37,66 +40,6 @@ const STARTER_SUGGESTIONS: Array<{
     script: 'elicitation',
   },
 ];
-
-function extractMessageToolSteps(msg: Message): ActiveToolStep[] {
-  const byCallId = new Map<string, ActiveToolStep>();
-  for (const part of msg.parts) {
-    if (part.type === 'toolCall' && part.callId) {
-      byCallId.set(part.callId, {
-        callId: part.callId,
-        activity: {
-          type: 'tool.activity',
-          id: part.callId,
-          name: part.name || 'tool',
-          source: { type: 'builtin' },
-          presentation: {
-            type: 'tool.presentation',
-            category: 'other',
-            runningTitle: part.name || 'Running tool',
-            finishedTitle: part.name || 'Completed tool',
-          },
-        },
-        argumentsJson: part.arguments ?? '{}',
-        running: false,
-        progressLines: [],
-      });
-    } else if (part.type === 'toolResult' && part.callId) {
-      const existing = byCallId.get(part.callId);
-      const preview = part.text ?? (part.content ? JSON.stringify(part.content) : '');
-      const completion = {
-        type: 'tool.completion' as const,
-        status: part.isError ? ('failed' as const) : ('succeeded' as const),
-        summary: part.isError ? 'Tool failed' : 'Tool completed',
-        preview,
-        outputRef: part.outputRef,
-      };
-      if (existing) {
-        existing.completion = completion;
-      } else {
-        byCallId.set(part.callId, {
-          callId: part.callId,
-          activity: {
-            type: 'tool.activity',
-            id: part.callId,
-            name: part.name || 'tool',
-            source: { type: 'builtin' },
-            presentation: {
-              type: 'tool.presentation',
-              category: 'other',
-              runningTitle: part.name || 'Running tool',
-              finishedTitle: part.name || 'Completed tool',
-            },
-          },
-          argumentsJson: '{}',
-          running: false,
-          progressLines: [],
-          completion,
-        });
-      }
-    }
-  }
-  return Array.from(byCallId.values());
-}
 
 export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
   const {
@@ -175,200 +118,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
         }}
       />
 
-      {/* Floating Top Chrome Bar */}
-      <header
-        data-testid="chat-top-bar"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          zIndex: 20,
-          padding: '14px 18px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 12,
-          pointerEvents: 'none',
-        }}
-      >
-        {/* Left Cluster: History + New Chat */}
-        <GlassSurface
-          material="regular"
-          intensity="medium"
-          radius={999}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 2,
-            padding: 4,
-            pointerEvents: 'auto',
-          }}
-        >
-          <button
-            type="button"
-            aria-label="History"
-            data-testid="nav-history-button"
-            onClick={() => setActiveSheet('history')}
-            style={{
-              height: 32,
-              padding: '0 12px',
-              borderRadius: 999,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--paper-ink)',
-              fontSize: 13.5,
-              fontWeight: 500,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              cursor: 'pointer',
-            }}
-          >
-            <span aria-hidden="true">☰</span>
-            <span>History</span>
-          </button>
-
-          <div
-            style={{
-              width: 0.5,
-              height: 16,
-              backgroundColor: 'var(--paper-hairline)',
-            }}
-          />
-
-          <button
-            type="button"
-            aria-label="New chat"
-            data-testid="nav-new-chat-button"
-            onClick={() => void createNewChat('New chat')}
-            style={{
-              height: 32,
-              padding: '0 12px',
-              borderRadius: 999,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--paper-ink)',
-              fontSize: 13.5,
-              fontWeight: 500,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              cursor: 'pointer',
-            }}
-          >
-            <span aria-hidden="true">✎</span>
-            <span>New</span>
-          </button>
-        </GlassSurface>
-
-        {/* Center Title Pill */}
-        <GlassSurface
-          role="button" tabIndex={0}
-          material="thin"
-          intensity="subtle"
-          radius={999}
-          interactive
-          data-testid="nav-chat-title-pill"
-          onClick={() => setActiveSheet('history')}
-          style={{
-            padding: '6px 16px',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'inline-flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            maxWidth: 320,
-            pointerEvents: 'auto',
-          }}
-        >
-          <span
-            style={{
-              fontSize: 13.5,
-              fontWeight: 600,
-              color: 'var(--paper-ink)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              maxWidth: '100%',
-            }}
-          >
-            {activeChat?.title || 'New chat'}
-          </span>
-          <span style={{ fontSize: 11, color: 'var(--paper-ink-3)', lineHeight: '13px' }}>
-            {currentModel?.displayName ?? selectedModelId}
-          </span>
-        </GlassSurface>
-
-        {/* Right Cluster: Glass Lab + Settings */}
-        <GlassSurface
-          material="regular"
-          intensity="medium"
-          radius={999}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 2,
-            padding: 4,
-            pointerEvents: 'auto',
-          }}
-        >
-          {onOpenGlassLab && (
-            <>
-              <button
-                type="button"
-                aria-label="Liquid Glass Lab"
-                data-testid="nav-lab-button"
-                onClick={onOpenGlassLab}
-                style={{
-                  height: 32,
-                  padding: '0 11px',
-                  borderRadius: 999,
-                  border: 'none',
-                  background: 'transparent',
-                  color: 'var(--paper-ink-2)',
-                  fontSize: 12.5,
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
-                ✦ Lab
-              </button>
-              <div
-                style={{
-                  width: 0.5,
-                  height: 16,
-                  backgroundColor: 'var(--paper-hairline)',
-                }}
-              />
-            </>
-          )}
-
-          <button
-            type="button"
-            aria-label="Settings"
-            data-testid="nav-settings-button"
-            onClick={() => setActiveSheet('settings')}
-            style={{
-              height: 32,
-              padding: '0 12px',
-              borderRadius: 999,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--paper-ink)',
-              fontSize: 13.5,
-              fontWeight: 500,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              cursor: 'pointer',
-            }}
-          >
-            <span aria-hidden="true">⚙</span>
-            <span>Settings</span>
-          </button>
-        </GlassSurface>
-      </header>
+      <ChatHeader onOpenGlassLab={onOpenGlassLab} />
 
       {/* Main Scrollable Conversation Viewport */}
       <div
@@ -511,6 +261,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
           ) : (
             /* Conversation Turns */
             activeMessages.map((msg) => {
+              if (msg.role === 'assistant' && hasLiveStreamingContent && msg.runId === activeLiveRun?.run.id) return null;
               if (msg.role === 'user') {
                 return (
                   <UserBubble
@@ -537,11 +288,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
               return (
                 <div key={msg.id} data-testid="assistant-turn">
                   {(msgToolSteps.length > 0 || msgReasoning.length > 0) && (
-                    <AgentActivityView
-                      isRunning={false}
-                      reasoningBlocks={msgReasoning}
-                      toolSteps={msgToolSteps}
-                    />
+                    <MessageActivity message={msg} steps={msgToolSteps} liveRun={activeLiveRun?.run.id === msg.runId ? activeLiveRun?.run : undefined} liveSteps={activeLiveRun?.run.id === msg.runId ? activeLiveRun?.toolSteps : undefined} />
                   )}
                   {msgText && (
                     <AgentMessageView
@@ -569,6 +316,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
           {hasLiveStreamingContent && activeLiveRun && (
             <div data-testid="live-run-streaming-turn">
               <AgentActivityView
+                startedAt={activeLiveRun.run.createdAt}
+                finishedAt={activeLiveRun.run.updatedAt}
                 runId={activeLiveRun.run.id}
                 isRunning={activeLiveRun.run.status === 'running'}
                 reasoningBlocks={activeLiveRun.reasoningBlocks}

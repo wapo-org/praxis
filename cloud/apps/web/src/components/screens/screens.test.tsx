@@ -1,24 +1,16 @@
 // @vitest-environment jsdom
+import type { Chat, Connector, Model, Provider, Skill } from '@praxis/protocol';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from 'vitest';
-import type { Chat, Connector, Model, Provider, Skill } from '@praxis/protocol';
-import type { PraxisStoreContextValue } from '../../state/store.js';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../../lib/api.js';
+import type { PraxisStoreContextValue } from '../../state/store.js';
 import { ConnectorsScreen, parseConnectorConfig } from './ConnectorsScreen.js';
 import { ConsentSheet } from './ConsentSheet.js';
 import { HistorySheet } from './HistorySheet.js';
 import { ImageReaderScreen } from './ImageReaderScreen.js';
-import { ProviderEditor, SettingsSheet } from './SettingsSheet.js';
 import { SheetDialog } from './ScreenUI.js';
+import { ProviderEditor, SettingsSheet } from './SettingsSheet.js';
 import { SheetsRoot } from './SheetsRoot.js';
 import { SkillsScreen } from './SkillsScreen.js';
 import { VoiceSettingsScreen } from './VoiceSettingsScreen.js';
@@ -100,6 +92,7 @@ beforeEach(() => {
     attachmentsById: {},
     preferences: null,
     themeMode: 'system',
+    hydrated: true,
     activeSheet: null,
     pendingConsentPrompt: null,
     desktopSidebarOpen: false,
@@ -137,15 +130,11 @@ afterEach(async () => {
 });
 
 async function mount(element: React.ReactNode) {
-  await act(async () =>
-    root.render(<div className="screen-shell">{element}</div>),
-  );
+  await act(async () => root.render(<div className="screen-shell">{element}</div>));
 }
 function button(text: string): HTMLButtonElement {
   const match = Array.from(document.querySelectorAll('button')).find(
-    (node) =>
-      node.textContent?.trim() === text ||
-      node.getAttribute('aria-label') === text,
+    (node) => node.textContent?.trim() === text || node.getAttribute('aria-label') === text,
   );
   if (!match) throw new Error(`Button not found: ${text}`);
   return match;
@@ -153,10 +142,7 @@ function button(text: string): HTMLButtonElement {
 async function click(element: HTMLElement) {
   await act(async () => element.click());
 }
-async function fill(
-  input: HTMLInputElement | HTMLTextAreaElement,
-  value: string,
-) {
+async function fill(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
   await act(async () => {
     const proto =
       input instanceof HTMLTextAreaElement
@@ -199,21 +185,17 @@ describe('remote connector import', () => {
   });
   it('rejects local commands, malformed configs, and unsupported headers before import', () => {
     expect(() => parseConnectorConfig('{')).toThrow('valid JSON');
-    expect(() => parseConnectorConfig('{"mcpServers":{}}')).toThrow(
-      'no servers',
+    expect(() => parseConnectorConfig('{"mcpServers":{}}')).toThrow('no servers');
+    expect(() => parseConnectorConfig('{"mcpServers":{"Local":{"command":"npx"}}}')).toThrow(
+      'only remote servers',
     );
-    expect(() =>
-      parseConnectorConfig('{"mcpServers":{"Local":{"command":"npx"}}}'),
-    ).toThrow('only remote servers');
     expect(() =>
       parseConnectorConfig(
         '{"mcpServers":{"Docs":{"url":"https://example.com","headers":{"X-API-Key":"secret"}}}}',
       ),
     ).toThrow('only an Authorization');
     expect(() =>
-      parseConnectorConfig(
-        '{"mcpServers":{"Docs":{"url":"file:///tmp/server"}}}',
-      ),
+      parseConnectorConfig('{"mcpServers":{"Docs":{"url":"file:///tmp/server"}}}'),
     ).toThrow('HTTP or HTTPS');
   });
 });
@@ -222,40 +204,48 @@ describe('history interactions', () => {
   it('groups pinned chats and deletes exactly the selected chat IDs', async () => {
     store.chats = [chat('one', true), chat('two')];
     await mount(<HistorySheet />);
-    expect(
-      document.querySelector('section[aria-label="Pinned"]')?.textContent,
-    ).toContain('Chat one');
-    expect(
-      document.querySelector('section[aria-label="Today"]')?.textContent,
-    ).toContain('Chat two');
+    expect(document.querySelector('section[aria-label="Pinned"]')?.textContent).toContain(
+      'Chat one',
+    );
+    expect(document.querySelector('section[aria-label="Today"]')?.textContent).toContain(
+      'Chat two',
+    );
     await click(button('History options'));
     // The menu lives outside the scrolling body, within the focus-trapped sheet.
-    expect(
-      document.querySelector('[role="menu"]')?.parentElement?.className,
-    ).toBe('screen-shell');
+    expect(document.querySelector('[role="menu"]')?.parentElement?.className).toBe('screen-shell');
     await click(button('Select chats'));
-    await click(
-      document.querySelector<HTMLInputElement>(
-        '[aria-label="Select Chat two"]',
-      )!,
-    );
+    await click(document.querySelector<HTMLInputElement>('[aria-label="Select Chat two"]')!);
     await click(button('Delete selected (1)'));
     expect(store.deleteChats).toHaveBeenCalledWith(['two']);
   });
   it('keeps history open and shows a useful failure if opening a chat fails', async () => {
     store.chats = [chat('one')];
-    store.selectChat = vi
-      .fn()
-      .mockRejectedValue(new Error('Could not load this chat'));
+    store.selectChat = vi.fn().mockRejectedValue(new Error('Could not load this chat'));
     const close = vi.fn();
     await mount(<HistorySheet onSelect={close} />);
-    await click(
-      document.querySelector<HTMLButtonElement>('.screen-history-select')!,
-    );
+    await click(document.querySelector<HTMLButtonElement>('.screen-history-select')!);
     expect(close).not.toHaveBeenCalled();
-    expect(document.querySelector('[role="alert"]')?.textContent).toContain(
-      'Could not load',
-    );
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('Could not load');
+  });
+});
+
+describe('connector health status', () => {
+  it('uses the API health field and never infers Connected from authStatus', async () => {
+    store.connectors = [{ ...connector, authStatus: 'none' }];
+    await mount(<ConnectorsScreen />);
+    expect(container.textContent).toContain('Status unknown');
+    expect(container.textContent).not.toContain('Connected');
+    for (const [status, label] of [
+      ['connected', 'Connected'],
+      ['unreachable', 'Unreachable'],
+      ['needs_auth', 'Needs auth'],
+      ['needs_reauth', 'Needs reauth'],
+      ['error', 'Error'],
+    ] as const) {
+      store.connectors = [{ ...connector, status }];
+      await mount(<ConnectorsScreen />);
+      expect(container.textContent).toContain(label);
+    }
   });
 });
 
@@ -268,9 +258,9 @@ describe('settings and capabilities', () => {
     await click(button('Light'));
     expect(store.setThemeMode).toHaveBeenCalledWith('light');
     await click(
-      Array.from(
-        document.querySelectorAll<HTMLButtonElement>('.screen-nav-row'),
-      ).find((node) => node.textContent?.includes('Connectors'))!,
+      Array.from(document.querySelectorAll<HTMLButtonElement>('.screen-nav-row')).find((node) =>
+        node.textContent?.includes('Connectors'),
+      )!,
     );
     expect(store.setActiveSheet).toHaveBeenCalledWith('connectors');
   });
@@ -284,7 +274,7 @@ describe('settings and capabilities', () => {
       message: 'Invalid credentials',
     });
     await mount(<ProviderEditor />);
-    await click(button('Verify & Refresh Models'));
+    await click(button('Test connection'));
     expect(store.saveProvider).toHaveBeenCalledWith(
       expect.not.objectContaining({ apiKey: expect.anything() }),
     );
@@ -292,10 +282,24 @@ describe('settings and capabilities', () => {
       expect.not.objectContaining({ extraHeaders: expect.anything() }),
     );
     expect(store.refreshModelsForProvider).not.toHaveBeenCalled();
-    expect(document.querySelector('[role="alert"]')?.textContent).toContain(
-      'Invalid credentials',
-    );
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('Invalid credentials');
     expect(store.setActiveSheet).not.toHaveBeenCalled();
+  });
+  it('persists edited endpoint capabilities and offers an iOS preset picker', async () => {
+    store.providers = [provider];
+    store.editingProviderId = provider.id;
+    await mount(<ProviderEditor />);
+    expect(document.querySelector('[aria-label="Provider preset"]')?.tagName).toBe('BUTTON');
+    const tools = [...document.querySelectorAll<HTMLInputElement>('[role="switch"]')].find((n) =>
+      n.closest('label')?.textContent?.includes('Tool calling'),
+    )!;
+    await click(tools);
+    await click(button('Save provider'));
+    expect(store.saveProvider).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capabilities: expect.objectContaining({ tools: true }),
+      }),
+    );
   });
   it('clears saved headers only after an explicit edit', async () => {
     store.providers = [{ ...provider, headerNames: ['X-Account'] }];
@@ -322,21 +326,13 @@ describe('settings and capabilities', () => {
       ],
     };
     await mount(<ConnectorsScreen />);
-    await click(
-      document.querySelector<HTMLButtonElement>('[aria-expanded="false"]')!,
-    );
+    await click(document.querySelector<HTMLButtonElement>('[aria-expanded="false"]')!);
     expect(store.loadConnectorTools).toHaveBeenCalledWith(connector.id);
     const searchToggle = Array.from(
       document.querySelectorAll<HTMLInputElement>('[role="switch"]'),
-    ).find((node) =>
-      node.closest('label')?.textContent?.includes('Search docs'),
-    )!;
+    ).find((node) => node.closest('label')?.textContent?.includes('Search docs'))!;
     await click(searchToggle);
-    expect(store.setConnectorToolEnabled).toHaveBeenCalledWith(
-      connector.id,
-      'search',
-      false,
-    );
+    expect(store.setConnectorToolEnabled).toHaveBeenCalledWith(connector.id, 'search', false);
   });
   it('preserves a skill document when disabling it', async () => {
     store.skills = [skill];
@@ -372,14 +368,10 @@ describe('settings and capabilities', () => {
   });
   it('saves voice options without replacing an omitted key', async () => {
     await mount(<VoiceSettingsScreen />);
-    await click(
-      document.querySelector<HTMLInputElement>(
-        'input[value="whisper-large-v3"]',
-      )!,
-    );
-    const language = Array.from(
-      document.querySelectorAll<HTMLInputElement>('input'),
-    ).find((node) => node.placeholder === 'Detect automatically')!;
+    await click(document.querySelector<HTMLInputElement>('input[value="whisper-large-v3"]')!);
+    const language = Array.from(document.querySelectorAll<HTMLInputElement>('input')).find(
+      (node) => node.placeholder === 'Detect automatically',
+    )!;
     await fill(language, 'pl');
     await click(button('Save voice settings'));
     expect(store.updatePreferences).toHaveBeenCalledWith({
@@ -400,12 +392,10 @@ describe('sheet and consent lifecycle', () => {
       onCancel: cancel,
     };
     await mount(<SheetsRoot />);
-    expect(
-      document.querySelector('[role="dialog"]')?.getAttribute('aria-label'),
-    ).toBe('AI data sharing');
-    expect(document.querySelector('#consentTitle')?.textContent).toContain(
-      'recording',
+    expect(document.querySelector('[role="dialog"]')?.getAttribute('aria-label')).toBe(
+      'AI data sharing',
     );
+    expect(document.querySelector('#consentTitle')?.textContent).toContain('recording');
     expect(document.body.textContent).toContain('voice.example.com');
     expect(document.body.textContent).not.toContain('Your messages');
     await click(button('Allow'));
@@ -425,9 +415,7 @@ describe('sheet and consent lifecycle', () => {
     await act(async () =>
       document
         .querySelector('[role="dialog"]')!
-        .dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
-        ),
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
     );
     expect(cancel).toHaveBeenCalledOnce();
     expect(store.setPendingConsentPrompt).toHaveBeenCalledWith(null);
@@ -452,16 +440,12 @@ describe('sheet and consent lifecycle', () => {
     await act(async () =>
       document
         .querySelector('[role="dialog"]')!
-        .dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }),
-        ),
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })),
     );
     expect(document.activeElement?.textContent).toBe('First');
     button('Last').focus();
     await act(async () =>
-      button('Last').dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }),
-      ),
+      button('Last').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })),
     );
     expect(document.activeElement?.textContent).toBe('First');
     await mount(null);

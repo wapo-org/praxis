@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Eye } from 'lucide-react';
+import { Check, Eye } from '../../lib/icons';
 import { GlassChip } from '@praxis/glass';
 import type { Model } from '@praxis/protocol';
 import { usePraxisStore } from '../../state/store.js';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, Grid2X2, Plus, Search, Trash2 } from 'lucide-react';
+import { Download, Grid2X2, Plus, Search, Trash2 } from '../../lib/icons';
 import type { Skill } from '@praxis/protocol';
 import { usePraxisStore } from '../../state/store.js';
 import {

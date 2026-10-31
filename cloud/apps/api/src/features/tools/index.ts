@@ -1,12 +1,13 @@
 import {randomUUID} from 'node:crypto';
 import {Hono} from 'hono';
 import {z} from 'zod';
-import {AttachmentSchema,IdSchema,PageQuerySchema,RegistryInputSchema,RegistrySchema,SkillInputSchema,SkillSchema,UploadCompleteSchema,UploadRequestSchema} from '@praxis/protocol';
+import {SkillImportSchema,AttachmentSchema,IdSchema,PageQuerySchema,RegistryInputSchema,RegistrySchema,SkillInputSchema,SkillSchema,UploadCompleteSchema,UploadRequestSchema} from '@praxis/protocol';
 import type {FeatureContext} from '../../contracts.js';
 import {ApiError} from '../../service.js';
 import {jsonBody,page,readLimited} from './http.js';
 import {requireRow,saveSkill} from './skills.js';
-import {installSkill,registryEntries} from './registries.js';
+import {installSkill,registryEntries,skillUpdates,updateSkill} from './registries.js';
+import {importSkill} from './import.js';
 import {transcribe} from './transcribe.js';
 import {createLocalToolsStorage} from './local-storage.js';
 import type {ToolsPorts} from './ports.js';
@@ -17,6 +18,9 @@ export function createToolsRoutes(context:(req:Request)=>Promise<FeatureContext>
  const app=new Hono();let localStorage:ReturnType<typeof createLocalToolsStorage>|undefined;
  const storage=(ctx:FeatureContext,req:Request)=>{if(ports.storage)return ports.storage;if(ctx.local)return localStorage??=createLocalToolsStorage(req.url);throw new ApiError(503,'storage_unconfigured','Attachment storage is not configured');};
  app.onError((e,c)=>{if(e instanceof ApiError)return c.json({type:'error',code:e.code,message:e.message},e.status as 400);if(e instanceof z.ZodError)return c.json({type:'error',code:'validation_error',message:'Request does not match the protocol'},400);return c.json({type:'error',code:'internal_error',message:'Request could not be completed'},500);});
+ app.get('/skills/updates',async c=>c.json({type:'page',items:await skillUpdates(await context(c.req.raw)),nextCursor:null}));
+ app.post('/skills/:id/update',async c=>{const ctx=await context(c.req.raw),skill=await updateSkill(ctx,IdSchema.parse(c.req.param('id')));await ports.changed?.(ctx,'skill',skill.id,skill);return c.json(skill);});
+ app.post('/skills/import',async c=>{const ctx=await context(c.req.raw),input=await jsonBody(c.req.raw,SkillImportSchema),row=await requireRow(ctx,'attachment',input.attachmentId),s=storage(ctx,c.req.raw);if(Number(row.value.size)>25000000)throw new ApiError(413,'too_large','Archive exceeds 25 MB');const file=await s.read(ctx.userId,z.string().parse(row.value.storageId));const result=await importSkill(ctx,s,file.bytes,z.string().parse(row.value.name));await ports.changed?.(ctx,'skill',result.skill.id,result.skill);return c.json({type:'skill.import.result',...result},201);});
  for(const [path,kind,input,schema] of [['skills','skill',SkillInputSchema,SkillSchema],['skill-registries','registry',RegistryInputSchema,RegistrySchema]] as const){
   app.get(`/${path}`,async c=>{const ctx=await context(c.req.raw),query=PageQuerySchema.parse(c.req.query());let rows=(await ctx.store.list(ctx.userId,kind)).filter(r=>!r.deleted).map(r=>schema.parse(r.value));if(query.q)rows=rows.filter(r=>JSON.stringify(r).toLowerCase().includes(query.q!.toLowerCase()));rows.sort((a,b)=>a.id.localeCompare(b.id));return c.json(page(rows,query,JSON.stringify([ctx.userId,path,query.q??''])));});
   app.post(`/${path}`,async c=>{const ctx=await context(c.req.raw),value=await jsonBody(c.req.raw,input);let result;if(kind==='skill')result=await saveSkill(ctx,SkillInputSchema.parse(value));else{result=RegistrySchema.parse({...value,type:'skill.registry',id:randomUUID()});await ctx.store.put(ctx.userId,kind,result.id,result);}await ports.changed?.(ctx,kind,result.id,result);return c.json(result,201);});

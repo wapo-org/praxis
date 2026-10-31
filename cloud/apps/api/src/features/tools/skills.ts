@@ -20,7 +20,7 @@ export function parseSkillDocument(document:string){
 }
 export function skillDocument(name:string,description:string,instructions:string){return `---\n${stringify({name,description}).trimEnd()}\n---\n${instructions.trim()}\n`;}
 export async function requireRow(ctx:FeatureContext,kind:string,id:string){const row=await ctx.store.get(ctx.userId,kind,id);if(!row||row.deleted)throw new ApiError(404,'not_found','Resource not found');return row;}
-export async function saveSkill(ctx:FeatureContext,input:{name:string;description:string;document:string;enabled:boolean},id=randomUUID() as string){
+export async function saveSkill(ctx:FeatureContext,input:{name:string;description:string;document:string;enabled:boolean;registryId?:string;registryEntryId?:string;registryDigest?:string},id=randomUUID() as string){
  const parsed=parseSkillDocument(input.document);
  if(input.name!==parsed.name||input.description.trim()!==parsed.description)throw new ApiError(400,'invalid_skill','Name and description must match SKILL.md frontmatter');
  if((await ctx.store.list(ctx.userId,'skill')).some(r=>!r.deleted&&r.id!==id&&r.value.name===parsed.name))throw new ApiError(409,'skill_exists','A skill with that name exists');

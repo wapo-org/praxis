@@ -73,6 +73,6 @@ describe('@praxis/glass tokens & engine', () => {
     });
     expect(maps2).toBe(maps1);
     expect(BAKED_PROFILES.regular.length).toBe(41);
-    expect(negotiateStrategy()).toMatch(/^(svg-displacement|progressive-frost|reduced-transparency)$/);
+    expect(negotiateStrategy()).toMatch(/^(svg-displacement|webgl-refraction|progressive-frost|reduced-transparency)$/);
   });
 });

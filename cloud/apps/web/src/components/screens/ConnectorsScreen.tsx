@@ -1,14 +1,7 @@
 import React from 'react';
-import {
-  ExternalLink,
-  FileJson,
-  Grid2X2,
-  Link,
-  RefreshCw,
-  Trash2,
-} from 'lucide-react';
-import { usePraxisStore } from '../../state/store.js';
 import { apiClient } from '../../lib/api.js';
+import { ExternalLink, FileJson, Grid2X2, Link, RefreshCw, Trash2 } from '../../lib/icons';
+import { usePraxisStore } from '../../state/store.js';
 import {
   Card,
   Field,
@@ -41,9 +34,7 @@ export function parseConnectorConfig(source: string): ConnectorInput[] {
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    throw new Error(
-      'Paste a server URL or valid JSON with an mcpServers object.',
-    );
+    throw new Error('Paste a server URL or valid JSON with an mcpServers object.');
   }
   if (
     !parsed ||
@@ -58,12 +49,7 @@ export function parseConnectorConfig(source: string): ConnectorInput[] {
   const entries = Object.entries(parsed.mcpServers);
   if (!entries.length) throw new Error('The config contains no servers.');
   return entries.map(([name, value]) => {
-    if (
-      !value ||
-      typeof value !== 'object' ||
-      !('url' in value) ||
-      typeof value.url !== 'string'
-    )
+    if (!value || typeof value !== 'object' || !('url' in value) || typeof value.url !== 'string')
       throw new Error(
         `${name}: only remote servers with an HTTP or HTTPS URL are supported. Local commands cannot run in the browser.`,
       );
@@ -84,11 +70,7 @@ export function parseConnectorConfig(source: string): ConnectorInput[] {
       throw new Error(`${name}: unsupported server type.`);
     let token: string | undefined;
     if (config.headers !== undefined) {
-      if (
-        !config.headers ||
-        typeof config.headers !== 'object' ||
-        Array.isArray(config.headers)
-      )
+      if (!config.headers || typeof config.headers !== 'object' || Array.isArray(config.headers))
         throw new Error(`${name}: headers must be an object.`);
       for (const [header, secret] of Object.entries(config.headers)) {
         if (
@@ -107,10 +89,7 @@ export function parseConnectorConfig(source: string): ConnectorInput[] {
     return {
       name: name.trim(),
       url: requireHttpUrl(value.url),
-      transport:
-        config.transport === 'sse' || config.type === 'sse'
-          ? 'sse'
-          : 'streamableHttp',
+      transport: config.transport === 'sse' || config.type === 'sse' ? 'sse' : 'streamableHttp',
       token,
     };
   });
@@ -129,22 +108,12 @@ export function ConnectorsScreen() {
   }, [store.refreshAll]);
   const signIn = (id: string) => {
     // Open during the click gesture; opening after the request is blocked by browsers.
-    const popup = window.open(
-      'about:blank',
-      '_blank',
-      'popup,width=560,height=720',
-    );
+    const popup = window.open('about:blank', '_blank', 'popup,width=560,height=720');
     if (popup) popup.opener = null;
     void task.run(async () => {
       try {
-        if (!popup)
-          throw new Error(
-            'Allow pop-ups for Praxis, then try signing in again.',
-          );
-        const authorization = await apiClient.startConnectorOAuth(
-          id,
-          window.location.href,
-        );
+        if (!popup) throw new Error('Allow pop-ups for Praxis, then try signing in again.');
+        const authorization = await apiClient.startConnectorOAuth(id, window.location.href);
         popup.location.replace(requireHttpUrl(authorization.url));
       } catch (error) {
         popup?.close();
@@ -161,13 +130,15 @@ export function ConnectorsScreen() {
             {store.connectors.map((connector) => {
               const open = expanded.has(connector.id);
               const tools = store.connectorTools[connector.id];
-              const status = !connector.enabled
-                ? 'Off'
-                : connector.error
-                  ? 'Error'
-                  : connector.authStatus === 'required'
-                    ? 'Needs sign-in'
-                    : 'Connected';
+              const status = connector.status
+                ? ({
+                    connected: 'Connected',
+                    unreachable: 'Unreachable',
+                    needs_auth: 'Needs auth',
+                    needs_reauth: 'Needs reauth',
+                    error: 'Error',
+                  }[connector.status] ?? 'Status unknown')
+                : 'Status unknown';
               return (
                 <div className="screen-list-item" key={connector.id}>
                   <button
@@ -182,10 +153,7 @@ export function ConnectorsScreen() {
                         else next.add(connector.id);
                         return next;
                       });
-                      if (!open)
-                        void task.run(() =>
-                          store.loadConnectorTools(connector.id),
-                        );
+                      if (!open) void task.run(() => store.loadConnectorTools(connector.id));
                     }}
                   >
                     <span className="screen-avatar">
@@ -193,39 +161,27 @@ export function ConnectorsScreen() {
                     </span>
                     <span className="screen-row-copy">
                       <strong>{connector.name}</strong>
-                      <span className="screen-detail">
-                        {hostLabel(connector.url)}
-                      </span>
+                      <span className="screen-detail">{hostLabel(connector.url)}</span>
                       <span
                         className={`screen-detail ${status === 'Connected' ? 'screen-success' : ''}`}
                       >
-                        {status} · {tools?.length ?? connector.toolCount ?? 0}{' '}
-                        tools
+                        {status} · {tools?.length ?? connector.toolCount ?? 0} tools
                       </span>
                     </span>
-                    {connector.hasNewTools ? (
-                      <span className="screen-badge">New tool</span>
-                    ) : null}
+                    {connector.hasNewTools ? <span className="screen-badge">New tool</span> : null}
                     <span aria-hidden="true">{open ? '⌄' : '›'}</span>
                   </button>
                   {open ? (
-                    <div
-                      className="screen-list-detail"
-                      id={`tools-${connector.id}`}
-                    >
+                    <div className="screen-list-detail" id={`tools-${connector.id}`}>
                       <Toggle
                         label={`Enable ${connector.name}`}
                         checked={connector.enabled}
                         disabled={task.busy}
                         onChange={(enabled) => {
-                          void task.run(() =>
-                            store.updateConnector(connector.id, { enabled }),
-                          );
+                          void task.run(() => store.updateConnector(connector.id, { enabled }));
                         }}
                       />
-                      {connector.error ? (
-                        <p className="screen-error">{connector.error}</p>
-                      ) : null}
+                      {connector.error ? <p className="screen-error">{connector.error}</p> : null}
                       <div className="screen-actions">
                         <ScreenButton
                           disabled={task.busy}
@@ -239,11 +195,10 @@ export function ConnectorsScreen() {
                           <RefreshCw size={14} />
                           Refresh tools
                         </ScreenButton>
-                        {connector.authStatus === 'required' ? (
-                          <ScreenButton
-                            disabled={task.busy}
-                            onClick={() => signIn(connector.id)}
-                          >
+                        {connector.status === 'needs_auth' ||
+                        connector.status === 'needs_reauth' ||
+                        connector.authStatus === 'required' ? (
+                          <ScreenButton disabled={task.busy} onClick={() => signIn(connector.id)}>
                             <ExternalLink size={14} />
                             Sign in
                           </ScreenButton>
@@ -256,40 +211,28 @@ export function ConnectorsScreen() {
                               key={tool.name}
                               label={tool.name}
                               detail={tool.description}
-                              checked={
-                                !connector.disabledTools.includes(tool.name)
-                              }
+                              checked={!connector.disabledTools.includes(tool.name)}
                               disabled={task.busy || !connector.enabled}
                               onChange={(enabled) => {
                                 void task.run(() =>
-                                  store.setConnectorToolEnabled(
-                                    connector.id,
-                                    tool.name,
-                                    enabled,
-                                  ),
+                                  store.setConnectorToolEnabled(connector.id, tool.name, enabled),
                                 );
                               }}
                             />
                           ))
                         ) : (
-                          <p className="screen-footnote">
-                            No tools returned by this connector.
-                          </p>
+                          <p className="screen-footnote">No tools returned by this connector.</p>
                         )
                       ) : (
                         <p className="screen-footnote">
-                          {task.busy
-                            ? 'Loading tools…'
-                            : 'Refresh tools to try again.'}
+                          {task.busy ? 'Loading tools…' : 'Refresh tools to try again.'}
                         </p>
                       )}
                       <ScreenButton
                         tone="destructive"
                         disabled={task.busy}
                         onClick={() => {
-                          void task.run(() =>
-                            store.removeConnector(connector.id),
-                          );
+                          void task.run(() => store.removeConnector(connector.id));
                         }}
                       >
                         <Trash2 size={15} />
@@ -303,8 +246,8 @@ export function ConnectorsScreen() {
           </Card>
         ) : (
           <p className="screen-empty">
-            No connectors yet. Add one below to give the agent tools like your
-            issue tracker or docs.
+            No connectors yet. Add one below to give the agent tools like your issue tracker or
+            docs.
           </p>
         )}
       </Section>
@@ -331,8 +274,7 @@ export function ConnectorsScreen() {
         </Card>
       </Section>
       <p className="screen-footnote">
-        Connectors are remote MCP servers. Servers that run local programs are
-        not supported.
+        Connectors are remote MCP servers. Servers that run local programs are not supported.
       </p>
     </ScreenBody>
   );
@@ -344,9 +286,7 @@ export function ConnectorAddURL() {
   const [name, setName] = React.useState('');
   const [url, setUrl] = React.useState('');
   const [token, setToken] = React.useState('');
-  const [transport, setTransport] = React.useState<'streamableHttp' | 'sse'>(
-    'streamableHttp',
-  );
+  const [transport, setTransport] = React.useState<'streamableHttp' | 'sse'>('streamableHttp');
   return (
     <ScreenBody>
       <form
@@ -388,9 +328,7 @@ export function ConnectorAddURL() {
         <Field label="Transport">
           <select
             value={transport}
-            onChange={(event) =>
-              setTransport(event.target.value as typeof transport)
-            }
+            onChange={(event) => setTransport(event.target.value as typeof transport)}
           >
             <option value="streamableHttp">Streamable HTTP</option>
             <option value="sse">Server-sent events (SSE)</option>
@@ -445,14 +383,13 @@ export function ConnectorPasteConfig() {
         }}
       >
         <p className="screen-intro">
-          Paste a remote MCP server URL or a config with an mcpServers object.
-          Bearer authorization headers are supported.
+          Paste a remote MCP server URL or a config with an mcpServers object. Bearer authorization
+          headers are supported.
         </p>
         <TaskError error={task.error} />
         {completed.length ? (
           <p className="screen-success" role="status">
-            Added: {completed.join(', ')}. Retry to finish importing the
-            remaining servers.
+            Added: {completed.join(', ')}. Retry to finish importing the remaining servers.
           </p>
         ) : null}
         <Field label="Server config">
@@ -468,11 +405,7 @@ export function ConnectorPasteConfig() {
             }
           />
         </Field>
-        <ScreenButton
-          type="submit"
-          tone="primary"
-          disabled={task.busy || !source.trim()}
-        >
+        <ScreenButton type="submit" tone="primary" disabled={task.busy || !source.trim()}>
           {task.busy ? 'Importing…' : 'Add connectors'}
         </ScreenButton>
       </form>
@@ -498,8 +431,7 @@ const CURATED_SERVERS = [
   {
     name: 'Sentry',
     url: 'https://mcp.sentry.dev/mcp',
-    description:
-      'Explore application errors and debugging context. Requires sign-in.',
+    description: 'Explore application errors and debugging context. Requires sign-in.',
   },
 ];
 
@@ -508,9 +440,7 @@ export function ConnectorRegistry() {
   const task = useScreenTask();
   const [query, setQuery] = React.useState('');
   const entries = CURATED_SERVERS.filter((server) =>
-    `${server.name} ${server.description}`
-      .toLowerCase()
-      .includes(query.toLowerCase()),
+    `${server.name} ${server.description}`.toLowerCase().includes(query.toLowerCase()),
   );
   return (
     <ScreenBody>
@@ -527,9 +457,7 @@ export function ConnectorRegistry() {
         <Card>
           {entries.map((server) => {
             const installed = store.connectors.some(
-              (connector) =>
-                connector.url.replace(/\/$/, '') ===
-                server.url.replace(/\/$/, ''),
+              (connector) => connector.url.replace(/\/$/, '') === server.url.replace(/\/$/, ''),
             );
             return (
               <div className="screen-row" key={server.url}>
@@ -555,13 +483,10 @@ export function ConnectorRegistry() {
             );
           })}
         </Card>
-        {!entries.length ? (
-          <p className="screen-empty">No servers match your search.</p>
-        ) : null}
+        {!entries.length ? <p className="screen-empty">No servers match your search.</p> : null}
       </Section>
       <p className="screen-footnote">
-        After adding a server, expand its connector to review tools and sign in
-        if required.
+        After adding a server, expand its connector to review tools and sign in if required.
       </p>
     </ScreenBody>
   );
