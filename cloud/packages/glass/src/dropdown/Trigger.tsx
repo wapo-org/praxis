@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 import React from 'react';
+import { closeAndFocusNext } from './focus';
 import { GlassSurface } from '../GlassSurface';
 import type { GlassMaterialControls } from '../glass-store';
 import { assignForwardedRef, useGlassDropdownContext } from './context';
@@ -58,8 +59,9 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
       onPointerDown?.(e);
       if (e.defaultPrevented || otherProps.disabled || e.button !== 0) return;
       e.preventDefault();
+      ctx.focusTrigger();
       pointerOpened.current = !ctx.open;
-      ctx.startScrub();
+      ctx.startScrub('trigger');
       ctx.setOpen(true);
     };
 
@@ -74,12 +76,21 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
     const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
       onKeyDown?.(e);
       if (e.defaultPrevented) return;
+      ctx.pointerOpening.current = false;
+      if (e.key === 'Tab' && ctx.open) { e.preventDefault(); closeAndFocusNext(ctx, e.shiftKey); return; }
       if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
+        ctx.endScrub();
         ctx.setOpen(true);
+        const focusFirst = () => {
+          const menu = ctx.getContentEl();
+          if (menu?.contains(document.activeElement) && !document.activeElement?.closest('[inert]')) return;
+          (menu?.querySelector<HTMLElement>('input, [data-dropdown-item-id]:not([disabled])') ?? menu)?.focus({ preventScroll: true });
+        };
+        if (ctx.open) focusFirst(); else requestAnimationFrame(focusFirst);
       } else if (e.key === 'Escape' && ctx.open) {
         e.preventDefault();
-        ctx.setOpen(false);
+        if (ctx.activeSubPath.length) ctx.popSub(); else ctx.setOpen(false);
       }
     };
 

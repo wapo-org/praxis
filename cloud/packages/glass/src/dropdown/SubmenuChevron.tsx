@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useGlassDropdownContext } from './context';
 import { useMenuReducedMotion } from './motion';
 export function SubmenuChevron({
   id,
@@ -9,7 +8,6 @@ export function SubmenuChevron({
   id: string;
   expanded: boolean;
 }) {
-  const ctx = useGlassDropdownContext('SubmenuChevron');
   const reduced = useMenuReducedMotion();
   return reduced ? (
     expanded ? (
@@ -20,8 +18,8 @@ export function SubmenuChevron({
   ) : (
     <motion.span
       aria-hidden
+      data-submenu-id={id}
       data-submenu-chevron={expanded ? 'expanded' : 'collapsed'}
-      layoutId={`${ctx.menuId}-chevron-${id}`}
       initial={{ rotate: 0 }}
       animate={{ rotate: expanded ? 90 : 0 }}
       transition={{ type: 'spring', stiffness: 420, damping: 30 }}

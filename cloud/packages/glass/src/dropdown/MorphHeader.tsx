@@ -15,6 +15,7 @@ export function MorphHeader({
         <div style={{ marginBottom: 4 }}>
           <motion.button
             layoutId={`${ctx.menuId}-sub-header-${activeMorphLevel.id}`}
+            data-dropdown-morph-header
             type="button"
             role="menuitem"
             data-dropdown-item-id={`${ctx.menuId}-back`}
@@ -29,14 +30,14 @@ export function MorphHeader({
               alignItems: 'center',
               gap: '10px',
               padding: '9px 12px',
-              borderRadius: '14px',
+              borderRadius: 0,
               border: 'none',
-              background: 'rgba(21,20,15,0.05)',
+              background: 'transparent',
               color: 'var(--paper-ink)',
               fontFamily: 'var(--font-sans)',
-              fontSize: '13.5px',
+              fontSize: '17px',
               fontWeight: 600,
-              lineHeight: '18px',
+              lineHeight: '22px',
               cursor: 'pointer',
               textAlign: 'start',
             }}
@@ -67,7 +68,7 @@ export function MorphHeader({
             </span>
             <SubmenuChevron id={activeMorphLevel.id} expanded />
           </motion.button>
-          <Separator variant="hairline" />
+          <Separator variant="hairline" style={{ margin: '3px 10px' }} />
         </div>
       ) : null}
     </>

@@ -34,7 +34,10 @@ export interface GlassDropdownContextValue {
   morphDirection: 1 | -1;
   pushSub: (depth: number, subId: string) => void;
   popSub: (toDepth?: number) => void;
-  startScrub: () => void;
+  startScrub: (source?: 'trigger' | 'content') => void;
+  startedOnTrigger: () => boolean;
+  pointerOpening: React.MutableRefObject<boolean>;
+  takeReturningSub: () => string | null;
   endScrub: () => void;
   isScrubbing: () => boolean;
 }

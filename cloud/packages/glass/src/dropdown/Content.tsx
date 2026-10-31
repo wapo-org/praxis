@@ -3,6 +3,8 @@ import React from 'react';
 import { GlassSurface } from '../GlassSurface';
 import { ScrollBlur } from '../ProgressiveBlurScrim';
 import type { GlassMaterialControls } from '../glass-store';
+import { MorphPanel } from './MorphPanel';
+import { MorphRows } from './MorphRows';
 import { MorphHeader } from './MorphHeader';
 import { DropdownPortal } from './Portal';
 import type { PanelHighlightContextValue, SubLevelInfo } from './context';
@@ -34,7 +36,7 @@ export interface ContentProps
 const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
   {
     maxHeight = 380,
-    minWidth = 252,
+    minWidth = 240,
     children,
     className = '',
     material,
@@ -166,34 +168,26 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                     setHighlightedId(null);
                   }
                 }}
+                /* Keep CSS filter off this ancestor: even blur(0) blocks backdrop sampling. */
                 /* IMG_7745–IMG_7752 Unfurl Pop Motion */
                 initial={
                   reduced
                     ? false
                     : {
                         opacity: 0,
-                        scaleX: 0.38,
-                        scaleY: 0.28,
-                        y: resolvedSide === 'top' ? 10 : -10,
-                        filter: 'blur(6px)',
+                        scale: 0.33,
                       }
                 }
                 animate={{
                   opacity: 1,
-                  scaleX: 1,
-                  scaleY: 1,
-                  y: 0,
-                  filter: 'blur(0px)',
+                  scale: 1,
                 }}
                 exit={
                   reduced
                     ? { opacity: 0, transition: { duration: 0.08 } }
                     : {
                         opacity: 0,
-                        scaleX: 0.74,
-                        scaleY: 0.74,
-                        y: resolvedSide === 'top' ? 6 : -6,
-                        filter: 'blur(4px)',
+                        scale: 0.74,
                         transition: { duration: 0.12, ease: 'easeIn' },
                       }
                 }
@@ -219,7 +213,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                   ),
                   maxWidth: 'calc(100vw - 16px)',
                   overflowY: 'auto',
-                  touchAction: 'none',
+                  touchAction: 'pan-y',
                   x: reduced ? 0 : pullX,
                   y: reduced ? 0 : pullY,
                   scaleY: reduced ? 1 : stretchScaleY,
@@ -237,13 +231,20 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                     overflow:
                       ctx.submenuMode === 'cascade' ? 'visible' : 'hidden',
                     padding: '6px',
-                    background: 'rgba(250,249,246,0.96)',
+                    background: 'transparent',
+                    backdropFilter: 'blur(24px)',
+                    WebkitBackdropFilter: 'blur(24px)',
+                    border: '1px solid rgba(150,150,145,.32)',
+                    boxShadow: '0 14px 34px rgba(0,0,0,.14), inset 0 1px 1px rgba(255,255,255,.9)',
                     color: '#20201e',
                     ...({
+                      '--glass-tint': 'rgba(250,249,246,.74)',
+                      '--paper-card': '#faf9f6',
+                      '--paper-hairline': 'rgba(90,90,85,.16)',
                       '--paper-ink': '#20201e',
-                      '--paper-secondary-ink': '#555550',
-                      '--paper-muted-ink': '#555550',
-                      '--paper-destructive': '#b42318',
+                      '--paper-secondary-ink': '#41413c',
+                      '--paper-muted-ink': '#41413c',
+                      '--paper-destructive': '#8b2117',
                     } as React.CSSProperties),
                   }}
                 >
@@ -263,7 +264,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                       initial={false}
                       custom={ctx.morphDirection}
                     >
-                      <motion.div
+                      <MorphPanel
                         key={pathKey || '__root__'}
                         data-dropdown-panel={pathKey || '__root__'}
                         custom={ctx.morphDirection}
@@ -335,11 +336,11 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                                 width: '100%',
                               }}
                             >
-                              {scrollableNodes}
+                              <MorphRows stagger={!!activeMorphLevel} reduced={reduced}>{scrollableNodes}</MorphRows>
                             </div>
                           </DepthContext.Provider>
                         </ScrollBlur>
-                      </motion.div>
+                      </MorphPanel>
                     </AnimatePresence>
                   </motion.div>
                 </GlassSurface>

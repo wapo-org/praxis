@@ -14,7 +14,7 @@ const previews = [
   'Hi Fiero, okay so to summarise the total code and the changes we discussed',
 ];
 
-export function DropdownPositions() {
+export function DropdownPositions({ compact = false }: { compact?: boolean }) {
   const [action, setAction] = React.useState(0);
   const [query, setQuery] = React.useState('');
   const [selected, setSelected] = React.useState('Model 001');
@@ -28,11 +28,12 @@ export function DropdownPositions() {
   return (
     <section
       aria-label="Dropdown positioning lab"
-      style={{ minHeight: '100dvh', color: 'var(--paper-ink)' }}
+      className={compact ? 'dropdown-positions-compact' : undefined}
+      style={{ minHeight: compact ? undefined : '100dvh', color: 'var(--paper-ink)', minWidth: 0, padding: compact ? 16 : 0, border: compact ? '1px solid var(--paper-hairline)' : undefined, borderRadius: 20 }}
     >
       <div
         style={{
-          height: '100dvh',
+          height: compact ? 360 : '100dvh',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
@@ -43,14 +44,14 @@ export function DropdownPositions() {
         {(['top', 'middle', 'bottom'] as const).map((row) => (
           <div
             key={row}
-            style={{ display: 'flex', justifyContent: 'space-between' }}
+            style={{ display: compact ? 'grid' : 'flex', gridTemplateColumns: compact ? 'repeat(3, minmax(0, 1fr))' : undefined, gap: compact ? 4 : 0, justifyContent: 'space-between' }}
           >
             {(['start', 'center', 'end'] as const).map((align) => (
-              <GlassDropdown portal key={align} align={align}>
-                <GlassDropdown.Trigger data-testid={`position-${row}-${align}`}>
+              <GlassDropdown portal key={align} align={align} style={{ minWidth: 0 }}>
+                <GlassDropdown.Trigger data-testid={`position-${row}-${align}`} style={compact ? { fontSize: 11, padding: '6px 4px' } : undefined}>
                   {row} {align}
                 </GlassDropdown.Trigger>
-                <GlassDropdown.Content minWidth={340} maxHeight={480}>
+                <GlassDropdown.Content minWidth={240} maxHeight={480}>
                   <GlassDropdown.ActionGrid>
                     <GlassDropdown.TileItem icon={<Scan size={16} />}>
                       Scan
@@ -80,27 +81,21 @@ export function DropdownPositions() {
                       Recent Notes
                     </GlassDropdown.SubTrigger>
                     <GlassDropdown.SubContent>
-                      {previews.map((text, i) => (
-                        <React.Fragment key={text}>
-                          {i > 0 && (
-                            <GlassDropdown.Separator variant="hairline" />
-                          )}
+                      {previews.map((text) => (
                           <GlassDropdown.Item
+                            key={text}
                             icon={<FileText size={16} />}
                             lines={3}
                           >
                             {text}
                           </GlassDropdown.Item>
-                        </React.Fragment>
                       ))}
                     </GlassDropdown.SubContent>
                   </GlassDropdown.Sub>
                   <GlassDropdown.Item disabled>Unavailable</GlassDropdown.Item>
-                  <GlassDropdown.Item>Math Results</GlassDropdown.Item>
-                  <GlassDropdown.Item>Suggest Results</GlassDropdown.Item>
+                  <GlassDropdown.Item subtitle="Suggest Results">Math Results</GlassDropdown.Item>
                   <GlassDropdown.Item>Lines &amp; Grids</GlassDropdown.Item>
                   <GlassDropdown.Item>Attachment View</GlassDropdown.Item>
-                  <GlassDropdown.Separator variant="section" />
                   <GlassDropdown.Item tone="destructive">
                     Delete
                   </GlassDropdown.Item>

@@ -24,18 +24,21 @@ function ActionGrid({
       style={{
         display: 'grid',
         gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-        gap: '1px',
-        background: 'var(--paper-hairline)',
-        borderBottom: '1px solid var(--paper-hairline)',
+        gap: 0,
+        background: 'transparent',
+        borderBottom: 'none',
         margin: '-6px -6px 4px -6px',
-        borderTopLeftRadius: '22px',
-        borderTopRightRadius: '22px',
+        borderTopLeftRadius: '24px',
+        borderTopRightRadius: '24px',
         overflow: 'hidden',
+        position: 'relative',
+        paddingBottom: 8,
         ...style,
       }}
       {...rest}
     >
       {children}
+      <span aria-hidden style={{ position: 'absolute', bottom: 0, left: 16, right: 16, height: 1, background: 'var(--paper-hairline)' }} />
     </div>
   );
 }
@@ -115,7 +118,7 @@ const TileItem = React.forwardRef<HTMLButtonElement, TileItemProps>(
             ? 'rgba(21,20,15,0.09)'
             : isHighlighted
               ? 'rgba(21,20,15,0.06)'
-              : 'var(--glass-tile-bg, rgba(251,251,249,0.45))',
+              : 'transparent',
           color: 'var(--paper-ink)',
           fontFamily: 'var(--font-sans)',
           fontSize: '12px',

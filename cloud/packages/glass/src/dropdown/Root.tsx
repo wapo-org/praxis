@@ -81,6 +81,11 @@ const GlassDropdownRoot = React.forwardRef<
   const triggerElRef = React.useRef<HTMLElement | null>(null);
   const contentElRef = React.useRef<HTMLDivElement | null>(null);
   const scrubbingRef = React.useRef(false);
+  const pointerOpening = React.useRef(false);
+  const triggerScrub = React.useRef(false);
+  const returningSub = React.useRef<string | null>(null);
+  const takeReturningSub = React.useCallback(() => { const id = returningSub.current; returningSub.current = null; return id; }, []);
+  const startedOnTrigger = React.useCallback(() => triggerScrub.current, []);
 
   const menuId = React.useId();
   const triggerId = React.useId();
@@ -105,8 +110,10 @@ const GlassDropdownRoot = React.forwardRef<
     triggerElRef.current?.focus();
   }, []);
 
-  const startScrub = React.useCallback(() => {
+  const startScrub = React.useCallback((source: 'trigger' | 'content' = 'content') => {
     scrubbingRef.current = true;
+    triggerScrub.current = source === 'trigger';
+    if (source === 'trigger') pointerOpening.current = true;
   }, []);
   const endScrub = React.useCallback(() => {
     scrubbingRef.current = false;
@@ -151,6 +158,7 @@ const GlassDropdownRoot = React.forwardRef<
         toDepth !== undefined
           ? activeSubPath.slice(0, toDepth)
           : activeSubPath.slice(0, Math.max(0, activeSubPath.length - 1));
+      returningSub.current = activeSubPath[nextPath.length] ?? null;
       updateSubPath(nextPath);
     },
     [activeSubPath, updateSubPath],
@@ -177,6 +185,7 @@ const GlassDropdownRoot = React.forwardRef<
     open,
     isScrubbing,
     endScrub,
+    startedOnTrigger,
     getContentEl,
     getTriggerEl,
     setOpen,
@@ -230,6 +239,9 @@ const GlassDropdownRoot = React.forwardRef<
       morphDirection,
       pushSub,
       popSub,
+      pointerOpening,
+      startedOnTrigger,
+      takeReturningSub,
       startScrub,
       endScrub,
       isScrubbing,
@@ -256,6 +268,9 @@ const GlassDropdownRoot = React.forwardRef<
       morphDirection,
       pushSub,
       popSub,
+      pointerOpening,
+      startedOnTrigger,
+      takeReturningSub,
       startScrub,
       endScrub,
       isScrubbing,

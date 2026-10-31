@@ -98,8 +98,8 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
           position: 'relative',
           display: 'flex',
           width: '100%',
-          alignItems: lines > 1 ? 'flex-start' : 'center',
-          minHeight: lines > 1 ? lines * 18 + 20 : undefined,
+          alignItems: 'center',
+          minHeight: lines > 1 ? lines * 22 + 20 : 40,
           gap: '10px',
           borderRadius: '14px',
           padding: lines > 1 ? '10px 12px' : '8.5px 12px',
@@ -109,9 +109,9 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
             ? 'var(--paper-destructive)'
             : 'var(--paper-ink)',
           fontFamily: 'var(--font-sans)',
-          fontSize: '13.5px',
+          fontSize: '17px',
           fontWeight: 500,
-          lineHeight: '18px',
+          lineHeight: '22px',
           textAlign: 'start',
           cursor: disabled ? 'not-allowed' : 'pointer',
           opacity: disabled ? 0.4 : 1,
@@ -159,7 +159,7 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
               flexShrink: 0,
               alignItems: 'center',
               justifyContent: 'center',
-              marginTop: lines > 1 ? 2 : 0,
+              marginTop: 0,
               color: isDestructive
                 ? 'var(--paper-destructive)'
                 : 'var(--paper-secondary-ink)',
@@ -200,9 +200,9 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
           {subtitle ? (
             <span
               style={{
-                fontSize: '11.5px',
+                fontSize: '13px',
                 fontWeight: 400,
-                lineHeight: '15px',
+                lineHeight: '17px',
                 color: isDestructive
                   ? 'var(--paper-destructive)'
                   : 'var(--paper-secondary-ink)',

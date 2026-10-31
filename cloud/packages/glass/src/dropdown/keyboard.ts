@@ -1,4 +1,5 @@
 import React from 'react';
+import { closeAndFocusNext } from './focus';
 import type { GlassDropdownContextValue } from './context';
 export const itemSelector = '[data-dropdown-item-id]:not([disabled])';
 export function useKeyboard(
@@ -18,6 +19,10 @@ export function useKeyboard(
           el.dataset.dropdownPanel ===
           (ctx.activeSubPath.join('/') || '__root__'),
       ) ?? menu;
+    const returning = ctx.takeReturningSub();
+    const parent = Array.from(panel?.querySelectorAll<HTMLElement>('[data-dropdown-sub-id]') ?? []).find(el => el.dataset.dropdownSubId === returning);
+    if (parent) { parent.focus({ preventScroll: true }); return; }
+    if (ctx.pointerOpening.current && !ctx.activeSubPath.length && !panel?.querySelector('input')) return;
     (
       panel?.querySelector<HTMLElement>('input') ??
       panel?.querySelector<HTMLElement>(itemSelector) ??
@@ -27,13 +32,24 @@ export function useKeyboard(
   return (e: React.KeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(e);
     if (e.defaultPrevented) return;
+    ctx.pointerOpening.current = false;
     if (e.key === 'Tab') {
-      ctx.setOpen(false);
+      e.preventDefault();
+      closeAndFocusNext(ctx, e.shiftKey);
       return;
     }
     const input = (e.target as HTMLElement).tagName === 'INPUT';
+    const grid = (e.target as HTMLElement).closest('[data-slot="dropdown-action-grid"]');
+    if (grid && ['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      const tiles = Array.from(grid.querySelectorAll<HTMLElement>(itemSelector));
+      const index = tiles.indexOf(document.activeElement as HTMLElement);
+      e.preventDefault(); e.stopPropagation();
+      tiles[(index + (e.key === 'ArrowRight' ? 1 : -1) + tiles.length) % tiles.length]?.focus();
+      return;
+    }
     if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopPropagation();
       if (ctx.activeSubPath.length) ctx.popSub();
       else {
         ctx.setOpen(false);
@@ -47,6 +63,7 @@ export function useKeyboard(
       ctx.activeSubPath.length
     ) {
       e.preventDefault();
+      e.stopPropagation();
       ctx.popSub();
       return;
     }
@@ -66,9 +83,10 @@ export function useKeyboard(
       );
       return;
     }
-    const items = Array.from(
-      menu?.querySelectorAll<HTMLElement>(itemSelector) ?? [],
-    );
+    const panel = Array.from(menu?.querySelectorAll<HTMLElement>('[data-dropdown-panel]') ?? [])
+      .find(el => el.dataset.dropdownPanel === (ctx.activeSubPath.join('/') || '__root__')) ?? menu;
+    const items = Array.from(panel?.querySelectorAll<HTMLElement>(itemSelector) ?? [])
+      .filter(el => !el.closest('[inert]'));
     const index = items.indexOf(document.activeElement as HTMLElement);
     let next: number | undefined;
     switch (e.key) {

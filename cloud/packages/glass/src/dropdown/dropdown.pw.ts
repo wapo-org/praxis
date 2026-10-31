@@ -1,9 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
-const report = `${homedir()}/.praxis-agent-state/cloud/reports/web-dropdown`;
-mkdirSync(report, { recursive: true });
+const shot = (info: import('@playwright/test').TestInfo, name: string) => info.outputPath(name);
 test.beforeEach(async ({ page }) => {
+  const auth = await page.request.post('/v1/auth/dev', { data: { type: 'auth.dev', userId: 'dropdown-check' } });
+  expect(auth.ok()).toBeTruthy();
   await page.goto('/lab/glass?dropdown');
 });
 
@@ -34,7 +33,7 @@ test('measures, flips, shifts and sizes at nine viewport anchors', async ({
         }).toPass();
         if (row === 'top' && align === 'end')
           await page.screenshot({
-            path: `${report}/IMG_7752-${info.project.name}-${width}.png`,
+            path: shot(info, `IMG_7752-${info.project.name}-${width}.png`),
           });
         await page.keyboard.press('Escape');
         await expect(menu).toHaveCount(0);
@@ -72,11 +71,14 @@ test('focus, disabled skipping, navigation, typeahead, selection, Escape and Tab
   await expect(trigger).toBeFocused();
   await trigger.click();
   await page.keyboard.press('Tab');
+  await expect(page.getByTestId('position-top-center')).toBeFocused();
   await expect(page.getByRole('menu')).toHaveCount(0);
   await trigger.click();
+  await page.keyboard.press('ArrowDown');
   await page.keyboard.press(' ');
   await expect(page.getByRole('menu')).toHaveCount(0);
   await trigger.click();
+  await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('menu')).toHaveCount(0);
 });
@@ -150,6 +152,7 @@ test('mouse and touch press-drag-release select; outside release and cancel dism
     });
     const target = page.getByRole('menuitem', { name: 'Move Note' });
     await expect(target).toBeVisible();
+    await expect(async () => expect((await page.getByRole('menu').boundingBox())!.width).toBeCloseTo(240, 0)).toPass();
     const box = await target.boundingBox();
     const point = {
       pointerId: 7,
@@ -188,7 +191,7 @@ test('mouse and touch press-drag-release select; outside release and cancel dism
   }
 });
 
-test('opaque-enough thick material guarantees AA over every background luminance', async ({
+test('translucent frosted material guarantees AA over every background luminance', async ({
   page,
 }) => {
   await page.getByTestId('position-top-start').click();
@@ -207,6 +210,7 @@ test('opaque-enough thick material guarantees AA over every background luminance
       return {
         bg,
         backgrounds,
+        tint: getComputedStyle(el.closest('.praxis-glass-surface')!).getPropertyValue('--glass-tint'),
         colors: [
           getComputedStyle(el).color,
           getComputedStyle(
@@ -217,10 +221,8 @@ test('opaque-enough thick material guarantees AA over every background luminance
         ],
       };
     });
-  const tint = result.backgrounds.find(
-    (color) => color === 'rgba(250, 249, 246, 0.96)',
-  );
-  expect(tint).toBeTruthy();
+  await expect(page.getByRole('menu')).toHaveCSS('filter', 'none');
+  expect(result.tint.replace(/\s/g, '')).toBe('rgba(250,249,246,.74)');
   const luminance = (rgb: number[]) =>
     rgb
       .map((v) => v / 255)
@@ -235,7 +237,7 @@ test('opaque-enough thick material guarantees AA over every background luminance
     );
     for (const underlying of [0, 255]) {
       const background = luminance(
-        [250, 249, 246].map((v) => v * 0.96 + underlying * 0.04),
+        [250, 249, 246].map((v) => v * 0.74 + underlying * 0.26),
       );
       expect((background + 0.05) / (text + 0.05)).toBeGreaterThanOrEqual(4.5);
     }
@@ -271,7 +273,7 @@ test('submenu header rises in one sheet, expands and reverses; reduced motion ne
     expect((await menu.boundingBox())!.height).toBeGreaterThan(old!.height),
   ).toPass();
   await page.screenshot({
-    path: `${report}/IMG_7774-${info.project.name}.png`,
+    path: shot(info, `IMG_7774-${info.project.name}.png`),
   });
   await header.click();
   await expect(page.getByRole('menuitem', { name: 'Move Note' })).toBeVisible();
@@ -299,6 +301,7 @@ test('native mouse drag selects exactly once and suppressed release click cannot
   await page.mouse.down();
   const item = page.getByRole('menuitem', { name: 'Move Note' });
   await expect(item).toBeVisible();
+  await expect(async () => expect((await page.getByRole('menu').boundingBox())!.width).toBeCloseTo(240, 0)).toPass();
   const target = await item.boundingBox();
   await page.mouse.move(target!.x + 50, target!.y + target!.height / 2, {
     steps: 10,
@@ -314,11 +317,13 @@ test('reference replica captures stay on-screen inside the lab card', async ({
   await page.goto('/lab/glass');
   const trigger = page.getByTestId('apple-notes-menu-trigger');
   await trigger.scrollIntoViewIfNeeded();
+  await trigger.click();
   const id = await trigger.getAttribute('aria-controls');
   const sheet = page.locator(`[id="${id}"]`);
   await expect(sheet).toBeVisible();
+  await expect(sheet).toBeInViewport({ ratio: 1 });
   await page.screenshot({
-    path: `${report}/IMG_7752-replica-${info.project.name}.png`,
+    path: shot(info, `IMG_7752-replica-${info.project.name}.png`),
   });
   await page.getByTestId('recent-notes-subtrigger').click();
   await expect(
@@ -328,6 +333,6 @@ test('reference replica captures stay on-screen inside the lab card', async ({
     page.getByRole('menuitem', { name: 'Recent Notes', exact: true }),
   ).toHaveAttribute('aria-expanded', 'true');
   await page.screenshot({
-    path: `${report}/IMG_7774-replica-${info.project.name}.png`,
+    path: shot(info, `IMG_7774-replica-${info.project.name}.png`),
   });
 });

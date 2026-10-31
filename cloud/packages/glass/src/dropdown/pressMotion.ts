@@ -1,5 +1,6 @@
 import { useMotionValue, useSpring, useTransform } from 'framer-motion';
 import React from 'react';
+import { scrollContainer } from './gestures';
 import type { GlassDropdownContextValue } from './context';
 export function usePressMotion(
   ctx: GlassDropdownContextValue,
@@ -39,7 +40,8 @@ export function usePressMotion(
         }
       }
 
-      if (stretchable && pointerDownOriginRef.current) {
+      const nativePan = e.pointerType === 'touch' && !ctx.startedOnTrigger() && scrollContainer(e.target as Element, contentEl);
+      if (stretchable && pointerDownOriginRef.current && !nativePan) {
         const dx = e.clientX - pointerDownOriginRef.current.x;
         const dy = e.clientY - pointerDownOriginRef.current.y;
         pullX.set(18 * Math.tanh(dx / (18 * 2.2)));
@@ -57,9 +59,11 @@ export function usePressMotion(
       passive: true,
     });
     window.addEventListener('pointerup', handleWindowPointerUp);
+    window.addEventListener('pointercancel', handleWindowPointerUp);
     return () => {
       window.removeEventListener('pointermove', handleWindowPointerMove);
       window.removeEventListener('pointerup', handleWindowPointerUp);
+      window.removeEventListener('pointercancel', handleWindowPointerUp);
     };
   }, [ctx, stretchable, pullX, pullY, setHighlightedId]);
 

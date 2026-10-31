@@ -68,6 +68,7 @@ const SubTrigger = React.forwardRef<HTMLButtonElement, SubTriggerProps>(
         type="button"
         role="menuitem"
         data-dropdown-item-id={itemId}
+        data-dropdown-sub-id={sub.subId}
         aria-haspopup="menu"
         aria-expanded={sub.isOpen}
         disabled={disabled}
@@ -91,6 +92,7 @@ const SubTrigger = React.forwardRef<HTMLButtonElement, SubTriggerProps>(
         onKeyDown={(e) => {
           onKeyDown?.(e);
           if (e.defaultPrevented || disabled) return;
+          ctx.pointerOpening.current = false;
           if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             e.stopPropagation();
@@ -104,14 +106,15 @@ const SubTrigger = React.forwardRef<HTMLButtonElement, SubTriggerProps>(
           alignItems: 'center',
           gap: '10px',
           borderRadius: '14px',
-          padding: '8.5px 12px',
+          minHeight: 40,
+          padding: '9px 12px',
           border: 'none',
           background: 'transparent',
           color: 'var(--paper-ink)',
           fontFamily: 'var(--font-sans)',
-          fontSize: '13.5px',
+          fontSize: '17px',
           fontWeight: 500,
-          lineHeight: '18px',
+          lineHeight: '22px',
           textAlign: 'start',
           cursor: disabled ? 'not-allowed' : 'pointer',
           opacity: disabled ? 0.4 : 1,
@@ -187,7 +190,7 @@ const SubTrigger = React.forwardRef<HTMLButtonElement, SubTriggerProps>(
           {subtitle ? (
             <span
               style={{
-                fontSize: '11.5px',
+                fontSize: '13px',
                 color: 'var(--paper-secondary-ink)',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
