@@ -33,7 +33,7 @@ export const GlassChip = React.forwardRef<HTMLButtonElement, GlassChipProps>(
           padding: '6px 12px',
           borderRadius: '9999px',
           border: '1px solid var(--paper-hairline)',
-          background: active ? 'var(--paper-fill-2)' : 'var(--paper-fill-1)',
+          background: active ? 'color-mix(in srgb, var(--paper-fill-2) 50%, transparent)' : 'transparent',
           color: 'var(--paper-ink)',
           fontFamily: 'var(--font-sans)',
           fontSize: '13px',
