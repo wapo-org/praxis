@@ -102,6 +102,7 @@ export function useCatalogActions(state: PraxisState) {
       url: string;
       transport?: 'streamableHttp' | 'sse';
       token?: string;
+      extraHeaders?: Record<string, string>;
     }) => {
       const created = await apiClient.createConnector(input);
       setConnectors((prev) => [...prev, created]);

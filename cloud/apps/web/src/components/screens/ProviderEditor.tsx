@@ -11,8 +11,8 @@ import {
   requireHttpUrl,
   ScreenBody,
   ScreenButton,
-  Section,
   ScreenMenu,
+  Section,
   TaskError,
   useScreenTask,
 } from './ScreenUI';
@@ -49,6 +49,13 @@ const PRESETS: Array<{
   { name: 'Custom', flavor: 'openAIChat', baseUrl: '', defaultModel: '' },
 ];
 
+const probeErrorLabel = {
+  timeout: 'timed out',
+  provider_unavailable: 'provider unavailable',
+  provider_error: 'provider error',
+  unreachable: 'unreachable',
+} as const;
+
 export function ProviderEditor() {
   const store = usePraxisStore();
   const provider = store.providers.find((item) => item.id === store.editingProviderId);
@@ -66,6 +73,8 @@ export function ProviderEditor() {
   );
   const [headers, setHeaders] = React.useState<Array<{ key: string; value: string }>>([]);
   const [headersEdited, setHeadersEdited] = React.useState(false);
+  const [allowProbe, setAllowProbe] = React.useState(false);
+  React.useEffect(() => setAllowProbe(false), [baseUrl]);
   const [message, setMessage] = React.useState('');
   const task = useScreenTask();
   const models = store.models.filter((model) => model.providerId === savedId);
@@ -271,16 +280,54 @@ export function ProviderEditor() {
             </ScreenButton>
           ) : null}
         </Section>
+        {defaultModel.trim() ? (
+          <label className="screen-detail">
+            <input
+              type="checkbox"
+              checked={allowProbe}
+              onChange={(e) => setAllowProbe(e.target.checked)}
+            />{' '}
+            Allow test messages, an image, and future chats to this provider. You can revoke sharing in Settings.
+          </label>
+        ) : null}
         <ScreenButton
-          disabled={task.busy || !name.trim() || !baseUrl.trim()}
+          disabled={
+            task.busy || !name.trim() || !baseUrl.trim() || (!!defaultModel.trim() && !allowProbe)
+          }
           onClick={() => {
             void task.run(async () => {
               setMessage('');
               const saved = await persist();
-              const result = await apiClient.testProvider(saved.id);
-              if (!result.ok) throw new Error(result.message || 'Could not verify this provider.');
-              const refreshed = await store.refreshModelsForProvider(saved.id);
-              setMessage(`Connection verified · ${refreshed.length} models refreshed.`);
+              const discovery = await apiClient.testProvider(saved.id);
+              if (!discovery.ok)
+                throw new Error(discovery.message || 'Could not verify this provider.');
+              if (defaultModel.trim() && allowProbe)
+                await apiClient.setConsent(new URL(saved.baseUrl).hostname.toLowerCase(), true);
+              const result = defaultModel.trim()
+                ? await apiClient.testProvider(saved.id, defaultModel.trim())
+                : discovery;
+              if (!result.ok)
+                throw new Error(
+                  result.error
+                    ? `Test failed (${probeErrorLabel[result.error.code]}): ${result.error.message}`
+                    : result.message || 'Could not verify this provider.',
+                );
+              if (result.probe) {
+                setCapabilities((previous) => ({
+                  ...previous,
+                  tools: result.probe!.tools,
+                  vision: result.probe!.vision,
+                  reasoningEffort: result.probe!.reasoningEfforts.length > 0,
+                }));
+                setMessage(
+                  `Connection verified · Tools: ${result.probe.tools ? 'supported' : 'not detected'} · Images: ${result.probe.vision ? 'supported' : 'not detected'} · Streaming: ${result.probe.streaming ? 'supported' : 'not detected'} · Reasoning: ${result.probe.reasoningEfforts.join(', ') || 'none'}. Review capabilities and Save provider.`,
+                );
+              } else {
+                const refreshed = await store.refreshModelsForProvider(saved.id);
+                setMessage(
+                  `Connection verified · ${refreshed.length} models refreshed. Choose a Model ID and test again to probe capabilities.`,
+                );
+              }
             });
           }}
         >
