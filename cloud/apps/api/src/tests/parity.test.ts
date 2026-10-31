@@ -123,3 +123,43 @@ describe('read_tool_output (parity: ReadToolOutputTool)', () => {
     expect((await tool.execute({id, offset: 0}, ctx('other-chat'))).isError).toBe(true);
   });
 });
+
+describe('MCP gateway above 30 connector tools (parity: MCPGateway / gatewayThreshold)', () => {
+  it('offers the trio instead of direct tools, calls hidden tools through policy, and keeps the decision per chat', async () => {
+    const {createExecutionDriver} = await import('../execution.js');
+    const {ApiService} = await import('../service.js');
+    const {createApp} = await import('../app.js');
+    const {withGateway} = await import('../modules.js');
+    let count = 31;
+    const calls: string[] = [];
+    const tools = () => Array.from({length: count}, (_, i) => ({
+      name: `tool_${i}`, description: `Tool ${i}`, inputSchema: {type: 'object'}, source: {type: 'mcp' as const, serverId: 'big', serverName: 'Big'}, traits: ['readOnly' as const],
+      execute: async () => { calls.push(`tool_${i}`); return `result ${i}`; },
+    }));
+    const fake = fakeOpenAI([toolCall('mcp_call_tool', {tool: 'tool_7', arguments: {}}), [delta({content: 'done'}), delta({}, 'stop')]]);
+    const service = new ApiService(createLocalAdapters(), true);
+    service.driver = createExecutionDriver({service, fetcher: fake.fetcher, features: {tools: async (_ctx, {chat}) => withGateway(chat, tools())}});
+    const {app} = createApp({service, encryptionKey: randomBytes(32).toString('base64'), fetcher: fake.fetcher});
+    const req = async (path: string, body?: unknown) => app.request(path, {method: body ? 'POST' : 'GET', headers: {Authorization: 'Bearer dev-local', 'Content-Type': 'application/json'}, ...(body ? {body: JSON.stringify(body)} : {})});
+    await service.adapters.store.put('local-user', 'connector', 'big', {type: 'connector', id: 'big', name: 'Big', url: 'https://big.example/mcp', transport: 'streamableHttp', enabled: true, trusted: true, disabledTools: [], authStatus: 'none', updatedAt: new Date().toISOString()});
+    const provider = await (await req('/v1/providers', {type: 'provider.input', name: 'F', flavor: 'openAIChat', baseUrl: 'https://llm.example.test/v1', apiKey: 'sk-test-123456', capabilities: {tools: true}})).json();
+    await req('/v1/consents', {type: 'consent', host: 'llm.example.test', allowed: true});
+    const newChat = async () => (await req('/v1/chats', {type: 'chat.input', providerId: provider.id, modelId: 'm'})).json();
+    const run = async (chatId: string) => { await req('/v1/runs', {type: 'run.start', chatId, text: 'go'}); await service.drain(); };
+
+    const chat = await newChat();
+    await run(chat.id);
+    const offered = fake.requests[0].tools.map((t: any) => t.function.name);
+    expect(offered).toEqual(expect.arrayContaining(['mcp_search_tools', 'mcp_describe_tool', 'mcp_call_tool']));
+    expect(offered.some((n: string) => n.startsWith('tool_'))).toBe(false);
+    expect(calls).toEqual(['tool_7']);
+    expect(JSON.stringify(fake.requests[1].messages)).toContain('result 7');
+
+    count = 5; // fewer tools later: this chat keeps the gateway it started with; a new chat gets direct tools
+    await run(chat.id);
+    expect(fake.requests[2].tools.map((t: any) => t.function.name)).toContain('mcp_call_tool');
+    const fresh = await newChat();
+    await run(fresh.id);
+    expect(fake.requests.at(-1).tools.map((t: any) => t.function.name)).toContain('tool_0');
+  });
+});

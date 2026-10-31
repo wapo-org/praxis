@@ -392,6 +392,7 @@ export function adaptTool(tool: FeatureTool): AgentTool {
   return {
     spec: {type: 'tool.spec', name: tool.name, description: tool.description, inputSchema: tool.inputSchema, source: tool.source, traits: tool.traits},
     ...(tool.classify ? {classify: (args: JsonValue) => tool.classify!(args)} : {}),
+    ...(tool.hidden ? {hidden: true} : {}),
     async execute(args, context): Promise<ToolResult> {
       try {
         const value = await tool.execute(args, {

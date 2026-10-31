@@ -4,7 +4,7 @@ import {Hono} from 'hono';
 import {createImageReaderTool, type AgentTool, type ModelProvider} from '@praxis/agent';
 import {PreferencesSchema, type Chat, type MessagePart, type Model} from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from './contracts.js';
-import {connectorTurnNotes, createMcpRoutes, getMcpTools, type McpOptions} from './features/mcp/index.js';
+import {connectorTurnNotes, createMcpGateway, createMcpRoutes, getMcpTools, type McpOptions} from './features/mcp/index.js';
 import {createLocalToolsStorage, createToolsRoutes, type ToolsStorage} from './features/tools/index.js';
 import {rehydrateAttachment} from './features/tools/media.js';
 import {javascriptTool, listSkillsForCatalog, skillTools} from './features/tools/builtin.js';
@@ -40,12 +40,26 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
           const skills = skillTools(ctx, storage);
           const hostToolNames = [...connectors, ...skills].map(t => t.name);
           const js = javascriptTool(ctx, {attachmentIds, hostToolNames, ...(storage ? {storage} : {})});
-          return [...skills, js, ...connectors] satisfies FeatureTool[];
+          return [...skills, js, ...withGateway(chat, connectors)] satisfies FeatureTool[];
         },
         agentTools: async (ctx, {chat}) => visionTools(service, ctx, chat, storage),
       },
     },
   ];
+}
+
+/** Above this many connector tools the gateway trio replaces direct tools (AgentRuntime gatewayThreshold). */
+export const GATEWAY_THRESHOLD = 30;
+
+/**
+ * The gateway decision is frozen with the conversation (like ConversationSetup.gatewayThreshold): a chat that
+ * started with the gateway keeps it, one that started with direct tools keeps those, whatever the count later.
+ */
+export function withGateway(chat: Chat, connectors: FeatureTool[]): FeatureTool[] {
+  const frozen = chat.setup?.tools.map(t => t.name);
+  const gateway = frozen ? frozen.includes('mcp_call_tool') : connectors.length > GATEWAY_THRESHOLD;
+  if (!gateway) return connectors;
+  return [...createMcpGateway(connectors), ...connectors.map(t => ({...t, hidden: true}))];
 }
 
 export function localModules(baseUrl: string): (service: ApiService) => FeatureModule[] {
