@@ -15,6 +15,7 @@ export class FeatureApiClient extends ExtendedFeatureApiClient {
     trusted?: boolean;
     disabledTools?: string[];
     token?: string;
+    extraHeaders?: Record<string, string>;
   }): Promise<Connector> {
     return await this.request<Connector>('/v1/connectors', {
       method: 'POST',

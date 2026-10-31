@@ -49,6 +49,13 @@ const PRESETS: Array<{
   { name: 'Custom', flavor: 'openAIChat', baseUrl: '', defaultModel: '' },
 ];
 
+const probeErrorLabel = {
+  timeout: 'timed out',
+  provider_unavailable: 'provider unavailable',
+  provider_error: 'provider error',
+  unreachable: 'unreachable',
+} as const;
+
 export function ProviderEditor() {
   const store = usePraxisStore();
   const provider = store.providers.find((item) => item.id === store.editingProviderId);
@@ -299,7 +306,12 @@ export function ProviderEditor() {
               const result = defaultModel.trim()
                 ? await apiClient.testProvider(saved.id, defaultModel.trim())
                 : discovery;
-              if (!result.ok) throw new Error(result.message || 'Could not verify this provider.');
+              if (!result.ok)
+                throw new Error(
+                  result.error
+                    ? `Test failed (${probeErrorLabel[result.error.code]}): ${result.error.message}`
+                    : result.message || 'Could not verify this provider.',
+                );
               if (result.probe) {
                 setCapabilities((previous) => ({
                   ...previous,

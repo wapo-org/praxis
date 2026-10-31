@@ -5,6 +5,8 @@ import { Field, ScreenBody, ScreenButton, Section, TaskError, useScreenTask } fr
 import { apiClient } from '../../lib/api';
 export function SkillImport() {
   const store = usePraxisStore();
+  // Separate tasks: an archive failure must not show up on (or block) the manual form, and vice versa.
+  const archive = useScreenTask();
   const task = useScreenTask();
   const [report, setReport] = React.useState('');
   const [name, setName] = React.useState('');
@@ -14,20 +16,20 @@ export function SkillImport() {
     <ScreenBody>
       <Section
         title="Import from Files"
-        hint="Choose a .zip, .tar or .tar.gz skill archive. Review instructions before enabling a skill."
+        hint="Choose a .zip, .skill, .tar or .tar.gz skill archive. Review instructions before enabling a skill."
       >
-        <TaskError error={task.error} />
+        <TaskError error={archive.error} />
         <Field label="Skill archive">
           <input
             type="file"
-            accept=".zip,.tar,.tar.gz"
-            disabled={task.busy}
+            accept=".zip,.skill,.tar,.tar.gz"
+            disabled={archive.busy}
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
               event.currentTarget.value = '';
               if (!file) return;
               setReport('');
-              void task.run(async () => {
+              void archive.run(async () => {
                 const attachment = await apiClient.uploadAttachment(file);
                 const result = await apiClient.importSkillArchive(attachment.id);
                 await store.refreshAll();
@@ -38,7 +40,7 @@ export function SkillImport() {
             }}
           />
         </Field>
-        {task.busy ? <p role="status">Importing…</p> : null}
+        {archive.busy ? <p role="status">Uploading and importing…</p> : null}
         {report ? <p role="status">{report}</p> : null}
       </Section>
       <form
@@ -92,7 +94,7 @@ export function SkillImport() {
           tone="primary"
           disabled={task.busy || !name.trim() || !document.trim()}
         >
-          {task.busy ? 'Importing…' : 'Import skill'}
+          {task.busy ? 'Saving…' : 'Save skill'}
         </ScreenButton>
       </form>
     </ScreenBody>

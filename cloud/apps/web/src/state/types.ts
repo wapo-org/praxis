@@ -211,6 +211,7 @@ export interface PraxisStoreContextValue {
     url: string;
     transport?: 'streamableHttp' | 'sse';
     token?: string;
+    extraHeaders?: Record<string, string>;
   }) => Promise<Connector>;
   updateConnector: (
     connectorId: string,

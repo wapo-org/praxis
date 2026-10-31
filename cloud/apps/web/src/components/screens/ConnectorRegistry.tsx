@@ -13,6 +13,8 @@ import {
   requireHttpUrl,
   useScreenTask,
 } from './ScreenUI';
+const isAuthorization = (name: string) => name.toLowerCase() === 'authorization';
+
 export function ConnectorRegistry() {
   const store = usePraxisStore(),
     task = useScreenTask();
@@ -24,6 +26,7 @@ export function ConnectorRegistry() {
     [chosen, setChosen] = React.useState<ConnectorCandidate | null>(null),
     [url, setUrl] = React.useState(''),
     [token, setToken] = React.useState(''),
+    [headers, setHeaders] = React.useState<Record<string, string>>({}),
     [added, setAdded] = React.useState<Connector | null>(null);
   const generation = React.useRef(0);
   const search = async (q: string, next?: string) => {
@@ -53,11 +56,18 @@ export function ConnectorRegistry() {
       generation.current++;
     };
   }, [query]);
-  const add = async (entry: ConnectorCandidate, serverUrl = entry.input.url, bearer?: string) => {
+  const add = async (
+    entry: ConnectorCandidate,
+    serverUrl = entry.input.url,
+    bearer?: string,
+    extraHeaders?: Record<string, string>,
+  ) => {
+    if (/\{[^{}]+\}/.test(serverUrl)) throw new Error('Fill in every {placeholder} in the server URL.');
     const connector = await store.createConnector({
       ...entry.input,
       url: requireHttpUrl(serverUrl),
       ...(bearer ? { token: bearer } : {}),
+      ...(extraHeaders && Object.keys(extraHeaders).length ? { extraHeaders } : {}),
     });
     setAdded(connector);
     setChosen(null);
@@ -80,14 +90,15 @@ export function ConnectorRegistry() {
         <p role="status">
           {added.name} ·{' '}
           {added.status
-            ? {
+            ? ({
                 connected: 'Connected',
                 unreachable: 'Unreachable',
                 needs_auth: 'Needs auth',
                 needs_reauth: 'Needs reauth',
                 error: 'Error',
-              }[added.status]
+              }[added.status] ?? added.status)
             : 'Status unknown'}
+          {added.error ? ` · ${added.error}` : ''}
         </p>
       ) : null}
       <Section title="MCP registry">
@@ -107,6 +118,7 @@ export function ConnectorRegistry() {
                       setChosen(entry);
                       setUrl(entry.input.url);
                       setToken('');
+                      setHeaders({});
                     } else void task.run(() => add(entry));
                   }}
                 >
@@ -133,33 +145,38 @@ export function ConnectorRegistry() {
             className="screen-form"
             onSubmit={(e) => {
               e.preventDefault();
-              void task.run(() => add(chosen, url, token));
+              void task.run(() => add(chosen, url, token, headers));
             }}
           >
             <Field label="Server URL">
               <input value={url} onChange={(e) => setUrl(e.target.value)} required type="url" />
             </Field>
-            {chosen.headerNames.length ? (
-              <p className="screen-detail">
-                Required headers: {chosen.headerNames.join(', ')}. Bearer authorization is supported
-                here; other custom headers require server-side configuration.
-              </p>
+            {chosen.headerNames.some(isAuthorization) || !chosen.headerNames.length ? (
+              <Field label="Bearer token">
+                <input
+                  type="password"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  autoComplete="off"
+                />
+              </Field>
             ) : null}
-            <Field label="Bearer token">
-              <input
-                type="password"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                autoComplete="off"
-              />
-            </Field>
+            {chosen.headerNames
+              .filter((n) => !isAuthorization(n))
+              .map((n) => (
+                <Field key={n} label={n}>
+                  <input
+                    type="password"
+                    required
+                    value={headers[n] ?? ''}
+                    onChange={(e) => setHeaders((old) => ({ ...old, [n]: e.target.value }))}
+                    autoComplete="off"
+                  />
+                </Field>
+              ))}
             <ScreenButton
               type="submit"
-              disabled={
-                task.busy ||
-                /\{[^{}]+\}/.test(url) ||
-                chosen.headerNames.some((n) => n.toLowerCase() !== 'authorization')
-              }
+              disabled={task.busy || /\{[^{}]+\}/.test(url)}
             >
               Add server
             </ScreenButton>

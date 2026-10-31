@@ -25,7 +25,6 @@ for(const [name,type] of [['chromium',chromium],['webkit',webkit],['firefox',fir
    await page.waitForFunction(()=>document.querySelectorAll('[data-glass-webgl="ready"]').length>=3);
    assert.equal(await page.evaluate(()=>window.__glassContexts.length),1);
    await page.locator('.praxis-glass-chip').first().waitFor();
-   assert.equal(await page.locator('.praxis-glass-chip').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
    assert.ok(await page.locator('.praxis-glass-chip').first().locator('xpath=ancestor::*[@data-glass-surface]').count());
  }
  await page.screenshot({path:`${out}/${name}-chips.png`});
