@@ -40,6 +40,8 @@ export interface ConvexStore extends Store {
     expectedRevision: number,
     options?: ListOptions,
   ): Promise<StoredRecord | null>;
+  /** Every owner with stored rows (maintenance scripts such as key rotation). */
+  owners(): AsyncIterable<string>;
 }
 
 function address(userId: string, kind: string, id?: string) {
@@ -63,6 +65,14 @@ function toRecord(value: unknown): StoredRecord {
 
 export function storeFromRPC(rpc: ConvexRPC): ConvexStore {
   return {
+    async *owners() {
+      let cursor: string | null = null;
+      do {
+        const page = z.object({ owners: z.array(z.string()), cursor: z.string().nullable() }).parse(await rpc.query('store:owners', { cursor }));
+        yield* page.owners;
+        cursor = page.cursor;
+      } while (cursor);
+    },
     async get(userId, kind, id) {
       const row = await rpc.query('store:get', address(userId, kind, id));
       return row === null ? null : toRecord(row);

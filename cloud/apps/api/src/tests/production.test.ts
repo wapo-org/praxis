@@ -8,7 +8,7 @@ import {createPraxisApp, jsonLog} from '../server.js';
 const env = (): Record<string, string> => ({
   PRAXIS_API_URL: 'https://api.praxis.test',
   PRAXIS_WEB_ORIGINS: 'https://app.praxis.test',
-  PRAXIS_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+  PRAXIS_ENCRYPTION_KEYS: `${randomBytes(32).toString('base64')},${randomBytes(32).toString('base64')}`,
   BETTER_AUTH_SECRET: 'b'.repeat(40),
   CONVEX_URL: 'https://example-123.convex.cloud',
   PRAXIS_CONVEX_SERVER_TOKEN: 's'.repeat(40),
@@ -25,8 +25,9 @@ describe('production startup', () => {
     let message = '';
     try { readProductionEnv({}); } catch (e) { message = (e as Error).message; }
     for (const name of PRODUCTION_ENV) expect(message).toContain(`${name} is missing`);
-    const bad = {...env(), PRAXIS_API_URL: 'http://api.praxis.test', PRAXIS_ENCRYPTION_KEY: 'short', BETTER_AUTH_SECRET: 'tiny'};
-    expect(() => readProductionEnv(bad)).toThrow(/PRAXIS_API_URL must be an https URL[\s\S]*PRAXIS_ENCRYPTION_KEY must be base64 of exactly 32 random bytes[\s\S]*BETTER_AUTH_SECRET must be at least 32 characters/);
+    expect(message).toContain('PRAXIS_ENCRYPTION_KEYS is missing');
+    const bad = {...env(), PRAXIS_API_URL: 'http://api.praxis.test', PRAXIS_ENCRYPTION_KEYS: `${randomBytes(32).toString('base64')},short`, BETTER_AUTH_SECRET: 'tiny'};
+    expect(() => readProductionEnv(bad)).toThrow(/PRAXIS_API_URL must be an https URL[\s\S]*PRAXIS_ENCRYPTION_KEYS must list base64 keys of exactly 32 random bytes each[\s\S]*BETTER_AUTH_SECRET must be at least 32 characters/);
   });
 
   it('composes with Convex/Upstash/QStash/Better Auth without touching the network, and serves health + the signed continuation route', async () => {

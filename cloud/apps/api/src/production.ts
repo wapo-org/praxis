@@ -11,7 +11,6 @@ import {createPraxisApp, jsonLog} from './server.js';
 export const PRODUCTION_ENV = [
   'PRAXIS_API_URL',
   'PRAXIS_WEB_ORIGINS',
-  'PRAXIS_ENCRYPTION_KEY',
   'BETTER_AUTH_SECRET',
   'CONVEX_URL',
   'PRAXIS_CONVEX_SERVER_TOKEN',
@@ -22,9 +21,14 @@ export const PRODUCTION_ENV = [
   'QSTASH_NEXT_SIGNING_KEY',
 ] as const;
 
-export type ProductionEnv = Record<(typeof PRODUCTION_ENV)[number], string> & {PRAXIS_RUN_BUDGET_MS?: string; PRAXIS_COOKIE_SAMESITE?: string; GROQ_API_KEY?: string};
+export type ProductionEnv = Record<(typeof PRODUCTION_ENV)[number], string> & {PRAXIS_ENCRYPTION_KEYS?: string; PRAXIS_ENCRYPTION_KEY?: string; PRAXIS_RUN_BUDGET_MS?: string; PRAXIS_COOKIE_SAMESITE?: string; GROQ_API_KEY?: string};
 
 export const CONTINUATION_PATH = '/internal/continue';
+
+/** The keyring: PRAXIS_ENCRYPTION_KEYS (current first, then previous keys) or the legacy single PRAXIS_ENCRYPTION_KEY. */
+export function encryptionKeyring(env: Record<string, string | undefined>): string | undefined {
+  return (env.PRAXIS_ENCRYPTION_KEYS ?? env.PRAXIS_ENCRYPTION_KEY)?.trim() || undefined;
+}
 
 export function readProductionEnv(env: Record<string, string | undefined>): ProductionEnv {
   const problems: string[] = [];
@@ -40,7 +44,9 @@ export function readProductionEnv(env: Record<string, string | undefined>): Prod
   };
   for (const name of ['PRAXIS_API_URL', 'CONVEX_URL', 'UPSTASH_REDIS_REST_URL']) https(name);
   if (env.PRAXIS_API_URL && /\/.+/.test(new URL(env.PRAXIS_API_URL, 'https://x').pathname)) problems.push('PRAXIS_API_URL must be an origin without a path');
-  if (env.PRAXIS_ENCRYPTION_KEY && Buffer.from(env.PRAXIS_ENCRYPTION_KEY, 'base64').length !== 32) problems.push('PRAXIS_ENCRYPTION_KEY must be base64 of exactly 32 random bytes');
+  const ring = encryptionKeyring(env);
+  if (!ring) problems.push('PRAXIS_ENCRYPTION_KEYS is missing (comma-separated base64 32-byte keys, current first; PRAXIS_ENCRYPTION_KEY is accepted for a single key)');
+  else if (ring.split(',').some(k => Buffer.from(k.trim(), 'base64').length !== 32)) problems.push('PRAXIS_ENCRYPTION_KEYS must list base64 keys of exactly 32 random bytes each');
   for (const name of ['BETTER_AUTH_SECRET', 'PRAXIS_CONVEX_SERVER_TOKEN']) if (env[name] && env[name]!.length < 32) problems.push(`${name} must be at least 32 characters`);
   if (env.PRAXIS_RUN_BUDGET_MS && !(Number(env.PRAXIS_RUN_BUDGET_MS) >= 10_000)) problems.push('PRAXIS_RUN_BUDGET_MS must be a number of milliseconds ≥ 10000');
   if (env.PRAXIS_WEB_ORIGINS) {
@@ -73,7 +79,7 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
   return createPraxisApp({
     adapters: {store, kv: upstash.kv, events: upstash.events},
     local: false,
-    encryptionKey: env.PRAXIS_ENCRYPTION_KEY,
+    encryptionKey: encryptionKeyring(env)!,
     // Provider base URLs are user-supplied, so model calls use the same SSRF guard as tools and MCP.
     fetcher: egress,
     allowedOrigins: webOrigins,
