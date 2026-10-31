@@ -20,7 +20,7 @@ final class CloudLiveIntegrationTests: XCTestCase {
                        modelID: "scripted", webSearch: false, attachments: [], policy: ToolPolicy(), approvals: AutoApprove(),
                        setup: nil, compaction: nil, contextMeasurement: nil)
     }
-    private func drive(_ script: String, client: CloudAPIClient, request: ChatRunRequest? = nil, cancel: Bool = false, allowMissingURL: Bool = false) async throws -> (Turn, [AgentEvent]) {
+    private func drive(_ script: String, client: CloudAPIClient, request: ChatRunRequest? = nil, cancel: Bool = false, allowMissingURL: Bool = false, attachments: AttachmentStore = .shared) async throws -> (Turn, [AgentEvent]) {
         let previous = UserDefaults.standard.object(forKey: "PraxisCloudScenario")
         UserDefaults.standard.set(script, forKey: "PraxisCloudScenario")
         defer { UserDefaults.standard.set(previous, forKey: "PraxisCloudScenario") }
@@ -40,7 +40,7 @@ final class CloudLiveIntegrationTests: XCTestCase {
             }
         }
         defer { responder.cancel() }
-        let engine = CloudChatEngine(client: client, elicitations: center)
+        let engine = CloudChatEngine(client: client, attachments: attachments, elicitations: center)
         let finished = expectation(description: script)
         let worker = Task { () -> [AgentEvent] in
             var events: [AgentEvent] = []
@@ -84,9 +84,20 @@ final class CloudLiveIntegrationTests: XCTestCase {
             return
         }
         let tools = ["tools", "approval", "nestedApproval", "elicitation", "elicitationURL", "vision"].contains(script)
-        let expected = script == "long" ? String(repeating: "Scripted streaming response. ", count: 400)
+        var expected = script == "long" ? String(repeating: "Scripted streaming response. ", count: 400)
             : tools ? "Scripted tools completed." : "Scripted response: " + prompt
-        XCTAssertEqual(text, expected, script)
+        if script == "compaction" {
+            let summary = events.compactMap { event -> String? in
+                if case .compaction(_, .finished(let value)) = event { return value.summary }; return nil
+            }.last
+            XCTAssertNotNil(summary)
+            // The local scripted provider echoes the first text in its input;
+            // compaction prepends this exact summary part to that input.
+            expected = "Scripted response: [Summary of earlier conversation]\n" + (summary ?? "")
+        }
+        // Markdown presentation trims trailing whitespace; raw committed
+        // transcript text below must still match the original wire payload.
+        XCTAssertEqual(text, expected.trimmingCharacters(in: .whitespacesAndNewlines), script)
         XCTAssertEqual(turn.transcript.last(where: { $0.role == .assistant })?.text, expected, script)
         if tools {
             XCTAssertFalse(results.isEmpty, script)
@@ -115,6 +126,15 @@ final class CloudLiveIntegrationTests: XCTestCase {
         return events
     }
     func testLiveText() async throws { _ = try await completed("text") }
+    func testLiveAttachmentUploadsToAuthenticatedLocalPUTRoute() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let files = AttachmentStore(directory: directory)
+        let file = Attachment(kind: .file, name: "live.txt", fileData: Data("Real local upload bytes".utf8), mediaType: "text/plain", store: files)
+        var req = request(); req.attachments = [file]
+        let (turn, _) = try await drive("text", client: try await client(), request: req, attachments: files)
+        XCTAssertEqual(turn.outcome, .completed)
+    }
     func testLiveTools() async throws {
         let events = try await completed("tools")
         XCTAssertTrue(events.contains { if case .toolFinished = $0 { true } else { false } })

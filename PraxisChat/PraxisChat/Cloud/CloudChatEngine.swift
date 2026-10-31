@@ -212,10 +212,13 @@ struct CloudChatEngine: ChatEngine {
         request.httpMethod = upload.method?.rawValue ?? "POST"; request.httpBody = bytes
         request.setValue(mediaType, forHTTPHeaderField: "Content-Type")
         request.httpShouldHandleCookies = false
-        // Override any Authorization in the injectable session's default
-        // headers as well as avoiding the API client's bearer header.
-        request.setValue("", forHTTPHeaderField: "Authorization")
-        // Signed URLs grant upload access. Never forward the session bearer.
+        // Local API upload routes require the API bearer. A Convex one-time
+        // URL is a different origin and must never receive that credential,
+        // including any Authorization supplied by session default headers.
+        let uploadOrigin = try CloudServerConfiguration(baseURL: originURL).origin
+        let token = uploadOrigin == client.configuration.origin
+            ? try await client.tokens.token(for: client.configuration.origin) : nil
+        request.setValue(token.map { "Bearer " + $0 } ?? "", forHTTPHeaderField: "Authorization")
         let (data, response) = try await client.session.data(for: request, delegate: CloudRedirectGuard())
         try CloudAPIClient.validate(response, data: data)
         let storage = try JSONDecoder().decode(CloudStorageReceipt.self, from: data)

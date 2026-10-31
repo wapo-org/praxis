@@ -121,4 +121,37 @@ final class CloudReviewLifecycleTests: XCTestCase {
         XCTAssertEqual(first as? Bool, true)
         XCTAssertEqual(duplicate as? Bool, false)
     }
+    func testLifecycleSnapshotCheckpointReplacesPartialUIExactlyOnce() async throws {
+        let backend = CloudTestBackend(scenario: .cursorExpired, chunkDelay: 0.005)
+        defer { backend.shutdown() }
+        let journal = CloudRunJournal(directory: root())
+        let engine = CloudLifecycleEngine(client: try client(backend), journal: journal, elicitations: ElicitationCenter())
+        let req = request()
+        var turn = Turn(userText: req.userText), reducer = TurnReducer()
+        for await event in engine.run(req) { _ = reducer.reduce(event, into: &turn, at: Date()) }
+        XCTAssertEqual(turn.outcome, .completed)
+        let expected = "Cloud snapshot recovered without duplicate text."
+        let rendered = turn.blocks.compactMap { block -> String? in
+            if case .markdown(_, let text, _) = block { return text }; return nil
+        }.joined()
+        XCTAssertEqual(rendered, expected)
+        XCTAssertEqual(turn.transcript.filter { $0.role == .user }.count, 1)
+        XCTAssertEqual(turn.transcript.filter { $0.role == .assistant }.map(\.text), [expected])
+        XCTAssertTrue(backend.recordedRequests().contains { $0.path.hasSuffix("/snapshot") })
+        let records = await journal.records()
+        let id = try XCTUnwrap(records.first?.runID)
+        let checkpoint = await journal.replay(runID: id)
+        XCTAssertNotNil(checkpoint.snapshot)
+        XCTAssertGreaterThan(checkpoint.cursor, 1)
+    }
+    func testErasedJournalRejectsLateReaderWrites() async throws {
+        let directory = root()
+        let journal = CloudRunJournal(directory: directory)
+        let bytes = Data(#"{"type":"run.event","id":1,"runId":"run","event":{"type":"text.delta","blockId":"b","text":"private"}}"#.utf8)
+        try await journal.append(bytes, runID: "run")
+        try await journal.erase()
+        do { try await journal.append(bytes, runID: "run"); XCTFail("Detached reader must not recreate signed-out data") } catch { }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("Runs").path))
+    }
+
 }

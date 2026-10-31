@@ -23,7 +23,7 @@ final class CloudReplicaTests: XCTestCase {
         XCTAssertTrue(try CloudCursorReplica.load(file).values.isEmpty)
         XCTAssertEqual(replica.cursor, "5")
     }
-    func testCorruptNewAccountCacheCannotLeaveOldChatsVisible() throws {
+    func testCorruptNewAccountCacheCannotLeaveOldChatsVisible() async throws {
         let root = root()
         let client = try cloudNetClient { _ in CloudNetReply("{}") }
         let store = ChatStore(conversations: [Conversation(title: "Previous account secret")])
@@ -33,6 +33,7 @@ final class CloudReplicaTests: XCTestCase {
         try Data("corrupted".utf8).write(to: directory.appendingPathComponent("replica.json"))
         controller.sessionChanged(CloudUser(id: "new", name: "New", email: nil))
         XCTAssertTrue(store.conversations.isEmpty)
+        await controller.waitForSync()
         XCTAssertNil(controller.userID)
         XCTAssertNotNil(controller.error)
     }

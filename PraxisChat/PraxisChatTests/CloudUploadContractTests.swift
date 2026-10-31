@@ -5,21 +5,23 @@ import Synchronization
 
 @MainActor
 final class CloudUploadContractTests: XCTestCase {
-    private func upload(method: String, receipt: String = #"{"storageId":"convex-file"}"#, status: Int = 200) async throws -> (Turn, [String]) {
+    private func upload(method: String, receipt: String = #"{"storageId":"convex-file"}"#, status: Int = 200, apiOrigin: Bool = false) async throws -> (Turn, [String]) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let files = AttachmentStore(directory: root)
         let attachment = Attachment(kind: .file, name: "upload.txt", fileData: Data("Actual bytes".utf8), mediaType: "text/plain", store: files)
         let calls = Mutex<[String]>([])
+        let uploadURL = apiOrigin ? "https://cloud.test/once" : "https://upload.convex.test/once"
         let api = try cloudNetClient(defaultHeaders: ["Authorization": "Bearer default-must-not-leak"]) { request in
             let path = request.url!.path
             calls.withLock { $0.append(path) }
             switch path {
             case "/v1/chats/chat": return CloudNetReply(#"{"id":"chat"}"#)
-            case "/v1/uploads": return CloudNetReply("{\"uploadUrl\":\"https://upload.convex.test/once\",\"method\":\"\(method)\",\"expiresAt\":\"2027-01-01T00:00:00Z\"}")
+            case "/v1/uploads": return CloudNetReply("{\"uploadUrl\":\"\(uploadURL)\",\"method\":\"\(method)\",\"expiresAt\":\"2027-01-01T00:00:00Z\"}")
             case "/once":
                 XCTAssertEqual(request.httpMethod, method)
-                XCTAssertTrue((request.value(forHTTPHeaderField: "Authorization") ?? "").isEmpty)
+                if apiOrigin { XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer api-token") }
+                else { XCTAssertTrue((request.value(forHTTPHeaderField: "Authorization") ?? "").isEmpty) }
                 XCTAssertFalse(request.httpShouldHandleCookies)
                 XCTAssertEqual(cloudNetBody(request), Data("Actual bytes".utf8))
                 return CloudNetReply(receipt, status: status)
@@ -38,6 +40,10 @@ final class CloudUploadContractTests: XCTestCase {
     }
     func testConvexPOSTWithoutExternalBearer() async throws {
         let (turn, _) = try await upload(method: "POST")
+        XCTAssertEqual(turn.outcome, .completed)
+    }
+    func testAPIOriginUploadRetainsAPIBearer() async throws {
+        let (turn, _) = try await upload(method: "PUT", apiOrigin: true)
         XCTAssertEqual(turn.outcome, .completed)
     }
     func testReturnedPUTMethodIsHonoredWithoutExternalBearer() async throws {
