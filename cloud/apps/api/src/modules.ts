@@ -1,3 +1,5 @@
+import {cropImage, cropImageReaderTool} from './features/tools/image-crop.js';
+import {connectorToolNotes} from './features/tools/tool-notes.js';
 import {Hono} from 'hono';
 import {createImageReaderTool, type AgentTool, type ModelProvider} from '@praxis/agent';
 import {PreferencesSchema, type Chat, type MessagePart, type Model} from '@praxis/protocol';
@@ -29,9 +31,10 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
       },
       execution: {
         skills: ctx => listSkillsForCatalog(ctx),
+        toolNotes: async (ctx, chat) => connectorToolNotes(await getMcpTools(ctx, {chatId: chat.id, disabledConnectorIds: chat.disabledConnectorIds}, mcp)),
         async tools(ctx, {chat, attachmentIds}) {
           const connectors = await getMcpTools(ctx, {chatId: chat.id, disabledConnectorIds: chat.disabledConnectorIds}, mcp);
-          const skills = skillTools(ctx);
+          const skills = skillTools(ctx, storage);
           const hostToolNames = [...connectors, ...skills].map(t => t.name);
           const js = javascriptTool(ctx, {attachmentIds, hostToolNames, ...(storage ? {storage} : {})});
           return [...skills, js, ...connectors] satisfies FeatureTool[];
@@ -63,8 +66,9 @@ export async function visionTools(service: ApiService, ctx: FeatureContext, chat
   const provider = await readerProvider(service, ctx.userId, vision.providerId, vision.modelId);
   if (!provider) return [];
   return [
-    createImageReaderTool({
+    cropImageReaderTool(createImageReaderTool({
       provider,
+      crop: cropImage,
       modelId: vision.modelId,
       async resolveImage(userId, chatId, imageId): Promise<MessagePart | null> {
         const row = await ctx.store.get(userId, 'attachment', imageId);
@@ -74,7 +78,7 @@ export async function visionTools(service: ApiService, ctx: FeatureContext, chat
         if (!file.mediaType.startsWith('image/')) return null;
         return {type: 'image', attachmentId: imageId, mediaType: file.mediaType, data: Buffer.from(file.bytes).toString('base64')};
       },
-    }),
+    })),
   ];
 }
 
