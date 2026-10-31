@@ -162,7 +162,9 @@ final class CloudLiveIntegrationTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         var replica = CloudCursorReplica()
-        let first: CloudCursorReplica.Page = try await api.send("/v1/sync/pull?cursor=0&limit=1000")
+        // Force paging even on a fresh server so POST is exercised too.
+        let first: CloudCursorReplica.Page = try await api.send("/v1/sync/pull?cursor=0&limit=1")
+        XCTAssertNotNil(first.nextCursor)
         try replica.apply(first, file: root.appendingPathComponent("replica.json"))
         var next = first.nextCursor
         while next != nil {
