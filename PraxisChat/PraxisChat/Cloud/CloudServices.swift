@@ -255,6 +255,12 @@ final class CloudServices: VoiceSettingsReader {
         if revision == accountRevision { replaceConnector(connector) }
     }
 
+    func refreshConnector(_ id: String) async throws {
+        let revision = accountRevision
+        let connector: CloudCatalogConnector = try await client.send("/v1/connectors/" + CloudCatalogPath.component(id) + "/refresh", method: "POST")
+        if revision == accountRevision { replaceConnector(connector) }
+    }
+
     func signInToConnector(_ id: String, authorizer: any CloudOAuthAuthorizing = CloudOAuthAuthorizer()) async throws {
         struct Input: Encodable { var type = "oauth.start"; var returnUrl = "praxis-app://oauth/callback" }
         let revision = accountRevision
