@@ -264,6 +264,9 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     },
 
     async continue(userId: string, runId: string) {
+      // A continuation for a run that was deleted (truncate/chat delete) is acknowledged as done, so QStash stops retrying.
+      const row = await service.adapters.store.get(userId, 'checkpoint', runId);
+      if (!row || row.deleted) return;
       await exclusive(userId, runId, async fence => {
         const {cp, runner} = await load(userId, runId, fence);
         if (cp.run.status !== 'continuing') return;
