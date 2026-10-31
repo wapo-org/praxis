@@ -16,6 +16,7 @@ const modules = {
 /** Executable Convex database (convex-test) behind the same RPC shape as `createConvexRPC`. */
 export function convexHarness(serverToken = TEST_SERVER_TOKEN) {
   process.env.PRAXIS_CONVEX_SERVER_TOKEN = TEST_SERVER_TOKEN;
+  process.env.CONVEX_SITE_URL ??= 'https://happy-otter-123.convex.site';
   const t = convexTest(schema, modules);
   const rpc: ConvexRPC = {
     query: (name, args) => t.query(makeFunctionReference<'query'>(name), { ...args, serverToken }),

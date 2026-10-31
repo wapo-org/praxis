@@ -36,7 +36,8 @@ export async function upload(ctx: GenericActionCtx<GenericDataModel>, request: R
   // Bound buffering even without Content-Length; no bytes are passed as a Convex function argument.
   const reader = request.body?.getReader();
   if (!reader) return new Response('Missing upload', {status: 400});
-  const chunks: Uint8Array<ArrayBuffer>[] = [];
+  // Chunks are kept as read (no per-chunk copy) so peak memory stays ~2× the file (chunks + Blob) inside the 64 MiB HTTP-action limit.
+  const chunks: Uint8Array[] = [];
   let size = 0;
   try {
     for (;;) {
@@ -44,11 +45,13 @@ export async function upload(ctx: GenericActionCtx<GenericDataModel>, request: R
       if (done) break;
       size += value.length;
       if (size > pending.size || size > MAX_BYTES) { await reader.cancel(); return new Response('Upload size mismatch', {status: 400}); }
-      chunks.push(Uint8Array.from(value));
+      chunks.push(value);
     }
   } finally { reader.releaseLock(); }
   if (size !== pending.size) return new Response('Upload size mismatch', {status: 400});
-  const storageId = await ctx.storage.store(new Blob(chunks, {type: mediaType}));
+  const blob = new Blob(chunks as BlobPart[], {type: mediaType});
+  chunks.length = 0;
+  const storageId = await ctx.storage.store(blob);
   const bound = await ctx.runMutation(makeFunctionReference<'mutation', {id: typeof pending.id; storageId: typeof storageId}, boolean>('uploads:finish'), {id: pending.id, storageId});
   if (!bound) { await ctx.storage.delete(storageId); return new Response('Upload expired', {status: 400}); }
   return Response.json({storageId});

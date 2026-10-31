@@ -8,7 +8,7 @@ import {createLocalToolsStorage} from './local-storage.js';
 import {toolsStorageContract,type ClientUpload} from './storage-contract.js';
 const token='test-tools-server-credential-with-32-characters';
 function harness(){
- process.env.PRAXIS_CONVEX_SERVER_TOKEN=token;
+ process.env.PRAXIS_CONVEX_SERVER_TOKEN=token;process.env.CONVEX_SITE_URL='https://happy-otter-123.convex.site';
  const t=convexTest(schema,{
   '../../../../../convex/_generated/api.js':async()=>({}),
   '../../../../../convex/tools.ts':()=>import('../../../../../convex/tools.js'),
@@ -36,6 +36,11 @@ const convexUpload:ClientUpload=async(_s,_user,url,bytes,type)=>{
 };
 toolsStorageContract('tools storage: Convex database (direct upload URL)',()=>(current=harness()).storage,convexUpload);
 describe('Convex direct uploads',()=>{
+ it('issues the upload capability on the deployment HTTP actions origin (CONVEX_SITE_URL), not a rewritten storage host',async()=>{
+  const {storage}=current=harness();const before=process.env.CONVEX_SITE_URL;process.env.CONVEX_SITE_URL='https://uploads.example.org';
+  try{const url=await storage.createUpload('u',{name:'x.txt',mediaType:'text/plain',size:1});expect(new URL(url.uploadUrl).origin).toBe('https://uploads.example.org');expect(new URL(url.uploadUrl).pathname).toMatch(/^\/uploads\/[a-f0-9-]{36}$/);}
+  finally{process.env.CONVEX_SITE_URL=before;}
+ });
  it('handles 25 MB without passing bytes through a function argument',async()=>{
   const {t,storage}=current=harness(),user='big',size=25_000_000,input={name:'big.bin',mediaType:'application/octet-stream',size};
   const url=await storage.createUpload(user,input);expect(url.method).toBe('POST');

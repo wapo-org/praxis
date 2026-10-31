@@ -63,8 +63,10 @@ export const generateUploadUrl = mutation({
     await requireServer(a.serverToken);
     const row = await ticketRow(ctx, a.userId, a.ticket);
     if (!row || row.status !== 'pending' || row.expiresAt <= Date.now()) throw new ConvexError('Upload ticket unavailable');
-    const raw = new URL(await ctx.storage.generateUploadUrl());
-    return `https://${raw.hostname.replace(/\.convex\.cloud$/, '.convex.site')}/uploads/${a.ticket}`;
+    // CONVEX_SITE_URL is provided by Convex to every deployment (HTTP actions origin, incl. custom domains).
+    const site = process.env.CONVEX_SITE_URL;
+    if (!site) throw new ConvexError('HTTP actions URL unavailable');
+    return new URL(`/uploads/${a.ticket}`, site).href;
   },
 });
 
