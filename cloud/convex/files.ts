@@ -1,18 +1,15 @@
 import { ConvexError, v } from 'convex/values';
-import { makeFunctionReference } from 'convex/server';
 import type { GenericId as Id } from 'convex/values';
-import { action, internalMutation, internalQuery, mutation, query, type QueryCtx } from './functions.js';
+import { mutation, query, type QueryCtx } from './functions.js';
 import { bounded, requireServer } from './access.js';
 
 /**
- * Owner-bound file storage. Bytes reach Convex only through the API (server credential),
- * so a storageId is bound to its owner when it is created and never taken from a client claim.
+ * Owner-bound file storage. The API opens a ticket (owner, name, type, exact size) and hands the client a
+ * one-time Convex upload URL; bytes go straight to Convex storage, never through a function argument.
+ * The API then claims the returned storageId for that ticket: Convex's own `_storage` metadata must match
+ * the ticket's size and type, and a storageId can be claimed once, by one owner.
  */
-const MAX_BYTES = 16 * 1024 * 1024 - 64 * 1024;
-
-const pendingRef = makeFunctionReference<'query'>('files:pending');
-const commitRef = makeFunctionReference<'mutation'>('files:commit');
-const ownedRef = makeFunctionReference<'query'>('files:ownedInternal');
+export const MAX_BYTES = 25_000_000;
 
 function owned(ctx: QueryCtx, userId: string, storageId: string) {
   return ctx.db
@@ -59,45 +56,54 @@ export const createTicket = mutation({
   },
 });
 
-export const pending = internalQuery({
-  args: { userId: v.string(), ticket: v.string() },
+/** A one-time direct-upload URL (POST raw bytes with Content-Type; responds `{"storageId": "..."}`). */
+export const generateUploadUrl = mutation({
+  args: { serverToken: v.string() },
   handler: async (ctx, a) => {
-    const row = await ticketRow(ctx, a.userId, a.ticket);
-    if (!row || row.status !== 'pending' || row.expiresAt <= Date.now()) return null;
-    return { mediaType: row.mediaType, size: row.size };
-  },
-});
-
-export const commit = internalMutation({
-  args: { userId: v.string(), ticket: v.string(), storageId: v.id('_storage') },
-  handler: async (ctx, a) => {
-    const row = await ticketRow(ctx, a.userId, a.ticket);
-    const meta = await ctx.db.system.get(a.storageId);
-    if (!row || row.status !== 'pending' || row.expiresAt <= Date.now() || !meta || meta.size !== row.size) {
-      await ctx.storage.delete(a.storageId);
-      throw new ConvexError('Upload ticket not found');
-    }
-    await ctx.db.patch(row._id, { status: 'ready', storageId: a.storageId, sha256: meta.sha256 });
-    return null;
-  },
-});
-
-/** Stores bytes for a pending ticket of the same owner, media type and exact size. */
-export const store = action({
-  args: { serverToken: v.string(), userId: v.string(), ticket: v.string(), mediaType: v.string(), bytes: v.bytes() },
-  handler: async (ctx, a): Promise<string> => {
     await requireServer(a.serverToken);
-    bounded(a.userId);
-    const ticket = (await ctx.runQuery(pendingRef, { userId: a.userId, ticket: a.ticket })) as
-      | { mediaType: string; size: number }
-      | null;
-    if (!ticket) throw new ConvexError('Upload ticket not found');
-    if (ticket.mediaType !== a.mediaType || ticket.size !== a.bytes.byteLength) {
-      throw new ConvexError('Upload size or media type differs from request');
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/** Binds an uploaded blob to the owner's matching pending ticket. Idempotent for the same owner and file. */
+export const claim = mutation({
+  args: {
+    serverToken: v.string(),
+    userId: v.string(),
+    storageId: v.string(),
+    name: v.string(),
+    mediaType: v.string(),
+    size: v.number(),
+    chatId: v.optional(v.string()),
+  },
+  handler: async (ctx, a) => {
+    await requireServer(a.serverToken);
+    [a.userId, a.name, a.mediaType].forEach(bounded);
+    const storageId = ctx.db.system.normalizeId('_storage', a.storageId);
+    if (!storageId) return { ok: false };
+    const same = (row: { name: string; mediaType: string; size: number; chatId?: string }) =>
+      row.name === a.name && row.mediaType === a.mediaType && row.size === a.size && row.chatId === a.chatId;
+    const claimed = await ctx.db.query('files').withIndex('storage', (q) => q.eq('storageId', storageId)).first();
+    if (claimed) {
+      if (claimed.userId === a.userId && claimed.status === 'ready' && same(claimed)) return { ok: true };
+      return { ok: false };
     }
-    const storageId = await ctx.storage.store(new Blob([a.bytes], { type: a.mediaType }));
-    await ctx.runMutation(commitRef, { userId: a.userId, ticket: a.ticket, storageId });
-    return storageId;
+    const meta = await ctx.db.system.get(storageId);
+    if (!meta) return { ok: false };
+    const tickets = await ctx.db
+      .query('files')
+      .withIndex('owner_status', (q) => q.eq('userId', a.userId).eq('status', 'pending'))
+      .take(200);
+    const ticket = tickets.find((row) => row.expiresAt > Date.now() && same(row));
+    const type = meta.contentType?.split(';')[0]?.trim();
+    if (!ticket || meta.size !== a.size || (type && type !== a.mediaType)) {
+      // Unclaimed and unmatched: drop the orphan blob so it can't be claimed later. (Returning instead of
+      // throwing keeps this delete: a throwing mutation would roll it back.)
+      await ctx.storage.delete(storageId);
+      return { ok: false };
+    }
+    await ctx.db.patch(ticket._id, { status: 'ready', storageId, sha256: meta.sha256 });
+    return { ok: true };
   },
 });
 
@@ -118,26 +124,16 @@ export const metadata = query({
   },
 });
 
-export const ownedInternal = internalQuery({
-  args: { userId: v.string(), storageId: v.string() },
-  handler: async (ctx, a) => {
-    const row = await owned(ctx, a.userId, a.storageId);
-    return row && row.status === 'ready' ? { storageId: row.storageId!, mediaType: row.mediaType } : null;
-  },
-});
-
-export const read = action({
+/** Short-lived read URL for an owned, ready file (the API fetches it; clients never see it). */
+export const url = query({
   args: { serverToken: v.string(), userId: v.string(), storageId: v.string() },
-  handler: async (ctx, a): Promise<{ bytes: ArrayBuffer; mediaType: string } | null> => {
+  handler: async (ctx, a) => {
     await requireServer(a.serverToken);
     bounded(a.userId);
-    const row = (await ctx.runQuery(ownedRef, { userId: a.userId, storageId: a.storageId })) as
-      | { storageId: Id<'_storage'>; mediaType: string }
-      | null;
-    if (!row) return null;
-    const blob = await ctx.storage.get(row.storageId);
-    if (!blob) return null;
-    return { bytes: await blob.arrayBuffer(), mediaType: row.mediaType };
+    const row = await owned(ctx, a.userId, a.storageId);
+    if (!row || row.status !== 'ready' || !row.storageId) return null;
+    const href = await ctx.storage.getUrl(row.storageId);
+    return href ? { url: href, mediaType: row.mediaType, size: row.size } : null;
   },
 });
 

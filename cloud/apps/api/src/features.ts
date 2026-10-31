@@ -1,6 +1,7 @@
 import type {JsonObject} from '@praxis/protocol';
 import type {FeatureContext, ListOptions, Store} from './contracts.js';
 import type {ApiService} from './service.js';
+import {createSafeFetch} from './adapters/security.js';
 
 /** Kinds clients see; feature writes to them invalidate bootstrap and announce a user change. */
 const PUBLIC_KINDS = new Set(['chat', 'connector', 'skill', 'registry', 'attachment', 'consent', 'provider', 'model', 'preferences']);
@@ -10,7 +11,7 @@ const PUBLIC_KINDS = new Set(['chat', 'connector', 'skill', 'registry', 'attachm
  * directly still invalidate the bootstrap cache and fan out `user.change` events like the core routes do.
  * Every call is pinned to `userId`; a feature can't read or write another owner's rows through it.
  */
-export function featureContext(service: ApiService, userId: string, options: {fetch?: typeof fetch; encryptionKey?: string; unpinned?: boolean} = {}): FeatureContext {
+export function featureContext(service: ApiService, userId: string, options: {fetch?: typeof fetch; egress?: typeof fetch; encryptionKey?: string; unpinned?: boolean} = {}): FeatureContext {
   const inner = service.adapters.store;
   const pin = (requested: string) => {
     // Unpinned only for public routes (OAuth callback), which bind the owner from a verified, single-use state record.
@@ -21,6 +22,7 @@ export function featureContext(service: ApiService, userId: string, options: {fe
     list: async (u, kind, opts?: ListOptions) => (pin(u), inner.list(u, kind, opts)),
     changes: async (u, after, limit) => (pin(u), inner.changes(u, after, limit)),
     head: async u => (pin(u), inner.head(u)),
+    putIfRevision: async (u, kind, id, value, expected, opts) => (pin(u), inner.putIfRevision(u, kind, id, value, expected, opts)),
     put: async (u, kind, id, value: JsonObject, opts?: ListOptions) => {
       pin(u);
       const row = await inner.put(u, kind, id, value, opts);
@@ -40,6 +42,7 @@ export function featureContext(service: ApiService, userId: string, options: {fe
     store,
     kv: service.adapters.kv,
     fetch: options.fetch ?? fetch,
+    egress: options.egress ?? createSafeFetch({allowHttp: service.local}),
     local: service.local,
     ...(options.encryptionKey ? {encryptionKey: options.encryptionKey} : {}),
   };

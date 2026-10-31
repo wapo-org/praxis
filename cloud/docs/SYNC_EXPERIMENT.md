@@ -51,7 +51,7 @@ A cold server-side tree build over the 51k entities takes 140 ms of compute, bef
 
 ## Flag
 `PRAXIS_SYNC_STRATEGY` = `cursor` (the default) or `merkle`.
-- With `merkle`, `/v1/sync/root` advertises `merkle` and returns the server root. In production, `/v1/sync/tree` returns 404 unless the flag is set to `merkle`. Local dev always serves it.
+- With `merkle`, `/v1/sync/root` advertises `merkle` and returns the server root. `/v1/sync/tree` returns 404 unless the flag is set to `merkle`, in every environment, local included.
 - Clients should follow `sync.root.strategy`.
 
 ## Known gaps

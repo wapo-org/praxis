@@ -38,7 +38,7 @@ Runtime dependency inventory (features add their package only when implemented):
 - hono: small router and standards-based streaming API.
 - @hono/node-server: local Node HTTP listener only.
 - zod: JSON boundary validation and shared inferred types.
-- @vercel/functions: request-lifetime hooks if needed by the Node function adapter; durable work still uses QStash.
+- (no @vercel/functions: `src/wait-until.ts` reads the platform request context directly; the package's OIDC chain pinned a vulnerable zod.) Durable work uses QStash.
 - @upstash/redis: Redis REST access for streams, cache, leases and cancel.
 - @upstash/qstash: signed continuation delivery and verification.
 - @upstash/ratelimit: shared per-user rate limiting.
@@ -52,3 +52,5 @@ Runtime dependency inventory (features add their package only when implemented):
 - esbuild: small production Node bundle verification (development).
 
 No accounts/projects are created or deployed by agents. Required credentials, external setup, callback URLs and rollout limits are listed in DEPLOY.md. Real adapter suites run only when their environment is supplied. Local tests and scripted smoke runs need none. Production feature claims must distinguish implemented contracts from credential-gated verification and known gaps.
+
+- sharp: server-side orientation-aware image cropping and scaling for the vision reader on Vercel.

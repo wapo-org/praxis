@@ -92,6 +92,8 @@ export async function finishOAuth(base: FeatureContext, query: { state: string; 
       const provider = new Provider(ctx, value, record, options);
       const result = await auth(provider, { serverUrl: value.url, authorizationCode: query.code, fetchFn: guardedFetch(ctx, options) });
       if (result !== 'AUTHORIZED') throw new McpError(502, 'oauth_failed', 'OAuth exchange failed');
+      const discovery = record.discovery as { authorizationServerUrl?: string; authorizationServerMetadata?: unknown } | undefined;
+      if (discovery?.authorizationServerUrl) await writeSecret(ctx, value.id, 'discovery', { authorizationServerUrl: discovery.authorizationServerUrl, ...(discovery.authorizationServerMetadata ? { metadata: discovery.authorizationServerMetadata } : {}), resource: value.url });
       return { connectorId: value.id, target: target ? callbackTarget(target, record.state) : undefined };
     } catch {
       await saveConnector(ctx, { ...await connector(ctx, value.id), authStatus: 'required' });

@@ -7,6 +7,8 @@ export interface Store {
  list(userId:string,kind:string,options?:ListOptions):Promise<StoredRecord[]>;
  put(userId:string,kind:string,id:string,value:JsonObject,options?:ListOptions):Promise<StoredRecord>;
  delete(userId:string,kind:string,id:string):Promise<void>;
+ /** Compare-and-set write: succeeds only if the row's current revision equals `expectedRevision` (0 = must not exist); else null. */
+ putIfRevision(userId:string,kind:string,id:string,value:JsonObject,expectedRevision:number,options?:ListOptions):Promise<StoredRecord|null>;
  changes(userId:string,after:number,limit:number):Promise<{records:StoredRecord[];cursor:number;hasMore:boolean}>;
  /** Latest revision for the owner (0 when empty): the sync cursor a fresh bootstrap hands out. */
  head(userId:string):Promise<number>;
@@ -22,7 +24,10 @@ export interface Events {
  read(userId:string,channel:string,after:number,limit?:number):Promise<EventRecord[]>;
 }
 export interface AdapterBundle {store:Store;kv:KV;events:Events}
-export interface FeatureContext {userId:string;store:Store;kv:KV;fetch:typeof fetch;local:boolean;encryptionKey?:string}
+export interface FeatureContext {userId:string;store:Store;kv:KV;fetch:typeof fetch;
+ /** SSRF-guarded fetch for user-controlled URLs: DNS validated and pinned per hop (adapters/security.ts createSafeFetch). */
+ egress:typeof fetch;
+ local:boolean;encryptionKey?:string}
 export interface FeatureTool {
  name:string;description:string;inputSchema:JsonObject;
  source:{type:'builtin'|'skill'|'javascript'|'mcp'|'server';serverId?:string;serverName?:string};

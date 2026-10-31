@@ -69,8 +69,10 @@ export class ApiService{
   this.enqueue(userId,run.id,()=>this.driver!.start(userId,run,chat,messages,input));return run;
  });}
  enqueue(userId:string,runId:string,task:()=>Promise<void>){
-  const work=Promise.resolve().then(task).catch(async()=>{const run=await this.require<Run>(userId,'run',runId).catch(()=>null);if(run&&!this.terminal(run)){run.status='failed';run.outcome='failed';run.error='Run execution failed';await this.put(userId,'run',runId,run);await this.emit(userId,runId,{type:'run.finished',outcome:'failed',message:'Run execution failed'});}}).finally(()=>this.work.delete(work));this.work.add(work);this.defer?.(work);
+  const work=Promise.resolve().then(task).catch(async()=>{const run=await this.require<Run>(userId,'run',runId).catch(()=>null);if(run&&!this.terminal(run)){run.status='failed';run.outcome='failed';run.error='Run execution failed';await this.put(userId,'run',runId,run);await this.emit(userId,runId,{type:'run.finished',outcome:'failed',message:'Run execution failed'});}}).catch(error=>{this.onBackgroundError(runId,error);}).finally(()=>this.work.delete(work));this.work.add(work);this.defer?.(work);
  }
+ /** Background work never rejects unobserved (that would kill the process); failures of the failure path are logged without payloads. */
+ onBackgroundError=(runId:string,error:unknown)=>{console.error(JSON.stringify({type:'background_error',runId,error:error instanceof Error?error.name+': '+error.message.slice(0,300):'unknown'}));};
  async drain(){await Promise.all([...this.work]);}
  async emit(userId:string,runId:string,event:RunEventPayload){
   return this.exclusive(`event:${userId}:${runId}`,async()=>{

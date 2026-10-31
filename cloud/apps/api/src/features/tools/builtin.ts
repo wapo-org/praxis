@@ -1,3 +1,5 @@
+import {toolsState} from './state.js';
+import {skillAuthoringTools, MAX_SKILL_FILE_BYTES} from './authoring.js';
 import {z} from 'zod';
 import {SkillSchema, type JsonValue} from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from '../../contracts.js';
@@ -18,9 +20,10 @@ const LoadSkill = z.object({name: z.string().min(1).max(64)});
 const ReadSkillFile = z.object({skill: z.string().min(1).max(64), path: z.string().min(1), offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(50_000).default(20_000)});
 const text = (value: string, isError = false) => ({content: [{type: 'text', text: value}], isError});
 
-/** Port of AgentSkills `load_skill` / `read_skill_file` (scripts stay dropped in v1; a stored skill bundles only SKILL.md). */
-export function skillTools(ctx: FeatureContext): FeatureTool[] {
+/** Port of AgentSkills `load_skill` / `read_skill_file` (scripts stay dropped in v1). */
+export function skillTools(ctx: FeatureContext, storage?: ToolsStorage): FeatureTool[] {
   return [
+    ...skillAuthoringTools(ctx, storage),
     {
       name: 'load_skill',
       description: "Load a skill's full instructions. Call this before starting a task that matches one of the skills listed in the system prompt, then follow the instructions it returns.",
@@ -57,8 +60,11 @@ export function skillTools(ctx: FeatureContext): FeatureTool[] {
         try {
           skillPath(input.path);
           const skill = await skillByName(ctx, input.skill);
-          if (input.path !== 'SKILL.md') return text(`${input.skill} has no file ${input.path}. Cloud skills bundle only SKILL.md.`, true);
-          const body = skill.document;
+          const bundle = await toolsState(ctx, storage).get(ctx.userId, 'skill', skill.id);
+          const files = bundle?.files;
+          const body = input.path === 'SKILL.md' ? skill.document : files && typeof files === 'object' && !Array.isArray(files) ? files[input.path] : undefined;
+          if (typeof body !== 'string') return text(`${input.skill} has no file ${input.path}.`, true);
+          if (Buffer.byteLength(body) > MAX_SKILL_FILE_BYTES) return text('Skill file exceeds 500 KB.', true);
           const page = body.slice(input.offset, input.offset + input.limit);
           const next = input.offset + input.limit < body.length ? `\n\n[Continues: pass offset ${input.offset + input.limit}]` : '';
           return text(page + next);
@@ -98,7 +104,7 @@ export function javascriptTool(ctx: FeatureContext, input: {attachmentIds: strin
     source: {type: 'builtin'},
     traits: ['sandboxed', 'openWorld'],
     async execute(args: JsonValue, execution) {
-      const output = await runSandbox(args, ctx, execution, files, input.hostToolNames);
+      const output = await runSandbox(args, ctx, execution, files, input.hostToolNames, toolsState(ctx, input.storage));
       return text(JSON.stringify(output), !!output.error);
     },
   };

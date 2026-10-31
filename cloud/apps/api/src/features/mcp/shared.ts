@@ -16,6 +16,8 @@ export interface McpOptions {
   /** Atomic Redis GETDEL (or equivalent). Required for production OAuth callbacks. */
   consumeOAuthState?: (key: string) => Promise<OAuthState | null>;
   /** Resolve via the run's consent/elicitation mechanism; absence declines, never accepts. */
+  /** Distributed lease (Redis in production) so one instance refreshes a connector's OAuth tokens at a time. */
+  lease?: { acquire(key: string, ttlMs: number): Promise<string | null>; release(key: string, token: string): Promise<void> };
   elicit?: (request: ElicitRequest['params'], context: { userId: string; connectorId: string; connectorName: string; chatId?: string; runId?: string }) => Promise<ElicitResult>;
 }
 export interface OAuthState {

@@ -27,6 +27,9 @@ export async function fixtureServer() {
   let base = '';
   let cimd = false;
   let protectedMode = false;
+  // Valid access tokens; rotateTokens() expires the current one so only a refresh restores access.
+  let validToken = 'fixture-access-token';
+  let refreshes = 0;
 
   const makeServer = () => {
     const server = new Server(
@@ -203,6 +206,12 @@ export async function fixtureServer() {
 
       if (path === '/token') {
         const form = new URLSearchParams(text);
+        if (form.get('grant_type') === 'refresh_token') {
+          if (form.get('refresh_token') !== 'fixture-refresh') return respond(400, {error: 'invalid_grant'});
+          refreshes++;
+          validToken = `fixture-access-token-r${refreshes}`;
+          return respond(200, {access_token: validToken, token_type: 'Bearer', expires_in: 3600});
+        }
         const code = form.get('code')!;
         const record = codes.get(code);
         codes.delete(code);
@@ -217,6 +226,7 @@ export async function fixtureServer() {
         ) {
           return respond(400, { error: 'invalid_grant' });
         }
+        validToken = 'fixture-access-token';
         return respond(200, {
           access_token: 'fixture-access-token',
           token_type: 'Bearer',
@@ -233,7 +243,7 @@ export async function fixtureServer() {
       if (
         protectedMode &&
         path === '/mcp' &&
-        req.headers.authorization !== 'Bearer fixture-access-token'
+        req.headers.authorization !== `Bearer ${validToken}`
       ) {
         res.writeHead(401, {
           'WWW-Authenticate': `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource/mcp"`,
@@ -300,6 +310,10 @@ export async function fixtureServer() {
     protect: () => {
       protectedMode = true;
     },
+    rotateTokens: () => {
+      validToken = `fixture-expired-${Math.random()}`;
+    },
+    refreshes: () => refreshes,
     close: async () => {
       for (const server of servers) {
         await server.close();
