@@ -48,6 +48,8 @@ export default defineSchema({
     status: v.union(v.literal('pending'), v.literal('ready')),
   })
     .index('owner_ticket', ['userId', 'ticket'])
+    .index('owner_status', ['userId', 'status'])
+    .index('storage', ['storageId'])
     .index('owner_storage', ['userId', 'storageId'])
     .index('status_expires', ['status', 'expiresAt']),
 });
