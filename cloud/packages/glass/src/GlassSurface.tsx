@@ -1,3 +1,4 @@
+import { GlassBackdrop } from './GlassBackdrop';
 import React from 'react';
 import {
   animate,
@@ -25,7 +26,8 @@ import {
 import { generateDisplacementMaps } from './displacement-map';
 
 export interface GlassSurfaceProps
-  extends Omit<
+  extends
+    Omit<
       React.HTMLAttributes<HTMLDivElement>,
       'onAnimationStart' | 'onDrag' | 'onDragEnd' | 'onDragStart'
     >,
@@ -35,11 +37,6 @@ export interface GlassSurfaceProps
   interactive?: boolean;
   children?: React.ReactNode;
 }
-
-const FROST_MASK_MID =
-  'radial-gradient(closest-side, rgba(0,0,0,0.18) 54%, rgba(0,0,0,0.88) 88%, rgba(0,0,0,1) 100%)';
-const FROST_MASK_RIM =
-  'radial-gradient(closest-side, rgba(0,0,0,0) 68%, rgba(0,0,0,0.72) 90%, rgba(0,0,0,1) 100%)';
 
 export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(
   function GlassSurface(
@@ -89,7 +86,8 @@ export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(
     };
 
     const ramp = MATERIAL_RAMP[material];
-    const shapeRadius = shape === 'free' ? (radius ?? SHAPE_RADIUS.free) : (radius ?? SHAPE_RADIUS[shape]);
+    const shapeRadius =
+      shape === 'free' ? (radius ?? SHAPE_RADIUS.free) : (radius ?? SHAPE_RADIUS[shape]);
     const cssRadius = shape === 'capsule' ? '9999px' : `${shapeRadius}px`;
 
     const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -114,7 +112,9 @@ export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(
         const w = el.offsetWidth || 240;
         const h = el.offsetHeight || 52;
         if (w >= 8 && h >= 8) {
-          setGeo((prev) => (Math.abs(prev.w - w) < 1 && Math.abs(prev.h - h) < 1 ? prev : { w, h }));
+          setGeo((prev) =>
+            Math.abs(prev.w - w) < 1 && Math.abs(prev.h - h) < 1 ? prev : { w, h },
+          );
         }
       };
       measure();
@@ -143,9 +143,7 @@ export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(
     const scaleRatio = useSpring(scaleRatioTarget, { stiffness: 250, damping: 14 });
 
     React.useEffect(() => {
-      scaleRatioTarget.set(
-        ramp.refraction * INTENSITY_BASE_SCALE[intensity] * (held ? 1.0 : 0.8),
-      );
+      scaleRatioTarget.set(ramp.refraction * INTENSITY_BASE_SCALE[intensity] * (held ? 1.0 : 0.8));
     }, [scaleRatioTarget, ramp.refraction, intensity, held]);
 
     React.useEffect(() => {
@@ -213,7 +211,7 @@ export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(
       shadowXTarget.set(held ? 2 : 0);
       shadowYTarget.set(held ? 12 : 4);
       shadowBlurTarget.set(held ? 24 : 12);
-      shadowAlphaTarget.set(held ? 0.18 : 0.10);
+      shadowAlphaTarget.set(held ? 0.18 : 0.1);
       insetAlphaTarget.set(held ? 0.24 : 0.16);
     }, [held, shadowXTarget, shadowYTarget, shadowBlurTarget, shadowAlphaTarget, insetAlphaTarget]);
 
@@ -225,25 +223,22 @@ export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(
       },
     );
 
-    const insetShadow = useTransform(
-      [shadowX, shadowY, insetAlpha],
-      (values: number[]) => {
-        const [x = 0, y = 4, inset = 0.16] = values;
-        const parts = [
-          `inset ${x / 2}px ${y / 2}px 20px rgba(0,0,0,${(inset * finish.inner * 0.45).toFixed(4)})`,
-          `inset ${-x / 2}px ${-y / 2}px 20px rgba(255,255,255,${(inset * finish.inner * 0.65).toFixed(4)})`,
-          `inset 0 1px 0 0 rgba(255,255,255,${(0.52 * finish.rim).toFixed(3)})`,
-          `inset 0 -1px 0 0 rgba(255,255,255,${(0.22 * finish.rim).toFixed(3)})`,
-        ];
-        if (finish.border > 0) {
-          parts.push(
-            `inset 0 0 0 1px rgba(255,255,255,${(0.18 * finish.border).toFixed(3)})`,
-            `inset 0 0 0 1px rgba(21,20,15,${(0.08 * finish.border).toFixed(3)})`,
-          );
-        }
-        return parts.join(', ');
-      },
-    );
+    const insetShadow = useTransform([shadowX, shadowY, insetAlpha], (values: number[]) => {
+      const [x = 0, y = 4, inset = 0.16] = values;
+      const parts = [
+        `inset ${x / 2}px ${y / 2}px 20px rgba(0,0,0,${(inset * finish.inner * 0.45).toFixed(4)})`,
+        `inset ${-x / 2}px ${-y / 2}px 20px rgba(255,255,255,${(inset * finish.inner * 0.65).toFixed(4)})`,
+        `inset 0 1px 0 0 rgba(255,255,255,${(0.52 * finish.rim).toFixed(3)})`,
+        `inset 0 -1px 0 0 rgba(255,255,255,${(0.22 * finish.rim).toFixed(3)})`,
+      ];
+      if (finish.border > 0) {
+        parts.push(
+          `inset 0 0 0 1px rgba(255,255,255,${(0.18 * finish.border).toFixed(3)})`,
+          `inset 0 0 0 1px rgba(21,20,15,${(0.08 * finish.border).toFixed(3)})`,
+        );
+      }
+      return parts.join(', ');
+    });
 
     // Pointer-tracked radial spotlight
     const spotX = useMotionValue(0);
@@ -341,111 +336,22 @@ export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(
         className={`praxis-glass-surface ${className}`.trim()}
         {...restProps}
       >
-        {/* Reduced transparency tier */}
-        {isReducedTransparency ? (
-          <div
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              inset: 0,
-              borderRadius: cssRadius,
-              backgroundColor: 'var(--paper-card)',
-              border: '1px solid var(--paper-hairline)',
-              pointerEvents: 'none',
-              zIndex: 0,
-            }}
-          />
-        ) : isSvgStrategy ? (
-          /* Chromium SVG displacement + progressive frost tier */
-          <>
-            <div
-              aria-hidden="true"
-              style={{
-                position: 'absolute',
-                inset: 0,
-                borderRadius: cssRadius,
-                backdropFilter: `url(#${filterId}) blur(${frost === 'none' ? 0 : ramp.frostCore}px)`,
-                WebkitBackdropFilter: `url(#${filterId}) blur(${frost === 'none' ? 0 : ramp.frostCore}px)`,
-                pointerEvents: 'none',
-                zIndex: 0,
-              }}
-            />
-            <motion.div
-              aria-hidden="true"
-              style={{
-                position: 'absolute',
-                inset: 0,
-                borderRadius: cssRadius,
-                backgroundColor: 'var(--glass-tint, rgba(251, 251, 249, 0.72))',
-                backgroundImage: sheenBackground,
-                boxShadow: insetShadow,
-                pointerEvents: 'none',
-                zIndex: 1,
-              }}
-            />
-          </>
-        ) : (
-          /* WebKit / Firefox 3-layer progressive frost tier */
-          <>
-            <div
-              aria-hidden="true"
-              style={{
-                position: 'absolute',
-                inset: 0,
-                borderRadius: cssRadius,
-                backdropFilter: `blur(${frost === 'none' ? 0 : ramp.frostCore}px)`,
-                WebkitBackdropFilter: `blur(${frost === 'none' ? 0 : ramp.frostCore}px)`,
-                pointerEvents: 'none',
-                zIndex: 0,
-              }}
-            />
-            {frost === 'progressive' ? (
-              <>
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    borderRadius: cssRadius,
-                    backdropFilter: `blur(${ramp.frostMid}px)`,
-                    WebkitBackdropFilter: `blur(${ramp.frostMid}px)`,
-                    maskImage: FROST_MASK_MID,
-                    WebkitMaskImage: FROST_MASK_MID,
-                    pointerEvents: 'none',
-                    zIndex: 0,
-                  }}
-                />
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    borderRadius: cssRadius,
-                    backdropFilter: `blur(${ramp.frostRim}px) saturate(${ramp.saturate}%)`,
-                    WebkitBackdropFilter: `blur(${ramp.frostRim}px) saturate(${ramp.saturate}%)`,
-                    maskImage: FROST_MASK_RIM,
-                    WebkitMaskImage: FROST_MASK_RIM,
-                    pointerEvents: 'none',
-                    zIndex: 0,
-                  }}
-                />
-              </>
-            ) : null}
-            <motion.div
-              aria-hidden="true"
-              style={{
-                position: 'absolute',
-                inset: 0,
-                borderRadius: cssRadius,
-                backgroundColor: 'var(--glass-tint, rgba(251, 251, 249, 0.72))',
-                backgroundImage: sheenBackground,
-                boxShadow: insetShadow,
-                pointerEvents: 'none',
-                zIndex: 1,
-              }}
-            />
-          </>
-        )}
+        <GlassBackdrop
+          reduced={isReducedTransparency}
+          svg={isSvgStrategy}
+          cssRadius={cssRadius}
+          filterId={filterId}
+          ramp={ramp}
+          frost={frost}
+          sheenBackground={sheenBackground}
+          insetShadow={insetShadow}
+          webgl={ctx.strategy === 'webgl-refraction' && refraction && backdrop === 'auto'}
+          rootRef={rootRef}
+          material={material}
+          intensity={intensity}
+          radius={shape === 'capsule' ? Math.min(geo.w, geo.h) / 2 : shapeRadius}
+          rim={finish.rim}
+        />
 
         {/* Pointer-tracked spotlight */}
         {spotlight ? (
@@ -464,9 +370,7 @@ export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(
         ) : null}
 
         {/* Content layer */}
-        <div style={{ position: 'relative', zIndex: 10, width: '100%' }}>
-          {children}
-        </div>
+        <div style={{ position: 'relative', zIndex: 10, width: '100%' }}>{children}</div>
       </motion.div>
     );
   },

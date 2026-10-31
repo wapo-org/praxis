@@ -20,7 +20,7 @@ export interface GlassChipProps
 export const GlassChip = React.forwardRef<HTMLButtonElement, GlassChipProps>(
   function GlassChip({ icon, trailing, active = false, children, className = '', style, ...rest }, ref) {
     return (
-      <motion.button
+      <GlassSurface shape="capsule" material="thin" style={{display:"inline-flex"}}><motion.button
         ref={ref}
         type="button"
         whileTap={{ scale: 0.96, opacity: 0.84 }}
@@ -48,7 +48,7 @@ export const GlassChip = React.forwardRef<HTMLButtonElement, GlassChipProps>(
         {icon ? <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--paper-secondary-ink)' }}>{icon}</span> : null}
         <span>{children}</span>
         {trailing ? <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--paper-muted-ink)' }}>{trailing}</span> : null}
-      </motion.button>
+      </motion.button></GlassSurface>
     );
   },
 );
