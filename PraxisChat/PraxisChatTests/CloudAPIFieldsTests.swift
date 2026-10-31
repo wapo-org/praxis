@@ -71,6 +71,20 @@ final class CloudAPIFieldsTests: XCTestCase {
         var demo = turn; demo.engine = .demo
         XCTAssertTrue(CloudDocumentChips.visible(in: demo).isEmpty)
     }
+    func testTranscriptEqualityInvalidatesDocumentChangesButNotAssistantStreaming() throws {
+        let before = Turn(userText: "Read", engine: .cloud)
+        var withDocument = before
+        withDocument.transcript = [try message(#"[{"type":"document","attachmentId":"doc","name":"Readme.txt","mediaType":"text/plain"}]"#)]
+        XCTAssertFalse(CloudDocumentChips.sameUserPresentation(before, withDocument))
+        var streamed = withDocument
+        streamed.transcript.append(Message(role: .assistant, parts: [.text("Another token")]))
+        XCTAssertTrue(CloudDocumentChips.sameUserPresentation(withDocument, streamed))
+    }
+    func testURLDocumentPartsWithoutAttachmentIDsRemainDistinct() throws {
+        let native = try message(#"[{"type":"document","url":"https://files.test/a","name":"a.txt","mediaType":"text/plain"},{"type":"document","url":"https://files.test/b","name":"b.txt","mediaType":"text/plain"}]"#)
+        let turn = Turn(userText: "", transcript: [native], engine: .cloud)
+        XCTAssertEqual(CloudDocumentChips.visible(in: turn).map(\.name), ["a.txt", "b.txt"])
+    }
     func testNewChatLeavesAutomaticTitleToServer() async throws {
         let client = try cloudNetClient { request in
             switch request.url!.path {

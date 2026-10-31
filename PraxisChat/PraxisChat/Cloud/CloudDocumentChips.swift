@@ -4,6 +4,9 @@ import AgentCore
 /// Presentation-only server document references. They are not local bytes and
 /// never change the attachments uploaded by a retry or the native runtime.
 enum CloudDocumentChips {
+    static func sameUserPresentation(_ lhs: Turn, _ rhs: Turn) -> Bool {
+        lhs.id == rhs.id && lhs.userText == rhs.userText && visible(in: lhs) == visible(in: rhs)
+    }
     static func visible(in turn: Turn) -> [Attachment] {
         guard turn.engine == .cloud else { return turn.attachments }
         var result = turn.attachments
@@ -13,7 +16,7 @@ enum CloudDocumentChips {
             for (partIndex, part) in message.parts.enumerated() {
                 guard case .document(let media) = part else { continue }
                 let remoteID = media.data.starts(with: prefix) ? String(data: media.data.dropFirst(prefix.count), encoding: .utf8) : nil
-                let key = remoteID ?? "\(messageIndex):\(partIndex):\(media.name ?? "Document")"
+                let key = remoteID.flatMap { $0.isEmpty ? nil : $0 } ?? "\(messageIndex):\(partIndex):\(media.name ?? "Document")"
                 let id = CloudReplicaScope.localID("cloud-document:" + key)
                 guard seen.insert(id).inserted else { continue }
                 if let local = turn.attachments.first(where: { item in
