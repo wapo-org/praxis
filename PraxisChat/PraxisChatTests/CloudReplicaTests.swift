@@ -23,6 +23,20 @@ final class CloudReplicaTests: XCTestCase {
         XCTAssertTrue(try CloudCursorReplica.load(file).values.isEmpty)
         XCTAssertEqual(replica.cursor, "5")
     }
+    func testCorruptNewAccountCacheCannotLeaveOldChatsVisible() throws {
+        let root = root()
+        let client = try cloudNetClient { _ in CloudNetReply("{}") }
+        let store = ChatStore(conversations: [Conversation(title: "Previous account secret")])
+        let controller = CloudAccountReplica(store: store, client: client, root: root)
+        let directory = CloudReplicaScope.directory(root: root, origin: client.configuration.origin, userID: "new")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("corrupted".utf8).write(to: directory.appendingPathComponent("replica.json"))
+        controller.sessionChanged(CloudUser(id: "new", name: "New", email: nil))
+        XCTAssertTrue(store.conversations.isEmpty)
+        XCTAssertNil(controller.userID)
+        XCTAssertNotNil(controller.error)
+    }
+
     func testAccountSwitchSignOutAndLocalFirstCredentialIsolation() async throws {
         let directory = root()
         let networkCalls = Mutex(0)
@@ -34,6 +48,9 @@ final class CloudReplicaTests: XCTestCase {
         }
         let store = ChatStore(conversations: [])
         let controller = CloudAccountReplica(store: store, client: client, root: directory)
+        controller.foreground()
+        await controller.waitForSync()
+        XCTAssertEqual(networkCalls.withLock { $0 }, 0, "Foreground must not race initial local restoration")
         try await client.tokens.setToken("A", for: client.configuration.origin)
         controller.sessionChanged(CloudUser(id: "A", name: "A", email: nil))
         await controller.waitForSync()
@@ -55,6 +72,33 @@ final class CloudReplicaTests: XCTestCase {
         XCTAssertTrue(restoredStore.conversations.contains { $0.title == "Account B" })
         XCTAssertEqual(before, networkCalls.withLock { $0 }, "Cached paint must precede network reconciliation")
         next.sessionChanged(nil); restored.sessionChanged(nil)
+    }
+
+    func testSignOutSupersedesAnInFlightForegroundSessionCheck() async throws {
+        let requested = expectation(description: "foreground session requested")
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let client = try cloudNetClient { request in
+            switch request.url!.path {
+            case "/v1/auth/session":
+                requested.fulfill()
+                _ = release.wait(timeout: .now() + 5)
+                return CloudNetReply(#"{"user":{"id":"A","name":"A"},"expiresAt":"2027-01-01T00:00:00Z"}"#)
+            case "/v1/sync/root": return CloudNetReply(#"{"cursor":"0"}"#)
+            default: return CloudNetReply(#"{"cursor":"0","nextCursor":null,"entities":[]}"#)
+            }
+        }
+        let store = ChatStore(conversations: [])
+        let controller = CloudAccountReplica(store: store, client: client, root: root())
+        controller.sessionChanged(CloudUser(id: "A", name: "A", email: nil))
+        await controller.waitForSync()
+        controller.foreground()
+        await fulfillment(of: [requested], timeout: 5)
+        controller.sessionChanged(nil)
+        release.signal()
+        await controller.waitForSync()
+        XCTAssertNil(controller.userID)
+        XCTAssertTrue(store.conversations.isEmpty)
     }
 }
 

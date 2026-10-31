@@ -20,7 +20,7 @@ final class CloudLiveIntegrationTests: XCTestCase {
                        modelID: "scripted", webSearch: false, attachments: [], policy: ToolPolicy(), approvals: AutoApprove(),
                        setup: nil, compaction: nil, contextMeasurement: nil)
     }
-    private func drive(_ script: String, client: CloudAPIClient, request: ChatRunRequest? = nil, cancel: Bool = false) async throws -> (Turn, [AgentEvent]) {
+    private func drive(_ script: String, client: CloudAPIClient, request: ChatRunRequest? = nil, cancel: Bool = false, allowMissingURL: Bool = false) async throws -> (Turn, [AgentEvent]) {
         let previous = UserDefaults.standard.object(forKey: "PraxisCloudScenario")
         UserDefaults.standard.set(script, forKey: "PraxisCloudScenario")
         defer { UserDefaults.standard.set(previous, forKey: "PraxisCloudScenario") }
@@ -57,8 +57,8 @@ final class CloudLiveIntegrationTests: XCTestCase {
         var turn = Turn(userText: request.userText)
         var reducer = TurnReducer()
         for event in events { _ = reducer.reduce(event, into: &turn, at: Date()) }
-        if script == "elicitationURL", case .failed(let reason) = turn.outcome,
-           reason.contains("elicitationURL"), reason.contains("Invalid") {
+        if allowMissingURL, script == "elicitationURL", case .failed(let reason) = turn.outcome,
+           reason == "Request does not match the protocol" {
             throw XCTSkip("scenario not available on this server: elicitationURL")
         }
         if script == "elicitationURL" { XCTAssertTrue(sawURL) }
@@ -89,7 +89,17 @@ final class CloudLiveIntegrationTests: XCTestCase {
         XCTAssertTrue(events.contains { if case .toolAwaitingApproval(let a) = $0 { a.parentCallID != nil } else { false } })
     }
     func testLiveElicitationForm() async throws { _ = try await completed("elicitation") }
-    func testLiveElicitationURL() async throws { _ = try await completed("elicitationURL") }
+    func testLiveElicitationURL() async throws {
+        let api = try await client()
+        let chat = UUID()
+        // Prove the same request shape is accepted with a known script first.
+        // A validation error only after changing the script identifies an old
+        // local server missing this scenario, rather than hiding other failures.
+        let (control, _) = try await drive("text", client: api, request: request(chat: chat))
+        XCTAssertEqual(control.outcome, .completed)
+        let (turn, _) = try await drive("elicitationURL", client: api, request: request(chat: chat), allowMissingURL: true)
+        XCTAssertEqual(turn.outcome, .completed)
+    }
     func testLiveVision() async throws {
         let events = try await completed("vision")
         XCTAssertTrue(events.contains { if case .toolCallStarted(let t) = $0 { t.name == "image_input" } else { false } })
@@ -141,6 +151,31 @@ final class CloudLiveIntegrationTests: XCTestCase {
         let actual = ids.withLock { $0 } + resumed.withLock { $0 }
         XCTAssertEqual(actual, all.withLock { $0 })
         XCTAssertEqual(actual.count, Set(actual).count)
+    }
+
+    func testLiveCursorSyncReconcilesCreatedChatThroughGETAndPOST() async throws {
+        let api = try await client()
+        let req = request()
+        let (turn, _) = try await drive("text", client: api, request: req)
+        XCTAssertEqual(turn.outcome, .completed)
+        let _: CloudCursorReplica.Root = try await api.send("/v1/sync/root")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        var replica = CloudCursorReplica()
+        let first: CloudCursorReplica.Page = try await api.send("/v1/sync/pull?cursor=0&limit=1000")
+        try replica.apply(first, file: root.appendingPathComponent("replica.json"))
+        var next = first.nextCursor
+        while next != nil {
+            let body = try JSONEncoder().encode(CloudCursorReplica.Request(cursor: replica.cursor))
+            let page: CloudCursorReplica.Page = try await api.send("/v1/sync/pull", method: "POST", body: body)
+            guard page.cursor != replica.cursor else { throw CloudSettingsError.repeatedCursor }
+            try replica.apply(page, file: root.appendingPathComponent("replica.json"))
+            next = page.nextCursor
+        }
+        let cached = try CloudCursorReplica.load(root.appendingPathComponent("replica.json"))
+        XCTAssertEqual(cached.cursor, replica.cursor)
+        XCTAssertTrue(try cached.rows("chat", as: CloudRemoteChat.self).contains { $0.id == req.conversationID.uuidString })
+        XCTAssertTrue(try cached.rows("message", as: CloudSyncedMessage.self).contains { $0.chatId == req.conversationID.uuidString && $0.role == "assistant" })
     }
 
 }

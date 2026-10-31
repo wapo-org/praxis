@@ -60,6 +60,7 @@ final class ChatStore {
     let approvals = ApprovalCenter()
     let cloudElicitations = ElicitationCenter()
     @ObservationIgnored var cloudReplica: CloudAccountReplica?
+    @ObservationIgnored var hasPreparedCloudSession = false
     private var cloudModelID = ""
     var elicitationCenter: ElicitationCenter? { engineKind == .cloud ? cloudElicitations : services?.elicitations }
     let haptics = HapticCenter()
@@ -582,10 +583,10 @@ final class ChatStore {
             autoCollapseActivities(turnID: handle.turnID)
         }
         if change.effects.contains(.commit) || change.effects.contains(.finished) { save(conv) }
-        if change.effects.contains(.finished), let lifecycle = cloudReplica?.lifecycle, let persistence {
+        if change.effects.contains(.finished), let lifecycle = cloudReplica?.lifecycle, let persistence, let runID = turn.cloudRunID {
             Task {
                 await persistence.flush()
-                await lifecycle.projectionCommitted(turnID: handle.turnID)
+                await lifecycle.projectionCommitted(runID: runID)
             }
         }
     }

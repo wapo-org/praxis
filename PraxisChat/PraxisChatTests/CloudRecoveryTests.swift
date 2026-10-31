@@ -162,3 +162,38 @@ extension CloudRecoveryTests {
         XCTAssertTrue(String(decoding: try XCTUnwrap(decisions.first?.body), as: UTF8.self).contains("allowOnce"))
     }
 }
+
+extension CloudRecoveryTests {
+    func testRunCreatedWhileBackgroundedWaitsForForeground() async throws {
+        let backend = CloudTestBackend(scenario: .text)
+        defer { backend.shutdown() }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = CloudAPIClient(configuration: try .init(baseURL: CloudTestBackend.baseURL), session: backend.makeSession(), tokens: .init(inMemory: true))
+        let engine = CloudLifecycleEngine(client: client, journal: CloudRunJournal(directory: root), elicitations: ElicitationCenter(), backgrounded: true)
+        let done = expectation(description: "deferred stream completes after foreground")
+        let reader = Task { for await _ in engine.run(request()) {}; done.fulfill() }
+        try await Task.sleep(for: .milliseconds(40))
+        XCTAssertTrue(backend.recordedRequests().isEmpty)
+        await engine.setBackgrounded(false)
+        await fulfillment(of: [done], timeout: 10)
+        reader.cancel()
+        XCTAssertTrue(backend.recordedRequests().contains { $0.path == "/v1/runs" })
+    }
+}
+
+extension CloudRecoveryTests {
+    func testProjectionCleanupNeverDeletesAnotherRunOfTheSameTurn() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = try cloudNetClient { _ in CloudNetReply("{}") }
+        let journal = CloudRunJournal(directory: root)
+        let engine = CloudLifecycleEngine(client: client, journal: journal, elicitations: ElicitationCenter())
+        let turn = UUID(), conversation = UUID()
+        try await engine.registerRemoteRun(conversationID: conversation, turnID: turn, runID: "old")
+        try await engine.registerRemoteRun(conversationID: conversation, turnID: turn, runID: "new")
+        await engine.projectionCommitted(runID: "old")
+        let records = await journal.records()
+        XCTAssertEqual(records.map(\.runID), ["new"])
+    }
+}

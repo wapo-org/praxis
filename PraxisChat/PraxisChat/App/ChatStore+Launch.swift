@@ -24,10 +24,6 @@ extension ChatStore {
                                            persistence: ConversationStore(directory: AppDirectories.conversations))
                 store.background.installNotificationDelegate()
                 store.background.appDidLaunch()
-                Task {
-                    await store.cloudReplica?.restoreBeforeNetwork()
-                    await store.cloudServices?.loadIfNeeded()
-                }
                 return store
             } catch {
                 return ChatStore(engine: CloudConfigurationErrorEngine(message: error.localizedDescription),
@@ -85,6 +81,17 @@ extension ChatStore {
         store.voice = VoiceInputController.production(chatStore: store, cloudServices: cloud)
         store.voiceRetryTranscription = { [weak store] id in store?.voice?.retryTranscription(id: id) }
         return store
+    }
+
+    /// Called by the view that owns this store, not by a transient @State
+    /// initializer. Local restoration completes before session reconciliation.
+    func prepareCloudSession() async {
+        guard let cloudServices, !hasPreparedCloudSession else { return }
+        hasPreparedCloudSession = true
+        defer { if Task.isCancelled { hasPreparedCloudSession = false } }
+        await cloudReplica?.restoreBeforeNetwork()
+        guard !Task.isCancelled else { return }
+        await cloudServices.loadIfNeeded()
     }
 
 }

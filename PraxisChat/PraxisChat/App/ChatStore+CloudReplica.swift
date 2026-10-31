@@ -2,6 +2,12 @@ import Foundation
 import AgentCore
 
 extension ChatStore {
+    func recordCloudRun(conversationID: UUID, turnID: UUID, runID: String) {
+        guard let conv = conversations.first(where: { $0.id == conversationID }),
+              let index = conv.turns.firstIndex(where: { $0.id == turnID }) else { return }
+        conv.turns[index].cloudRunID = runID
+        persistence?.save(conv.record)
+    }
     func clearCloudReplica() {
         // Detach presentation without setting cancellation flags: sign-out must
         // not cancel server runs belonging to the account being left.

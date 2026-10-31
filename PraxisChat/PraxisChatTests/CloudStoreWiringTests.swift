@@ -22,7 +22,7 @@ final class CloudStoreWiringTests: XCTestCase {
         XCTAssertNotNil(store.cloudServices)
         XCTAssertNotNil(store.voice)
         XCTAssertTrue(store.elicitationCenter === store.cloudElicitations)
-        await store.cloudServices?.loadIfNeeded()
+        await store.prepareCloudSession()
         XCTAssertTrue(store.cloudServices?.isSignedIn == true)
         XCTAssertFalse(store.availableModels.isEmpty)
         XCTAssertEqual(store.model.id, store.availableModels.first?.id)

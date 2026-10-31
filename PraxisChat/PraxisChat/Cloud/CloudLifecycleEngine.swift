@@ -9,9 +9,11 @@ actor CloudLifecycleEngine: ChatEngine {
     private let client: CloudAPIClient
     private let journal: CloudRunJournal
     private let elicitations: ElicitationCenter
+    private let onRunStarted: @Sendable (UUID, UUID, String) async -> Void
     private var backgrounded = false
     private var detachedReaders: [CloudReaderShutdown] = []
     private struct Active {
+        let identity: UUID
         var request: ChatRunRequest
         var output: AsyncStream<AgentEvent>.Continuation
         var worker: Task<Void, Never>?
@@ -22,29 +24,29 @@ actor CloudLifecycleEngine: ChatEngine {
     }
     private var active: [UUID: Active] = [:]
 
-    init(client: CloudAPIClient, journal: CloudRunJournal, elicitations: ElicitationCenter) {
+    init(client: CloudAPIClient, journal: CloudRunJournal, elicitations: ElicitationCenter, backgrounded: Bool = false,
+         onRunStarted: @escaping @Sendable (UUID, UUID, String) async -> Void = { _, _, _ in }) {
+        self.onRunStarted = onRunStarted
+        self.backgrounded = backgrounded
         self.client = client; self.journal = journal; self.elicitations = elicitations
     }
     nonisolated func run(_ request: ChatRunRequest) -> AsyncStream<AgentEvent> {
         AsyncStream { output in
-            let start = Task { await self.begin(request, output: output) }
-            output.onTermination = { _ in Task { await start.value; await self.end(request.turnID) } }
+            let identity = UUID()
+            let start = Task { await self.begin(request, output: output, identity: identity) }
+            output.onTermination = { _ in Task { await start.value; await self.end(request.turnID, identity: identity) } }
         }
     }
     func registerRemoteRun(conversationID: UUID, turnID: UUID, runID: String) async throws {
         try await journal.register(.init(conversationID: conversationID, turnID: turnID, runID: runID))
     }
-    func projectionCommitted(turnID: UUID) async {
-        for record in await journal.records() where record.turnID == turnID {
-            try? await journal.remove(runID: record.runID)
-        }
-    }
-    private func begin(_ request: ChatRunRequest, output: AsyncStream<AgentEvent>.Continuation) {
-        active[request.turnID] = Active(request: request, output: output)
+    func projectionCommitted(runID: String) async { try? await journal.remove(runID: runID) }
+    private func begin(_ request: ChatRunRequest, output: AsyncStream<AgentEvent>.Continuation, identity: UUID) {
+        active[request.turnID] = Active(identity: identity, request: request, output: output)
         if !backgrounded { attach(request.turnID, replayUI: true) }
     }
-    private func end(_ key: UUID) async {
-        guard let state = active.removeValue(forKey: key) else { return }
+    private func end(_ key: UUID, identity: UUID) async {
+        guard active[key]?.identity == identity, let state = active.removeValue(forKey: key) else { return }
         state.worker?.cancel()
         if state.request.isCancelled() {
             let records = await journal.records()
@@ -110,7 +112,7 @@ actor CloudLifecycleEngine: ChatEngine {
                 default: break
                 }
                 let events = await mapper.map(payload)
-                if replayUI { deliver(events, key: key) }
+                if replayUI { deliver(events, key: key, identity: state.identity) }
             }
             if terminal { if valid(key, generation) { state.output.finish() }; return }
             guard valid(key, generation), !Task.isCancelled else { return }
@@ -120,19 +122,21 @@ actor CloudLifecycleEngine: ChatEngine {
             var engine = CloudChatEngine(client: client, elicitations: elicitations,
                 onRunStarted: { conversation, turn, id in
                     try? await journal.register(.init(conversationID: conversation, turnID: turn, runID: id))
-                    await self.started(key, generation: generation, runID: id)
+                    if await self.started(key, generation: generation, runID: id) {
+                        await self.onRunStarted(conversation, turn, id)
+                    }
                 }, onEvent: { _, _, id, data in
                     try await journal.append(data, runID: id)
                     let event = try JSONDecoder().decode(CloudRunEvent.self, from: data)
                     // Publish from the durable hook, before transport acknowledgment.
                     // Cancellation cannot strand a journaled delta in an inner buffer.
                     let mapped = await mapper.map(event.event)
-                    await self.deliver(mapped, key: key)
+                    await self.deliver(mapped, key: key, identity: state.identity)
                 }, onSnapshot: { _, _, id, data in
                     try await journal.checkpoint(data, runID: id)
                     let snapshot = try JSONDecoder().decode(CloudRunSnapshot.self, from: data)
                     let mapped = try await mapper.replace(with: snapshot)
-                    await self.deliver(mapped, key: key)
+                    await self.deliver(mapped, key: key, identity: state.identity)
                 })
             engine.priorEvents = payloads
             engine.onDetached = { await shutdown.finish() }
@@ -143,7 +147,7 @@ actor CloudLifecycleEngine: ChatEngine {
                 // Wire events were published by the pre-ack hook. Only local
                 // transport/cancellation verdicts have no corresponding wire event.
                 if case .finished = event, active[key]?.terminalPublished != true {
-                    deliver([event], key: key)
+                    deliver([event], key: key, identity: state.identity)
                 }
             }
             if valid(key, generation), !Task.isCancelled { state.output.finish() }
@@ -154,16 +158,18 @@ actor CloudLifecycleEngine: ChatEngine {
             }
         }
     }
-    private func deliver(_ events: [AgentEvent], key: UUID) {
-        guard let state = active[key] else { return }
+    private func deliver(_ events: [AgentEvent], key: UUID, identity: UUID) {
+        guard let state = active[key], state.identity == identity else { return }
         for event in events {
             if case .finished = event { active[key]?.terminalPublished = true }
             state.output.yield(event)
         }
     }
     private func valid(_ key: UUID, _ generation: UUID) -> Bool { active[key]?.generation == generation }
-    private func started(_ key: UUID, generation: UUID, runID: String) {
-        if valid(key, generation) { active[key]?.runID = runID }
+    private func started(_ key: UUID, generation: UUID, runID: String) -> Bool {
+        guard valid(key, generation) else { return false }
+        active[key]?.runID = runID
+        return true
     }
 }
 

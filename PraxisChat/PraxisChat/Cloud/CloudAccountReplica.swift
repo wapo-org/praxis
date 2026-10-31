@@ -11,6 +11,7 @@ final class CloudAccountReplica {
     private let root: URL
     private let client: CloudAPIClient
     private weak var store: ChatStore?
+    private var isBackgrounded = false
     private var generation = UUID()
     private var task: Task<Void, Never>?
     private var replica = CloudCursorReplica()
@@ -23,11 +24,13 @@ final class CloudAccountReplica {
     init(store: ChatStore, client: CloudAPIClient, root: URL) { self.store = store; self.client = client; self.root = root }
 
     func restoreBeforeNetwork() async {
+        guard userID == nil else { return }
         do {
             guard let token = try await client.tokens.token(for: client.configuration.origin),
                   let data = try? Data(contentsOf: identityURL),
                   let identity = try? JSONDecoder().decode(Identity.self, from: data),
                   identity.tokenHash == CloudReplicaScope.digest(token) else { return }
+            guard userID == nil else { return }
             try select(identity.userID)
         } catch { self.error = error.localizedDescription }
     }
@@ -58,31 +61,44 @@ final class CloudAccountReplica {
     }
     private func select(_ id: String) throws {
         let directory = CloudReplicaScope.directory(root: root, origin: client.configuration.origin, userID: id)
-        let replica = try CloudCursorReplica.load(directory.appendingPathComponent("replica.json"))
+        // Clear the previous account before any fallible disk read. A corrupt
+        // new namespace must fail closed rather than leave the old chats visible.
         if let lifecycle { Task { await lifecycle.detachAll() } }
+        lifecycle = nil; userID = nil; self.directory = nil
         store?.clearCloudReplica()
+        let replica = try CloudCursorReplica.load(directory.appendingPathComponent("replica.json"))
         self.userID = id; self.directory = directory; self.replica = replica
         guard let store else { return }
-        let lifecycle = CloudLifecycleEngine(client: client, journal: CloudRunJournal(directory: directory), elicitations: store.cloudElicitations)
+        let lifecycle = CloudLifecycleEngine(client: client, journal: CloudRunJournal(directory: directory), elicitations: store.cloudElicitations, backgrounded: isBackgrounded,
+            onRunStarted: { [weak store] conversation, turn, run in
+                await store?.recordCloudRun(conversationID: conversation, turnID: turn, runID: run)
+            })
         self.lifecycle = lifecycle
         store.installCloudPersistence(ConversationStore(directory: directory.appendingPathComponent("Conversations")), engine: lifecycle)
         try store.applyCloudReplica(replica)
         if store.conversations.isEmpty { store.newChat() }
     }
     func foreground() {
+        isBackgrounded = false
+        guard userID != nil else { return }
         task?.cancel()
+        let revision = generation
         task = Task {
             do {
+                try Task.checkCancellation()
                 let session = try await client.currentSession()
+                guard generation == revision, !Task.isCancelled else { return }
                 if userID == session.user.id, let lifecycle { await lifecycle.setBackgrounded(false) }
+                guard generation == revision, !Task.isCancelled else { return }
                 sessionChanged(session.user)
             } catch {
+                guard generation == revision, !Task.isCancelled else { return }
                 if (error as? CloudAPIError)?.statusCode == 401 { sessionChanged(nil) }
                 else if !Task.isCancelled { self.error = error.localizedDescription }
             }
         }
     }
-    func background() { if let lifecycle { Task { await lifecycle.setBackgrounded(true) } } }
+    func background() { isBackgrounded = true; if let lifecycle { Task { await lifecycle.setBackgrounded(true) } } }
     func waitForSync() async { await task?.value }
     private func reconcile(revision: UUID) async throws {
         guard let directory else { return }
