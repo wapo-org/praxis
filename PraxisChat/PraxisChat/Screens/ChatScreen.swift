@@ -685,7 +685,7 @@ private struct TranscriptRow: Identifiable, Equatable {
         guard lhs.id == rhs.id, lhs.top == rhs.top, lhs.fades == rhs.fades else { return false }
         switch (lhs.content, rhs.content) {
         case (.user(let a), .user(let b)):
-            return a.id == b.id && a.userText == b.userText && a.attachments == b.attachments
+            return CloudDocumentChips.sameUserPresentation(a, b)
         case (.activity(let at, let a), .activity(let bt, let b)):
             return at == bt && a == b
         case (.text(let a, let sa), .text(let b, let sb)):

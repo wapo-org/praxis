@@ -102,10 +102,25 @@ struct CloudCatalogConnector: Codable, Identifiable, Sendable, Equatable {
     var disabledTools: [String]
     var authStatus: String
     var updatedAt: String
+    var status: String? = nil
+    var error: String? = nil
+
+    var needsSignIn: Bool { authStatus == "required" || status == "needs_auth" || status == "needs_reauth" }
+    var statusLabel: String {
+        switch status {
+        case "connected": "Connected"
+        case "unreachable": "Unreachable"
+        case "needs_auth": "Needs sign-in"
+        case "needs_reauth": "Sign in again"
+        case "error": "Error"
+        default: authStatus == "required" ? "Needs sign-in" : "Not checked"
+        }
+    }
+    var presentationStatus: String { enabled ? statusLabel : "Off · " + statusLabel }
 
     func adapter(isOn: Bool) -> Connector {
         Connector(id: id, name: name, monogram: String(name.prefix(1)).uppercased(),
-                  isOn: enabled && isOn, lockedReason: enabled ? nil : "Off in Settings")
+                  isOn: enabled && isOn, lockedReason: enabled ? nil : "Off in Settings", statusLabel: statusLabel)
     }
 }
 

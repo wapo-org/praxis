@@ -37,7 +37,7 @@ struct CloudChatInput: Encodable, Sendable {
     var connectorIds: [String]
     var disabledConnectorIds: [String]
 }
-struct CloudChatIdentity: Decodable, Sendable { let id: String }
+struct CloudChatIdentity: Decodable, Sendable { let id: String; var title: String? = nil }
 struct CloudStartRun: Encodable, Sendable {
     let type = "run.start"
     var chatId: String

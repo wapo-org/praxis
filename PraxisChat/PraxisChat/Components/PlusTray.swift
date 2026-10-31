@@ -614,7 +614,9 @@ struct PlusTray: View {
                                 lockedRow(connector, reason: reason)
                             } else {
                                 toggleRow(avatar: connector.monogram, title: connector.name,
-                                          subtitle: store.connectorUpdateNote(connector.id),
+                                          subtitle: connector.statusLabel.map { state in
+                                              [state, store.connectorUpdateNote(connector.id)].compactMap { $0 }.joined(separator: " · ")
+                                          } ?? store.connectorUpdateNote(connector.id),
                                           isOn: connectorBinding(connector.id))
                             }
                         }
@@ -669,7 +671,10 @@ struct PlusTray: View {
     private func lockedRow(_ connector: Connector, reason: String) -> some View {
         HStack(spacing: 10) {
             IntegrationAvatar(monogram: connector.monogram)
-            Text(connector.name).font(Type.inter(15, .body)).foregroundStyle(Praxis.ink)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(connector.name).font(Type.inter(15, .body)).foregroundStyle(Praxis.ink)
+                if let status = connector.statusLabel { Text(status).font(Type.inter(12, .caption)).foregroundStyle(Praxis.mutedInk) }
+            }
             Spacer()
             Text(reason).font(Type.inter(13, .footnote)).foregroundStyle(Praxis.mutedInk)
         }

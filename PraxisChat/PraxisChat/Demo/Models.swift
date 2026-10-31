@@ -70,6 +70,7 @@ struct Connector: Identifiable, Equatable {
     var isOn: Bool
     /// Why the row can't be toggled here (e.g. "Off in Settings"); nil = toggleable.
     var lockedReason: String? = nil
+    var statusLabel: String? = nil
 }
 
 // MARK: Attachments

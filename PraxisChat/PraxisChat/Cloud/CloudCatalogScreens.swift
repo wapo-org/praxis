@@ -93,7 +93,7 @@ struct CloudCatalogConnectorsScreen: View {
             SettingsCard {
                 ForEach(services.connectors) { connector in
                     NavigationLink { CloudCatalogConnectorScreen(services: services, connectorID: connector.id) } label: {
-                        CloudSettingsRow(title: connector.name, value: connector.authStatus == "required" ? "Sign in" : (connector.enabled ? "On" : "Off"), symbol: "link")
+                        CloudSettingsRow(title: connector.name, value: connector.presentationStatus, symbol: "link")
                     }.buttonStyle(PressHighlightStyle())
                     SettingsDivider()
                 }
@@ -119,6 +119,10 @@ struct CloudCatalogConnectorScreen: View {
         CloudSettingsPage(title: connector?.name ?? "Connector") {
             if let connector {
                 Text(connector.url).font(Type.mono(12, .caption)).foregroundStyle(Praxis.mutedInk).textSelection(.enabled)
+                Text(connector.presentationStatus).font(Type.inter(14, .body)).foregroundStyle(Praxis.secondaryInk)
+                    .accessibilityIdentifier("cloudConnectorStatus")
+                if let error = connector.error, !error.isEmpty { CloudSettingsErrorText(message: error) }
+                CloudSettingsAction("Refresh connection", identifier: "cloudRefreshConnector") { try await services.refreshConnector(connectorID) }
                 SettingsCard {
                     CloudSettingsToggle("Enabled", isOn: connector.enabled) {
                         try await services.patchConnector(connectorID, patch: CloudCatalogConnectorPatch(enabled: $0))
@@ -129,8 +133,8 @@ struct CloudCatalogConnectorScreen: View {
                     }
                 }
                 Text("Trusted tools can still require approval under the chat's policy.").font(Type.inter(12, .caption)).foregroundStyle(Praxis.mutedInk)
-                if connector.authStatus != "none" {
-                    CloudSettingsAction(connector.authStatus == "connected" ? "Reconnect account" : "Sign in", identifier: "cloudConnectorSignIn") {
+                if connector.needsSignIn || connector.authStatus != "none" {
+                    CloudSettingsAction(connector.needsSignIn ? "Sign in" : "Reconnect account", identifier: "cloudConnectorSignIn") {
                         try await services.signInToConnector(connectorID)
                     }
                 }
