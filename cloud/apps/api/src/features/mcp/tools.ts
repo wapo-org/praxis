@@ -12,6 +12,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { FeatureContext, FeatureTool } from '../../contracts.js';
 import { connector, McpError, now, requireConsent, saveConnector, type McpOptions } from './shared.js';
 import { recordFailure, skipWithoutContact } from './health.js';
+import { resourceTools } from './resources.js';
 import { listAllTools, withClient } from './client.js';
 
 export const catalogKey = (ctx: FeatureContext, id: string) =>
@@ -64,18 +65,30 @@ export async function discoverTools(
   value: Connector,
   options: McpOptions = {},
 ): Promise<Tool[]> {
+  return (await discoverCatalog(ctx, value, options)).tools;
+}
+
+/** Tools plus whether the server offers resources (from its initialize capabilities); cached briefly per connector. */
+export async function discoverCatalog(
+  ctx: FeatureContext,
+  value: Connector,
+  options: McpOptions = {},
+): Promise<{ tools: Tool[]; resources: boolean }> {
   const key = catalogKey(ctx, value.id);
-  const cached = await ctx.kv.get<{ url: string; transport: string; tools: Tool[] }>(key);
+  const cached = await ctx.kv.get<{ url: string; transport: string; tools: Tool[]; resources?: boolean }>(key);
   if (cached?.url === value.url && cached.transport === value.transport) {
-    return cached.tools;
+    return { tools: cached.tools, resources: cached.resources === true };
   }
-  const tools = await withClient(ctx, value, options, listAllTools);
-  await ctx.kv.set(key, { url: value.url, transport: value.transport, tools }, 60);
+  const { tools, resources } = await withClient(ctx, value, options, async (client) => ({
+    tools: await listAllTools(client),
+    resources: !!client.getServerCapabilities()?.resources,
+  }));
+  await ctx.kv.set(key, { url: value.url, transport: value.transport, tools, resources }, 60);
   const latest = await connector(ctx, value.id);
   if (latest.url === value.url) {
     await saveConnector(ctx, { ...latest, toolCount: tools.length, error: undefined, status: 'connected', lastCheckedAt: now(), statusCode: undefined });
   }
-  return tools;
+  return { tools, resources };
 }
 
 export async function checkExecution(
@@ -143,7 +156,8 @@ export async function getMcpTools(
     // Recently failed or signed-out connectors are not offered (a turn note says why); no network call.
     if (skipWithoutContact(value)) continue;
     try {
-      const definitions = await discoverTools(ctx, value, mcp);
+      const { tools: definitions, resources } = await discoverCatalog(ctx, value, mcp);
+      if (resources) tools.push(...resourceTools(ctx, value, options, mcp));
       for (const definition of definitions) {
         if (value.disabledTools.includes(definition.name)) continue;
         tools.push({
