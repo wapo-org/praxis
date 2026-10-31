@@ -40,6 +40,7 @@ actor CloudRunJournal {
         var events: [Data]
         var cursor: Int
         var byteCount: UInt64
+        var snapshot: Data? = nil
     }
     private struct WireRecord: Codable { let data: Data }
     private struct Envelope: Decodable {
@@ -52,10 +53,12 @@ actor CloudRunJournal {
     let directory: URL
     private var cursors: [String: Int] = [:]
     private var blocked = Set<String>()
+    private var closed = false
 
     init(directory: URL) { self.directory = directory.appendingPathComponent("Runs", isDirectory: true) }
 
     func register(_ record: Record) throws {
+        guard !closed else { throw Failure.writeFailed }
         try prepareDirectory()
         try JSONEncoder().encode(record).write(to: metadataURL(record.runID),
             options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
@@ -69,8 +72,9 @@ actor CloudRunJournal {
         }
     }
 
-    func append(_ data: Data, runID: String) throws {
-        guard !blocked.contains(runID) else { throw Failure.writeFailed }
+    @discardableResult
+    func append(_ data: Data, runID: String) throws -> Bool {
+        guard !closed, !blocked.contains(runID) else { throw Failure.writeFailed }
         let header = try JSONDecoder().decode(Envelope.self, from: data)
         guard header.type == "run.event", header.runId == runID, header.id > 0,
               header.id <= 9_007_199_254_740_991 else { throw Failure.invalidEvent }
@@ -90,7 +94,7 @@ actor CloudRunJournal {
                     try file.truncate(atOffset: replay.byteCount)
                 }
             }
-            guard header.id > (cursors[runID] ?? 0) else { return }
+            guard header.id > (cursors[runID] ?? 0) else { return false }
             if !FileManager.default.fileExists(atPath: url.path) {
                 try Data().write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             }
@@ -99,6 +103,7 @@ actor CloudRunJournal {
             try file.seekToEnd()
             try file.write(contentsOf: line)
             cursors[runID] = header.id
+            return true
         } catch {
             // Do not append a later cursor after a failed record: it would
             // create a gap that could not be recovered by Last-Event-ID.
@@ -108,34 +113,59 @@ actor CloudRunJournal {
     }
 
     func replay(runID: String) -> Replay {
-        guard let data = try? Data(contentsOf: eventsURL(runID)) else {
-            return Replay(events: [], cursor: 0, byteCount: 0)
-        }
-        var replay = Replay(events: [], cursor: 0, byteCount: 0)
+        let snapshotData = try? Data(contentsOf: snapshotURL(runID))
+        let snapshot = snapshotData.flatMap { try? JSONDecoder().decode(CloudRunSnapshot.self, from: $0) }
+        var replay = Replay(events: [], cursor: snapshot?.lastEventId ?? 0, byteCount: 0, snapshot: snapshotData)
+        guard let data = try? Data(contentsOf: eventsURL(runID)) else { return replay }
         var start = data.startIndex
         while let newline = data[start...].firstIndex(of: 10) {
             guard let record = try? JSONDecoder().decode(WireRecord.self, from: Data(data[start..<newline])),
                   let envelope = try? JSONDecoder().decode(Envelope.self, from: record.data),
                   envelope.type == "run.event", envelope.runId == runID,
-                  envelope.id > replay.cursor, envelope.id <= 9_007_199_254_740_991 else { break }
-            replay.events.append(record.data)
-            replay.cursor = envelope.id
+                  envelope.id > 0, envelope.id <= 9_007_199_254_740_991 else { break }
+            if envelope.id > replay.cursor {
+                replay.events.append(record.data)
+                replay.cursor = envelope.id
+            }
             start = data.index(after: newline)
             replay.byteCount = UInt64(start)
         }
         return replay
     }
 
+    func checkpoint(_ data: Data, runID: String) throws {
+        guard !closed else { throw Failure.writeFailed }
+        let snapshot = try JSONDecoder().decode(CloudRunSnapshot.self, from: data)
+        guard snapshot.run.id == runID else { throw Failure.invalidEvent }
+        _ = try snapshot.presentationEvents()
+        try prepareDirectory()
+        // Snapshot first: a crash before deleting the old log is safe because
+        // replay ignores entries already covered by this checkpoint.
+        try data.write(to: snapshotURL(runID), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        try Data().write(to: eventsURL(runID), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        cursors[runID] = snapshot.lastEventId
+        blocked.remove(runID)
+    }
+    private func snapshotURL(_ runID: String) -> URL {
+        directory.appendingPathComponent(CloudReplicaScope.digest(runID)).appendingPathExtension("snapshot")
+    }
+
     /// Call only after the terminal turn projection has been persisted. Keeping
     /// a journal longer is safe; deleting it before that commit loses recovery.
     func remove(runID: String) throws {
-        for url in [eventsURL(runID), metadataURL(runID)] where FileManager.default.fileExists(atPath: url.path) {
+        for url in [eventsURL(runID), metadataURL(runID), snapshotURL(runID)] where FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)
         }
         cursors.removeValue(forKey: runID)
         blocked.remove(runID)
     }
 
+    /// Closing prevents late detached readers from recreating signed-out data.
+    func erase() throws {
+        closed = true
+        cursors.removeAll(); blocked.removeAll()
+        if FileManager.default.fileExists(atPath: directory.path) { try FileManager.default.removeItem(at: directory) }
+    }
     private func prepareDirectory() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try? FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],

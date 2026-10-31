@@ -11,7 +11,7 @@ final class BlurWave2Shots: XCTestCase {
     var app: XCUIApplication!
 
     override func setUpWithError() throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_BLUR2SHOTS"] != nil, "blur2 shots")
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_BLUR2SHOTS"] != nil, "Optional blur capture requires PRAXIS_BLUR2SHOTS; not a functional feature skip")
         continueAfterFailure = true
         app = XCUIApplication()
         try? FileManager.default.createDirectory(atPath: "/tmp/praxis-blur2-shots", withIntermediateDirectories: true)

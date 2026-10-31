@@ -48,3 +48,7 @@ Default EngineKind resolves to cloud, even if old provider profiles exist. Hidde
 M0: inventory committed; protocol review recorded when A publishes v0. M1: real local API at C port 8807 streams an entire run and controls through unchanged presentation. M2: all settings/services use API; no native loop or provider secret access in default path. M3: app unit/UI/package checks, local API walkthrough and saved screenshots; integration checks pass after merge.
 
 Every xcodebuild/swift build/test uses `~/.praxis-agent-state/cloud/tools/slot.sh`; each worker creates a named simulator and `/tmp/praxis-cloud-dd/<name>`. Stop own dev servers and delete own simulator at completion. Merge each milestone under intlock; run workspace typecheck and tests. Post exact evidence, gaps and credentials in `~/.praxis-agent-state/cloud/reports/C.md`.
+
+## Known limitations
+
+Expired-cursor snapshots store tools and text in separate arrays, so recovery reconstructs tools before text; journal replay preserves their original interleaving. Live Activities update while app events arrive. Server-to-device APNs Live Activity push updates, including updates while the app is suspended, remain future work.

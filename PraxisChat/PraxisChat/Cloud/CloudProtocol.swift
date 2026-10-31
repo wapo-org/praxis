@@ -70,7 +70,12 @@ struct CloudUploadRequest: Encodable, Sendable {
     let size: Int
     let chatId: String
 }
-struct CloudUploadURL: Decodable, Sendable { let uploadUrl: URL; let expiresAt: String }
+struct CloudUploadURL: Decodable, Sendable {
+    enum Method: String, Decodable, Sendable { case POST, PUT }
+    let uploadUrl: URL
+    let method: Method?
+    let expiresAt: String
+}
 struct CloudStorageReceipt: Decodable, Sendable { let storageId: String }
 struct CloudUploadComplete: Encodable, Sendable {
     let type = "upload.complete"

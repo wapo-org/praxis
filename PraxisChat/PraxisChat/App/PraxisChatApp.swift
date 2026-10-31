@@ -9,6 +9,7 @@ struct PraxisChatApp: App {
         WindowGroup {
             ChatScreen()
                 .praxisHaptics()
+                .task { await store.prepareCloudSession() }
                 .environment(store)
                 .environment(store.haptics)
                 // The real Recordings destination for Settings → Voice

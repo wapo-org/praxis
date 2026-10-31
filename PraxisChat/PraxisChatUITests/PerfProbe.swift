@@ -21,7 +21,7 @@ final class PerfProbe: XCTestCase {
     }
 
     override func setUpWithError() throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_PERF"] != nil, "perf probe")
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_PERF"] != nil, "Optional performance measurement requires PRAXIS_PERF")
     }
 
     /// New chat → "Research progressive blur" → the whole run (activity,

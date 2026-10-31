@@ -2,7 +2,7 @@
  * Engine capability detection & Liquid Glass material ramp (ported from wapo.dp).
  */
 
-export type GlassStrategy = 'svg-displacement' | 'progressive-frost' | 'reduced-transparency';
+export type GlassStrategy = 'svg-displacement' | 'webgl-refraction' | 'progressive-frost' | 'reduced-transparency';
 export type MaterialLevel = 'ultrathin' | 'thin' | 'regular' | 'thick';
 export type GlassShape = 'capsule' | 'card' | 'free';
 export type RefractionIntensity = 'subtle' | 'medium' | 'strong';
@@ -137,7 +137,7 @@ export function prefersReducedMotion(): boolean {
 /**
  * Negotiates the highest-fidelity liquid glass strategy supported by the user's browser engine:
  * - Chromium (Chrome / Edge / Arc / Brave): 'svg-displacement' (real-time SVG feDisplacementMap + specular rim)
- * - WebKit (Safari macOS / iOS) & Gecko (Firefox): 'progressive-frost' (3-band radial progressive backdrop-filter + specular sheen + dual 1px inset rim lighting)
+ * - WebKit/Gecko: shared WebGL refraction (CSS frost on unavailable/lost context)
  * - Reduced transparency preference: 'reduced-transparency' (high-contrast opaque Paper.card / Paper.fill1)
  */
 export function negotiateStrategy(): GlassStrategy {
@@ -158,5 +158,5 @@ export function negotiateStrategy(): GlassStrategy {
   if (isChromium) {
     return 'svg-displacement';
   }
-  return 'progressive-frost';
+  return typeof WebGLRenderingContext !== 'undefined' ? 'webgl-refraction' : 'progressive-frost';
 }

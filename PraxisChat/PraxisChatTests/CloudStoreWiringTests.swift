@@ -10,7 +10,9 @@ final class CloudStoreWiringTests: XCTestCase {
         let backend = CloudTestBackend(scenario: .text)
         let client = CloudAPIClient(configuration: try CloudServerConfiguration(baseURL: CloudTestBackend.baseURL),
                                     session: backend.makeSession(), tokens: CloudSessionStore(inMemory: true))
-        return ChatStore.makeCloudStore(client: client, conversations: [Conversation(title: "Cloud")])
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        return ChatStore.makeCloudStore(client: client, conversations: [Conversation(title: "Cloud")], replicaRoot: root)
     }
 
     func testCloudConstructionSharesServicesVoiceAndElicitationWithoutNativeGraph() async throws {
@@ -20,7 +22,7 @@ final class CloudStoreWiringTests: XCTestCase {
         XCTAssertNotNil(store.cloudServices)
         XCTAssertNotNil(store.voice)
         XCTAssertTrue(store.elicitationCenter === store.cloudElicitations)
-        await store.cloudServices?.loadIfNeeded()
+        await store.prepareCloudSession()
         XCTAssertTrue(store.cloudServices?.isSignedIn == true)
         XCTAssertFalse(store.availableModels.isEmpty)
         XCTAssertEqual(store.model.id, store.availableModels.first?.id)

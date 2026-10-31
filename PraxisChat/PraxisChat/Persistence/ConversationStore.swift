@@ -29,6 +29,7 @@ actor ConversationStore {
 
     private enum Operation: Sendable {
         case save(ConversationRecord)
+        case batch([ConversationRecord], Index)
         case saveIndex(Index)
         case delete([UUID])
         case barrier(CheckedContinuation<Void, Never>)
@@ -55,6 +56,8 @@ actor ConversationStore {
     deinit { queue.finish() }
 
     // MARK: Writes (queued, in order)
+
+    nonisolated func saveBatch(_ records: [ConversationRecord], index: Index) { queue.yield(.batch(records, index)) }
 
     nonisolated func save(_ record: ConversationRecord) { queue.yield(.save(record)) }
     nonisolated func saveIndex(_ index: Index) { queue.yield(.saveIndex(index)) }
@@ -83,6 +86,10 @@ actor ConversationStore {
 
     private func perform(_ operation: Operation) {
         switch operation {
+        case .batch(let records, let index):
+            for record in records { performedWrites += 1; write(record, to: fileURL(for: record.id)) }
+            performedWrites += 1
+            write(index, to: indexURL)
         case .save(let record):
             performedWrites += 1
             write(record, to: fileURL(for: record.id))

@@ -51,7 +51,10 @@ final class CloudServices: VoiceSettingsReader {
     func loadIfNeeded() async {
         guard !hasLoaded else { return }
         hasLoaded = true
-        await reload()
+        // Account bootstrap belongs to the facade, not a transient view task.
+        // A dismissed/cancelled view must not leave hasLoaded true with no account.
+        let bootstrap = Task { await self.reload() }
+        await bootstrap.value
     }
 
     func reload() async {
@@ -86,6 +89,10 @@ final class CloudServices: VoiceSettingsReader {
 
     func signIn(email: String, password: String) async throws {
         let session = try await client.signIn(email: email.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
+        await acceptSignedInSession(session)
+    }
+
+    func acceptSignedInSession(_ session: CloudSession) async {
         clearAccount()
         account = session.user
         onSessionChanged?(account)

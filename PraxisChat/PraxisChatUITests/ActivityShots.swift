@@ -6,7 +6,7 @@ import XCTest
 /// Writes PNGs to /tmp/praxis-activity-shots/.
 final class ActivityShots: XCTestCase {
     override func setUpWithError() throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_SHOTS"] != nil, "activity shots")
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_SHOTS"] != nil, "Optional activity capture requires PRAXIS_SHOTS; LiveActivityUITests cover behavior")
         continueAfterFailure = true
     }
 

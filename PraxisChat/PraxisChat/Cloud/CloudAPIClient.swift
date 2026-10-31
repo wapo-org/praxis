@@ -84,6 +84,16 @@ struct CloudAPIClient: Sendable {
         return try JSONDecoder().decode(Response.self, from: data)
     }
 
+    func jsonData(_ path: String) async throws -> Data {
+        let request = try await request(path)
+        let (data, response) = try await session.data(for: request, delegate: CloudRedirectGuard())
+        try Self.validate(response, data: data)
+        guard (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?.lowercased().contains("application/json") == true else {
+            throw CloudAPIError.invalidContentType
+        }
+        return data
+    }
+
     func sendVoid(_ path: String, method: String = "GET", body: Data? = nil,
                   contentType: String = "application/json") async throws {
         let request = try await request(path, method: method, body: body, contentType: contentType)

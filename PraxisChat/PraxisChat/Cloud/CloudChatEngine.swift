@@ -5,22 +5,26 @@ import AgentMCP
 struct CloudChatEngine: ChatEngine {
     let kind: EngineKind = .cloud
     let buildsUserMessage = true
+    var onDetached: @Sendable () async -> Void = {}
+    var priorEvents: [CloudEventPayload] = []
     let client: CloudAPIClient
     let attachments: AttachmentStore
     let elicitations: ElicitationCenter
     var onRunStarted: @Sendable (UUID, UUID, String) async -> Void
-    var onEvent: @Sendable (UUID, UUID, String, Data) async -> Void
+    var onEvent: @Sendable (UUID, UUID, String, Data) async throws -> Void
+    var onSnapshot: @Sendable (UUID, UUID, String, Data) async throws -> Void
     var onCursor: @Sendable (UUID, UUID, String, Int) async -> Void
     var onRunFinished: @Sendable (UUID, UUID, String) async -> Void
 
     init(client: CloudAPIClient, attachments: AttachmentStore = .shared,
          elicitations: ElicitationCenter = ElicitationCenter(),
          onRunStarted: @escaping @Sendable (UUID, UUID, String) async -> Void = { _, _, _ in },
-         onEvent: @escaping @Sendable (UUID, UUID, String, Data) async -> Void = { _, _, _, _ in },
+         onEvent: @escaping @Sendable (UUID, UUID, String, Data) async throws -> Void = { _, _, _, _ in },
+         onSnapshot: @escaping @Sendable (UUID, UUID, String, Data) async throws -> Void = { _, _, _, _ in },
          onCursor: @escaping @Sendable (UUID, UUID, String, Int) async -> Void = { _, _, _, _ in },
          onRunFinished: @escaping @Sendable (UUID, UUID, String) async -> Void = { _, _, _ in }) {
         self.client = client; self.attachments = attachments; self.elicitations = elicitations
-        self.onRunStarted = onRunStarted; self.onEvent = onEvent; self.onCursor = onCursor; self.onRunFinished = onRunFinished
+        self.onRunStarted = onRunStarted; self.onEvent = onEvent; self.onSnapshot = onSnapshot; self.onCursor = onCursor; self.onRunFinished = onRunFinished
     }
 
     func run(_ request: ChatRunRequest) -> AsyncStream<AgentEvent> { stream(request, runID: nil, cursor: 0, pendingEvents: []) }
@@ -44,19 +48,44 @@ struct CloudChatEngine: ChatEngine {
                     let wasCancelled = await control.wasCancelled()
                     if request.isCancelled() || wasCancelled {
                         if let cancellation = await control.requestCancel(client: client) { try await cancellation.value }
-                        out.yield(.finished(.cancelled)); out.finish(); return
+                        out.yield(.finished(.cancelled)); out.finish(); await onDetached(); return
                     }
                     for event in pendingEvents {
                         await respond(to: event, runID: id, request: request, pending: pending, out: out)
                     }
                     let mapper = CloudEventMapper(request: request)
-                    try await CloudSSEClient(client: client).consume(runID: id, chatID: request.cloudChatID ?? request.conversationID.uuidString, after: cursor,
+                    for payload in priorEvents { _ = await mapper.map(payload) }
+                    var nextCursor = cursor
+                    var recoveries = 0
+                    while true {
+                        do {
+                    try await CloudSSEClient(client: client).consume(runID: id, chatID: request.cloudChatID ?? request.conversationID.uuidString, after: nextCursor,
                         onCursor: { cursor in await onCursor(request.conversationID, request.turnID, id, cursor) },
-                        onEvent: { _, raw in await onEvent(request.conversationID, request.turnID, id, raw) }) { event in
+                        onEvent: { _, raw in try await onEvent(request.conversationID, request.turnID, id, raw) }) { event in
                         for mapped in await mapper.map(event.event) {
                             if case .terminated = out.yield(mapped) { throw CancellationError() }
                         }
                         await respond(to: event.event, runID: id, request: request, pending: pending, out: out)
+                    }
+                            break
+                        } catch let error as CloudAPIError where error.code == "cursor_expired" {
+                            guard recoveries < 2 else { throw CloudAPIError.malformedEvent("Snapshot recovery limit exceeded") }
+                            recoveries += 1
+                            let raw = try await client.jsonData("/v1/runs/\(CloudAPIClient.segment(id))/snapshot")
+                            let snapshot = try JSONDecoder().decode(CloudRunSnapshot.self, from: raw)
+                            guard snapshot.run.id == id, snapshot.run.chatId == request.cloudChatID ?? request.conversationID.uuidString else {
+                                throw CloudAPIError.malformedEvent("snapshot identity mismatch")
+                            }
+                            await pending.cancelAll()
+                            try await onSnapshot(request.conversationID, request.turnID, id, raw)
+                            for mapped in try await mapper.replace(with: snapshot) { out.yield(mapped) }
+                            nextCursor = snapshot.lastEventId
+                            await onCursor(request.conversationID, request.turnID, id, nextCursor)
+                            if snapshot.isTerminal { break }
+                            for payload in snapshot.pendingEvents {
+                                await respond(to: payload, runID: id, request: request, pending: pending, out: out)
+                            }
+                        }
                     }
                     await onRunFinished(request.conversationID, request.turnID, id)
                 } catch {
@@ -65,6 +94,7 @@ struct CloudChatEngine: ChatEngine {
                     if !Task.isCancelled { out.yield(.finished(request.isCancelled() ? .cancelled : .failed(error.localizedDescription))) }
                 }
                 await pending.cancelAll()
+                await onDetached()
                 out.finish()
             }
             let watcher = Task {
@@ -179,16 +209,20 @@ struct CloudChatEngine: ChatEngine {
         guard let originURL = URL(string: "/", relativeTo: upload.uploadUrl)?.absoluteURL,
               (try? CloudServerConfiguration(baseURL: originURL)) != nil else { throw CloudAPIError.invalidServer }
         var request = URLRequest(url: upload.uploadUrl)
-        request.httpMethod = "POST"; request.httpBody = bytes
+        request.httpMethod = upload.method?.rawValue ?? "POST"; request.httpBody = bytes
         request.setValue(mediaType, forHTTPHeaderField: "Content-Type")
         request.httpShouldHandleCookies = false
-        // Override any Authorization in the injectable session's default
-        // headers as well as avoiding the API client's bearer header.
-        request.setValue("", forHTTPHeaderField: "Authorization")
-        // Signed URLs grant upload access. Never forward the session bearer.
+        // Local API upload routes require the API bearer. A Convex one-time
+        // URL is a different origin and must never receive that credential,
+        // including any Authorization supplied by session default headers.
+        let uploadOrigin = try CloudServerConfiguration(baseURL: originURL).origin
+        let token = uploadOrigin == client.configuration.origin
+            ? try await client.tokens.token(for: client.configuration.origin) : nil
+        request.setValue(token.map { "Bearer " + $0 } ?? "", forHTTPHeaderField: "Authorization")
         let (data, response) = try await client.session.data(for: request, delegate: CloudRedirectGuard())
         try CloudAPIClient.validate(response, data: data)
         let storage = try JSONDecoder().decode(CloudStorageReceipt.self, from: data)
+        guard !storage.storageId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CloudAPIError.invalidResponse }
         let complete = CloudUploadComplete(storageId: storage.storageId, name: name, mediaType: mediaType, size: bytes.count, chatId: chatID)
         // v0 upload.complete lacks privacy metadata; send an additive field so
         // servers with v1 support can enforce Hide from code before the run.
@@ -233,7 +267,11 @@ private actor CloudPendingActions {
         tasks[key] = Task { await operation() }
     }
     func cancel(_ key: String) { tasks.removeValue(forKey: key)?.cancel() }
-    func cancelAll() { let old = tasks.values; tasks.removeAll(); for task in old { task.cancel() } }
+    func cancelAll() async {
+        let old = Array(tasks.values); tasks.removeAll()
+        for task in old { task.cancel() }
+        for task in old { await task.value }
+    }
 }
 
 struct CloudConfigurationErrorEngine: ChatEngine {

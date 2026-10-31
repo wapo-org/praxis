@@ -8,6 +8,8 @@ actor CloudEventMapper {
     private var transcript: [Message]
     private var committedIDs = Set<String>()
     private var messageIDs: [String] = []
+    private var blockIDs = Set<String>()
+    private var toolIDs = Set<String>()
 
     init(request: ChatRunRequest) {
         self.request = request
@@ -15,6 +17,11 @@ actor CloudEventMapper {
     }
 
     func map(_ payload: CloudEventPayload) async -> [AgentEvent] {
+        switch payload {
+        case .text(let id, _), .reasoning(let id, _): blockIDs.insert(id)
+        case .toolStarted(let activity), .toolReady(let activity): toolIDs.insert(activity.id)
+        default: break
+        }
         switch payload {
         case .started, .parked, .unknown, .elicitation, .elicitationResolved: return []
         case .iteration(let n): return [.iterationStarted(n)]
@@ -85,6 +92,13 @@ actor CloudEventMapper {
             }
             return [.finished(native)]
         }
+    }
+
+    func replace(with snapshot: CloudRunSnapshot) async throws -> [AgentEvent] {
+        var result: [AgentEvent] = [.attemptDiscarded(blockIDs: Array(blockIDs), toolCallIDs: Array(toolIDs))]
+        blockIDs.removeAll(); toolIDs.removeAll()
+        for payload in try snapshot.presentationEvents() { result += await map(payload) }
+        return result
     }
 
     static func decision(_ raw: String) -> ApprovalDecision {

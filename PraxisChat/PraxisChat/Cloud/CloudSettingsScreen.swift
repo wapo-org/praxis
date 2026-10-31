@@ -152,6 +152,11 @@ struct CloudSettingsAccountScreen: View {
                     }.disabled(email.isEmpty || password.isEmpty)
                 }
                 #if DEBUG
+                if !services.isSignedIn && services.canSignInLocally {
+                    CloudSettingsAction("Sign in to local server", identifier: "cloudLocalSignIn") {
+                        try await services.signInLocally()
+                    }
+                }
                 SettingsSectionTitle("Development server")
                 SettingsCard {
                     SettingsField(title: "Server override", text: $overrideURL, placeholder: "https://your-server.example", keyboard: .URL, monospaced: true)
