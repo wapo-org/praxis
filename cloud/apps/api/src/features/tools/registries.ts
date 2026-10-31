@@ -13,12 +13,31 @@ export async function registryEntries(ctx:FeatureContext,id:string):Promise<Regi
  const {response,bytes}=await publicFetch(ctx,url,{},false,2000000);if(!response.ok)throw new ApiError(502,'registry_failed','Could not fetch registry');
  const data=z.union([z.array(Entry).max(2000),z.object({skills:z.array(Entry).max(2000)}),z.object({entries:z.array(Entry).max(2000)})]).parse(JSON.parse(new TextDecoder().decode(bytes)));
  const entries=Array.isArray(data)?data:'skills' in data?data.skills:data.entries;
- if(new Set(entries.map(e=>e.id)).size!==entries.length)throw new ApiError(400,'invalid_registry','Duplicate registry entry IDs');await ctx.kv.set(key,entries,900);return entries;
+ if(new Set(entries.map(e=>e.id)).size!==entries.length)throw new ApiError(400,'invalid_registry','Duplicate registry entry IDs');await ctx.kv.set(key,entries,600);return entries;
 }
-export async function installSkill(ctx:FeatureContext,id:string,skillId:string){
+export async function installSkill(ctx:FeatureContext,id:string,skillId:string,existingId?:string){
  const entries=await registryEntries(ctx,id),entry=entries.find(e=>e.id===skillId);if(!entry)throw new ApiError(404,'not_found','Registry skill not found');let document=entry.document;
  if(document===undefined){if(!entry.url)throw new ApiError(400,'invalid_registry','Registry entry has no SKILL.md URL');const {response,bytes}=await publicFetch(ctx,entry.url,{},false,500000);if(!response.ok)throw new ApiError(502,'registry_failed','Could not fetch SKILL.md');if(entry.digest&&`sha256:${createHash('sha256').update(bytes).digest('hex')}`!==entry.digest.toLowerCase())throw new ApiError(400,'digest_mismatch','SKILL.md digest mismatch');document=new TextDecoder().decode(bytes);}
  else if(entry.digest&&`sha256:${createHash('sha256').update(document).digest('hex')}`!==entry.digest.toLowerCase())throw new ApiError(400,'digest_mismatch','SKILL.md digest mismatch');
- const parsed=parseSkillDocument(document);if((await ctx.store.list(ctx.userId,'skill')).some(r=>!r.deleted&&r.value.name===parsed.name))throw new ApiError(409,'skill_exists','A skill with that name is already installed');
- return saveSkill(ctx,{name:parsed.name,description:parsed.description,document,enabled:true});
+ const parsed=parseSkillDocument(document);if((await ctx.store.list(ctx.userId,'skill')).some(r=>!r.deleted&&r.id!==existingId&&r.value.name===parsed.name))throw new ApiError(409,'skill_exists','A skill with that name is already installed');
+ return saveSkill(ctx,{name:parsed.name,description:parsed.description,document,enabled:true,registryId:id,registryEntryId:entry.id,registryDigest:`sha256:${createHash('sha256').update(document).digest('hex')}`},existingId);
+}
+
+export async function skillUpdates(ctx:FeatureContext){
+ const updates=[];
+ for(const row of await ctx.store.list(ctx.userId,'skill')){
+  if(row.deleted||typeof row.value.registryId!=='string'||typeof row.value.registryEntryId!=='string')continue;
+  const registry=await ctx.store.get(ctx.userId,'registry',row.value.registryId);
+  if(!registry||registry.deleted||registry.value.enabled===false)continue;
+  const entry=(await registryEntries(ctx,registry.id)).find(e=>e.id===row.value.registryEntryId);
+  if(entry?.digest&&entry.digest.toLowerCase()!==row.value.registryDigest)updates.push({type:'skill.update' as const,skillId:row.id,registryId:registry.id,entryId:entry.id,digest:entry.digest,updateAvailable:true as const});
+ }
+ return updates;
+}
+export async function updateSkill(ctx:FeatureContext,id:string){
+ const row=await requireRow(ctx,'skill',id);
+ if(typeof row.value.registryId!=='string'||typeof row.value.registryEntryId!=='string')throw new ApiError(409,'not_registry_skill','Skill was not installed from a registry');
+ const skill=await installSkill(ctx,row.value.registryId,row.value.registryEntryId,id);
+ if(row.value.enabled===false){skill.enabled=false;await ctx.store.put(ctx.userId,'skill',id,skill);}
+ return skill;
 }

@@ -54,3 +54,5 @@ Runtime dependency inventory (features add their package only when implemented):
 No accounts/projects are created or deployed by agents. Required credentials, external setup, callback URLs and rollout limits are listed in DEPLOY.md. Real adapter suites run only when their environment is supplied. Local tests and scripted smoke runs need none. Production feature claims must distinguish implemented contracts from credential-gated verification and known gaps.
 
 - sharp: server-side orientation-aware image cropping and scaling for the vision reader on Vercel.
+
+- fflate: small in-memory streaming ZIP decoder for skill imports; declared and actual sizes, entry types, paths and counts are bounded before persistence. Tar parsing and bounded gzip use Node built-ins.

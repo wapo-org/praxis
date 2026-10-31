@@ -19,8 +19,8 @@ Cloud paths are relative to `cloud/`. Audited 2026-10-31 (WP-A7). Status values:
 | Skill CRUD | SkillStore.swift | features/tools/index.ts `/skills` | done |
 | Bundled skill files (read) | SkillFiles.swift | tools/state.ts, convex/tools.ts | done |
 | Skill registries: search, install, digest check | Registry/SkillRegistryClient.swift | features/tools/registries.ts | done |
-| Registry update checks (installed skill has a newer version) | Registry/SkillRegistry.swift `RegistryUpdate` | — | missing (Remaining) |
-| Import a skill from a .zip/.tar archive | SkillImporter.swift, ZipArchive/TarArchive.swift | — | missing (Remaining) |
+| Registry update checks (installed skill has a newer version) | Registry/SkillRegistry.swift `RegistryUpdate` | features/tools/registries.ts `/skills/updates`, `/:id/update` | done (WP-A8) |
+| Import a skill from a .zip/.tar archive | SkillImporter.swift, ZipArchive/TarArchive.swift | features/tools/import.ts `/skills/import` | done (WP-A8) |
 | **MCP** | | | |
 | Streamable HTTP + legacy SSE transports | MCPClient.swift, LegacySSEChannel.swift | features/mcp/client.ts (official SDK) | done |
 | OAuth 2.1: PKCE, DCR, CIMD, token refresh, re-auth on revoked grant | MCPAuth.swift | features/mcp/oauth.ts, refresh.ts | done |
@@ -34,7 +34,7 @@ Cloud paths are relative to `cloud/`. Audited 2026-10-31 (WP-A7). Status values:
 | Per-tool disable, per-chat off-switch, trust in plan mode | AgentRuntime.swift:310 | tools.ts `checkExecution`, execution.ts trusted sources | done |
 | Per-host AI-data consent | app ConnectorPrompts | shared.ts `requireConsent` | done |
 | Connector health status + unavailable turn notes | AgentRuntime unavailable reasons | features/mcp/health.ts | done (WP-A6) |
-| MCP server registry search/install | MCPRegistryClient.swift, MCPInstaller.swift | `/connectors/discover` (paste URL/config only) | partial (Remaining) |
+| MCP server registry search/install | MCPRegistryClient.swift, MCPInstaller.swift | features/mcp/registry.ts `/connectors/registry` → existing health-checked create | done (WP-A8) |
 | **Providers** | | | |
 | Anthropic Messages, OpenAI Chat, OpenAI Responses (streaming) | AgentProviders/Anthropic, OpenAI | packages/agent/src/providers.ts, streams.ts, wire.ts | done |
 | Capability flags gate features (never provider names) | ModelProvider capabilities | wire.ts, execution.ts `resolveProvider` | done |
@@ -42,7 +42,7 @@ Cloud paths are relative to `cloud/`. Audited 2026-10-31 (WP-A7). Status values:
 | Per-model reasoning efforts + clamping | Provider/EffortLevels.swift | wire.ts `clampEffort`, Model.reasoningEfforts | done |
 | Model list: server-side search, pagination, pins, favorites | ProviderSettings (pins) | app.ts `/v1/models`, `/v1/models/preferences` | done |
 | Server web search tool when supported | wire builders | wire.ts `webSearch` + `serverWebSearch` | done |
-| Provider probe (check tool calling and vision actually work) | AgentProviders/ProviderProbe.swift | `/providers/:id/test` lists models only | partial (Remaining) |
+| Provider probe (check tool calling and vision actually work) | AgentProviders/ProviderProbe.swift | provider-probe.ts `/providers/:id/test` with modelId; persists learned rejections | done (WP-A8) |
 | **Loop** | | | |
 | Modes ask/plan/build/auto, policy matrix | AgentCore Engine, policy | packages/agent/src/policy.ts | done |
 | Frozen system prompt + mode/effort turn notes | SystemPrompt.swift, TurnNotes.swift | conversation.ts | done |
@@ -61,10 +61,13 @@ Cloud paths are relative to `cloud/`. Audited 2026-10-31 (WP-A7). Status values:
 | Skill scripts (Python/shell in skills) | — (already dropped in the app) | — | dropped |
 | stdio / local-process MCP servers | MCPServerConfig | — (remote HTTP only) | dropped |
 
-**Counts:** done 41 (7 filled in WP-A7) · partial 2 · missing 2 · dropped 3.
+**Counts:** done 45 (7 filled in WP-A7, 4 in WP-A8) · partial 0 · missing 0 · dropped 3.
+
+## WP-A8 additions
+- Registry installs retain entry ID and verified digest; `GET /v1/skills/updates` compares cached listings (10 minutes). `POST /v1/skills/:id/update` checks the digest again and preserves skill identity and enabled state.
+- `POST /v1/skills/import` accepts `skill.import` + owned attachment ID. ZIP, tar and tar.gz are validated in memory: 25 MB archive, 5 MB expanded, 100 entries, 500 KB text files, path/type/collision checks and compression ratio cap 100. One root skill or one wrapper folder; scripts and binaries are dropped and reported.
+- `GET /v1/connectors/registry?q=&cursor=` proxies the same official `/v0.1/servers` registry used by Swift, through guarded egress with a 10 minute cache. Only remote HTTP/SSE candidates are returned; clients add `input` via the existing health-checked `POST /v1/connectors` route. Templates/header names indicate required configuration.
+- `POST /v1/providers/:id/test` retains model-list-only behavior without modelId. With modelId and host consent it explicitly probes streaming, tool calling, claimed vision, and advertised reasoning efforts. Classified rejections seed the existing 14-day learned store; successful probes clear old rejections. No-tool answers remain uncertain and do not seed a rejection.
 
 ## Remaining
-- **Skill registry update checks** (~2 h). Store the registry entry id and digest with each installed skill (`installSkill` already sees both). Add `GET /v1/skills/updates`, which re-reads each enabled registry's listing (cached 10 min in KV) and returns installed skills whose listed digest differs. Add `POST /v1/skills/:id/update`, which reuses `installSkill` with the same digest check. Additive protocol: `skill.update` DTO. Test against a local fixture registry.
-- **Skill import from an archive** (~3 h). `POST /v1/skills/import` takes an uploaded attachment id (.zip/.tar ≤ 25 MB). Unpack in memory with size and entry-count limits and path checks, reusing `skillPath`/`allowedSkillFile`. Find `SKILL.md`, drop scripts and binaries as `save_skill` does, and save the skill plus bundle files via `toolsState`. Needs one small archive dependency (e.g. `fflate`; tar can be parsed by hand like TarArchive.swift).
-- **MCP server registry** (~3 h). Proxy the official MCP registry (`/v0/servers?search=&cursor=&version=latest`, as MCPRegistryClient does) as `GET /v1/connectors/registry?q=&cursor=`, cached 10 min. Return only remote (streamable-http/sse) packages, as `connector.input` candidates that clients add with the existing create (health-checked). No local packages (stdio is dropped).
-- **Provider probe** (~2 h). Extend `POST /v1/providers/:id/test` with an optional `{modelId}`. Send one tiny streamed request offering a `probe_echo` tool (as ProviderProbe.swift does) and, if vision is claimed, a 1×1 image. Report `{tools, vision, streaming}` booleans, and seed the learned-rejection rows from the result so the first real turn doesn't pay for a failure.
+None in this audit's scope.

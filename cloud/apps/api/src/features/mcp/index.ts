@@ -1,3 +1,4 @@
+import {searchRegistry} from './registry.js';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { z } from 'zod';
@@ -35,6 +36,7 @@ export function createMcpRoutes(context: (req: Request) => Promise<FeatureContex
     const result = await finishOAuth(await context(c.req.raw), query, options);
     return result.target ? c.redirect(result.target, 302) : c.json({ type: 'ok' });
   });
+  app.get('/connectors/registry',async c=>c.json(await searchRegistry(await authenticated(c.req.raw),c.req.query())));
   app.post('/connectors/discover', async c => {
     const ctx = await authenticated(c.req.raw);
     const input = await body(c, z.object({ type: z.literal('connector.discover'), url: z.string().optional(), config: z.string().max(500_000).optional() }).strict());
