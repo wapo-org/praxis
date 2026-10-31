@@ -51,6 +51,7 @@ export const PlusTray: React.FC<PlusTrayProps> = ({ onPickFiles }) => {
       (m.tagline?.toLowerCase().includes(q) ?? false)
     );
   });
+  const unpinnedModels = getUnpinnedModels(filteredModels);
 
   const pinnedModels = filteredModels.filter((m) => m.pinned || m.favorite);
 
@@ -259,10 +260,10 @@ export const PlusTray: React.FC<PlusTrayProps> = ({ onPickFiles }) => {
                 </>
               )}
 
-              <GlassDropdown.Label>All Models ({filteredModels.length})</GlassDropdown.Label>
-              {filteredModels.length > 35 ? (
+              <GlassDropdown.Label>All Models ({unpinnedModels.length})</GlassDropdown.Label>
+              {unpinnedModels.length > 35 ? (
                 <GlassDropdown.VirtualList
-                  items={filteredModels}
+                  items={unpinnedModels}
                   itemHeight={58}
                   height={240}
                   renderItem={(m) => (
@@ -298,7 +299,7 @@ export const PlusTray: React.FC<PlusTrayProps> = ({ onPickFiles }) => {
                   )}
                 />
               ) : (
-                filteredModels.map((m) => (
+                unpinnedModels.map((m) => (
                   <GlassDropdown.Item
                     key={`${m.providerId}-${m.id}`}
                     lines={2}
@@ -523,3 +524,7 @@ export const PlusTray: React.FC<PlusTrayProps> = ({ onPickFiles }) => {
     </GlassSurface>
   );
 };
+
+export function getUnpinnedModels<T extends { pinned?: boolean; favorite?: boolean }>(models: T[]): T[] {
+  return models.filter(m => !m.pinned && !m.favorite);
+}

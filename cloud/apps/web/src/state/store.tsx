@@ -1,3 +1,4 @@
+import { useMediaActions } from './useMediaActions';
 import React from 'react';
 import type {
   Approval,
@@ -24,7 +25,7 @@ import {
   type ToolCompletion,
   type ToolSpec,
 } from '../lib/api';
-import { loadReplica, readReplicaSync, saveReplica, type LocalReplicaSnapshot } from '../lib/idb';
+import { getReplicaIdentity, readReplicaSync, saveReplica, type LocalReplicaSnapshot } from '../lib/idb';
 import { subscribeRunEvents } from '../lib/sse';
 
 export interface ActiveToolStep {
@@ -257,68 +258,8 @@ export function usePraxisStore(): PraxisStoreContextValue {
   return ctx;
 }
 
-const SEED_FALLBACK_MODELS: Model[] = [
-  {
-    type: 'model',
-    id: 'scripted',
-    providerId: 'scripted',
-    displayName: 'Praxis Scripted',
-    tagline: 'Deterministic local development',
-    speed: 5,
-    intelligence: 3,
-    supportsImages: true,
-    contextWindow: 128000,
-    capabilities: {
-      type: 'capabilities',
-      tools: true,
-      parallelToolCalls: true,
-      vision: true,
-      documents: true,
-      imagesInToolResults: true,
-      reasoningEffort: true,
-      streamUsage: true,
-      explicitPromptCaching: false,
-      serverWebSearch: true,
-      midConversationSystem: true,
-      serverCompaction: true,
-      toolSearch: true,
-    },
-    reasoningEfforts: ['low', 'medium', 'high', 'max'],
-    pinned: true,
-    favorite: true,
-  },
-  {
-    type: 'model',
-    id: 'scripted-vision',
-    providerId: 'scripted',
-    displayName: 'Praxis Vision',
-    tagline: 'Multimodal image & document reader',
-    speed: 4,
-    intelligence: 4,
-    supportsImages: true,
-    contextWindow: 128000,
-    capabilities: {
-      type: 'capabilities',
-      tools: true,
-      parallelToolCalls: true,
-      vision: true,
-      documents: true,
-      imagesInToolResults: true,
-      reasoningEffort: true,
-      streamUsage: true,
-      explicitPromptCaching: false,
-      serverWebSearch: false,
-      midConversationSystem: true,
-      serverCompaction: false,
-      toolSearch: false,
-    },
-    reasoningEfforts: ['low', 'medium', 'high'],
-    pinned: true,
-    favorite: false,
-  },
-];
-
 export function PraxisStoreProvider({ children }: { children: React.ReactNode }) {
+  const replicaKey = React.useRef(getReplicaIdentity());
   const initialCache = React.useMemo(() => readReplicaSync(), []);
 
   const [hydrated, setHydrated] = React.useState<boolean>(Boolean(initialCache));
@@ -380,7 +321,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
   );
   const [providers, setProviders] = React.useState<Provider[]>(() => initialCache?.providers ?? []);
   const [models, setModels] = React.useState<Model[]>(
-    () => (initialCache?.models?.length ? initialCache.models : SEED_FALLBACK_MODELS),
+    () => (initialCache?.models?.length ? initialCache.models : []),
   );
   const [connectors, setConnectors] = React.useState<Connector[]>(
     () => initialCache?.connectors ?? [],
@@ -401,8 +342,8 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
   );
 
   // Selected composer controls
-  const [selectedProviderId, setSelectedProviderId] = React.useState<string>('scripted');
-  const [selectedModelId, setSelectedModelId] = React.useState<string>('scripted');
+  const [selectedProviderId, setSelectedProviderId] = React.useState<string>('');
+  const [selectedModelId, setSelectedModelId] = React.useState<string>('');
   const [selectedEffort, setSelectedEffort] = React.useState<string>('medium');
   const [selectedMode, setSelectedMode] = React.useState<'ask' | 'plan' | 'build' | 'auto'>('build');
 
@@ -439,7 +380,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
         updatedAt: Date.now(),
         ...nextPartial,
       };
-      void saveReplica(snap);
+      void saveReplica(snap, replicaKey.current);
     },
     [
       chats,
@@ -756,8 +697,10 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
       const boot = await apiClient.bootstrap();
       setChats(boot.chats);
       setProviders(boot.providers);
-      if (boot.models.length > 0) {
-        setModels(boot.models);
+      setModels(boot.models);
+      if (!selectedModelId && boot.models[0]) {
+        setSelectedModelId(boot.models[0].id);
+        setSelectedProviderId(boot.models[0].providerId);
       }
       setConnectors(boot.connectors);
       setSkills(boot.skills);
@@ -779,7 +722,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
             chats: boot.chats,
             messagesByChat: next,
             providers: boot.providers,
-            models: boot.models.length ? boot.models : SEED_FALLBACK_MODELS,
+            models: boot.models.length ? boot.models : [],
             connectors: boot.connectors,
             skills: boot.skills,
             consents: boot.consents ?? [],
@@ -787,7 +730,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
             preferences: boot.preferences,
             syncCursor: boot.syncCursor,
             updatedAt: Date.now(),
-          });
+          }, replicaKey.current);
           return next;
         });
       }
@@ -803,34 +746,17 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
         }
       }
       setHydrated(true);
-    } catch {
+    } catch (err) {
+      setErrorBanner(err instanceof Error ? err.message : 'Unable to load account');
       setHydrated(true);
     } finally {
       setSyncing(false);
     }
   }, [activeChatId, applySnapshotToLiveRun, attachRunStream]);
 
-  // Initial IndexedDB load + network bootstrap reconciliation
+  // The account gate loads only the verified user’s replica before mounting.
   React.useEffect(() => {
-    let cancelled = false;
-    void loadReplica().then((rep) => {
-      if (cancelled || !rep) return;
-      if (rep.chats.length > 0) setChats(rep.chats);
-      if (rep.chats[0]?.id && !activeChatId) setActiveChatId(rep.chats[0].id);
-      if (Object.keys(rep.messagesByChat).length > 0) setMessagesByChat(rep.messagesByChat);
-      if (rep.providers.length > 0) setProviders(rep.providers);
-      if (rep.models.length > 0) setModels(rep.models);
-      if (rep.connectors.length > 0) setConnectors(rep.connectors);
-      if (rep.skills.length > 0) setSkills(rep.skills);
-      if (rep.consents.length > 0) setConsents(rep.consents);
-      if (rep.registries.length > 0) setRegistries(rep.registries);
-      if (rep.preferences) setPreferences(rep.preferences);
-      setHydrated(true);
-    });
     void refreshAll();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const selectChat = React.useCallback(
@@ -867,7 +793,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
           persistState({ messagesByChat: next });
           return next;
         });
-      } catch {}
+      } catch (err) { setErrorBanner(err instanceof Error ? err.message : 'Unable to load messages'); }
     },
     [chats, persistState],
   );
@@ -926,7 +852,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
 
   const deleteChats = React.useCallback(
     async (chatIds: string[]) => {
-      await Promise.all(chatIds.map((id) => apiClient.deleteChat(id).catch(() => {})));
+      await Promise.all(chatIds.map((id) => apiClient.deleteChat(id)));
       setChats((prev) => {
         const remaining = prev.filter((c) => !chatIds.includes(c.id));
         if (activeChatId && chatIds.includes(activeChatId)) {
@@ -1166,9 +1092,6 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
 
   const toggleModelPin = React.useCallback(
     async (providerId: string, modelId: string, pinned: boolean) => {
-      setModels((prev) =>
-        prev.map((m) => (m.providerId === providerId && m.id === modelId ? { ...m, pinned } : m)),
-      );
       try {
         const updated = await apiClient.updateModelPreference({ providerId, modelId, pinned });
         setModels((prev) =>
@@ -1176,7 +1099,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
             m.providerId === providerId && m.id === modelId ? updated : m,
           ),
         );
-      } catch {}
+      } catch (err) { setErrorBanner(err instanceof Error ? err.message : 'Request failed'); }
     },
     [],
   );
@@ -1198,7 +1121,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
       }
       const created = await apiClient.createProvider({
         ...input,
-        apiKey: input.apiKey || 'sk-local-placeholder',
+        apiKey: input.apiKey ?? '',
       });
       setProviders((prev) => [...prev, created]);
       return created;
@@ -1331,47 +1254,9 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
     [],
   );
 
-  const uploadFiles = React.useCallback(
-    async (files: File[]): Promise<Attachment[]> => {
-      const uploaded: Attachment[] = [];
-      for (const file of files) {
-        try {
-          const att = await apiClient.uploadAttachment(file, activeChatId ?? undefined);
-          uploaded.push(att);
-          setAttachmentsById((prev) => ({ ...prev, [att.id]: att }));
-        } catch {
-          const fallback: Attachment = {
-            type: 'attachment',
-            id: `local-att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            name: file.name,
-            mediaType: file.type || 'application/octet-stream',
-            size: file.size,
-            url: URL.createObjectURL(file),
-            hiddenFromCode: false,
-          };
-          uploaded.push(fallback);
-          setAttachmentsById((prev) => ({ ...prev, [fallback.id]: fallback }));
-        }
-      }
-      return uploaded;
-    },
-    [activeChatId],
-  );
-
-  const transcribeAudioBlob = React.useCallback(
-    async (blob: Blob): Promise<string> => {
-      try {
-        const res = await apiClient.transcribeAudio(blob, {
-          model: preferences?.voice?.model ?? 'whisper-large-v3-turbo',
-          language: preferences?.voice?.language,
-        });
-        return res.text;
-      } catch {
-        return 'Voice transcription from Praxis microphone.';
-      }
-    },
-    [preferences],
-  );
+  const { uploadFiles, transcribeAudioBlob } = useMediaActions({
+    activeChatId, preferences, setAttachmentsById, setErrorBanner,
+  });
 
   const activeChat = React.useMemo(
     () => chats.find((c) => c.id === activeChatId) ?? null,

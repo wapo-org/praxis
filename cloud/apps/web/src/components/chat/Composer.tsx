@@ -53,6 +53,7 @@ export const Composer: React.FC = () => {
     input.click();
   };
 
+  const [mediaError, setMediaError] = React.useState('');
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
     if (files.length === 0) return;
@@ -60,6 +61,8 @@ export const Composer: React.FC = () => {
     try {
       const uploaded = await uploadFiles(files);
       setQueuedAttachments((prev) => [...prev, ...uploaded]);
+    } catch (err) {
+      setMediaError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -107,17 +110,7 @@ export const Composer: React.FC = () => {
         mediaRecorderRef.current.stop();
         return;
       }
-      // Fallback for headless test environments without MediaRecorder stream
-      setTranscribing(true);
-      try {
-        const syntheticBlob = new Blob(['RIFF____WAVEfmt '], { type: 'audio/wav' });
-        const transcript = await transcribeAudioBlob(syntheticBlob);
-        if (transcript) {
-          setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
-        }
-      } finally {
-        setTranscribing(false);
-      }
+      setMediaError('Microphone recording is not available in this browser.');
       return;
     }
 
@@ -143,6 +136,8 @@ export const Composer: React.FC = () => {
             if (transcript) {
               setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
             }
+          } catch (err) {
+            setMediaError(err instanceof Error ? err.message : 'Transcription failed');
           } finally {
             setTranscribing(false);
           }
@@ -150,7 +145,8 @@ export const Composer: React.FC = () => {
         mediaRecorderRef.current = recorder;
         recorder.start();
       } catch {
-        // Keep recording flag true so second click runs synthetic fallback
+        setRecording(false);
+        setMediaError('Unable to access microphone.');
       }
     }
   };
@@ -191,6 +187,7 @@ export const Composer: React.FC = () => {
         style={{ display: 'none' }}
       />
 
+      {mediaError && <div role="alert">{mediaError}</div>}
       {/* Inline Model Search Results Overlay */}
       {inlineModelSearchActive && (
         <GlassSurface

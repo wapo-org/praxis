@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { GlassRuntime } from '@praxis/glass';
 import { PraxisStoreProvider } from './state/store';
+import { AccountGate } from './components/screens/AccountGate';
 import { App } from './App';
 import './styles/theme.css';
 
@@ -16,9 +17,9 @@ if (rootEl) {
   ReactDOM.createRoot(rootEl).render(
     <React.StrictMode>
       <GlassRuntime level="regular">
-        <PraxisStoreProvider>
+        <AccountGate><PraxisStoreProvider>
           <App />
-        </PraxisStoreProvider>
+        </PraxisStoreProvider></AccountGate>
       </GlassRuntime>
     </React.StrictMode>,
   );
