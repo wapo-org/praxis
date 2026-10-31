@@ -1,3 +1,4 @@
+import { DropdownPositions } from './DropdownPositions';
 import React from 'react';
 import {
   ArrowLeft,
@@ -228,6 +229,10 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
   };
 
   const activeRamp = MATERIAL_RAMP[material];
+  if (
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('dropdown')
+  ) return <DropdownPositions />;
 
   return (
     <div
@@ -591,6 +596,7 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
             alignItems: 'start',
           }}
         >
+          <DropdownPositions />
           {/* 2. Apple Notes 35-Frame Reference Replica Dropdown (IMG_7744 – IMG_7778) */}
           <section
             data-testid="apple-notes-replica-section"
@@ -654,6 +660,7 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
                   </GlassIconButton>
 
                   <GlassDropdown
+                    portal
                     open={notesMenuOpen}
                     onOpenChange={setNotesMenuOpen}
                     subPath={notesSubPath}
@@ -945,6 +952,7 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
                 </div>
 
                 <GlassDropdown
+                  portal
                   open={modelPickerOpen}
                   onOpenChange={setModelPickerOpen}
                   align="end"
@@ -1107,14 +1115,13 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
                   </span>
                 </div>
 
-                <GlassDropdown defaultOpen closeOnSelect={false} dismissOnOutsideClick={false}>
-                  <GlassDropdown.Trigger style={{ display: 'none' }}>
-                    Hidden Benchmark Trigger
+                <GlassDropdown portal closeOnSelect={false}>
+                  <GlassDropdown.Trigger>
+                    Open benchmark picker
                   </GlassDropdown.Trigger>
                   <GlassDropdown.Content
                     minWidth={320}
                     maxHeight={260}
-                    style={{ position: 'relative', top: 0, zIndex: 1, width: '100%' }}
                   >
                     <GlassDropdown.Search
                       value={modelSearch}
