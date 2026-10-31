@@ -1,9 +1,10 @@
 import {describe, expect, it} from 'vitest';
 import {randomBytes} from 'node:crypto';
+import {CheckpointSchema} from '@praxis/agent';
 import {RunSnapshotSchema} from '@praxis/protocol';
 import {createApp} from '../app.js';
 import type {FeatureTool} from '../contracts.js';
-import {createExecutionDriver, type ContinuationScheduler, type ExecutionFeatures} from '../execution.js';
+import {createExecutionDriver, memoryLease, type RunLease, type ContinuationScheduler, type ExecutionFeatures} from '../execution.js';
 import {createLocalAdapters} from '../local-memory.js';
 import {ApiService} from '../service.js';
 
@@ -23,7 +24,7 @@ const done = [delta({content: 'Done'}), delta({}, 'stop')];
 const tool = (name: string, traits: FeatureTool['traits'], execute: FeatureTool['execute'], source: FeatureTool['source'] = {type: 'builtin'}): FeatureTool =>
   ({name, description: name, inputSchema: {type: 'object'}, source, traits, execute});
 
-function setup(turns: string[][], features: ExecutionFeatures, extra: {scheduler?: ContinuationScheduler; budgetMs?: number; clock?: () => number} = {}) {
+function setup(turns: string[][], features: ExecutionFeatures, extra: {scheduler?: ContinuationScheduler; budgetMs?: number; clock?: () => number; lease?: RunLease} = {}) {
   const fake = fakeOpenAI(turns);
   const service = new ApiService(createLocalAdapters(), true);
   const driver = createExecutionDriver({service, fetcher: fake.fetcher, features, ...extra});
@@ -109,4 +110,64 @@ describe('REV-A1 P1 policy.ts:20 — trusted read-only MCP tools in plan mode', 
     expect(reads).toBe(1);
     expect(JSON.stringify((await f.snapshot(second.id)).tools)).toContain('Plan mode only runs read-only tools.');
   });
+});
+
+describe('REV-A2 API outbox recovery', () => {
+  it.each([{status: 'completed', delivered: true}, {status: 'running', delivered: true}, {status: 'completed', delivered: false}, {status: 'running', delivered: false}] as const)('flushes $status outbox (previously delivered=$delivered) with exactly one SSE event', async ({status, delivered}) => {
+    const f = setup([done], {});
+    const chat = await f.chat();
+    const run = await (await f.req('/v1/runs', {type: 'run.start', chatId: chat.id, text: 'go'})).json();
+    await f.service.drain();
+    const row = (await f.service.adapters.store.get('local-user', 'checkpoint', run.id))!;
+    const cp = CheckpointSchema.parse(row.value);
+    const message = structuredClone(cp.messages.at(-1)!);
+    if (!delivered) { message.id = crypto.randomUUID(); cp.messages[cp.messages.length - 1] = message; }
+    // Crash after append succeeded but before the checkpoint acknowledged delivery.
+    cp.outbox = [message]; cp.run.status = status;
+    if (status === 'running') { cp.phase = 'model'; cp.maxIterations = cp.iteration; }
+    await f.service.adapters.store.put('local-user', 'checkpoint', run.id, JSON.parse(JSON.stringify(cp)));
+    const before = await f.service.adapters.events.read('local-user', `run:${run.id}`, 0, 1000);
+    const original = before.find(e => (e.payload.event as any).type === 'messages.committed' && (e.payload.event as any).messages.some((m: any) => m.id === message.id))!;
+    if (status === 'completed') await f.service.adapters.store.delete('local-user', 'provider', chat.providerId);
+    await f.driver.continue('local-user', run.id);
+    await f.driver.continue('local-user', run.id);
+    const recovered = CheckpointSchema.parse((await f.service.adapters.store.get('local-user', 'checkpoint', run.id))!.value);
+    expect(recovered.outbox).toEqual([]);
+    const events = await f.service.adapters.events.read('local-user', `run:${run.id}`, 0, 1000);
+    const deliveries = events.filter(e => (e.payload.event as any).type === 'messages.committed' && (e.payload.event as any).messages.some((m: any) => m.id === message.id));
+    expect(deliveries).toHaveLength(1);
+    if (delivered) expect(deliveries[0]!.id).toBe(original.id);
+    expect((await f.snapshot(run.id)).lastEventId).toBeGreaterThanOrEqual(before.at(-1)!.id);
+  });
+});
+
+it('expiry during running side effect: a second continuation never repeats it',async()=>{
+ let n=0,now=0,leaseNow=0,release!:()=>void,entered!:()=>void;
+ const enteredP=new Promise<void>(r=>entered=r),blocked=new Promise<void>(r=>release=r);
+ const f=setup([toolCall('slow'),done],{tools:async()=>[tool('slow',['sandboxed'],async()=>{n++;entered();await blocked;return 'ok';})]},
+ {scheduler:{schedule:async()=>{}},budgetMs:500,clock:()=>now+=1000,lease:memoryLease(()=>leaseNow)});
+ const chat=await f.chat(),run=await(await f.req('/v1/runs',{type:'run.start',chatId:chat.id,text:'go'})).json();await f.service.drain();
+ const first=f.driver.continue('local-user',run.id);await enteredP;
+ leaseNow=1_000_000;await f.driver.continue('local-user',run.id);release();await first;
+ expect(n).toBe(1);
+});
+
+
+it('nested cancel is propagated',async()=>{
+ let entered!:()=>void;const started=new Promise<void>(r=>entered=r);
+ const outer=tool('outer',['readOnly'],async(_a,c)=>c.callTool!('inner',{}));
+ const inner=tool('inner',['readOnly'],async(_a,c)=>{entered();await new Promise<void>(r=>c.signal!.addEventListener('abort',()=>r(),{once:true}));return 'x';});
+ const f=setup([toolCall('outer'),done],{tools:async()=>[outer,inner]});const chat=await f.chat();
+ const run=await(await f.req('/v1/runs',{type:'run.start',chatId:chat.id,text:'go'})).json();await started;
+ await f.service.adapters.kv.set(`cancel:local-user:${run.id}`,true,60);await f.service.drain();
+ expect((await f.snapshot(run.id)).run.outcome).toBe('cancelled');
+});
+
+
+it('trust revoked within the same run is recomputed on its next slice',async()=>{
+ let reads=0,now=0;const f=setup([toolCall('read'),done],{tools:async()=>[tool('read',['readOnly'],async()=>{reads++;return 'x';},{type:'mcp',serverId:'conn',serverName:'S'})]}, {budgetMs:500,clock:()=>now+=1000,scheduler:{schedule:async()=>{}}});
+ const c:any={type:'connector',id:'conn',name:'S',url:'https://example.test/mcp',transport:'streamableHttp',enabled:true,trusted:true,disabledTools:[],authStatus:'none',updatedAt:'2026-10-29T12:00:00.000Z'};await f.service.adapters.store.put('local-user','connector','conn',c);
+ const chat=await f.chat('plan'),run=await(await f.req('/v1/runs',{type:'run.start',chatId:chat.id,text:'go'})).json();await f.service.drain();
+ await f.service.adapters.store.put('local-user','connector','conn',{...c,trusted:false});await f.driver.continue('local-user',run.id);
+ expect(reads).toBe(0);expect(JSON.stringify((await f.service.adapters.store.get('local-user','checkpoint',run.id))!.value)).toContain('Plan mode only runs read-only tools');
 });

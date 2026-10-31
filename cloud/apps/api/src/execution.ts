@@ -268,8 +268,19 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       const row = await service.adapters.store.get(userId, 'checkpoint', runId);
       if (!row || row.deleted) return;
       await exclusive(userId, runId, async fence => {
+        const current = await service.adapters.store.get(userId, 'checkpoint', runId);
+        if (!current || current.deleted) return;
+        fence.revision = current.revision;
+        const pending = CheckpointSchema.parse(current.value);
+        // Repair delivery before loading providers/tools: terminal and parked runs need no remote credentials.
+        if (pending.outbox.length) {
+          await service.emit(userId, runId, {type: 'messages.committed', messages: pending.outbox});
+          pending.outbox = [];
+          await slicePorts(fence).save(userId, pending);
+        }
+        if (['completed', 'failed', 'cancelled', 'awaitingApproval', 'awaitingElicitation'].includes(pending.run.status)) return;
         const {cp, runner} = await load(userId, runId, fence);
-        if (cp.run.status !== 'continuing') return;
+        // A redelivery may find a running checkpoint whose previous executor crashed.
         return runner.advance(cp);
       });
     },

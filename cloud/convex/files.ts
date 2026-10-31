@@ -5,9 +5,9 @@ import { bounded, requireServer } from './access.js';
 
 /**
  * Owner-bound file storage. The API opens a ticket (owner, name, type, exact size) and hands the client a
- * one-time Convex upload URL; bytes go straight to Convex storage, never through a function argument.
+ * one-time Convex HTTP upload URL; bytes go straight to Convex storage, never through a function argument.
  * The API then claims the returned storageId for that ticket: Convex's own `_storage` metadata must match
- * the ticket's size and type, and a storageId can be claimed once, by one owner.
+ * the ticket's size and type, and a storageId can be claimed once, by its upload owner.
  */
 export const MAX_BYTES = 25_000_000;
 
@@ -56,12 +56,15 @@ export const createTicket = mutation({
   },
 });
 
-/** A one-time direct-upload URL (POST raw bytes with Content-Type; responds `{"storageId": "..."}`). */
+/** The capability URL only accepts bytes for this owner's existing ticket. Raw storage URLs stay private. */
 export const generateUploadUrl = mutation({
-  args: { serverToken: v.string() },
+  args: { serverToken: v.string(), userId: v.string(), ticket: v.string() },
   handler: async (ctx, a) => {
     await requireServer(a.serverToken);
-    return await ctx.storage.generateUploadUrl();
+    const row = await ticketRow(ctx, a.userId, a.ticket);
+    if (!row || row.status !== 'pending' || row.expiresAt <= Date.now()) throw new ConvexError('Upload ticket unavailable');
+    const raw = new URL(await ctx.storage.generateUploadUrl());
+    return `https://${raw.hostname.replace(/\.convex\.cloud$/, '.convex.site')}/uploads/${a.ticket}`;
   },
 });
 
@@ -83,25 +86,14 @@ export const claim = mutation({
     if (!storageId) return { ok: false };
     const same = (row: { name: string; mediaType: string; size: number; chatId?: string }) =>
       row.name === a.name && row.mediaType === a.mediaType && row.size === a.size && row.chatId === a.chatId;
-    const claimed = await ctx.db.query('files').withIndex('storage', (q) => q.eq('storageId', storageId)).first();
-    if (claimed) {
-      if (claimed.userId === a.userId && claimed.status === 'ready' && same(claimed)) return { ok: true };
-      return { ok: false };
-    }
+    const ticket = await ctx.db.query('files').withIndex('storage', q => q.eq('storageId', storageId)).unique();
+    // Only the upload HTTP action can bind a blob to a ticket. Knowing a storageId is never ownership.
+    if (!ticket || ticket.userId !== a.userId || !same(ticket)) return {ok: false};
+    if (ticket.status === 'ready') return {ok: true};
+    if (ticket.status !== 'uploaded' || ticket.expiresAt <= Date.now()) return {ok: false};
     const meta = await ctx.db.system.get(storageId);
-    if (!meta) return { ok: false };
-    const tickets = await ctx.db
-      .query('files')
-      .withIndex('owner_status', (q) => q.eq('userId', a.userId).eq('status', 'pending'))
-      .take(200);
-    const ticket = tickets.find((row) => row.expiresAt > Date.now() && same(row));
-    const type = meta.contentType?.split(';')[0]?.trim();
-    if (!ticket || meta.size !== a.size || (type && type !== a.mediaType)) {
-      // Unclaimed and unmatched: drop the orphan blob so it can't be claimed later. (Returning instead of
-      // throwing keeps this delete: a throwing mutation would roll it back.)
-      await ctx.storage.delete(storageId);
-      return { ok: false };
-    }
+    const type = meta?.contentType?.split(';')[0]?.trim();
+    if (!meta || meta.size !== a.size || !type || type !== a.mediaType) return {ok: false};
     await ctx.db.patch(ticket._id, { status: 'ready', storageId, sha256: meta.sha256 });
     return { ok: true };
   },
@@ -150,16 +142,23 @@ export const remove = mutation({
   },
 });
 
-/** Deletes up to 100 expired, never-completed tickets. Safe to call from a cron or the API. */
+/** Deletes expired owner-bound upload rows and blobs; never guesses ownership of stray storage ids. */
 export const sweep = mutation({
   args: { serverToken: v.string() },
   handler: async (ctx, a) => {
     await requireServer(a.serverToken);
-    const expired = await ctx.db
-      .query('files')
-      .withIndex('status_expires', (q) => q.eq('status', 'pending').lt('expiresAt', Date.now()))
-      .take(100);
-    for (const row of expired) await ctx.db.delete(row._id);
-    return expired.length;
+    let removed = 0;
+    for (const status of ['pending', 'uploading', 'uploaded'] as const) {
+      const expired = await ctx.db.query('files')
+        .withIndex('status_expires', q => q.eq('status', status).lt('expiresAt', Date.now()))
+        .take(100 - removed);
+      for (const row of expired) {
+        if (row.storageId) await ctx.storage.delete(row.storageId);
+        await ctx.db.delete(row._id);
+      }
+      removed += expired.length;
+      if (removed === 100) break;
+    }
+    return removed;
   },
 });

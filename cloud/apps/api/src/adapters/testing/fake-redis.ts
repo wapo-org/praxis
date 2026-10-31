@@ -8,6 +8,7 @@ import {APPEND_EVENT_LUA, RELEASE_LEASE_LUA, type RedisLike} from '../upstash.js
 export function fakeRedis() {
   let now = 0;
   const strings = new Map<string, {value: string; expires?: number}>();
+  const dedup = new Map<string, string>();
   const streams = new Map<string, {id: number; fields: Record<string, string>}[]>();
   const live = (k: string) => {
     const e = strings.get(k);
@@ -26,6 +27,8 @@ export function fakeRedis() {
     async getdel(k: string) { const v = live(k)?.value ?? null; strings.delete(k); return v; },
     async eval(script: string, keys: string[], args: string[]) {
       if (script === APPEND_EVENT_LUA) {
+        const d = `${keys[2]}:${args[3]}`;
+        if (args[3] && dedup.has(d)) return dedup.get(d)!;
         const n = Number(live(keys[0]!)?.value ?? 0) + 1;
         strings.set(keys[0]!, {value: String(n)});
         const list = streams.get(keys[1]!) ?? [];
@@ -33,7 +36,9 @@ export function fakeRedis() {
         const max = Number(args[1]);
         if (list.length > max) list.splice(0, list.length - max);
         streams.set(keys[1]!, list);
-        return n;
+        const record = JSON.stringify({id: n, payload: JSON.parse(args[0]!)});
+        if (args[3]) dedup.set(d, record);
+        return record;
       }
       if (script === RELEASE_LEASE_LUA) return live(keys[0]!)?.value === args[0] ? (strings.delete(keys[0]!), 1) : 0;
       throw new Error('fake redis: unknown script');

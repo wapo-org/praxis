@@ -45,8 +45,9 @@ export default defineSchema({
     expiresAt: v.number(),
     storageId: v.optional(v.id('_storage')),
     sha256: v.optional(v.string()),
-    status: v.union(v.literal('pending'), v.literal('ready')),
+    status: v.union(v.literal('pending'), v.literal('uploading'), v.literal('uploaded'), v.literal('ready')),
   })
+    .index('ticket', ['ticket'])
     .index('owner_ticket', ['userId', 'ticket'])
     .index('owner_status', ['userId', 'status'])
     .index('storage', ['storageId'])

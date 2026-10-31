@@ -2,7 +2,7 @@ import {refreshAuthorization} from '@modelcontextprotocol/sdk/client/auth.js';
 import type {AuthorizationServerMetadata, OAuthClientInformationMixed, OAuthTokens} from '@modelcontextprotocol/sdk/shared/auth.js';
 import type {Connector} from '@praxis/protocol';
 import type {FeatureContext} from '../../contracts.js';
-import {guardedFetch, now, readSecret, writeSecret, type McpOptions} from './shared.js';
+import {guardedFetch, now, readSecret, writeSecret, requireReauth, McpError, type McpOptions} from './shared.js';
 
 /** What finishOAuth persists so later refreshes need no interactive discovery. */
 export interface SavedDiscovery {authorizationServerUrl: string; metadata?: AuthorizationServerMetadata; resource: string}
@@ -44,7 +44,7 @@ async function refresh(ctx: FeatureContext, value: Connector, options: McpOption
       const current = await readSecret<OAuthTokens>(ctx, value.id, 'tokens');
       if (current && current.access_token !== stale.access_token) return current;
     }
-    return undefined;
+    throw new McpError(502, 'token_refresh_busy', 'Connector token refresh is still in progress; try again later');
   }
   try {
     const current = await readSecret<OAuthTokens>(ctx, value.id, 'tokens');
@@ -63,8 +63,10 @@ async function refresh(ctx: FeatureContext, value: Connector, options: McpOption
     await writeSecret(ctx, value.id, 'tokens', saved);
     await writeSecret(ctx, value.id, 'tokenSavedAt', now());
     return saved;
-  } catch {
-    return undefined;
+  } catch (error) {
+    const code = (error as {errorCode?: string}).errorCode;
+    if (code === 'invalid_grant' || code === 'invalid_client' || code === 'unauthorized_client') return requireReauth(ctx, value);
+    throw new McpError(502, 'token_refresh_failed', 'Connector token refresh failed; try again later');
   } finally {
     if (options.lease && token !== 'local') await options.lease.release(leaseKey, token);
   }

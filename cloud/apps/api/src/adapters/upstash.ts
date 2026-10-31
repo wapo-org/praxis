@@ -8,16 +8,24 @@ import {EventSchema, Limit, Revision, Scope} from './validation.js';
 
 /**
  * Atomic append: INCR the per-stream sequence, XADD with the explicit `<seq>-0` id (so the SSE id and the
- * stream id are the same safe integer), trim to bounded retention and refresh the TTL on both keys.
+ * stream id are the same safe integer), trim to bounded retention, and refresh stream/dedup TTLs.
+ * An optional stable key returns the original record atomically without allocating another SSE id.
  * A cursor older than retention shows up as a gap, which the SSE route reports as `cursor_expired`.
  */
 export const APPEND_EVENT_LUA = `
+if ARGV[4] ~= '' then
+ local prior = redis.call('HGET', KEYS[3], ARGV[4])
+ if prior then return prior end
+end
 local n = redis.call('INCR', KEYS[1])
 if n > 9007199254740991 then return redis.error_reply('event sequence exhausted') end
 redis.call('XADD', KEYS[2], 'MAXLEN', '~', ARGV[2], tostring(n)..'-0', 'payload', ARGV[1])
 redis.call('EXPIRE', KEYS[1], ARGV[3])
 redis.call('EXPIRE', KEYS[2], ARGV[3])
-return n`;
+local record = '{"id":'..tostring(n)..',"payload":'..ARGV[1]..'}'
+if ARGV[4] ~= '' then redis.call('HSET', KEYS[3], ARGV[4], record) end
+redis.call('EXPIRE', KEYS[3], ARGV[3])
+return record`;
 
 /** Release only if we still hold the lease (compare-and-delete). */
 export const RELEASE_LEASE_LUA = `
@@ -65,11 +73,10 @@ export function upstashFromRedis(redis: RedisLike, options: Omit<UpstashOptions,
 
   const stream = (u: string, c: string) => `${prefix}:events:${opaque(u, c)}`;
   const events: Events = {
-    append: async (u, c, payload) => {
+    append: async (u, c, payload, eventKey) => {
       const k = stream(u, c);
-      const raw = await redis.eval(APPEND_EVENT_LUA, [`${k}:seq`, k], [JSON.stringify(JsonObjectSchema.parse(payload)), maxLen, ttl]);
-      const id = z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(raw);
-      return {id, payload: structuredClone(payload)};
+      const raw = await redis.eval(APPEND_EVENT_LUA, [`${k}:seq`, k, `${k}:dedup`], [JSON.stringify(JsonObjectSchema.parse(payload)), maxLen, ttl, eventKey ? opaque(eventKey) : ""]);
+      return EventSchema.parse(typeof raw === "string" ? JSON.parse(raw) : raw);
     },
     read: async (u, c, after, limit = 100) => {
       Revision.parse(after);

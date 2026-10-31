@@ -51,3 +51,11 @@ describe('SSRF guard', () => {
     await expect(createSafeFetch({...fixtureOnly, maxRedirects: 3})(`${base}/loop`)).rejects.toThrow('Too many redirects');
   });
 });
+
+// REV-A2: URL canonicalization and multi-answer DNS must not bypass the dialer policy.
+it('rejects mapped IPv6, alternate numeric loopback, aliases and mixed DNS answers', async () => {
+ for (const host of ['[::ffff:127.0.0.1]', '[::ffff:7f00:1]', '2130706433', '0177.0.0.1', '0x7f000001', 'localhost.', 'x.localhost', 'localtest.me']) {
+  await expect(assertPublicUrl(`https://${host}/`, {resolve: async () => [{address: '127.0.0.1', family: 4}]})).rejects.toThrow();
+ }
+ await expect(assertPublicUrl('https://mixed.example.test', {resolve: async () => [{address: '8.8.8.8', family: 4}, {address: '10.0.0.1', family: 4}]})).rejects.toThrow();
+});

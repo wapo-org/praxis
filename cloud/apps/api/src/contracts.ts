@@ -20,7 +20,7 @@ export interface KV {
 }
 export interface EventRecord {id:number;payload:JsonObject}
 export interface Events {
- append(userId:string,channel:string,payload:JsonObject):Promise<EventRecord>;
+ append(userId:string,channel:string,payload:JsonObject,eventKey?:string):Promise<EventRecord>;
  read(userId:string,channel:string,after:number,limit?:number):Promise<EventRecord[]>;
 }
 export interface AdapterBundle {store:Store;kv:KV;events:Events}

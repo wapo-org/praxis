@@ -20,23 +20,31 @@ export async function reencryptOwner(store: Store, userId: string, keyring: stri
   parseKeyring(keyring);
   stats.owners++;
   for (const [kind, resourceOf] of Object.entries(SECRET_KINDS)) {
-    for (const row of await store.list(userId, kind)) {
+    for (const listed of await store.list(userId, kind)) {
       stats.rows++;
-      const next: JsonObject = {...row.value};
-      let changed = false;
-      for (const [field, value] of Object.entries(row.value)) {
-        const resource = resourceOf(row.id, field);
-        if (!resource || typeof value !== 'string' || !/^v[12]\./.test(value) || sealedWithCurrent(value, keyring)) continue;
-        try {
-          next[field] = seal(unseal(value, userId, resource, keyring), userId, resource, keyring);
-          changed = true;
-        } catch {
-          stats.failed++;
+      let row = listed;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        if (row.deleted) break;
+        const next: JsonObject = {...row.value};
+        let changed = false, failed = 0;
+        for (const [field, value] of Object.entries(row.value)) {
+          const resource = resourceOf(row.id, field);
+          if (!resource || typeof value !== 'string' || !/^v[12]\./.test(value) || sealedWithCurrent(value, keyring)) continue;
+          try {
+            next[field] = seal(unseal(value, userId, resource, keyring), userId, resource, keyring);
+            changed = true;
+          } catch { failed++; }
         }
-      }
-      if (changed) {
-        stats.rewritten++;
-        if (!dryRun) await store.put(userId, kind, row.id, next, row.parentId === undefined ? undefined : {parentId: row.parentId});
+        if (!changed || dryRun || await store.putIfRevision(userId, kind, row.id, next, row.revision,
+          row.parentId === undefined ? undefined : {parentId: row.parentId})) {
+          stats.failed += failed;
+          if (changed) stats.rewritten++;
+          break;
+        }
+        const current = await store.get(userId, kind, row.id);
+        if (!current || current.deleted) break;
+        row = current;
+        if (attempt === 9) stats.failed++; // bounded contention: report failure, never overwrite
       }
     }
   }

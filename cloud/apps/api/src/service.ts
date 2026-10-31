@@ -82,7 +82,8 @@ export class ApiService{
    if(event.type==='elicitation.requested')run.status='awaitingElicitation';
    if(event.type==='run.finished'){run.status=event.outcome==='failed'?'failed':event.outcome==='cancelled'?'cancelled':'completed';run.outcome=event.outcome;}
    if(event.type==='messages.committed'){let count=(await this.list<Message>(userId,'message',run.chatId)).length;for(const m of event.messages){const before=await this.adapters.store.get(userId,'message',m.id);m.sequence=(before?.value.sequence as number|undefined)??m.sequence??++count;m.clientTurnId??=run.clientTurnId;await this.write(userId,'message',m.id,m);}}
-   const record=await this.adapters.events.append(userId,`run:${runId}`,{event,createdAt:this.now(),chatId:run.chatId});run.lastEventId=record.id;
+   const eventKey=event.type==='messages.committed'?`messages:${JSON.stringify(event.messages.map(m=>m.id))}`:undefined;
+   const record=await this.adapters.events.append(userId,`run:${runId}`,{event,createdAt:this.now(),chatId:run.chatId},eventKey);run.lastEventId=Math.max(run.lastEventId,record.id);
    await this.put(userId,'run',runId,run);
    const current=await this.require<RunSnapshot>(userId,'snapshot',runId);await this.put(userId,'snapshot',runId,foldSnapshot(current,event,record.id,run));
    if(this.terminal(run)){const chat=await this.require<Chat>(userId,'chat',run.chatId).catch(()=>null);if(chat){delete chat.activeRunId;chat.updatedAt=this.now();await this.write(userId,'chat',chat.id,chat);}await this.changed(userId,'run',runId,'upsert',run);}
