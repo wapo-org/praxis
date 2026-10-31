@@ -1,6 +1,5 @@
 // One SVG icon family across web screens and chat controls.
 export {
-  IconCopy as Copy,
   IconArrowLeft as ArrowLeft,
   IconArrowUp as ArrowUp,
   IconCamera as Camera,
@@ -8,6 +7,7 @@ export {
   IconChevronLeft as ChevronLeft,
   IconChevronRight as ChevronRight,
   IconClock as Clock,
+  IconCopy as Copy,
   IconDownload as Download,
   IconEdit as Edit,
   IconExternalLink as ExternalLink,
@@ -19,6 +19,7 @@ export {
   IconWorld as Globe,
   IconGridDots as Grid,
   IconLayoutGrid as Grid2X2,
+  IconHistory as History,
   IconLayoutGrid as LayoutGrid,
   IconLink as Link,
   IconLock as Lock,
@@ -33,6 +34,7 @@ export {
   IconPin as Pin,
   IconPlus as Plus,
   IconRefresh as RefreshCw,
+  IconRotateClockwise as Retry,
   IconRotate2 as RotateCcw,
   IconScan as Scan,
   IconScan as ScanLine,

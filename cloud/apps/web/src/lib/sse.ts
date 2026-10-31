@@ -1,5 +1,6 @@
 import { RunEventSchema, type RunEvent, type RunSnapshot } from '@praxis/protocol';
 import { PraxisApiClient, PraxisApiError } from './api';
+import { safeMessage } from './links';
 
 export interface RunStreamHandlers {
   onEvent: (event: RunEvent) => void;
@@ -39,13 +40,18 @@ export function subscribeRunEvents(
           credentials: 'include',
           headers: {
             Accept: 'text/event-stream',
-            ...(client.getBearerToken() ? { Authorization: `Bearer ${client.getBearerToken()}` } : {}),
+            ...(client.getBearerToken()
+              ? { Authorization: `Bearer ${client.getBearerToken()}` }
+              : {}),
             'Last-Event-ID': String(lastEventId),
           },
           signal: controller.signal,
         });
 
-        if (res.status === 401) { client.onUnauthorized?.(); return; }
+        if (res.status === 401) {
+          client.onUnauthorized?.();
+          return;
+        }
         if (res.status === 409) {
           // Cursor expired: recover authoritative snapshot and resume after snapshot.lastEventId
           const snapshot = await client.getRunSnapshot(runId);
@@ -96,7 +102,8 @@ export function subscribeRunEvents(
 
                     if (
                       !markedFirstToken &&
-                      (parsed.event.type === 'text.delta' || parsed.event.type === 'reasoning.delta')
+                      (parsed.event.type === 'text.delta' ||
+                        parsed.event.type === 'reasoning.delta')
                     ) {
                       markedFirstToken = true;
                       if (typeof performance !== 'undefined') {
@@ -121,7 +128,10 @@ export function subscribeRunEvents(
 
         // Stream closed cleanly; check if run is terminal
         const run = await client.getRun(runId);
-        if (['completed', 'cancelled', 'failed'].includes(run.status) && lastEventId >= run.lastEventId) {
+        if (
+          ['completed', 'cancelled', 'failed'].includes(run.status) &&
+          lastEventId >= run.lastEventId
+        ) {
           stopped = true;
           handlers.onComplete?.();
           return;
@@ -146,7 +156,16 @@ export function subscribeRunEvents(
 
 export function parseRunEvent(value: unknown): RunEvent | null {
   const result = RunEventSchema.safeParse(value);
-  if (result.success) return result.data;
+  if (result.success)
+    return result.data.event.type === 'messages.committed'
+      ? {
+          ...result.data,
+          event: {
+            ...result.data.event,
+            messages: result.data.event.messages.map(safeMessage),
+          },
+        }
+      : result.data;
   if (import.meta.env.DEV) console.warn('Dropped invalid or unknown run event');
   return null;
 }

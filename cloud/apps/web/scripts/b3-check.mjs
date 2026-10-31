@@ -1,12 +1,13 @@
+import { BASE, API } from './check-env.mjs';
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 const browser = await chromium.launch();
-const base = 'http://127.0.0.1:5191';
+const base = BASE;
 async function login(page, user) {
   page.setDefaultTimeout(15000);
   await page.goto(base);
   await page.getByRole('button', { name: 'Continue as local dev user' }).waitFor();
-  await page.evaluate(async user => { const { apiClient } = await import('/src/lib/api.ts'); await apiClient.devAuth(user); }, user);
+  await page.evaluate(async user => { const { apiClient } = await import('/src/lib/api.ts'); await (await import('/src/lib/dev-auth.ts')).devAuth(user); }, user);
   await page.reload(); await page.getByTestId('chat-top-bar').waitFor();
 }
 try {

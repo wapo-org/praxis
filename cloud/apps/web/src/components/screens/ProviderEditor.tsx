@@ -1,11 +1,21 @@
-import React from 'react';
-import { GlassChip } from '@praxis/glass';
-import { Plus, Trash2 } from '../../lib/icons';
+import { GlassDropdown } from '@praxis/glass';
 import { CapabilitiesSchema, type Provider } from '@praxis/protocol';
-import { usePraxisStore } from '../../state/store';
+import React from 'react';
 import { apiClient } from '../../lib/api';
-import { Field, requireHttpUrl, ScreenBody, ScreenButton, Section, TaskError, useScreenTask } from './ScreenUI';
+import { Plus, Trash2 } from '../../lib/icons';
+import { usePraxisStore } from '../../state/store';
 import { ProviderCapabilities } from './ProviderCapabilities';
+import {
+  Card,
+  Field,
+  requireHttpUrl,
+  ScreenBody,
+  ScreenButton,
+  Section,
+  ScreenMenu,
+  TaskError,
+  useScreenTask,
+} from './ScreenUI';
 const PRESETS: Array<{
   name: string;
   flavor: Provider['flavor'];
@@ -41,28 +51,20 @@ const PRESETS: Array<{
 
 export function ProviderEditor() {
   const store = usePraxisStore();
-  const provider = store.providers.find(
-    (item) => item.id === store.editingProviderId,
-  );
-  const [savedId, setSavedId] = React.useState<string | undefined>(
-    provider?.id,
-  );
+  const provider = store.providers.find((item) => item.id === store.editingProviderId);
+  const [savedId, setSavedId] = React.useState<string | undefined>(provider?.id);
   const [preset, setPreset] = React.useState(provider ? '' : 'Anthropic');
   const [name, setName] = React.useState(provider?.name ?? 'Anthropic');
   const [flavor, setFlavor] = React.useState<Provider['flavor']>(
     provider?.flavor ?? 'anthropicMessages',
   );
-  const [baseUrl, setBaseUrl] = React.useState(
-    provider?.baseUrl ?? PRESETS[0]!.baseUrl,
-  );
+  const [baseUrl, setBaseUrl] = React.useState(provider?.baseUrl ?? PRESETS[0]!.baseUrl);
   const [apiKey, setApiKey] = React.useState('');
-  const [defaultModel, setDefaultModel] = React.useState(
-    provider?.defaultModel ?? '',
+  const [defaultModel, setDefaultModel] = React.useState(provider?.defaultModel ?? '');
+  const [capabilities, setCapabilities] = React.useState(
+    () => provider?.capabilities ?? CapabilitiesSchema.parse({}),
   );
-  const [capabilities, setCapabilities] = React.useState(() => provider?.capabilities ?? CapabilitiesSchema.parse({}));
-  const [headers, setHeaders] = React.useState<
-    Array<{ key: string; value: string }>
-  >([]);
+  const [headers, setHeaders] = React.useState<Array<{ key: string; value: string }>>([]);
   const [headersEdited, setHeadersEdited] = React.useState(false);
   const [message, setMessage] = React.useState('');
   const task = useScreenTask();
@@ -71,13 +73,8 @@ export function ProviderEditor() {
     const extraHeaders: Record<string, string> = {};
     for (const header of headers) {
       if (!header.key.trim() && !header.value) continue;
-      if (
-        !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(header.key.trim()) ||
-        /[\r\n]/.test(header.value)
-      )
-        throw new Error(
-          'Enter a valid HTTP header name and a single-line value.',
-        );
+      if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(header.key.trim()) || /[\r\n]/.test(header.value))
+        throw new Error('Enter a valid HTTP header name and a single-line value.');
       if (
         Object.keys(extraHeaders).some(
           (key) => key.toLowerCase() === header.key.trim().toLowerCase(),
@@ -114,14 +111,29 @@ export function ProviderEditor() {
         }}
       >
         <TaskError error={task.error} />
-        <Section title="Provider preset">
-          <select aria-label="Provider preset" value={preset} onChange={event => {
-            const item = PRESETS.find(p => p.name === event.target.value)!;
-            setPreset(item.name); setName(item.name); setFlavor(item.flavor); setBaseUrl(item.baseUrl); setDefaultModel(item.defaultModel);
-          }}>
-            <option value="" disabled>Saved provider</option>
-            {PRESETS.map(item => <option key={item.name}>{item.name}</option>)}
-          </select>
+        <Section title="Connection">
+          <Card>
+            <div className="screen-row">
+              <span style={{ flex: 1 }}>Preset</span>
+              <ScreenMenu label="Provider preset" icon={preset || 'Saved provider'}>
+                {PRESETS.map((item) => (
+                  <GlassDropdown.Item
+                    key={item.name}
+                    selected={preset === item.name}
+                    onSelect={() => {
+                      setPreset(item.name);
+                      setName(item.name);
+                      setFlavor(item.flavor);
+                      setBaseUrl(item.baseUrl);
+                      setDefaultModel(item.defaultModel);
+                    }}
+                  >
+                    {item.name}
+                  </GlassDropdown.Item>
+                ))}
+              </ScreenMenu>
+            </div>
+          </Card>
         </Section>
         <Field label="Name">
           <input
@@ -135,9 +147,7 @@ export function ProviderEditor() {
         <Field label="Flavor">
           <select
             value={flavor}
-            onChange={(event) =>
-              setFlavor(event.target.value as Provider['flavor'])
-            }
+            onChange={(event) => setFlavor(event.target.value as Provider['flavor'])}
           >
             <option value="anthropicMessages">Anthropic Messages</option>
             <option value="openAIChat">OpenAI Chat Completions</option>
@@ -171,22 +181,25 @@ export function ProviderEditor() {
             autoComplete="new-password"
           />
         </Field>
-        <Section title="Model" hint="Enter the model ID used by this provider. Test connection to refresh the available models.">
-        <Field label="Default Model">
-          <input
-            value={defaultModel}
-            onChange={(event) => setDefaultModel(event.target.value)}
-            placeholder="Model ID"
-            list="provider-model-options"
-          />
-          <datalist id="provider-model-options">
-            {models.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.displayName}
-              </option>
-            ))}
-          </datalist>
-        </Field>
+        <Section
+          title="Model"
+          hint="Enter the model ID used by this provider. Test connection to refresh the available models."
+        >
+          <Field label="Default Model">
+            <input
+              value={defaultModel}
+              onChange={(event) => setDefaultModel(event.target.value)}
+              placeholder="Model ID"
+              list="provider-model-options"
+            />
+            <datalist id="provider-model-options">
+              {models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.displayName}
+                </option>
+              ))}
+            </datalist>
+          </Field>
         </Section>
         <ProviderCapabilities value={capabilities} onChange={setCapabilities} />
         <Section
@@ -194,9 +207,7 @@ export function ProviderEditor() {
           hint="Header values are write-only. Adding headers replaces the saved custom headers."
         >
           {provider?.headerNames?.length ? (
-            <p className="screen-footnote">
-              Saved header names: {provider.headerNames.join(', ')}
-            </p>
+            <p className="screen-footnote">Saved header names: {provider.headerNames.join(', ')}</p>
           ) : null}
           {headers.map((header, index) => (
             <div className="screen-header-fields" key={index}>
@@ -222,9 +233,7 @@ export function ProviderEditor() {
                   onChange={(event) =>
                     setHeaders((previous) =>
                       previous.map((row, i) =>
-                        i === index
-                          ? { ...row, value: event.target.value }
-                          : row,
+                        i === index ? { ...row, value: event.target.value } : row,
                       ),
                     )
                   }
@@ -234,9 +243,7 @@ export function ProviderEditor() {
                 aria-label={`Remove header ${index + 1}`}
                 onClick={() => {
                   setHeadersEdited(true);
-                  setHeaders((previous) =>
-                    previous.filter((_, i) => i !== index),
-                  );
+                  setHeaders((previous) => previous.filter((_, i) => i !== index));
                 }}
               >
                 <Trash2 size={15} />
@@ -271,14 +278,9 @@ export function ProviderEditor() {
               setMessage('');
               const saved = await persist();
               const result = await apiClient.testProvider(saved.id);
-              if (!result.ok)
-                throw new Error(
-                  result.message || 'Could not verify this provider.',
-                );
+              if (!result.ok) throw new Error(result.message || 'Could not verify this provider.');
               const refreshed = await store.refreshModelsForProvider(saved.id);
-              setMessage(
-                `Connection verified · ${refreshed.length} models refreshed.`,
-              );
+              setMessage(`Connection verified · ${refreshed.length} models refreshed.`);
             });
           }}
         >

@@ -1,7 +1,23 @@
-import type { Attachment, Bootstrap, Chat, Model, Provider, Run, RunSnapshot, Capabilities } from '@praxis/protocol';
+import type {
+  Attachment,
+  Bootstrap,
+  Capabilities,
+  Chat,
+  Model,
+  Provider,
+  Run,
+  RunSnapshot,
+} from '@praxis/protocol';
 import { SyncResponseSchema } from '@praxis/protocol';
 import { FeatureApiClient } from './api-features';
-import { PraxisApiError, type Consent, type Preferences, type Transcription, type PageResult } from './api-transport';
+import {
+  PraxisApiError,
+  type Consent,
+  type PageResult,
+  type Preferences,
+  type Transcription,
+} from './api-transport';
+import { safeMessage } from './links';
 export * from './api-transport';
 export class PraxisApiClient extends FeatureApiClient {
   // Bootstrap & Auth
@@ -9,20 +25,12 @@ export class PraxisApiClient extends FeatureApiClient {
     return this.request<Bootstrap>('/v1/bootstrap');
   }
 
-  async devAuth(userId = 'local-user') {
-    return this.request<{
-      type: 'session';
-      user: { type: 'user'; id: string; name?: string };
-      bearerToken: string;
-      expiresAt: string;
-    }>('/v1/auth/dev', {
-      method: 'POST',
-      body: JSON.stringify({ type: 'auth.dev', userId }),
-    });
-  }
-
   // Chats & Messages
-  async listChats(params?: { q?: string; cursor?: string; limit?: number }): Promise<PageResult<Chat>> {
+  async listChats(params?: {
+    q?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<PageResult<Chat>> {
     const q = new URLSearchParams();
     if (params?.q) q.set('q', params.q);
     if (params?.cursor) q.set('cursor', params.cursor);
@@ -82,22 +90,28 @@ export class PraxisApiClient extends FeatureApiClient {
   }
 
   async truncateChat(chatId: string, messageId?: string): Promise<{ type: 'ok' } | Chat> {
-    return this.request<{ type: 'ok' } | Chat>(
-      `/v1/chats/${encodeURIComponent(chatId)}/truncate`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          type: 'chat.truncate',
-          ...(messageId ? { messageId } : {}),
-        }),
-      },
-    );
+    return this.request<{ type: 'ok' } | Chat>(`/v1/chats/${encodeURIComponent(chatId)}/truncate`, {
+      method: 'POST',
+      body: JSON.stringify({
+        type: 'chat.truncate',
+        ...(messageId ? { messageId } : {}),
+      }),
+    });
+  }
+
+  async getChat(chatId: string): Promise<Chat> {
+    return this.request(`/v1/chats/${encodeURIComponent(chatId)}`);
+  }
+
+  async getAttachment(id: string): Promise<Attachment> {
+    return this.request(`/v1/uploads/${encodeURIComponent(id)}`);
   }
 
   async listMessages(chatId: string, limit = 100) {
-    return this.request<PageResult<import('@praxis/protocol').Message>>(
+    const page = await this.request<PageResult<import('@praxis/protocol').Message>>(
       `/v1/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}`,
     );
+    return { ...page, items: page.items.map(safeMessage) };
   }
 
   // Runs & Interactive Loop
@@ -135,7 +149,10 @@ export class PraxisApiClient extends FeatureApiClient {
   }
 
   async getRunSnapshot(runId: string): Promise<RunSnapshot> {
-    return this.request<RunSnapshot>(`/v1/runs/${encodeURIComponent(runId)}/snapshot`);
+    const snapshot = await this.request<RunSnapshot>(
+      `/v1/runs/${encodeURIComponent(runId)}/snapshot`,
+    );
+    return { ...snapshot, messages: snapshot.messages.map(safeMessage) };
   }
 
   async cancelRun(runId: string): Promise<Run> {
@@ -152,7 +169,11 @@ export class PraxisApiClient extends FeatureApiClient {
   ): Promise<Run> {
     return this.request<Run>(`/v1/runs/${encodeURIComponent(runId)}/approvals`, {
       method: 'POST',
-      body: JSON.stringify({ type: 'approval.decision', approvalId, decision }),
+      body: JSON.stringify({
+        type: 'approval.decision',
+        approvalId,
+        decision,
+      }),
     });
   }
 
@@ -324,9 +345,7 @@ export class PraxisApiClient extends FeatureApiClient {
       }),
     });
 
-    const uploadTargetUrl = req.uploadUrl.startsWith('/')
-      ? this.url(req.uploadUrl)
-      : req.uploadUrl;
+    const uploadTargetUrl = req.uploadUrl.startsWith('/') ? this.url(req.uploadUrl) : req.uploadUrl;
     const isApiOrigin = this.isApiOriginUrl(req.uploadUrl);
     const uploadHeaders: Record<string, string> = {
       'Content-Type': file.type || 'application/octet-stream',

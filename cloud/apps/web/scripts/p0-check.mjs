@@ -1,10 +1,11 @@
+import { BASE, API } from './check-env.mjs';
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage();
   page.setDefaultTimeout(10000);
-  await page.goto('http://127.0.0.1:5191');
+  await page.goto(BASE);
   await page.getByRole('button', { name: 'Continue as local dev user' }).click();
   await page.getByTestId('chat-top-bar').waitFor();
   // Finding 1: a missing API feature is an error, never a fabricated entity.
@@ -25,17 +26,17 @@ try {
   assert.equal(await page.getByTestId('chat-screen').count(), 0);
   // API crash probe: 30 sequential real scripted runs, bounded polling, no fixture mutation.
   const api = await browser.newContext();
-  const session = await (await api.request.post('http://127.0.0.1:8817/v1/auth/dev', { data: { type: 'auth.dev', userId: `wp-b1-probe-${Date.now()}` } })).json();
+  const session = await (await api.request.post(`${API}/v1/auth/dev`, { data: { type: 'auth.dev', userId: `wp-b1-probe-${Date.now()}` } })).json();
   const headers = { Authorization: `Bearer ${session.bearerToken}` };
-  const chat = await (await api.request.post('http://127.0.0.1:8817/v1/chats', { headers, data: { type: 'chat.input', title: 'WP-B1 crash probe' } })).json();
+  const chat = await (await api.request.post(`${API}/v1/chats`, { headers, data: { type: 'chat.input', title: 'WP-B1 crash probe' } })).json();
   for (let i = 0; i < 30; i++) {
-    const response = await api.request.post('http://127.0.0.1:8817/v1/runs', { headers, data: { type: 'run.start', chatId: chat.id, text: 'Tools probe', script: 'tools' } });
+    const response = await api.request.post(`${API}/v1/runs`, { headers, data: { type: 'run.start', chatId: chat.id, text: 'Tools probe', script: 'tools' } });
     assert(response.ok(), `run ${i}: ${response.status()} ${await response.text()}`);
     const run = await response.json();
-    const snapshot = await api.request.get(`http://127.0.0.1:8817/v1/runs/${run.id}/snapshot`, { headers });
+    const snapshot = await api.request.get(`${API}/v1/runs/${run.id}/snapshot`, { headers });
     assert(snapshot.ok());
   }
-  assert((await api.request.get('http://127.0.0.1:8817/health')).ok());
+  assert((await api.request.get(`${API}/health`)).ok());
   await api.close();
   console.log('PASS: missing-route error; bootstrap 401 sign-in; 30 tool runs + snapshots; API alive');
 } finally { await browser.close(); }

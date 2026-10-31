@@ -1,6 +1,6 @@
-import { FileText, Paperclip, Check, Copy } from '../../lib/icons';
-import React from 'react';
 import type { Attachment, Message } from '@praxis/protocol';
+import React from 'react';
+import { MessageAttachment } from './MessageAttachment';
 
 export interface UserBubbleProps {
   message: Message;
@@ -11,11 +11,9 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
   const [lightboxUrl, setLightboxUrl] = React.useState<string | null>(null);
 
   const textParts = message.parts.filter((p) => p.type === 'text');
-  const mediaParts = message.parts.filter(
-    (p) => p.type === 'image' || p.type === 'document',
-  );
+  const mediaParts = message.parts.filter((p) => p.type === 'image' || p.type === 'document');
 
-  const combinedText = textParts.map((p) => (p.type === 'text' ? p.text ?? '' : '')).join('\n');
+  const combinedText = textParts.map((p) => (p.type === 'text' ? (p.text ?? '') : '')).join('\n');
 
   return (
     <>
@@ -40,61 +38,14 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
               maxWidth: '78%',
             }}
           >
-            {mediaParts.map((part, idx) => {
-              const attId =
-                (part.type === 'image' || part.type === 'document'
-                  ? part.attachmentId
-                  : '') ?? '';
-              const att = attId ? attachmentsById[attId] : undefined;
-              const isImage =
-                part.type === 'image' || (att?.mediaType?.startsWith('image/') ?? false);
-
-              if (isImage && att?.url) {
-                return (
-                  <button
-                    key={`${attId}-${idx}`}
-                    type="button"
-                    onClick={() => setLightboxUrl(att.url ?? null)}
-                    style={{
-                      padding: 0,
-                      border: '0.5px solid var(--paper-hairline)',
-                      borderRadius: 14,
-                      overflow: 'hidden',
-                      cursor: 'zoom-in',
-                      background: 'var(--paper-fill-1)',
-                      width: 136,
-                      height: 102,
-                    }}
-                  >
-                    <img
-                      src={att.url}
-                      alt={att.name}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  </button>
-                );
-              }
-
-              return (
-                <div
-                  key={`${attId}-${idx}`}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '8px 12px',
-                    borderRadius: 12,
-                    background: 'var(--paper-fill-1)',
-                    border: '0.5px solid var(--paper-hairline)',
-                    fontSize: 13,
-                    color: 'var(--paper-ink)',
-                  }}
-                >
-                  <span aria-hidden="true"><Paperclip size={14} /></span>
-                  <span>{att?.name ?? `Attachment (${attId.slice(0, 8)})`}</span>
-                </div>
-              );
-            })}
+            {mediaParts.map((part, index) => (
+              <MessageAttachment
+                key={`${part.attachmentId}-${index}`}
+                part={part}
+                attachment={part.attachmentId ? attachmentsById[part.attachmentId] : undefined}
+                onPreview={setLightboxUrl}
+              />
+            ))}
           </div>
         )}
 

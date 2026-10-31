@@ -1,10 +1,11 @@
+import { BASE, API } from './check-env.mjs';
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage();
   page.setDefaultTimeout(10000);
-  await page.goto('http://127.0.0.1:5191');
+  await page.goto(BASE);
   await page.getByRole('button', { name: 'Continue as local dev user' }).waitFor();
   const result = await page.evaluate(async () => {
     const replica = await import('/src/lib/idb.ts');

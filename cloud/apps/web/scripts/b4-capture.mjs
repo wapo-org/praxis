@@ -1,3 +1,4 @@
+import { BASE, API } from './check-env.mjs';
 import { chromium, webkit } from '@playwright/test';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -9,8 +10,8 @@ for (const [engine, type] of [['chromium', chromium], ['webkit', webkit]]) {
   try {
     for (const width of [402, 1440]) {
       const page = await browser.newPage({ viewport: { width, height: 874 } }); page.setDefaultTimeout(15000);
-      await page.request.post('http://127.0.0.1:5191/v1/auth/dev', { data: { type: 'auth.dev', userId: 'b4-captures' } });
-      await page.goto('http://127.0.0.1:5191/lab/glass');
+      await page.request.post(`${BASE}/v1/auth/dev`, { data: { type: 'auth.dev', userId: 'b4-captures' } });
+      await page.goto(`${BASE}/lab/glass`);
       const trigger = page.getByTestId('apple-notes-menu-trigger'); await trigger.scrollIntoViewIfNeeded();
       await trigger.evaluate(el => { const lab = el.closest('[data-testid="glass-lab-page"]'); lab.scrollTop += el.getBoundingClientRect().top - 130; });
       await trigger.click(); const menu = page.getByRole('menu');
@@ -38,6 +39,10 @@ for (const [engine, type] of [['chromium', chromium], ['webkit', webkit]]) {
       await page.waitForFunction(() => [...document.querySelectorAll('[data-dropdown-panel="recent-notes"] [data-dropdown-child]')].every(el => getComputedStyle(el).opacity === '1'));
       await capture('submenu', 'IMG_7774');
       await page.setViewportSize({ width, height: 600 });
+      await page.waitForFunction(() => {
+        const el = document.querySelector('[role="menu"]');
+        return el && [el, ...el.querySelectorAll('[data-slot="scroll-blur-viewport"]')].some(n => n.scrollHeight > n.clientHeight + 1);
+      });
       await menu.evaluate(el => {
         const scroll = [el, ...el.querySelectorAll('[data-slot="scroll-blur-viewport"]')].find(n => n.scrollHeight > n.clientHeight + 1);
         if (!scroll) throw Error('Expected scrollable Recent Notes list'); scroll.scrollTop = scroll.scrollHeight;

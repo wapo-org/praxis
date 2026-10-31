@@ -1,15 +1,14 @@
-import React from 'react';
-import { createPortal } from 'react-dom';
-import { motion, useReducedMotion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, X } from '../../lib/icons';
 import {
   GlassCard,
   GlassDropdown,
   GlassIconButton,
-  GlassSurface,
   MOTION,
   ProgressiveBlurScrim,
 } from '@praxis/glass';
+import { motion } from 'framer-motion';
+import React from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronLeft, ChevronRight } from '../../lib/icons';
 import './screens.css';
 
 export function useScreenTask() {
@@ -24,11 +23,7 @@ export function useScreenTask() {
     try {
       await task();
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'Something went wrong. Please try again.',
-      );
+      setError(cause instanceof Error ? cause.message : 'Something went wrong. Please try again.');
     } finally {
       running.current = false;
       setBusy(false);
@@ -118,19 +113,13 @@ export function NavRow({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      className="screen-row screen-nav-row"
-      onClick={onClick}
-    >
+    <button type="button" className="screen-row screen-nav-row" onClick={onClick}>
       {icon ? <span className="screen-row-icon">{icon}</span> : null}
       <span className="screen-row-copy">
         <span>{title}</span>
         {detail ? <span className="screen-detail">{detail}</span> : null}
       </span>
-      {value !== undefined ? (
-        <span className="screen-row-value">{value}</span>
-      ) : null}
+      {value !== undefined ? <span className="screen-row-value">{value}</span> : null}
       <ChevronRight size={16} aria-hidden="true" />
     </button>
   );
@@ -209,12 +198,14 @@ export function ScreenHeader({
       <div className="screen-header-side screen-header-side--end">
         {trailing ??
           (onClose ? (
-            <GlassIconButton
-              label={`Close ${title.toLowerCase()}`}
+            <button
+              type="button"
+              aria-label={`Close ${title.toLowerCase()}`}
               onClick={onClose}
+              className="screen-text-button"
             >
-              <X size={18} />
-            </GlassIconButton>
+              Done
+            </button>
           ) : null)}
       </div>
     </header>
@@ -236,7 +227,9 @@ export function ScreenMenu({
   label,
   children,
   icon,
+  contextOnly = false,
 }: {
+  contextOnly?: boolean;
   label: string;
   children: React.ReactNode;
   icon: React.ReactNode;
@@ -255,16 +248,11 @@ export function ScreenMenu({
       const width = content.current?.offsetWidth || 200;
       const below = anchor.bottom - shell.top + 8;
       setPosition({
-        left: Math.max(
-          8,
-          Math.min(anchor.right - shell.left - width, shell.width - width - 8),
-        ),
+        left: Math.max(8, Math.min(anchor.right - shell.left - width, shell.width - width - 8)),
         top: Math.max(
           8,
           Math.min(
-            below + height <= shell.height - 8
-              ? below
-              : anchor.top - shell.top - height - 8,
+            below + height <= shell.height - 8 ? below : anchor.top - shell.top - height - 8,
             shell.height - height - 8,
           ),
         ),
@@ -289,14 +277,26 @@ export function ScreenMenu({
     };
   }, [open, target]);
   return (
-    <GlassDropdown
-      open={open}
-      onOpenChange={setOpen}
-      dismissOnOutsideClick={false}
-      align="end"
-    >
-      <GlassDropdown.Trigger ref={trigger} aria-label={label} hideChevron>
-        {icon}
+    <GlassDropdown open={open} onOpenChange={setOpen} dismissOnOutsideClick={false} align="end">
+      <GlassDropdown.Trigger
+        asChild={contextOnly}
+        ref={trigger}
+        aria-label={label}
+        hideChevron
+        tabIndex={contextOnly ? -1 : undefined}
+        style={
+          contextOnly
+            ? {
+                opacity: 0,
+                pointerEvents: 'none',
+                width: 1,
+                height: 1,
+                padding: 0,
+              }
+            : undefined
+        }
+      >
+        {contextOnly ? <button type="button">{icon}</button> : icon}
       </GlassDropdown.Trigger>
       {open && target
         ? createPortal(
@@ -324,119 +324,7 @@ export function ScreenMenu({
   );
 }
 
-/** Each portal isolates the background, traps focus, and restores it on dismissal. */
-export function SheetDialog({
-  label,
-  onDismiss,
-  children,
-  consent = false,
-}: {
-  label: string;
-  onDismiss: () => void;
-  children: React.ReactNode;
-  consent?: boolean;
-}) {
-  const reduced = useReducedMotion();
-  const [portal] = React.useState(() => document.createElement('div'));
-  const dialogRef = React.useRef<HTMLDivElement>(null);
-  const dismissRef = React.useRef(onDismiss);
-  dismissRef.current = onDismiss;
-  React.useLayoutEffect(() => {
-    const previous =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    portal.className = 'praxis-sheets-portal';
-    const siblings = Array.from(document.body.children).filter(
-      (node): node is HTMLElement => node instanceof HTMLElement,
-    );
-    const states = siblings.map((node) => ({ node, inert: node.inert }));
-    states.forEach(({ node }) => {
-      node.inert = true;
-    });
-    document.body.append(portal);
-    dialogRef.current?.focus();
-    return () => {
-      portal.remove();
-      states.forEach(({ node, inert }) => {
-        node.inert = inert;
-      });
-      if (previous?.isConnected && !previous.closest('[inert]'))
-        previous.focus();
-    };
-  }, [portal]);
-  const onKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      if (dialogRef.current?.querySelector('[role="menu"]')) return;
-      event.stopPropagation();
-      dismissRef.current();
-    }
-    if (event.key !== 'Tab') return;
-    const elements = Array.from(
-      dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]',
-      ) ?? [],
-    ).filter(
-      (node) => node.getClientRects().length > 0 && !node.closest('[inert]'),
-    );
-    const first = elements[0];
-    const last = elements.at(-1);
-    if (!first || !last) {
-      event.preventDefault();
-      return;
-    }
-    if (
-      event.shiftKey &&
-      (document.activeElement === first ||
-        document.activeElement === dialogRef.current)
-    ) {
-      event.preventDefault();
-      last.focus();
-    } else if (
-      !event.shiftKey &&
-      (document.activeElement === last ||
-        document.activeElement === dialogRef.current)
-    ) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
-  return createPortal(
-    <div
-      className={`screen-overlay${consent ? ' screen-overlay--consent' : ''}`}
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) dismissRef.current();
-      }}
-    >
-      <motion.div
-        className="screen-dialog-position"
-        initial={{ opacity: 0, y: reduced ? 0 : 36, scale: reduced ? 1 : 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={reduced ? { duration: 0.15 } : MOTION.morph}
-      >
-        <GlassSurface
-          className="screen-dialog"
-          radius={24}
-          shape="free"
-          material="regular"
-        >
-          <div
-            className="screen-shell"
-            ref={dialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={label}
-            tabIndex={-1}
-            onKeyDown={onKeyDown}
-          >
-            {children}
-          </div>
-        </GlassSurface>
-      </motion.div>
-    </div>,
-    portal,
-  );
-}
+export { SheetDialog } from './SheetDialog';
 
 export function requireHttpUrl(value: string): string {
   const url = new URL(value.trim());

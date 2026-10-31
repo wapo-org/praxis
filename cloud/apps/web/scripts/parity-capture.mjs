@@ -1,10 +1,11 @@
+import { BASE, API } from './check-env.mjs';
 import { chromium } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 const out = fileURLToPath(new URL('../../../docs/web/reference/web/', import.meta.url));
 await mkdir(out, { recursive: true });
 const browser = await chromium.launch();
-const base = 'http://127.0.0.1:5191';
+const base = BASE;
 try {
   for (const [variant, theme, width, height] of [['mobile-light', 'light', 402, 874], ['mobile-dark', 'dark', 402, 874], ['desktop-light', 'light', 1440, 900]]) {
     const context = await browser.newContext({ viewport: { width, height }, colorScheme: theme, isMobile: width === 402, hasTouch: width === 402 });
@@ -12,7 +13,7 @@ try {
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     page.on('pageerror', error => { throw error; });
     await page.goto(base); await page.getByRole('button', { name: 'Continue as local dev user' }).waitFor();
-    await page.evaluate(async user => { const { apiClient } = await import('/src/lib/api.ts'); await apiClient.devAuth(user); }, `wp-b3-parity-${variant}-${Date.now()}`);
+    await page.evaluate(async user => { const { apiClient } = await import('/src/lib/api.ts'); await (await import('/src/lib/dev-auth.ts')).devAuth(user); }, `wp-b3-parity-${variant}-${Date.now()}`);
     await page.reload(); await page.getByTestId('nav-chat-title-pill').getByText('Praxis Scripted', { exact: true }).waitFor();
     const capture = async name => {
       await page.evaluate(() => document.fonts.ready);

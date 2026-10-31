@@ -1,3 +1,4 @@
+import { BASE, API } from './check-env.mjs';
 // Run with API 8817 + Vite 5191. Captures real local scripted runs; no mocked success paths.
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -12,7 +13,7 @@ try {
     const context = await browser.newContext({ viewport: { width: 402, height: 874 }, colorScheme: theme });
     await context.addInitScript(t => localStorage.setItem('praxis-theme', t), theme);
     const page = await context.newPage();
-    await page.goto('http://127.0.0.1:5191');
+    await page.goto(BASE);
     await page.getByRole('button', { name: 'Continue as local dev user' }).click();
     await page.getByTestId('chat-top-bar').waitFor();
     await page.getByTestId('nav-new-chat-button').click();

@@ -1,39 +1,14 @@
-import React from 'react';
-import {
-  Eye,
-  FlaskConical,
-  Link,
-  Mic,
-  Plus,
-  Shield,
-  Sparkles,
-  Trash2,
-} from '../../lib/icons';
 import { GlassChip } from '@praxis/glass';
-import type { Provider } from '@praxis/protocol';
+import { Eye, FlaskConical, Link, Mic, Plus, Shield, Sparkles } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store.js';
-import { apiClient } from '../../lib/api.js';
-import {
-  Card,
-  Field,
-  hostLabel,
-  NavRow,
-  requireHttpUrl,
-  ScreenBody,
-  ScreenButton,
-  Section,
-  TaskError,
-  useScreenTask,
-} from './ScreenUI.js';
+import { AccountSettings } from './AccountSettings';
+import { Card, hostLabel, NavRow, ScreenBody, ScreenButton, Section } from './ScreenUI.js';
 
-export function SettingsSheet({
-  onOpenGlassLab,
-}: {
-  onOpenGlassLab?: () => void;
-}) {
+export function SettingsSheet({ onOpenGlassLab }: { onOpenGlassLab?: () => void }) {
   const store = usePraxisStore();
   return (
     <ScreenBody>
+      <AccountSettings />
       <Section title="Model providers">
         {store.providers.length ? (
           <Card>
@@ -62,8 +37,8 @@ export function SettingsSheet({
           </Card>
         ) : (
           <p className="screen-intro">
-            You’re chatting with the built-in demo. Add a provider with your own
-            API key, or a server on your network, to chat with a real model.
+            You’re chatting with the built-in demo. Add a provider with your own API key, or a
+            server on your network, to chat with a real model.
           </p>
         )}
         <ScreenButton
@@ -76,9 +51,7 @@ export function SettingsSheet({
           <Plus size={17} />
           Add provider
         </ScreenButton>
-        <p className="screen-footnote">
-          API keys are write-only. A saved key is never shown here.
-        </p>
+        <p className="screen-footnote">API keys are write-only. A saved key is never shown here.</p>
       </Section>
       <Section title="Tools">
         <Card>
@@ -94,17 +67,11 @@ export function SettingsSheet({
             value={store.skills.length || 'None'}
             onClick={() => store.setActiveSheet('skills')}
           />
-        </Card>
-      </Section>
-      <Section title="AI data sharing">
-        <p className="screen-intro">Praxis asks before it first sends a chat to a provider. Providers you allow show up here. You can withdraw sharing at any time.</p>
-        <Card>
           <NavRow
             icon={<Eye size={18} />}
             title="Image reading model"
             value={
-              store.preferences?.vision.enabled &&
-              store.preferences.vision.modelId
+              store.preferences?.vision.enabled && store.preferences.vision.modelId
                 ? store.preferences.vision.modelId
                 : 'Off'
             }
@@ -113,11 +80,17 @@ export function SettingsSheet({
           <NavRow
             icon={<Mic size={18} />}
             title="Voice input"
-            value={
-              store.preferences?.voice.configured ? 'Configured' : 'Set up'
-            }
+            value={store.preferences?.voice.configured ? 'Configured' : 'Set up'}
             onClick={() => store.setActiveSheet('voice-settings')}
           />
+        </Card>
+      </Section>
+      <Section title="AI data sharing">
+        <p className="screen-intro">
+          Praxis asks before it first sends a chat to a provider. Providers you allow show up here.
+          You can withdraw sharing at any time.
+        </p>
+        <Card>
           <NavRow
             icon={<Shield size={18} />}
             title="Data consents"

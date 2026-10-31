@@ -1,4 +1,4 @@
-# Web / iOS parity evidence — WP-B3
+# Web / iOS parity evidence — WP-B5
 
 Captured 2026-10-31 from the real local API on 8817 and Vite on 5191. Each account
 starts empty; tool and approval examples use the API's explicit local scripted driver.
@@ -30,9 +30,9 @@ secondaryInk because the native token source defines no warning color.
 | Finished activity | [iOS](reference/ios/light-activity-finished-folded.png) | [Light](reference/web/b3-mobile-light-chat-tools.png) | [Dark](reference/web/b3-mobile-dark-chat-tools.png) | [Desktop](reference/web/b3-desktop-light-chat-tools.png) | Uses server run timestamps for Worked for Ns. Local scripted runs finish in under a second and display 0s. Native example has different elapsed time/content. |
 | Activity details | [iOS](reference/ios/light-activity-finished-list.png) | [Light](reference/web/b3-mobile-light-activity-expanded.png) | [Dark](reference/web/b3-mobile-dark-activity-expanded.png) | [Desktop](reference/web/b3-desktop-light-activity-expanded.png) | Uses server presentation titles and SVG status icons. Tool payloads remain server-provided; web reasoning/details still use bordered disclosures rather than exact native row treatment. |
 | Approval | [iOS](reference/ios/light-activity-tool-detail.png) | [Light](reference/web/b3-mobile-light-approval.png) | [Dark](reference/web/b3-mobile-dark-approval.png) | [Desktop](reference/web/b3-desktop-light-approval.png) | Ink-filled primary action is visible in both themes. Related iOS tool-detail image only: no native approval-card capture is available, so exact card parity is unverified. |
-| Chats/history | [iOS](reference/ios/light-history-0-top.png) | [Light](reference/web/b3-mobile-light-history.png) | [Dark](reference/web/b3-mobile-dark-history.png) | [Desktop](reference/web/b3-desktop-light-history.png) | Chats title, search, date groups, previews without markdown punctuation, and menus replace All/Pinned chips. Touch row actions remain explicit buttons; native uses contextual gestures. |
-| Settings | [iOS](reference/ios/light-settings-0-root.png) | [Light](reference/web/b3-mobile-light-settings.png) | [Dark](reference/web/b3-mobile-dark-settings.png) | [Desktop](reference/web/b3-desktop-light-settings.png) | Model providers and AI data sharing use native section names and explanatory copy. Web retains Appearance; the development lab is excluded from production settings. |
-| Provider editor | [iOS](reference/ios/light-settings-7-editor-top.png) | [Light](reference/web/b3-mobile-light-provider.png) | [Dark](reference/web/b3-mobile-dark-provider.png) | [Desktop](reference/web/b3-desktop-light-provider.png) | Preset picker, /v1 Anthropic URL, Model copy, header Save and Test connection are present. Test connection saves the endpoint first and surfaces server errors. |
+| Chats/history | [iOS](reference/ios/light-history-0-top.png) | [Light](reference/web/b3-mobile-light-history.png) | [Dark](reference/web/b3-mobile-dark-history.png) | [Desktop](reference/web/b3-desktop-light-history.png) | Chats title, search, date groups, previews without markdown punctuation, and menus replace All/Pinned chips. Row actions use right-click, Shift+F10 or touch hold; the extra ellipsis row is removed. |
+| Settings | [iOS](reference/ios/light-settings-0-root.png) | [Light](reference/web/b3-mobile-light-settings.png) | [Dark](reference/web/b3-mobile-dark-settings.png) | [Desktop](reference/web/b3-desktop-light-settings.png) | Account contains Sign out; Tools groups connectors, skills, image reading and voice input. AI data sharing contains consent management. Web retains Appearance; the development lab is excluded from production settings. |
+| Provider editor | [iOS](reference/ios/light-settings-7-editor-top.png) | [Light](reference/web/b3-mobile-light-provider.png) | [Dark](reference/web/b3-mobile-dark-provider.png) | [Desktop](reference/web/b3-desktop-light-provider.png) | Glass Preset picker, /v1 Anthropic URL, Model copy, header Save and Test connection are present. Test connection saves the endpoint first and surfaces server errors. |
 | Provider capabilities | [iOS](reference/ios/light-settings-8-editor-scrolled.png) | [Light](reference/web/b3-mobile-light-provider-capabilities.png) | [Dark](reference/web/b3-mobile-dark-provider-capabilities.png) | [Desktop](reference/web/b3-desktop-light-provider-capabilities.png) | Capability switches persist via the API. The native source has 10 switches; web exposes all 12 protocol flags, adding server compaction and tool search. |
 | Connectors | [iOS](reference/ios/light-settings-2-connectors.png) | [Light](reference/web/b3-mobile-light-connectors.png) | [Dark](reference/web/b3-mobile-dark-connectors.png) | [Desktop](reference/web/b3-desktop-light-connectors.png) | Navigation and Add by URL are present; web captures a real empty account, while native reference has configured connectors. |
 | Add connector | [iOS](reference/ios/light-settings-3-add-url.png) | [Light](reference/web/b3-mobile-light-connector-add.png) | [Dark](reference/web/b3-mobile-dark-connector-add.png) | [Desktop](reference/web/b3-desktop-light-connector-add.png) | URL/name entry and explicit connection errors; no invented connected state. Native and web field spacing/material rendering differ. |
@@ -56,11 +56,9 @@ secondaryInk because the native token source defines no warning color.
 From the repository root with the API/web on the assigned ports:
 
 ```
-~/.praxis-agent-state/cloud/tools/slot.sh WP-B3 node cloud/apps/web/scripts/b3-check.mjs
-~/.praxis-agent-state/cloud/tools/slot.sh WP-B3 node cloud/apps/web/scripts/parity-capture.mjs
+BASE=http://127.0.0.1:5191 API=http://127.0.0.1:8817 ~/.praxis-agent-state/cloud/tools/slot.sh WP-B5 node cloud/apps/web/scripts/b3-check.mjs
+BASE=http://127.0.0.1:5191 API=http://127.0.0.1:8817 ~/.praxis-agent-state/cloud/tools/slot.sh WP-B5 node cloud/apps/web/scripts/parity-capture.mjs
 node cloud/apps/web/scripts/parity-links.mjs
 ```
 
-The capture script writes 45 screenshots (15 views × 3 variants). Chromium is the
-verified browser here. WebKit/Firefox refraction remains WP-B4; dropdown internals
-remain WP-B2's merged implementation.
+The capture script writes 45 screenshots (15 views × 3 variants). Chromium verifies this screen matrix. WP-B4 separately verifies dropdown interaction and captures materials in Chromium and WebKit.
