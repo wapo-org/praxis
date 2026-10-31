@@ -1,4 +1,4 @@
-import {waitUntil} from '@vercel/functions';
+import {waitUntil} from '../src/wait-until.js';
 import {handle} from 'hono/vercel';
 import {createProductionApp} from '../src/production.js';
 

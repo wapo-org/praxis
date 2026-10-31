@@ -18,7 +18,6 @@
     "@upstash/qstash": "2.12.1",
     "@upstash/ratelimit": "2.2.0",
     "@upstash/redis": "1.40.0",
-    "@vercel/functions": "^3.10.5",
     "better-auth": "1.7.14",
     "convex": "1.48.0",
     "hono": "^4.0.0",
