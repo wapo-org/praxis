@@ -33,7 +33,7 @@ export function setup(turns: string[][] = []) {
   };
   const upload = async (chatId: string, name: string, mediaType: string, bytes: Uint8Array) => {
     const ticket = await (await req('/v1/uploads', {type: 'upload.request', name, mediaType, size: bytes.length, chatId})).json();
-    const {storageId} = await (await app.request(new URL(ticket.uploadUrl).pathname, {method: 'PUT', headers: {Authorization: 'Bearer dev-local', 'Content-Type': mediaType}, body: bytes})).json();
+    const {storageId} = await (await app.request(new URL(ticket.uploadUrl).pathname, {method: 'PUT', headers: {Authorization: 'Bearer dev-local', 'Content-Type': mediaType}, body: new Blob([Uint8Array.from(bytes)])})).json();
     return (await (await req('/v1/uploads/complete', {type: 'upload.complete', storageId, name, mediaType, size: bytes.length, chatId})).json()).id as string;
   };
   const run = async (chatId: string, text: string, attachmentIds: string[] = []) => {
@@ -100,5 +100,26 @@ describe('chat titles (parity: ConversationTitle)', () => {
     expect((await (await f.req(`/v1/chats/${b.id}`)).json()).title).toBe('Photo');
     await f.run(b.id, 'What is this?');
     expect((await (await f.req(`/v1/chats/${b.id}`)).json()).title).toBe('What is this?');
+  });
+});
+
+describe('read_tool_output (parity: ReadToolOutputTool)', () => {
+  it('pages through a spilled result of this conversation only', async () => {
+    const {readToolOutputTool} = await import('../execution.js');
+    const big = 'x'.repeat(50_000) + 'THE-END';
+    const f = setup([toolCall('run_javascript', {code: `return ${JSON.stringify(big)}`}), [delta({content: 'done'}), delta({}, 'stop')]]);
+    const chat = await f.chat();
+    const snap = await f.run(chat.id, 'Make a big output');
+    expect(snap.run.status).toBe('completed');
+    const note = JSON.stringify(f.fake.requests[1].messages);
+    const id = /read_tool_output ([0-9a-f-]{36})/.exec(note)?.[1];
+    expect(id).toBeTruthy();
+    const tool = readToolOutputTool(f.service);
+    const ctx = (chatId: string) => ({userId: 'local-user', chatId, runId: snap.run.id, mode: 'build' as const, callId: 'c', signal: new AbortController().signal, callTool: async () => ({content: [], isError: false}), elicit: async () => ({type: 'elicitation.response' as const, elicitationId: 'e', action: 'cancel' as const}), emit: async () => {}});
+    const tail = await tool.execute({id, offset: 50_000}, ctx(chat.id));
+    expect(tail.isError).toBe(false);
+    expect(JSON.stringify(tail.content)).toContain('THE-END');
+    expect(JSON.stringify(tail.content)).toMatch(/characters 50000–\d+ of \d+/);
+    expect((await tool.execute({id, offset: 0}, ctx('other-chat'))).isError).toBe(true);
   });
 });

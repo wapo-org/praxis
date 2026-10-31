@@ -133,7 +133,8 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     isCancelled: async (userId, runId) => !!(await service.adapters.kv.get(`cancel:${userId}:${runId}`)),
     spill: async (userId, runId, callId, text) => {
       const id = crypto.randomUUID();
-      await service.put(userId, 'output', id, {type: 'tool.output', id, runId, callId, text});
+      const run = await service.require<Run>(userId, 'run', runId);
+      await service.put(userId, 'output', id, {type: 'tool.output', id, runId, chatId: run.chatId, callId, text});
       return id;
     },
   };
@@ -173,7 +174,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   }
 
   async function agentTools(userId: string, chat: Chat, run: Run, request: RunRequest, script?: Script): Promise<AgentTool[]> {
-    const tools: AgentTool[] = script ? scriptedTools() : [];
+    const tools: AgentTool[] = [...(script ? scriptedTools() : []), readToolOutputTool(service)];
     if (options.features?.tools) {
       const features = await options.features.tools(ctx(userId), {chat, runId: run.id, attachmentIds: request.attachmentIds});
       for (const tool of features) if (!tools.some(t => t.spec.name === tool.name)) tools.push(adaptTool(tool));
@@ -323,6 +324,28 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   }
 
   return driver;
+}
+
+/** Port of AgentCore ReadToolOutputTool: pages through a spilled (truncated) tool result of this conversation. */
+export function readToolOutputTool(service: ApiService): AgentTool {
+  return {
+    spec: {
+      type: 'tool.spec', name: 'read_tool_output', source: {type: 'builtin'}, traits: ['readOnly', 'idempotent'],
+      description: 'Read more of a tool result that was truncated. Pass the id from the truncation note and a character offset.',
+      inputSchema: {type: 'object', properties: {id: {type: 'string', description: 'Id from the truncation note'}, offset: {type: 'integer', description: 'Character offset to start at'}, limit: {type: 'integer', description: 'Characters to read (default 20000)'}}, required: ['id', 'offset']},
+    },
+    async execute(args, context) {
+      const a = (args && typeof args === 'object' && !Array.isArray(args) ? args : {}) as {id?: unknown; offset?: unknown; limit?: unknown};
+      if (typeof a.id !== 'string') return textResult('Missing id', true);
+      const offset = Math.max(0, Number.isInteger(a.offset) ? (a.offset as number) : 0);
+      const limit = Math.min(Number.isInteger(a.limit) && (a.limit as number) > 0 ? (a.limit as number) : 20_000, 40_000);
+      const row = await service.adapters.store.get(context.userId, 'output', a.id);
+      if (!row || row.deleted || row.value.chatId !== context.chatId) return textResult(`No stored output with id ${a.id}. Stored output is kept per conversation.`, true);
+      const text = String(row.value.text ?? '');
+      const page = text.slice(offset, offset + limit);
+      return textResult(`[characters ${offset}–${Math.min(text.length, offset + page.length)} of ${text.length}]\n${page}`);
+    },
+  };
 }
 
 /** Rehydrates attachment parts per request (cached per slice); only for content the model can take. */
