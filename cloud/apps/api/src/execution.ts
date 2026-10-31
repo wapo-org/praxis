@@ -4,7 +4,7 @@ import {
 } from '@praxis/agent';
 import {
   JsonValueSchema, RunEventPayloadSchema,
-  type Chat, type ConversationSetup, type JsonValue, type Message, type Model, type Run, type StartRun,
+  type Chat, type ConversationSetup, type JsonValue, type Message, type MessagePart, type Model, type Run, type StartRun,
 } from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from './contracts.js';
 import {buildSystemPrompt, skillCatalogSection, turnNotes, type CatalogSkill} from './conversation.js';
@@ -23,6 +23,8 @@ export interface ExecutionFeatures {
   agentTools?(ctx: FeatureContext, input: {chat: Chat; runId: string; attachmentIds: string[]}): Promise<AgentTool[]>;
   skills?(ctx: FeatureContext): Promise<CatalogSkill[]>;
   toolNotes?(ctx: FeatureContext, chat: Chat): Promise<string[]>;
+  /** Resolves attachment references to bytes for an outgoing provider request (history keeps references). */
+  media?(ctx: FeatureContext, part: MessagePart): Promise<MessagePart>;
   /** Extra notes for the new user turn (e.g. connector availability), given the notes already in the transcript. */
   turnNotes?(ctx: FeatureContext, chat: Chat, previousNotes: string[]): Promise<string[]>;
 }
@@ -184,7 +186,10 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   }
 
   async function runnerFor(userId: string, chat: Chat, run: Run, request: RunRequest, fence: {revision: number}) {
-    const {provider, script, model} = await resolveProvider(userId, chat, request);
+    const resolved = await resolveProvider(userId, chat, request);
+    const {script, model} = resolved;
+    const media = options.features?.media;
+    const provider = media && !script ? withMedia(resolved.provider, part => media(ctx(userId), part)) : resolved.provider;
     const tools = await agentTools(userId, chat, run, request, script);
     const started = clock();
     const runner = new AgentRunner({
@@ -318,6 +323,26 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   }
 
   return driver;
+}
+
+/** Rehydrates attachment parts per request (cached per slice); only for content the model can take. */
+export function withMedia(provider: ModelProvider, resolve: (part: MessagePart) => Promise<MessagePart>): ModelProvider {
+  const cache = new Map<string, Promise<MessagePart>>();
+  const one = (part: MessagePart, caps: ModelProvider['capabilities']) => {
+    const wanted = (part.type === 'image' && caps.vision) || (part.type === 'document' && caps.documents);
+    if (!wanted || !part.attachmentId || part.data || part.url) return Promise.resolve(part);
+    const key = `${part.type}:${part.attachmentId}`;
+    if (!cache.has(key)) cache.set(key, resolve(part));
+    return cache.get(key)!;
+  };
+  return {
+    flavor: provider.flavor,
+    capabilities: provider.capabilities,
+    async *stream(request, signal) {
+      const messages = await Promise.all(request.messages.map(async m => ({...m, parts: await Promise.all(m.parts.map(p => one(p, request.capabilities)))})));
+      yield* provider.stream({...request, messages}, signal);
+    },
+  };
 }
 
 function scriptedProvider(script: Script): ModelProvider {

@@ -3,6 +3,8 @@ import { ChatSchema,PROTOCOL_VERSION,RunSchema,type Bootstrap,type Chat,type Jso
 import type { AdapterBundle } from './contracts.js';
 import type {ApiProviders} from './providers.js';
 import {foldSnapshot,initialSnapshot} from './snapshot.js';
+import {attachmentParts,makeTitle,wantsTitle,type AttachmentRow} from './attachments.js';
+const attachmentRow=(id:string,v:JsonObject):AttachmentRow=>({id,name:String(v.name??'file'),mediaType:String(v.mediaType??'application/octet-stream'),size:Number(v.size??0),hiddenFromCode:v.hiddenFromCode===true});
 export class ApiError extends Error{constructor(public status:number,public code:string,message:string){super(message);}}
 export type RunDecision={type:'approval.decision';approvalId:string;decision:'allowOnce'|'allowAlways'|'deny'}|{type:'elicitation.response';elicitationId:string;action:'accept'|'decline'|'cancel';content?:JsonObject};
 export interface ExecutionDriver{
@@ -56,18 +58,25 @@ export class ApiService{
   if(key){const prior=await this.adapters.store.get(userId,'idempotency',`${chat.id}:${key}`);if(prior){if(prior.value.body!==JSON.stringify(input))throw new ApiError(409,'idempotency_conflict','This turn ID was used with different content');return this.require<Run>(userId,'run',String(prior.value.runId));}}
   if((await this.list<Run>(userId,'run',chat.id)).some(r=>!this.terminal(r)))throw new ApiError(409,'run_active','A run is already active in this chat');
   if(!this.driver)throw new ApiError(503,'runner_unavailable','Run executor is not configured');
-  for(const id of input.attachmentIds)await this.require(userId,'attachment',id);
+  const attachments:AttachmentRow[]=[];for(const id of input.attachmentIds)attachments.push(attachmentRow(id,await this.require<JsonObject>(userId,'attachment',id)));
   await this.driver.validate?.(userId,chat,input);
   const now=this.now();const run=RunSchema.parse({type:'run',id:randomUUID(),chatId:chat.id,status:'queued',createdAt:now,updatedAt:now,lastEventId:0,clientTurnId:input.clientTurnId??key});
   await this.put(userId,'run',run.id,run);await this.put(userId,'snapshot',run.id,initialSnapshot(run));
   if(key)await this.put(userId,'idempotency',`${chat.id}:${key}`,{body:JSON.stringify(input),runId:run.id});
   const messages=(await this.list<Message>(userId,'message',chat.id)).sort((a,b)=>(a.sequence??0)-(b.sequence??0)||a.createdAt.localeCompare(b.createdAt));
   const notes=(await this.driver.notes?.(userId,chat,input,messages))??[];
-  const message:Message={type:'message',id:randomUUID(),chatId:chat.id,runId:run.id,clientTurnId:run.clientTurnId,sequence:messages.length+1,role:'user',parts:[...notes.map(text=>({type:'note' as const,text})),...input.attachmentIds.map(attachmentId=>({type:'image' as const,attachmentId})),...(input.text?[{type:'text' as const,text:input.text}]:[])],createdAt:now,updatedAt:now};
+  const message:Message={type:'message',id:randomUUID(),chatId:chat.id,runId:run.id,clientTurnId:run.clientTurnId,sequence:messages.length+1,role:'user',parts:[...notes.map(text=>({type:'note' as const,text})),...attachmentParts(attachments,input.text)],createdAt:now,updatedAt:now};
   await this.emit(userId,run.id,{type:'messages.committed',messages:[message]});messages.push(message);
+  const title=await this.titleFor(userId,chat,input.text,attachments,messages.slice(0,-1));if(title)chat.title=title;
   chat.activeRunId=run.id;chat.updatedAt=now;await this.write(userId,'chat',chat.id,chat);
   this.enqueue(userId,run.id,()=>this.driver!.start(userId,run,chat,messages,input));return run;
  });}
+ /** Port of the app's ConversationTitle: the first message names the chat (or its attachments do, until words arrive). */
+ private async titleFor(userId:string,chat:Chat,text:string,attachments:AttachmentRow[],previous:Message[]){
+  const first=previous.find(m=>m.role==='user');let firstTurn:{text:string;attachments:AttachmentRow[]}|undefined;
+  if(first){const ids=first.parts.flatMap(p=>p.attachmentId?[p.attachmentId]:[]);const rows:AttachmentRow[]=[];for(const id of ids){const r=await this.adapters.store.get(userId,'attachment',id);if(r&&!r.deleted)rows.push(attachmentRow(id,r.value));}firstTurn={text:first.parts.filter(p=>p.type==='text').map(p=>p.text??'').join(' ').replace(/\[Attached file[\s\S]*$/,'').trim(),attachments:rows};}
+  if(!wantsTitle(chat.title,text,firstTurn))return undefined;return makeTitle(text,attachments);
+ }
  enqueue(userId:string,runId:string,task:()=>Promise<void>){
   const work=Promise.resolve().then(task).catch(async()=>{const run=await this.require<Run>(userId,'run',runId).catch(()=>null);if(run&&!this.terminal(run)){run.status='failed';run.outcome='failed';run.error='Run execution failed';await this.put(userId,'run',runId,run);await this.emit(userId,runId,{type:'run.finished',outcome:'failed',message:'Run execution failed'});}}).catch(error=>{this.onBackgroundError(runId,error);}).finally(()=>this.work.delete(work));this.work.add(work);this.defer?.(work);
  }
