@@ -8,7 +8,7 @@ import type {
   Run,
   RunSnapshot,
 } from '@praxis/protocol';
-import { SyncResponseSchema } from '@praxis/protocol';
+import { ProviderTestResultSchema, SyncResponseSchema } from '@praxis/protocol';
 import { FeatureApiClient } from './api-features';
 import {
   PraxisApiError,
@@ -250,16 +250,13 @@ export class PraxisApiClient extends FeatureApiClient {
     });
   }
 
-  async testProvider(providerId: string) {
-    return await this.request<{
-      type: 'provider.test.result';
-      ok: boolean;
-      models: Model[];
-      message?: string;
-    }>(`/v1/providers/${encodeURIComponent(providerId)}/test`, {
-      method: 'POST',
-      body: JSON.stringify({ type: 'provider.test' }),
-    });
+  async testProvider(providerId: string, modelId?: string) {
+    return ProviderTestResultSchema.parse(
+      await this.request(`/v1/providers/${encodeURIComponent(providerId)}/test`, {
+        method: 'POST',
+        body: JSON.stringify({ type: 'provider.test', ...(modelId ? { modelId } : {}) }),
+      }),
+    );
   }
 
   async refreshProviderModels(providerId: string): Promise<PageResult<Model>> {
