@@ -45,9 +45,22 @@ export async function withClient<T>(ctx: FeatureContext, value: Connector, optio
       return requireReauth(ctx, value);
     }
     if (error instanceof McpError) throw error;
+    // DNS, refused/reset connections, timeouts and blocked egress mean the server can't be reached at all.
+    if (unreachable(error) || controller.signal.aborted) throw new McpError(502, 'mcp_unreachable', `${value.name} can't be reached`);
     // Remote errors may echo authorization headers or request bodies. Do not return them.
     throw new McpError(502, 'mcp_failed', 'The remote MCP operation failed');
   } finally { clearTimeout(timeout); await client.close().catch(() => {}); }
+}
+const UNREACHABLE_CODES = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET']);
+/** Walks the cause chain for transport-level failures (fetch failed, DNS, connect, timeout, SSRF guard refusal). */
+function unreachable(error: unknown): boolean {
+  for (let e: unknown = error, depth = 0; e && depth < 6; e = (e as { cause?: unknown }).cause, depth++) {
+    const code = (e as { code?: unknown }).code;
+    if (typeof code === 'string' && UNREACHABLE_CODES.has(code)) return true;
+    const message = e instanceof Error ? e.message : '';
+    if (/fetch failed|Private egress destination|Egress requires|timed? ?out|aborted/i.test(message) || (e as Error).name === 'TimeoutError' || (e as Error).name === 'AbortError') return true;
+  }
+  return false;
 }
 export async function listAllTools(client: Client): Promise<Tool[]> {
   const tools: Tool[] = []; const seen = new Set<string>(); let cursor: string | undefined; let bytes = 0;

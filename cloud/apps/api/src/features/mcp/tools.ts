@@ -10,7 +10,8 @@ import {
 } from '@praxis/protocol';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { FeatureContext, FeatureTool } from '../../contracts.js';
-import { connector, McpError, requireConsent, saveConnector, type McpOptions } from './shared.js';
+import { connector, McpError, now, requireConsent, saveConnector, type McpOptions } from './shared.js';
+import { recordFailure, skipWithoutContact } from './health.js';
 import { listAllTools, withClient } from './client.js';
 
 export const catalogKey = (ctx: FeatureContext, id: string) =>
@@ -72,7 +73,7 @@ export async function discoverTools(
   await ctx.kv.set(key, { url: value.url, transport: value.transport, tools }, 60);
   const latest = await connector(ctx, value.id);
   if (latest.url === value.url) {
-    await saveConnector(ctx, { ...latest, toolCount: tools.length, error: undefined });
+    await saveConnector(ctx, { ...latest, toolCount: tools.length, error: undefined, status: 'connected', lastCheckedAt: now(), statusCode: undefined });
   }
   return tools;
 }
@@ -139,6 +140,8 @@ export async function getMcpTools(
 
   const tools: FeatureTool[] = [];
   for (const value of values) {
+    // Recently failed or signed-out connectors are not offered (a turn note says why); no network call.
+    if (skipWithoutContact(value)) continue;
     try {
       const definitions = await discoverTools(ctx, value, mcp);
       for (const definition of definitions) {
@@ -173,10 +176,7 @@ export async function getMcpTools(
       }
     } catch (error) {
       if (!(error instanceof McpError)) throw error;
-      const live = await connector(ctx, value.id).catch(() => undefined);
-      if (live) {
-        await saveConnector(ctx, { ...live, error: error.message });
-      }
+      await recordFailure(ctx, value, error);
     }
   }
   return tools;

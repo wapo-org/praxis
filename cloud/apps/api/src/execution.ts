@@ -23,6 +23,8 @@ export interface ExecutionFeatures {
   agentTools?(ctx: FeatureContext, input: {chat: Chat; runId: string; attachmentIds: string[]}): Promise<AgentTool[]>;
   skills?(ctx: FeatureContext): Promise<CatalogSkill[]>;
   toolNotes?(ctx: FeatureContext, chat: Chat): Promise<string[]>;
+  /** Extra notes for the new user turn (e.g. connector availability), given the notes already in the transcript. */
+  turnNotes?(ctx: FeatureContext, chat: Chat, previousNotes: string[]): Promise<string[]>;
 }
 
 export interface ExecutionOptions {
@@ -224,13 +226,15 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
 
     async notes(userId: string, chat: Chat, input: StartRun, previous: Message[]): Promise<string[]> {
       const skills = (await options.features?.skills?.(ctx(userId))) ?? [];
-      return turnNotes({
+      const previousNotes = previous.filter(m => m.role === 'user').flatMap(m => m.parts).flatMap(p => (p.type === 'note' && p.text ? [p.text] : []));
+      const extra = (await options.features?.turnNotes?.(ctx(userId), chat, previousNotes)) ?? [];
+      return [...turnNotes({
         mode: input.mode ?? chat.mode,
         ...((input.effort ?? chat.effort) ? {effort: (input.effort ?? chat.effort)!} : {}),
         previous,
         ...(chat.setup ? {setup: chat.setup} : {}),
         skills,
-      });
+      }), ...extra];
     },
 
     async start(userId: string, run: Run, chat: Chat, messages: Message[], request: StartRun) {

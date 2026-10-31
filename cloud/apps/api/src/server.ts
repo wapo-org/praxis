@@ -95,6 +95,7 @@ function mergeExecutionFeatures(list: ExecutionFeatures[]): ExecutionFeatures {
     agentTools: async (ctx, input) => (await Promise.all(list.map(f => f.agentTools?.(ctx, input) ?? []))).flat(),
     skills: async ctx => (await Promise.all(list.map(f => f.skills?.(ctx) ?? []))).flat(),
     toolNotes: async (ctx, chat) => (await Promise.all(list.map(f => f.toolNotes?.(ctx, chat) ?? []))).flat(),
+    turnNotes: async (ctx, chat, previous) => (await Promise.all(list.map(f => f.turnNotes?.(ctx, chat, previous) ?? []))).flat(),
   };
 }
 

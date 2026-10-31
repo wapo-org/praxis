@@ -115,6 +115,8 @@ describe('OAuth token refresh (REV-A1 P1 client.ts:13)', () => {
     const callback = new URL((await fetch(authorization.url, { redirect: 'manual' })).headers.get('location')!);
     expect((await s.request(`/connectors/oauth/callback${callback.search}`, undefined, 'GET', '')).status).toBeLessThan(400);
     expect(await readSecret(s.ctx, value.id, 'discovery')).toMatchObject({ resource: value.url });
+    expect((await connector(s.ctx, value.id)).status).toBe('connected'); // sign-in re-runs the handshake
+    const { catalogKey } = await import('./tools.js'); await s.ctx.kv.del(catalogKey(s.ctx, value.id)); // force the next call to reach the server
     return { s, value };
   }
   it('refreshes an expiring token once for concurrent callers (single-flight) without re-authorizing', async () => {

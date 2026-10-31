@@ -9,6 +9,8 @@ import {createPraxisApp} from '../server.js';
 function fakeOpenAI(turns: string[][]) {
   const requests: any[] = [];
   const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    // Only the fake model host is faked; anything else (e.g. MCP probes) goes to the real network stack.
+    if (!String(input instanceof Request ? input.url : input).includes('llm.example.test')) return fetch(input, init);
     if (String(input).endsWith('/models')) return Response.json({data: [{id: 'blind-model'}]});
     requests.push(JSON.parse(String(init?.body)));
     const frames = turns[requests.length - 1] ?? [];
@@ -94,5 +96,20 @@ describe('feature modules mounted under /v1', () => {
     const {chat} = await realChat(f, {vision: true});
     await runToEnd(f, chat.id, 'Hi');
     expect(fake.requests[0].tools.map((t: any) => t.function.name)).not.toContain('look_at_image');
+  });
+});
+
+describe('connector health in runs', () => {
+  it('an unreachable connector is created with its status, offers no tools, and the turn says why', async () => {
+    const fake = fakeOpenAI([done]);
+    const f = setup(fake.fetcher);
+    const created = await f.req('/v1/connectors', {type: 'connector.input', name: 'Ghost', url: 'https://mcp.does-not-exist.invalid/mcp'});
+    expect(created.status).toBe(201);
+    expect(await created.json()).toMatchObject({status: 'unreachable'});
+    const {chat} = await realChat(f, {vision: true});
+    expect((await runToEnd(f, chat.id, 'Hi')).run.status).toBe('completed');
+    expect(fake.requests[0].tools.map((t: any) => t.function.name).some((n: string) => n.startsWith('mcp__'))).toBe(false);
+    const messages = (await (await f.req(`/v1/chats/${chat.id}/messages`)).json()).items;
+    expect(messages[0].parts).toContainEqual({type: 'note', text: "The Ghost connector can't be reached right now, so its tools aren't available in this turn."});
   });
 });

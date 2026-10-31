@@ -4,7 +4,7 @@ import {Hono} from 'hono';
 import {createImageReaderTool, type AgentTool, type ModelProvider} from '@praxis/agent';
 import {PreferencesSchema, type Chat, type MessagePart, type Model} from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from './contracts.js';
-import {createMcpRoutes, getMcpTools, type McpOptions} from './features/mcp/index.js';
+import {connectorTurnNotes, createMcpRoutes, getMcpTools, type McpOptions} from './features/mcp/index.js';
 import {createLocalToolsStorage, createToolsRoutes, type ToolsStorage} from './features/tools/index.js';
 import {javascriptTool, listSkillsForCatalog, skillTools} from './features/tools/builtin.js';
 import type {FeatureModule} from './server.js';
@@ -31,6 +31,7 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
       },
       execution: {
         skills: ctx => listSkillsForCatalog(ctx),
+        turnNotes: (ctx, chat, previous) => connectorTurnNotes(ctx, chat, previous),
         toolNotes: async (ctx, chat) => connectorToolNotes(await getMcpTools(ctx, {chatId: chat.id, disabledConnectorIds: chat.disabledConnectorIds}, mcp)),
         async tools(ctx, {chat, attachmentIds}) {
           const connectors = await getMcpTools(ctx, {chatId: chat.id, disabledConnectorIds: chat.disabledConnectorIds}, mcp);
