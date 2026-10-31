@@ -7,6 +7,7 @@ import type {Chat, Connector} from '@praxis/protocol';
 import type {FeatureContext} from '../../contracts.js';
 import {fixtures} from '../../tests/fixture.js';
 import {createMcpRoutes, getMcpTools} from './index.js';
+import {qualifiedName} from './tools.js';
 import {connectorTurnNotes, probeConnector, recordFailure, RECHECK_MS} from './health.js';
 import {connector, McpError, saveConnector, writeSecret} from './shared.js';
 import {fixtureServer} from './fixture.js';
@@ -144,7 +145,11 @@ describe('MCP resource tools (parity: MCPResourceTools)', () => {
     await s.ctx.store.put('alice', 'consent', '127.0.0.1', {type: 'consent', host: '127.0.0.1', allowed: true});
     await s.add(`${remote.base}/mcp`);
     const tools = await getMcpTools(s.ctx, {chatId: 'chat-1', disabledConnectorIds: []});
-    const list = tools.find(t => t.name.includes('list_resources'))!, read = tools.find(t => t.name.includes('read_resource'))!;
+    const list = tools.find(t => t.name.includes('resources_list'))!, read = tools.find(t => t.name.includes('resources_read'))!;
+    // Namespaced: a server tool literally named list_resources/read_resource can't be shadowed (REV-R1 P2).
+    const value = (await s.ctx.store.list('alice', 'connector'))[0]!.value as never;
+    expect(list.name).not.toBe(qualifiedName(value, 'list_resources'));
+    expect(read.name).not.toBe(qualifiedName(value, 'read_resource'));
     expect(list.traits).toEqual(['readOnly', 'idempotent']);
     expect(list.source.type).toBe('mcp');
     const run = {chatId: 'chat-1', runId: 'r', mode: 'auto' as const, callId: 'c'};

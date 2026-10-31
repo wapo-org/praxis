@@ -10,7 +10,7 @@ export const MAX_DOCUMENT_BYTES = 10 << 20;
 export interface AttachmentRow {id: string; name: string; mediaType: string; size: number; hiddenFromCode?: boolean}
 
 const isImage = (type: string) => type.startsWith('image/');
-const isText = (type: string) => type.startsWith('text/') || ['application/json', 'application/xml', 'application/x-yaml', 'application/yaml', 'application/csv'].includes(type);
+export const isText = (type: string) => type.startsWith('text/') || ['application/json', 'application/xml', 'application/x-yaml', 'application/yaml', 'application/csv'].includes(type);
 
 /** Images → image parts; PDFs ≤ 10 MB and text ≤ 200 KB → document parts; everything else is named in a text line for `fs`. */
 export function attachmentParts(rows: AttachmentRow[], text: string): MessagePart[] {

@@ -1,5 +1,6 @@
 import {ProviderFailure,type ModelProvider,type ProviderRequest} from '@praxis/agent';
-import type {Model,JsonObject} from '@praxis/protocol';
+import type {Model,JsonObject,ProviderProbeErrorSchema} from '@praxis/protocol';
+import type {z} from 'zod';
 const pixel='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII=';
 /** Independent requests keep an image rejection from being mistaken for a tool rejection. */
 export async function probeProvider(provider:ModelProvider,model:Model){
@@ -17,4 +18,12 @@ export async function probeProvider(provider:ModelProvider,model:Model){
   if(rejected)learning.efforts={levels:probe.reasoningEfforts,at:Date.now()};
  }
  return {probe,learning};
+}
+export type ProbeError=z.infer<typeof ProviderProbeErrorSchema>;
+/** A failed probe as a typed error; provider text is kept (it explains the failure) with any credential redacted. */
+export function probeError(error:unknown,secrets:string[]):ProbeError{
+ const redact=(text:string)=>secrets.filter(s=>s.length>=4).reduce((t,s)=>t.split(s).join('[redacted]'),text).replace(/Bearer\s+\S+/gi,'Bearer [redacted]').slice(0,500);
+ if(error instanceof Error&&(error.name==='TimeoutError'||error.name==='AbortError'))return {code:'timeout',message:'The provider did not answer within 30 seconds'};
+ if(error instanceof ProviderFailure)return {code:error.kind==='retryable'?'provider_unavailable':'provider_error',message:redact(error.message)||'The provider rejected the request'};
+ return {code:'unreachable',message:'Could not reach the provider'};
 }

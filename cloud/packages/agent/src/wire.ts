@@ -33,7 +33,7 @@ function anthropicContent(p:MessagePart,req:ProviderRequest):JsonObject|undefine
   if(p.type==='toolCall')return req.capabilities.tools?{type:'tool_use',id:p.callId??'',name:p.name??'',input:safeArguments(p.arguments)}:text(flattenCall(p));
   if(p.type==='toolResult')return req.capabilities.tools?{type:'tool_result',tool_use_id:p.callId??'',content:(p.content??[]).map(c=>c.type==='image'?req.capabilities.vision&&req.capabilities.imagesInToolResults?anthropicImage(c):text(req.capabilities.vision?'[Image attached after tool results]':omitted({type:'image',...c} as MessagePart,req)):c),is_error:p.isError??false}:text(`[Tool result ${p.callId??''}] ${resultText(p)}`);
   if(p.type==='image')return req.capabilities.vision?anthropicImage(p):text(omitted(p,req));
-  if(p.type==='document'&&req.capabilities.documents)return {type:'document',source:p.url?{type:'url',url:p.url}:{type:'base64',media_type:p.mediaType??'application/pdf',data:p.data??''}};
+  if(p.type==='document'&&req.capabilities.documents&&(p.url||p.data))return {type:'document',source:p.url?{type:'url',url:p.url}:{type:'base64',media_type:p.mediaType??'application/pdf',data:p.data??''}};
   if(p.type==='document')return text(p.text??omitted(p,req));
   return undefined; // Cross-flavor reasoning has no valid signature.
 }
@@ -90,7 +90,7 @@ export function buildProviderRequest(flavor:ProviderFlavor,raw:ProviderRequest,o
           for(const item of p.content??[])if(item.type==='image'&&c.vision)content.push({type:'image_url',image_url:{url:mediaUrl(item as MessagePart)}});
         }else if(p.type==='note'&&c.midConversationSystem)notes.push({role:options.systemRole??'system',content:p.text??''});
         else if(p.type==='image')content.push(c.vision?{type:'image_url',image_url:{url:mediaUrl(p)}}:text(omitted(p,req)));
-        else if(p.type==='document'&&c.documents)content.push({type:'file',file:{filename:p.attachmentId??'document.pdf',file_data:mediaUrl(p)}});
+        else if(p.type==='document'&&c.documents&&p.data)content.push({type:'file',file:{filename:p.attachmentId??'document.pdf',file_data:mediaUrl(p)}});
         else if(p.type==='text'||p.type==='note'||p.type==='document')content.push(text(p.type==='note'?note(p):p.text??omitted(p,req)));
       }
       messages.push(...notes);
@@ -119,7 +119,7 @@ export function buildProviderRequest(flavor:ProviderFlavor,raw:ProviderRequest,o
         if(c.vision)for(const image of p.content??[])if(image.type==='image')content.push({type:'input_image',image_url:mediaUrl(image as MessagePart)});
       }
       else if(p.type==='image')content.push(c.vision?{type:'input_image',image_url:mediaUrl(p)}:{type:'input_text',text:omitted(p,req)});
-      else if(p.type==='document'&&c.documents)content.push({type:'input_file',...(p.url?{file_url:p.url}:{filename:p.attachmentId??'document.pdf',file_data:mediaUrl(p)})});
+      else if(p.type==='document'&&c.documents&&(p.url||p.data))content.push({type:'input_file',...(p.url?{file_url:p.url}:{filename:p.attachmentId??'document.pdf',file_data:mediaUrl(p)})});
       else if(['text','note','toolCall','toolResult','document'].includes(p.type))content.push({type:m.role==='assistant'?'output_text':'input_text',text:p.type==='toolCall'?flattenCall(p):p.type==='toolResult'?`[Tool result ${p.callId??''}] ${resultText(p)}`:p.type==='note'?note(p):p.text??omitted(p,req)});
     }
     flush();
