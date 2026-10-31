@@ -167,7 +167,14 @@ export async function getMcpTools(
               mcp,
               async (client) =>
                 JsonValueSchema.parse(
-                  await client.callTool({ name: definition.name, arguments: argumentsObject }),
+                  await client.callTool({ name: definition.name, arguments: argumentsObject }, undefined, {
+                    // MCP progress notifications become tool.progress status lines (as the app shows them).
+                    onprogress: (p) => {
+                      if (!run.emit || !run.callId) return;
+                      const text = p.message ?? (p.total ? `${p.progress}/${p.total}` : String(p.progress));
+                      void run.emit({ type: 'tool.progress', callId: run.callId, kind: 'status', text }).catch(() => {});
+                    },
+                  }),
                 ),
               run,
             );

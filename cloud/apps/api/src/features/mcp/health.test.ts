@@ -122,3 +122,17 @@ describe('connector health at run time', () => {
     expect(await connectorTurnNotes(s.ctx, s.chat, [...first, ...back])).toEqual([]);
   });
 });
+
+describe('MCP progress notifications (parity: MCPClient notifications/progress)', () => {
+  it('forwards server progress as tool.progress status events for the running call', async () => {
+    const s = setup();
+    await s.ctx.store.put('alice', 'chat', 'chat-1', {...s.chat});
+    await s.ctx.store.put('alice', 'consent', '127.0.0.1', {type: 'consent', host: '127.0.0.1', allowed: true});
+    await s.add(`${remote.base}/mcp`);
+    const echo = (await getMcpTools(s.ctx, {chatId: 'chat-1', disabledConnectorIds: []})).find(t => t.name.includes('echo'))!;
+    const events: unknown[] = [];
+    const result = await echo.execute({text: 'hi'}, {chatId: 'chat-1', runId: 'r1', mode: 'auto', callId: 'call-1', emit: async e => { events.push(e); }});
+    expect(JSON.stringify(result)).toContain('hi');
+    expect(events).toContainEqual({type: 'tool.progress', callId: 'call-1', kind: 'status', text: 'Halfway there'});
+  });
+});

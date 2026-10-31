@@ -112,7 +112,7 @@ describe('read_tool_output (parity: ReadToolOutputTool)', () => {
     const snap = await f.run(chat.id, 'Make a big output');
     expect(snap.run.status).toBe('completed');
     const note = JSON.stringify(f.fake.requests[1].messages);
-    const id = /read_tool_output ([0-9a-f-]{36})/.exec(note)?.[1];
+    const id = /read_tool_output ([0-9a-f-]{36})/.exec(note)?.[1] ?? '';
     expect(id).toBeTruthy();
     const tool = readToolOutputTool(f.service);
     const ctx = (chatId: string) => ({userId: 'local-user', chatId, runId: snap.run.id, mode: 'build' as const, callId: 'c', signal: new AbortController().signal, callTool: async () => ({content: [], isError: false}), elicit: async () => ({type: 'elicitation.response' as const, elicitationId: 'e', action: 'cancel' as const}), emit: async () => {}});

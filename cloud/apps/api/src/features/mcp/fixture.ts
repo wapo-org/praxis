@@ -92,6 +92,10 @@ export async function fixtureServer() {
         );
         return { content: [{ type: 'text', text: JSON.stringify(result) }] };
       }
+      const progressToken = request.params._meta?.progressToken;
+      if (progressToken !== undefined) {
+        await extra.sendNotification({ method: 'notifications/progress', params: { progressToken, progress: 1, total: 2, message: 'Halfway there' } });
+      }
       return {
         content: [
           {
