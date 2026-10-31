@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "dev:local": "tsx src/local.ts",
-    "build": "esbuild api/index.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/index.mjs --packages=external",
+    "build": "esbuild api/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/index.mjs --external:sharp --external:quickjs-emscripten --external:@jitl/* --banner:js=\"import {createRequire as __praxisRequire} from 'node:module';const require=__praxisRequire(import.meta.url);\" --log-level=warning",
     "smoke:local": "node scripts/smoke-local.mjs"
   },
   "dependencies": {
