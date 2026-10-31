@@ -41,6 +41,12 @@ export async function saveConnector(ctx: FeatureContext, value: Connector) {
   await ctx.store.put(ctx.userId, 'connector', next.id, next as JsonObject);
   return next;
 }
+/** Existing authStatus=required is the public needs-reauth state; error carries the machine reason. */
+export async function requireReauth(ctx: FeatureContext, value: Connector): Promise<never> {
+  const live = await connector(ctx, value.id);
+  await saveConnector(ctx, {...live, authStatus: 'required', error: 'needs_reauth'});
+  throw new McpError(409, 'authorization_required', `${value.name} needs sign-in in connector settings`);
+}
 export async function readSecret<T>(ctx: FeatureContext, id: string, slot: string): Promise<T | undefined> {
   const row = await ctx.store.get(ctx.userId, secretKind, id);
   const encrypted = row && !row.deleted ? row.value[slot] : undefined;

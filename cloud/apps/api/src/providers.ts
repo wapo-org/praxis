@@ -16,6 +16,8 @@ export class ApiProviders{
  async refresh(userId:string,providerId:string){const {provider}=await this.resolve(userId,providerId);const models=await provider.listModels();const old=await this.service.list<Model>(userId,'model');const next=new Set(models.map(m=>m.id));
   for(const m of models){const before=old.find(p=>p.providerId===providerId&&p.id===m.id);await this.service.write(userId,'model',`${providerId}:${m.id}`,{...m,pinned:before?.pinned??false,favorite:before?.favorite??false});}
   for(const m of old)if(m.providerId===providerId&&!next.has(m.id))await this.service.remove(userId,'model',`${providerId}:${m.id}`);
+  // A fresh model list supersedes rejections learned from the provider (ProviderSettings.store clears them too).
+  for(const r of await this.service.adapters.store.list(userId,'modelLearning'))if(r.id.startsWith(`${providerId}:`))await this.service.adapters.store.delete(userId,'modelLearning',r.id);
   await this.service.adapters.kv.set(`models:${userId}:${providerId}`,models,300);return models;
  }
 }

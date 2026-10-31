@@ -65,3 +65,28 @@ describe('re-encryption for rotation', () => {
     expect(owners.sort()).toEqual(['alice', 'bob']);
   });
 });
+
+describe('REV-A2 rotation races', () => {
+  it.each(['update', 'delete'])('preserves a concurrent credential %s and remains idempotent', async action => {
+    const {store} = createLocalAdapters();
+    await store.put('u', 'providerSecret', 'p', {apiKey: seal('old', 'u', 'provider:p:key', A)});
+    const list = store.list.bind(store);
+    let intercepted = false;
+    store.list = async (...args) => {
+      const snapshot = await list(...args);
+      if (!intercepted && args[1] === 'providerSecret') {
+        intercepted = true;
+        if (action === 'delete') await store.delete('u', 'providerSecret', 'p');
+        else await store.put('u', 'providerSecret', 'p', {apiKey: seal('new', 'u', 'provider:p:key', A)});
+      }
+      return snapshot;
+    };
+    const stats = await reencryptAll(store, ['u'], `${B},${A}`);
+    expect(intercepted).toBe(true);
+    expect(stats.failed).toBe(0);
+    const row = (await store.get('u', 'providerSecret', 'p'))!;
+    if (action === 'delete') expect(row.deleted).toBe(true);
+    else expect(unseal(String(row.value.apiKey), 'u', 'provider:p:key', B)).toBe('new');
+    expect(await reencryptAll(store, ['u'], `${B},${A}`)).toMatchObject({rewritten: 0, failed: 0});
+  });
+});

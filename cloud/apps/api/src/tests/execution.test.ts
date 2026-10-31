@@ -87,7 +87,7 @@ describe('execution driver with a real HTTP provider', () => {
     const snapshot = RunSnapshotSchema.parse(await (await f.req(`/v1/runs/${run.id}/snapshot`)).json());
     expect(snapshot.run.status).toBe('completed');
     expect(calls).toEqual([{x: 1}]);
-    expect(fake.requests[0].tools.map((t: any) => t.function.name)).toEqual(['echo']);
+    expect(fake.requests[0].tools.map((t: any) => t.function.name)).toEqual(['read_tool_output', 'echo']);
     expect(JSON.stringify(fake.requests[1].messages)).toContain('echoed');
   });
 });

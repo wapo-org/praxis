@@ -1,5 +1,6 @@
 import {
   actionGeneric,
+  httpActionGeneric,
   internalMutationGeneric,
   internalQueryGeneric,
   mutationGeneric,
@@ -25,3 +26,5 @@ export const action: ActionBuilder<DataModel, 'public'> = actionGeneric;
 /** Internal functions are not reachable from outside the deployment. */
 export const internalQuery: QueryBuilder<DataModel, 'internal'> = internalQueryGeneric;
 export const internalMutation: MutationBuilder<DataModel, 'internal'> = internalMutationGeneric;
+
+export const httpAction = httpActionGeneric;

@@ -159,6 +159,17 @@ export function eventsContract(name: string, factory: () => Events | Promise<Eve
       expect(await events.read(owner('mallory'), 'run:1', 0)).toEqual([]);
     });
 
+    it('appends a stable event key once under concurrent delivery, scoped to owner/channel', async () => {
+      const alice = owner('alice'), bob = owner('bob');
+      const delivered = await Promise.all(Array.from({length: 5}, () => events.append(alice, 'run:1', {n: 1, empty: []}, 'outbox:message-1')));
+      expect(delivered.every(r => r.id === delivered[0]!.id)).toBe(true);
+      expect(await events.read(alice, 'run:1', 0)).toHaveLength(1);
+      expect(await events.append(alice, 'run:1', {n: 999}, 'outbox:message-1')).toEqual(delivered[0]);
+      expect((await events.append(alice, 'run:1', {n: 2}, 'outbox:message-2')).id).toBe(2);
+      expect((await events.append(bob, 'run:1', {n: 3}, 'outbox:message-1')).id).toBe(1);
+      expect((await events.append(alice, 'run:2', {n: 4}, 'outbox:message-1')).id).toBe(1);
+    });
+
     it('honours read limits and keeps ids unique under concurrent appends', async () => {
       const alice = owner('alice');
       const appended = await Promise.all(Array.from({ length: 25 }, (_, n) => events.append(alice, 'user', { n })));

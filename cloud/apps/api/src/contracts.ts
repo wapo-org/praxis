@@ -20,7 +20,7 @@ export interface KV {
 }
 export interface EventRecord {id:number;payload:JsonObject}
 export interface Events {
- append(userId:string,channel:string,payload:JsonObject):Promise<EventRecord>;
+ append(userId:string,channel:string,payload:JsonObject,eventKey?:string):Promise<EventRecord>;
  read(userId:string,channel:string,after:number,limit?:number):Promise<EventRecord[]>;
 }
 export interface AdapterBundle {store:Store;kv:KV;events:Events}
@@ -32,6 +32,8 @@ export interface FeatureTool {
  name:string;description:string;inputSchema:JsonObject;
  source:{type:'builtin'|'skill'|'javascript'|'mcp'|'server';serverId?:string;serverName?:string};
  traits:('readOnly'|'destructive'|'idempotent'|'openWorld'|'sandboxed')[];
+ /** Hidden tools are not offered to the model; they are reachable through nested callTool (e.g. the MCP gateway). */
+ hidden?:boolean;
  classify?(args:JsonValue):{traits:FeatureTool['traits'];policyKey?:string};
  execute(args:JsonValue,context:{chatId:string;runId:string;mode:'ask'|'plan'|'build'|'auto';callId?:string;signal?:AbortSignal;elicit?:(request:{message:string;schema:JsonObject})=>Promise<{type:'elicitation.response';elicitationId:string;action:'accept'|'decline'|'cancel';content?:JsonObject}>;callTool?:(name:string,args:JsonValue)=>Promise<JsonValue>;emit?:(event:JsonObject)=>Promise<void>}):Promise<JsonValue>;
 }

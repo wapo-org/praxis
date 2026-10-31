@@ -3,6 +3,7 @@ import type { OAuthClientInformationMixed, OAuthTokens } from '@modelcontextprot
 import type { Connector, JsonObject } from '@praxis/protocol';
 import type { FeatureContext } from '../../contracts.js';
 import { seal, unseal } from '../../secrets.js';
+import { probeConnector } from './health.js';
 import { callbackTarget, connector, guardedFetch, McpError, now, opaqueId, readSecret, remoteUrl, returnTarget, saveConnector, stateKey, writeSecret, type McpOptions, type OAuthState } from './shared.js';
 
 const active = new Set<string>();
@@ -94,6 +95,8 @@ export async function finishOAuth(base: FeatureContext, query: { state: string; 
       if (result !== 'AUTHORIZED') throw new McpError(502, 'oauth_failed', 'OAuth exchange failed');
       const discovery = record.discovery as { authorizationServerUrl?: string; authorizationServerMetadata?: unknown } | undefined;
       if (discovery?.authorizationServerUrl) await writeSecret(ctx, value.id, 'discovery', { authorizationServerUrl: discovery.authorizationServerUrl, ...(discovery.authorizationServerMetadata ? { metadata: discovery.authorizationServerMetadata } : {}), resource: value.url });
+      // Signed in: re-run the handshake so status reflects it (only a successful handshake says connected).
+      await probeConnector(ctx, await connector(ctx, value.id), options);
       return { connectorId: value.id, target: target ? callbackTarget(target, record.state) : undefined };
     } catch {
       await saveConnector(ctx, { ...await connector(ctx, value.id), authStatus: 'required' });

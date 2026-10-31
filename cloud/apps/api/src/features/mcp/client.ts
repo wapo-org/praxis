@@ -5,14 +5,17 @@ import { ElicitRequestSchema, ElicitResultSchema, type Tool } from '@modelcontex
 import type { OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 import type { Connector } from '@praxis/protocol';
 import type { FeatureContext } from '../../contracts.js';
-import { connector, guardedFetch, McpError, readSecret, saveConnector, type McpOptions } from './shared.js';
+import { connector, guardedFetch, McpError, readSecret, requireReauth, type McpOptions } from './shared.js';
 import { ensureFreshTokens } from './refresh.js';
 
 export async function withClient<T>(ctx: FeatureContext, value: Connector, options: McpOptions, work: (client: Client) => Promise<T>, run?: { chatId: string; runId: string }, retried = false): Promise<T> {
+  const liveStatus = await connector(ctx, value.id);
+  if (liveStatus.authStatus === 'required') throw new McpError(409, 'authorization_required', `${value.name} needs sign-in in connector settings`);
   const extra = await readSecret<Record<string, string>>(ctx, value.id, 'headers') ?? {};
   const token = await readSecret<string>(ctx, value.id, 'token');
   // Refreshes OAuth tokens shortly before expiry; after a 401 the retry below forces one refresh.
   const oauth: OAuthTokens | undefined = token ? undefined : await ensureFreshTokens(ctx, value, options, retried);
+  if (!token && !oauth && await readSecret(ctx, value.id, 'tokens')) return requireReauth(ctx, value);
   const headers = { ...extra, ...(token || oauth?.access_token ? { Authorization: `Bearer ${token || oauth?.access_token}` } : {}) };
   // Auth discovery/registration is explicit. Never open a browser or register clients during an agent call.
   const network = guardedFetch(ctx, options, new URL(value.url).origin, headers);
@@ -39,14 +42,25 @@ export async function withClient<T>(ctx: FeatureContext, value: Connector, optio
         await client.close().catch(() => {});
         return withClient(ctx, value, options, work, run, true);
       }
-      const live = await connector(ctx, value.id).catch(() => undefined);
-      if (live) await saveConnector(ctx, { ...live, authStatus: 'required' });
-      throw new McpError(409, 'authorization_required', `${value.name} needs sign-in in connector settings`);
+      return requireReauth(ctx, value);
     }
     if (error instanceof McpError) throw error;
+    // DNS, refused/reset connections, timeouts and blocked egress mean the server can't be reached at all.
+    if (unreachable(error) || controller.signal.aborted) throw new McpError(502, 'mcp_unreachable', `${value.name} can't be reached`);
     // Remote errors may echo authorization headers or request bodies. Do not return them.
     throw new McpError(502, 'mcp_failed', 'The remote MCP operation failed');
   } finally { clearTimeout(timeout); await client.close().catch(() => {}); }
+}
+const UNREACHABLE_CODES = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET']);
+/** Walks the cause chain for transport-level failures (fetch failed, DNS, connect, timeout, SSRF guard refusal). */
+function unreachable(error: unknown): boolean {
+  for (let e: unknown = error, depth = 0; e && depth < 6; e = (e as { cause?: unknown }).cause, depth++) {
+    const code = (e as { code?: unknown }).code;
+    if (typeof code === 'string' && UNREACHABLE_CODES.has(code)) return true;
+    const message = e instanceof Error ? e.message : '';
+    if (/fetch failed|Private egress destination|Egress requires|timed? ?out|aborted/i.test(message) || (e as Error).name === 'TimeoutError' || (e as Error).name === 'AbortError') return true;
+  }
+  return false;
 }
 export async function listAllTools(client: Client): Promise<Tool[]> {
   const tools: Tool[] = []; const seen = new Set<string>(); let cursor: string | undefined; let bytes = 0;

@@ -5,11 +5,11 @@ import { convexHarness } from './testing/convex-harness.js';
 
 const API = 'http://localhost:8791';
 
-function fixture(withCache = false) {
+function fixture(withCache = false, baseURL = API) {
   const { rpc } = convexHarness();
   const cache = withCache ? createMemoryAdapters().kv : undefined;
   const auth = authFromRPC(rpc, {
-    baseURL: API,
+    baseURL,
     trustedOrigins: ['http://localhost:5173'],
     secret: 'test-better-auth-secret-long-enough-for-test',
     cache,
@@ -85,7 +85,8 @@ describe('Better Auth on the executable Convex database', () => {
     const set = cache!.set.bind(cache);
     cache!.set = async (key, value, ttl) => {
       keys.push(key);
-      expect(ttl).toBeLessThanOrEqual(60);
+      expect(ttl).toBeGreaterThan(0);
+      expect(ttl).toBeLessThanOrEqual(key.startsWith('session:revoked:') ? 8 * 86400 : 60);
       return set(key, value, ttl);
     };
     expect((await auth.resolveSession(request))?.user.id).toBe(body.user.id);
@@ -110,4 +111,36 @@ describe('Better Auth on the executable Convex database', () => {
     expect(() => parseOrigins('https://app.example.com/path')).toThrow();
     expect(parseOrigins('https://a.example, http://localhost:5173/')).toEqual(['https://a.example', 'http://localhost:5173']);
   });
+});
+
+describe('REV-A2 cross-credential session revocation', () => {
+  it.each(['bearer', 'cookie'])('revokes all cached aliases when signing out through %s', async credential => {
+    const {auth} = fixture(true);
+    const response = await auth.handler(post('sign-up', credentials));
+    const body = await response.json();
+    const bearer = {authorization: `Bearer ${body.bearerToken}`};
+    const cookie = {cookie: response.headers.getSetCookie().map(c => c.split(';')[0]).join('; ')};
+    const other = await (await auth.handler(post('sign-in', credentials))).json();
+    expect(await auth.resolveSession(get(bearer))).not.toBeNull();
+    expect(await auth.resolveSession(get(cookie))).not.toBeNull();
+    expect((await auth.handler(post('sign-out', {}, credential === 'bearer' ? bearer : cookie))).status).toBe(200);
+    expect(await auth.resolveSession(get(cookie))).toBeNull();
+    expect(await auth.resolveSession(get(bearer))).toBeNull();
+    expect(await auth.resolveSession(get({authorization: `Bearer ${other.bearerToken}`}))).not.toBeNull();
+  });
+});
+
+
+it('HTTPS cookies have Secure/HttpOnly/SameSite and sign-in rotates an existing session; bearer expires', async () => {
+  const {auth} = fixture(true, 'https://api.example.test');
+  const signup = await auth.handler(post('sign-up', credentials));
+  const session = await signup.json();
+  const cookies = signup.headers.getSetCookie();
+  expect(cookies.some(c => /session_token=/.test(c) && /Secure/i.test(c) && /HttpOnly/i.test(c) && /SameSite=Lax/i.test(c))).toBe(true);
+  const cookie = cookies.map(c => c.split(';')[0]).join('; ');
+  const login = await auth.handler(post('sign-in', credentials, {cookie}));
+  expect((await login.json()).bearerToken).not.toBe(session.bearerToken);
+  const expiry = Date.parse(session.expiresAt);
+  expect(expiry - Date.now()).toBeGreaterThan(6 * 86400000);
+  expect(expiry - Date.now()).toBeLessThanOrEqual(7 * 86400000);
 });
