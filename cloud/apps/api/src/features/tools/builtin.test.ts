@@ -7,7 +7,7 @@ import {createLocalToolsStorage} from './local-storage.js';
 import {saveSkill,skillPath} from './skills.js';
 const input={name:'weekly-report',description:'Write reports',instructions:'Read reference/check.txt.',files:[{path:'reference/check.txt',content:'hello world'}]};
 const execution={chatId:'chat',runId:'run',mode:'auto' as const};
-function fixture(){const ctx:FeatureContext={...createLocalAdapters(),userId:'alice',local:true,fetch:vi.fn()},storage=createLocalToolsStorage('http://localhost');const tools=skillTools(ctx,storage);const call=(name:string,args:Parameters<FeatureTool['execute']>[0])=>tools.find(t=>t.name===name)!.execute(args,execution) as Promise<{content:{text:string}[];isError:boolean}>;return{ctx,storage,tools,call};}
+function fixture(){const ctx:FeatureContext={...createLocalAdapters(),userId:'alice',local:true,fetch:vi.fn(),egress:vi.fn()},storage=createLocalToolsStorage('http://localhost');const tools=skillTools(ctx,storage);const call=(name:string,args:Parameters<FeatureTool['execute']>[0])=>tools.find(t=>t.name===name)!.execute(args,execution) as Promise<{content:{text:string}[];isError:boolean}>;return{ctx,storage,tools,call};}
 describe('skill builtins',()=>{
  it('saves, loads immediately, freezes catalog, reads paged bundle files, replaces preserving files, and deletes',async()=>{
   const f=fixture(),frozen=await listSkillsForCatalog(f.ctx);const out=await f.call('save_skill',input);
