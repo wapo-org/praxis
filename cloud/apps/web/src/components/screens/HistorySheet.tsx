@@ -1,33 +1,28 @@
+import { GlassDropdown } from '@praxis/glass';
+import type { Chat } from '@praxis/protocol';
 import React from 'react';
-import { GlassChip, GlassDropdown } from '@praxis/glass';
 import {
   Check,
   MessageCircle,
   MoreHorizontal,
+  Pencil,
   Pin,
   Plus,
   Search,
   Settings,
   Trash2,
-  Pencil,
-} from 'lucide-react';
-import type { Chat } from '@praxis/protocol';
+} from '../../lib/icons';
 import { usePraxisStore } from '../../state/store.js';
 import {
   ScreenBody,
   ScreenButton,
+  ScreenHeader,
   ScreenMenu,
   TaskError,
   useScreenTask,
 } from './ScreenUI.js';
 
-const GROUPS = [
-  'Pinned',
-  'Today',
-  'Yesterday',
-  'Previous 7 Days',
-  'Older',
-] as const;
+const GROUPS = ['Pinned', 'Today', 'Yesterday', 'Previous 7 Days', 'Older'] as const;
 
 function dateGroup(chat: Chat, now: Date): (typeof GROUPS)[number] {
   if (chat.pinned) return 'Pinned';
@@ -43,17 +38,12 @@ function dateGroup(chat: Chat, now: Date): (typeof GROUPS)[number] {
 }
 
 function relativeTime(value: string): string {
-  const seconds = Math.max(
-    0,
-    Math.round((Date.now() - new Date(value).getTime()) / 1000),
-  );
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
   if (!Number.isFinite(seconds)) return '';
   const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
   if (seconds < 60) return 'Just now';
-  if (seconds < 3600)
-    return formatter.format(-Math.floor(seconds / 60), 'minute');
-  if (seconds < 86400)
-    return formatter.format(-Math.floor(seconds / 3600), 'hour');
+  if (seconds < 3600) return formatter.format(-Math.floor(seconds / 60), 'minute');
+  if (seconds < 86400) return formatter.format(-Math.floor(seconds / 3600), 'hour');
   return formatter.format(-Math.floor(seconds / 86400), 'day');
 }
 
@@ -70,64 +60,51 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
     .filter(
       (chat) =>
         (filter === 'all' || chat.pinned) &&
-        chat.title
-          .toLocaleLowerCase()
-          .includes(query.trim().toLocaleLowerCase()),
+        chat.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
     )
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  const selectedIds = store.chats
-    .filter((chat) => selected.has(chat.id))
-    .map((chat) => chat.id);
+  const selectedIds = store.chats.filter((chat) => selected.has(chat.id)).map((chat) => chat.id);
   const now = new Date();
+  const hold = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const longPress = React.useRef(false);
+  const pressStart = React.useRef({ x: 0, y: 0 });
+  React.useEffect(() => () => clearTimeout(hold.current), []);
+  const openActions = (row: HTMLElement) =>
+    row.querySelector<HTMLButtonElement>('[data-history-row-action] button')?.click();
 
   return (
     <>
-      <div className="screen-history-tools">
-        <GlassChip
-          active={filter === 'all'}
-          aria-pressed={filter === 'all'}
-          onClick={() => setFilter('all')}
-        >
-          All
-        </GlassChip>
-        <GlassChip
-          active={filter === 'pinned'}
-          aria-pressed={filter === 'pinned'}
-          icon={<Pin size={13} />}
-          onClick={() => setFilter('pinned')}
-        >
-          Pinned
-        </GlassChip>
-        <span style={{ flex: 1 }} />
-        {selecting ? (
-          <ScreenButton
-            onClick={() => {
-              setSelecting(false);
-              setSelected(new Set());
-            }}
-          >
-            Done
-          </ScreenButton>
-        ) : (
-          <ScreenMenu
-            label="History options"
-            icon={<MoreHorizontal size={18} />}
-          >
-            <GlassDropdown.Item
-              icon={<Check size={16} />}
-              onSelect={() => setSelecting(true)}
+      <ScreenHeader
+        title="Chats"
+        onBack={onSelect}
+        trailing={
+          selecting ? (
+            <ScreenButton
+              onClick={() => {
+                setSelecting(false);
+                setSelected(new Set());
+              }}
             >
-              Select chats
-            </GlassDropdown.Item>
-            <GlassDropdown.Item
-              icon={<Settings size={16} />}
-              onSelect={() => store.setActiveSheet('settings')}
-            >
-              Settings
-            </GlassDropdown.Item>
-          </ScreenMenu>
-        )}
-      </div>
+              Done
+            </ScreenButton>
+          ) : (
+            <ScreenMenu label="History options" icon={<MoreHorizontal size={18} />}>
+              <GlassDropdown.Item onSelect={() => setFilter(filter === 'all' ? 'pinned' : 'all')}>
+                {filter === 'all' ? 'Show pinned chats' : 'Show all chats'}
+              </GlassDropdown.Item>
+              <GlassDropdown.Item icon={<Check size={16} />} onSelect={() => setSelecting(true)}>
+                Select chats
+              </GlassDropdown.Item>
+              <GlassDropdown.Item
+                icon={<Settings size={16} />}
+                onSelect={() => store.setActiveSheet('settings')}
+              >
+                Settings
+              </GlassDropdown.Item>
+            </ScreenMenu>
+          )
+        }
+      />
       <ScreenBody>
         <TaskError error={task.error} />
         {visible.length === 0 ? (
@@ -141,16 +118,10 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
         ) : null}
         <div className="screen-history-list">
           {GROUPS.map((group) => {
-            const rows = visible.filter(
-              (chat) => dateGroup(chat, now) === group,
-            );
+            const rows = visible.filter((chat) => dateGroup(chat, now) === group);
             if (!rows.length) return null;
             return (
-              <section
-                className="screen-history-group"
-                key={group}
-                aria-label={group}
-              >
+              <section className="screen-history-group" key={group} aria-label={group}>
                 <h2 className="screen-section-title">{group}</h2>
                 {rows.map((chat) => {
                   const messages = store.messagesByChat[chat.id] ?? [];
@@ -159,9 +130,51 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                     last?.parts
                       .filter((part) => part.type === 'text')
                       .map((part) => part.text)
-                      .join(' ') ?? '';
+                      .join(' ')
+                      ?.replace(/[#*_`~>]/g, '')
+                      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') ?? '';
                   return (
-                    <div key={chat.id} className="screen-history-row">
+                    <div
+                      key={chat.id}
+                      className="screen-history-row"
+                      style={{ position: 'relative' }}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        openActions(event.currentTarget);
+                      }}
+                      onKeyDown={(event) => {
+                        longPress.current = false;
+                        if (event.shiftKey && event.key === 'F10') {
+                          event.preventDefault();
+                          openActions(event.currentTarget);
+                        }
+                      }}
+                      onPointerDown={(event) => {
+                        pressStart.current = {
+                          x: event.clientX,
+                          y: event.clientY,
+                        };
+                        longPress.current = false;
+                        if (event.pointerType === 'touch') {
+                          const row = event.currentTarget;
+                          hold.current = setTimeout(() => {
+                            longPress.current = true;
+                            openActions(row);
+                          }, 500);
+                        }
+                      }}
+                      onPointerUp={() => clearTimeout(hold.current)}
+                      onPointerCancel={() => clearTimeout(hold.current)}
+                      onPointerMove={(event) => {
+                        if (
+                          Math.hypot(
+                            event.clientX - pressStart.current.x,
+                            event.clientY - pressStart.current.y,
+                          ) > 8
+                        )
+                          clearTimeout(hold.current);
+                      }}
+                    >
                       {selecting ? (
                         <input
                           className="screen-history-check"
@@ -199,25 +212,22 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                             maxLength={200}
                             required
                           />
-                          <ScreenButton
-                            type="submit"
-                            disabled={task.busy || !title.trim()}
-                          >
+                          <ScreenButton type="submit" disabled={task.busy || !title.trim()}>
                             Save
                           </ScreenButton>
-                          <ScreenButton onClick={() => setRenaming(null)}>
-                            Cancel
-                          </ScreenButton>
+                          <ScreenButton onClick={() => setRenaming(null)}>Cancel</ScreenButton>
                         </form>
                       ) : (
                         <button
                           className="screen-history-select"
                           type="button"
-                          aria-current={
-                            store.activeChatId === chat.id ? 'page' : undefined
-                          }
+                          aria-current={store.activeChatId === chat.id ? 'page' : undefined}
                           disabled={task.busy}
                           onClick={() => {
+                            if (longPress.current) {
+                              longPress.current = false;
+                              return;
+                            }
                             if (selecting) {
                               setSelected((previous) => {
                                 const next = new Set(previous);
@@ -235,17 +245,11 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                           <MessageCircle size={18} aria-hidden="true" />
                           <span className="screen-row-copy">
                             <span className="screen-history-title">
-                              <span className="screen-truncate">
-                                {chat.title || 'New chat'}
-                              </span>
-                              {chat.pinned ? (
-                                <Pin size={11} aria-label="Pinned" />
-                              ) : null}
+                              <span className="screen-truncate">{chat.title || 'New chat'}</span>
+                              {chat.pinned ? <Pin size={11} aria-label="Pinned" /> : null}
                             </span>
                             {preview ? (
-                              <span className="screen-detail screen-truncate">
-                                {preview}
-                              </span>
+                              <span className="screen-detail screen-truncate">{preview}</span>
                             ) : null}
                             <time
                               className="screen-footnote"
@@ -261,40 +265,46 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                         </button>
                       )}
                       {!selecting && renaming !== chat.id ? (
-                        <ScreenMenu
-                          label={`Actions for ${chat.title}`}
-                          icon={<MoreHorizontal size={16} />}
+                        <div
+                          data-history-row-action
+                          style={{ position: 'absolute', right: 0, top: 0 }}
                         >
-                          <GlassDropdown.Item
-                            disabled={task.busy}
-                            icon={<Pin size={15} />}
-                            onSelect={() => {
-                              void task.run(() => store.togglePinChat(chat.id));
-                            }}
+                          <ScreenMenu
+                            contextOnly
+                            label={`Actions for ${chat.title}`}
+                            icon={<MoreHorizontal size={16} />}
                           >
-                            {chat.pinned ? 'Unpin' : 'Pin'}
-                          </GlassDropdown.Item>
-                          <GlassDropdown.Item
-                            icon={<Pencil size={15} />}
-                            onSelect={() => {
-                              setTitle(chat.title);
-                              setRenaming(chat.id);
-                            }}
-                          >
-                            Rename
-                          </GlassDropdown.Item>
-                          <GlassDropdown.Separator variant="section" />
-                          <GlassDropdown.Item
-                            disabled={task.busy}
-                            tone="destructive"
-                            icon={<Trash2 size={15} />}
-                            onSelect={() => {
-                              void task.run(() => store.deleteChats([chat.id]));
-                            }}
-                          >
-                            Delete
-                          </GlassDropdown.Item>
-                        </ScreenMenu>
+                            <GlassDropdown.Item
+                              disabled={task.busy}
+                              icon={<Pin size={15} />}
+                              onSelect={() => {
+                                void task.run(() => store.togglePinChat(chat.id));
+                              }}
+                            >
+                              {chat.pinned ? 'Unpin' : 'Pin'}
+                            </GlassDropdown.Item>
+                            <GlassDropdown.Item
+                              icon={<Pencil size={15} />}
+                              onSelect={() => {
+                                setTitle(chat.title);
+                                setRenaming(chat.id);
+                              }}
+                            >
+                              Rename
+                            </GlassDropdown.Item>
+                            <GlassDropdown.Separator variant="section" />
+                            <GlassDropdown.Item
+                              disabled={task.busy}
+                              tone="destructive"
+                              icon={<Trash2 size={15} />}
+                              onSelect={() => {
+                                void task.run(() => store.deleteChats([chat.id]));
+                              }}
+                            >
+                              Delete
+                            </GlassDropdown.Item>
+                          </ScreenMenu>
+                        </div>
                       ) : null}
                     </div>
                   );
@@ -326,7 +336,7 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
             disabled={task.busy}
             onClick={() => {
               void task.run(async () => {
-                await store.createNewChat();
+                store.startNewConversation();
                 onSelect?.();
               });
             }}

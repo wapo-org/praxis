@@ -31,3 +31,14 @@ Per architectural decision `D15` ("Dependencies are a liability. Prefer zero-dep
 | `@types/react-dom` | `@praxis/web`, `@praxis/glass` | `^19.0.0` | Strict TypeScript type definitions for `react-dom/client` and `react-dom/server`. |
 | `typescript` | `cloud` (root) | `^5.8.2` | Workspace-wide `strict: true` static type checking (`npm run typecheck`). |
 | `vitest` | `cloud` (root) | `^3.0.9` | Fast unit and integration test runner across `@praxis/protocol`, `@praxis/api`, `@praxis/glass`, and `@praxis/web`. |
+
+## WP-B3 additions
+
+- `react-router-dom`: browser history, deep links, and settings/chat routes with reload restoration.
+- `@tabler/icons-react`: one SVG family for web icons, matching the wapo.dp reference.
+
+WP-B1 removed localStorage replica mirroring: authenticated, user-scoped IndexedDB
+and memory now provide cached rendering. The older localStorage claim above is obsolete.
+
+The web implementation now imports Tabler through `src/lib/icons.ts`; Lucide remains
+in the shared glass package (including the dropdown) and is not reworked by WP-B3.

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Mic } from 'lucide-react';
+import { Check, Mic } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store.js';
 import {
   Card,

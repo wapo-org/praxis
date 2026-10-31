@@ -24,94 +24,94 @@ export interface LocalReplicaSnapshot {
   updatedAt: number;
 }
 
-const DB_NAME = 'praxis-cloud-idb';
-const DB_VERSION = 1;
 const STORE_NAME = 'replica';
-const KEY = 'current';
-const FALLBACK_LS_KEY = 'praxis-cloud-replica-v1';
-
+let scope: { key: string; userId: string } | null = null;
 let memoryCache: LocalReplicaSnapshot | null = null;
+let queue = Promise.resolve();
 
-function openDb(): Promise<IDBDatabase | null> {
-  if (typeof indexedDB === 'undefined') {
-    return Promise.resolve(null);
-  }
+function database(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
   return new Promise((resolve) => {
-    try {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME);
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve(null);
-    } catch {
-      resolve(null);
-    }
+    const req = indexedDB.open('praxis-cloud-scoped-v2', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE_NAME);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(null);
   });
 }
 
-/**
- * Synchronous fast-path read from memory or localStorage mirror for <16ms instant first paint,
- * paired with IndexedDB durability for large message histories.
- */
+async function remove(key: string) {
+  const db = await database();
+  if (!db) return;
+  await new Promise<void>((resolve) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).delete(key);
+    tx.oncomplete = tx.onerror = () => { db.close(); resolve(); };
+  });
+}
+
+/** Called only after the server has verified the current session. */
+export async function setReplicaIdentity(origin: string, userId: string): Promise<void> {
+  const apiOrigin = new URL(origin || '/', globalThis.location?.origin ?? 'http://localhost').origin;
+  const key = JSON.stringify([apiOrigin, userId]);
+  if (scope?.key === key) return;
+  if (scope) await clearReplica();
+  // The marker contains identity only; no chats, messages or credentials.
+  const marker = `praxis-replica-owner:${apiOrigin}`;
+  const previous = localStorage.getItem(marker);
+  if (previous && previous !== key) await remove(previous);
+  localStorage.setItem(marker, key);
+  localStorage.removeItem('praxis-cloud-replica-v1');
+  if (typeof indexedDB !== 'undefined') indexedDB.deleteDatabase('praxis-cloud-idb');
+  scope = { key, userId };
+}
+
+export async function clearReplica(): Promise<void> {
+  const previous = scope;
+  scope = null;
+  memoryCache = null;
+  await queue;
+  if (previous) await remove(previous.key);
+}
+
 export function readReplicaSync(): LocalReplicaSnapshot | null {
-  if (memoryCache) return memoryCache;
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(FALLBACK_LS_KEY);
-      if (raw) {
-        memoryCache = JSON.parse(raw) as LocalReplicaSnapshot;
-        return memoryCache;
-      }
-    } catch {}
-  }
-  return null;
+  return scope ? memoryCache : null;
 }
 
 export async function loadReplica(): Promise<LocalReplicaSnapshot | null> {
-  const syncCopy = readReplicaSync();
-  const db = await openDb();
-  if (!db) return syncCopy;
-
+  const owner = scope;
+  if (!owner) return null;
+  const db = await database();
+  if (!db) return readReplicaSync();
   return new Promise((resolve) => {
-    try {
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.get(KEY);
-      req.onsuccess = () => {
-        const res = (req.result as LocalReplicaSnapshot | undefined) ?? syncCopy;
-        if (res) memoryCache = res;
-        resolve(res ?? null);
-      };
-      req.onerror = () => resolve(syncCopy);
-    } catch {
-      resolve(syncCopy);
-    }
+    const req = db.transaction(STORE_NAME).objectStore(STORE_NAME).get(owner.key);
+    req.onsuccess = () => {
+      const record = req.result as { userId: string; snapshot: LocalReplicaSnapshot } | undefined;
+      const value = record?.snapshot;
+      const valid = scope === owner && record?.userId === owner.userId && !!value &&
+        (!value.bootstrap || value.bootstrap.user.id === owner.userId);
+      if (valid) memoryCache = value;
+      db.close();
+      resolve(valid ? value : null);
+    };
+    req.onerror = () => { db.close(); resolve(null); };
   });
 }
 
-export async function saveReplica(snapshot: LocalReplicaSnapshot): Promise<void> {
-  memoryCache = snapshot;
-  if (typeof localStorage !== 'undefined') {
-    try {
-      localStorage.setItem(FALLBACK_LS_KEY, JSON.stringify(snapshot));
-    } catch {}
-  }
-  const db = await openDb();
-  if (!db) return;
+export function getReplicaIdentity(): string | undefined { return scope?.key; }
 
-  await new Promise<void>((resolve) => {
-    try {
+export async function saveReplica(snapshot: LocalReplicaSnapshot, expectedKey = scope?.key): Promise<void> {
+  const owner = scope;
+  if (!owner || owner.key !== expectedKey || (snapshot.bootstrap && snapshot.bootstrap.user.id !== owner.userId)) return;
+  memoryCache = snapshot;
+  queue = queue.then(async () => {
+    if (scope !== owner) return;
+    const db = await database();
+    if (!db) return;
+    await new Promise<void>((resolve) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      store.put(snapshot, KEY);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-    } catch {
-      resolve();
-    }
+      tx.objectStore(STORE_NAME).put({ userId: owner.userId, snapshot }, owner.key);
+      tx.oncomplete = tx.onerror = () => { db.close(); resolve(); };
+    });
   });
+  await queue;
 }

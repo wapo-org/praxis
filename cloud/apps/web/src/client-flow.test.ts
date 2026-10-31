@@ -148,19 +148,11 @@ describe('@praxis/web client flows against Lead A local API', () => {
     expect(prefs.vision.modelId).toBe('scripted-vision');
     expect(prefs.voice.model).toBe('whisper-large-v3-turbo');
 
-    const conn = await client.createConnector({
-      name: 'Linear MCP',
-      url: 'https://mcp.linear.app/sse',
-    });
-    expect(conn.name).toBe('Linear MCP');
-
-    const skill = await client.createSkill({
-      name: 'Liquid Glass Auditor',
-      description: 'Audits Snell refraction bezel math',
-      document: '# Skill\nVerify squircle profile.',
-      enabled: true,
-    });
-    expect(skill.name).toBe('Liquid Glass Auditor');
+    // This core-only API fixture has no MCP/skills modules mounted.
+    await expect(client.createConnector({ name: 'Unavailable', url: 'https://invalid.invalid' }))
+      .rejects.toMatchObject({ status: 404 });
+    await expect(client.createSkill({ name: 'Unavailable', description: '', document: '' }))
+      .rejects.toMatchObject({ status: 404 });
 
     const consent = await client.setConsent('api.openai.com', true);
     expect(consent.allowed).toBe(true);
