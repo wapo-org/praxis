@@ -105,3 +105,35 @@ describe('official SDK OAuth PKCE DCR and CIMD', () => {
     const s = setup(), value = await s.add(), start = await (await s.request(`/connectors/${value.id}/oauth/start`, { type: 'oauth.start' })).json(), redirect = await fetch(start.url, { redirect: 'manual' }), callback = new URL(redirect.headers.get('location')!); const responses = await Promise.all([s.request(`/connectors/oauth/callback${callback.search}`, undefined, 'GET', ''), s.request(`/connectors/oauth/callback${callback.search}`, undefined, 'GET', '')]); expect(responses.map(r => r.status).sort()).toEqual([200, 409]);
   });
 });
+
+describe('OAuth token refresh (REV-A1 P1 client.ts:13)', () => {
+  async function authorized() {
+    remote.setCimd(false); remote.protect();
+    const s = setup(), value = await s.add();
+    await s.consent();
+    const authorization = await (await s.request(`/connectors/${value.id}/oauth/start`, { type: 'oauth.start' })).json();
+    const callback = new URL((await fetch(authorization.url, { redirect: 'manual' })).headers.get('location')!);
+    expect((await s.request(`/connectors/oauth/callback${callback.search}`, undefined, 'GET', '')).status).toBeLessThan(400);
+    expect(await readSecret(s.ctx, value.id, 'discovery')).toMatchObject({ resource: value.url });
+    return { s, value };
+  }
+  it('refreshes an expiring token once for concurrent callers (single-flight) without re-authorizing', async () => {
+    const { s, value } = await authorized();
+    const { writeSecret } = await import('./shared.js');
+    await writeSecret(s.ctx, value.id, 'tokenSavedAt', new Date(Date.now() - 7_200_000).toISOString());
+    remote.rotateTokens();
+    const before = remote.refreshes();
+    const [a, b] = await Promise.all([s.request(`/connectors/${value.id}/tools`), s.request(`/connectors/${value.id}/tools`)]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(remote.refreshes() - before).toBe(1);
+    expect((await readSecret<{ access_token: string; refresh_token: string }>(s.ctx, value.id, 'tokens'))).toMatchObject({ access_token: `fixture-access-token-r${remote.refreshes()}`, refresh_token: 'fixture-refresh' });
+    expect((await connector(s.ctx, value.id)).authStatus).toBe('connected');
+  });
+  it('refreshes once after a 401 on a token that looked valid, then retries', async () => {
+    const { s, value } = await authorized();
+    remote.rotateTokens();
+    const before = remote.refreshes();
+    expect((await s.request(`/connectors/${value.id}/tools`)).status).toBe(200);
+    expect(remote.refreshes() - before).toBe(1);
+  });
+});

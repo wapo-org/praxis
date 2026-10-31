@@ -6,11 +6,13 @@ import type { OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 import type { Connector } from '@praxis/protocol';
 import type { FeatureContext } from '../../contracts.js';
 import { connector, guardedFetch, McpError, readSecret, saveConnector, type McpOptions } from './shared.js';
+import { ensureFreshTokens } from './refresh.js';
 
-export async function withClient<T>(ctx: FeatureContext, value: Connector, options: McpOptions, work: (client: Client) => Promise<T>, run?: { chatId: string; runId: string }): Promise<T> {
+export async function withClient<T>(ctx: FeatureContext, value: Connector, options: McpOptions, work: (client: Client) => Promise<T>, run?: { chatId: string; runId: string }, retried = false): Promise<T> {
   const extra = await readSecret<Record<string, string>>(ctx, value.id, 'headers') ?? {};
   const token = await readSecret<string>(ctx, value.id, 'token');
-  const oauth = await readSecret<OAuthTokens>(ctx, value.id, 'tokens');
+  // Refreshes OAuth tokens shortly before expiry; after a 401 the retry below forces one refresh.
+  const oauth: OAuthTokens | undefined = token ? undefined : await ensureFreshTokens(ctx, value, options, retried);
   const headers = { ...extra, ...(token || oauth?.access_token ? { Authorization: `Bearer ${token || oauth?.access_token}` } : {}) };
   // Auth discovery/registration is explicit. Never open a browser or register clients during an agent call.
   const network = guardedFetch(ctx, options, new URL(value.url).origin, headers);
@@ -33,6 +35,10 @@ export async function withClient<T>(ctx: FeatureContext, value: Connector, optio
   } catch (error) {
     const status = (error as { code?: number }).code;
     if (status === 401 || status === 403 || (error as Error).name === 'UnauthorizedError') {
+      if (!retried && !token && oauth?.refresh_token) {
+        await client.close().catch(() => {});
+        return withClient(ctx, value, options, work, run, true);
+      }
       const live = await connector(ctx, value.id).catch(() => undefined);
       if (live) await saveConnector(ctx, { ...live, authStatus: 'required' });
       throw new McpError(409, 'authorization_required', `${value.name} needs sign-in in connector settings`);
