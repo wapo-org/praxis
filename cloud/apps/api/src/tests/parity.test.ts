@@ -163,3 +163,32 @@ describe('MCP gateway above 30 connector tools (parity: MCPGateway / gatewayThre
     expect(fake.requests.at(-1).tools.map((t: any) => t.function.name)).toContain('tool_0');
   });
 });
+
+describe('learned provider rejections persist (parity: ProviderSettings toolRejections/imageRejections)', () => {
+  it('a model that refused tools is sent without tools on the next turn until the model list is refreshed', async () => {
+    const bodies: any[] = [];
+    let rejections = 0;
+    const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/models')) return Response.json({data: [{id: 'm'}]});
+      const body = JSON.parse(String(init?.body));
+      bodies.push(body);
+      if (body.tools?.length) { rejections++; return Response.json({error: {message: 'No endpoints found that support tool use'}}, {status: 404}); }
+      return new Response(`data: ${delta({content: 'ok'})}\n\ndata: ${delta({}, 'stop')}\n\ndata: [DONE]\n\n`, {headers: {'content-type': 'text/event-stream'}});
+    }) as typeof fetch;
+    const {app, service} = createPraxisApp({adapters: createLocalAdapters(), local: true, encryptionKey: randomBytes(32).toString('base64'), fetcher, modules: localModules('http://127.0.0.1:8787')});
+    const req = async (path: string, body?: unknown) => app.request(path, {method: body ? 'POST' : 'GET', headers: {Authorization: 'Bearer dev-local', 'Content-Type': 'application/json'}, ...(body ? {body: JSON.stringify(body)} : {})});
+    const provider = await (await req('/v1/providers', {type: 'provider.input', name: 'F', flavor: 'openAIChat', baseUrl: 'https://llm.example.test/v1', apiKey: 'sk-test-123456', capabilities: {tools: true}})).json();
+    await req('/v1/consents', {type: 'consent', host: 'llm.example.test', allowed: true});
+    await req(`/v1/providers/${provider.id}/refresh-models`, {type: 'models.refresh'});
+    const chat = await (await req('/v1/chats', {type: 'chat.input', providerId: provider.id, modelId: 'm'})).json();
+    const run = async () => { const r = await (await req('/v1/runs', {type: 'run.start', chatId: chat.id, text: 'hi'})).json(); await service.drain(); return RunSnapshotSchema.parse(await (await req(`/v1/runs/${r.id}/snapshot`)).json()); };
+
+    expect((await run()).run.outcome).toBe('completed');
+    expect(rejections).toBe(1); // learned during the first turn (retried without tools)
+    expect((await run()).run.outcome).toBe('completed');
+    expect(rejections).toBe(1); // next turn already goes without tools
+    await req(`/v1/providers/${provider.id}/refresh-models`, {type: 'models.refresh'});
+    await run();
+    expect(rejections).toBe(2); // a fresh model list clears what was learned
+  });
+});

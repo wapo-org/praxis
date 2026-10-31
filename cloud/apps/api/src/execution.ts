@@ -3,7 +3,7 @@ import {
   type AgentCheckpoint, type AgentPorts, type AgentTool, type ModelProvider, type Script, type ToolResult,
 } from '@praxis/agent';
 import {
-  JsonValueSchema, RunEventPayloadSchema,
+  JsonValueSchema, RunEventPayloadSchema, type JsonObject,
   type Chat, type ConversationSetup, type JsonValue, type Message, type MessagePart, type Model, type Run, type StartRun,
 } from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from './contracts.js';
@@ -118,6 +118,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     } finally {
       await lease.release(key, token);
     }
+    if (cp) await recordLearning(service, userId, cp, clock()).catch(() => undefined);
     // Schedule the next slice only after releasing the lease, or it would find the run still owned.
     if (cp) await settle(userId, cp);
   }
@@ -164,13 +165,15 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       ? await service.adapters.store.get(userId, 'model', `${providerId}:${modelId}`).then(r => (r && !r.deleted ? (r.value as unknown as Model) : undefined))
       : undefined;
     if (!model) return {provider};
-    // Capabilities gate features per model, never by provider name.
+    // Capabilities gate features per model, never by provider name; rejections learned from the provider narrow them.
+    const learned = await learnedFor(service, userId, providerId, model.id, clock());
+    const capabilities = {...model.capabilities, ...(learned.images ? {vision: false} : {}), ...(learned.tools ? {tools: false} : {})};
     const scoped: ModelProvider = {
       flavor: provider.flavor,
-      capabilities: model.capabilities,
+      capabilities,
       stream: (req, signal) => provider.stream(req, signal),
     };
-    return {provider: scoped, model};
+    return {provider: scoped, model: learned.efforts ? {...model, reasoningEfforts: learned.efforts} : model};
   }
 
   async function agentTools(userId: string, chat: Chat, run: Run, request: RunRequest, script?: Script): Promise<AgentTool[]> {
@@ -324,6 +327,34 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   }
 
   return driver;
+}
+
+/** Learned provider rejections lapse after this (ProviderSettings image/tool/effort rejection lifetimes). */
+export const LEARNED_LIFETIME_MS = 14 * 24 * 3600 * 1000;
+interface Learning {images?: number; tools?: number; efforts?: {levels: string[]; at: number}}
+
+async function learnedFor(service: ApiService, userId: string, providerId: string, modelId: string, now: number) {
+  const row = await service.adapters.store.get(userId, 'modelLearning', `${providerId}:${modelId}`);
+  const l = (row && !row.deleted ? row.value : {}) as Learning;
+  const fresh = (t?: number) => t !== undefined && now - t < LEARNED_LIFETIME_MS;
+  return {images: fresh(l.images), tools: fresh(l.tools), efforts: l.efforts && fresh(l.efforts.at) ? l.efforts.levels : undefined};
+}
+
+/** Persists what a run learned (provider refused images/tools/effort levels), so the next turn doesn't fail once more. */
+async function recordLearning(service: ApiService, userId: string, cp: AgentCheckpoint, now: number) {
+  const providerId = cp.chat.providerId;
+  if (!providerId || providerId === 'scripted') return;
+  const modelRow = await service.adapters.store.get(userId, 'model', `${providerId}:${cp.modelId}`);
+  if (!modelRow || modelRow.deleted) return;
+  const model = modelRow.value as unknown as Model;
+  const key = `${providerId}:${cp.modelId}`;
+  const row = await service.adapters.store.get(userId, 'modelLearning', key);
+  const current = (row && !row.deleted ? row.value : {}) as Learning;
+  const next: Learning = {...current};
+  if (model.capabilities.vision && !cp.capabilities.vision && !current.images) next.images = now;
+  if (model.capabilities.tools && !cp.capabilities.tools && !current.tools) next.tools = now;
+  if (cp.supportedEfforts && JSON.stringify(cp.supportedEfforts) !== JSON.stringify(model.reasoningEfforts) && JSON.stringify(cp.supportedEfforts) !== JSON.stringify(current.efforts?.levels)) next.efforts = {levels: cp.supportedEfforts, at: now};
+  if (JSON.stringify(next) !== JSON.stringify(current)) await service.adapters.store.put(userId, 'modelLearning', key, next as unknown as JsonObject);
 }
 
 /** Port of AgentCore ReadToolOutputTool: pages through a spilled (truncated) tool result of this conversation. */
