@@ -90,7 +90,7 @@ export function syncStrategy(service: ApiService): 'cursor' | 'merkle' {
 
 const trees = new Map<string, {head: number; tree: HashTree; rows: Map<string, StoredRecord>}>();
 
-/** Builds the owner's tree from the store; reused while the owner's head revision is unchanged (process-local cache). */
+/** Builds the owner's tree from the store; reused while the owner's head revision is unchanged. The cache is per-instance memory (each serverless instance rebuilds its own). */
 async function serverTree(service: ApiService, userId: string) {
   const head = await service.adapters.store.head(userId);
   const cached = trees.get(userId);
@@ -112,7 +112,8 @@ async function serverTree(service: ApiService, userId: string) {
 }
 
 async function merkle(service: ApiService, userId: string, input: {root?: string | undefined; prefixes?: string[] | undefined}) {
-  if (!service.local && syncStrategy(service) !== 'merkle') throw new ApiError(404, 'strategy_disabled', 'Merkle sync is disabled; use cursor sync');
+  // Off by default everywhere (cursor sync won, docs/SYNC_EXPERIMENT.md); only PRAXIS_SYNC_STRATEGY=merkle enables it.
+  if (syncStrategy(service) !== 'merkle') throw new ApiError(404, 'strategy_disabled', 'Merkle sync is disabled; use cursor sync');
   const {head, tree, rows} = await serverTree(service, userId);
   try {
     return await respondMerkle(tree, {...(input.root !== undefined ? {root: input.root} : {}), ...(input.prefixes ? {prefixes: input.prefixes} : {})}, String(head), async keys => keys.flatMap(k => {
