@@ -10,7 +10,7 @@ final class BlurShots: XCTestCase {
     var app: XCUIApplication!
 
     override func setUpWithError() throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_BLURSHOTS"] != nil, "blur shots")
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_BLURSHOTS"] != nil, "Optional blur capture requires PRAXIS_BLURSHOTS; not a functional feature skip")
         continueAfterFailure = true
     }
 

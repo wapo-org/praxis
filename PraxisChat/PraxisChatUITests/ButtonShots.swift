@@ -8,7 +8,7 @@ final class ButtonShots: XCTestCase {
     var app: XCUIApplication!
 
     override func setUpWithError() throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_BUTTONSHOTS"] != nil, "button shots")
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_BUTTONSHOTS"] != nil, "Optional button capture requires PRAXIS_BUTTONSHOTS; functional buttons run elsewhere")
         continueAfterFailure = true
     }
 

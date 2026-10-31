@@ -69,6 +69,12 @@ final class TranscriptScrollUITests: XCTestCase {
     }
 
     func testScrolledUpReaderIsNotYanked() throws {
+        // Keep this native rendering regression deterministic: the minutes-long
+        // scripted stream cannot finish before the reader scrolls under load.
+        app.terminate()
+        app.launchArguments = ["-PraxisEngine", "scripted", "-PraxisLongRun", "YES", "-PraxisResetData", "YES", "-PraxisLongThread", "YES"]
+        app.launch()
+        XCTAssertTrue(app.buttons["History"].waitForExistence(timeout: 15))
         let field = composerField
         field.tap()
         field.typeText("what's happening")
@@ -82,19 +88,6 @@ final class TranscriptScrollUITests: XCTestCase {
                       withVelocity: .slow, thenHoldForDuration: 0.2)
         }
         // Scroll up until "Jump to latest" offers, to an overall deadline.
-        // A fixed drag count plus one 5s wait flakes under load: a drag
-        // can land slowly, and a snapshot query can take 10–20s ("Timed
-        // out while evaluating UI query") even while the app streams
-        // fine — the main thread samples idle mid-window with no app
-        // hotspot while animations sit mid-flight, and identical
-        // iterations vary 21–112s with the same binary, so this is host
-        // contention (observed load 53 on 12 cores) slowing the sim to a
-        // crawl, not a busy app. `exists` reads a timed-out query as
-        // "not there yet" (unlike `waitForExistence`, which fails the
-        // test on it), and extra drags only scroll further, so this loop
-        // rides through both. The budget past the research run's ~10s of
-        // streaming is covered by the skip below, which keeps the test
-        // honest when the stream outruns the scroll.
         let jump = app.buttons["Jump to latest"]
         let scrollDeadline = Date().addingTimeInterval(20)
         var drags = 0
@@ -108,12 +101,7 @@ final class TranscriptScrollUITests: XCTestCase {
             }
         }
         XCTAssertTrue(found, "scrolling up should offer Jump to latest (after \(drags) drags)")
-        // The point is a reader scrolled up DURING the stream: if the run
-        // already ended, nothing below can yank, so skip instead of
-        // asserting vacuously.
-        guard app.buttons["Stop generating"].exists else {
-            throw XCTSkip("the stream ended before the scroll completed")
-        }
+        XCTAssertTrue(app.buttons["Stop generating"].exists, "The scripted run must still be active while scrolled up")
         // The stream keeps growing below; the reader stays where they are.
         Thread.sleep(forTimeInterval: 4)
         // Poll briefly: one snapshot query can time out under load even

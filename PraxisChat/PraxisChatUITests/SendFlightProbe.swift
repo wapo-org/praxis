@@ -9,7 +9,7 @@ final class SendFlightProbe: XCTestCase {
     var app: XCUIApplication!
 
     override func setUpWithError() throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_SENDPROBE"] != nil, "send probe")
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_SENDPROBE"] != nil, "Optional send performance capture requires PRAXIS_SENDPROBE")
         continueAfterFailure = true
     }
 

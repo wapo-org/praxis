@@ -10,7 +10,7 @@ final class ToolSupportShots: XCTestCase {
     var app: XCUIApplication!
 
     override func setUpWithError() throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_TOOLSHOTS"] != nil, "tool shots")
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_TOOLSHOTS"] != nil, "Optional tool capture requires PRAXIS_TOOLSHOTS; cloud tool behavior runs in CloudUITests")
         continueAfterFailure = true
     }
 

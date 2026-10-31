@@ -86,6 +86,10 @@ final class CloudServices: VoiceSettingsReader {
 
     func signIn(email: String, password: String) async throws {
         let session = try await client.signIn(email: email.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
+        await acceptSignedInSession(session)
+    }
+
+    func acceptSignedInSession(_ session: CloudSession) async {
         clearAccount()
         account = session.user
         onSessionChanged?(account)
