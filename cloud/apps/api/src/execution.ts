@@ -10,6 +10,13 @@ import type {FeatureContext, FeatureTool} from './contracts.js';
 import {buildSystemPrompt, skillCatalogSection, turnNotes, type CatalogSkill} from './conversation.js';
 import {featureContext} from './features.js';
 import {ApiError, type ApiService, type ExecutionDriver, type RunDecision} from './service.js';
+import {learnedFor, recordLearning} from './learning.js';
+import {withMedia, type ModelCapabilities} from './media-provider.js';
+import {readToolOutputTool} from './read-tool-output.js';
+
+export {LEARNED_LIFETIME_MS} from './learning.js';
+export {withMedia} from './media-provider.js';
+export {readToolOutputTool} from './read-tool-output.js';
 
 /** Hands a run's next slice to a fresh invocation (QStash in production, the in-process queue locally). */
 export interface ContinuationScheduler {
@@ -23,8 +30,11 @@ export interface ExecutionFeatures {
   agentTools?(ctx: FeatureContext, input: {chat: Chat; runId: string; attachmentIds: string[]}): Promise<AgentTool[]>;
   skills?(ctx: FeatureContext): Promise<CatalogSkill[]>;
   toolNotes?(ctx: FeatureContext, chat: Chat): Promise<string[]>;
-  /** Resolves attachment references to bytes for an outgoing provider request (history keeps references). */
-  media?(ctx: FeatureContext, part: MessagePart): Promise<MessagePart>;
+  /**
+   * Resolves an attachment reference for an outgoing provider request (history keeps references): bytes the model
+   * can take, inlined text, or a note saying why it can't be shown.
+   */
+  media?(ctx: FeatureContext, part: MessagePart, capabilities: ModelCapabilities): Promise<MessagePart>;
   /** Extra notes for the new user turn (e.g. connector availability), given the notes already in the transcript. */
   turnNotes?(ctx: FeatureContext, chat: Chat, previousNotes: string[]): Promise<string[]>;
 }
@@ -193,7 +203,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     const resolved = await resolveProvider(userId, chat, request);
     const {script, model} = resolved;
     const media = options.features?.media;
-    const provider = media && !script ? withMedia(resolved.provider, part => media(ctx(userId), part)) : resolved.provider;
+    const provider = media && !script ? withMedia(resolved.provider, (part, caps) => media(ctx(userId), part, caps)) : resolved.provider;
     const tools = await agentTools(userId, chat, run, request, script);
     const started = clock();
     const runner = new AgentRunner({
@@ -217,6 +227,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       type: 'conversation.setup',
       system: buildSystemPrompt({skills: catalogSkills, toolNotes, ...(options.instructions ? {instructions: options.instructions} : {})}),
       tools: tools.filter(t => !t.hidden).map(t => t.spec),
+      hiddenTools: tools.filter(t => t.hidden).map(t => t.spec),
       skillCatalog: skillCatalogSection(catalogSkills),
       connectorIds: chat.connectorIds,
       createdAt: service.now(),
@@ -327,76 +338,6 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   }
 
   return driver;
-}
-
-/** Learned provider rejections lapse after this (ProviderSettings image/tool/effort rejection lifetimes). */
-export const LEARNED_LIFETIME_MS = 14 * 24 * 3600 * 1000;
-interface Learning {images?: number; tools?: number; efforts?: {levels: string[]; at: number}}
-
-async function learnedFor(service: ApiService, userId: string, providerId: string, modelId: string, now: number) {
-  const row = await service.adapters.store.get(userId, 'modelLearning', `${providerId}:${modelId}`);
-  const l = (row && !row.deleted ? row.value : {}) as Learning;
-  const fresh = (t?: number) => t !== undefined && now - t < LEARNED_LIFETIME_MS;
-  return {images: fresh(l.images), tools: fresh(l.tools), efforts: l.efforts && fresh(l.efforts.at) ? l.efforts.levels : undefined};
-}
-
-/** Persists what a run learned (provider refused images/tools/effort levels), so the next turn doesn't fail once more. */
-async function recordLearning(service: ApiService, userId: string, cp: AgentCheckpoint, now: number) {
-  const providerId = cp.chat.providerId;
-  if (!providerId || providerId === 'scripted') return;
-  const modelRow = await service.adapters.store.get(userId, 'model', `${providerId}:${cp.modelId}`);
-  if (!modelRow || modelRow.deleted) return;
-  const model = modelRow.value as unknown as Model;
-  const key = `${providerId}:${cp.modelId}`;
-  const row = await service.adapters.store.get(userId, 'modelLearning', key);
-  const current = (row && !row.deleted ? row.value : {}) as Learning;
-  const next: Learning = {...current};
-  if (model.capabilities.vision && !cp.capabilities.vision && !current.images) next.images = now;
-  if (model.capabilities.tools && !cp.capabilities.tools && !current.tools) next.tools = now;
-  if (cp.supportedEfforts && JSON.stringify(cp.supportedEfforts) !== JSON.stringify(model.reasoningEfforts) && JSON.stringify(cp.supportedEfforts) !== JSON.stringify(current.efforts?.levels)) next.efforts = {levels: cp.supportedEfforts, at: now};
-  if (JSON.stringify(next) !== JSON.stringify(current)) await service.adapters.store.put(userId, 'modelLearning', key, next as unknown as JsonObject);
-}
-
-/** Port of AgentCore ReadToolOutputTool: pages through a spilled (truncated) tool result of this conversation. */
-export function readToolOutputTool(service: ApiService): AgentTool {
-  return {
-    spec: {
-      type: 'tool.spec', name: 'read_tool_output', source: {type: 'builtin'}, traits: ['readOnly', 'idempotent'],
-      description: 'Read more of a tool result that was truncated. Pass the id from the truncation note and a character offset.',
-      inputSchema: {type: 'object', properties: {id: {type: 'string', description: 'Id from the truncation note'}, offset: {type: 'integer', description: 'Character offset to start at'}, limit: {type: 'integer', description: 'Characters to read (default 20000)'}}, required: ['id', 'offset']},
-    },
-    async execute(args, context) {
-      const a = (args && typeof args === 'object' && !Array.isArray(args) ? args : {}) as {id?: unknown; offset?: unknown; limit?: unknown};
-      if (typeof a.id !== 'string') return textResult('Missing id', true);
-      const offset = Math.max(0, Number.isInteger(a.offset) ? (a.offset as number) : 0);
-      const limit = Math.min(Number.isInteger(a.limit) && (a.limit as number) > 0 ? (a.limit as number) : 20_000, 40_000);
-      const row = await service.adapters.store.get(context.userId, 'output', a.id);
-      if (!row || row.deleted || row.value.chatId !== context.chatId) return textResult(`No stored output with id ${a.id}. Stored output is kept per conversation.`, true);
-      const text = String(row.value.text ?? '');
-      const page = text.slice(offset, offset + limit);
-      return textResult(`[characters ${offset}–${Math.min(text.length, offset + page.length)} of ${text.length}]\n${page}`);
-    },
-  };
-}
-
-/** Rehydrates attachment parts per request (cached per slice); only for content the model can take. */
-export function withMedia(provider: ModelProvider, resolve: (part: MessagePart) => Promise<MessagePart>): ModelProvider {
-  const cache = new Map<string, Promise<MessagePart>>();
-  const one = (part: MessagePart, caps: ModelProvider['capabilities']) => {
-    const wanted = (part.type === 'image' && caps.vision) || (part.type === 'document' && caps.documents);
-    if (!wanted || !part.attachmentId || part.data || part.url) return Promise.resolve(part);
-    const key = `${part.type}:${part.attachmentId}`;
-    if (!cache.has(key)) cache.set(key, resolve(part));
-    return cache.get(key)!;
-  };
-  return {
-    flavor: provider.flavor,
-    capabilities: provider.capabilities,
-    async *stream(request, signal) {
-      const messages = await Promise.all(request.messages.map(async m => ({...m, parts: await Promise.all(m.parts.map(p => one(p, request.capabilities)))})));
-      yield* provider.stream({...request, messages}, signal);
-    },
-  };
 }
 
 function scriptedProvider(script: Script): ModelProvider {

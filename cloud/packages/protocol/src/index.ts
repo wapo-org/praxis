@@ -60,7 +60,7 @@ export const MessageSchema = z.object({
   createdAt:TimestampSchema,updatedAt:TimestampSchema,sequence:z.number().int().positive().optional(),
 });
 export type Message = z.infer<typeof MessageSchema>;
-export const ConversationSetupSchema = z.object({type:z.literal('conversation.setup'),system:z.string(),tools:z.array(ToolSpecSchema),skillCatalog:z.string(),connectorIds:z.array(IdSchema),createdAt:TimestampSchema});
+export const ConversationSetupSchema = z.object({type:z.literal('conversation.setup'),system:z.string(),tools:z.array(ToolSpecSchema),hiddenTools:z.array(ToolSpecSchema).optional(),skillCatalog:z.string(),connectorIds:z.array(IdSchema),createdAt:TimestampSchema});
 export type ConversationSetup = z.infer<typeof ConversationSetupSchema>;
 export const ChatSchema = z.object({
   type:z.literal('chat'),id:IdSchema,pinned:z.boolean().default(false),title:z.string(),mode:ModeSchema,providerId:IdSchema.optional(),modelId:z.string().optional(),effort:z.string().optional(),
@@ -170,7 +170,8 @@ export const SkillUpdateSchema=z.object({type:z.literal('skill.update'),skillId:
 export const SkillImportSchema=z.object({type:z.literal('skill.import'),attachmentId:IdSchema});
 export const ProviderProbeSchema=z.object({tools:z.boolean(),vision:z.boolean(),streaming:z.boolean(),reasoningEfforts:z.array(z.string())});
 export const ProviderTestInputSchema=z.object({type:z.literal('provider.test'),modelId:IdSchema.optional()});
-export const ProviderTestResultSchema = z.object({type:z.literal('provider.test.result'),ok:z.boolean(),models:z.array(ModelSchema),probe:ProviderProbeSchema.optional(),message:z.string().optional()});
+export const ProviderProbeErrorSchema=z.object({code:z.enum(['timeout','provider_unavailable','provider_error','unreachable']),message:z.string().max(500)});
+export const ProviderTestResultSchema = z.object({type:z.literal('provider.test.result'),ok:z.boolean(),models:z.array(ModelSchema),probe:ProviderProbeSchema.optional(),error:ProviderProbeErrorSchema.optional(),message:z.string().optional()});
 export const RegistryEntrySchema = z.object({type:z.literal('skill.registry.entry'),id:IdSchema,name:z.string(),description:z.string(),url:z.string().url().optional()});
 export const MCPResourceSchema = z.object({type:z.literal('mcp.resource'),uri:z.string(),name:z.string(),description:z.string().optional(),mimeType:z.string().optional()});
 export const MCPPromptSchema = z.object({type:z.literal('mcp.prompt'),name:z.string(),description:z.string().optional(),arguments:z.array(JsonObjectSchema).optional()});

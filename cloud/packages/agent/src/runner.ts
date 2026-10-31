@@ -5,7 +5,7 @@ import {
   type JsonValue,type Message,type MessagePart,type Run,type RunEventPayload,type ToolSpec,
 } from '@praxis/protocol';
 import {
-  CheckpointSchema,ProviderEventSchema,ProviderResponseSchema,RunInputSchema,ToolResultSchema,textResult,
+  CheckpointSchema,ProviderEventSchema,ProviderResponseSchema,RunInputSchema,ToolResultSchema,textResult,MAX_RESULT_CHARACTERS,
   type AgentCheckpoint,type AgentRunnerOptions,type AgentTool,type PendingCall,type ProviderRequest,
   type ProviderResponse,type RunInput,type ToolResult,
 } from './types.js';
@@ -72,7 +72,8 @@ export class AgentRunner {
       messages:i.messages,modelId:i.modelId??i.chat.modelId??'scripted',effort:i.effort??i.chat.effort,
       supportedEfforts:i.supportedEfforts,webSearch:i.webSearch??false,
       capabilities:this.options.provider.capabilities,policy:i.policy??{},phase:'model',iteration:0,
-      hiddenTools:[...this.tools.values()].filter(t=>t.hidden).map(t=>t.spec),pending:[],calls:{},resolutions:{},maxIterations:i.maxIterations,maxTokens:i.maxTokens,
+      // Hidden (gateway) tools are frozen with the conversation like its direct tools; older setups fall back to this run's.
+      hiddenTools:setup.hiddenTools??[...this.tools.values()].filter(t=>t.hidden).map(t=>t.spec),pending:[],calls:{},resolutions:{},maxIterations:i.maxIterations,maxTokens:i.maxTokens,
       modelMaxTokens:i.modelMaxTokens,maxRetries:i.maxRetries,usage:emptyUsage(),
     });
     await this.save(cp);await this.emit(cp,{type:'run.started'});
@@ -391,7 +392,7 @@ export class AgentRunner {
     }
   }
   private async completeTool(cp:AgentCheckpoint,call:PendingCall,result:ToolResult,status:'succeeded'|'failed'|'denied'|'cancelled') {
-    const max=this.options.maxResultCharacters??32000;
+    const max=this.options.maxResultCharacters??MAX_RESULT_CHARACTERS;
     const full=result.content.map(c=>typeof c.text==='string'?c.text:JSON.stringify(c)).join('\n');
     if(full.length>max) {
       const ref=await this.options.ports.spill?.(cp.userId,cp.run.id,call.id,full);

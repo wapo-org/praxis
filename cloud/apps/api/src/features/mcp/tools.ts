@@ -12,7 +12,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { FeatureContext, FeatureTool } from '../../contracts.js';
 import { connector, McpError, now, requireConsent, saveConnector, type McpOptions } from './shared.js';
 import { recordFailure, skipWithoutContact } from './health.js';
-import { resourceTools } from './resources.js';
+import { RESOURCE_TOOL_NAMES, resourceTools } from './resources.js';
 import { listAllTools, withClient } from './client.js';
 
 export const catalogKey = (ctx: FeatureContext, id: string) =>
@@ -159,7 +159,7 @@ export async function getMcpTools(
       const { tools: definitions, resources } = await discoverCatalog(ctx, value, mcp);
       if (resources) tools.push(...resourceTools(ctx, value, options, mcp));
       for (const definition of definitions) {
-        if (value.disabledTools.includes(definition.name)) continue;
+        if (value.disabledTools.includes(definition.name) || RESOURCE_TOOL_NAMES.includes(definition.name)) continue;
         tools.push({
           ...toolSpec(value, definition),
           execute: async (args, run) => {
