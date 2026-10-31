@@ -11,6 +11,7 @@ actor CloudLifecycleEngine: ChatEngine {
     private let elicitations: ElicitationCenter
     private let onRunStarted: @Sendable (UUID, UUID, String) async -> Void
     private var backgrounded = false
+    private var transition = UUID()
     private var detachedReaders: [CloudReaderShutdown] = []
     private struct Active {
         let identity: UUID
@@ -20,6 +21,7 @@ actor CloudLifecycleEngine: ChatEngine {
         var generation = UUID()
         var runID: String?
         var terminalPublished = false
+        var uiReplayed = false
         var shutdown: CloudReaderShutdown?
     }
     private var active: [UUID: Active] = [:]
@@ -43,7 +45,7 @@ actor CloudLifecycleEngine: ChatEngine {
     func projectionCommitted(runID: String) async { try? await journal.remove(runID: runID) }
     private func begin(_ request: ChatRunRequest, output: AsyncStream<AgentEvent>.Continuation, identity: UUID) {
         active[request.turnID] = Active(identity: identity, request: request, output: output)
-        if !backgrounded { attach(request.turnID, replayUI: true) }
+        if !backgrounded { attach(request.turnID) }
     }
     private func end(_ key: UUID, identity: UUID) async {
         guard active[key]?.identity == identity, let state = active.removeValue(forKey: key) else { return }
@@ -61,10 +63,18 @@ actor CloudLifecycleEngine: ChatEngine {
         }
     }
     func setBackgrounded(_ value: Bool) async {
+        let revision = UUID()
+        transition = revision
         backgrounded = value
         if !value {
-            let readers = detachedReaders; detachedReaders.removeAll()
-            for reader in readers { await reader.wait() }
+            // Retain the drain barriers until this transition actually wins.
+            // A newer foreground must not bypass a suspended older foreground.
+            for reader in detachedReaders {
+                await reader.wait()
+                guard transition == revision, !backgrounded else { return }
+            }
+            guard transition == revision, !backgrounded else { return }
+            detachedReaders.removeAll()
         }
         for key in Array(active.keys) {
             if value {
@@ -72,7 +82,7 @@ actor CloudLifecycleEngine: ChatEngine {
                 if let shutdown = active[key]?.shutdown { detachedReaders.append(shutdown) }
                 active[key]?.worker?.cancel()
                 active[key]?.worker = nil
-            } else if active[key]?.worker == nil { attach(key, replayUI: false) }
+            } else if active[key]?.worker == nil { attach(key) }
         }
     }
     /// Sign-out detaches without cancelling durable server work.
@@ -81,8 +91,13 @@ actor CloudLifecycleEngine: ChatEngine {
         active.removeAll()
         for state in previous { state.worker?.cancel(); state.output.finish() }
     }
-    private func attach(_ key: UUID, replayUI: Bool) {
-        guard active[key] != nil else { return }
+    func eraseAccountJournal() async {
+        detachAll()
+        try? await journal.erase()
+    }
+    private func attach(_ key: UUID) {
+        guard let state = active[key], !backgrounded else { return }
+        let replayUI = !state.uiReplayed
         let generation = UUID()
         active[key]?.generation = generation
         active[key]?.worker = Task { await self.consume(key, generation: generation, replayUI: replayUI) }
@@ -114,6 +129,7 @@ actor CloudLifecycleEngine: ChatEngine {
                 let events = await mapper.map(payload)
                 if replayUI { deliver(events, key: key, identity: state.identity) }
             }
+            if active[key]?.identity == state.identity { active[key]?.uiReplayed = true }
             if terminal { if valid(key, generation) { state.output.finish() }; return }
             guard valid(key, generation), !Task.isCancelled else { return }
             let journal = journal
@@ -126,7 +142,7 @@ actor CloudLifecycleEngine: ChatEngine {
                         await self.onRunStarted(conversation, turn, id)
                     }
                 }, onEvent: { _, _, id, data in
-                    try await journal.append(data, runID: id)
+                    guard try await journal.append(data, runID: id) else { return }
                     let event = try JSONDecoder().decode(CloudRunEvent.self, from: data)
                     // Publish from the durable hook, before transport acknowledgment.
                     // Cancellation cannot strand a journaled delta in an inner buffer.

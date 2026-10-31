@@ -33,6 +33,10 @@ final class CloudReviewReplicaTests: XCTestCase {
         let store = ChatStore.forLaunch(); store.newChat()
         await store.settle(); await native.flush()
         XCTAssertEqual(try Data(contentsOf: file), before)
+        defaults.set("http://public.invalid", forKey: "PraxisCloudServerURL")
+        let invalid = ChatStore.forLaunch(); invalid.newChat()
+        await invalid.settle(); await native.flush()
+        XCTAssertEqual(try Data(contentsOf: file), before)
     }
     func testFinishedLocalTurnNeverRestartsFromStaleRemoteRunningRow() async throws {
         let turn = Turn(userText: "Finished", blocks: [.markdown(id: UUID(), source: "Local rich answer", isStreaming: false)], isFinished: true, outcome: .completed, engine: .cloud)

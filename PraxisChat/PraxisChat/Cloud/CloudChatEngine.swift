@@ -56,6 +56,7 @@ struct CloudChatEngine: ChatEngine {
                     let mapper = CloudEventMapper(request: request)
                     for payload in priorEvents { _ = await mapper.map(payload) }
                     var nextCursor = cursor
+                    var recoveries = 0
                     while true {
                         do {
                     try await CloudSSEClient(client: client).consume(runID: id, chatID: request.cloudChatID ?? request.conversationID.uuidString, after: nextCursor,
@@ -68,6 +69,8 @@ struct CloudChatEngine: ChatEngine {
                     }
                             break
                         } catch let error as CloudAPIError where error.code == "cursor_expired" {
+                            guard recoveries < 2 else { throw CloudAPIError.malformedEvent("Snapshot recovery limit exceeded") }
+                            recoveries += 1
                             let raw = try await client.jsonData("/v1/runs/\(CloudAPIClient.segment(id))/snapshot")
                             let snapshot = try JSONDecoder().decode(CloudRunSnapshot.self, from: raw)
                             guard snapshot.run.id == id, snapshot.run.chatId == request.cloudChatID ?? request.conversationID.uuidString else {
@@ -206,7 +209,7 @@ struct CloudChatEngine: ChatEngine {
         guard let originURL = URL(string: "/", relativeTo: upload.uploadUrl)?.absoluteURL,
               (try? CloudServerConfiguration(baseURL: originURL)) != nil else { throw CloudAPIError.invalidServer }
         var request = URLRequest(url: upload.uploadUrl)
-        request.httpMethod = "POST"; request.httpBody = bytes
+        request.httpMethod = upload.method?.rawValue ?? "POST"; request.httpBody = bytes
         request.setValue(mediaType, forHTTPHeaderField: "Content-Type")
         request.httpShouldHandleCookies = false
         // Override any Authorization in the injectable session's default
@@ -216,6 +219,7 @@ struct CloudChatEngine: ChatEngine {
         let (data, response) = try await client.session.data(for: request, delegate: CloudRedirectGuard())
         try CloudAPIClient.validate(response, data: data)
         let storage = try JSONDecoder().decode(CloudStorageReceipt.self, from: data)
+        guard !storage.storageId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CloudAPIError.invalidResponse }
         let complete = CloudUploadComplete(storageId: storage.storageId, name: name, mediaType: mediaType, size: bytes.count, chatId: chatID)
         // v0 upload.complete lacks privacy metadata; send an additive field so
         // servers with v1 support can enforce Hide from code before the run.

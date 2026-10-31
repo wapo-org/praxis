@@ -53,10 +53,12 @@ actor CloudRunJournal {
     let directory: URL
     private var cursors: [String: Int] = [:]
     private var blocked = Set<String>()
+    private var closed = false
 
     init(directory: URL) { self.directory = directory.appendingPathComponent("Runs", isDirectory: true) }
 
     func register(_ record: Record) throws {
+        guard !closed else { throw Failure.writeFailed }
         try prepareDirectory()
         try JSONEncoder().encode(record).write(to: metadataURL(record.runID),
             options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
@@ -70,8 +72,9 @@ actor CloudRunJournal {
         }
     }
 
-    func append(_ data: Data, runID: String) throws {
-        guard !blocked.contains(runID) else { throw Failure.writeFailed }
+    @discardableResult
+    func append(_ data: Data, runID: String) throws -> Bool {
+        guard !closed, !blocked.contains(runID) else { throw Failure.writeFailed }
         let header = try JSONDecoder().decode(Envelope.self, from: data)
         guard header.type == "run.event", header.runId == runID, header.id > 0,
               header.id <= 9_007_199_254_740_991 else { throw Failure.invalidEvent }
@@ -91,7 +94,7 @@ actor CloudRunJournal {
                     try file.truncate(atOffset: replay.byteCount)
                 }
             }
-            guard header.id > (cursors[runID] ?? 0) else { return }
+            guard header.id > (cursors[runID] ?? 0) else { return false }
             if !FileManager.default.fileExists(atPath: url.path) {
                 try Data().write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             }
@@ -100,6 +103,7 @@ actor CloudRunJournal {
             try file.seekToEnd()
             try file.write(contentsOf: line)
             cursors[runID] = header.id
+            return true
         } catch {
             // Do not append a later cursor after a failed record: it would
             // create a gap that could not be recovered by Last-Event-ID.
@@ -130,6 +134,7 @@ actor CloudRunJournal {
     }
 
     func checkpoint(_ data: Data, runID: String) throws {
+        guard !closed else { throw Failure.writeFailed }
         let snapshot = try JSONDecoder().decode(CloudRunSnapshot.self, from: data)
         guard snapshot.run.id == runID else { throw Failure.invalidEvent }
         _ = try snapshot.presentationEvents()
@@ -155,6 +160,12 @@ actor CloudRunJournal {
         blocked.remove(runID)
     }
 
+    /// Closing prevents late detached readers from recreating signed-out data.
+    func erase() throws {
+        closed = true
+        cursors.removeAll(); blocked.removeAll()
+        if FileManager.default.fileExists(atPath: directory.path) { try FileManager.default.removeItem(at: directory) }
+    }
     private func prepareDirectory() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try? FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],

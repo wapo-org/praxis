@@ -39,7 +39,7 @@ final class ChatStore {
     /// with it, so the new bubble can fly in from where the text was typed.
     private(set) var nextTurnID = UUID()
     /// Runs in flight, keyed by conversation.
-    var runs: [UUID: RunHandle] = [:]
+    private(set) var runs: [UUID: RunHandle] = [:]
     /// Engine the next run uses. Changes to live when the first provider
     /// is added (unless `-PraxisEngine` pinned it).
     private(set) var engineKind: EngineKind
@@ -71,7 +71,7 @@ final class ChatStore {
     /// `forLaunch`; the composer and banners read it from here.
     @ObservationIgnored var voice: VoiceInputController?
     /// Trust and "always allow" grants (persisted with the index).
-    var policy = ToolPolicy()
+    private(set) var policy = ToolPolicy()
 
     @ObservationIgnored private var engine: any ChatEngine
     /// Providers, connectors, skills and the runtime (nil in previews and
@@ -79,7 +79,7 @@ final class ChatStore {
     @ObservationIgnored let services: AgentServices?
     @ObservationIgnored let cloudServices: CloudServices?
     @ObservationIgnored private let picksEngineAutomatically: Bool
-    @ObservationIgnored var persistence: ConversationStore?
+    @ObservationIgnored private var persistence: ConversationStore?
     @ObservationIgnored private let attachmentStore: AttachmentStore
     /// Streaming blocks' text, by block id. Not observed: the turn change
     /// that adds a block already re-renders its turn, which looks it up.
@@ -492,7 +492,36 @@ final class ChatStore {
         return ids.filter { !conv.disabledServerIDs.contains($0) }.compactMap { library.server($0)?.name }.sorted()
     }
 
-    func startRun(in conv: Conversation, turnID: UUID) {
+    // Narrow cloud lifecycle/persistence operations. Replica adapters never
+    // mutate run handles, the tool policy or the persistence reference directly.
+    var cloudPersistenceForCleanup: ConversationStore? { persistence }
+    func persistConversation(_ conv: Conversation) { save(conv) }
+    func detachCloudRun(_ id: UUID) {
+        guard let handle = runs.removeValue(forKey: id) else { return }
+        handle.task?.cancel()
+        approvals.denyAll(handle.approvalIDs.union(approvalIDs(in: handle.inbox.drain().events)))
+        cloudElicitations.cancel(scope: handle.elicitationScope)
+        background.runStopped(conversationID: id)
+    }
+    func resetCloudStorage() { persistence = nil; policy = ToolPolicy() }
+    func installCloudStorage(_ disk: ConversationStore, policy: ToolPolicy?) {
+        persistence = disk
+        if let policy { self.policy = policy }
+    }
+    func persistCloudProjection(_ changed: [Conversation], indexChanged: Bool) {
+        guard !changed.isEmpty || indexChanged else { return }
+        let index = ConversationStore.Index(conversations: conversations.map {
+            .init(id: $0.id, title: $0.title, updatedAt: $0.updatedAt, isPinned: $0.isPinned)
+        }, policy: policy)
+        persistence?.saveBatch(changed.map(\.record), index: index)
+    }
+    func restoreCloudTurn(_ id: UUID, in conv: Conversation) {
+        guard let index = conv.turns.firstIndex(where: { $0.id == id }) else { return }
+        conv.turns[index].blocks = []; conv.turns[index].transcript = []
+        startRun(in: conv, turnID: id)
+    }
+
+    private func startRun(in conv: Conversation, turnID: UUID) {
         // Settle-then-supersede: replacing a run without settling it would
         // abandon its turn as running forever (resend while streaming).
         stop(conversationID: conv.id)
@@ -819,105 +848,6 @@ final class ChatStore {
     }
 
     /// Demo-only toggles (Memory, connector discovery) hide when live.
-    var showsDemoToggles: Bool { !isLive }
-
-    /// The web-search toggle only shows where the provider can search.
-    var showsWebSearch: Bool {
-        if let cloud = cloudServices { return cloud.model(selectionID: model.id)?.capabilities.serverWebSearch == true }
-        return !isLive || services?.isWebSearchAvailable == true
-    }
-
-    /// The tray's connector list: demo data, or the installed servers with
-    /// this conversation's enablement when live. Once the chat has frozen
-    /// its tools, the frozen connectors still toggle (off = refused in
-    /// this chat only); servers outside the frozen setup are listed
-    /// separately (`newChatOnlyConnectors`).
-    var trayConnectors: [Connector] {
-        if let cloud = cloudServices {
-            let off = selected?.disabledServerIDs ?? []
-            let picked = selected?.connectorIDs
-            return cloud.connectors.map { $0.adapter(isOn: $0.enabled && !off.contains($0.id) && (picked?.contains($0.id) ?? true)) }
-        }
-        guard isLive else { return connectors }
-        guard let library = services?.connectors else { return [] }
-        let conv = selected
-        let off = conv?.disabledServerIDs ?? []
-        if let conv, let frozen = frozenServerIDs(of: conv) {
-            return library.servers.filter { frozen.contains($0.id) }.map { server in
-                Connector(id: server.id, name: server.name, monogram: Self.monogram(server.name),
-                          isOn: server.enabled && !off.contains(server.id),
-                          lockedReason: server.enabled ? nil : "Off in Settings")
-            }
-        }
-        let enabled = Set(conv.map(enabledConnectorIDs(for:)) ?? library.defaultConversationServerIDs)
-        return library.servers.map { server in
-            Connector(id: server.id, name: server.name, monogram: Self.monogram(server.name),
-                      isOn: enabled.contains(server.id) && !off.contains(server.id))
-        }
-    }
-
-    /// Installed servers the selected chat can't use: added (or not
-    /// picked) after it froze its tools. They're available in new chats.
-    var newChatOnlyConnectors: [Connector] {
-        guard isLive, let library = services?.connectors, let conv = selected,
-              let frozen = frozenServerIDs(of: conv) else { return [] }
-        return library.servers.filter { !frozen.contains($0.id) }.map { server in
-            Connector(id: server.id, name: server.name, monogram: Self.monogram(server.name), isOn: false,
-                      lockedReason: "Available in new chats")
-        }
-    }
-
-    /// True once the selected conversation froze its tools: only those
-    /// connectors can be switched on or off here.
-    var connectorsFrozen: Bool {
-        isLive && selected.flatMap(frozenServerIDs(of:)) != nil
-    }
-
-    func setConnector(_ id: String, isOn: Bool) {
-        if cloudServices != nil, let conv = selected {
-            if isOn { conv.disabledServerIDs.remove(id) } else { conv.disabledServerIDs.insert(id) }
-            save(conv)
-            return
-        }
-        guard isLive else {
-            if let i = connectors.firstIndex(where: { $0.id == id }) { connectors[i].isOn = isOn }
-            return
-        }
-        guard let conv = selected else { return }
-        if let frozen = frozenServerIDs(of: conv) {
-            // Frozen: the tool list can't change, so "off" is a refusal the
-            // runtime applies on every run of this chat.
-            guard frozen.contains(id) else { return }
-            if isOn { conv.disabledServerIDs.remove(id) } else { conv.disabledServerIDs.insert(id) }
-        } else {
-            var ids = enabledConnectorIDs(for: conv).filter { $0 != id }
-            if isOn { ids.append(id) }
-            conv.connectorIDs = ids
-            conv.disabledServerIDs.remove(id)
-        }
-        save(conv)
-    }
-
-    private static func monogram(_ name: String) -> String { String(name.prefix(1)).uppercased() }
-
-    /// Connectors to freeze into the conversation's setup.
-    private func enabledConnectorIDs(for conv: Conversation) -> [String] {
-        if let cloud = cloudServices {
-            let installed = Set(cloud.connectors.filter(\.enabled).map(\.id))
-            return (conv.connectorIDs ?? Array(installed)).filter(installed.contains).sorted()
-        }
-        let installed = services?.connectors.servers.map(\.id) ?? []
-        let ids = conv.connectorIDs ?? services?.connectors.defaultConversationServerIDs ?? []
-        return ids.filter(installed.contains)
-    }
-
-    /// The frozen servers, once the setup can no longer be re-prepared
-    /// (a live message has been sent).
-    private func frozenServerIDs(of conv: Conversation) -> Set<String>? {
-        guard let setup = conv.setup, conv.turns.contains(where: { $0.engine == .live && !$0.transcript.isEmpty }) else { return nil }
-        return Set(setup.mcpServers.map(\.id))
-    }
-
     // MARK: UI mutations
 
     func setActivityExpanded(turnID: UUID, blockID: UUID, expanded: Bool) {

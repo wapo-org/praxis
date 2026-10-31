@@ -20,14 +20,12 @@ extension ChatStore {
                 }
                 #endif
                 let client = CloudAPIClient(configuration: configuration, session: session, tokens: tokens)
-                let store = makeCloudStore(client: client,
-                                           persistence: ConversationStore(directory: AppDirectories.conversations))
+                let store = makeCloudStore(client: client)
                 store.background.installNotificationDelegate()
                 store.background.appDidLaunch()
                 return store
             } catch {
-                return ChatStore(engine: CloudConfigurationErrorEngine(message: error.localizedDescription),
-                                 persistence: ConversationStore(directory: AppDirectories.conversations))
+                return ChatStore(engine: CloudConfigurationErrorEngine(message: error.localizedDescription), conversations: [])
             }
         }
         // SUNSET(native-loop): only explicit demo/scripted launches or the

@@ -1,5 +1,6 @@
 import Foundation
 import AgentCore
+import OSLog
 
 struct CloudRemoteChat: Decodable, Sendable {
     let id: String
@@ -46,25 +47,52 @@ struct CloudCursorReplica: Codable, Sendable {
     }
     var cursor = "0"
     var values: [String: JSONValue] = [:]
+    var quarantine: [String: JSONValue]? = nil
+    private static let log = Logger(subsystem: "com.praxis.chat", category: "CloudSync")
 
     static func load(_ url: URL) throws -> Self {
         guard FileManager.default.fileExists(atPath: url.path) else { return Self() }
-        return try JSONDecoder().decode(Self.self, from: Data(contentsOf: url))
+        var replica = try JSONDecoder().decode(Self.self, from: Data(contentsOf: url))
+        replica.quarantineInvalidRows()
+        return replica
     }
     mutating func apply(_ page: Page, file: URL) throws {
         var next = self
         for row in page.entities {
-            if row.deleted { next.values.removeValue(forKey: row.key) }
-            else if let value = row.value { next.values[row.key] = value }
+            if row.deleted { next.values.removeValue(forKey: row.key); next.quarantine?.removeValue(forKey: row.key) }
+            else if let value = row.value { next.values[row.key] = value; next.quarantine?.removeValue(forKey: row.key) }
         }
+        next.quarantineInvalidRows()
         next.cursor = page.cursor
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try JSONEncoder().encode(next).write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         self = next
     }
+    private mutating func quarantineInvalidRows() {
+        for (key, value) in values {
+            do {
+                let data = try JSONEncoder().encode(value)
+                switch key.split(separator: ":", maxSplits: 1).first {
+                case "chat": _ = try JSONDecoder().decode(CloudRemoteChat.self, from: data)
+                case "message": _ = try JSONDecoder().decode(CloudSyncedMessage.self, from: data)
+                case "run": _ = try JSONDecoder().decode(CloudRun.self, from: data)
+                default: continue
+                }
+            } catch {
+                quarantine = quarantine ?? [:]
+                quarantine?[key] = value
+                values.removeValue(forKey: key)
+                Self.log.error("Quarantined undecodable sync row \(key, privacy: .private(mask: .hash))")
+            }
+        }
+    }
     func rows<T: Decodable>(_ kind: String, as type: T.Type) throws -> [T] {
-        try values.filter { $0.key.hasPrefix(kind + ":") }.sorted { $0.key < $1.key }.map {
-            try JSONDecoder().decode(type, from: JSONEncoder().encode($0.value))
+        values.filter { $0.key.hasPrefix(kind + ":") }.sorted { $0.key < $1.key }.compactMap {
+            do { return try JSONDecoder().decode(type, from: JSONEncoder().encode($0.value)) }
+            catch {
+                Self.log.error("Skipped undecodable sync row \($0.key, privacy: .private(mask: .hash))")
+                return nil
+            }
         }
     }
 }

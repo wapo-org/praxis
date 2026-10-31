@@ -64,7 +64,46 @@ final class CloudLiveIntegrationTests: XCTestCase {
         if script == "elicitationURL" { XCTAssertTrue(sawURL) }
         if script == "elicitation" { XCTAssertTrue(sawForm) }
         XCTAssertTrue(turn.isFinished, script)
+        assertProjection(turn, events: events, script: script, prompt: request.userText)
         return (turn, events)
+    }
+    private func assertProjection(_ turn: Turn, events: [AgentEvent], script: String, prompt: String) {
+        let text = turn.blocks.compactMap { block -> String? in
+            if case .markdown(_, let source, _) = block { return source }; return nil
+        }.joined()
+        let steps = turn.blocks.compactMap { block -> ActivityData? in
+            if case .activity(let activity) = block { return activity }; return nil
+        }.flatMap(\.steps)
+        let results = turn.transcript.flatMap(\.toolResults)
+        guard turn.outcome == .completed else {
+            if script == "error", case .failed(let reason) = turn.outcome { XCTAssertTrue(reason.contains("Scripted provider error")) }
+            if script == "long", turn.outcome == .stopped {
+                XCTAssertFalse(text.isEmpty)
+                XCTAssertTrue(String(repeating: "Scripted streaming response. ", count: 400).hasPrefix(text))
+            }
+            return
+        }
+        let tools = ["tools", "approval", "nestedApproval", "elicitation", "elicitationURL", "vision"].contains(script)
+        let expected = script == "long" ? String(repeating: "Scripted streaming response. ", count: 400)
+            : tools ? "Scripted tools completed." : "Scripted response: " + prompt
+        XCTAssertEqual(text, expected, script)
+        XCTAssertEqual(turn.transcript.last(where: { $0.role == .assistant })?.text, expected, script)
+        if tools {
+            XCTAssertFalse(results.isEmpty, script)
+            XCTAssertTrue(results.allSatisfy { !$0.isError }, script)
+            XCTAssertTrue(steps.contains { $0.toolCallID != nil && $0.status == .succeeded }, script)
+        }
+        let resultText = results.flatMap(\.content).compactMap(\.text).joined()
+        switch script {
+        case "tools": XCTAssertTrue(resultText.contains("{}"))
+        case "approval", "nestedApproval":
+            XCTAssertTrue(resultText.contains("Local write completed."))
+            XCTAssertTrue(events.contains { if case .toolApprovalResolved(_, .allowOnce) = $0 { return true }; return false })
+        case "elicitation": XCTAssertTrue(resultText.contains("Live test"))
+        case "elicitationURL": XCTAssertTrue(resultText.contains("Local Connector sign-in completed."))
+        case "vision": XCTAssertTrue(resultText.contains("A scripted image."))
+        default: break
+        }
     }
     private func completed(_ script: String) async throws -> [AgentEvent] {
         let api = try await client()
