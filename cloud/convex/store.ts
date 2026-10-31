@@ -95,6 +95,16 @@ export const changes = query({
   },
 });
 
+/** Owners with stored rows, paginated (one `sequences` row per owner). Used only by maintenance scripts. */
+export const owners = query({
+  args: { serverToken: v.string(), cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, a) => {
+    await requireServer(a.serverToken);
+    const page = await ctx.db.query('sequences').paginate({ cursor: a.cursor, numItems: 200 });
+    return { owners: page.page.map((row) => row.userId), cursor: page.isDone ? null : page.continueCursor };
+  },
+});
+
 /** Latest revision for the owner (0 when none): newest entry of the owner's revision index. */
 export const head = query({
   args: scope,

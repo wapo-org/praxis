@@ -1,9 +1,12 @@
+import {cropImage, cropImageReaderTool} from './features/tools/image-crop.js';
+import {connectorToolNotes} from './features/tools/tool-notes.js';
 import {Hono} from 'hono';
 import {createImageReaderTool, type AgentTool, type ModelProvider} from '@praxis/agent';
 import {PreferencesSchema, type Chat, type MessagePart, type Model} from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from './contracts.js';
-import {createMcpRoutes, getMcpTools, type McpOptions} from './features/mcp/index.js';
+import {connectorTurnNotes, createMcpGateway, createMcpRoutes, getMcpTools, type McpOptions} from './features/mcp/index.js';
 import {createLocalToolsStorage, createToolsRoutes, type ToolsStorage} from './features/tools/index.js';
+import {rehydrateAttachment} from './features/tools/media.js';
 import {javascriptTool, listSkillsForCatalog, skillTools} from './features/tools/builtin.js';
 import type {FeatureModule} from './server.js';
 import type {ApiService} from './service.js';
@@ -29,17 +32,34 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
       },
       execution: {
         skills: ctx => listSkillsForCatalog(ctx),
+        turnNotes: (ctx, chat, previous) => connectorTurnNotes(ctx, chat, previous),
+        media: (ctx, part) => rehydrateAttachment(ctx, storage, part),
+        toolNotes: async (ctx, chat) => connectorToolNotes(await getMcpTools(ctx, {chatId: chat.id, disabledConnectorIds: chat.disabledConnectorIds}, mcp)),
         async tools(ctx, {chat, attachmentIds}) {
           const connectors = await getMcpTools(ctx, {chatId: chat.id, disabledConnectorIds: chat.disabledConnectorIds}, mcp);
-          const skills = skillTools(ctx);
+          const skills = skillTools(ctx, storage);
           const hostToolNames = [...connectors, ...skills].map(t => t.name);
           const js = javascriptTool(ctx, {attachmentIds, hostToolNames, ...(storage ? {storage} : {})});
-          return [...skills, js, ...connectors] satisfies FeatureTool[];
+          return [...skills, js, ...withGateway(chat, connectors)] satisfies FeatureTool[];
         },
         agentTools: async (ctx, {chat}) => visionTools(service, ctx, chat, storage),
       },
     },
   ];
+}
+
+/** Above this many connector tools the gateway trio replaces direct tools (AgentRuntime gatewayThreshold). */
+export const GATEWAY_THRESHOLD = 30;
+
+/**
+ * The gateway decision is frozen with the conversation (like ConversationSetup.gatewayThreshold): a chat that
+ * started with the gateway keeps it, one that started with direct tools keeps those, whatever the count later.
+ */
+export function withGateway(chat: Chat, connectors: FeatureTool[]): FeatureTool[] {
+  const frozen = chat.setup?.tools.map(t => t.name);
+  const gateway = frozen ? frozen.includes('mcp_call_tool') : connectors.length > GATEWAY_THRESHOLD;
+  if (!gateway) return connectors;
+  return [...createMcpGateway(connectors), ...connectors.map(t => ({...t, hidden: true}))];
 }
 
 export function localModules(baseUrl: string): (service: ApiService) => FeatureModule[] {
@@ -63,8 +83,9 @@ export async function visionTools(service: ApiService, ctx: FeatureContext, chat
   const provider = await readerProvider(service, ctx.userId, vision.providerId, vision.modelId);
   if (!provider) return [];
   return [
-    createImageReaderTool({
+    cropImageReaderTool(createImageReaderTool({
       provider,
+      crop: cropImage,
       modelId: vision.modelId,
       async resolveImage(userId, chatId, imageId): Promise<MessagePart | null> {
         const row = await ctx.store.get(userId, 'attachment', imageId);
@@ -74,7 +95,7 @@ export async function visionTools(service: ApiService, ctx: FeatureContext, chat
         if (!file.mediaType.startsWith('image/')) return null;
         return {type: 'image', attachmentId: imageId, mediaType: file.mediaType, data: Buffer.from(file.bytes).toString('base64')};
       },
-    }),
+    })),
   ];
 }
 

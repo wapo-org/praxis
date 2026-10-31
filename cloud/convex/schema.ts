@@ -14,6 +14,10 @@ const row = {
 };
 
 export default defineSchema({
+  toolSkillFiles: defineTable({userId:v.string(),skillId:v.string(),path:v.string(),content:v.string()})
+    .index('owner_skill', ['userId','skillId']),
+  toolState: defineTable({userId:v.string(),kind:v.string(),id:v.string(),value:v.any()})
+    .index('owner_kind_id', ['userId','kind','id']),
   // Current state of every record, including tombstones.
   records: defineTable(row)
     .index('owner_kind_id', ['userId', 'kind', 'id'])
@@ -41,9 +45,12 @@ export default defineSchema({
     expiresAt: v.number(),
     storageId: v.optional(v.id('_storage')),
     sha256: v.optional(v.string()),
-    status: v.union(v.literal('pending'), v.literal('ready')),
+    status: v.union(v.literal('pending'), v.literal('uploading'), v.literal('uploaded'), v.literal('ready')),
   })
+    .index('ticket', ['ticket'])
     .index('owner_ticket', ['userId', 'ticket'])
+    .index('owner_status', ['userId', 'status'])
+    .index('storage', ['storageId'])
     .index('owner_storage', ['userId', 'storageId'])
     .index('status_expires', ['status', 'expiresAt']),
 });

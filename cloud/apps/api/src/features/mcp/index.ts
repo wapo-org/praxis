@@ -8,6 +8,8 @@ import { withClient } from './client.js';
 import { clientMetadata, finishOAuth, startOAuth } from './oauth.js';
 import { connector, HeadersSchema, McpError, now, opaqueId, page, remoteUrl, requireConsent, saveConnector, secretKind, writeSecret, type McpOptions } from './shared.js';
 export { getMcpTools, createMcpGateway, qualifiedName } from './tools.js';
+export { connectorTurnNotes, probeConnector } from './health.js';
+import { probeConnector } from './health.js';
 export type { McpOptions, OAuthState } from './shared.js';
 
 const Input = ConnectorInputSchema.extend({ extraHeaders: HeadersSchema.optional() }).strict();
@@ -64,7 +66,8 @@ export function createMcpRoutes(context: (req: Request) => Promise<FeatureContex
     if (input.token !== undefined) await writeSecret(ctx, id, 'token', input.token);
     if (input.extraHeaders) await writeSecret(ctx, id, 'headers', input.extraHeaders);
     const value = await saveConnector(ctx, ConnectorSchema.parse({ ...input, id, url, type: 'connector', headerNames: Object.keys(input.extraHeaders ?? {}), authStatus: input.token ? 'connected' : 'none', updatedAt: now() }));
-    return c.json(value, 201);
+    // Creation always succeeds (the URL or sign-in can be fixed later); the status says what the handshake found.
+    return c.json(await probeConnector(ctx, value, options), 201);
   });
   app.get('/connectors/:id', async c => c.json(await connector(await authenticated(c.req.raw), ParamId.parse(c.req.param('id')))));
   app.patch('/connectors/:id', async c => {
@@ -76,7 +79,15 @@ export function createMcpRoutes(context: (req: Request) => Promise<FeatureContex
     if (targetChanged) { await ctx.store.delete(ctx.userId, secretKind, id); next.authStatus = 'none'; next.headerNames = []; next.toolCount = undefined; next.promptsCount = undefined; }
     if (input.token !== undefined) { await writeSecret(ctx, id, 'token', input.token); next.authStatus = input.token ? 'connected' : 'none'; }
     if (input.extraHeaders) { await writeSecret(ctx, id, 'headers', input.extraHeaders); next.headerNames = Object.keys(input.extraHeaders); }
-    await ctx.kv.del(catalogKey(ctx, id)); return c.json(await saveConnector(ctx, ConnectorSchema.parse(next)));
+    if (targetChanged) { next.status = undefined; next.lastCheckedAt = undefined; next.statusCode = undefined; }
+    await ctx.kv.del(catalogKey(ctx, id)); const saved = await saveConnector(ctx, ConnectorSchema.parse(next));
+    // A new endpoint or new credentials invalidate the last check: run it again.
+    const recheck = targetChanged || input.token !== undefined || input.extraHeaders !== undefined || (input.enabled === true && !value.enabled);
+    return c.json(recheck && saved.enabled ? await probeConnector(ctx, saved, options) : saved);
+  });
+  app.post('/connectors/:id/refresh', async c => {
+    const ctx = await authenticated(c.req.raw); const value = await connector(ctx, ParamId.parse(c.req.param('id')));
+    return c.json(await probeConnector(ctx, value, options));
   });
   app.delete('/connectors/:id', async c => {
     const ctx = await authenticated(c.req.raw); const id = ParamId.parse(c.req.param('id')); await connector(ctx, id);

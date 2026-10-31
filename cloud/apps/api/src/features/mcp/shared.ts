@@ -16,6 +16,8 @@ export interface McpOptions {
   /** Atomic Redis GETDEL (or equivalent). Required for production OAuth callbacks. */
   consumeOAuthState?: (key: string) => Promise<OAuthState | null>;
   /** Resolve via the run's consent/elicitation mechanism; absence declines, never accepts. */
+  /** Distributed lease (Redis in production) so one instance refreshes a connector's OAuth tokens at a time. */
+  lease?: { acquire(key: string, ttlMs: number): Promise<string | null>; release(key: string, token: string): Promise<void> };
   elicit?: (request: ElicitRequest['params'], context: { userId: string; connectorId: string; connectorName: string; chatId?: string; runId?: string }) => Promise<ElicitResult>;
 }
 export interface OAuthState {
@@ -38,6 +40,12 @@ export async function saveConnector(ctx: FeatureContext, value: Connector) {
   const next = ConnectorSchema.parse({ ...value, updatedAt: now() });
   await ctx.store.put(ctx.userId, 'connector', next.id, next as JsonObject);
   return next;
+}
+/** Existing authStatus=required is the public needs-reauth state; error carries the machine reason. */
+export async function requireReauth(ctx: FeatureContext, value: Connector): Promise<never> {
+  const live = await connector(ctx, value.id);
+  await saveConnector(ctx, {...live, authStatus: 'required', error: 'needs_reauth'});
+  throw new McpError(409, 'authorization_required', `${value.name} needs sign-in in connector settings`);
 }
 export async function readSecret<T>(ctx: FeatureContext, id: string, slot: string): Promise<T | undefined> {
   const row = await ctx.store.get(ctx.userId, secretKind, id);

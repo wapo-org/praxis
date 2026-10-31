@@ -28,5 +28,5 @@ export async function saveSkill(ctx:FeatureContext,input:{name:string;descriptio
  await ctx.store.put(ctx.userId,'skill',id,skill);return skill;
 }
 export async function skillByName(ctx:FeatureContext,name:string):Promise<Skill>{const row=(await ctx.store.list(ctx.userId,'skill')).find(r=>!r.deleted&&r.value.name===name&&r.value.enabled!==false);if(!row)throw new ApiError(404,'not_found','Enabled skill not found');return SkillSchema.parse(row.value);}
-export function skillPath(path:string){if(!path||path.length>240||path.startsWith('/')||path.includes('\\')||path.includes('\0')||path.split('/').some(p=>p===''||p==='.'||p==='..'||p.startsWith('.')))throw new ApiError(400,'invalid_path','Expected a relative skill file path');return path;}
+export function skillPath(path:string){if(!path||path.length>240||(path.startsWith('/')||/^[a-z]:/i.test(path)||path.startsWith('~')||/%(?:2e|2f|5c)/i.test(path))||path.includes('\\')||path.includes('\0')||path.split('/').some(p=>p===''||p==='.'||p==='..'||p.startsWith('.')))throw new ApiError(400,'invalid_path','Expected a relative skill file path');return path;}
 export function allowedSkillFile(path:string){skillPath(path);return !path.split('/').includes('scripts')&&/\.(md|txt|csv|json|ya?ml|xml|html|css)$/i.test(path);}

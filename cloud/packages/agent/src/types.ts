@@ -74,7 +74,10 @@ export const CheckpointSchema = z.object({
   hiddenTools:ConversationSetupSchema.shape.tools.default([]),
   phase:z.enum(['model','tools','terminal']),iteration:z.number().int().nonnegative(),
   pending:z.array(PendingCallSchema),
-  calls:z.record(z.string(),z.object({call:PendingCallSchema,result:ToolResultSchema.optional(),key:z.string().optional()})),
+  /** `started` is persisted before a tool executes; a replay that finds it without a result knows the call was interrupted. */
+  calls:z.record(z.string(),z.object({call:PendingCallSchema,result:ToolResultSchema.optional(),key:z.string().optional(),started:z.boolean().optional()})),
+  /** Transcript messages saved with the checkpoint but not yet delivered as `messages.committed` (durable outbox). */
+  outbox:z.array(MessageSchema).default([]),
   approval:ApprovalSchema.optional(),elicitation:ElicitationSchema.optional(),
   resolutions:z.record(z.string(),JsonValueSchema),
   maxIterations:z.number().int().positive().default(40),maxTokens:z.number().int().positive().default(8192),

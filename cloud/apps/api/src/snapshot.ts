@@ -1,7 +1,7 @@
 import { RunSnapshotSchema, type Run, type RunEventPayload, type RunSnapshot } from '@praxis/protocol';
 export function initialSnapshot(run:Run):RunSnapshot{return RunSnapshotSchema.parse({type:'run.snapshot',run,lastEventId:0,blocks:[],tools:[],pendingApprovals:[],pendingElicitations:[],messages:[]});}
 export function foldSnapshot(state:RunSnapshot,event:RunEventPayload,id:number,run:Run):RunSnapshot{
- const s=structuredClone(state);s.run=run;s.lastEventId=id;
+ const s=structuredClone(state);s.run=run;s.lastEventId=Math.max(s.lastEventId,id);
  switch(event.type){
  case 'text.delta':case 'reasoning.delta':{
   let b=s.blocks.find(b=>b.id===event.blockId);if(!b){b={type:event.type==='text.delta'?'text':'reasoning',id:event.blockId,text:'',finished:false};s.blocks.push(b);}b.text+=event.text;break;}

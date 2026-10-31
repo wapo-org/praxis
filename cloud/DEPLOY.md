@@ -1,53 +1,103 @@
-# Praxis Cloud deployment setup
+# Deploying the Praxis API
 
-Local development needs no accounts: see README. Agents do not create projects/accounts, deploy, or read credentials from other apps. The following setup is for the owner to perform after reviewing production readiness.
+Local development needs no accounts (see README: `npm run dev:local`). This page is for the owner who creates the hosted services.
+Agents never create accounts, deploy or read credentials.
 
-## Current readiness
+The production composition is `apps/api/src/production.ts`; the Vercel entry is `apps/api/api/index.ts`.
+At startup the API checks every required variable. If any are missing or malformed, it exits with one error listing all of them.
+It never falls back to memory adapters or dev auth.
 
-M1 local API is executable and tested. Production adapters, real providers/MCP/tools and external-service verification are separate M2/M3 work. A successful local smoke or bundle does not establish production readiness. Production must fail closed if auth, durable scheduling or storage is missing; never select memory adapters or dev auth on Vercel.
+## Environment variables (Vercel project → Settings → Environment Variables)
 
-## Accounts and services
-
-1. Create/select a Convex deployment. Configure its schema and server-only API functions from `cloud/convex/` once available. Obtain the deployment URL and an internal service credential; do not expose either service credential or deployment admin keys to web/iOS. Attachments and output spills use Convex file storage.
-2. Create/select Upstash Redis with sufficient stream retention and QStash. Obtain Redis REST URL/token, QStash publish token, and current/next signing keys. Configure continuation callback to `https://API_HOST/internal/continue`; request signatures and lease fencing are mandatory. Choose retention above the required reconnect window and monitor memory/stream trimming.
-3. Create Vercel projects for API (`cloud/apps/api`) and static SPA (`cloud/apps/web`). Set Node 24. API has one Hono Node entry, Fluid Compute and bounded slices. Set build root/install commands for npm workspaces (install from `cloud/`). No agent runs vercel deploy.
-4. Configure Better Auth with the API public origin, trusted web origin, Convex-backed auth/session storage and bearer plugin for Swift. Confirm login, logout, cookie flags, session expiry and revocation using both clients before enabling nonlocal users. API-only access applies to all Convex data.
-5. Register MCP OAuth redirect `https://API_HOST/v1/connectors/oauth/callback`. Hosted CIMD is `https://API_HOST/v1/oauth/client-metadata.json`. Connector auth uses DCR when allowed; manually provisioned clients may require their own client ID/secret. Native return is exactly `praxis-app://oauth/callback?state=...` (same issued state, success or error), after server-side token exchange. Web return origins must be allowlisted. Never accept arbitrary redirects.
-
-## Environment inventory
-
-| Variable | Purpose | Local requirement |
+| Variable | Required | What it is / where to get it |
 |---|---|---|
-| `NODE_ENV` | production restrictions | unset/development for local |
-| `PORT` | local API listener (A 8787, B 8797, C 8807) | optional |
-| `HOST` | local bind address (default 127.0.0.1) | optional; use explicit LAN bind for physical device |
-| `PRAXIS_API_URL` | public API origin used by callbacks and absolute URLs | production |
-| `PRAXIS_ALLOWED_ORIGINS` | comma-separated trusted SPA origins for CORS/CSRF | production |
-| `BETTER_AUTH_SECRET` | random high-entropy auth signing secret | production |
-| `BETTER_AUTH_URL` | exact public auth/API origin | production |
-| `PRAXIS_ENCRYPTION_KEY` | base64 encoding of exactly 32 random bytes, AES-256-GCM | production; local generates ephemeral key |
-| `CONVEX_URL` | server deployment endpoint | production/Convex contract tests |
-| `CONVEX_DEPLOY_KEY` | Convex CLI provisioning credential (never shipped in API/client) | setup only |
-| `PRAXIS_CONVEX_SERVICE_TOKEN` | API-to-Convex authenticated service access | production/contract tests |
-| `UPSTASH_REDIS_REST_URL` | Redis REST endpoint | production/Upstash tests |
-| `UPSTASH_REDIS_REST_TOKEN` | Redis REST token | production/Upstash tests |
-| `QSTASH_TOKEN` | publishes bounded continuation jobs | production |
-| `QSTASH_CURRENT_SIGNING_KEY` | verifies current QStash signatures | production |
-| `QSTASH_NEXT_SIGNING_KEY` | rotating QStash verification key | production |
-| `PRAXIS_CONTINUATION_URL` | absolute signed callback destination | production |
-| `PRAXIS_RUN_BUDGET_MS` | execution slice budget below Vercel function max duration | production default documented with scheduler |
-| `PRAXIS_SYNC_STRATEGY` | cursor or merkle; experiment winner is default | optional |
-| `GROQ_API_KEY` | server transcription key fallback; user key stays encrypted | voice integration only |
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | optional small live provider smoke tests | never required |
-| `PRAXIS_MCP_ALLOWED_RETURN_ORIGINS` | approved web OAuth returns | production OAuth |
-| `PRAXIS_OAUTH_CLIENT_ID` / `PRAXIS_OAUTH_CLIENT_SECRET` | connector-specific manual client fallback if supported | service-dependent |
+| `PRAXIS_API_URL` | yes | Public https origin of the API, no path (e.g. `https://api.example.com`). Used for OAuth callbacks, upload URLs and the QStash callback. |
+| `PRAXIS_WEB_ORIGINS` | yes | Comma-separated https origins of the web app (CORS, CSRF and auth trusted origins). |
+| `PRAXIS_ENCRYPTION_KEYS` | yes | AES-256-GCM keyring for provider keys, MCP tokens and the voice key: comma-separated base64 32-byte keys, **current first**, then previous ones. Generate a key with `openssl rand -base64 32`. A single legacy `PRAXIS_ENCRYPTION_KEY` is still accepted. See Key rotation. |
+| `BETTER_AUTH_SECRET` | yes | Session signing secret, ≥ 32 chars: `openssl rand -base64 48`. |
+| `PRAXIS_COOKIE_SAMESITE` | no | `lax` (default), `strict` or `none`. Use `none` when the web app and API are on different sites. |
+| `CONVEX_URL` | yes | Convex dashboard → deployment → Settings → URL (`https://<name>.convex.cloud`). |
+| `PRAXIS_CONVEX_SERVER_TOKEN` | yes | API-to-Convex credential, ≥ 32 chars: `openssl rand -base64 48`. Set the **same value** in the Convex deployment env (below). |
+| `UPSTASH_REDIS_REST_URL` | yes | Upstash console → Redis database → REST API → URL. |
+| `UPSTASH_REDIS_REST_TOKEN` | yes | Same page → REST token (not the read-only one). |
+| `QSTASH_TOKEN` | yes | Upstash console → QStash → `QSTASH_TOKEN`. |
+| `QSTASH_CURRENT_SIGNING_KEY` | yes | QStash → Signing keys → current. |
+| `QSTASH_NEXT_SIGNING_KEY` | yes | QStash → Signing keys → next (needed for key rotation). |
+| `PRAXIS_RUN_BUDGET_MS` | no | Time budget per run slice, default `240000`. Keep it under `maxDuration` (300 s) minus about 30 s. |
+| `PRAXIS_SYNC_STRATEGY` | no | `cursor` (default, the winner of docs/SYNC_EXPERIMENT.md) or `merkle`. |
+| `GROQ_API_KEY` | no | Server-side fallback for `/v1/transcribe` (console.groq.com → API Keys). Users can also save their own key; it is stored encrypted. |
 
-Adapters may name additional test-only options; record their exact implemented variables in docs/api/DATA.md. The inventory above describes required roles; do not claim a variable is wired until its adapter lands. No browser environment variable may contain secrets. Browser configuration is API origin only; Swift stores its session bearer, never Convex/Redis credentials.
+Never set these in production: `PRAXIS_LOCAL_SMOKE` (the bundle refuses to start if it is set), `NODE_ENV=development`.
+Browser builds get only the API origin, never a secret.
 
-## Verification and rollout
+### Convex deployment environment (Convex dashboard → Settings → Environment Variables)
 
-Run `npm install`, `npm run -ws --if-present typecheck`, `npm test`, API bundle check, then local `npm run dev:local` and `npm run smoke:local -w @praxis/api`. Real adapter contract suites require the listed environment; skips must be recorded. Test signed continuation beyond a tiny function budget, duplicate callback delivery, lease expiry, provider/tool interruption, output spills, Redis retention expiry/snapshot resume, cache invalidation, user separation, and cookie/bearer logout before production.
+| Variable | Value |
+|---|---|
+| `PRAXIS_CONVEX_SERVER_TOKEN` | Same value as on Vercel. Every Convex function rejects calls without it. |
 
-A Convex accountless local deployment may be used for tests on ports 3210/3211 without creating a hosted project. Team-specific API ports avoid collisions. Vercel CLI local build may require login/project linkage; if unavailable, use the API's own esbuild step and state that `vercel build` was not verified.
+## 1. Convex
 
-Use HTTPS in production, encrypted secrets with owner/resource authenticated data, approved outbound destinations, small request limits, per-user rate limits, bounded provider streams and QuickJS memory/time limits. Logs must omit request bodies, credentials/cookies, OAuth codes, transcripts and provider responses. Key rotation needs a planned decrypt-and-reencrypt pass and a rollback window; changing PRAXIS_ENCRYPTION_KEY alone makes old values unreadable.
+1. Create a project at dashboard.convex.dev (production deployment).
+2. In `cloud/`, run `npx convex deploy`. It asks for login/`CONVEX_DEPLOY_KEY`, and pushes `cloud/convex/` (schema plus the store, auth, files and tools functions).
+3. Set `PRAXIS_CONVEX_SERVER_TOKEN` in the Convex env, and copy the deployment URL into `CONVEX_URL` on Vercel.
+4. Never ship `CONVEX_DEPLOY_KEY` to the API or clients. It is only for the deploy step.
+
+## 2. Upstash
+
+1. Create a **Redis** database (regional, close to the Vercel region; TLS on). Copy the REST URL and token.
+   Event streams keep the last 5000 events per run for 7 days; reconnects older than that get `cursor_expired`, and clients then refetch the run snapshot.
+2. Open **QStash** in the same account. Copy `QSTASH_TOKEN` and both signing keys.
+   The API publishes continuations to `PRAXIS_API_URL/internal/continue` with 3 retries. Each delivery is signature-checked, and duplicate deliveries are fenced by the run lease and compare-and-set checkpoint writes.
+
+## 3. Vercel (API)
+
+1. Create a project from this repo with Root Directory `cloud/apps/api`. Enable "Include files outside the root directory" (npm workspaces).
+2. Framework: Other. `vercel.json` sets install (`cd ../.. && npm ci`), build (`npm run build`), Fluid compute, `maxDuration` 300 s, 1024 MB memory, and routes every path to `api/index.ts`.
+3. Node.js version: 24.x. Add the variables above to Production (and Preview, with separate Convex and Upstash resources if possible).
+4. Deploy. Check `GET /health` → `{"mode":"production"}`.
+5. Native dependencies: `sharp` (image crop) and `quickjs-emscripten` (JS sandbox) stay external and are installed by `npm ci` on Vercel.
+
+## 4. Vercel (web)
+
+Create a second project with Root Directory `cloud/apps/web` (see `cloud/docs/web/`). Set its API origin to `PRAXIS_API_URL`, and add its origin to `PRAXIS_WEB_ORIGINS`.
+
+## OAuth and callback URLs to register
+
+| What | URL |
+|---|---|
+| MCP connector OAuth redirect (register with servers that need a pre-registered client; DCR clients get it automatically) | `PRAXIS_API_URL/v1/connectors/oauth/callback` |
+| Hosted client metadata document (CIMD client id) | `PRAXIS_API_URL/v1/oauth/client-metadata.json` |
+| Native app return after connector OAuth (handled by the app, nothing to register server-side) | `praxis-app://oauth/callback?state=…` |
+| Web return after connector OAuth | an origin listed in `PRAXIS_WEB_ORIGINS` |
+| QStash continuation (no registration; it must be publicly reachable) | `PRAXIS_API_URL/internal/continue` |
+| Better Auth (email/session routes) | `PRAXIS_API_URL/v1/auth/*` |
+
+## Security notes
+
+- Provider base URLs, MCP servers, registry URLs and the JS `fetch` bridge all go through one SSRF guard (`adapters/security.ts`). It allows http(s) only, resolves DNS once and dials that pinned address, blocks private, loopback, link-local and metadata ranges, and limits redirects.
+- Request logs are JSON lines with request id, method, path, status and duration. They never include query strings, headers, cookies, bodies or provider responses.
+- Rate limits use an Upstash sliding window, 120 requests per minute per verified user, plus a per-IP bucket on public paths. Over the limit, the API answers 429 with `Retry-After`.
+- QStash signing keys: rotate them in QStash, then update both values.
+
+## Key rotation (`PRAXIS_ENCRYPTION_KEYS`)
+
+Every ciphertext names its key (`v2.<kid>…`, where kid is a hash prefix of the key), so several keys can be live at once.
+1. Generate a new key: `openssl rand -base64 32`.
+2. Prepend it: `PRAXIS_ENCRYPTION_KEYS=<new>,<old>`. Redeploy. New writes use `<new>`; old values still decrypt with `<old>`.
+3. Re-seal stored secrets, from `cloud/apps/api`:
+   `PRAXIS_ENCRYPTION_KEYS=<new>,<old> CONVEX_URL=… PRAXIS_CONVEX_SERVER_TOKEN=… npx tsx scripts/reencrypt.ts --dry-run`, then run it again without `--dry-run`.
+   It prints counts only (owners, rows, rewritten, failed) and exits 1 if any value couldn't be opened. Re-running it is safe.
+4. When `failed` is 0, wait at least 10 minutes (pending OAuth state in Redis is sealed too), then remove `<old>` and redeploy.
+Never drop a key before step 3 reports `failed: 0`: values sealed only with that key would become unreadable.
+
+## Verifying a build without deploying
+
+```
+cd cloud && npm ci && npm run -ws --if-present typecheck && npm test
+cd apps/api && npm run build                      # esbuild bundle → dist/index.mjs (~5.4 MB)
+PORT=8789 node scripts/serve-bundle.mjs &         # bundled handler on memory adapters (local only)
+PORT=8789 node scripts/smoke-local.mjs            # bootstrap → SSE → approval → cancel → resume
+```
+`npx vercel build` needs a Vercel login or token (`login_required` without one), so it was not run by agents.
+Live Convex and Upstash contract tests run when their env vars are set: `CONVEX_URL` + `PRAXIS_CONVEX_SERVER_TOKEN`, and `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`.

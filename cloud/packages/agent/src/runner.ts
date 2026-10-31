@@ -13,6 +13,10 @@ import {alwaysAllowKey,canonical,decideTool,fingerprint} from './policy.js';
 import {clampEffort,parseEffortRejection} from './wire.js';
 
 class Park extends Error {}
+/** Loop control flow (park for approval/elicitation, cancel). Tool adapters must rethrow these, never turn them into tool results. */
+export function isRunControl(error:unknown):boolean{return error instanceof Park||error instanceof Cancelled;}
+/** Thrown by a `save` port when this executor lost its lease/fence (another executor owns the run). It aborts the slice without touching run state. */
+export class ExecutionFenced extends Error {constructor(){super('Execution fenced: another executor owns this run');}}
 class Cancelled extends Error {}
 export class ResumeConflict extends Error {}
 export class ProviderFailure extends Error {
@@ -45,11 +49,18 @@ export class AgentRunner {
   private message(cp:AgentCheckpoint,role:Message['role'],parts:MessagePart[]):Message {
     const now=this.now();return {type:'message',id:this.id(),chatId:cp.chat.id,runId:cp.run.id,...(cp.run.clientTurnId?{clientTurnId:cp.run.clientTurnId}:{}),role,parts,createdAt:now,updatedAt:now};
   }
+  /** Outbox: the message is saved with the checkpoint first, then delivered; a crash in between is repaired by `flush` on the next slice. */
   private async commit(cp:AgentCheckpoint,message:Message) {
     if(cp.messages.some(m=>m.id===message.id))throw new Error('Duplicate message id');
-    cp.messages.push(message);
+    cp.messages.push(message);cp.outbox.push(message);
     await this.save(cp);
-    await this.emit(cp,{type:'messages.committed',messages:[message]});
+    await this.flush(cp);
+  }
+  /** Delivers outbox messages (at least once; message rows are keyed by id, so redelivery is idempotent). */
+  private async flush(cp:AgentCheckpoint) {
+    if(!cp.outbox.length)return;
+    await this.emit(cp,{type:'messages.committed',messages:cp.outbox});
+    cp.outbox=[];await this.save(cp);
   }
   async create(input:RunInput):Promise<AgentCheckpoint> {
     const i=RunInputSchema.parse(input);
@@ -79,6 +90,7 @@ export class AgentRunner {
   async advance(checkpoint:AgentCheckpoint,maxSteps=1000):Promise<AgentCheckpoint>{
     z.number().int().positive().parse(maxSteps);
     let cp=CheckpointSchema.parse(structuredClone(checkpoint));
+    await this.flush(cp);
     for(let n=0;n<maxSteps;n++) {
       if(terminal(cp.run)||cp.approval||cp.elicitation)return cp;
       if(n>0&&this.options.shouldYield?.())break;
@@ -98,6 +110,7 @@ export class AgentRunner {
       cp.run.status='running';
       if(cp.phase==='model')await this.model(cp);else if(cp.phase==='tools')await this.toolsStep(cp);
     }catch(error) {
+      if(error instanceof ExecutionFenced)throw error;
       if(error instanceof Park){await this.save(cp);return cp;}
       if(error instanceof Cancelled)await this.finish(cp,'cancelled');
       else await this.finish(cp,'failed',error instanceof Error?error.message:'Agent execution failed');
@@ -208,7 +221,7 @@ export class AgentRunner {
       z.string().min(1).max(1000000).parse(summary);
       cp.compaction={covered:cut,fingerprint:await fingerprint(cp.messages.slice(0,cut)),summary};
       await this.save(cp);await this.emit(cp,{type:'compaction',id,phase:'finished',summary,throughMessageId:cp.messages[cut-1]!.id});return true;
-    }catch(e){if(e instanceof Cancelled)throw e;await this.emit(cp,{type:'compaction',id,phase:'failed',reason:'Summary failed'});return false;}
+    }catch(e){if(e instanceof Cancelled||e instanceof ExecutionFenced)throw e;await this.emit(cp,{type:'compaction',id,phase:'failed',reason:'Summary failed'});return false;}
   }
   private async model(cp:AgentCheckpoint) {
     if(cp.iteration>=cp.maxIterations){await this.finish(cp,'maxIterations');return;}
@@ -344,8 +357,11 @@ export class AgentRunner {
       cp.run.status='awaitingApproval';await this.save(cp);
       await this.emit(cp,{type:'approval.requested',approval:cp.approval});await this.emit(cp,{type:'run.parked',reason:'approval'});throw new Park();
     }
+    // Crash replay: a call that started but has no result may already have had its side effects.
+    if(entry.started&&!effectiveSpec.traits.some(t=>t==='idempotent'||t==='readOnly'))
+      return this.completeTool(cp,call,textResult('Tool execution was interrupted before it reported a result. It was not retried automatically because it may have side effects; check its effect before calling it again.',true),'failed');
     await this.checkCancel(cp);await this.emit(cp,{type:'tool.ready',activity:this.activity(call.id,call.name,spec,call.parentCallId,call.arguments)});
-    await this.emit(cp,{type:'tool.running',callId:call.id});await this.save(cp);
+    entry.started=true;await this.emit(cp,{type:'tool.running',callId:call.id});await this.save(cp);
     let nestedIndex=0,elicitationIndex=0;
     try {
       const output=await this.controlled(cp,signal=>live.execute(call.arguments,{
@@ -368,7 +384,9 @@ export class AgentRunner {
       }),this.options.toolTimeoutMs??120000);
       return this.completeTool(cp,call,ToolResultSchema.parse(output),output.isError?'failed':'succeeded');
     }catch(error){
-      if(error instanceof Park||error instanceof Cancelled)throw error;
+      // Parked mid-call: the tool re-runs on resume (nested results replay from cp.calls), so it isn't "interrupted".
+      if(error instanceof Park){delete entry.started;throw error;}
+      if(error instanceof Cancelled||error instanceof ExecutionFenced)throw error;
       return this.completeTool(cp,call,textResult(error instanceof Error?error.message:'Tool failed',true),'failed');
     }
   }

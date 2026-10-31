@@ -2,7 +2,13 @@ import type {Attachment,JsonObject} from '@praxis/protocol';
 import type {FeatureContext} from '../../contracts.js';
 export interface UploadInput {name:string;mediaType:string;size:number;chatId?:string}
 /** Implementations MUST authorize every storageId for userId; never trust the client claim. */
+export interface ToolsState {
+ get(userId:string,kind:string,id:string):Promise<JsonObject|null>;
+ put(userId:string,kind:string,id:string,value:JsonObject):Promise<void>;
+ delete(userId:string,kind:string,id:string):Promise<void>;
+}
 export interface ToolsStorage {
+ state?:ToolsState;
  createUpload(userId:string,input:UploadInput):Promise<{uploadUrl:string;expiresAt:string;method?:'POST'|'PUT'}>;
  verify(userId:string,storageId:string,input:UploadInput):Promise<void>;
  read(userId:string,storageId:string):Promise<{bytes:Uint8Array;mediaType:string}>;

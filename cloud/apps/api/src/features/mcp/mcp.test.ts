@@ -11,7 +11,7 @@ let remote: Awaited<ReturnType<typeof fixtureServer>>;
 beforeAll(async () => { remote = await fixtureServer(); });
 afterAll(async () => { await remote.close(); });
 function setup(options: McpOptions = {}) {
-  const ctx: FeatureContext = { ...fixtures(), userId: 'alice', fetch, local: true, encryptionKey: randomBytes(32).toString('base64') };
+  const ctx: FeatureContext = { ...fixtures(), userId: 'alice', fetch, egress: fetch, local: true, encryptionKey: randomBytes(32).toString('base64') };
   const app = new Hono().route('/v1', createMcpRoutes(async req => ({ ...ctx, userId: req.headers.get('X-User') ?? 'alice' }), { publicOrigin: 'http://127.0.0.1:8788', ...options }));
   const request = (path: string, data?: unknown, method = data ? 'POST' : 'GET', user = 'alice') => app.request(`/v1${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-User': user }, ...(data ? { body: JSON.stringify(data) } : {}) });
   const add = async (input = {}) => { const response = await request('/connectors', { type: 'connector.input', name: 'Fixture', url: `${remote.base}/mcp`, ...input }); expect(response.status).toBe(201); return await response.json() as Connector; };
@@ -87,7 +87,7 @@ describe('network and return URL guards', () => {
 describe('official SDK OAuth PKCE DCR and CIMD', () => {
   it('completes DCR+PKCE and redirects with same state, encrypted tokens and single use', async () => {
     remote.setCimd(false); const s = setup(), value = await s.add(); const start = await s.request(`/connectors/${value.id}/oauth/start`, { type: 'oauth.start', returnUrl: 'praxis-app://oauth/callback' }); expect(start.status).toBe(200); const authorization = await start.json(), url = new URL(authorization.url); expect(url.searchParams.get('state')).toBe(authorization.state); expect(url.searchParams.get('code_challenge_method')).toBe('S256'); expect(url.searchParams.get('client_id')).toBe('fixture-client');
-    expect((await s.ctx.kv.get<OAuthState>(stateKey(authorization.state)))?.verifier).toMatch(/^v1\./); const redirect = await fetch(authorization.url, { redirect: 'manual' }), callback = new URL(redirect.headers.get('location')!); const response = await s.request(`/connectors/oauth/callback${callback.search}`, undefined, 'GET', ''); expect(response.status).toBe(302); expect(response.headers.get('location')).toBe(`praxis-app://oauth/callback?state=${authorization.state}`);
+    expect((await s.ctx.kv.get<OAuthState>(stateKey(authorization.state)))?.verifier).toMatch(/^v2\./); const redirect = await fetch(authorization.url, { redirect: 'manual' }), callback = new URL(redirect.headers.get('location')!); const response = await s.request(`/connectors/oauth/callback${callback.search}`, undefined, 'GET', ''); expect(response.status).toBe(302); expect(response.headers.get('location')).toBe(`praxis-app://oauth/callback?state=${authorization.state}`);
     expect((await connector(s.ctx, value.id)).authStatus).toBe('connected'); expect(await readSecret(s.ctx, value.id, 'tokens')).toMatchObject({ access_token: 'fixture-access-token' }); expect((await s.request(`/connectors/oauth/callback${callback.search}`, undefined, 'GET', '')).status).toBe(409); expect(JSON.stringify(await (await s.request(`/connectors/${value.id}`)).json())).not.toContain('fixture-access-token');
   });
   it('uses hosted HTTPS client metadata as CIMD client id when supported', async () => {
@@ -103,5 +103,39 @@ describe('official SDK OAuth PKCE DCR and CIMD', () => {
   });
   it('allows only one concurrent callback exchange', async () => {
     const s = setup(), value = await s.add(), start = await (await s.request(`/connectors/${value.id}/oauth/start`, { type: 'oauth.start' })).json(), redirect = await fetch(start.url, { redirect: 'manual' }), callback = new URL(redirect.headers.get('location')!); const responses = await Promise.all([s.request(`/connectors/oauth/callback${callback.search}`, undefined, 'GET', ''), s.request(`/connectors/oauth/callback${callback.search}`, undefined, 'GET', '')]); expect(responses.map(r => r.status).sort()).toEqual([200, 409]);
+  });
+});
+
+describe('OAuth token refresh (REV-A1 P1 client.ts:13)', () => {
+  async function authorized() {
+    remote.setCimd(false); remote.protect();
+    const s = setup(), value = await s.add();
+    await s.consent();
+    const authorization = await (await s.request(`/connectors/${value.id}/oauth/start`, { type: 'oauth.start' })).json();
+    const callback = new URL((await fetch(authorization.url, { redirect: 'manual' })).headers.get('location')!);
+    expect((await s.request(`/connectors/oauth/callback${callback.search}`, undefined, 'GET', '')).status).toBeLessThan(400);
+    expect(await readSecret(s.ctx, value.id, 'discovery')).toMatchObject({ resource: value.url });
+    expect((await connector(s.ctx, value.id)).status).toBe('connected'); // sign-in re-runs the handshake
+    const { catalogKey } = await import('./tools.js'); await s.ctx.kv.del(catalogKey(s.ctx, value.id)); // force the next call to reach the server
+    return { s, value };
+  }
+  it('refreshes an expiring token once for concurrent callers (single-flight) without re-authorizing', async () => {
+    const { s, value } = await authorized();
+    const { writeSecret } = await import('./shared.js');
+    await writeSecret(s.ctx, value.id, 'tokenSavedAt', new Date(Date.now() - 7_200_000).toISOString());
+    remote.rotateTokens();
+    const before = remote.refreshes();
+    const [a, b] = await Promise.all([s.request(`/connectors/${value.id}/tools`), s.request(`/connectors/${value.id}/tools`)]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(remote.refreshes() - before).toBe(1);
+    expect((await readSecret<{ access_token: string; refresh_token: string }>(s.ctx, value.id, 'tokens'))).toMatchObject({ access_token: `fixture-access-token-r${remote.refreshes()}`, refresh_token: 'fixture-refresh' });
+    expect((await connector(s.ctx, value.id)).authStatus).toBe('connected');
+  });
+  it('refreshes once after a 401 on a token that looked valid, then retries', async () => {
+    const { s, value } = await authorized();
+    remote.rotateTokens();
+    const before = remote.refreshes();
+    expect((await s.request(`/connectors/${value.id}/tools`)).status).toBe(200);
+    expect(remote.refreshes() - before).toBe(1);
   });
 });

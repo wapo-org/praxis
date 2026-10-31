@@ -87,7 +87,7 @@ describe('execution driver with a real HTTP provider', () => {
     const snapshot = RunSnapshotSchema.parse(await (await f.req(`/v1/runs/${run.id}/snapshot`)).json());
     expect(snapshot.run.status).toBe('completed');
     expect(calls).toEqual([{x: 1}]);
-    expect(fake.requests[0].tools.map((t: any) => t.function.name)).toEqual(['echo']);
+    expect(fake.requests[0].tools.map((t: any) => t.function.name)).toEqual(['read_tool_output', 'echo']);
     expect(JSON.stringify(fake.requests[1].messages)).toContain('echoed');
   });
 });
@@ -105,5 +105,25 @@ describe('slice budget', () => {
     const types = events.map(e => (e.payload.event as {type: string; reason?: string}));
     expect(types.filter(e => e.type === 'run.parked' && e.reason === 'continuation').length).toBeGreaterThanOrEqual(1);
     expect(types.at(-1)).toMatchObject({type: 'run.finished', outcome: 'completed'});
+  });
+});
+
+describe('background work never rejects unobserved', () => {
+  it('logs instead of rejecting when the failure handler itself fails (run row deleted mid-run)', async () => {
+    const service = new ApiService(createLocalAdapters(), true);
+    const logged: string[] = [];
+    service.onBackgroundError = runId => { logged.push(runId); };
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    // The task fails and the failure path cannot find the run either; emit then throws inside the catch handler.
+    await service.adapters.store.put('u', 'run', 'r1', {type: 'run', id: 'r1', chatId: 'c', status: 'running', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lastEventId: 0});
+    service.emit = async () => { throw new Error('event store down'); };
+    service.enqueue('u', 'r1', async () => { throw new Error('task failed'); });
+    await service.drain();
+    await new Promise(r => setTimeout(r, 10));
+    process.off('unhandledRejection', onUnhandled);
+    expect(logged).toEqual(['r1']);
+    expect(unhandled).toEqual([]);
   });
 });

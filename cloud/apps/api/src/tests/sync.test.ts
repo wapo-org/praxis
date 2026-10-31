@@ -51,7 +51,14 @@ describe('cursor sync', () => {
 });
 
 describe('merkle sync over the API (flagged experiment)', () => {
+  it('is off by default, even locally', async () => {
+    const f = setup();
+    expect((await f.req('/v1/sync/tree', {type: 'sync.request', strategy: 'merkle'})).status).toBe(404);
+    expect((await (await f.req('/v1/sync/root')).json()).strategy).toBe('cursor');
+  });
   it('converges a replica against the real store and detects nothing-changed in one round trip', async () => {
+    process.env.PRAXIS_SYNC_STRATEGY = 'merkle';
+    try {
     const {MemoryReplica, syncMerkle} = await import('@praxis/sync');
     const f = setup();
     for (let i = 0; i < 20; i++) await f.req('/v1/chats', {type: 'chat.input', title: `c${i}`});
@@ -65,5 +72,8 @@ describe('merkle sync over the API (flagged experiment)', () => {
     expect((replica.rows.get('chat:welcome')!.value as {title: string}).title).toBe('Renamed');
     expect((await syncMerkle(transport, replica)).roundTrips).toBe(1);
     expect((await f.req('/v1/sync/tree', {type: 'sync.request', strategy: 'merkle', prefixes: ['zz']})).status).toBe(400);
+    } finally {
+      delete process.env.PRAXIS_SYNC_STRATEGY;
+    }
   });
 });

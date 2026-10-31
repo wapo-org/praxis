@@ -1,10 +1,10 @@
 import {
-  AgentRunner, CheckpointSchema, ToolResultSchema, createScriptedProvider, scriptedTools, textResult,
+  AgentRunner, CheckpointSchema, ExecutionFenced, ToolResultSchema, createScriptedProvider, isRunControl, scriptedTools, textResult,
   type AgentCheckpoint, type AgentPorts, type AgentTool, type ModelProvider, type Script, type ToolResult,
 } from '@praxis/agent';
 import {
-  JsonValueSchema, RunEventPayloadSchema,
-  type Chat, type ConversationSetup, type JsonValue, type Message, type Model, type Run, type StartRun,
+  JsonValueSchema, RunEventPayloadSchema, type JsonObject,
+  type Chat, type ConversationSetup, type JsonValue, type Message, type MessagePart, type Model, type Run, type StartRun,
 } from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from './contracts.js';
 import {buildSystemPrompt, skillCatalogSection, turnNotes, type CatalogSkill} from './conversation.js';
@@ -23,6 +23,10 @@ export interface ExecutionFeatures {
   agentTools?(ctx: FeatureContext, input: {chat: Chat; runId: string; attachmentIds: string[]}): Promise<AgentTool[]>;
   skills?(ctx: FeatureContext): Promise<CatalogSkill[]>;
   toolNotes?(ctx: FeatureContext, chat: Chat): Promise<string[]>;
+  /** Resolves attachment references to bytes for an outgoing provider request (history keeps references). */
+  media?(ctx: FeatureContext, part: MessagePart): Promise<MessagePart>;
+  /** Extra notes for the new user turn (e.g. connector availability), given the notes already in the transcript. */
+  turnNotes?(ctx: FeatureContext, chat: Chat, previousNotes: string[]): Promise<string[]>;
 }
 
 export interface ExecutionOptions {
@@ -35,6 +39,30 @@ export interface ExecutionOptions {
   fetcher?: typeof fetch;
   clock?: () => number;
   instructions?: string;
+  /** One executor per run across instances (Upstash lease in production; process-local by default). */
+  lease?: RunLease;
+}
+
+export interface RunLease {
+  acquire(key: string, ttlMs: number): Promise<string | null>;
+  release(key: string, token: string): Promise<void>;
+}
+
+/** Process-local lease for dev/tests. Production passes the Redis lease (adapters/upstash.ts). */
+export function memoryLease(clock: () => number = Date.now): RunLease {
+  const held = new Map<string, {token: string; expires: number}>();
+  return {
+    async acquire(key, ttlMs) {
+      const current = held.get(key);
+      if (current && current.expires > clock()) return null;
+      const token = crypto.randomUUID();
+      held.set(key, {token, expires: clock() + ttlMs});
+      return token;
+    },
+    async release(key, token) {
+      if (held.get(key)?.token === token) held.delete(key);
+    },
+  };
 }
 
 type RunRequest = StartRun & {attachmentIds: string[]};
@@ -47,9 +75,25 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     schedule: async (userId, runId) => service.enqueue(userId, runId, () => driver.continue(userId, runId)),
   };
 
-  const ports: AgentPorts = {
+  const lease = options.lease ?? memoryLease();
+  const leaseTtlMs = budgetMs + 120_000;
+
+  /**
+   * Ports for one execution slice. Checkpoint writes are compare-and-set against the revision this slice
+   * last read or wrote, so an executor that lost its lease (or a duplicate delivery) can't overwrite newer
+   * state: its save throws ExecutionFenced and the slice stops without emitting anything else.
+   */
+  const slicePorts = (fence: {revision: number}): AgentPorts => ({
+    ...ports,
     save: async (userId, cp) => {
-      await service.put(userId, 'checkpoint', cp.run.id, cp);
+      const row = await service.adapters.store.putIfRevision(userId, 'checkpoint', cp.run.id, JSON.parse(JSON.stringify(cp)), fence.revision, {parentId: cp.chat.id});
+      if (!row) throw new ExecutionFenced();
+      fence.revision = row.revision;
+      await syncRun(userId, cp);
+    },
+  });
+
+  async function syncRun(userId: string, cp: AgentCheckpoint) {
       const current = await service.require<Run>(userId, 'run', cp.run.id);
       cp.run.lastEventId = Math.max(cp.run.lastEventId, current.lastEventId);
       await service.put(userId, 'run', cp.run.id, cp.run);
@@ -58,12 +102,40 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
         chat.setup = cp.setup;
         await service.write(userId, 'chat', chat.id, chat);
       }
-    },
+  }
+
+  /** Runs `fn` as the run's only executor; a concurrent or duplicate caller returns without doing anything. */
+  async function exclusive(userId: string, runId: string, fn: (fence: {revision: number}) => Promise<AgentCheckpoint | void>) {
+    const key = `run:${userId}:${runId}`;
+    const token = await lease.acquire(key, leaseTtlMs);
+    if (!token) return;
+    let cp: AgentCheckpoint | void = undefined;
+    try {
+      const row = await service.adapters.store.get(userId, 'checkpoint', runId);
+      cp = await fn({revision: row?.revision ?? 0});
+    } catch (error) {
+      if (!(error instanceof ExecutionFenced)) throw error;
+    } finally {
+      await lease.release(key, token);
+    }
+    if (cp) await recordLearning(service, userId, cp, clock()).catch(() => undefined);
+    // Schedule the next slice only after releasing the lease, or it would find the run still owned.
+    if (cp) await settle(userId, cp);
+  }
+
+  async function trustedSources(userId: string): Promise<string[]> {
+    return (await service.adapters.store.list(userId, 'connector'))
+      .filter(r => !r.deleted && r.value.trusted === true && r.value.enabled !== false)
+      .map(r => `mcp:${r.id}`);
+  }
+
+  const ports: Omit<AgentPorts, 'save'> = {
     emit: async (userId, runId, event) => service.emit(userId, runId, event),
     isCancelled: async (userId, runId) => !!(await service.adapters.kv.get(`cancel:${userId}:${runId}`)),
     spill: async (userId, runId, callId, text) => {
       const id = crypto.randomUUID();
-      await service.put(userId, 'output', id, {type: 'tool.output', id, runId, callId, text});
+      const run = await service.require<Run>(userId, 'run', runId);
+      await service.put(userId, 'output', id, {type: 'tool.output', id, runId, chatId: run.chatId, callId, text});
       return id;
     },
   };
@@ -93,17 +165,19 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       ? await service.adapters.store.get(userId, 'model', `${providerId}:${modelId}`).then(r => (r && !r.deleted ? (r.value as unknown as Model) : undefined))
       : undefined;
     if (!model) return {provider};
-    // Capabilities gate features per model, never by provider name.
+    // Capabilities gate features per model, never by provider name; rejections learned from the provider narrow them.
+    const learned = await learnedFor(service, userId, providerId, model.id, clock());
+    const capabilities = {...model.capabilities, ...(learned.images ? {vision: false} : {}), ...(learned.tools ? {tools: false} : {})};
     const scoped: ModelProvider = {
       flavor: provider.flavor,
-      capabilities: model.capabilities,
+      capabilities,
       stream: (req, signal) => provider.stream(req, signal),
     };
-    return {provider: scoped, model};
+    return {provider: scoped, model: learned.efforts ? {...model, reasoningEfforts: learned.efforts} : model};
   }
 
   async function agentTools(userId: string, chat: Chat, run: Run, request: RunRequest, script?: Script): Promise<AgentTool[]> {
-    const tools: AgentTool[] = script ? scriptedTools() : [];
+    const tools: AgentTool[] = [...(script ? scriptedTools() : []), readToolOutputTool(service)];
     if (options.features?.tools) {
       const features = await options.features.tools(ctx(userId), {chat, runId: run.id, attachmentIds: request.attachmentIds});
       for (const tool of features) if (!tools.some(t => t.spec.name === tool.name)) tools.push(adaptTool(tool));
@@ -115,14 +189,17 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     return tools;
   }
 
-  async function runnerFor(userId: string, chat: Chat, run: Run, request: RunRequest) {
-    const {provider, script, model} = await resolveProvider(userId, chat, request);
+  async function runnerFor(userId: string, chat: Chat, run: Run, request: RunRequest, fence: {revision: number}) {
+    const resolved = await resolveProvider(userId, chat, request);
+    const {script, model} = resolved;
+    const media = options.features?.media;
+    const provider = media && !script ? withMedia(resolved.provider, part => media(ctx(userId), part)) : resolved.provider;
     const tools = await agentTools(userId, chat, run, request, script);
     const started = clock();
     const runner = new AgentRunner({
       provider,
       tools,
-      ports: script ? {...ports, summarize: localSummary} : ports,
+      ports: script ? {...slicePorts(fence), summarize: localSummary} : slicePorts(fence),
       shouldYield: () => clock() - started > budgetMs,
       ...(script === 'compaction' ? {contextWindow: 1024} : model?.contextWindow ? {contextWindow: model.contextWindow} : {}),
     } as ConstructorParameters<typeof AgentRunner>[0]);
@@ -158,19 +235,22 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
 
     async notes(userId: string, chat: Chat, input: StartRun, previous: Message[]): Promise<string[]> {
       const skills = (await options.features?.skills?.(ctx(userId))) ?? [];
-      return turnNotes({
+      const previousNotes = previous.filter(m => m.role === 'user').flatMap(m => m.parts).flatMap(p => (p.type === 'note' && p.text ? [p.text] : []));
+      const extra = (await options.features?.turnNotes?.(ctx(userId), chat, previousNotes)) ?? [];
+      return [...turnNotes({
         mode: input.mode ?? chat.mode,
         ...((input.effort ?? chat.effort) ? {effort: (input.effort ?? chat.effort)!} : {}),
         previous,
         ...(chat.setup ? {setup: chat.setup} : {}),
         skills,
-      });
+      }), ...extra];
     },
 
     async start(userId: string, run: Run, chat: Chat, messages: Message[], request: StartRun) {
       const stored: RunRequest = {...request, attachmentIds: request.attachmentIds ?? []};
       await service.put(userId, 'runRequest', run.id, stored);
-      const {runner, tools, model} = await runnerFor(userId, chat, run, stored);
+      await exclusive(userId, run.id, async fence => {
+      const {runner, tools, model} = await runnerFor(userId, chat, run, stored, fence);
       const setup = await freezeSetup(userId, chat, tools);
       const effort = request.effort ?? chat.effort;
       const modelId = request.modelId ?? chat.modelId;
@@ -183,19 +263,39 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
         ...(model?.reasoningEfforts.length ? {supportedEfforts: model.reasoningEfforts} : {}),
         ...(model?.maxOutputTokens ? {modelMaxTokens: model.maxOutputTokens} : {}),
         webSearch: request.webSearch,
+        policy: {trustedSources: await trustedSources(userId), alwaysAllow: []},
       });
-      await settle(userId, cp);
+      return cp;
+      });
     },
 
     async resume(userId: string, runId: string, decision: RunDecision) {
-      const {cp, runner} = await load(userId, runId);
-      await settle(userId, await runner.resume(cp, decision));
+      await exclusive(userId, runId, async fence => {
+        const {cp, runner} = await load(userId, runId, fence);
+        return runner.resume(cp, decision);
+      });
     },
 
     async continue(userId: string, runId: string) {
-      const {cp, runner} = await load(userId, runId);
-      if (cp.run.status !== 'continuing') return;
-      await settle(userId, await runner.advance(cp));
+      // A continuation for a run that was deleted (truncate/chat delete) is acknowledged as done, so QStash stops retrying.
+      const row = await service.adapters.store.get(userId, 'checkpoint', runId);
+      if (!row || row.deleted) return;
+      await exclusive(userId, runId, async fence => {
+        const current = await service.adapters.store.get(userId, 'checkpoint', runId);
+        if (!current || current.deleted) return;
+        fence.revision = current.revision;
+        const pending = CheckpointSchema.parse(current.value);
+        // Repair delivery before loading providers/tools: terminal and parked runs need no remote credentials.
+        if (pending.outbox.length) {
+          await service.emit(userId, runId, {type: 'messages.committed', messages: pending.outbox});
+          pending.outbox = [];
+          await slicePorts(fence).save(userId, pending);
+        }
+        if (['completed', 'failed', 'cancelled', 'awaitingApproval', 'awaitingElicitation'].includes(pending.run.status)) return;
+        const {cp, runner} = await load(userId, runId, fence);
+        // A redelivery may find a running checkpoint whose previous executor crashed.
+        return runner.advance(cp);
+      });
     },
 
     async cancel(userId: string, runId: string) {
@@ -203,21 +303,100 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       if (!row || row.deleted) return;
       const cp = CheckpointSchema.parse(row.value);
       if (cp.run.status === 'awaitingApproval' || cp.run.status === 'awaitingElicitation' || cp.run.status === 'continuing') {
-        const {runner} = await load(userId, runId);
-        await runner.cancel(cp);
+        // A running executor sees the cancel flag between chunks; parked/continuing runs are finished here under the lease.
+        await exclusive(userId, runId, async fence => {
+          const {cp: current, runner} = await load(userId, runId, fence);
+          await runner.cancel(current);
+          return undefined;
+        });
       }
     },
   };
 
-  async function load(userId: string, runId: string) {
-    const cp = CheckpointSchema.parse(await service.require(userId, 'checkpoint', runId));
+  async function load(userId: string, runId: string, fence: {revision: number}) {
+    const row = await service.adapters.store.get(userId, 'checkpoint', runId);
+    if (!row || row.deleted) throw new ApiError(404, 'not_found', 'checkpoint not found');
+    fence.revision = row.revision;
+    const cp = CheckpointSchema.parse(row.value);
+    // Trust is re-read every slice, so revoking a connector's trust applies to the rest of the run.
+    cp.policy.trustedSources = await trustedSources(userId);
     const request = await service.require<RunRequest>(userId, 'runRequest', runId);
     const chat = await service.require<Chat>(userId, 'chat', cp.chat.id);
-    const {runner} = await runnerFor(userId, {...chat, mode: cp.chat.mode}, cp.run, request);
+    const {runner} = await runnerFor(userId, {...chat, mode: cp.chat.mode}, cp.run, request, fence);
     return {cp, runner};
   }
 
   return driver;
+}
+
+/** Learned provider rejections lapse after this (ProviderSettings image/tool/effort rejection lifetimes). */
+export const LEARNED_LIFETIME_MS = 14 * 24 * 3600 * 1000;
+interface Learning {images?: number; tools?: number; efforts?: {levels: string[]; at: number}}
+
+async function learnedFor(service: ApiService, userId: string, providerId: string, modelId: string, now: number) {
+  const row = await service.adapters.store.get(userId, 'modelLearning', `${providerId}:${modelId}`);
+  const l = (row && !row.deleted ? row.value : {}) as Learning;
+  const fresh = (t?: number) => t !== undefined && now - t < LEARNED_LIFETIME_MS;
+  return {images: fresh(l.images), tools: fresh(l.tools), efforts: l.efforts && fresh(l.efforts.at) ? l.efforts.levels : undefined};
+}
+
+/** Persists what a run learned (provider refused images/tools/effort levels), so the next turn doesn't fail once more. */
+async function recordLearning(service: ApiService, userId: string, cp: AgentCheckpoint, now: number) {
+  const providerId = cp.chat.providerId;
+  if (!providerId || providerId === 'scripted') return;
+  const modelRow = await service.adapters.store.get(userId, 'model', `${providerId}:${cp.modelId}`);
+  if (!modelRow || modelRow.deleted) return;
+  const model = modelRow.value as unknown as Model;
+  const key = `${providerId}:${cp.modelId}`;
+  const row = await service.adapters.store.get(userId, 'modelLearning', key);
+  const current = (row && !row.deleted ? row.value : {}) as Learning;
+  const next: Learning = {...current};
+  if (model.capabilities.vision && !cp.capabilities.vision && !current.images) next.images = now;
+  if (model.capabilities.tools && !cp.capabilities.tools && !current.tools) next.tools = now;
+  if (cp.supportedEfforts && JSON.stringify(cp.supportedEfforts) !== JSON.stringify(model.reasoningEfforts) && JSON.stringify(cp.supportedEfforts) !== JSON.stringify(current.efforts?.levels)) next.efforts = {levels: cp.supportedEfforts, at: now};
+  if (JSON.stringify(next) !== JSON.stringify(current)) await service.adapters.store.put(userId, 'modelLearning', key, next as unknown as JsonObject);
+}
+
+/** Port of AgentCore ReadToolOutputTool: pages through a spilled (truncated) tool result of this conversation. */
+export function readToolOutputTool(service: ApiService): AgentTool {
+  return {
+    spec: {
+      type: 'tool.spec', name: 'read_tool_output', source: {type: 'builtin'}, traits: ['readOnly', 'idempotent'],
+      description: 'Read more of a tool result that was truncated. Pass the id from the truncation note and a character offset.',
+      inputSchema: {type: 'object', properties: {id: {type: 'string', description: 'Id from the truncation note'}, offset: {type: 'integer', description: 'Character offset to start at'}, limit: {type: 'integer', description: 'Characters to read (default 20000)'}}, required: ['id', 'offset']},
+    },
+    async execute(args, context) {
+      const a = (args && typeof args === 'object' && !Array.isArray(args) ? args : {}) as {id?: unknown; offset?: unknown; limit?: unknown};
+      if (typeof a.id !== 'string') return textResult('Missing id', true);
+      const offset = Math.max(0, Number.isInteger(a.offset) ? (a.offset as number) : 0);
+      const limit = Math.min(Number.isInteger(a.limit) && (a.limit as number) > 0 ? (a.limit as number) : 20_000, 40_000);
+      const row = await service.adapters.store.get(context.userId, 'output', a.id);
+      if (!row || row.deleted || row.value.chatId !== context.chatId) return textResult(`No stored output with id ${a.id}. Stored output is kept per conversation.`, true);
+      const text = String(row.value.text ?? '');
+      const page = text.slice(offset, offset + limit);
+      return textResult(`[characters ${offset}–${Math.min(text.length, offset + page.length)} of ${text.length}]\n${page}`);
+    },
+  };
+}
+
+/** Rehydrates attachment parts per request (cached per slice); only for content the model can take. */
+export function withMedia(provider: ModelProvider, resolve: (part: MessagePart) => Promise<MessagePart>): ModelProvider {
+  const cache = new Map<string, Promise<MessagePart>>();
+  const one = (part: MessagePart, caps: ModelProvider['capabilities']) => {
+    const wanted = (part.type === 'image' && caps.vision) || (part.type === 'document' && caps.documents);
+    if (!wanted || !part.attachmentId || part.data || part.url) return Promise.resolve(part);
+    const key = `${part.type}:${part.attachmentId}`;
+    if (!cache.has(key)) cache.set(key, resolve(part));
+    return cache.get(key)!;
+  };
+  return {
+    flavor: provider.flavor,
+    capabilities: provider.capabilities,
+    async *stream(request, signal) {
+      const messages = await Promise.all(request.messages.map(async m => ({...m, parts: await Promise.all(m.parts.map(p => one(p, request.capabilities)))})));
+      yield* provider.stream({...request, messages}, signal);
+    },
+  };
 }
 
 function scriptedProvider(script: Script): ModelProvider {
@@ -244,6 +423,7 @@ export function adaptTool(tool: FeatureTool): AgentTool {
   return {
     spec: {type: 'tool.spec', name: tool.name, description: tool.description, inputSchema: tool.inputSchema, source: tool.source, traits: tool.traits},
     ...(tool.classify ? {classify: (args: JsonValue) => tool.classify!(args)} : {}),
+    ...(tool.hidden ? {hidden: true} : {}),
     async execute(args, context): Promise<ToolResult> {
       try {
         const value = await tool.execute(args, {
@@ -258,7 +438,8 @@ export function adaptTool(tool: FeatureTool): AgentTool {
         });
         return toToolResult(value);
       } catch (error) {
-        if (context.signal.aborted) throw error;
+        // Park (nested approval/elicitation) and cancel are loop control flow, not tool failures.
+        if (isRunControl(error) || error instanceof ExecutionFenced || context.signal.aborted) throw error;
         const message = error instanceof ApiError || error instanceof Error ? error.message : 'Tool failed';
         return textResult(message, true);
       }

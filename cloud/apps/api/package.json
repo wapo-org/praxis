@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "dev:local": "tsx src/local.ts",
-    "build": "esbuild api/index.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/index.mjs --packages=external",
+    "build": "esbuild api/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/index.mjs --external:sharp --external:quickjs-emscripten --external:@jitl/* --banner:js=\"import {createRequire as __praxisRequire} from 'node:module';const require=__praxisRequire(import.meta.url);\" --log-level=warning",
     "smoke:local": "node scripts/smoke-local.mjs"
   },
   "dependencies": {
@@ -18,11 +18,11 @@
     "@upstash/qstash": "2.12.1",
     "@upstash/ratelimit": "2.2.0",
     "@upstash/redis": "1.40.0",
-    "@vercel/functions": "^3.10.5",
     "better-auth": "1.7.14",
     "convex": "1.48.0",
     "hono": "^4.0.0",
     "quickjs-emscripten": "^0.31.0",
+    "sharp": "^0.35.5",
     "undici": "7.30.1",
     "yaml": "^2.8.1",
     "zod": "^4.0.0"
