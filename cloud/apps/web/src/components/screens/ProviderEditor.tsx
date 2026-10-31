@@ -1,3 +1,4 @@
+import { providerConsentHost } from '../../lib/hosts';
 import { GlassDropdown } from '@praxis/glass';
 import { CapabilitiesSchema, type Provider } from '@praxis/protocol';
 import React from 'react';
@@ -302,7 +303,7 @@ export function ProviderEditor() {
               if (!discovery.ok)
                 throw new Error(discovery.message || 'Could not verify this provider.');
               if (defaultModel.trim() && allowProbe)
-                await apiClient.setConsent(new URL(saved.baseUrl).hostname.toLowerCase(), true);
+                await apiClient.setConsent(providerConsentHost(saved.baseUrl), true);
               const result = defaultModel.trim()
                 ? await apiClient.testProvider(saved.id, defaultModel.trim())
                 : discovery;

@@ -18,6 +18,7 @@ import {
   type Transcription,
 } from './api-transport';
 import { safeMessage } from './links';
+import { localUploadPath } from './hosts';
 export * from './api-transport';
 export class PraxisApiClient extends FeatureApiClient {
   // Bootstrap & Auth
@@ -342,8 +343,14 @@ export class PraxisApiClient extends FeatureApiClient {
       }),
     });
 
-    const uploadTargetUrl = req.uploadUrl.startsWith('/') ? this.url(req.uploadUrl) : req.uploadUrl;
-    const isApiOrigin = this.isApiOriginUrl(req.uploadUrl);
+    const direct = this.isApiOriginUrl(req.uploadUrl);
+    const viaApi = direct ? null : localUploadPath(req.uploadUrl);
+    const uploadTargetUrl = req.uploadUrl.startsWith('/')
+      ? this.url(req.uploadUrl)
+      : viaApi
+        ? this.url(viaApi)
+        : req.uploadUrl;
+    const isApiOrigin = direct || viaApi !== null;
     const uploadHeaders: Record<string, string> = {
       'Content-Type': file.type || 'application/octet-stream',
       ...(isApiOrigin ? this.headers() : {}),
