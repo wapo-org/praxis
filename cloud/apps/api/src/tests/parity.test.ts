@@ -5,49 +5,10 @@ import {RunSnapshotSchema, type Message} from '@praxis/protocol';
 import {createLocalAdapters} from '../local-memory.js';
 import {localModules} from '../modules.js';
 import {createPraxisApp} from '../server.js';
-
-function fakeOpenAI(turns: string[][]) {
-  const requests: any[] = [];
-  const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (!String(input instanceof Request ? input.url : input).includes('llm.example.test')) return fetch(input, init);
-    if (String(input).endsWith('/models')) return Response.json({data: [{id: 'm'}]});
-    requests.push(JSON.parse(String(init?.body)));
-    const frames = turns[requests.length - 1] ?? [delta({content: 'ok'}), delta({}, 'stop')];
-    return new Response(frames.map(f => `data: ${f}\n\n`).join('') + 'data: [DONE]\n\n', {headers: {'content-type': 'text/event-stream'}});
-  }) as typeof fetch;
-  return {fetcher, requests};
-}
-const delta = (d: object, finish: string | null = null) => JSON.stringify({choices: [{index: 0, delta: d, finish_reason: finish}]});
-export const toolCall = (name: string, args: object) => [delta({tool_calls: [{index: 0, id: `call_${name}`, type: 'function', function: {name, arguments: JSON.stringify(args)}}]}), delta({}, 'tool_calls')];
-
-export function setup(turns: string[][] = []) {
-  const fake = fakeOpenAI(turns);
-  const {app, service} = createPraxisApp({adapters: createLocalAdapters(), local: true, encryptionKey: randomBytes(32).toString('base64'), fetcher: fake.fetcher, modules: localModules('http://127.0.0.1:8787')});
-  const req = async (path: string, body?: unknown, method = body ? 'POST' : 'GET') =>
-    app.request(path, {method, headers: {Authorization: 'Bearer dev-local', 'Content-Type': 'application/json'}, ...(body ? {body: JSON.stringify(body)} : {})});
-  const chat = async (capabilities: object = {vision: true, documents: true, tools: true}) => {
-    const provider = await (await req('/v1/providers', {type: 'provider.input', name: 'F', flavor: 'openAIChat', baseUrl: 'https://llm.example.test/v1', apiKey: 'sk-test-123456', capabilities})).json();
-    await req('/v1/consents', {type: 'consent', host: 'llm.example.test', allowed: true});
-    await req(`/v1/providers/${provider.id}/refresh-models`, {type: 'models.refresh'});
-    return (await req('/v1/chats', {type: 'chat.input', providerId: provider.id, modelId: 'm'})).json();
-  };
-  const upload = async (chatId: string, name: string, mediaType: string, bytes: Uint8Array) => {
-    const ticket = await (await req('/v1/uploads', {type: 'upload.request', name, mediaType, size: bytes.length, chatId})).json();
-    const {storageId} = await (await app.request(new URL(ticket.uploadUrl).pathname, {method: 'PUT', headers: {Authorization: 'Bearer dev-local', 'Content-Type': mediaType}, body: new Blob([Uint8Array.from(bytes)])})).json();
-    return (await (await req('/v1/uploads/complete', {type: 'upload.complete', storageId, name, mediaType, size: bytes.length, chatId})).json()).id as string;
-  };
-  const run = async (chatId: string, text: string, attachmentIds: string[] = []) => {
-    const r = await (await req('/v1/runs', {type: 'run.start', chatId, text, attachmentIds})).json();
-    await service.drain();
-    return RunSnapshotSchema.parse(await (await req(`/v1/runs/${r.id}/snapshot`)).json());
-  };
-  return {req, chat, upload, run, fake, service};
-}
-
-const png = (w: number, h: number) => sharp({create: {width: w, height: h, channels: 3, background: {r: 200, g: 10, b: 10}}}).png().toBuffer().then(b => new Uint8Array(b));
+import {delta, fakeOpenAI, png, setup, toolCall} from './harness.js';
 
 describe('attachments reach the model (parity: AttachmentMedia)', () => {
-  it('images are sent as bytes, PDFs/text as documents, other files named for fs; history keeps references', async () => {
+  it('images are sent as bytes, PDFs as documents, text inline, other files named for fs; history keeps references', async () => {
     const f = setup();
     const chat = await f.chat();
     const image = await png(8, 8);
@@ -61,7 +22,8 @@ describe('attachments reach the model (parity: AttachmentMedia)', () => {
     const content = f.fake.requests[0].messages.find((m: any) => m.role === 'user').content;
     const imagePart = content.find((p: any) => p.type === 'image_url');
     expect(imagePart.image_url.url).toBe(`data:image/png;base64,${Buffer.from(image).toString('base64')}`);
-    expect(content.filter((p: any) => p.type === 'file')).toHaveLength(2);
+    expect(content.filter((p: any) => p.type === 'file')).toHaveLength(1); // only the PDF; text files go as text
+    expect(content).toContainEqual({type: 'text', text: '[File: “notes.txt”]\nhello notes'});
     expect(JSON.stringify(content)).toContain('[Attached file: “data.zip”. Read them with `fs` in run_javascript.]');
     const stored: Message[] = (await (await f.req(`/v1/chats/${chat.id}/messages`)).json()).items;
     expect(JSON.stringify(stored[0])).not.toContain(Buffer.from(image).toString('base64')); // bytes are never persisted in history

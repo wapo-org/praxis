@@ -39,6 +39,8 @@ export const ToolResultSchema = z.object({
   content:z.array(JsonObjectSchema), isError:z.boolean().default(false), outputRef:IdSchema.optional(),
 });
 export type ToolResult = z.infer<typeof ToolResultSchema>;
+/** Tool results longer than this are truncated and spilled (read back with read_tool_output). */
+export const MAX_RESULT_CHARACTERS=32000;
 export function textResult(text:string,isError=false):ToolResult {
   return {content:[{type:'text',text}],isError};
 }

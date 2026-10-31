@@ -33,7 +33,7 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
       execution: {
         skills: ctx => listSkillsForCatalog(ctx),
         turnNotes: (ctx, chat, previous) => connectorTurnNotes(ctx, chat, previous),
-        media: (ctx, part) => rehydrateAttachment(ctx, storage, part),
+        media: (ctx, part, caps) => rehydrateAttachment(ctx, storage, part, caps),
         toolNotes: async (ctx, chat) => connectorToolNotes(await getMcpTools(ctx, {chatId: chat.id, disabledConnectorIds: chat.disabledConnectorIds}, mcp)),
         async tools(ctx, {chat, attachmentIds}) {
           const connectors = await getMcpTools(ctx, {chatId: chat.id, disabledConnectorIds: chat.disabledConnectorIds}, mcp);
@@ -59,7 +59,10 @@ export function withGateway(chat: Chat, connectors: FeatureTool[]): FeatureTool[
   const frozen = chat.setup?.tools.map(t => t.name);
   const gateway = frozen ? frozen.includes('mcp_call_tool') : connectors.length > GATEWAY_THRESHOLD;
   if (!gateway) return connectors;
-  return [...createMcpGateway(connectors), ...connectors.map(t => ({...t, hidden: true}))];
+  // The catalog is frozen too: connectors added later aren't searchable or callable here (direct tools behave the same).
+  const hidden = chat.setup?.hiddenTools?.map(t => t.name);
+  const catalog = hidden ? connectors.filter(t => hidden.includes(t.name)) : connectors;
+  return [...createMcpGateway(catalog), ...catalog.map(t => ({...t, hidden: true}))];
 }
 
 export function localModules(baseUrl: string): (service: ApiService) => FeatureModule[] {

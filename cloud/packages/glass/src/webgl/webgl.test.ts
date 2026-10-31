@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { GlassChip } from '../primitives';
 import { afterEach, expect, it, vi } from 'vitest';
 import { negotiateStrategy } from '../engine-detect';
 import { MATERIAL_PARAMS, REFERENCE_PARAMS } from './params';
@@ -96,4 +99,9 @@ it('does not allocate or draw invisible/hidden surfaces; disconnects on destroy'
   expect(renderer).not.toHaveBeenCalled();
   runtime.destroy();
   expect(disconnect).toHaveBeenCalledTimes(2);
+});
+
+it("leaves chip foreground transparent so the material remains visible", () => {
+  const root=document.createElement("div");root.innerHTML=renderToStaticMarkup(React.createElement(GlassChip,null,"Chip"));
+  expect((root.querySelector(".praxis-glass-chip") as HTMLElement).style.background).toBe("transparent");
 });
