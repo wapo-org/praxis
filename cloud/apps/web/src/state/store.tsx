@@ -6,6 +6,7 @@ import { useChatActions } from './useChatActions';
 import { useConsent } from './useConsent';
 import { useMediaActions } from './useMediaActions';
 import { usePraxisState } from './usePraxisState';
+import { useLiveFollower } from './useLiveFollower';
 import { useReplica } from './useReplica';
 import { useRunState } from './useRunState';
 import { useRunStreams } from './useRunStreams';
@@ -23,6 +24,7 @@ export function PraxisStoreProvider({
   const runState = useRunState(state);
   const streams = useRunStreams(state, runState);
   const replica = useReplica(state, { ...streams, ...runState });
+  useLiveFollower(state, { ...streams, ...runState });
   const chats = useChatActions(state, replica);
   const send = useSendActions(state, { ...chats, ...streams });
   const consent = useConsent(state, send);

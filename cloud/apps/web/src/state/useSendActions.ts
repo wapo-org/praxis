@@ -53,6 +53,7 @@ export function useSendActions(
       }
 
       const clientTurnId = `turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      state.localTurnIdsRef.current.add(clientTurnId);
       const nowIso = new Date().toISOString();
       const optimisticUserMsg: Message = {
         type: 'message',

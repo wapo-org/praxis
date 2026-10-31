@@ -150,6 +150,10 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
         .catch((err) => setErrorBanner(err instanceof Error ? err.message : 'Unable to open chat'));
   };
   const activeRunUnsubMapRef = React.useRef<Map<string, () => void>>(new Map());
+  /** clientTurnIds this tab started: their runs are attached by the send path, not by the user-event follower. */
+  const localTurnIdsRef = React.useRef<Set<string>>(new Set());
+  /** Newest user-event id from bootstrap; the live follower subscribes after it (null until bootstrapped). */
+  const [eventCursor, setEventCursor] = React.useState<number | null>(null);
 
   // Mark first paint on initial mount
   React.useLayoutEffect(() => {
@@ -236,6 +240,9 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     startNewConversation,
     restoreRoute,
     activeRunUnsubMapRef,
+    localTurnIdsRef,
+    eventCursor,
+    setEventCursor,
   };
 }
 export type PraxisState = ReturnType<typeof usePraxisState>;

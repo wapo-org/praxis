@@ -143,6 +143,15 @@ export function eventsContract(name: string, factory: () => Events | Promise<Eve
       events = await factory();
     });
 
+    it('latest() names the newest event id, 0 for an empty channel (WP-W3)', async () => {
+      expect(events.latest).toBeTypeOf('function');
+      expect(await events.latest!('u-latest', 'user')).toBe(0);
+      await events.append('u-latest', 'user', {n: 1});
+      const second = await events.append('u-latest', 'user', {n: 2});
+      expect(await events.latest!('u-latest', 'user')).toBe(second.id);
+      expect(await events.read('u-latest', 'user', second.id)).toEqual([]);
+    });
+
     it('allocates monotonic ids per (owner, channel) and reads strictly after a cursor', async () => {
       const [alice, bob] = [owner('alice'), owner('bob')];
       const a1 = await events.append(alice, 'run:1', { type: 'x', n: 1 });

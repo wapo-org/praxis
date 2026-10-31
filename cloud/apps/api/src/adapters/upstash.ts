@@ -85,6 +85,8 @@ export function upstashFromRedis(redis: RedisLike, options: Omit<UpstashOptions,
       const result = await redis.xrange<{payload: string}>(stream(u, c), `(${after}-0`, '+', limit);
       return Object.entries(result ?? {}).map(([id, fields]) => EventSchema.parse({id: Number(id.split('-')[0]), payload: JSON.parse(fields.payload)}));
     },
+    // The per-stream sequence APPEND_EVENT_LUA increments is exactly the newest event id.
+    latest: async (u, c) => Revision.parse(Number((await redis.get<string | number>(`${stream(u, c)}:seq`)) ?? 0)),
   };
 
   /** Fenced execution lease (SET NX PX + compare-and-delete) so duplicate continuations never run one run twice. */
