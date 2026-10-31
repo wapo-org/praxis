@@ -10,7 +10,7 @@ import {
   Settings,
   Trash2,
   Pencil,
-} from 'lucide-react';
+} from '../../lib/icons';
 import type { Chat } from '@praxis/protocol';
 import { usePraxisStore } from '../../state/store.js';
 import {
@@ -83,21 +83,6 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
   return (
     <>
       <div className="screen-history-tools">
-        <GlassChip
-          active={filter === 'all'}
-          aria-pressed={filter === 'all'}
-          onClick={() => setFilter('all')}
-        >
-          All
-        </GlassChip>
-        <GlassChip
-          active={filter === 'pinned'}
-          aria-pressed={filter === 'pinned'}
-          icon={<Pin size={13} />}
-          onClick={() => setFilter('pinned')}
-        >
-          Pinned
-        </GlassChip>
         <span style={{ flex: 1 }} />
         {selecting ? (
           <ScreenButton
@@ -113,6 +98,9 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
             label="History options"
             icon={<MoreHorizontal size={18} />}
           >
+            <GlassDropdown.Item onSelect={() => setFilter(filter === 'all' ? 'pinned' : 'all')}>
+              {filter === 'all' ? 'Show pinned chats' : 'Show all chats'}
+            </GlassDropdown.Item>
             <GlassDropdown.Item
               icon={<Check size={16} />}
               onSelect={() => setSelecting(true)}
@@ -159,7 +147,7 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                     last?.parts
                       .filter((part) => part.type === 'text')
                       .map((part) => part.text)
-                      .join(' ') ?? '';
+                      .join(' ')?.replace(/[#*_`~>]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') ?? '';
                   return (
                     <div key={chat.id} className="screen-history-row">
                       {selecting ? (
@@ -326,7 +314,7 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
             disabled={task.busy}
             onClick={() => {
               void task.run(async () => {
-                await store.createNewChat();
+                store.startNewConversation();
                 onSelect?.();
               });
             }}

@@ -1,4 +1,4 @@
-# WP-B1 reproducible measurements
+# WP-B1 reproducible measurements (historical checkpoint)
 
 Run API on 8817 and Vite on 5191, then from the checkout root:
 
@@ -22,4 +22,4 @@ Measured on 2026-10-31 against the Vite development server:
 - Dark authenticated replica mount: 52.9 ms (one reload sample).
 
 Header bounds in both themes: History x=18–58, title x=70–332, New x=344–384.
-Approval action: white text on rgb(47, 122, 77) in both themes.
+These samples belong to WP-B1, before WP-B3 layout/token changes. Current actions use native ink/canvas inversion; see cloud/docs/web/PARITY.md. No new WP-B3 timing claim is made.

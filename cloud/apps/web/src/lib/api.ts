@@ -1,4 +1,4 @@
-import type { Attachment, Bootstrap, Chat, Model, Provider, Run, RunSnapshot } from '@praxis/protocol';
+import type { Attachment, Bootstrap, Chat, Model, Provider, Run, RunSnapshot, Capabilities } from '@praxis/protocol';
 import { SyncResponseSchema } from '@praxis/protocol';
 import { FeatureApiClient } from './api-features';
 import { PraxisApiError, type Consent, type Preferences, type Transcription, type PageResult } from './api-transport';
@@ -108,6 +108,7 @@ export class PraxisApiClient extends FeatureApiClient {
     modelId?: string;
     mode?: 'ask' | 'plan' | 'build' | 'auto';
     effort?: string;
+    webSearch?: boolean;
     attachmentIds?: string[];
     disabledConnectorIds?: string[];
     clientTurnId?: string;
@@ -194,7 +195,8 @@ export class PraxisApiClient extends FeatureApiClient {
     flavor: 'anthropicMessages' | 'openAIChat' | 'openAIResponses';
     baseUrl: string;
     defaultModel?: string;
-    apiKey: string;
+    apiKey?: string;
+    capabilities?: Capabilities;
     extraHeaders?: Record<string, string>;
   }): Promise<Provider> {
     return this.request<Provider>('/v1/providers', {
@@ -211,6 +213,7 @@ export class PraxisApiClient extends FeatureApiClient {
       baseUrl: string;
       defaultModel?: string;
       apiKey?: string;
+      capabilities?: Capabilities;
       extraHeaders?: Record<string, string>;
     },
   ): Promise<Provider> {

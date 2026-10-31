@@ -1,3 +1,6 @@
+import { ComposerBar } from './ComposerBar';
+import { Photo, Paperclip, X } from '../../lib/icons';
+import { useModelSearch } from '../../lib/useModelSearch';
 import React from 'react';
 import type { Attachment } from '@praxis/protocol';
 import { DotMeter, GlassSurface } from '@praxis/glass';
@@ -14,6 +17,7 @@ export const Composer: React.FC = () => {
     selectedProviderId,
     selectedModelId,
     setSelectedModel,
+    cacheModels,
     activeLiveRun,
     sendMessage,
     cancelActiveRun,
@@ -69,17 +73,15 @@ export const Composer: React.FC = () => {
     }
   };
 
+  const modelSearch = useModelSearch(text, inlineModelSearchActive);
   const handleSend = async () => {
     const trimmed = text.trim();
     if (!trimmed && queuedAttachments.length === 0) return;
 
     if (inlineModelSearchActive) {
-      const match = models.find(
-        (m) =>
-          m.displayName.toLowerCase().includes(trimmed.toLowerCase()) ||
-          m.id.toLowerCase().includes(trimmed.toLowerCase()),
-      );
+      const match = modelSearch.items[0];
       if (match) {
+        cacheModels([match]);
         setSelectedModel(match.providerId, match.id);
       }
       setInlineModelSearchActive(false);
@@ -95,7 +97,7 @@ export const Composer: React.FC = () => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && !window.matchMedia('(pointer: coarse)').matches) {
       e.preventDefault();
       void handleSend();
     } else if (e.key === 'Escape' && inlineModelSearchActive) {
@@ -151,19 +153,7 @@ export const Composer: React.FC = () => {
     }
   };
 
-  const inlineMatchingModels = React.useMemo(() => {
-    if (!inlineModelSearchActive) return [];
-    const q = text.trim().toLowerCase();
-    return models
-      .filter(
-        (m) =>
-          !q ||
-          m.displayName.toLowerCase().includes(q) ||
-          m.id.toLowerCase().includes(q) ||
-          (m.tagline?.toLowerCase().includes(q) ?? false),
-      )
-      .slice(0, 6);
-  }, [inlineModelSearchActive, models, text]);
+  const inlineMatchingModels = modelSearch.items;
 
   return (
     <div
@@ -230,12 +220,16 @@ export const Composer: React.FC = () => {
               Done
             </button>
           </div>
+          {modelSearch.error && <p role="alert">{modelSearch.error}</p>}
+          {modelSearch.busy && <p role="status">Searching…</p>}
+          {modelSearch.cursor && <button type="button" onClick={modelSearch.loadMore}>Load more models</button>}
           {inlineMatchingModels.map((m) => (
             <button
               key={`${m.providerId}-${m.id}`}
               type="button"
               data-testid={`inline-model-option-${m.id}`}
               onClick={() => {
+                cacheModels([m]);
                 setSelectedModel(m.providerId, m.id);
                 setInlineModelSearchActive(false);
                 setText('');
@@ -312,7 +306,7 @@ export const Composer: React.FC = () => {
                   color: 'var(--paper-ink)',
                 }}
               >
-                <span>{att.mediaType.startsWith('image/') ? '🖼️' : '📎'}</span>
+                <span>{att.mediaType.startsWith('image/') ? <Photo size={16} /> : <Paperclip size={16} />}</span>
                 <span
                   style={{
                     maxWidth: 120,
@@ -338,7 +332,7 @@ export const Composer: React.FC = () => {
                     fontSize: 13,
                   }}
                 >
-                  ×
+                  <X size={14} />
                 </button>
               </div>
             ))}
@@ -348,158 +342,9 @@ export const Composer: React.FC = () => {
           </div>
         )}
 
-        {/* Composer Input & Buttons Row */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-end',
-            gap: 8,
-          }}
-        >
-          {/* Plus / Tray Toggle Button */}
-          <button
-            type="button"
-            aria-label="Open attachments and controls"
-            data-testid="composer-plus-button"
-            onClick={() => setPlusTrayOpen(!plusTrayOpen)}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: '50%',
-              border: '0.5px solid var(--paper-hairline)',
-              background: plusTrayOpen ? 'var(--paper-ink)' : 'var(--paper-fill-1)',
-              color: plusTrayOpen ? 'var(--paper-canvas)' : 'var(--paper-ink)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 20,
-              fontWeight: 400,
-              cursor: 'pointer',
-              flexShrink: 0,
-              transform: plusTrayOpen ? 'rotate(45deg)' : 'rotate(0deg)',
-              transition: 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1)',
-            }}
-          >
-            +
-          </button>
-
-          {/* Auto-growing Textarea */}
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            data-testid="composer-input"
-            aria-label={inlineModelSearchActive ? 'Search models' : 'Message Praxis'}
-            placeholder={
-              inlineModelSearchActive
-                ? 'Type to filter models...'
-                : recording
-                  ? 'Listening... tap mic to finish'
-                  : transcribing
-                    ? 'Transcribing voice...'
-                    : `Message ${currentModel?.displayName ?? 'Praxis'}...`
-            }
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            style={{
-              flex: 1,
-              minHeight: 36,
-              maxHeight: 160,
-              padding: '7px 4px',
-              border: 'none',
-              outline: 'none',
-              resize: 'none',
-              background: 'transparent',
-              color: 'var(--paper-ink)',
-              fontFamily: 'var(--font-sans)',
-              fontSize: 16,
-              lineHeight: '22px',
-            }}
-          />
-
-          {/* Voice Input Button */}
-          <button
-            type="button"
-            aria-label={recording ? 'Stop voice recording' : 'Voice input'}
-            data-testid="composer-voice-button"
-            onClick={() => void handleToggleVoice()}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: '50%',
-              border: '0.5px solid var(--paper-hairline)',
-              background: recording ? 'var(--paper-danger)' : 'var(--paper-fill-1)',
-              color: recording ? '#FFFFFF' : 'var(--paper-ink-2)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 15,
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            {recording ? '●' : '🎤'}
-          </button>
-
-          {/* Send or Stop Button */}
-          {isRunning ? (
-            <button
-              type="button"
-              aria-label="Stop generating"
-              data-testid="composer-stop-button"
-              onClick={() => void cancelActiveRun()}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                border: 'none',
-                background: 'var(--paper-ink)',
-                color: 'var(--paper-canvas)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 13,
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}
-            >
-              ■
-            </button>
-          ) : (
-            <button
-              type="button"
-              aria-label="Send message"
-              data-testid="composer-send-button"
-              disabled={!text.trim() && queuedAttachments.length === 0}
-              onClick={() => void handleSend()}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                border: 'none',
-                background:
-                  text.trim() || queuedAttachments.length > 0
-                    ? 'var(--paper-ink)'
-                    : 'var(--paper-fill-2)',
-                color:
-                  text.trim() || queuedAttachments.length > 0
-                    ? 'var(--paper-canvas)'
-                    : 'var(--paper-ink-3)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 16,
-                fontWeight: 600,
-                cursor:
-                  text.trim() || queuedAttachments.length > 0 ? 'pointer' : 'default',
-                flexShrink: 0,
-                transition: 'background 150ms ease, transform 150ms ease',
-              }}
-            >
-              ↑
-            </button>
-          )}
-        </div>
+        <ComposerBar inputRef={textareaRef} text={text} onTextChange={setText} onKeyDown={handleKeyDown}
+          recording={recording} transcribing={transcribing} onCamera={() => handlePickFiles('image/*', true)}
+          onToggleVoice={() => void handleToggleVoice()} onSend={() => void handleSend()} attachmentCount={queuedAttachments.length} />
       </GlassSurface>
     </div>
   );

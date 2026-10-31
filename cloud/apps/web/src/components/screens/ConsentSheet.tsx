@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Globe, Link, Mic, Paperclip, Wrench } from 'lucide-react';
+import { FileText, Globe, Link, Mic, Paperclip, Wrench } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store.js';
 import {
   Card,

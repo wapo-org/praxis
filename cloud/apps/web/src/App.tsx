@@ -1,59 +1,44 @@
 import React from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ChatScreen } from './components/chat/ChatScreen';
 import { SheetsRoot } from './components/screens/SheetsRoot';
 import { GlassLabPage } from './components/lab/GlassLabPage';
+import { usePraxisStore } from './state/store';
+import { parseRoute } from './lib/navigation';
 
 export function App() {
-  const [route, setRoute] = React.useState<string>(() =>
-    typeof window !== 'undefined' ? window.location.pathname + window.location.hash : '/',
-  );
-
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const store = usePraxisStore();
+  const restore = React.useRef(store.restoreRoute); restore.current = store.restoreRoute;
   React.useEffect(() => {
-    const onPop = () => setRoute(window.location.pathname + window.location.hash);
-    window.addEventListener('popstate', onPop);
-    window.addEventListener('hashchange', onPop);
-    return () => {
-      window.removeEventListener('popstate', onPop);
-      window.removeEventListener('hashchange', onPop);
-    };
+    const route = parseRoute(pathname);
+    restore.current(route.chatId ?? null, route.sheet, route.providerId);
+  }, [pathname]);
+  React.useEffect(() => {
+    const media = window.matchMedia('(min-width: 1024px)');
+    const apply = () => store.setDesktopSidebarOpen(media.matches);
+    apply(); media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
   }, []);
-
-  if (route.startsWith('/lab/glass') || route.includes('#glass-lab')) {
-    return (
-      <GlassLabPage
-        onNavigateBack={() => {
-          window.history.pushState({}, '', '/');
-          setRoute('/');
-        }}
-      />
-    );
-  }
-
-  return (
-    <div
-      data-testid="praxis-app-root"
-      style={{
-        position: 'relative',
-        width: '100vw',
-        height: '100dvh',
-        backgroundColor: 'var(--paper-canvas)',
-        color: 'var(--paper-ink)',
-        overflow: 'hidden',
-        display: 'flex',
-      }}
-    >
-      <ChatScreen
-        onOpenGlassLab={() => {
-          window.history.pushState({}, '', '/lab/glass');
-          setRoute('/lab/glass');
-        }}
-      />
-      <SheetsRoot
-        onOpenGlassLab={() => {
-          window.history.pushState({}, '', '/lab/glass');
-          setRoute('/lab/glass');
-        }}
-      />
-    </div>
-  );
+  React.useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault(); store.setActiveSheet('history');
+        requestAnimationFrame(() => (document.querySelector<HTMLInputElement>('[role="dialog"] [aria-label="Search conversations"]') ?? document.querySelector<HTMLInputElement>('[aria-label="Search conversations"]'))?.focus());
+      }
+      if (event.key === 'Escape') {
+        store.setPlusTrayOpen(false);
+        if (store.activeSheet) store.setActiveSheet(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [store]);
+  const lab = import.meta.env.DEV ? () => navigate('/lab/glass') : undefined;
+  if (import.meta.env.DEV && pathname === '/lab/glass') return <GlassLabPage onNavigateBack={() => navigate('/')} />;
+  if (!parseRoute(pathname).valid) return <main className="account-screen"><div><h1>Page not found</h1><button onClick={() => navigate('/')}>New chat</button></div></main>;
+  return <div data-testid="praxis-app-root" className="praxis-app-root">
+    <ChatScreen onOpenGlassLab={lab} /><SheetsRoot onOpenGlassLab={lab} />
+  </div>;
 }

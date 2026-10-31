@@ -1,3 +1,5 @@
+import { extractMessageToolSteps } from './messageTools';
+import { MessageActivity } from './MessageActivity';
 import React from 'react';
 import type { Message } from '@praxis/protocol';
 import { GlassChip, ProgressiveBlurScrim } from '@praxis/glass';
@@ -38,66 +40,6 @@ const STARTER_SUGGESTIONS: Array<{
     script: 'elicitation',
   },
 ];
-
-function extractMessageToolSteps(msg: Message): ActiveToolStep[] {
-  const byCallId = new Map<string, ActiveToolStep>();
-  for (const part of msg.parts) {
-    if (part.type === 'toolCall' && part.callId) {
-      byCallId.set(part.callId, {
-        callId: part.callId,
-        activity: {
-          type: 'tool.activity',
-          id: part.callId,
-          name: part.name || 'tool',
-          source: { type: 'builtin' },
-          presentation: {
-            type: 'tool.presentation',
-            category: 'other',
-            runningTitle: part.name || 'Running tool',
-            finishedTitle: part.name || 'Completed tool',
-          },
-        },
-        argumentsJson: part.arguments ?? '{}',
-        running: false,
-        progressLines: [],
-      });
-    } else if (part.type === 'toolResult' && part.callId) {
-      const existing = byCallId.get(part.callId);
-      const preview = part.text ?? (part.content ? JSON.stringify(part.content) : '');
-      const completion = {
-        type: 'tool.completion' as const,
-        status: part.isError ? ('failed' as const) : ('succeeded' as const),
-        summary: part.isError ? 'Tool failed' : 'Tool completed',
-        preview,
-        outputRef: part.outputRef,
-      };
-      if (existing) {
-        existing.completion = completion;
-      } else {
-        byCallId.set(part.callId, {
-          callId: part.callId,
-          activity: {
-            type: 'tool.activity',
-            id: part.callId,
-            name: part.name || 'tool',
-            source: { type: 'builtin' },
-            presentation: {
-              type: 'tool.presentation',
-              category: 'other',
-              runningTitle: part.name || 'Running tool',
-              finishedTitle: part.name || 'Completed tool',
-            },
-          },
-          argumentsJson: '{}',
-          running: false,
-          progressLines: [],
-          completion,
-        });
-      }
-    }
-  }
-  return Array.from(byCallId.values());
-}
 
 export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
   const {
@@ -319,6 +261,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
           ) : (
             /* Conversation Turns */
             activeMessages.map((msg) => {
+              if (msg.role === 'assistant' && hasLiveStreamingContent && msg.runId === activeLiveRun?.run.id) return null;
               if (msg.role === 'user') {
                 return (
                   <UserBubble
@@ -345,11 +288,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
               return (
                 <div key={msg.id} data-testid="assistant-turn">
                   {(msgToolSteps.length > 0 || msgReasoning.length > 0) && (
-                    <AgentActivityView
-                      isRunning={false}
-                      reasoningBlocks={msgReasoning}
-                      toolSteps={msgToolSteps}
-                    />
+                    <MessageActivity message={msg} steps={msgToolSteps} liveRun={activeLiveRun?.run.id === msg.runId ? activeLiveRun?.run : undefined} liveSteps={activeLiveRun?.run.id === msg.runId ? activeLiveRun?.toolSteps : undefined} />
                   )}
                   {msgText && (
                     <AgentMessageView
@@ -377,6 +316,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onOpenGlassLab }) => {
           {hasLiveStreamingContent && activeLiveRun && (
             <div data-testid="live-run-streaming-turn">
               <AgentActivityView
+                startedAt={activeLiveRun.run.createdAt}
+                finishedAt={activeLiveRun.run.updatedAt}
                 runId={activeLiveRun.run.id}
                 isRunning={activeLiveRun.run.status === 'running'}
                 reasoningBlocks={activeLiveRun.reasoningBlocks}

@@ -1,78 +1,66 @@
-# iOS vs. Web Visual & Functional Parity (`cloud/docs/web/PARITY.md`)
+# Web / iOS parity evidence — WP-B3
 
-This document pairs the reference screenshots captured from the native iOS `PraxisChat` app on simulator `Cloud-B` (`cloud/docs/web/reference/ios/`) with the shipped React + Vite web client (`cloud/docs/web/reference/web/`) across **Mobile (`402×874`)** and **Desktop (`1440×900`)** in both **Light** and **Dark** modes.
+Captured 2026-10-31 from the real local API on 8817 and Vite on 5191. Each account
+starts empty; tool and approval examples use the API's explicit local scripted driver.
+These are behavior and visual comparisons, not a claim of pixel-perfect parity.
 
----
+## References and limitations
 
-## 1. Side-by-Side Visual Parity Matrix
+`~/.praxis-agent-state/cloud/reports/ios-screens/` was unavailable at capture time.
+The iOS links below are the existing **light** simulator captures. Their files named
+`dark-*` are actually light and are deliberately not used. Web dark mode is captured,
+but **native dark visual parity remains unverified** until WP-C3 supplies real dark images.
+Related-reference rows explicitly identify screens lacking an exact native capture.
+Desktop uses the same mobile iOS reference; there is no native desktop target.
 
-### 1.1 Conversation & Streaming Markdown + GFM Table (`402×874` Mobile Light)
-| Native iOS (`Cloud-B` Simulator) | Web Mobile (`402×874` Light) |
-|---|---|
-| ![iOS Chat Top](./reference/ios/light-chat-0-top.png) | ![Web Chat Welcome](./reference/web/mobile-light-chat-welcome.png) |
-| ![iOS Chat Mid](./reference/ios/light-chat-1-mid.png) | ![Web Chat Tools & Table](./reference/web/mobile-light-chat-tools-table.png) |
+Color source: [Tokens.swift](../../../PraxisChat/PraxisChat/DesignSystem/Tokens.swift).
+All 13 light/dark color pairs match the web tokens; a unit test checks them. Primary
+actions follow [Buttons.swift](../../../PraxisChat/PraxisChat/DesignSystem/Buttons.swift):
+ink fill and canvas foreground, including dark-mode inversion. The old sage-accent
+claim was incorrect. Surface/secondary/tertiary/danger/rule aliases resolve to native
+card/fill/secondaryInk/mutedInk/destructive/hairline; the warning alias is neutral
+secondaryInk because the native token source defines no warning color.
 
-### 1.2 Empty Conversation State & Starter Suggestions
-| Native iOS (`Cloud-B` Simulator) | Web Mobile (`402×874` Light) |
-|---|---|
-| ![iOS Empty Chat](./reference/ios/empty-chat.png) | ![Web Empty Chat](./reference/web/mobile-light-empty-chat.png) |
+## Screen matrix
 
-### 1.3 Expandable Plus Tray & Improved `GlassDropdown` Model Picker
-| Native iOS (`Cloud-B` Simulator) | Web Mobile (`402×874` Light) |
-|---|---|
-| ![iOS Tray Open](./reference/ios/tray-open.png) | ![Web Plus Tray](./reference/web/mobile-light-plus-tray.png) |
-| ![iOS Tray Models](./reference/ios/light-tray-1-models-scroll.png) | ![Web GlassDropdown Model Picker](./reference/web/mobile-light-model-dropdown.png) |
+| Screen | iOS light reference | Web 402×874 light | Web 402×874 dark | Web 1440×900 light | Match / mismatch |
+|---|---|---|---|---|---|
+| New chat and composer | [iOS](reference/ios/light-chat-0-bottom.png) | [Light](reference/web/b3-mobile-light-chat-empty.png) | [Dark](reference/web/b3-mobile-dark-chat-empty.png) | [Desktop](reference/web/b3-desktop-light-chat-empty.png) | Matches the round history/compose controls, centered title/model, ink-filled plus, camera, mic, and placeholder. System theme follows OS until explicitly set. Browser safe areas/fonts differ; web starter suggestions are additional. |
+| Plus tray | [iOS](reference/ios/light-tray-2-main.png) | [Light](reference/web/b3-mobile-light-plus-tray.png) | [Dark](reference/web/b3-mobile-dark-plus-tray.png) | [Desktop](reference/web/b3-desktop-light-plus-tray.png) | Matches mode/model/effort/media order, tagline and chevron, four tiles, effort copy, photo access and Web search. Browser photo selection grants only selected files; Screenshot opens saved-image selection. Unsupported hosted search is disabled. |
+| Finished activity | [iOS](reference/ios/light-activity-finished-folded.png) | [Light](reference/web/b3-mobile-light-chat-tools.png) | [Dark](reference/web/b3-mobile-dark-chat-tools.png) | [Desktop](reference/web/b3-desktop-light-chat-tools.png) | Uses server run timestamps for Worked for Ns. Local scripted runs finish in under a second and display 0s. Native example has different elapsed time/content. |
+| Activity details | [iOS](reference/ios/light-activity-finished-list.png) | [Light](reference/web/b3-mobile-light-activity-expanded.png) | [Dark](reference/web/b3-mobile-dark-activity-expanded.png) | [Desktop](reference/web/b3-desktop-light-activity-expanded.png) | Uses server presentation titles and SVG status icons. Tool payloads remain server-provided; web reasoning/details still use bordered disclosures rather than exact native row treatment. |
+| Approval | [iOS](reference/ios/light-activity-tool-detail.png) | [Light](reference/web/b3-mobile-light-approval.png) | [Dark](reference/web/b3-mobile-dark-approval.png) | [Desktop](reference/web/b3-desktop-light-approval.png) | Ink-filled primary action is visible in both themes. Related iOS tool-detail image only: no native approval-card capture is available, so exact card parity is unverified. |
+| Chats/history | [iOS](reference/ios/light-history-0-top.png) | [Light](reference/web/b3-mobile-light-history.png) | [Dark](reference/web/b3-mobile-dark-history.png) | [Desktop](reference/web/b3-desktop-light-history.png) | Chats title, search, date groups, previews without markdown punctuation, and menus replace All/Pinned chips. Touch row actions remain explicit buttons; native uses contextual gestures. |
+| Settings | [iOS](reference/ios/light-settings-0-root.png) | [Light](reference/web/b3-mobile-light-settings.png) | [Dark](reference/web/b3-mobile-dark-settings.png) | [Desktop](reference/web/b3-desktop-light-settings.png) | Model providers and AI data sharing use native section names and explanatory copy. Web retains Appearance; the development lab is excluded from production settings. |
+| Provider editor | [iOS](reference/ios/light-settings-7-editor-top.png) | [Light](reference/web/b3-mobile-light-provider.png) | [Dark](reference/web/b3-mobile-dark-provider.png) | [Desktop](reference/web/b3-desktop-light-provider.png) | Preset picker, /v1 Anthropic URL, Model copy, header Save and Test connection are present. Test connection saves the endpoint first and surfaces server errors. |
+| Provider capabilities | [iOS](reference/ios/light-settings-8-editor-scrolled.png) | [Light](reference/web/b3-mobile-light-provider-capabilities.png) | [Dark](reference/web/b3-mobile-dark-provider-capabilities.png) | [Desktop](reference/web/b3-desktop-light-provider-capabilities.png) | Capability switches persist via the API. The native source has 10 switches; web exposes all 12 protocol flags, adding server compaction and tool search. |
+| Connectors | [iOS](reference/ios/light-settings-2-connectors.png) | [Light](reference/web/b3-mobile-light-connectors.png) | [Dark](reference/web/b3-mobile-dark-connectors.png) | [Desktop](reference/web/b3-desktop-light-connectors.png) | Navigation and Add by URL are present; web captures a real empty account, while native reference has configured connectors. |
+| Add connector | [iOS](reference/ios/light-settings-3-add-url.png) | [Light](reference/web/b3-mobile-light-connector-add.png) | [Dark](reference/web/b3-mobile-dark-connector-add.png) | [Desktop](reference/web/b3-desktop-light-connector-add.png) | URL/name entry and explicit connection errors; no invented connected state. Native and web field spacing/material rendering differ. |
+| Skills | [iOS](reference/ios/light-settings-5-skills.png) | [Light](reference/web/b3-mobile-light-skills.png) | [Dark](reference/web/b3-mobile-dark-skills.png) | [Desktop](reference/web/b3-desktop-light-skills.png) | Import/browse controls and real empty state. Native reference has seeded skills; no reference data is injected into web. |
+| Image reader | [iOS](reference/ios/light-settings-6-image-reader.png) | [Light](reference/web/b3-mobile-light-image-reader.png) | [Dark](reference/web/b3-mobile-dark-image-reader.png) | [Desktop](reference/web/b3-desktop-light-image-reader.png) | Vision capability gating and model selection use real models; configured model content differs from native demo. |
+| Voice input | [iOS](reference/ios/light-settings-0-root.png) | [Light](reference/web/b3-mobile-light-voice.png) | [Dark](reference/web/b3-mobile-dark-voice.png) | [Desktop](reference/web/b3-desktop-light-voice.png) | Related settings-root reference only: no direct native voice-screen capture available. Configuration and transcription errors are real; exact layout parity remains unverified. |
+| AI data sharing | [iOS](reference/ios/light-consent-0-sheet.png) | [Light](reference/web/b3-mobile-light-sharing.png) | [Dark](reference/web/b3-mobile-dark-sharing.png) | [Desktop](reference/web/b3-desktop-light-sharing.png) | Related native consent-sheet reference only: web shows the consent-management list. Per-host revocation remains available; exact list parity lacks a native capture. |
 
-### 1.4 Agent Activity Disclosure & Inline Tool Approval Card
-| Native iOS (`Cloud-B` Simulator) | Web Mobile (`402×874` Light) |
-|---|---|
-| ![iOS Activity Expanded](./reference/ios/activity-2-running-expanded.png) | ![Web Activity Expanded](./reference/web/mobile-light-activity-expanded.png) |
-| ![iOS Approval Card](./reference/ios/approval-card.png) | ![Web Approval Card](./reference/web/mobile-light-approval-card.png) |
+## Desktop and navigation checks
 
-### 1.5 Conversation History Sheet
-| Native iOS (`Cloud-B` Simulator) | Web Mobile (`402×874` Light) |
-|---|---|
-| ![iOS History Sheet](./reference/ios/light-history-0-top.png) | ![Web History Sheet](./reference/web/mobile-light-history-sheet.png) |
+- At ≥1024 px, Chats stays visible in a 280 px sidebar and selecting a row changes `/c/:chatId`.
+- Chat text is constrained to 402 px and the composer/header to 442 px, centered in the remaining workspace.
+- Sheets become centered 640 px glass dialogs; mobile sheets remain bottom sheets.
+- Desktop Enter sends, Shift+Enter inserts a newline, and touch Return inserts a newline. IME composition does not submit.
+- ⌘K / Ctrl+K opens Chats search; Escape dismisses the current sheet or tray.
+- `/`, `/c/:chatId`, `/chats`, `/settings`, and settings sub-pages restore from URLs; back/forward are checked.
+- Model search is debounced 250 ms against `/v1/models?q=&cursor=&limit=50`, includes pagination, and discards stale responses.
 
-### 1.6 Settings, Providers, Connectors, Skills, Image Reader & Voice
-| Native iOS (`Cloud-B` Simulator) | Web Mobile (`402×874` Light) |
-|---|---|
-| ![iOS Settings Root](./reference/ios/light-settings-0-root.png) | ![Web Settings Sheet](./reference/web/mobile-light-settings-sheet.png) |
+## Reproduce
 
-### 1.7 Dark Mode Parity (`#131210` Canvas, `#F2EFE8` Ink)
-| Native iOS Dark (`Cloud-B` Simulator) | Web Dark (`402×874` & `1440×900`) |
-|---|---|
-| ![iOS Dark Chat](./reference/ios/dark-chat-0-top.png) | ![Web Mobile Dark Chat](./reference/web/mobile-dark-chat.png) |
-| ![iOS Dark Settings](./reference/ios/dark-settings-0-root.png) | ![Web Desktop Dark Chat](./reference/web/desktop-dark-chat.png) |
+From the repository root with the API/web on the assigned ports:
 
-### 1.8 Desktop Layout (`1440×900`) & `/lab/glass` Liquid Glass Showcase
-| Web Desktop Chat & Settings (`1440×900`) | Web `/lab/glass` 35-Frame Apple Notes Dropdown Replica |
-|---|---|
-| ![Web Desktop Light Chat](./reference/web/desktop-light-chat.png) | ![Web Desktop Light Glass Lab](./reference/web/desktop-light-glass-lab.png) |
-| ![Web Desktop Light Settings](./reference/web/desktop-light-settings.png) | ![Web Desktop Dark Glass Lab](./reference/web/desktop-dark-glass-lab.png) |
+```
+~/.praxis-agent-state/cloud/tools/slot.sh WP-B3 node cloud/apps/web/scripts/b3-check.mjs
+~/.praxis-agent-state/cloud/tools/slot.sh WP-B3 node cloud/apps/web/scripts/parity-capture.mjs
+node cloud/apps/web/scripts/parity-links.mjs
+```
 
----
-
-## 2. Feature-by-Feature Parity Checklist
-
-| Feature Area | iOS Reference | Web Implementation (`@praxis/web` + `@praxis/glass`) | Status |
-|---|---|---|---|
-| **Paper Tokens & Typography** | `Paper.swift`, `Typography.swift`, `Rhythm.swift` | Exact hexes (`#FAF8F3` / `#131210`, `#2F7A4D` / `#52B77A`), `Source Serif 4` headings, `IBM Plex Mono` tool & code blocks | **100% Parity** |
-| **Liquid Glass & Progressive Blur** | `.glassEffect(.regular)`, `ProgressiveBlurScrim.swift` | Snell's-law (`n = 1.5`) squircle SVG displacement (`svg-displacement` in Chromium) + 6-band `ProgressiveBlurScrim` (`0.5px` → `20px`) | **100% Parity** |
-| **Improved `GlassDropdown`** | `IMG_7744.PNG`–`IMG_7778.PNG` (35 frames) | In-place elevating submenu morph (`Recent Notes ⌄`), 3-line item clamp (`lines={3}`), `ActionGrid` tiles, cross-row pointer scrubbing, 2D `tanh` elastic drag, 500+ model `VirtualList` | **100% Parity + Web Enhancements** |
-| **Streaming Chat & Markdown** | `ChatScreen.swift`, `AgentMessageView.swift` | Streaming headings, GFM tables, fenced code blocks with Copy, `CodePill`, `FileRef`, `LinkRef` interactive chips | **100% Parity** |
-| **3-Level Agent Activity** | `AgentActivityView.swift` | Folded breathing pill → step list → monospace JSON input/progress/output detail + Copy | **100% Parity** |
-| **Approvals & Elicitations** | `ApprovalCard`, `ElicitationSheet` | Inline `ApprovalCard` (Allow Once / Always Allow / Deny), nested approvals, and JSON-schema `ElicitationCard` + modal support | **100% Parity** |
-| **Composer & Plus Tray** | `Composer.swift`, `PlusTray.swift` | Auto-growing textarea, Camera/Photos/Files tiles, inline model search in composer bar, `GlassDropdown` model & effort pickers, per-chat connector toggles, voice transcription | **100% Parity** |
-| **History, Settings, Providers, Connectors, Skills, Image Reader, Voice, Consents** | `HistorySheet.swift`, `SettingsSheet.swift`, `ConnectorsScreen.swift` | Full CRUD, batch history delete, provider presets & custom headers, MCP URL/JSON/registry & per-tool toggles, SKILL.md editor & skill registry browser, vision & voice preferences, host consent sheet | **100% Parity** |
-
----
-
-## 3. Intentional Desktop & Web Adaptations
-
-1. **Centered Editorial Reading Column on Desktop (`>= 900px`)**:
-   - On desktop (`1440×900`), the conversation column is constrained to `680px` (`RHYTHM.readingMeasure`) centered in the warm paper viewport so line lengths remain optimal (`65–75ch`) while top and bottom `ProgressiveBlurScrim`s span the full viewport width.
-2. **Responsive Sheets (`640×720px` Floating Glass Dialog on Desktop vs. Bottom Sheet on Mobile)**:
-   - On `< 900px` viewports, `History`, `Settings`, `Connectors`, `Skills`, `ImageReader`, and `VoiceSettings` present as iOS-style bottom sheets; on `>= 900px` desktop viewports, they present as centered floating glass dialogs with `Escape` and backdrop-click dismissal.
-3. **3-Tier Browser Glass Negotiation**:
-   - Chromium uses full Snell's-law SVG `feDisplacementMap` refraction (`svg-displacement`); Safari/Firefox automatically negotiate the 6-layer `progressive-frost` pipeline with identical `-60°` directional specular rims and pointer spotlights.
+The capture script writes 45 screenshots (15 views × 3 variants). Chromium is the
+verified browser here. WebKit/Firefox refraction remains WP-B4; dropdown internals
+remain WP-B2's merged implementation.

@@ -100,6 +100,7 @@ beforeEach(() => {
     attachmentsById: {},
     preferences: null,
     themeMode: 'system',
+    hydrated: true,
     activeSheet: null,
     pendingConsentPrompt: null,
     desktopSidebarOpen: false,
@@ -284,7 +285,7 @@ describe('settings and capabilities', () => {
       message: 'Invalid credentials',
     });
     await mount(<ProviderEditor />);
-    await click(button('Verify & Refresh Models'));
+    await click(button('Test connection'));
     expect(store.saveProvider).toHaveBeenCalledWith(
       expect.not.objectContaining({ apiKey: expect.anything() }),
     );
@@ -296,6 +297,15 @@ describe('settings and capabilities', () => {
       'Invalid credentials',
     );
     expect(store.setActiveSheet).not.toHaveBeenCalled();
+  });
+  it('persists edited endpoint capabilities and offers an iOS preset picker', async () => {
+    store.providers = [provider]; store.editingProviderId = provider.id;
+    await mount(<ProviderEditor />);
+    expect(document.querySelector('[aria-label="Provider preset"]')?.tagName).toBe('SELECT');
+    const tools = [...document.querySelectorAll<HTMLInputElement>('[role="switch"]')].find(n => n.closest('label')?.textContent?.includes('Tool calling'))!;
+    await click(tools);
+    await click(button('Save provider'));
+    expect(store.saveProvider).toHaveBeenCalledWith(expect.objectContaining({ capabilities: expect.objectContaining({ tools: true }) }));
   });
   it('clears saved headers only after an explicit edit', async () => {
     store.providers = [{ ...provider, headerNames: ['X-Account'] }];

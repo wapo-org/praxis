@@ -1,3 +1,4 @@
+import { FileText, Paperclip, Check, Copy } from '../../lib/icons';
 import React from 'react';
 import type { Attachment, Message } from '@praxis/protocol';
 
@@ -89,7 +90,7 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
                     color: 'var(--paper-ink)',
                   }}
                 >
-                  <span aria-hidden="true">📎</span>
+                  <span aria-hidden="true"><Paperclip size={14} /></span>
                   <span>{att?.name ?? `Attachment (${attId.slice(0, 8)})`}</span>
                 </div>
               );

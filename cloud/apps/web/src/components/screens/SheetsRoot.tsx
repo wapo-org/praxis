@@ -19,9 +19,9 @@ const SHEETS: Record<
   NonNullable<ActiveSheet>,
   { title: string; parent?: ActiveSheet }
 > = {
-  history: { title: 'History' },
+  history: { title: 'Chats' },
   settings: { title: 'Settings' },
-  providers: { title: 'Providers', parent: 'settings' },
+  providers: { title: 'Model providers', parent: 'settings' },
   'provider-editor': { title: 'Provider', parent: 'settings' },
   connectors: { title: 'Connectors', parent: 'settings' },
   'connector-add-url': { title: 'Add by URL', parent: 'connectors' },
@@ -50,6 +50,8 @@ function SheetContent({
     case 'providers':
       return <SettingsSheet onOpenGlassLab={onOpenGlassLab} />;
     case 'provider-editor':
+      if (store.editingProviderId && !store.hydrated) return <p role="status">Loading provider…</p>;
+      if (store.editingProviderId && !store.providers.some(p => p.id === store.editingProviderId)) return <p role="alert">Provider not found.</p>;
       return <ProviderEditor key={store.editingProviderId ?? 'new-provider'} />;
     case 'connectors':
       return <ConnectorsScreen />;
@@ -82,8 +84,7 @@ export function DesktopHistorySidebar() {
       <GlassSurface shape="free" radius={0} material="thin">
         <div className="screen-shell">
           <ScreenHeader
-            title="History"
-            onClose={() => store.setDesktopSidebarOpen(false)}
+            title="Chats"
           />
           <HistorySheet />
         </div>
@@ -109,6 +110,7 @@ export function SheetsRoot({
           onDismiss={() => store.setActiveSheet(null)}
         >
           <ScreenHeader
+            trailing={sheet === 'provider-editor' ? <button className="screen-text-button" type="submit" form="provider-editor-form">Save</button> : undefined}
             title={config.title}
             onBack={
               config.parent

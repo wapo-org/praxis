@@ -1,9 +1,13 @@
+import { useActivityClock } from './useActivityClock';
+import { Check, X, Clock, ChevronRight } from '../../lib/icons';
 import React from 'react';
 import type { Approval } from '@praxis/protocol';
 import { GlassSurface } from '@praxis/glass';
 import type { ActiveElicitation, ActiveToolStep } from '../../state/store';
 
 export interface AgentActivityViewProps {
+  startedAt?: string;
+  finishedAt?: string;
   runId?: string;
   isRunning?: boolean;
   reasoningBlocks?: Array<{ id: string; text: string; finished: boolean }>;
@@ -38,6 +42,8 @@ export interface AgentActivityViewProps {
 
 export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
   runId,
+  startedAt,
+  finishedAt,
   isRunning = false,
   reasoningBlocks = [],
   toolSteps,
@@ -55,6 +61,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
     Record<string, Record<string, unknown>>
   >({});
 
+  const worked = useActivityClock(isRunning, startedAt, finishedAt);
   const hasActivity =
     toolSteps.length > 0 ||
     reasoningBlocks.length > 0 ||
@@ -99,10 +106,10 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
     ).length;
     if (failedCount > 0) {
       statusColor = 'var(--paper-danger)';
-      summaryLabel = `Used ${totalToolsCount} tool${totalToolsCount === 1 ? '' : 's'} (${failedCount} failed)`;
+      summaryLabel = `${worked} (${failedCount} failed)`;
     } else {
       statusColor = 'var(--paper-accent)';
-      summaryLabel = `Used ${totalToolsCount} tool${totalToolsCount === 1 ? '' : 's'}`;
+      summaryLabel = worked;
     }
   } else if (reasoningBlocks.length > 0) {
     summaryLabel = 'Thought process';
@@ -192,7 +199,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
             transition: 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1)',
           }}
         >
-          ▾
+          <ChevronRight size={14} />
         </span>
       </GlassSurface>
 
@@ -299,7 +306,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
               step.completion?.preview || step.completion?.summary || '';
             const stepSummary = step.running
               ? step.activity.presentation?.runningTitle
-              : step.completion?.summary || step.activity.presentation?.finishedTitle;
+              : step.activity.presentation?.finishedTitle || step.completion?.summary;
 
             return (
               <div
@@ -344,7 +351,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
                             : 'var(--paper-ink-2)',
                       }}
                     >
-                      {step.running ? '⟳' : isError ? '✕' : '✓'}
+                      {step.running ? <Clock size={14} /> : isError ? <X size={14} /> : <Check size={14} />}
                     </span>
                     <span
                       style={{
@@ -568,7 +575,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
                   borderRadius: 10,
                   border: 'none',
                   background: 'var(--paper-accent)',
-                  color: '#FFFFFF',
+                  color: 'var(--paper-canvas)',
                   fontSize: 13,
                   fontWeight: 600,
                   cursor: 'pointer',
@@ -764,7 +771,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
                   borderRadius: 10,
                   border: 'none',
                   background: 'var(--paper-accent)',
-                  color: '#FFFFFF',
+                  color: 'var(--paper-canvas)',
                   fontSize: 13,
                   fontWeight: 600,
                   cursor: 'pointer',

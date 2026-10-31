@@ -6,7 +6,7 @@ import {
   Link,
   RefreshCw,
   Trash2,
-} from 'lucide-react';
+} from '../../lib/icons';
 import { usePraxisStore } from '../../state/store.js';
 import { apiClient } from '../../lib/api.js';
 import {

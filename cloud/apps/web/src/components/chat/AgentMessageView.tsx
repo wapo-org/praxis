@@ -1,3 +1,4 @@
+import { FileText, Paperclip, Check, Copy } from '../../lib/icons';
 import React from 'react';
 import type { Usage } from '@praxis/protocol';
 
@@ -179,7 +180,7 @@ export const AgentMessageView: React.FC<AgentMessageViewProps> = ({
   const renderInlineTokens = (str: string): React.ReactNode[] => {
     const nodes: React.ReactNode[] = [];
     // Match markdown links [text](url), inline code `code`, bold **bold**, italic *italic*
-    const tokenRegex = /(\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*)/g;
+    const tokenRegex = /(\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*|~~([^~]+)~~)/g;
     let lastIndex = 0;
     let match: RegExpExecArray | null;
     let keyIdx = 0;
@@ -227,10 +228,11 @@ export const AgentMessageView: React.FC<AgentMessageViewProps> = ({
                 color: 'var(--paper-ink)',
                 cursor: 'pointer',
                 verticalAlign: 'baseline',
+                whiteSpace: 'nowrap',
               }}
             >
               <span aria-hidden="true" style={{ fontSize: 11, color: 'var(--paper-accent)' }}>
-                📄
+                <FileText size={13} />
               </span>
               <span>{label}</span>
             </button>,
@@ -257,6 +259,7 @@ export const AgentMessageView: React.FC<AgentMessageViewProps> = ({
                 color: 'var(--paper-ink)',
                 textDecoration: 'none',
                 verticalAlign: 'baseline',
+                whiteSpace: 'nowrap',
               }}
             >
               <span style={{ fontWeight: 500 }}>{label}</span>
@@ -296,11 +299,12 @@ export const AgentMessageView: React.FC<AgentMessageViewProps> = ({
               color: 'var(--paper-ink)',
               cursor: 'pointer',
               verticalAlign: 'baseline',
+                whiteSpace: 'nowrap',
             }}
           >
             {isFileRef && (
               <span aria-hidden="true" style={{ fontSize: 11, color: 'var(--paper-accent)' }}>
-                📄
+                <FileText size={13} />
               </span>
             )}
             <span>{codeContent}</span>
@@ -314,6 +318,8 @@ export const AgentMessageView: React.FC<AgentMessageViewProps> = ({
         );
       } else if (match[6] !== undefined) {
         nodes.push(<em key={`em-${keyIdx++}`}>{match[6]}</em>);
+      } else if (match[7] !== undefined) {
+        nodes.push(<del key={`del-${keyIdx++}`}>{match[7]}</del>);
       }
 
       lastIndex = tokenRegex.lastIndex;
@@ -678,7 +684,7 @@ export const AgentMessageView: React.FC<AgentMessageViewProps> = ({
               cursor: 'pointer',
             }}
           >
-            <span>{copiedTurn ? '✓ Copied' : '⧉ Copy'}</span>
+            <span>{copiedTurn ? <Check size={14} /> : <Copy size={14} />}{copiedTurn ? 'Copied' : 'Copy'}</span>
           </button>
 
           {onRetry && (

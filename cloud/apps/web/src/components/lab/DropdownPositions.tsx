@@ -1,6 +1,6 @@
 import React from 'react';
 import { GlassDropdown } from '@praxis/glass';
-import { Scan, Pin, Lock, Search, Folder, Clock, FileText } from 'lucide-react';
+import { Scan, Pin, Lock, Search, Folder, Clock, FileText } from '../../lib/icons';
 
 const models = Array.from({ length: 500 }, (_, i) => ({
   id: i,

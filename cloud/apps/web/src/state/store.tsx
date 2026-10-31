@@ -1,3 +1,5 @@
+import type { Capabilities } from '@praxis/protocol';
+import { pathForSheet } from '../lib/navigation';
 import { useMediaActions } from './useMediaActions';
 import React from 'react';
 import type {
@@ -112,6 +114,8 @@ export interface PraxisStoreContextValue {
   // Navigation & Sheets
   activeSheet: ActiveSheet;
   setActiveSheet: (sheet: ActiveSheet) => void;
+  restoreRoute: (chatId: string | null, sheet: ActiveSheet, providerId?: string | null) => void;
+  startNewConversation: () => void;
   editingProviderId: string | null;
   setEditingProviderId: (id: string | null) => void;
   desktopSidebarOpen: boolean;
@@ -141,6 +145,9 @@ export interface PraxisStoreContextValue {
   // Selected Composer Controls
   selectedProviderId: string;
   selectedModelId: string;
+  webSearch: boolean;
+  setWebSearch: (value: boolean) => void;
+  cacheModels: (items: Model[]) => void;
   selectedEffort: string;
   selectedMode: 'ask' | 'plan' | 'build' | 'auto';
   setSelectedModel: (providerId: string, modelId: string) => void;
@@ -201,6 +208,7 @@ export interface PraxisStoreContextValue {
       baseUrl: string;
       defaultModel?: string;
       apiKey?: string;
+      capabilities?: Capabilities;
       extraHeaders?: Record<string, string>;
     },
   ) => Promise<Provider>;
@@ -258,7 +266,7 @@ export function usePraxisStore(): PraxisStoreContextValue {
   return ctx;
 }
 
-export function PraxisStoreProvider({ children }: { children: React.ReactNode }) {
+export function PraxisStoreProvider({ children, onNavigate }: { children: React.ReactNode; onNavigate?: (path: string) => void }) {
   const replicaKey = React.useRef(getReplicaIdentity());
   const initialCache = React.useMemo(() => readReplicaSync(), []);
 
@@ -271,7 +279,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
       const saved = localStorage.getItem('praxis-theme') as ThemeMode | null;
       if (saved === 'light' || saved === 'dark' || saved === 'system') return saved;
     }
-    return 'light';
+    return 'system';
   });
 
   const [resolvedTheme, setResolvedTheme] = React.useState<ResolvedTheme>(() => {
@@ -305,8 +313,10 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
   }, [themeMode, setThemeMode]);
 
   // Sheets & Layout
-  const [activeSheet, setActiveSheet] = React.useState<ActiveSheet>(null);
-  const [editingProviderId, setEditingProviderId] = React.useState<string | null>(null);
+  const [activeSheet, setActiveSheetState] = React.useState<ActiveSheet>(null);
+  const [editingProviderId, setEditingProviderIdState] = React.useState<string | null>(null);
+  const providerIdRef = React.useRef(editingProviderId);
+  const setEditingProviderId = (id: string | null) => { providerIdRef.current = id; setEditingProviderIdState(id); };
   const [desktopSidebarOpen, setDesktopSidebarOpen] = React.useState<boolean>(false);
   const [plusTrayOpen, setPlusTrayOpen] = React.useState<boolean>(false);
   const [inlineModelSearchActive, setInlineModelSearchActive] = React.useState<boolean>(false);
@@ -314,7 +324,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
   // Entities initialized from synchronous replica cache first (<16ms paint)
   const [chats, setChats] = React.useState<Chat[]>(() => initialCache?.chats ?? []);
   const [activeChatId, setActiveChatId] = React.useState<string | null>(
-    () => initialCache?.chats?.[0]?.id ?? null,
+    null,
   );
   const [messagesByChat, setMessagesByChat] = React.useState<Record<string, Message[]>>(
     () => initialCache?.messagesByChat ?? {},
@@ -344,6 +354,8 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
   // Selected composer controls
   const [selectedProviderId, setSelectedProviderId] = React.useState<string>('');
   const [selectedModelId, setSelectedModelId] = React.useState<string>('');
+  const [webSearch, setWebSearch] = React.useState(false);
+  const cacheModels = React.useCallback((items: Model[]) => setModels(prev => [...prev.filter(p => !items.some(m => m.providerId === p.providerId && m.id === p.id)), ...items]), []);
   const [selectedEffort, setSelectedEffort] = React.useState<string>('medium');
   const [selectedMode, setSelectedMode] = React.useState<'ask' | 'plan' | 'build' | 'auto'>('build');
 
@@ -351,6 +363,20 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
   const [pendingConsentPrompt, setPendingConsentPrompt] =
     React.useState<PendingConsentPrompt | null>(null);
 
+  const setActiveSheet = (sheet: ActiveSheet) => {
+    setActiveSheetState(sheet);
+    onNavigate?.(pathForSheet(sheet, activeChatId, providerIdRef.current));
+  };
+  const startNewConversation = () => { setActiveChatId(null); setActiveSheetState(null); setPlusTrayOpen(false); onNavigate?.('/'); };
+  const restoreRoute = (chatId: string | null, sheet: ActiveSheet, providerId?: string | null) => {
+    setActiveSheetState(sheet);
+    if (providerId !== undefined) setEditingProviderId(providerId);
+    if (sheet) return;
+    setActiveChatId(chatId);
+    if (chatId) void apiClient.listMessages(chatId).then(page => {
+      setMessagesByChat(prev => ({ ...prev, [chatId]: page.items }));
+    }).catch(err => setErrorBanner(err instanceof Error ? err.message : 'Unable to open chat'));
+  };
   const activeRunUnsubMapRef = React.useRef<Map<string, () => void>>(new Map());
 
   // Mark first paint on initial mount
@@ -709,7 +735,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
       if (boot.preferences) setPreferences(boot.preferences);
       setSyncCursor(boot.syncCursor);
 
-      const firstChatId = activeChatId ?? boot.chats[0]?.id ?? null;
+      const firstChatId = activeChatId;
       if (firstChatId && !activeChatId) {
         setActiveChatId(firstChatId);
       }
@@ -754,6 +780,18 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
     }
   }, [activeChatId, applySnapshotToLiveRun, attachRunStream]);
 
+  const routeChat = chats.find(value => value.id === activeChatId);
+  React.useEffect(() => {
+    if (routeChat?.providerId) setSelectedProviderId(routeChat.providerId);
+    if (routeChat?.modelId) setSelectedModelId(routeChat.modelId);
+  }, [activeChatId, routeChat?.providerId, routeChat?.modelId]);
+  React.useEffect(() => {
+    if (routeChat?.mode) setSelectedMode(routeChat.mode);
+  }, [activeChatId, routeChat?.mode]);
+  React.useEffect(() => {
+    if (routeChat?.effort) setSelectedEffort(routeChat.effort);
+  }, [activeChatId, routeChat?.effort]);
+
   // The account gate loads only the verified user’s replica before mounting.
   React.useEffect(() => {
     void refreshAll();
@@ -765,6 +803,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
         performance.mark('praxis:chat-switch-start');
       }
       setActiveChatId(chatId);
+      onNavigate?.(`/c/${encodeURIComponent(chatId)}`);
       const chat = chats.find((c) => c.id === chatId);
       if (chat?.providerId && chat?.modelId) {
         setSelectedProviderId(chat.providerId);
@@ -813,6 +852,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
         return next;
       });
       setActiveChatId(created.id);
+      onNavigate?.(`/c/${encodeURIComponent(created.id)}`);
       setMessagesByChat((prev) => ({ ...prev, [created.id]: [] }));
       return created;
     },
@@ -961,6 +1001,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
           modelId: selectedModelId,
           mode: selectedMode,
           effort: selectedEffort,
+          webSearch: webSearch && !!models.find(m => m.id === selectedModelId && m.providerId === selectedProviderId)?.capabilities.serverWebSearch,
           attachmentIds: options?.attachmentIds ?? [],
           clientTurnId,
           idempotencyKey: clientTurnId,
@@ -997,6 +1038,8 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
       selectedModelId,
       selectedMode,
       selectedEffort,
+      webSearch,
+      models,
       attachRunStream,
     ],
   );
@@ -1084,7 +1127,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
       if (activeChatId) {
         void apiClient.patchChat(activeChatId, { providerId, modelId }).then((updated) => {
           setChats((prev) => prev.map((c) => (c.id === activeChatId ? updated : c)));
-        });
+        }).catch(err => setErrorBanner(err instanceof Error ? err.message : 'Unable to save model'));
       }
     },
     [activeChatId],
@@ -1112,6 +1155,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
       baseUrl: string;
       defaultModel?: string;
       apiKey?: string;
+      capabilities?: Capabilities;
       extraHeaders?: Record<string, string>;
     }): Promise<Provider> => {
       if (input.id) {
@@ -1121,7 +1165,7 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
       }
       const created = await apiClient.createProvider({
         ...input,
-        apiKey: input.apiKey ?? '',
+        ...(input.apiKey ? { apiKey: input.apiKey } : {}),
       });
       setProviders((prev) => [...prev, created]);
       return created;
@@ -1281,6 +1325,8 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
     setThemeMode,
     activeSheet,
     setActiveSheet,
+    restoreRoute,
+    startNewConversation,
     editingProviderId,
     setEditingProviderId,
     desktopSidebarOpen,
@@ -1307,6 +1353,9 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
     selectedProviderId,
     selectedModelId,
     selectedEffort,
+    webSearch,
+    setWebSearch,
+    cacheModels,
     selectedMode,
     setSelectedModel,
     setSelectedEffort,

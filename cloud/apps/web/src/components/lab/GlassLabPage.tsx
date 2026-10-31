@@ -24,7 +24,7 @@ import {
   Sun,
   Trash2,
   Zap,
-} from 'lucide-react';
+} from '../../lib/icons';
 import {
   DotMeter,
   FINISH_DEFAULTS,
