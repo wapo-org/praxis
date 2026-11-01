@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, type MotionValue } from 'framer-motion';
-import { type MaterialSpec } from './engine-detect';
+import { negotiateStrategy, type MaterialSpec } from './engine-detect';
 import { useGlassRuntime } from './glass-store';
 import { registerRefraction } from './webgl/runtime';
 import type { SurfaceParams } from './webgl/renderer';
@@ -35,8 +35,12 @@ export function GlassBackdrop({
   const setStrategy = useGlassRuntime((s) => s.setStrategy);
   React.useEffect(() => {
     if (!webgl || reduced || !rootRef.current || !canvas.current) return;
-    return registerRefraction(rootRef.current, canvas.current, { ...params, frost }, () =>
-      setStrategy('progressive-frost'),
+    return registerRefraction(
+      rootRef.current,
+      canvas.current,
+      { ...params, frost },
+      () => setStrategy('progressive-frost'),
+      () => setStrategy(negotiateStrategy()),
     );
   }, [
     webgl,
