@@ -19,7 +19,7 @@ final class ChatStore {
     var mode: ChatMode = .auto
     var effort: Effort = .high
     /// The demo catalogue's pick; when live, `model` is the provider's.
-    private var demoModel: AIModel = MockData.models[1]
+    var demoModel: AIModel = MockData.models[1]
     var webSearch = true
     var memory = true
     /// Demo connectors; live mode lists installed servers (`trayConnectors`).
@@ -61,7 +61,7 @@ final class ChatStore {
     let cloudElicitations = ElicitationCenter()
     @ObservationIgnored var cloudReplica: CloudAccountReplica?
     @ObservationIgnored var hasPreparedCloudSession = false
-    private var cloudModelID = ""
+    var cloudModelID = ""
     var elicitationCenter: ElicitationCenter? { engineKind == .cloud ? cloudElicitations : services?.elicitations }
     let haptics = HapticCenter()
     /// Background execution for runs in flight (continued tasks, fallback
@@ -73,7 +73,7 @@ final class ChatStore {
     /// Trust and "always allow" grants (persisted with the index).
     private(set) var policy = ToolPolicy()
 
-    @ObservationIgnored private var engine: any ChatEngine
+    @ObservationIgnored private(set) var engine: any ChatEngine
     /// Providers, connectors, skills and the runtime (nil in previews and
     /// most tests: demo data only).
     @ObservationIgnored let services: AgentServices?
@@ -662,195 +662,6 @@ final class ChatStore {
         }
     }
 
-    // MARK: Requests
-
-    private func makeRequest(_ conv: Conversation, turnIndex: Int) -> ChatRunRequest {
-        let turn = conv.turns[turnIndex]
-        let earlier = conv.turns[..<turnIndex]
-        // Live runs replay only live turns: demo answers are scripts.
-        let replayed = engine.kind == .live ? earlier.filter { $0.engine == .live } : Array(earlier)
-        let user = engine.buildsUserMessage ? nil
-            : turn.transcript.first ?? userMessage(turn.userText, in: conv, before: turnIndex)
-        let conversationID = conv.id
-        let store = WeakStore(value: self)
-        return ChatRunRequest(
-            conversationID: conv.id, turnID: turn.id, history: replayed.flatMap(\.transcript), userMessage: user,
-            userText: turn.userText, mode: mode, effort: effort,
-            modelID: model.id, webSearch: webSearch, attachments: turn.attachments,
-            conversationAttachments: conv.turns[...turnIndex].flatMap(\.attachments),
-            hiddenFromCode: { await MainActor.run { store.value?.hiddenFromCode(in: conversationID) ?? [] } },
-            policy: policy, approvals: approvals, setup: conv.setup,
-            // The freeze always takes the full enabled set: per-chat "off"
-            // is a refusal (`disabledServerIDs`), not an exclusion —
-            // excluding it would drop the connector from the frozen setup
-            // for good on every re-freeze (retry of the first turn).
-            connectorIDs: enabledConnectorIDs(for: conv),
-            // Unknown ids are ignored by the runtime, so the full set is
-            // safe even when the setup is about to be (re-)frozen.
-            disabledServerIDs: conv.disabledServerIDs,
-            // Read live: toggling a tool applies to existing chats'
-            // next run (their calls refuse) and to new chats' freeze.
-            disabledTools: services?.connectors.disabledTools ?? [:],
-            onSetup: { setup, failures in
-                await MainActor.run { store.value?.adopt(setup, failures: failures, conversationID: conversationID) }
-            },
-            compaction: conv.compaction,
-            onCompaction: { record in
-                await MainActor.run { store.value?.adopt(record, conversationID: conversationID) }
-            },
-            contextMeasurement: conv.contextMeasurement,
-            onContextMeasured: { measurement in
-                await MainActor.run { store.value?.conversation(conversationID)?.contextMeasurement = measurement }
-            })
-    }
-
-    // MARK: Code access
-
-    /// "Hide from code" / "Available to code" on an attachment, in the
-    /// composer or a sent turn. Sent turns are saved; a run in flight
-    /// sees the change at its next `fs` call (`ChatRunRequest.hiddenFromCode`).
-    func setHiddenFromCode(_ hidden: Bool, attachmentID: UUID) {
-        if let i = attachments.firstIndex(where: { $0.id == attachmentID }) { attachments[i].isHiddenFromCode = hidden }
-        for conv in conversations {
-            var changed = false
-            for t in conv.turns.indices {
-                guard let a = conv.turns[t].attachments.firstIndex(where: { $0.id == attachmentID }),
-                      conv.turns[t].attachments[a].isHiddenFromCode != hidden else { continue }
-                conv.turns[t].attachments[a].isHiddenFromCode = hidden
-                changed = true
-            }
-            if changed { save(conv) }
-        }
-    }
-
-    /// Attachments of a conversation the user hid from code.
-    func hiddenFromCode(in conversationID: UUID) -> Set<UUID> {
-        guard let conv = conversation(conversationID) else { return [] }
-        return Set(conv.turns.flatMap(\.attachments).filter(\.isHiddenFromCode).map(\.id))
-    }
-
-    /// Persists a context compaction; the turns keep the full transcript.
-    private func adopt(_ compaction: ContextCompaction, conversationID: UUID) {
-        guard let conv = conversation(conversationID) else { return }
-        conv.compaction = compaction
-        save(conv)
-    }
-
-    /// Persists a freshly frozen setup with its conversation, before the
-    /// run sends anything.
-    private func adopt(_ setup: ConversationSetup, failures: [MCPToolset.Failure], conversationID: UUID) {
-        services?.connectors.record(failures)
-        guard let conv = conversation(conversationID) else { return }
-        conv.setup = setup
-        // The freeze keeps the full enabled set, so per-chat toggles
-        // survive a re-freeze; only ids that left the setup go.
-        conv.disabledServerIDs = conv.disabledServerIDs.intersection(setup.mcpServers.map(\.id))
-        save(conv)
-    }
-
-    /// The user message for a turn. Mode and effort changes ride along as
-    /// a note — appended, never edited into earlier history.
-    private func userMessage(_ text: String, in conv: Conversation, before index: Int) -> Message {
-        let note = SystemPrompt.modeNote(mode: mode.agentMode, effort: effort)
-        var parts: [Part] = []
-        if lastModeNote(in: conv, before: index) != note { parts.append(.note(note)) }
-        if !text.isEmpty { parts.append(.text(text)) }
-        return Message(role: .user, parts: parts)
-    }
-
-    private func lastModeNote(in conv: Conversation, before index: Int) -> String? {
-        for turn in conv.turns[..<min(index, conv.turns.count)].reversed() {
-            for message in turn.transcript.reversed() where message.role == .user {
-                for part in message.parts.reversed() {
-                    if case .note(let note) = part, note.hasPrefix("Current mode:") { return note }
-                }
-            }
-        }
-        return nil
-    }
-
-    // MARK: Live settings (model, connectors, toggles)
-
-    var isCloud: Bool { engineKind == .cloud }
-    var isLive: Bool { engineKind == .live || isCloud }
-
-    /// The model new turns use: the demo pick, or the selected provider's.
-    var model: AIModel {
-        get {
-            if let cloud = cloudServices {
-                return cloud.model(selectionID: cloudModelID).map(cloud.adapter)
-                    ?? cloud.availableModels.first
-                    ?? AIModel(id: "", name: "Choose a model", tagline: "Account / Server in Settings", speed: 0, intelligence: 0, streamMultiplier: 1)
-            }
-            return isLive ? liveModel : demoModel
-        }
-        set {
-            if cloudServices != nil { cloudModelID = newValue.id; snapEffortToSupportedLevels() }
-            else if isLive { selectModel(id: newValue.id) } else { demoModel = newValue; snapEffortToSupportedLevels() }
-        }
-    }
-
-    /// Reasoning levels the tray offers for the current model. Nil = unknown
-    /// (all four); empty = no reasoning (the control hides). Live models
-    /// resolve this from the provider's list or a learned rejection.
-    var supportedEfforts: [Effort]? {
-        if let cloud = cloudServices {
-            return cloud.model(selectionID: model.id).map { EffortLevels.map($0.reasoningEfforts) }
-        }
-        if isLive {
-            guard let wire = services?.settings.selectedEffortWireValues else { return nil }
-            return EffortLevels.map(wire)
-        }
-        return demoModel.effortLevels
-    }
-
-    /// After a model change, moves the effort to the nearest level the new
-    /// model takes; unknown or unreasoning models keep it. The tray's
-    /// control animates to the new selection, which is the subtle show.
-    private func snapEffortToSupportedLevels() {
-        guard let levels = supportedEfforts, !levels.isEmpty, !levels.contains(effort),
-              let snapped = EffortLevels.nearest(to: effort, in: levels) else { return }
-        effort = snapped
-    }
-
-    /// What the tray's model page lists.
-    var availableModels: [AIModel] {
-        if let cloud = cloudServices { return cloud.availableModels }
-        guard isLive else { return MockData.models }
-        guard let settings = services?.settings, let profile = settings.selectedProfile else { return [] }
-        var models = settings.models(for: profile.id).map { Self.aiModel($0, profile: profile) }
-        // A manually entered id the server doesn't list still shows.
-        if !profile.defaultModel.isEmpty, !models.contains(where: { $0.id == profile.defaultModel }) {
-            models.insert(Self.aiModel(ModelInfo(id: profile.defaultModel), profile: profile), at: 0)
-        }
-        return models
-    }
-
-    private var liveModel: AIModel {
-        guard let profile = services?.settings.selectedProfile else {
-            return AIModel(id: "", name: "No model", tagline: "Add a provider in Settings",
-                           speed: 0, intelligence: 0, streamMultiplier: 1)
-        }
-        let info = services?.settings.models(for: profile.id).first { $0.id == profile.defaultModel }
-        guard !profile.defaultModel.isEmpty else {
-            return AIModel(id: "", name: "Choose a model", tagline: profile.name, speed: 0, intelligence: 0, streamMultiplier: 1)
-        }
-        return Self.aiModel(info ?? ModelInfo(id: profile.defaultModel), profile: profile)
-    }
-
-    private func selectModel(id: String) {
-        guard let settings = services?.settings, let profile = settings.selectedProfile else { return }
-        settings.setModel(id, for: profile.id)
-        snapEffortToSupportedLevels()
-    }
-
-    private static func aiModel(_ info: ModelInfo, profile: ProviderProfile) -> AIModel {
-        let window = info.contextWindow.map { " · \($0 / 1000)K context" } ?? ""
-        return AIModel(id: info.id, name: info.displayName, tagline: profile.name + window,
-                       speed: 0, intelligence: 0, streamMultiplier: 1)
-    }
-
-    /// Demo-only toggles (Memory, connector discovery) hide when live.
     // MARK: UI mutations
 
     func setActivityExpanded(turnID: UUID, blockID: UUID, expanded: Bool) {
@@ -898,7 +709,7 @@ final class ChatStore {
             ?? conversations.first { $0.turns.contains { $0.id == turnID } }
     }
 
-    private func conversation(_ id: UUID) -> Conversation? {
+    func conversation(_ id: UUID) -> Conversation? {
         conversations.first { $0.id == id }
     }
 
@@ -968,6 +779,6 @@ enum SettingsPage: Hashable {
 }
 
 /// A weak store reference the off-main reader can carry.
-private struct WeakStore: Sendable {
+struct WeakStore: Sendable {
     weak var value: ChatStore?
 }
