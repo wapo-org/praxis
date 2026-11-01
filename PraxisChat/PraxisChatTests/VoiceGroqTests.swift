@@ -586,7 +586,15 @@ final class VoiceGroqTests: XCTestCase {
         let network = FakeNetwork(usable: false)
         let events = Mutex<[TranscriptionEvent]>([])
         let transport = ScriptedTransport { _, n in
-            if n == 0 { throw ProviderError.network("offline") }
+            if n == 0 {
+                // Recover only after the outage is observed: a fixed timer from
+                // test start could fire before the first attempt under load.
+                Task {
+                    try? await Task.sleep(for: .milliseconds(30))
+                    await network.setUsable()
+                }
+                throw ProviderError.network("offline")
+            }
             return .json(Self.verboseJSON)
         }
         try? secrets.setSecret("gsk-test", for: GroqVoiceSettings.keychainAccount)
@@ -595,10 +603,6 @@ final class VoiceGroqTests: XCTestCase {
                                           queue: TranscriptionQueue(network: network, sleep: SleepRecorder().sleep),
                                           partCache: PartTranscriptCache(directory: directory.appendingPathComponent("parts")),
                                           onEvent: { event in events.withLock { $0.append(event) } })
-        Task {
-            try? await Task.sleep(for: .milliseconds(30))
-            await network.setUsable()
-        }
         let transcript = try await transcriber.transcribe(file: file, fileName: "r.m4a") { _, _, _ in }
         XCTAssertEqual(transcript.text, "hello world")
         XCTAssertEqual(transport.requests.count, 2)
