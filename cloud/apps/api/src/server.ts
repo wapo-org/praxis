@@ -8,6 +8,7 @@ import {ApiService} from './service.js';
 
 /** Feature modules plugged in by the entry point (MCP, tools). */
 export interface FeatureModule {
+  deleteAccount?(userId:string):Promise<void>;
   /** Mounted under /v1 after auth. */
   routes?(contextFor: (request: Request) => Promise<FeatureContext>): Hono<any>;
   /** /v1 paths that must skip session auth (OAuth callbacks). */
@@ -23,6 +24,7 @@ export interface PraxisDeps {
   allowedOrigins?: string[];
   resolveSession?: (request: Request) => Promise<{user: User; expiresAt: string} | null>;
   authHandler?: (request: Request) => Promise<Response>;
+  accountDeletion?:{confirm(request:Request,password?:string):Promise<{userId:string;sessionId:string}|null>;purge(userId:string,sessionId:string):Promise<void>};
   rateLimit?: (key: string) => Promise<{ok: boolean; retryAfterSeconds?: number}>;
   scheduler?: ContinuationScheduler;
   /** Keeps background slices alive after the response (Vercel `waitUntil`). */
@@ -63,6 +65,7 @@ export function createPraxisApp(deps: PraxisDeps) {
     ...(deps.allowedOrigins ? {allowedOrigins: deps.allowedOrigins} : {}),
     ...(deps.resolveSession ? {resolveSession: deps.resolveSession} : {}),
     ...(deps.authHandler ? {authHandler: deps.authHandler} : {}),
+    ...(deps.accountDeletion ? {accountDeletion:deps.accountDeletion} : deps.local ? {accountDeletion:{purge:async(userId:string)=>{for(const module of modules)await module.deleteAccount?.(userId);await deps.adapters.purgeOwner?.(userId);}}} : {}),
     ...(deps.rateLimit ? {rateLimit: deps.rateLimit} : {}),
     ...(deps.log ? {log: deps.log} : {}),
     publicPaths: modules.flatMap(m => m.publicPaths ?? []),

@@ -182,3 +182,6 @@ export const ChatTruncateSchema = z.object({type:z.literal('chat.truncate'),clie
 export const ChatTruncateResultSchema = z.object({type:z.literal('chat.truncated'),chat:ChatSchema,removedRunIds:z.array(IdSchema),removedMessageIds:z.array(IdSchema)});
 export const AttachmentPatchSchema = z.object({type:z.literal('attachment.patch'),hiddenFromCode:z.boolean()});
 export const TranscribeRequestSchema = z.object({type:z.literal('transcribe.request'),audioBase64:z.string().min(1).max(35000000),mediaType:z.string(),fileName:z.string().optional(),model:z.string().optional(),language:z.string().optional(),prompt:z.string().max(10000).optional()});
+
+export const AccountDeleteSchema=z.object({type:z.literal('account.delete').optional(),password:z.string().min(1).max(1024).optional()});
+export const AccountDeletedSchema=z.object({type:z.literal('account.deleted')});

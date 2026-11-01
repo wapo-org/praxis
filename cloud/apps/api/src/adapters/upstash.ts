@@ -1,3 +1,4 @@
+import { accountRedis, OWNER_LIMIT_LUA } from './account-redis.js';
 import {createHash, randomUUID} from 'node:crypto';
 import {Redis} from '@upstash/redis';
 import {Ratelimit} from '@upstash/ratelimit';
@@ -32,7 +33,7 @@ export const RELEASE_LEASE_LUA = `
 if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end
 return 0`;
 
-export interface UpstashOptions {url: string; token: string; prefix?: string; streamMaxLen?: number; streamTtlSeconds?: number}
+export interface UpstashOptions {url: string; token: string; prefix?: string; streamMaxLen?: number; streamTtlSeconds?: number; accountOwnership?: boolean}
 
 /** The subset of the Upstash client the adapters use (lets tests run the contract suite on a fake). */
 export type RedisLike = Pick<Redis, 'get' | 'set' | 'del' | 'getdel' | 'eval' | 'xrange'>;
@@ -52,14 +53,16 @@ export function upstashFromRedis(redis: RedisLike, options: Omit<UpstashOptions,
   const prefix = options.prefix ?? 'praxis:v1';
   const maxLen = String(options.streamMaxLen ?? 5000);
   const ttl = String(options.streamTtlSeconds ?? 7 * 86400);
+  const ownership = accountRedis(redis as Redis, prefix);
   const kvKey = (k: string) => `${prefix}:kv:${opaque(k)}`;
   const parse = <T>(value: string | null) => (value === null ? null : (JSON.parse(value) as T));
 
   const kv: KV = {
     get: async <T>(k: string) => parse<T>(await redis.get<string>(kvKey(k))),
-    set: async (k, value, ttlSeconds) => {
+    set: async (k, value, ttlSeconds, ownerId) => {
       const data = JSON.stringify(value);
       if (data === undefined) throw new Error('Expected JSON value');
+      if (ownerId && options.accountOwnership) { await ownership.write(ownerId,kvKey(k),data,ttlSeconds); return; }
       if (ttlSeconds === undefined) await redis.set(kvKey(k), data);
       else await redis.set(kvKey(k), data, {ex: z.number().int().positive().parse(ttlSeconds)});
     },
@@ -75,7 +78,11 @@ export function upstashFromRedis(redis: RedisLike, options: Omit<UpstashOptions,
   const events: Events = {
     append: async (u, c, payload, eventKey) => {
       const k = stream(u, c);
-      const raw = await redis.eval(APPEND_EVENT_LUA, [`${k}:seq`, k, `${k}:dedup`], [JSON.stringify(JsonObjectSchema.parse(payload)), maxLen, ttl, eventKey ? opaque(eventKey) : ""]);
+      const script=options.accountOwnership ? `if redis.call('GET',KEYS[4]) ~= 'active' then return redis.error_reply('Account unavailable') end
+redis.call('SADD',KEYS[5],KEYS[1],KEYS[2],KEYS[3])
+`+APPEND_EVENT_LUA : APPEND_EVENT_LUA;
+      const owned=ownership.keys(u);
+      const raw = await redis.eval(script, [`${k}:seq`, k, `${k}:dedup`, ...(options.accountOwnership?[owned.active,owned.index]:[])], [JSON.stringify(JsonObjectSchema.parse(payload)), maxLen, ttl, eventKey ? opaque(eventKey) : ""]);
       return EventSchema.parse(typeof raw === "string" ? JSON.parse(raw) : raw);
     },
     read: async (u, c, after, limit = 100) => {
@@ -89,9 +96,13 @@ export function upstashFromRedis(redis: RedisLike, options: Omit<UpstashOptions,
 
   /** Fenced execution lease (SET NX PX + compare-and-delete) so duplicate continuations never run one run twice. */
   const lease = {
-    acquire: async (k: string, ttlMs: number): Promise<string | null> => {
+    acquire: async (k: string, ttlMs: number, ownerId?: string): Promise<string | null> => {
       const token = randomUUID();
-      const ok = await redis.set(`${prefix}:lease:${opaque(k)}`, token, {nx: true, px: ttlMs});
+      const key=`${prefix}:lease:${opaque(k)}`;
+      const owned=ownerId?ownership.keys(ownerId):null;
+      const ok = options.accountOwnership && owned ? await redis.eval(`if redis.call('GET',KEYS[1]) ~= 'active' then return redis.error_reply('Account unavailable') end
+redis.call('SADD',KEYS[2],KEYS[3])
+return redis.call('SET',KEYS[3],ARGV[1],'NX','PX',ARGV[2])`,[owned.active,owned.index,key],[token,String(ttlMs)]) : await redis.set(key, token, {nx:true,px:ttlMs});
       return ok === 'OK' ? token : null;
     },
     release: async (k: string, token: string): Promise<void> => {
@@ -99,13 +110,20 @@ export function upstashFromRedis(redis: RedisLike, options: Omit<UpstashOptions,
     },
   };
 
-  return {kv, events, consumeOnce, lease};
+  return {kv, events, consumeOnce, lease, ownership};
 }
 
 /** Sliding-window limiter shaped for `createApp({rateLimit})`. Keys are hashed by @upstash/ratelimit's prefix + our opaque id. */
-export function createRateLimiter(redis: Redis, options: {requests?: number; window?: `${number} s`; prefix?: string} = {}) {
+export function createRateLimiter(redis: Redis, options: {requests?: number; window?: `${number} s`; prefix?: string; ownership?: ReturnType<typeof accountRedis>} = {}) {
   const limiter = new Ratelimit({redis, limiter: Ratelimit.slidingWindow(options.requests ?? 120, options.window ?? '60 s'), prefix: options.prefix ?? 'praxis:v1:ratelimit', analytics: false});
   return async (key: string) => {
+    if(options.ownership&&(key.startsWith('user:')||key.startsWith('account-delete:'))){
+      const deletion=key.startsWith('account-delete:'),userId=key.slice(deletion?'account-delete:'.length:5),owned=options.ownership.keys(userId);
+      const seconds=deletion?3600:60,max=deletion?5:options.requests??120;
+      const physical=`${options.prefix??'praxis:v1:ratelimit'}:${opaque(key)}:${Math.floor(Date.now()/(seconds*1000))}`;
+      const n=Number(await redis.eval(OWNER_LIMIT_LUA,[owned.active,owned.index,physical],[String(seconds)]));
+      return n<0||n<=max?{ok:true}:{ok:false,retryAfterSeconds:seconds};
+    }
     const result = await limiter.limit(opaque(key));
     return result.success ? {ok: true} : {ok: false, retryAfterSeconds: Math.max(1, Math.ceil((result.reset - Date.now()) / 1000))};
   };

@@ -1,3 +1,4 @@
+import {createConvexRPC} from './adapters/convex.js';
 import {createAuth, parseOrigins} from './adapters/auth.js';
 import {createConvexStore} from './adapters/convex.js';
 import {createQStashScheduler, createQStashVerifier} from './adapters/qstash.js';
@@ -70,10 +71,10 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
   const env = readProductionEnv(rawEnv);
   const origin = new URL(env.PRAXIS_API_URL).origin;
   const webOrigins = parseOrigins(env.PRAXIS_WEB_ORIGINS);
-  const upstash = createUpstashAdapters({url: env.UPSTASH_REDIS_REST_URL, token: env.UPSTASH_REDIS_REST_TOKEN});
+  const upstash = createUpstashAdapters({url: env.UPSTASH_REDIS_REST_URL, token: env.UPSTASH_REDIS_REST_TOKEN,accountOwnership:true});
   const store = createConvexStore({url: env.CONVEX_URL, serverToken: env.PRAXIS_CONVEX_SERVER_TOKEN});
   const storage = createConvexToolsStorage({url: env.CONVEX_URL, serverToken: env.PRAXIS_CONVEX_SERVER_TOKEN, baseUrl: origin});
-  const auth = createAuth(rawEnv, upstash.kv);
+  const auth = createAuth(rawEnv, upstash.kv,upstash.ownership);
   const egress = createSafeFetch();
   const callbackUrl = `${origin}${CONTINUATION_PATH}`;
   return createPraxisApp({
@@ -85,7 +86,13 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
     allowedOrigins: webOrigins,
     resolveSession: request => auth.resolveSession(request),
     authHandler: request => auth.handler(request),
-    rateLimit: createRateLimiter(upstash.redis),
+    accountDeletion:{confirm:auth.confirmDeletion,purge:async(userId,sessionId)=>{
+      const rpc=createConvexRPC({url:env.CONVEX_URL,serverToken:env.PRAXIS_CONVEX_SERVER_TOKEN});
+      await rpc.mutation('account:begin',{userId});await upstash.ownership.freeze(userId);
+      await upstash.ownership.purge(userId);
+      for(;;){const result=await rpc.mutation('account:purge',{userId,keepSessionId:sessionId}) as {done:boolean};if(result.done)break;}
+    }},
+    rateLimit: createRateLimiter(upstash.redis,{ownership:upstash.ownership}),
     scheduler: createQStashScheduler({token: env.QSTASH_TOKEN, callbackUrl}),
     lease: upstash.lease,
     continuation: {path: CONTINUATION_PATH, verify: createQStashVerifier({currentSigningKey: env.QSTASH_CURRENT_SIGNING_KEY, nextSigningKey: env.QSTASH_NEXT_SIGNING_KEY, callbackUrl})},

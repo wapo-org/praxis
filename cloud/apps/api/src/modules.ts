@@ -23,6 +23,7 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
   const mcp = options.mcp ?? {};
   return [
     {
+      deleteAccount: async userId=>{await storage?.purgeOwner?.(userId);},
       publicPaths: ['/v1/connectors/oauth/callback', '/v1/oauth/client-metadata.json'],
       routes: contextFor => {
         const app = new Hono();

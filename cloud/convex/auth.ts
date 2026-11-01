@@ -179,6 +179,10 @@ export const execute = mutation({
     if (a.operation === 'create') {
       const data = input.data;
       if (!data || typeof data.id !== 'string' || !data.id) throw new ConvexError('Auth ID required');
+      if((input.model==='session'||input.model==='account')&&typeof data.userId==='string'){
+        const owner=await ctx.db.query('authDocuments').withIndex('model_id',q=>q.eq('model','user').eq('id',data.userId as string)).unique();
+        if(!owner||owner.data.deleting)throw new ConvexError('Account unavailable');
+      }
       await assertUnique(ctx, input.model, data);
       await ctx.db.insert('authDocuments', { model: input.model, id: data.id, data });
       return select(data, input.select);

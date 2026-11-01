@@ -16,6 +16,7 @@ import {featureContext} from './features.js';
 import {registerSyncRoutes} from './sync-routes.js';
 type Env={Variables:{userId:string;requestId:string}};
 export interface AppOptions {
+ accountDeletion?:{confirm?(request:Request,password?:string):Promise<{userId:string;sessionId:string}|null>;purge(userId:string,sessionId:string):Promise<void>};
  service:ApiService;encryptionKey?:string;fetcher?:typeof fetch;
  resolveSession?:(request:Request)=>Promise<{user:User;expiresAt:string}|null>;
  authHandler?:(request:Request)=>Promise<Response>;
@@ -39,6 +40,7 @@ export function createApp(options:AppOptions){
  app.onError((e,c)=>{if(e instanceof ApiError){if(e.status===429)c.header('Retry-After','1');return c.json({type:'error',code:e.code,message:e.message,requestId:c.get('requestId')},e.status as 400);}if(e instanceof z.ZodError)return c.json({type:'error',code:'validation_error',message:'Request does not match the protocol',requestId:c.get('requestId')},400);return c.json({type:'error',code:'internal_error',message:'Request could not be completed',requestId:c.get('requestId')},500);});
  app.notFound(c=>c.json({type:'error',code:'not_found',message:'Endpoint not found'},404));
  app.get('/health',c=>c.json({type:'health',ok:true,mode:service.local?'local':'production'}));
+ const devCreated=new Map<string,number>();
  const devTokens=new Map<string,string>([['dev-local','local-user']]);
  async function session(request:Request){
   if(service.local){const token=request.headers.get('authorization')?.replace(/^Bearer /i,'')??request.headers.get('cookie')?.split(';').map(x=>x.trim()).find(x=>x.startsWith('praxis_session='))?.slice('praxis_session='.length);const id=token?devTokens.get(token):undefined;if(id)return {user:{type:'user' as const,id,name:'Local developer'},expiresAt:new Date(Date.now()+86400000).toISOString()};return null;}
@@ -46,14 +48,27 @@ export function createApp(options:AppOptions){
  }
  app.post('/v1/auth/dev',async c=>{
   if(!service.local)throw new ApiError(404,'not_found','Endpoint not found');
-  const input=await body(c,z.object({type:z.literal('auth.dev'),userId:z.string().min(1).max(100).optional()}));const userId=input.userId??'local-user';const token=userId==='local-user'?'dev-local':randomUUID();devTokens.set(token,userId);await service.seed(userId);setCookie(c,'praxis_session',token,{httpOnly:true,sameSite:'Lax',path:'/',maxAge:86400});return c.json({type:'session',user:{type:'user',id:userId,name:'Local developer'},bearerToken:token,expiresAt:new Date(Date.now()+86400000).toISOString()});
+  const input=await body(c,z.object({type:z.literal('auth.dev'),userId:z.string().min(1).max(100).optional()}));const userId=input.userId??'local-user';const token=userId==='local-user'?'dev-local':randomUUID();devTokens.set(token,userId);devCreated.set(token,Date.now());await service.seed(userId);setCookie(c,'praxis_session',token,{httpOnly:true,sameSite:'Lax',path:'/',maxAge:86400});return c.json({type:'session',user:{type:'user',id:userId,name:'Local developer'},bearerToken:token,expiresAt:new Date(Date.now()+86400000).toISOString()});
  });
  app.post('/v1/auth/sign-up',c=>auth(c));app.post('/v1/auth/sign-in',c=>auth(c));
  async function auth(c:Context){if(!options.authHandler)throw new ApiError(503,'auth_unconfigured','Email authentication is not configured');return options.authHandler(c.req.raw);}
  const publicPaths=['/v1/connectors/oauth/callback','/v1/oauth/client-metadata.json',...(options.publicPaths??[])];
  const requestOwners=new WeakMap<Request,string>();
- const limited=async(key:string)=>{if(!options.rateLimit)return;const r=await options.rateLimit(key);if(!r.ok)throw new ApiError(429,'rate_limited',`Too many requests; retry in ${r.retryAfterSeconds??1}s`);};
+ const deletionAttempts=new Map<string,{count:number;until:number}>();
+ const limited=async(key:string)=>{if(!options.rateLimit){if(key.startsWith('account-delete:')){const hashed=key;const prior=deletionAttempts.get(hashed);const value=prior&&prior.until>Date.now()?prior:{count:0,until:Date.now()+3600000};value.count++;deletionAttempts.set(hashed,value);if(value.count>5)throw new ApiError(429,'rate_limited','Too many account deletion attempts');}return;}const r=await options.rateLimit(key);if(!r.ok)throw new ApiError(429,'rate_limited',`Too many requests; retry in ${r.retryAfterSeconds??1}s`);};
  app.use('/v1/*',async(c,next)=>{if(publicPaths.some(p=>c.req.path===p||(p.endsWith('/')&&c.req.path.startsWith(p))||c.req.path.startsWith(`${p}?`))){await limited(`ip:${c.req.header('x-forwarded-for')?.split(',')[0]?.trim()??'unknown'}`);await next();return;}const auth=await session(c.req.raw);if(!auth)throw new ApiError(401,'unauthorized','Sign in to continue');c.set('userId',auth.user.id);requestOwners.set(c.req.raw,auth.user.id);await limited(`user:${auth.user.id}`);await service.seed(auth.user.id);if(c.req.method!=='GET'&&c.req.method!=='HEAD'){const origin=c.req.header('origin');if(origin&&!originOk(origin))throw new ApiError(403,'origin_rejected','Origin is not allowed');}await next();});
+ app.delete('/v1/account',async c=>{
+  const input=await body(c,z.object({type:z.literal('account.delete').optional(),password:z.string().min(1).max(1024).optional()}));
+  await limited(`account-delete:${c.get('userId')}`);
+  if(!options.accountDeletion)throw new ApiError(503,'deletion_unavailable','Account deletion is not configured');
+  let confirmed:{userId:string;sessionId:string}|null=null;
+  if(service.local){const token=c.req.header('authorization')?.replace(/^Bearer /i,'')??getCookie(c,'praxis_session');if(token&&Date.now()-(devCreated.get(token)??0)<300000)confirmed={userId:c.get('userId'),sessionId:token};}
+  else confirmed=await options.accountDeletion.confirm?.(c.req.raw,input.password)??null;
+  if(!confirmed||confirmed.userId!==c.get('userId'))throw new ApiError(403,'confirmation_required','Confirm your current password or sign in again');
+  await options.accountDeletion.purge(confirmed.userId,confirmed.sessionId);
+  for(const [token,user]of devTokens)if(user===confirmed.userId){devTokens.delete(token);devCreated.delete(token);}
+  deletionAttempts.delete(`account-delete:${confirmed.userId}`);deleteCookie(c,'praxis_session',{path:'/'});c.header('Cache-Control','no-store');return c.json({type:'account.deleted'});
+ });
  app.get('/v1/auth/session',async c=>{const auth=await session(c.req.raw);return c.json({type:'session',...auth});});
  app.post('/v1/auth/sign-out',async c=>{if(options.authHandler&&!service.local)return options.authHandler(c.req.raw);const token=c.req.header('authorization')?.replace(/^Bearer /i,'')??getCookie(c,'praxis_session');if(token)devTokens.delete(token);deleteCookie(c,'praxis_session',{path:'/'});return c.json({type:'ok'});});
  app.get('/v1/bootstrap',async c=>{c.header('Cache-Control','private, no-store');return c.json(await service.bootstrap(c.get('userId')));});

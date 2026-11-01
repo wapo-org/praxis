@@ -54,7 +54,7 @@ export interface ExecutionOptions {
 }
 
 export interface RunLease {
-  acquire(key: string, ttlMs: number): Promise<string | null>;
+  acquire(key: string, ttlMs: number, ownerId?: string): Promise<string | null>;
   release(key: string, token: string): Promise<void>;
 }
 
@@ -117,7 +117,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   /** Runs `fn` as the run's only executor; a concurrent or duplicate caller returns without doing anything. */
   async function exclusive(userId: string, runId: string, fn: (fence: {revision: number}) => Promise<AgentCheckpoint | void>) {
     const key = `run:${userId}:${runId}`;
-    const token = await lease.acquire(key, leaseTtlMs);
+    const token = await lease.acquire(key, leaseTtlMs, userId);
     if (!token) return;
     let cp: AgentCheckpoint | void = undefined;
     try {

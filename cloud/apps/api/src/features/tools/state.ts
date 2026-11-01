@@ -14,6 +14,7 @@ export function createLocalToolsState(): ToolsState {
   const rows = new Map<string, JsonObject>();
   const key = (userId: string, kind: string, id: string) => JSON.stringify([userId, kind, id]);
   return {
+    async purgeOwner(userId){for(const key of rows.keys())if(JSON.parse(key)[0]===userId)rows.delete(key);},
     async get(userId, kind, id) {return structuredClone(rows.get(key(userId, kind, id)) ?? null);},
     async put(userId, kind, id, value) {rows.set(key(userId, kind, id), structuredClone(value));},
     async delete(userId, kind, id) {rows.delete(key(userId, kind, id));},

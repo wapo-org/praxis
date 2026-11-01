@@ -33,7 +33,8 @@ export default defineSchema({
     .index('model_email', ['model', 'data.email'])
     .index('model_token', ['model', 'data.token'])
     .index('model_user', ['model', 'data.userId'])
-    .index('model_identifier', ['model', 'data.identifier']),
+    .index('model_identifier', ['model', 'data.identifier'])
+    .index('model_value', ['model','data.value']),
   // Owner-bound Convex file storage (attachments). A ticket is created before bytes arrive.
   files: defineTable({
     userId: v.string(),

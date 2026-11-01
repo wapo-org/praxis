@@ -1,3 +1,4 @@
+import {OWNER_WRITE_LUA,OWNER_LIMIT_LUA} from '../account-redis.js';
 import {APPEND_EVENT_LUA, RELEASE_LEASE_LUA, type RedisLike} from '../upstash.js';
 
 /**
@@ -8,6 +9,7 @@ import {APPEND_EVENT_LUA, RELEASE_LEASE_LUA, type RedisLike} from '../upstash.js
 export function fakeRedis() {
   let now = 0;
   const strings = new Map<string, {value: string; expires?: number}>();
+  const sets=new Map<string,Set<string>>();
   const dedup = new Map<string, string>();
   const streams = new Map<string, {id: number; fields: Record<string, string>}[]>();
   const live = (k: string) => {
@@ -16,6 +18,7 @@ export function fakeRedis() {
     return strings.get(k);
   };
   const redis = {
+    async smembers(k:string){return [...(sets.get(k)??[])];},
     async get(k: string) { return live(k)?.value ?? null; },
     async set(k: string, value: string, opts?: {ex?: number; px?: number; nx?: boolean}) {
       if (opts?.nx && live(k)) return null;
@@ -23,9 +26,13 @@ export function fakeRedis() {
       strings.set(k, {value: String(value), ...(ms !== undefined ? {expires: now + ms} : {})});
       return 'OK';
     },
-    async del(...keys: string[]) { let n = 0; for (const k of keys) { if (strings.delete(k)) n++; if (streams.delete(k)) n++; } return n; },
+    async del(...keys: string[]) { let n = 0; for (const k of keys) { if (strings.delete(k)) n++; if (streams.delete(k)) n++;if(sets.delete(k))n++;for(const key of dedup.keys())if(key.startsWith(k+':'))dedup.delete(key); } return n; },
     async getdel(k: string) { const v = live(k)?.value ?? null; strings.delete(k); return v; },
     async eval(script: string, keys: string[], args: string[]) {
+      if(script===OWNER_WRITE_LUA){if(live(keys[0]!)?.value!=='active')throw Error('Account unavailable');sets.set(keys[1]!,new Set([...(sets.get(keys[1]!)??[]),keys[2]!]));return redis.set(keys[2]!,args[0]!,args[1]?{ex:Number(args[1])}:{});}
+      if(script===OWNER_LIMIT_LUA){if(live(keys[0]!)?.value!=='active')return -1;sets.set(keys[1]!,new Set([...(sets.get(keys[1]!)??[]),keys[2]!]));const n=Number(live(keys[2]!)?.value??0)+1;await redis.set(keys[2]!,String(n),{ex:Number(args[0])});return n;}
+      if(script.endsWith(APPEND_EVENT_LUA)&&script!==APPEND_EVENT_LUA){if(live(keys[3]!)?.value!=='active')throw Error('Account unavailable');sets.set(keys[4]!,new Set([...(sets.get(keys[4]!)??[]),...keys.slice(0,3)]));script=APPEND_EVENT_LUA;}
+      if(script.includes("return redis.call('SET',KEYS[3],ARGV[1],'NX','PX',ARGV[2])")){if(live(keys[0]!)?.value!=='active')throw Error('Account unavailable');sets.set(keys[1]!,new Set([...(sets.get(keys[1]!)??[]),keys[2]!]));return redis.set(keys[2]!,args[0]!,{nx:true,px:Number(args[1])});}
       if (script === APPEND_EVENT_LUA) {
         const d = `${keys[2]}:${args[3]}`;
         if (args[3] && dedup.has(d)) return dedup.get(d)!;
@@ -50,5 +57,5 @@ export function fakeRedis() {
       return out;
     },
   };
-  return {redis: redis as unknown as RedisLike, advance: (ms: number) => { now += ms; }, keys: () => [...strings.keys(), ...streams.keys()]};
+  return {redis: redis as unknown as RedisLike, advance: (ms: number) => { now += ms; }, keys: () => [...strings.keys(), ...streams.keys(),...sets.keys()]};
 }

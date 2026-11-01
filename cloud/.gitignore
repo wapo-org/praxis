@@ -6,3 +6,5 @@ dist/
 .vercel/
 .convex/
 coverage/
+
+.deploy/
