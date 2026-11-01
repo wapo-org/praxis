@@ -24,7 +24,7 @@ export function createConvexRPC(options: ConvexOptions): ConvexRPC {
   const withToken = (args: Record<string, unknown>) => ({ ...args, serverToken: options.serverToken });
   return {
     query: (name, args) => client.query(makeFunctionReference<'query'>(name), withToken(args)),
-    mutation: (name, args) => client.mutation(makeFunctionReference<'mutation'>(name), withToken(args)),
+    mutation: (name, args) => client.mutation(makeFunctionReference<'mutation'>(name), withToken({...args,...(args.userId && !name.startsWith('account:') ? {requireOwner:true}: {})})),
     action: (name, args) => client.action(makeFunctionReference<'action'>(name), withToken(args)),
   };
 }

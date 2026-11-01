@@ -1,5 +1,28 @@
 # Deploying the Praxis API
 
+## Deploy in 3 commands
+
+Run these yourself after creating the hosted projects and filling the private file:
+
+```sh
+cp deploy.env.example .env.deploy
+node scripts/preflight.mjs && node scripts/deploy.mjs --dry-run
+node scripts/deploy.mjs && node scripts/smoke-remote.mjs https://YOUR_API https://YOUR_WEB
+```
+
+Run from `cloud/`. The first command creates an empty template: edit `.env.deploy` privately before command 2. It is gitignored. Agents run **dry-run only** with an empty test env; no hosted services or credentials are used. The owner alone runs command 3. Projects must already exist with the API root `cloud/apps/api`, “include files outside root” enabled, and the listed canonical domains configured. Vercel env updates use `--force`; static web output is staged in ignored `.deploy/`. CLI output is suppressed to prevent secret diagnostics; failures identify the command and exit code only.
+
+`preflight` lists variable names and format errors, never values. It offers `openssl rand -base64 32` for private encryption-key generation. `deploy --dry-run --env /path/to/empty` prints the full masked plan and executes only local API/web builds with a scrubbed environment. Missing deploy config does not prevent that rehearsal. No Vercel/Convex CLI, account creation, env upload or deploy runs in dry mode.
+
+Deploy-only inputs: `VERCEL_TOKEN`, `VERCEL_ORG_ID` (`team_…`/`user_…`), `VERCEL_API_PROJECT_ID`, `VERCEL_WEB_PROJECT_ID` (`prj_…`), `CONVEX_DEPLOY_KEY`. Runtime inputs follow below. The Convex server token is set from a private temporary file and deleted afterwards; Vercel runtime env values go through stdin, never argv. Only `VITE_API_BASE_URL` is exposed to the browser build. Install dependencies first (`npm ci`); the owner’s remote commands require the Vercel CLI and Convex CLI through npx.
+
+Smoke uses a throwaway user and `DELETE /v1/account` in a `finally` block, including on failure. It exercises email auth on hosted APIs, upload/download, app shell and the actual service-worker bypass control flow. A real paid LLM request requires explicit `--with-llm` plus `SMOKE_LLM_KEY`, `SMOKE_LLM_BASE_URL`, `SMOKE_LLM_MODEL` and optionally `SMOKE_LLM_FLAVOR` in the private env file. Otherwise production run/SSE are explicitly skipped; no scripted production fallback exists. Optional `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` may be validated by preflight but are never sent to the browser or automatically turned into a provider.
+
+Local rehearsal: run `PORT=8822 npm run dev:local -w @praxis/api`, build web with `VITE_API_BASE_URL=http://127.0.0.1:8822 npm run build -w @praxis/web`, then `node node_modules/vite/bin/vite.js preview apps/web --host 127.0.0.1 --port 5196 --strictPort`. Run `node scripts/smoke-remote.mjs http://127.0.0.1:8822 http://127.0.0.1:5196 --dry-run`. Local email auth is genuinely unconfigured (503), so smoke reports that skip, tests disposable dev sessions/sign-out instead, and runs a deterministic local SSE transport check. Hosted `--dry-run` performs reads only, with no auth/account mutation. An empty preflight intentionally exits 1.
+
+CLI references: [Vercel env force/stdin](https://vercel.com/docs/cli/env), [Convex deploy](https://docs.convex.dev/cli/reference/deploy).
+
+
 Local development needs no accounts (see README: `npm run dev:local`). This page is for the owner who creates the hosted services.
 Agents never create accounts, deploy or read credentials.
 
@@ -101,3 +124,12 @@ PORT=8789 node scripts/smoke-local.mjs            # bootstrap → SSE → approv
 ```
 `npx vercel build` needs a Vercel login or token (`login_required` without one), so it was not run by agents.
 Live Convex and Upstash contract tests run when their env vars are set: `CONVEX_URL` + `PRAXIS_CONVEX_SERVER_TOKEN`, and `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`.
+
+
+## Account deletion protocol (additive)
+
+`DELETE /v1/account` accepts `{ "type": "account.delete", "password": "…" }` (password optional only for a session created less than five minutes ago). Authentication and the normal origin/CSRF checks apply. Success returns `{ "type": "account.deleted" }`, clears the local cookie, and invalidates all credentials. Repeating erasure is harmless; replaying revoked credentials returns 401. Missing confirmation returns 403. Deletion attempts have a dedicated five/hour limit in addition to the normal authenticated limit.
+
+The production eraser locks account activation, marks the account as deleting, freezes owner Redis writes, purges indexed Redis data (streams, caches, OAuth state and leases), then hard-deletes every owner-scoped Convex table and uploaded blobs in bounded batches. The caller’s session and credential survive until the final atomic auth deletion, so interrupted deletion can retry. Redis ownership indexes are registered atomically with writes; activation verifies that the Convex account remains active. Generic Convex writes are fenced once deletion begins. Blob ownership tags also permit deleting interrupted, unbound uploads. New data tables must be included in `convex/account.ts`; new owner KV writes must carry `ownerId` (feature contexts do so automatically).
+
+No hosted deletion, provider call, deployment, or credential access was performed by the implementation worker. Local synthetic auth tests exercise sign-up/in/out and deletion against the real Better Auth implementation with in-memory Convex/Redis test adapters; they do not create hosted accounts.

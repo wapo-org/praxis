@@ -10,6 +10,7 @@ import { createConvexRPC, type ConvexRPC } from './convex.js';
 /** What `createApp({authHandler, resolveSession})` takes. */
 export interface PraxisAuth {
   handler(request: Request): Promise<Response>;
+  confirmDeletion(request:Request,password?:string):Promise<{userId:string;sessionId:string}|null>;
   resolveSession(request: Request): Promise<{ user: User; expiresAt: string } | null>;
 }
 
@@ -25,6 +26,7 @@ export interface AuthOptions {
   /** Optional hot session cache; entries never outlive the session and expire within `cacheSeconds`. */
   cache?: KV;
   cacheSeconds?: number;
+  ownership?: {activate(userId:string):Promise<void>;isActive(userId:string):Promise<boolean>};
 }
 
 const AuthEnvSchema = z.object({
@@ -37,7 +39,7 @@ const AuthEnvSchema = z.object({
 });
 
 /** Production Better Auth on Convex. Throws (fails closed) when configuration is incomplete. */
-export function createAuth(env: Record<string, string | undefined>, cache?: KV): PraxisAuth {
+export function createAuth(env: Record<string, string | undefined>, cache?: KV, ownership?:AuthOptions['ownership']): PraxisAuth {
   const e = AuthEnvSchema.parse(env);
   const rpc = createConvexRPC({ url: e.CONVEX_URL, serverToken: e.PRAXIS_CONVEX_SERVER_TOKEN });
   return authFromRPC(rpc, {
@@ -45,7 +47,7 @@ export function createAuth(env: Record<string, string | undefined>, cache?: KV):
     secret: e.BETTER_AUTH_SECRET,
     trustedOrigins: parseOrigins(e.PRAXIS_WEB_ORIGINS),
     cookieSameSite: e.PRAXIS_COOKIE_SAMESITE,
-    cache,
+    cache, ownership,
   });
 }
 
@@ -128,7 +130,7 @@ export function authFromRPC(rpc: ConvexRPC, options: AuthOptions): PraxisAuth {
     logger: { disabled: true },
   });
 
-  type BetterSession = { user: { id: string; name: string; email: string }; session: { id: string; expiresAt: Date | string } };
+  type BetterSession = { user: { id: string; name: string; email: string }; session: { id: string; createdAt: Date | string; expiresAt: Date | string } };
   const toSession = (s: BetterSession) => ({
     user: { type: 'user' as const, id: s.user.id, name: s.user.name, email: s.user.email },
     expiresAt: new Date(s.session.expiresAt).toISOString(),
@@ -154,9 +156,11 @@ export function authFromRPC(rpc: ConvexRPC, options: AuthOptions): PraxisAuth {
   async function resolveSession(request: Request) {
     const key = credentialKey(request.headers);
     if (!key) return null;
+    if (request.method==='DELETE' && new URL(request.url).pathname==='/v1/account') {const s=await auth.api.getSession({headers:request.headers,query:{disableCookieCache:true}}) as BetterSession|null;return s?toSession(s):null;}
     if (options.cache) {
       const hit = CachedSessionSchema.safeParse(await options.cache.get(key));
       if (hit.success && Date.parse(hit.data.expiresAt) > Date.now()) {
+        if (options.ownership && !await options.ownership.isActive(hit.data.user.id)) return null;
         if (await revoked(hit.data.sessionId)) return null;
         return hit.data;
       }
@@ -166,10 +170,12 @@ export function authFromRPC(rpc: ConvexRPC, options: AuthOptions): PraxisAuth {
       query: { disableCookieCache: true },
     })) as BetterSession | null;
     if (!session) return null;
+    if(options.ownership&&!await options.ownership.isActive(session.user.id)){try{await options.ownership.activate(session.user.id);}catch{return null;}}
+
     const result = {...toSession(session), sessionId: session.session.id};
     if (await revoked(result.sessionId)) return null;
     const ttl = Math.min(cacheSeconds, Math.floor((Date.parse(result.expiresAt) - Date.now()) / 1000));
-    if (options.cache && ttl >= 1) await options.cache.set(key, result, ttl);
+    if (options.cache && ttl >= 1) await options.cache.set(key, result, ttl,result.user.id);
     return result;
   }
 
@@ -209,7 +215,7 @@ export function authFromRPC(rpc: ConvexRPC, options: AuthOptions): PraxisAuth {
       // Every credential alias checks this session-wide tombstone, including racing cache fills.
       if (signingOut && options.cache) {
         const ttl = Math.max(1, Math.ceil((new Date(signingOut.session.expiresAt).getTime() - Date.now()) / 1000));
-        await options.cache.set(revokedKey(signingOut.session.id), true, ttl);
+        await options.cache.set(revokedKey(signingOut.session.id), true, ttl,signingOut.user.id);
       }
       const key = credentialKey(request.headers);
       if (key && options.cache) await options.cache.del(key);
@@ -232,9 +238,17 @@ export function authFromRPC(rpc: ConvexRPC, options: AuthOptions): PraxisAuth {
       query: { disableCookieCache: true },
     })) as BetterSession | null;
     if (!session) return error(502, 'auth_failed', 'Authentication session could not be verified', outgoing);
+    if(operation==='sign-up')await options.ownership?.activate(session.user.id);
     const dto = SessionSchema.parse({ type: 'session', ...toSession(session), bearerToken: token });
     return Response.json(dto, { status: operation === 'sign-up' ? 201 : 200, headers: outgoing });
   }
 
-  return { handler, resolveSession };
+  async function confirmDeletion(request:Request,password?:string){
+    const session=await auth.api.getSession({headers:request.headers,query:{disableCookieCache:true}}) as BetterSession|null;
+    if(!session)return null;
+    const age=Date.now()-new Date(session.session.createdAt).getTime();
+    if(!(age>=0&&age<300000)){if(!password)return null;try{const verified=await auth.api.verifyPassword({headers:request.headers,body:{password}});if(!verified.status)return null;}catch{return null;}}
+    return {userId:session.user.id,sessionId:session.session.id};
+  }
+  return { handler, resolveSession, confirmDeletion };
 }

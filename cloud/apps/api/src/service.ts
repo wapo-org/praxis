@@ -50,7 +50,7 @@ export class ApiService{
   const [chats,providers,models,connectors,skills,runs,consents,registries,preferences,changes]=await Promise.all([this.list<any>(userId,'chat'),this.list<any>(userId,'provider'),this.list<any>(userId,'model'),this.list<any>(userId,'connector'),this.list<any>(userId,'skill'),this.list<Run>(userId,'run'),this.list<any>(userId,'consent'),this.list<any>(userId,'registry'),this.adapters.store.get(userId,'preferences','current'),this.adapters.store.head(userId)]);
   const eventCursor=await this.adapters.events.latest?.(userId,'user');
   const result:Bootstrap={type:'bootstrap',protocolVersion:PROTOCOL_VERSION,user:{type:'user',id:userId,name:this.local?'Local developer':'Praxis user'},chats:chats.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,50),providers,models:models.slice(0,50),connectors,skills,activeRuns:runs.filter(r=>!this.terminal(r)),consents,registries,preferences:preferences?.value as any,syncCursor:String(changes),syncRoot:'',serverTime:this.now(),...(eventCursor===undefined?{}:{eventCursor})};
-  await this.adapters.kv.set(`bootstrap:${userId}`,result,10);return result;
+  await this.adapters.kv.set(`bootstrap:${userId}`,result,10,userId);return result;
  }
  terminal(run:Run){return ['completed','cancelled','failed'].includes(run.status);}
  async start(userId:string,input:StartRun):Promise<Run>{return this.exclusive(`${userId}:${input.chatId}`,async()=>{
@@ -124,5 +124,5 @@ export class ApiService{
   delete chat.activeRunId;chat.updatedAt=this.now();await this.write(userId,'chat',chatId,chat);
   return {type:'chat.truncated',chat,removedRunIds:[...runIds],removedMessageIds:removed.map(m=>m.id)};
  });}
- async cancel(userId:string,runId:string){const run=await this.require<Run>(userId,'run',runId);if(this.terminal(run))return run;await this.adapters.kv.set(`cancel:${userId}:${runId}`,true,86400);await this.driver?.cancel?.(userId,runId);if(!this.terminal(await this.require<Run>(userId,'run',runId))&&(run.status==='awaitingApproval'||run.status==='awaitingElicitation'||run.status==='queued'))await this.emit(userId,runId,{type:'run.finished',outcome:'cancelled'});return this.require<Run>(userId,'run',runId);}
+ async cancel(userId:string,runId:string){const run=await this.require<Run>(userId,'run',runId);if(this.terminal(run))return run;await this.adapters.kv.set(`cancel:${userId}:${runId}`,true,86400,userId);await this.driver?.cancel?.(userId,runId);if(!this.terminal(await this.require<Run>(userId,'run',runId))&&(run.status==='awaitingApproval'||run.status==='awaitingElicitation'||run.status==='queued'))await this.emit(userId,runId,{type:'run.finished',outcome:'cancelled'});return this.require<Run>(userId,'run',runId);}
 }

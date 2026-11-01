@@ -40,7 +40,7 @@ export function featureContext(service: ApiService, userId: string, options: {fe
   return {
     userId,
     store,
-    kv: service.adapters.kv,
+    kv: {...service.adapters.kv, set:(key,value,ttl)=>service.adapters.kv.set(key,value,ttl,userId || undefined)},
     fetch: options.fetch ?? fetch,
     egress: options.egress ?? createSafeFetch({allowHttp: service.local}),
     local: service.local,

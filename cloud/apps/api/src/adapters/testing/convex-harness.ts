@@ -8,6 +8,8 @@ export const TEST_SERVER_TOKEN = 'test-server-token-with-more-than-32-characters
 /** convex-test resolves the functions root from the `_generated` entry. */
 const modules = {
   '../../../../../convex/_generated/api.js': async () => ({}),
+  '../../../../../convex/account.ts': () => import('../../../../../convex/account.js'),
+  '../../../../../convex/tools.ts': () => import('../../../../../convex/tools.js'),
   '../../../../../convex/store.ts': () => import('../../../../../convex/store.js'),
   '../../../../../convex/auth.ts': () => import('../../../../../convex/auth.js'),
   '../../../../../convex/files.ts': () => import('../../../../../convex/files.js'),

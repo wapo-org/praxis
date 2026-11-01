@@ -36,7 +36,7 @@ export async function ensureFreshTokens(ctx: FeatureContext, value: Connector, o
 
 async function refresh(ctx: FeatureContext, value: Connector, options: McpOptions, stale: OAuthTokens): Promise<OAuthTokens | undefined> {
   const leaseKey = `mcp:refresh:${ctx.userId}:${value.id}`;
-  const token = options.lease ? await options.lease.acquire(leaseKey, 30_000) : 'local';
+  const token = options.lease ? await options.lease.acquire(leaseKey, 30_000, ctx.userId) : 'local';
   if (!token) {
     // Another instance holds the refresh: wait for the tokens it saves instead of spending the refresh token twice.
     for (let i = 0; i < 10; i++) {
