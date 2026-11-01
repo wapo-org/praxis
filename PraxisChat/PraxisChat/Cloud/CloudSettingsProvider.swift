@@ -66,9 +66,14 @@ struct CloudSettingsProviderEditor: View {
             }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || baseURL.isEmpty)
             if let provider {
                 CloudSettingsAction("Test connection") {
-                    let result = try await services.testProvider(provider.id)
-                    probeMessage = result.ok ? "Connection works · \(result.models.count) models" : "The server could not verify this connection."
+                    probeMessage = nil
+                    let result = try await services.testProvider(provider.id, modelID: defaultModel.trimmingCharacters(in: .whitespacesAndNewlines))
+                    probeMessage = result.summary
+                    if result.ok, let probe = result.probe { capabilities = probe.applying(to: capabilities) }
                 }
+                .disabled(defaultModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Text("Tests the saved connection using the model ID above. Probes can incur provider charges. Review the detected capabilities, then save to apply them.")
+                    .font(Type.inter(12, .caption)).foregroundStyle(Praxis.mutedInk)
                 if let probeMessage { Text(probeMessage).font(Type.inter(13, .footnote)).foregroundStyle(Praxis.secondaryInk) }
                 CloudSettingsAction("Refresh models") { try await services.refreshProviderModels(provider.id) }
                 Button("Delete provider", role: .destructive) { deleting = true }.buttonStyle(.praxisText)

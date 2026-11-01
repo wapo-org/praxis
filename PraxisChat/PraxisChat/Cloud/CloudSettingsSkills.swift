@@ -4,6 +4,10 @@ import UniformTypeIdentifiers
 struct CloudSettingsSkillsScreen: View {
     let services: CloudServices
     @State private var importing = false
+    @State private var archiveImport = false
+    @State private var importingArchive = false
+    @State private var importReport: String?
+    @State private var checkedUpdates = false
     @State private var imported: CloudCatalogSkillInput?
     @State private var importError: String?
     var body: some View {
@@ -15,19 +19,50 @@ struct CloudSettingsSkillsScreen: View {
                     NavigationLink { CloudSettingsSkillEditor(services: services, skill: skill) } label: {
                         CloudSettingsRow(title: skill.name, value: skill.enabled ? "On" : "Off", symbol: "doc.text")
                     }.buttonStyle(PressHighlightStyle())
+                    if services.skillUpdates.contains(where: { $0.skillId == skill.id }) {
+                        Text("Update available").font(Type.inter(12, .caption)).foregroundStyle(Praxis.secondaryInk).padding(.horizontal, 14)
+                        CloudSettingsAction("Update \(skill.name)") { try await services.updateSkill(skill.id) }
+                    }
                     SettingsDivider()
                 }
                 NavigationLink { CloudSettingsSkillEditor(services: services) } label: {
                     CloudSettingsRow(title: "Create skill", symbol: "plus")
                 }.buttonStyle(PressHighlightStyle())
                 SettingsDivider()
-                Button { importing = true } label: { CloudSettingsRow(title: "Import SKILL.md", symbol: "square.and.arrow.down") }
+                Button { archiveImport = false; importing = true } label: { CloudSettingsRow(title: "Import SKILL.md", symbol: "square.and.arrow.down") }
                     .buttonStyle(PressHighlightStyle()).accessibilityIdentifier("cloudImportSkill")
             }
+            Button { archiveImport = true; importing = true } label: {
+                CloudSettingsRow(title: importingArchive ? "Importing…" : "Import skill archive", symbol: "doc.zipper")
+            }.buttonStyle(PressHighlightStyle()).disabled(importingArchive).accessibilityIdentifier("cloudImportSkillArchive")
+            Text("Choose a .zip, .tar or .tar.gz archive. Scripts and binary files are left out.")
+                .font(Type.inter(12, .caption)).foregroundStyle(Praxis.mutedInk)
+            CloudSettingsAction("Check for updates", identifier: "cloudCheckSkillUpdates") {
+                try await services.checkSkillUpdates(); checkedUpdates = true
+            }
+            if checkedUpdates && services.skillUpdates.isEmpty { Text("All registry skills are up to date.").font(Type.inter(12, .caption)) }
+            if importingArchive { ProgressView("Importing skill…") }
+            if let importReport { Text(importReport).font(Type.inter(13, .footnote)).textSelection(.enabled) }
             if let importError { CloudSettingsErrorText(message: importError) }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.plainText, .text, .data]) { result in
-            do { imported = try CloudSettingsSkillImport.read(result.get()); importError = nil }
+            do {
+                let url = try result.get()
+                if archiveImport {
+                    importingArchive = true; importError = nil; importReport = nil
+                    Task { @MainActor in
+                        defer { importingArchive = false }
+                        do {
+                            let bytes = try await Task.detached { try CloudSkillArchive.read(url) }.value
+                            importReport = try await services.importSkillArchive(bytes: bytes, name: url.lastPathComponent).summary
+                        } catch { importError = error.localizedDescription }
+                    }
+                } else { imported = try CloudSettingsSkillImport.read(url); importError = nil }
+            }
+            catch { importError = error.localizedDescription }
+        }
+        .task {
+            do { try await services.checkSkillUpdates(); checkedUpdates = true }
             catch { importError = error.localizedDescription }
         }
         .sheet(item: $imported) { draft in
@@ -166,7 +201,7 @@ struct CloudSettingsRegistryScreen: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(skill.name).font(Type.inter(15, weight: .semibold, .body))
                         Text(skill.description).font(Type.inter(13, .footnote)).foregroundStyle(Praxis.mutedInk)
-                        if services.skills.contains(where: { $0.id == skill.id }) {
+                        if services.skills.contains(where: { $0.registryId == current.id && $0.registryEntryId == skill.id }) {
                             Text("Installed").font(Type.inter(12, .caption)).foregroundStyle(Praxis.mutedInk)
                         } else {
                             CloudSettingsAction("Install \(skill.name)") { try await services.installSkill(registryID: current.id, skillID: skill.id) }

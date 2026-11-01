@@ -15,6 +15,7 @@ final class CloudServices: VoiceSettingsReader {
     private(set) var favoriteModels: [CloudCatalogModel] = []
     private(set) var connectors: [CloudCatalogConnector] = []
     private(set) var skills: [CloudCatalogSkill] = []
+    private(set) var skillUpdates: [CloudSkillUpdate] = []
     private(set) var registries: [CloudCatalogRegistry] = []
     private(set) var consents: [CloudCatalogConsent] = []
     private(set) var preferences: CloudCatalogPreferences?
@@ -25,7 +26,7 @@ final class CloudServices: VoiceSettingsReader {
     private(set) var refreshing = false
     private(set) var lastError: String?
     @ObservationIgnored private var searchRevision = UUID()
-    @ObservationIgnored private var accountRevision = UUID()
+    @ObservationIgnored private(set) var accountRevision = UUID()
     @ObservationIgnored private var hasLoaded = false
 
     init(client: CloudAPIClient) { self.client = client }
@@ -111,7 +112,7 @@ final class CloudServices: VoiceSettingsReader {
         accountRevision = UUID(); searchRevision = UUID()
         account = nil
         providers = []; models = []; favoriteModels = []; connectors = []
-        skills = []; registries = []; consents = []; preferences = nil
+        skills = []; skillUpdates = []; registries = []; consents = []; preferences = nil
         nextModelCursor = nil; modelQuery = ""; modelProviderID = nil
         loadingModels = false; refreshing = false; lastError = nil
     }
@@ -207,8 +208,9 @@ final class CloudServices: VoiceSettingsReader {
         providers.removeAll { $0.id == id }; models.removeAll { $0.providerId == id }; favoriteModels.removeAll { $0.providerId == id }
     }
 
-    func testProvider(_ id: String) async throws -> CloudCatalogProbe {
-        try await client.send("/v1/providers/" + CloudCatalogPath.component(id) + "/test", method: "POST", body: encoded(CloudSettingsActionInput(type: "provider.test")))
+    func testProvider(_ id: String, modelID: String? = nil) async throws -> CloudCatalogProbe {
+        struct Input: Encodable { var type = "provider.test"; var modelId: String? }
+        return try await client.send("/v1/providers/" + CloudCatalogPath.component(id) + "/test", method: "POST", body: encoded(Input(modelId: modelID)))
     }
 
     func refreshProviderModels(_ id: String) async throws {
@@ -222,7 +224,7 @@ final class CloudServices: VoiceSettingsReader {
         let revision = accountRevision
         let connector: CloudCatalogConnector
         if let id {
-            let patch = CloudCatalogConnectorPatch(name: input.name, url: input.url, transport: input.transport, enabled: input.enabled, trusted: input.trusted, disabledTools: input.disabledTools, token: input.token)
+            let patch = CloudCatalogConnectorPatch(name: input.name, url: input.url, transport: input.transport, enabled: input.enabled, trusted: input.trusted, disabledTools: input.disabledTools, token: input.token, extraHeaders: input.extraHeaders)
             connector = try await client.send("/v1/connectors/" + CloudCatalogPath.component(id), method: "PATCH", body: encoded(patch))
         } else {
             connector = try await client.send("/v1/connectors", method: "POST", body: encoded(input))
@@ -353,6 +355,16 @@ final class CloudServices: VoiceSettingsReader {
         if revision == accountRevision { preferences = result }
     }
 
+    func acceptSkill(_ skill: CloudCatalogSkill, revision: UUID) {
+        guard revision == accountRevision else { return }
+        skills.removeAll { $0.id == skill.id }; skills.append(skill)
+        skillUpdates.removeAll { $0.skillId == skill.id }
+    }
+
+    func acceptUpdates(_ updates: [CloudSkillUpdate], revision: UUID) {
+        if revision == accountRevision { skillUpdates = updates }
+    }
+
     private func encoded<Input: Encodable>(_ value: Input) throws -> Data { try JSONEncoder().encode(value) }
 
     nonisolated private static func uniqueModels(_ values: [CloudCatalogModel]) -> [CloudCatalogModel] {
@@ -360,43 +372,6 @@ final class CloudServices: VoiceSettingsReader {
         return values.filter { seen.insert($0.selectionID).inserted }
     }
 
-    /// Small configuration lists exhaust opaque cursor pages. A repeated
-    /// cursor is an explicit server error, never an infinite request loop.
-    nonisolated static func allPages<Item: Decodable & Sendable>(_ client: CloudAPIClient, _ path: String, filters: [URLQueryItem] = []) async throws -> [Item] {
-        var result: [Item] = []
-        var cursor: String?
-        var seen: Set<String> = []
-        repeat {
-            try Task.checkCancellation()
-            var query = filters + [URLQueryItem(name: "limit", value: "100")]
-            if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
-            let page: CloudCatalogPage<Item> = try await client.send(CloudCatalogPath.list(path, query: query))
-            result.append(contentsOf: page.items)
-            cursor = page.nextCursor
-            if let cursor, !seen.insert(cursor).inserted { throw CloudSettingsError.repeatedCursor }
-        } while cursor != nil
-        return result
-    }
 }
 
 private struct CloudSettingsActionInput: Encodable { var type: String }
-
-enum CloudSettingsError: Error, LocalizedError {
-    case invalidRemoteURL, repeatedCursor, emptyPrompt, invalidOAuthCallback, invalidSkill
-    var errorDescription: String? {
-        switch self {
-        case .invalidRemoteURL: "Enter an HTTP or HTTPS URL without embedded credentials."
-        case .repeatedCursor: "The server returned a repeated page. Try refreshing."
-        case .emptyPrompt: "This prompt did not return any text."
-        case .invalidOAuthCallback: "The connector sign-in callback could not be verified."
-        case .invalidSkill: "Choose a UTF-8 SKILL.md document smaller than 500 KB."
-        }
-    }
-}
-
-enum CloudSettingsValidation {
-    static func remoteURL(_ text: String) throws {
-        guard let url = URL(string: text), let scheme = url.scheme?.lowercased(), ["https", "http"].contains(scheme),
-              url.host != nil, url.user == nil, url.password == nil, url.fragment == nil else { throw CloudSettingsError.invalidRemoteURL }
-    }
-}
