@@ -69,6 +69,20 @@ final class CloudUITests: XCTestCase {
         XCTAssertTrue(app.buttons["cloudSignOut"].waitForExistence(timeout: 15))
         shot("cloud-account-signed-in")
     }
+    func testDeleteAccountShowsServerErrorThenDeletes() {
+        launch(); account()
+        app.buttons["cloudDeleteAccount"].tap()
+        let password = app.secureTextFields["cloudDeletePassword"]
+        XCTAssertTrue(password.waitForExistence(timeout: 10))
+        password.tap(); password.typeText("wrong")
+        app.buttons["cloudConfirmDeleteAccount"].tap()
+        XCTAssertTrue(text("Confirm your current password").waitForExistence(timeout: 10), "The API's message is shown")
+        password.tap(); password.typeText("-not")
+        app.buttons["cloudConfirmDeleteAccount"].tap()
+        XCTAssertTrue(app.staticTexts["cloudAccountDeleted"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.textFields["cloudEmail"].waitForExistence(timeout: 10))
+        shot("cloud-account-deleted")
+    }
     func testSendStreamsCloudAnswer() {
         launch(); send("Hello cloud")
         completed("Cloud reply: Hello cloud 🌍")
