@@ -15,6 +15,7 @@ final class CloudAccountReplica {
     private var isBackgrounded = false
     private var generation = UUID()
     private var task: Task<Void, Never>?
+    private var follower: Task<Void, Never>?
     private var cleanup: Task<Void, Never>?
     private var replica = CloudCursorReplica()
     private var directory: URL?
@@ -42,6 +43,7 @@ final class CloudAccountReplica {
     func sessionChanged(_ user: CloudUser?) {
         let previous = task
         previous?.cancel()
+        follower?.cancel(); follower = nil
         generation = UUID()
         let revision = generation
         let oldLifecycle = lifecycle
@@ -51,7 +53,8 @@ final class CloudAccountReplica {
             userID = nil; directory = nil; replica = CloudCursorReplica(); lifecycle = nil
             store?.clearCloudReplica()
             let priorCleanup = cleanup
-            let identityURL = identityURL, disk = disk
+            let identityURL = identityURL, disk = disk, root = root, origin = client.configuration.origin
+            let mediaStore = store
             let work = Task {
                 // Block late journal writes first, then drain queued persistence.
                 await oldLifecycle?.eraseAccountJournal()
@@ -60,6 +63,13 @@ final class CloudAccountReplica {
                 await persistence?.flush()
                 do {
                     if let oldDirectory { try await disk.remove(oldDirectory) }
+                    // select() may still be suspended: the identity file is the
+                    // durable account selector even before directory is installed.
+                    if let data = await disk.read(identityURL), let identity = try? JSONDecoder().decode(Identity.self, from: data) {
+                        try await disk.remove(CloudReplicaScope.directory(root: root, origin: origin, userID: identity.userID))
+                    }
+                    await mediaStore?.eraseCloudMedia()
+                    try await disk.remove(root.appendingPathComponent("Recordings"))
                     try await disk.remove(identityURL)
                 } catch { if self.generation == revision { self.error = error.localizedDescription } }
             }
@@ -86,7 +96,9 @@ final class CloudAccountReplica {
                     guard generation == revision else { return }
                     try await disk.write(JSONEncoder().encode(Identity(userID: user.id, tokenHash: CloudReplicaScope.digest(token))), to: identityURL)
                 }
+                let cursor = await userEventCursor()
                 try await reconcile(revision: revision)
+                followUserEvents(after: cursor, revision: revision)
             } catch { if generation == revision, !Task.isCancelled { self.error = error.localizedDescription } }
         }
     }
@@ -110,6 +122,7 @@ final class CloudAccountReplica {
         isBackgrounded = false
         guard userID != nil else { return }
         task?.cancel()
+        follower?.cancel(); follower = nil
         let revision = generation
         task = Task {
             // Journal catchup must not depend on session endpoint availability.
@@ -124,7 +137,9 @@ final class CloudAccountReplica {
                         await store?.cloudServices?.reload()
                         return
                     }
+                    let cursor = await userEventCursor()
                     try await reconcile(revision: revision)
+                    followUserEvents(after: cursor, revision: revision)
                     return
                 } catch {
                     guard generation == revision, !Task.isCancelled else { return }
@@ -138,13 +153,14 @@ final class CloudAccountReplica {
     }
     func background() {
         isBackgrounded = true
+        follower?.cancel(); follower = nil
         if let lifecycle { Task { await lifecycle.setBackgrounded(true) } }
     }
     func waitForSync() async { await task?.value; await task?.value; await cleanup?.value }
     private func reconcile(revision: UUID) async throws {
         guard let directory else { return }
         let _: CloudCursorReplica.Root = try await client.send("/v1/sync/root")
-        var seen = Set<String>(), changed = Set<String>()
+        var seen = Set<String>(), changed = replica.pendingChangedChatIDs ?? []
         repeat {
             try Task.checkCancellation()
             let body = try JSONEncoder().encode(CloudCursorReplica.Request(cursor: replica.cursor))
@@ -161,6 +177,32 @@ final class CloudAccountReplica {
         store?.applyCloudProjection(projection)
         if let lifecycle { try await store?.resumeCloudRuns(projection.runs, engine: lifecycle, client: client) }
         guard generation == revision else { return }
+        replica = try await disk.acknowledge(replica, file: directory.appendingPathComponent("replica.json"))
         error = nil
+    }
+    private func userEventCursor() async -> Int? {
+        struct BootstrapCursor: Decodable { var eventCursor: Int? }
+        let bootstrap: BootstrapCursor? = try? await client.send("/v1/bootstrap")
+        return bootstrap?.eventCursor
+    }
+    private func followUserEvents(after cursor: Int?, revision: UUID) {
+        guard let cursor, generation == revision, !isBackgrounded, !Task.isCancelled else { return }
+        follower?.cancel()
+        follower = Task { [weak self, client] in
+            do {
+                try await CloudUserEvents(client: client).consume(after: cursor) { [weak self] event in
+                    guard let self else { throw CancellationError() }
+                    try await self.userEvent(event, revision: revision)
+                }
+            } catch {
+                guard let self, self.generation == revision, !Task.isCancelled else { return }
+                if (error as? CloudAPIError)?.statusCode == 401 { self.sessionChanged(nil) }
+                else { self.error = error.localizedDescription }
+            }
+        }
+    }
+    private func userEvent(_ event: CloudUserEvent, revision: UUID) async throws {
+        guard generation == revision, !isBackgrounded, !Task.isCancelled else { throw CancellationError() }
+        if ["chat", "message", "run"].contains(event.entity) { try await reconcile(revision: revision) }
     }
 }

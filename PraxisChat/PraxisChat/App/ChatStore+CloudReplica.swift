@@ -16,6 +16,11 @@ extension ChatStore {
         resetCloudStorage()
         clearCloudDrafts()
     }
+    /// Account media is not namespaced on disk: sign-out drops all of it, off main.
+    func eraseCloudMedia() async {
+        let attachments = attachmentStore
+        await Task.detached { attachments.removeAll() }.value
+    }
     func installCloudPersistence(_ persistence: ConversationStore, engine: CloudLifecycleEngine) {
         use(engine)
         let snapshot = persistence.load()
@@ -66,10 +71,11 @@ extension ChatStore {
                 if firstDates[id] == nil { firstDates[id] = row.createdAt }
                 var index = turns.firstIndex { $0.id == id }
                 if index == nil {
-                    turns.append(Turn(id: id, userText: "", isFinished: !activeTurns.contains(id), outcome: activeTurns.contains(id) ? nil : .completed, engine: .cloud))
+                    turns.append(Turn(id: id, userText: "", isFinished: !activeTurns.contains(id), outcome: activeTurns.contains(id) ? nil : .completed, engine: .cloud, cloudRunID: row.runId, cloudClientTurnID: row.clientTurnId, cloudRemoteOrigin: true))
                     index = turns.count - 1
                 }
                 let i = index!
+                if let run = row.runId { turns[i].cloudRunID = run }
                 let native = row.native
                 turns[i].transcript.append(native)
                 if row.role == "user" { turns[i].userText = native.text }
@@ -101,17 +107,28 @@ extension ChatStore {
         try await resumeCloudRuns(replica.rows("run", as: CloudRun.self), engine: engine)
     }
     func resumeCloudRuns(_ remoteRuns: [CloudRun], engine: CloudLifecycleEngine, client: CloudAPIClient? = nil) async throws {
-        for run in remoteRuns where !["completed", "cancelled", "failed"].contains(run.status) {
-            guard let conv = conversations.first(where: { $0.cloudChatID == run.chatId }), !isRunning(conv.id) else { continue }
+        for run in remoteRuns {
+            guard let conv = conversations.first(where: { $0.cloudChatID == run.chatId }) else { continue }
             let turnID = CloudReplicaScope.localID(run.clientTurnId ?? run.id)
             guard let index = conv.turns.firstIndex(where: { $0.id == turnID }), !conv.turns[index].isFinished else { continue }
+            conv.turns[index].cloudRunID = run.id
+            conv.turns[index].cloudClientTurnID = run.clientTurnId ?? run.id
+            persistConversation(conv)
+            guard !isRunning(conv.id) else { continue }
+            var authoritative = run
             if let client {
-                let authoritative: CloudRun = try await client.send("/v1/runs/" + CloudAPIClient.segment(run.id))
-                guard !["completed", "cancelled", "failed"].contains(authoritative.status),
-                      authoritative.id == run.id, authoritative.chatId == run.chatId else { continue }
+                do { authoritative = try await client.send("/v1/runs/" + CloudAPIClient.segment(run.id)) }
+                catch { continue } // Keep the remote identity for offline/relaunch reattachment.
             }
             guard conversations.contains(where: { $0 === conv }), !isRunning(conv.id),
-                  conv.turns.contains(where: { $0.id == turnID && !$0.isFinished }) else { continue }
+                  let index = conv.turns.firstIndex(where: { $0.id == turnID }), !conv.turns[index].isFinished,
+                  authoritative.id == run.id, authoritative.chatId == run.chatId else { continue }
+            if ["completed", "cancelled", "failed"].contains(authoritative.status) {
+                conv.turns[index].isRunning = false; conv.turns[index].isFinished = true
+                conv.turns[index].outcome = authoritative.status == "completed" ? .completed : authoritative.status == "cancelled" ? .stopped : .failed("Server run failed")
+                persistConversation(conv)
+                continue
+            }
             try await engine.registerRemoteRun(conversationID: conv.id, turnID: turnID, runID: run.id)
             guard conversations.contains(where: { $0 === conv }), !isRunning(conv.id),
                   conv.turns.contains(where: { $0.id == turnID && !$0.isFinished }) else { continue }

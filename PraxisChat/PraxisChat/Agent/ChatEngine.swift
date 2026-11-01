@@ -12,6 +12,9 @@ struct ChatRunRequest: Sendable {
     var turnID: UUID = UUID()
     /// Opaque server chat id; local conversations retain their UUID identity.
     var cloudChatID: String? = nil
+    var cloudRunID: String? = nil
+    var cloudClientTurnID: String? = nil
+    var cloudMayStart = true
     /// Messages of the turns before this one.
     var history: [Message]
     /// The new turn's user message, built by the store — nil for engines

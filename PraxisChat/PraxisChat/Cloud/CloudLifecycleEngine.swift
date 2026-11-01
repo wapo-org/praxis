@@ -21,7 +21,7 @@ actor CloudLifecycleEngine: ChatEngine {
         var generation = UUID()
         var runID: String?
         var terminalPublished = false
-        var uiReplayed = false
+        var uiReplayed: Set<String> = []
         var shutdown: CloudReaderShutdown?
     }
     private var active: [UUID: Active] = [:]
@@ -44,7 +44,7 @@ actor CloudLifecycleEngine: ChatEngine {
     }
     func projectionCommitted(runID: String) async { try? await journal.remove(runID: runID) }
     private func begin(_ request: ChatRunRequest, output: AsyncStream<AgentEvent>.Continuation, identity: UUID) {
-        active[request.turnID] = Active(identity: identity, request: request, output: output)
+        active[request.turnID] = Active(identity: identity, request: request, output: output, runID: request.cloudRunID)
         if !backgrounded { attach(request.turnID) }
     }
     private func end(_ key: UUID, identity: UUID) async {
@@ -54,7 +54,7 @@ actor CloudLifecycleEngine: ChatEngine {
             let records = await journal.records()
             let runID = state.runID ?? records.first(where: { $0.turnID == key })?.runID
             if let runID { try? await CloudChatEngine(client: client).cancel(runID: runID) }
-            else {
+            else if state.request.cloudMayStart {
                 // A background detach can interrupt the POST response after
                 // the server created the run. Retry the same persisted turn
                 // key, obtain its id and let the flagged engine cancel it.
@@ -97,27 +97,32 @@ actor CloudLifecycleEngine: ChatEngine {
     }
     private func attach(_ key: UUID) {
         guard let state = active[key], !backgrounded else { return }
-        let replayUI = !state.uiReplayed
         let generation = UUID()
         active[key]?.generation = generation
-        active[key]?.worker = Task { await self.consume(key, generation: generation, replayUI: replayUI) }
+        active[key]?.worker = Task { await self.consume(key, generation: generation) }
     }
-    private func consume(_ key: UUID, generation: UUID, replayUI: Bool) async {
+    private func consume(_ key: UUID, generation: UUID) async {
         guard let state = active[key] else { return }
         do {
             let records = await journal.records()
             let runID = state.runID ?? records.first { $0.turnID == key }?.runID
             let replay = runID == nil ? CloudRunJournal.Replay(events: [], cursor: 0, byteCount: 0) : await journal.replay(runID: runID!)
-            var payloads: [CloudEventPayload] = []
+            var entries: [(String, CloudEventPayload)] = []
             if let raw = replay.snapshot {
-                payloads += try JSONDecoder().decode(CloudRunSnapshot.self, from: raw).presentationEvents()
+                let snapshot = try JSONDecoder().decode(CloudRunSnapshot.self, from: raw)
+                entries += try snapshot.presentationEvents().enumerated().map { ("snapshot:\(snapshot.lastEventId):\($0.offset)", $0.element) }
             }
-            for raw in replay.events { payloads.append(try JSONDecoder().decode(CloudRunEvent.self, from: raw).event) }
+            for raw in replay.events {
+                let event = try JSONDecoder().decode(CloudRunEvent.self, from: raw)
+                entries.append(("event:\(event.id)", event.event))
+            }
+            let payloads = entries.map(\.1)
             let mapper = CloudEventMapper(request: state.request)
             var approvals: [String: CloudEventPayload] = [:]
             var forms: [String: CloudEventPayload] = [:]
             var terminal = false
-            for payload in payloads {
+            for (token, payload) in entries {
+                guard valid(key, generation), !Task.isCancelled else { return }
                 switch payload {
                 case .approval(let a): approvals[a.callId] = payload
                 case .approvalResolved(let id, _): approvals.removeValue(forKey: id)
@@ -127,11 +132,14 @@ actor CloudLifecycleEngine: ChatEngine {
                 default: break
                 }
                 let events = await mapper.map(payload)
-                if replayUI { deliver(events, key: key, identity: state.identity) }
+                guard valid(key, generation), !Task.isCancelled else { return }
+                publish(events, key: key, identity: state.identity, token: token)
             }
-            if active[key]?.identity == state.identity { active[key]?.uiReplayed = true }
             if terminal { if valid(key, generation) { state.output.finish() }; return }
             guard valid(key, generation), !Task.isCancelled else { return }
+            guard runID != nil || state.request.cloudMayStart else {
+                state.output.yield(.finished(.cancelled)); state.output.finish(); return
+            }
             let journal = journal
             let shutdown = CloudReaderShutdown()
             active[key]?.shutdown = shutdown
@@ -147,12 +155,12 @@ actor CloudLifecycleEngine: ChatEngine {
                     // Publish from the durable hook, before transport acknowledgment.
                     // Cancellation cannot strand a journaled delta in an inner buffer.
                     let mapped = await mapper.map(event.event)
-                    await self.deliver(mapped, key: key, identity: state.identity)
+                    await self.publish(mapped, key: key, identity: state.identity, token: "event:\(event.id)", generation: generation)
                 }, onSnapshot: { _, _, id, data in
                     try await journal.checkpoint(data, runID: id)
                     let snapshot = try JSONDecoder().decode(CloudRunSnapshot.self, from: data)
                     let mapped = try await mapper.replace(with: snapshot)
-                    await self.deliver(mapped, key: key, identity: state.identity)
+                    await self.publish(mapped, key: key, identity: state.identity, token: "checkpoint:\(snapshot.lastEventId)", generation: generation)
                 })
             engine.priorEvents = payloads
             engine.onDetached = { await shutdown.finish() }
@@ -173,6 +181,15 @@ actor CloudLifecycleEngine: ChatEngine {
                 state.output.finish()
             }
         }
+    }
+    private func publish(_ events: [AgentEvent], key: UUID, identity: UUID, token: String, generation: UUID? = nil) {
+        guard let state = active[key], state.identity == identity,
+              generation == nil || state.generation == generation,
+              !state.uiReplayed.contains(token) else { return }
+        // Per-event commit is synchronous with publication. A suspended replay
+        // can resume under another generation without delivering the prefix twice.
+        deliver(events, key: key, identity: identity)
+        active[key]?.uiReplayed.insert(token)
     }
     private func deliver(_ events: [AgentEvent], key: UUID, identity: UUID) {
         guard let state = active[key], state.identity == identity else { return }

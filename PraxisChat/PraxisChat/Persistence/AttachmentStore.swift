@@ -67,6 +67,13 @@ final class AttachmentStore: Sendable {
         }
     }
 
+    /// Forgets every attachment (account sign-out). Same barrier as `remove`.
+    func removeAll() {
+        staged.withLock { $0.removeAll() }
+        recent.withLock { $0.removeAll() }
+        io.sync { try? FileManager.default.removeItem(at: directory) }
+    }
+
     /// Creates the directory with Data Protection (R3-M2). Best effort
     /// on the attributes: a write must not fail over them.
     private static func ensureDirectory(_ directory: URL) {

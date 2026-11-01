@@ -80,7 +80,7 @@ final class ChatStore {
     @ObservationIgnored let cloudServices: CloudServices?
     @ObservationIgnored private let picksEngineAutomatically: Bool
     @ObservationIgnored private var persistence: ConversationStore?
-    @ObservationIgnored private let attachmentStore: AttachmentStore
+    @ObservationIgnored let attachmentStore: AttachmentStore
     /// Streaming blocks' text, by block id. Not observed: the turn change
     /// that adds a block already re-renders its turn, which looks it up.
     @ObservationIgnored private var liveTexts: [UUID: LiveText] = [:]
@@ -535,6 +535,9 @@ final class ChatStore {
         let handle = RunHandle(conversationID: conv.id, turnID: turnID, turnIndex: ti)
         var request = makeRequest(conv, turnIndex: ti)
         request.cloudChatID = conv.cloudChatID
+        request.cloudRunID = conv.turns[ti].cloudRunID
+        request.cloudClientTurnID = conv.turns[ti].cloudClientTurnID
+        request.cloudMayStart = conv.turns[ti].cloudRemoteOrigin != true
         let flag = handle.cancelled
         request.isCancelled = { flag.isCancelled }
         request.elicitationScope = handle.elicitationScope

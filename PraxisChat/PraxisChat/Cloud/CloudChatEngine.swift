@@ -191,8 +191,8 @@ struct CloudChatEngine: ChatEngine {
         }
         var start = CloudStartRun(chatId: chatID, text: request.userText, providerId: selection.provider,
             modelId: selection.model, mode: request.mode.rawValue, effort: request.effort.rawValue,
-            attachmentIds: ids, webSearch: request.webSearch, idempotencyKey: request.turnID.uuidString,
-            clientTurnId: request.turnID.uuidString)
+            attachmentIds: ids, webSearch: request.webSearch, idempotencyKey: request.cloudClientTurnID ?? request.turnID.uuidString,
+            clientTurnId: request.cloudClientTurnID ?? request.turnID.uuidString)
         #if DEBUG
         start.script = UserDefaults.standard.string(forKey: "PraxisCloudScenario").map {
             switch $0 { case "nested": "nestedApproval"; case "cancel", "reconnect": "long"; default: $0 }
