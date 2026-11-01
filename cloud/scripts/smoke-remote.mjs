@@ -76,6 +76,7 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
     return { checks, skipped };
   }
   if (!local && new URL(api).protocol !== 'https:') throw Error('Hosted smoke requires HTTPS');
+  let failure;
   try {
     if (local) {
       for (const op of ['sign-up', 'sign-in']) {
@@ -111,15 +112,17 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
       token = fresh.bearerToken;
       checks.push('local session/sign-out/revocation');
     } else {
+      // Assume the account may exist as soon as sign-up is attempted: cleanup then signs in to check.
+      created = true;
       const response = await fetcher(api + '/v1/auth/sign-up', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ type: 'auth.input', email, password, name: 'Deployment smoke' }),
       });
       assert.ok(response.ok, 'Sign-up failed');
-      created = true;
       token = (await response.json()).bearerToken;
       await call('/v1/auth/sign-out', 'POST', {});
+      token = ''; // revoked; cleanup must not reuse it
       token = (
         await call('/v1/auth/sign-in', 'POST', { type: 'auth.input', email, password }, false)
       ).bearerToken;
@@ -229,25 +232,47 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
       assert.equal(snapshot.run.status, 'completed');
       checks.push('SSE disconnect/resume and finished snapshot');
     }
-  } finally {
-    if (created) {
-      if (!token && !local)
-        token = (
-          await call('/v1/auth/sign-in', 'POST', { type: 'auth.input', email, password }, false)
-        ).bearerToken;
-      await call('/v1/account', 'DELETE', {
-        type: 'account.delete',
-        ...(local ? {} : { password }),
-      });
-      const dead = await fetcher(api + '/v1/bootstrap', {
-        headers: { authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(30000),
-      });
-      assert.equal(dead.status, 401);
+  } catch (e) {
+    failure = e;
+  }
+  if (created) {
+    try {
+      await cleanup();
       checks.push('account/data cleanup and session revocation');
+    } catch (e) {
+      // Report the original failure; the cleanup error is attached, never substituted.
+      if (failure)
+        failure.message += ` (cleanup also failed: ${e.message}; delete ${email} manually)`;
+      else failure = e;
     }
   }
+  if (failure) throw failure;
   return { checks, skipped };
+
+  /** Deletes the throwaway user with a credential that is still valid, re-authenticating if needed. */
+  async function cleanup() {
+    const signIn = async () => {
+      token = '';
+      token = (
+        await call('/v1/auth/sign-in', 'POST', { type: 'auth.input', email, password }, false)
+      ).bearerToken;
+    };
+    if (!token && !local) await signIn();
+    const remove = () =>
+      call('/v1/account', 'DELETE', { type: 'account.delete', ...(local ? {} : { password }) });
+    try {
+      await remove();
+    } catch (e) {
+      if (local || !/HTTP 401$/.test(e.message)) throw e;
+      await signIn();
+      await remove();
+    }
+    const dead = await fetcher(api + '/v1/bootstrap', {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(30000),
+    });
+    assert.equal(dead.status, 401);
+  }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
   smoke()

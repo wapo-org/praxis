@@ -175,7 +175,11 @@ export function authFromRPC(rpc: ConvexRPC, options: AuthOptions): PraxisAuth {
     const result = {...toSession(session), sessionId: session.session.id};
     if (await revoked(result.sessionId)) return null;
     const ttl = Math.min(cacheSeconds, Math.floor((Date.parse(result.expiresAt) - Date.now()) / 1000));
-    if (options.cache && ttl >= 1) await options.cache.set(key, result, ttl,result.user.id);
+    if (options.cache && ttl >= 1) {
+      // A deletion that froze the account after the check above makes the owner write fail: that is a 401, not a 500.
+      try { await options.cache.set(key, result, ttl, result.user.id); }
+      catch (e) { if (options.ownership && !await options.ownership.isActive(result.user.id)) return null; throw e; }
+    }
     return result;
   }
 

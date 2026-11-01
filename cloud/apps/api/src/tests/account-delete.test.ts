@@ -90,10 +90,7 @@ it('deletes every owned table, blob, Redis key and session; preserves another us
       id: 'chat',
       value: { key: 'private' },
     });
-    const limit = createRateLimiter(memory.redis as Redis, {
-      requests: 2,
-      ownership: redis.ownership,
-    });
+    const limit = createRateLimiter(memory.redis as Redis, { requests: 2 });
     await limit(`user:${u}`);
     await redis.kv.set('cache:' + u, { private: u }, 600, u);
     await redis.kv.set('oauth:' + u, { userId: u }, 600, u);
@@ -158,7 +155,7 @@ it('deletes every owned table, blob, Redis key and session; preserves another us
       );
     return rows;
   });
-  const ownKeys = await (memory.redis as any).smembers(redis.ownership.keys(a.user.id).index);
+  const ownKeys = memory.index(redis.ownership.keys(a.user.id).index);
   expect(ownKeys.length).toBeGreaterThan(5);
   const original = rpc.mutation;
   let failOnce = true;
@@ -285,4 +282,37 @@ it('requires password for old sessions, accepts the current password, and limits
     });
   for (let i = 0; i < 5; i++) expect((await req()).status).toBe(503);
   expect((await req()).status).toBe(429);
+});
+it('answers 401, not 500, when deletion freezes the account while a session is being cached', async () => {
+  const { rpc } = convexHarness();
+  let active = true;
+  const cache = {
+    get: async () => null,
+    del: async () => {},
+    set: async () => {
+      active = false; // the eraser froze the account between the activity check and the cache fill
+      throw Error('Account unavailable');
+    },
+  };
+  const auth = authFromRPC(rpc, {
+    baseURL: API,
+    secret: 'test-only-secret-at-least-thirty-two-characters',
+    trustedOrigins: [],
+    cache,
+    ownership: { isActive: async () => active, activate: async () => {} },
+  });
+  const sign = await auth.handler(
+    new Request(API + '/v1/auth/sign-up', {
+      method: 'POST',
+      body: JSON.stringify({ type: 'auth.input', email: 'race@example.test', password: 'race-password-123', name: 'Race' }),
+    }),
+  );
+  const { bearerToken } = await sign.json();
+  const request = new Request(API + '/v1/bootstrap', { headers: { authorization: `Bearer ${bearerToken}` } });
+  expect(await auth.resolveSession(request)).toBeNull();
+  active = true;
+  cache.set = async () => {
+    throw Error('redis down');
+  };
+  await expect(auth.resolveSession(request)).rejects.toThrow('redis down');
 });
