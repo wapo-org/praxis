@@ -1,7 +1,7 @@
 import React from 'react';
 import { AccountContext } from '../../lib/account';
 import { apiClient } from '../../lib/api';
-import { clearReplica, loadReplica, setReplicaIdentity } from '../../lib/idb';
+import { clearReplica, loadReplica, setReplicaIdentity, wipeReplicaStorage } from '../../lib/idb';
 
 export function canUseLocalDev(isDev: boolean, mode: string) {
   return isDev && mode === 'local';
@@ -15,6 +15,7 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
   const [busy, setBusy] = React.useState(false);
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [notice, setNotice] = React.useState('');
   const accept = async (id: string) => {
     await setReplicaIdentity(apiClient.getBaseUrl(), id);
     await loadReplica();
@@ -52,6 +53,7 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
   async function signIn(dev: boolean) {
     setBusy(true);
     setError('');
+    setNotice('');
     try {
       const session =
         import.meta.env.DEV && dev
@@ -85,6 +87,21 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
       setBusy(false);
     }
   }
+  async function deleteAccount(confirmPassword: string) {
+    await apiClient.request('/v1/account', {
+      method: 'DELETE',
+      body: JSON.stringify({
+        type: 'account.delete',
+        ...(confirmPassword ? { password: confirmPassword } : {}),
+      }),
+    });
+    // The server has revoked every session; forget the credential and this device's copy of the data.
+    apiClient.setBearerToken('');
+    await wipeReplicaStorage();
+    setPassword('');
+    setNotice('Account deleted');
+    setUser(null);
+  }
   if (checking) return <main className="account-screen">Checking session…</main>;
   if (user)
     return (
@@ -93,6 +110,7 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
         value={{
           userId: user,
           signOut,
+          deleteAccount,
           busy,
           error,
           server: apiClient.getBaseUrl() || window.location.origin,
@@ -135,6 +153,11 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
             onChange={(e) => setPassword(e.target.value)}
           />
         </label>
+        {notice && (
+          <p role="status" data-testid="account-notice">
+            {notice}
+          </p>
+        )}
         {error && <p role="alert">{error}</p>}
         <button disabled={busy}>Sign in</button>
         {import.meta.env.DEV && local && (

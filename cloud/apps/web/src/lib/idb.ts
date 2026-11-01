@@ -115,3 +115,22 @@ export async function saveReplica(snapshot: LocalReplicaSnapshot, expectedKey = 
   });
   await queue;
 }
+
+/** After account deletion: drop every replica on this device (all origins and users) and the owner markers. */
+export async function wipeReplicaStorage(): Promise<void> {
+  await clearReplica();
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (key?.startsWith('praxis-replica-owner:') || key === 'praxis-cloud-replica-v1')
+      localStorage.removeItem(key);
+  }
+  if (typeof indexedDB === 'undefined') return;
+  for (const name of ['praxis-cloud-scoped-v2', 'praxis-cloud-idb'])
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.deleteDatabase(name);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error ?? Error('Could not clear local data'));
+      // Another tab still has it open: the browser finishes the deletion when that tab closes it.
+      req.onblocked = () => resolve();
+    });
+}

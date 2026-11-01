@@ -281,6 +281,7 @@ it('places sign-out under Settings Account and keeps image/voice rows under Tool
           userId: 'A',
           server: 'https://api.example',
           signOut,
+          deleteAccount: vi.fn(),
           error: '',
           busy: false,
         }}

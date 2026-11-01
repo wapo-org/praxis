@@ -475,3 +475,13 @@
     display: none;
   }
 }
+/* iOS-style destructive row: red label and icon in a grouped card. */
+.screen-row--destructive,
+.screen-row--destructive .screen-row-icon {
+  color: var(--paper-destructive);
+}
+.screen-delete-account {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
