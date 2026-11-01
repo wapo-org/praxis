@@ -1,4 +1,4 @@
-import { accountRedis, OWNER_LIMIT_LUA } from './account-redis.js';
+import { accountRedis, ownerAppendLua, OWNER_LEASE_LUA } from './account-redis.js';
 import {createHash, randomUUID} from 'node:crypto';
 import {Redis} from '@upstash/redis';
 import {Ratelimit} from '@upstash/ratelimit';
@@ -33,10 +33,10 @@ export const RELEASE_LEASE_LUA = `
 if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end
 return 0`;
 
-export interface UpstashOptions {url: string; token: string; prefix?: string; streamMaxLen?: number; streamTtlSeconds?: number; accountOwnership?: boolean}
+export interface UpstashOptions {url: string; token: string; prefix?: string; streamMaxLen?: number; streamTtlSeconds?: number; accountOwnership?: boolean; clock?: () => number}
 
 /** The subset of the Upstash client the adapters use (lets tests run the contract suite on a fake). */
-export type RedisLike = Pick<Redis, 'get' | 'set' | 'del' | 'getdel' | 'eval' | 'xrange'>;
+export type RedisLike = Pick<Redis, 'get' | 'set' | 'del' | 'getdel' | 'eval' | 'xrange' | 'zrange' | 'zrem'>;
 
 /** Keys never contain user ids or other caller text: owner/channel/kv names are SHA-256 hashed. */
 export const opaque = (...parts: string[]) => createHash('sha256').update(JSON.stringify(parts.map(p => Scope.parse(p)))).digest('hex').slice(0, 40);
@@ -53,7 +53,8 @@ export function upstashFromRedis(redis: RedisLike, options: Omit<UpstashOptions,
   const prefix = options.prefix ?? 'praxis:v1';
   const maxLen = String(options.streamMaxLen ?? 5000);
   const ttl = String(options.streamTtlSeconds ?? 7 * 86400);
-  const ownership = accountRedis(redis as Redis, prefix);
+  const ownership = accountRedis(redis, prefix, options.clock);
+  const OWNED_APPEND_LUA = ownerAppendLua(APPEND_EVENT_LUA);
   const kvKey = (k: string) => `${prefix}:kv:${opaque(k)}`;
   const parse = <T>(value: string | null) => (value === null ? null : (JSON.parse(value) as T));
 
@@ -78,11 +79,10 @@ export function upstashFromRedis(redis: RedisLike, options: Omit<UpstashOptions,
   const events: Events = {
     append: async (u, c, payload, eventKey) => {
       const k = stream(u, c);
-      const script=options.accountOwnership ? `if redis.call('GET',KEYS[4]) ~= 'active' then return redis.error_reply('Account unavailable') end
-redis.call('SADD',KEYS[5],KEYS[1],KEYS[2],KEYS[3])
-`+APPEND_EVENT_LUA : APPEND_EVENT_LUA;
-      const owned=ownership.keys(u);
-      const raw = await redis.eval(script, [`${k}:seq`, k, `${k}:dedup`, ...(options.accountOwnership?[owned.active,owned.index]:[])], [JSON.stringify(JsonObjectSchema.parse(payload)), maxLen, ttl, eventKey ? opaque(eventKey) : ""]);
+      const owned = ownership.keys(u), keys = [`${k}:seq`, k, `${k}:dedup`], args = [JSON.stringify(JsonObjectSchema.parse(payload)), maxLen, ttl, eventKey ? opaque(eventKey) : ""];
+      const raw = options.accountOwnership
+        ? await redis.eval(OWNED_APPEND_LUA, [...keys, owned.active, owned.index], [...args, ownership.now()])
+        : await redis.eval(APPEND_EVENT_LUA, keys, args);
       return EventSchema.parse(typeof raw === "string" ? JSON.parse(raw) : raw);
     },
     read: async (u, c, after, limit = 100) => {
@@ -102,9 +102,9 @@ redis.call('SADD',KEYS[5],KEYS[1],KEYS[2],KEYS[3])
       const token = randomUUID();
       const key=`${prefix}:lease:${opaque(k)}`;
       const owned=ownerId?ownership.keys(ownerId):null;
-      const ok = options.accountOwnership && owned ? await redis.eval(`if redis.call('GET',KEYS[1]) ~= 'active' then return redis.error_reply('Account unavailable') end
-redis.call('SADD',KEYS[2],KEYS[3])
-return redis.call('SET',KEYS[3],ARGV[1],'NX','PX',ARGV[2])`,[owned.active,owned.index,key],[token,String(ttlMs)]) : await redis.set(key, token, {nx:true,px:ttlMs});
+      const ok = options.accountOwnership && owned
+        ? await redis.eval(OWNER_LEASE_LUA, [key, owned.active, owned.index], [token, String(ttlMs), ownership.now()])
+        : await redis.set(key, token, {nx: true, px: ttlMs});
       return ok === 'OK' ? token : null;
     },
     release: async (k: string, token: string): Promise<void> => {
@@ -115,17 +115,28 @@ return redis.call('SET',KEYS[3],ARGV[1],'NX','PX',ARGV[2])`,[owned.active,owned.
   return {kv, events, consumeOnce, lease, ownership};
 }
 
-/** Sliding-window limiter shaped for `createApp({rateLimit})`. Keys are hashed by @upstash/ratelimit's prefix + our opaque id. */
-export function createRateLimiter(redis: Redis, options: {requests?: number; window?: `${number} s`; prefix?: string; ownership?: ReturnType<typeof accountRedis>} = {}) {
-  const limiter = new Ratelimit({redis, limiter: Ratelimit.slidingWindow(options.requests ?? 120, options.window ?? '60 s'), prefix: options.prefix ?? 'praxis:v1:ratelimit', analytics: false});
+/** KEYS: counter. ARGV: window ms. Fixed window in one self-expiring key; returns {count, ms left}. */
+export const FIXED_WINDOW_LUA = `
+local n=redis.call('INCR',KEYS[1])
+local left=redis.call('PTTL',KEYS[1])
+if left < 0 then redis.call('PEXPIRE',KEYS[1],ARGV[1]) left=tonumber(ARGV[1]) end
+return {n,left}`;
+
+/**
+ * Limiter shaped for `createApp({rateLimit})`. Per-user keys use one fixed-window counter each: it is never
+ * owner-indexed (bounded, expires within its window), so account deletion cannot reset it and limits keep applying.
+ * Other keys (per-IP) use @upstash/ratelimit's sliding window. Keys are hashed with our opaque id.
+ */
+export function createRateLimiter(redis: Pick<Redis, 'eval'> & Partial<Redis>, options: {requests?: number; window?: `${number} s`; prefix?: string} = {}) {
+  const prefix = options.prefix ?? 'praxis:v1:ratelimit';
+  const limiter = new Ratelimit({redis: redis as Redis, limiter: Ratelimit.slidingWindow(options.requests ?? 120, options.window ?? '60 s'), prefix, analytics: false});
+  const fixed = async (key: string, max: number, seconds: number) => {
+    const [count, left] = (await redis.eval(FIXED_WINDOW_LUA, [`${prefix}:fixed:${opaque(key)}`], [String(seconds * 1000)])) as [number, number];
+    return Number(count) <= max ? {ok: true} : {ok: false, retryAfterSeconds: Math.max(1, Math.ceil(Number(left) / 1000))};
+  };
   return async (key: string) => {
-    if(options.ownership&&(key.startsWith('user:')||key.startsWith('account-delete:'))){
-      const deletion=key.startsWith('account-delete:'),userId=key.slice(deletion?'account-delete:'.length:5),owned=options.ownership.keys(userId);
-      const seconds=deletion?3600:60,max=deletion?5:options.requests??120;
-      const physical=`${options.prefix??'praxis:v1:ratelimit'}:${opaque(key)}:${Math.floor(Date.now()/(seconds*1000))}`;
-      const n=Number(await redis.eval(OWNER_LIMIT_LUA,[owned.active,owned.index,physical],[String(seconds)]));
-      return n<0||n<=max?{ok:true}:{ok:false,retryAfterSeconds:seconds};
-    }
+    if (key.startsWith('account-delete:')) return fixed(key, 5, 3600);
+    if (key.startsWith('user:')) return fixed(key, options.requests ?? 120, Number.parseInt(options.window ?? '60 s'));
     const result = await limiter.limit(opaque(key));
     return result.success ? {ok: true} : {ok: false, retryAfterSeconds: Math.max(1, Math.ceil((result.reset - Date.now()) / 1000))};
   };

@@ -64,20 +64,24 @@ export const purge = mutation({
         return { done: false };
       }
     }
-    if (!a.blobsDone) {
-      const page = await ctx.db.system
-        .query('_storage')
-        .paginate({ cursor: a.blobCursor ?? null, numItems: 100 });
-      const tag = await blobOwnerTag(a.userId);
-      for (const blob of page.page)
-        if (blob.contentType?.split(';').some((v) => v.trim() === tag))
-          await ctx.storage.delete(blob._id);
-      if (!page.isDone) return { done: false, blobCursor: page.continueCursor };
-    }
     const user = await ctx.db
       .query('authDocuments')
       .withIndex('model_id', (q) => q.eq('model', 'user').eq('id', a.userId))
       .unique();
+    // The sweep position lives on the user row (kept until the last batch), so a retried request continues the sweep.
+    const sweep = (user?.data.deletion ?? {}) as { blobCursor?: string; blobsDone?: boolean };
+    if (!a.blobsDone && !sweep.blobsDone) {
+      const page = await ctx.db.system
+        .query('_storage')
+        .paginate({ cursor: sweep.blobCursor ?? a.blobCursor ?? null, numItems: 100 });
+      const tag = await blobOwnerTag(a.userId);
+      for (const blob of page.page)
+        if (blob.contentType?.split(';').some((v) => v.trim() === tag))
+          await ctx.storage.delete(blob._id);
+      const deletion = page.isDone ? { blobsDone: true } : { blobCursor: page.continueCursor };
+      if (user) await ctx.db.patch(user._id, { data: { ...user.data, deletion } });
+      if (!page.isDone) return { done: false, blobCursor: page.continueCursor };
+    }
     // Retain the user row until the last batch so its email remains available for verification cleanup.
     const email = user?.data.email;
     const owned = new Map();
