@@ -129,3 +129,16 @@ describe('REV-R1 P2: provider probe failures and budget', () => {
     expect((await probe()).status).toBe(429);
   });
 });
+
+describe('WP-W3: bootstrap names the user-event cursor', () => {
+  it('eventCursor is the newest user event, so a client can follow other clients from now', async () => {
+    const f = setup();
+    const chat = await f.chat();
+    const boot = await (await f.req('/v1/bootstrap')).json();
+    expect(boot.eventCursor).toBe(await f.service.adapters.events.latest!('local-user', 'user'));
+    expect(boot.eventCursor).toBeGreaterThan(0);
+    await f.run(chat.id, 'hi');
+    const later = (await f.service.adapters.events.read('local-user', 'user', boot.eventCursor)).map(e => e.payload.entity);
+    expect(later).toContain('chat'); // the run start's chat upsert (activeRunId) is after the cursor
+  });
+});

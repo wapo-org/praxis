@@ -169,7 +169,9 @@ export function authFromRPC(rpc: ConvexRPC, options: AuthOptions): PraxisAuth {
       headers: request.headers,
       query: { disableCookieCache: true },
     })) as BetterSession | null;
-    if (!session || (options.ownership && !await options.ownership.isActive(session.user.id))) return null;
+    if (!session) return null;
+    if(options.ownership&&!await options.ownership.isActive(session.user.id)){try{await options.ownership.activate(session.user.id);}catch{return null;}}
+
     const result = {...toSession(session), sessionId: session.session.id};
     if (await revoked(result.sessionId)) return null;
     const ttl = Math.min(cacheSeconds, Math.floor((Date.parse(result.expiresAt) - Date.now()) / 1000));

@@ -22,6 +22,8 @@ export interface EventRecord {id:number;payload:JsonObject}
 export interface Events {
  append(userId:string,channel:string,payload:JsonObject,eventKey?:string):Promise<EventRecord>;
  read(userId:string,channel:string,after:number,limit?:number):Promise<EventRecord[]>;
+ /** Id of the newest event (0 if none), so a client can subscribe from "now" without replaying the channel. */
+ latest?(userId:string,channel:string):Promise<number>;
 }
 export interface AdapterBundle {store:Store;kv:KV;events:Events;purgeOwner?(userId:string):Promise<void>}
 export interface FeatureContext {userId:string;store:Store;kv:KV;fetch:typeof fetch;

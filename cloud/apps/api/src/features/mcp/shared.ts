@@ -59,9 +59,15 @@ export async function writeSecret(ctx: FeatureContext, id: string, slot: string,
   const encrypted = seal(JSON.stringify(value), ctx.userId, `mcp:${id}:${slot}`, ctx.encryptionKey);
   await ctx.store.put(ctx.userId, secretKind, id, { ...(row?.deleted ? {} : row?.value), [slot]: encrypted });
 }
+/** Consent key for a remote URL: host plus any non-default port, the same key provider and tool consent use. */
+export const consentHost = (url: string) => new URL(url).host.toLowerCase();
+
 export async function requireConsent(ctx: FeatureContext, value: Connector) {
-  const host = new URL(value.url).hostname.toLowerCase();
-  const consent = await ctx.store.get(ctx.userId, 'consent', host);
+  const url = new URL(value.url);
+  const host = consentHost(value.url), legacy = url.hostname.toLowerCase();
+  const exact = await ctx.store.get(ctx.userId, 'consent', host);
+  // Records saved before WP-W3 were keyed by hostname only; they still count, unless a host:port record decides.
+  const consent = exact && !exact.deleted ? exact : host === legacy ? undefined : await ctx.store.get(ctx.userId, 'consent', legacy);
   if (!consent || consent.deleted || consent.value.allowed !== true) throw new McpError(403, 'consent_required', `AI data consent is required for ${host}`);
 }
 const blocked = new BlockList();

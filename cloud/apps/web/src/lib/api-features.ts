@@ -1,6 +1,7 @@
 import type { Connector, Skill } from '@praxis/protocol';
-import { ApiTransport, type ToolSpec, type Registry, type RegistryEntry, type PageResult } from './api-transport';
-export class FeatureApiClient extends ApiTransport {
+import { type PageResult, type Registry, type RegistryEntry, type ToolSpec } from './api-transport';
+import { ExtendedFeatureApiClient } from './api-x1';
+export class FeatureApiClient extends ExtendedFeatureApiClient {
   // Connectors (MCP)
   async listConnectors(): Promise<PageResult<Connector>> {
     return await this.request<PageResult<Connector>>('/v1/connectors?limit=100');
@@ -14,6 +15,7 @@ export class FeatureApiClient extends ApiTransport {
     trusted?: boolean;
     disabledTools?: string[];
     token?: string;
+    extraHeaders?: Record<string, string>;
   }): Promise<Connector> {
     return await this.request<Connector>('/v1/connectors', {
       method: 'POST',
@@ -117,7 +119,11 @@ export class FeatureApiClient extends ApiTransport {
     return await this.request<PageResult<Registry>>('/v1/skill-registries?limit=100');
   }
 
-  async createSkillRegistry(input: { name: string; url: string; enabled?: boolean }): Promise<Registry> {
+  async createSkillRegistry(input: {
+    name: string;
+    url: string;
+    enabled?: boolean;
+  }): Promise<Registry> {
     return await this.request<Registry>('/v1/skill-registries', {
       method: 'POST',
       body: JSON.stringify({ type: 'skill.registry.input', ...input }),
@@ -146,5 +152,4 @@ export class FeatureApiClient extends ApiTransport {
       },
     );
   }
-
 }

@@ -1,4 +1,4 @@
-import {OWNER_WRITE_LUA,OWNER_LIMIT_LUA} from '../account-redis.js';
+import {OWNER_WRITE_LUA,OWNER_LIMIT_LUA,OWNER_UNLOCK_LUA} from '../account-redis.js';
 import {APPEND_EVENT_LUA, RELEASE_LEASE_LUA, type RedisLike} from '../upstash.js';
 
 /**
@@ -47,7 +47,7 @@ export function fakeRedis() {
         if (args[3]) dedup.set(d, record);
         return record;
       }
-      if (script === RELEASE_LEASE_LUA) return live(keys[0]!)?.value === args[0] ? (strings.delete(keys[0]!), 1) : 0;
+      if (script === RELEASE_LEASE_LUA || script === OWNER_UNLOCK_LUA) return live(keys[0]!)?.value === args[0] ? (strings.delete(keys[0]!), 1) : 0;
       throw new Error('fake redis: unknown script');
     },
     async xrange(k: string, start: string, _end: string, count?: number) {

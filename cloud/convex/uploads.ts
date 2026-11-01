@@ -1,3 +1,4 @@
+import {blobOwnerTag} from './blob-owner.js';
 import {v} from 'convex/values';
 import {makeFunctionReference, type GenericActionCtx, type GenericDataModel} from 'convex/server';
 import {internalMutation} from './functions.js';
@@ -10,7 +11,7 @@ export const begin = internalMutation({
     const row = await ctx.db.query('files').withIndex('ticket', q => q.eq('ticket', a.ticket)).unique();
     if (!row || row.status !== 'pending' || row.expiresAt <= Date.now() || a.mediaType !== row.mediaType) return null;
     await ctx.db.patch(row._id, {status: 'uploading'});
-    return {id: row._id, size: row.size};
+    return {id: row._id, size: row.size, ownerId:row.userId};
   },
 });
 
@@ -31,7 +32,7 @@ export async function upload(ctx: GenericActionCtx<GenericDataModel>, request: R
   const ticket = new URL(request.url).pathname.slice('/uploads/'.length);
   const mediaType = request.headers.get('content-type')?.split(';')[0]?.trim();
   if (!mediaType || !/^[a-f0-9-]{36}$/.test(ticket)) return new Response('Invalid upload', {status: 400});
-  const pending = await ctx.runMutation(makeFunctionReference<'mutation', {ticket: string; mediaType: string}, {id: import('convex/values').GenericId<'files'>; size: number} | null>('uploads:begin'), {ticket, mediaType});
+  const pending = await ctx.runMutation(makeFunctionReference<'mutation', {ticket: string; mediaType: string}, {id: import('convex/values').GenericId<'files'>; size: number;ownerId:string} | null>('uploads:begin'), {ticket, mediaType});
   if (!pending) return new Response('Upload ticket unavailable', {status: 404});
   // Bound buffering even without Content-Length; no bytes are passed as a Convex function argument.
   const reader = request.body?.getReader();
@@ -49,10 +50,10 @@ export async function upload(ctx: GenericActionCtx<GenericDataModel>, request: R
     }
   } finally { reader.releaseLock(); }
   if (size !== pending.size) return new Response('Upload size mismatch', {status: 400});
-  const blob = new Blob(chunks as BlobPart[], {type: mediaType});
+  const blob = new Blob(chunks as BlobPart[], {type: `${mediaType};${await blobOwnerTag(pending.ownerId)}`});
   chunks.length = 0;
   const storageId = await ctx.storage.store(blob);
-  const bound = await ctx.runMutation(makeFunctionReference<'mutation', {id: typeof pending.id; storageId: typeof storageId}, boolean>('uploads:finish'), {id: pending.id, storageId});
-  if (!bound) { await ctx.storage.delete(storageId); return new Response('Upload expired', {status: 400}); }
+  let bound=false;try{bound = await ctx.runMutation(makeFunctionReference<'mutation', {id: typeof pending.id; storageId: typeof storageId}, boolean>('uploads:finish'), {id: pending.id, storageId});}finally{if(!bound)await ctx.storage.delete(storageId);}
+  if (!bound) { return new Response('Upload expired', {status: 400}); }
   return Response.json({storageId});
 }

@@ -8,7 +8,7 @@ import type {
   Run,
   RunSnapshot,
 } from '@praxis/protocol';
-import { SyncResponseSchema } from '@praxis/protocol';
+import { ProviderTestResultSchema, SyncResponseSchema } from '@praxis/protocol';
 import { FeatureApiClient } from './api-features';
 import {
   PraxisApiError,
@@ -18,6 +18,7 @@ import {
   type Transcription,
 } from './api-transport';
 import { safeMessage } from './links';
+import { localUploadPath } from './hosts';
 export * from './api-transport';
 export class PraxisApiClient extends FeatureApiClient {
   // Bootstrap & Auth
@@ -250,16 +251,13 @@ export class PraxisApiClient extends FeatureApiClient {
     });
   }
 
-  async testProvider(providerId: string) {
-    return await this.request<{
-      type: 'provider.test.result';
-      ok: boolean;
-      models: Model[];
-      message?: string;
-    }>(`/v1/providers/${encodeURIComponent(providerId)}/test`, {
-      method: 'POST',
-      body: JSON.stringify({ type: 'provider.test' }),
-    });
+  async testProvider(providerId: string, modelId?: string) {
+    return ProviderTestResultSchema.parse(
+      await this.request(`/v1/providers/${encodeURIComponent(providerId)}/test`, {
+        method: 'POST',
+        body: JSON.stringify({ type: 'provider.test', ...(modelId ? { modelId } : {}) }),
+      }),
+    );
   }
 
   async refreshProviderModels(providerId: string): Promise<PageResult<Model>> {
@@ -345,8 +343,14 @@ export class PraxisApiClient extends FeatureApiClient {
       }),
     });
 
-    const uploadTargetUrl = req.uploadUrl.startsWith('/') ? this.url(req.uploadUrl) : req.uploadUrl;
-    const isApiOrigin = this.isApiOriginUrl(req.uploadUrl);
+    const direct = this.isApiOriginUrl(req.uploadUrl);
+    const viaApi = direct ? null : localUploadPath(req.uploadUrl);
+    const uploadTargetUrl = req.uploadUrl.startsWith('/')
+      ? this.url(req.uploadUrl)
+      : viaApi
+        ? this.url(viaApi)
+        : req.uploadUrl;
+    const isApiOrigin = direct || viaApi !== null;
     const uploadHeaders: Record<string, string> = {
       'Content-Type': file.type || 'application/octet-stream',
       ...(isApiOrigin ? this.headers() : {}),

@@ -97,8 +97,9 @@ final class CloudAccountReplica {
         guard generation == revision, !Task.isCancelled, let store else { return }
         self.userID = id; self.directory = directory; self.replica = replica
         let lifecycle = CloudLifecycleEngine(client: client, journal: CloudRunJournal(directory: directory), elicitations: store.cloudElicitations, backgrounded: isBackgrounded,
-            onRunStarted: { [weak store] conversation, turn, run in
+            onRunStarted: { [weak store, client = self.client] conversation, turn, run in
                 await store?.recordCloudRun(conversationID: conversation, turnID: turn, runID: run)
+                Task { [weak store] in await store?.refreshCloudServerTitle(conversationID: conversation, client: client) }
             })
         self.lifecycle = lifecycle
         store.installCloudPersistence(ConversationStore(directory: directory.appendingPathComponent("Conversations")), engine: lifecycle)

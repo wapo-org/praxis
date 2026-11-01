@@ -3,6 +3,7 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { CapabilitiesSchema, ModelSchema } from '@praxis/protocol';
 import { apiClient } from './lib/api';
@@ -34,8 +35,9 @@ it('renders GFM strikethrough and SVG icons', () => {
   expect(html).toContain('<del>Soft</del>'); expect(html).toContain('<svg');
 });
 it('matches the native light/dark palette and monochrome primary action aliases', () => {
-  const swift = readFileSync('../PraxisChat/PraxisChat/DesignSystem/Tokens.swift', 'utf8');
-  const css = readFileSync('apps/web/src/styles/theme.css', 'utf8');
+  // Relative to this file, so it passes from the cloud root and from the web workspace alike.
+  const swift = readFileSync(join(__dirname, '../../../../PraxisChat/PraxisChat/DesignSystem/Tokens.swift'), 'utf8');
+  const css = readFileSync(join(__dirname, 'styles/theme.css'), 'utf8');
   const native = [...swift.matchAll(/static let (\w+) = c\(0x([\dA-F]+), 0x([\dA-F]+)\)/g)];
   expect(native.length).toBe(13);
   for (const [, name, light, dark] of native) {

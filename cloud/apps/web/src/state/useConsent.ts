@@ -1,3 +1,4 @@
+import { providerConsentHost } from '../lib/hosts';
 import React from 'react';
 import { apiClient } from '../lib/api';
 
@@ -37,9 +38,7 @@ export function useConsent(
       if (provider && provider.id !== 'scripted') {
         try {
           const endpoint = new URL(provider.baseUrl);
-          if (!['http:', 'https:'].includes(endpoint.protocol) || !endpoint.hostname)
-            throw new Error('Invalid provider URL');
-          const host = endpoint.hostname.toLowerCase();
+          const host = providerConsentHost(endpoint.href);
           const hasConsent = consents.some((c) => c.host.toLowerCase() === host && c.allowed);
           if (!hasConsent) {
             setPendingConsentPrompt({

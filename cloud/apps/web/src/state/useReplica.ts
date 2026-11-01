@@ -95,6 +95,7 @@ export function useReplica(
       if (boot.registries) setRegistries(boot.registries);
       if (boot.preferences) setPreferences(boot.preferences);
       setSyncCursor(boot.syncCursor);
+      state.setEventCursor(boot.eventCursor ?? 0);
 
       await saveReplica(
         {

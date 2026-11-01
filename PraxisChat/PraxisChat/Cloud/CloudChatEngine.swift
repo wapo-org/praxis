@@ -173,7 +173,7 @@ struct CloudChatEngine: ChatEngine {
     private func start(_ request: ChatRunRequest) async throws -> String {
         let chatID = request.cloudChatID ?? request.conversationID.uuidString
         let selection = Self.modelSelection(request.modelID)
-        let chat = CloudChatInput(id: chatID, title: String(request.userText.prefix(100)), mode: request.mode.rawValue,
+        let chat = CloudChatInput(id: chatID, title: "New chat", mode: request.mode.rawValue,
             providerId: selection.provider, modelId: selection.model, effort: request.effort.rawValue,
             connectorIds: request.connectorIDs, disabledConnectorIds: request.disabledServerIDs.sorted())
         do {

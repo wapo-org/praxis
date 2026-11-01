@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import type {JsonObject} from '@praxis/protocol';
 import type {FeatureContext} from '../../contracts.js';
 import type {ToolsStorage, ToolsState} from './ports.js';
@@ -11,12 +12,13 @@ export function toolsState(ctx: FeatureContext, storage?: ToolsStorage): ToolsSt
   };
 }
 export function createLocalToolsState(): ToolsState {
+ const closed=new Set<string>();const hash=(u:string)=>createHash('sha256').update(u).digest('hex');const guard=(u:string)=>{if(closed.has(hash(u)))throw new Error('Account unavailable');};
   const rows = new Map<string, JsonObject>();
   const key = (userId: string, kind: string, id: string) => JSON.stringify([userId, kind, id]);
   return {
-    async purgeOwner(userId){for(const key of rows.keys())if(JSON.parse(key)[0]===userId)rows.delete(key);},
+    async purgeOwner(userId){closed.add(hash(userId));for(const key of rows.keys())if(JSON.parse(key)[0]===userId)rows.delete(key);},
     async get(userId, kind, id) {return structuredClone(rows.get(key(userId, kind, id)) ?? null);},
-    async put(userId, kind, id, value) {rows.set(key(userId, kind, id), structuredClone(value));},
+    async put(userId, kind, id, value) {guard(userId);rows.set(key(userId, kind, id), structuredClone(value));},
     async delete(userId, kind, id) {rows.delete(key(userId, kind, id));},
   };
 }

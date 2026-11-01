@@ -16,27 +16,36 @@ struct UserBubble: View {
     /// Optional so previews without a store still render.
     @Environment(ChatStore.self) private var store: ChatStore?
 
-    private var isCompact: Bool { turn.userText.count <= 24 && turn.attachments.isEmpty }
+    private var visibleAttachments: [Attachment] { CloudDocumentChips.visible(in: turn) }
+    private var isCompact: Bool { turn.userText.count <= 24 && visibleAttachments.isEmpty }
 
     var body: some View {
         HStack {
             Spacer(minLength: 0)
             VStack(alignment: .trailing, spacing: 8) {
-                if !turn.attachments.isEmpty {
+                if !visibleAttachments.isEmpty {
                     // Same rounded-square boxes as the composer strip;
                     // scrolls sideways instead of overflowing the bubble
                     // column when a turn carries many attachments.
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
-                            ForEach(turn.attachments) { att in
-                                AttachmentThumbnail(attachment: att, size: 56)
-                                    .codeAccessMenu(att) { store?.setHiddenFromCode($0, attachmentID: att.id) }
+                            ForEach(visibleAttachments) { att in
+                                if turn.attachments.contains(where: { $0.id == att.id }) {
+                                    AttachmentThumbnail(attachment: att, size: 56)
+                                        .codeAccessMenu(att) { store?.setHiddenFromCode($0, attachmentID: att.id) }
+                                } else {
+                                    Label(att.name, systemImage: "doc")
+                                        .font(Type.inter(12, .caption)).foregroundStyle(Praxis.ink)
+                                        .lineLimit(1).padding(12).frame(maxWidth: 180, minHeight: 44)
+                                        .background(Praxis.fill1, in: RoundedRectangle(cornerRadius: 12))
+                                        .accessibilityLabel("Document, " + att.name)
+                                }
                             }
                         }
                     }
                     // A strip that fits needs no clip (it would shave the
                     // thumbnails' code-hidden badges).
-                    .scrollClipDisabled(turn.attachments.count <= 4)
+                    .scrollClipDisabled(visibleAttachments.count <= 4)
                     .frame(maxWidth: 680 * 0.78)
                 }
                 if !turn.userText.isEmpty {
@@ -73,6 +82,7 @@ struct UserBubble: View {
         .sendRise(turnID: turn.id, from: riseFrom)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("You said: \(turn.userText)")
+        .accessibilityValue(visibleAttachments.map(\.name).joined(separator: ", "))
     }
 }
 

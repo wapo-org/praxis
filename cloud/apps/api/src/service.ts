@@ -48,7 +48,8 @@ export class ApiService{
  async bootstrap(userId:string):Promise<Bootstrap>{
   const cached=await this.adapters.kv.get<Bootstrap>(`bootstrap:${userId}`);if(cached)return cached;
   const [chats,providers,models,connectors,skills,runs,consents,registries,preferences,changes]=await Promise.all([this.list<any>(userId,'chat'),this.list<any>(userId,'provider'),this.list<any>(userId,'model'),this.list<any>(userId,'connector'),this.list<any>(userId,'skill'),this.list<Run>(userId,'run'),this.list<any>(userId,'consent'),this.list<any>(userId,'registry'),this.adapters.store.get(userId,'preferences','current'),this.adapters.store.head(userId)]);
-  const result:Bootstrap={type:'bootstrap',protocolVersion:PROTOCOL_VERSION,user:{type:'user',id:userId,name:this.local?'Local developer':'Praxis user'},chats:chats.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,50),providers,models:models.slice(0,50),connectors,skills,activeRuns:runs.filter(r=>!this.terminal(r)),consents,registries,preferences:preferences?.value as any,syncCursor:String(changes),syncRoot:'',serverTime:this.now()};
+  const eventCursor=await this.adapters.events.latest?.(userId,'user');
+  const result:Bootstrap={type:'bootstrap',protocolVersion:PROTOCOL_VERSION,user:{type:'user',id:userId,name:this.local?'Local developer':'Praxis user'},chats:chats.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,50),providers,models:models.slice(0,50),connectors,skills,activeRuns:runs.filter(r=>!this.terminal(r)),consents,registries,preferences:preferences?.value as any,syncCursor:String(changes),syncRoot:'',serverTime:this.now(),...(eventCursor===undefined?{}:{eventCursor})};
   await this.adapters.kv.set(`bootstrap:${userId}`,result,10,userId);return result;
  }
  terminal(run:Run){return ['completed','cancelled','failed'].includes(run.status);}
