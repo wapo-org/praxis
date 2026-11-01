@@ -9,6 +9,9 @@ final class PraxisChatUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        // Conversations persist now: every test starts from the seed.
+        // The gallery shows mocks: deterministic tiles, no photo prompt.
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES", "-PraxisMockGallery", "YES"]
         app.launch()
         XCTAssertTrue(el(.button, "History").waitForExistence(timeout: 15))
     }
@@ -211,17 +214,20 @@ final class PraxisChatUITests: XCTestCase {
         el(.button, "Atlas Mini, Fastest answers").tap()
         el(.button, "Back").tap()
 
-        let codeSwitch = elContains(.switch, "Code execution")
-        XCTAssertTrue(codeSwitch.waitForExistence(timeout: 10))
-        tapSwitch(codeSwitch)
+        // Code execution is decided by the mode now: no toggle for it.
+        let memorySwitch = elContains(.switch, "Memory")
+        XCTAssertTrue(memorySwitch.waitForExistence(timeout: 10))
+        XCTAssertFalse(elContains(.switch, "Code execution").exists,
+                       "the Code execution toggle is gone")
+        tapSwitch(memorySwitch)
         var waited = 0.0
         while waited < 5 {
-            if codeSwitch.exists && (codeSwitch.value as? String) == "0" { break }
+            if memorySwitch.exists && (memorySwitch.value as? String) == "0" { break }
             Thread.sleep(forTimeInterval: 0.3); waited += 0.3
         }
-        XCTAssertTrue(codeSwitch.exists && (codeSwitch.value as? String) == "0",
-                      "Code execution toggle should turn off")
-        tapSwitch(codeSwitch)
+        XCTAssertTrue(memorySwitch.exists && (memorySwitch.value as? String) == "0",
+                      "Memory toggle should turn off")
+        tapSwitch(memorySwitch)
 
         tapReliably(elBegins(.button, "Connectors"))
         tapSwitch(elContains(.switch, "Linear"))
@@ -257,11 +263,54 @@ final class PraxisChatUITests: XCTestCase {
         shot("08-tray-dismissed")
     }
 
+    // MARK: Tray scrolling never dismisses; a pull past the top does
+
+    func testTrayScrollDoesNotDismiss() {
+        el(.button, "Add photos, files and more").tap()
+        XCTAssertTrue(el(.button, "Plan").waitForExistence(timeout: 15), "tray should open")
+        let tray = app.scrollViews["plusTray"]
+        XCTAssertTrue(tray.waitForExistence(timeout: 5))
+
+        // Scroll the content down, then flick back toward the top fast and
+        // short: the old drag gesture dismissed on any downward velocity.
+        tray.swipeUp()
+        Thread.sleep(forTimeInterval: 0.8)
+        let mid = tray.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+        let shortDown = tray.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+        mid.press(forDuration: 0.05, thenDragTo: shortDown, withVelocity: .fast, thenHoldForDuration: 0)
+        Thread.sleep(forTimeInterval: 0.8)
+        XCTAssertTrue(el(.button, "Close add menu").exists, "scrolling inside the tray must not dismiss it")
+
+        // Connectors page: scrolling the list keeps the tray open too.
+        tapReliably(elBegins(.button, "Connectors"))
+        XCTAssertTrue(elContains(.switch, "Linear").waitForExistence(timeout: 8))
+        tray.swipeUp()
+        Thread.sleep(forTimeInterval: 0.6)
+        XCTAssertTrue(el(.button, "Close add menu").exists, "scrolling the connector list must not dismiss")
+        shot("28-connectors-scrolled")
+
+        // A deliberate pull past the top dismisses on release.
+        tray.swipeDown()
+        Thread.sleep(forTimeInterval: 0.4)
+        let top = tray.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+        let pulled = tray.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+        top.press(forDuration: 0.2, thenDragTo: pulled, withVelocity: .slow, thenHoldForDuration: 0.1)
+        XCTAssertTrue(el(.button, "Add photos, files and more").waitForExistence(timeout: 8),
+                      "pulling past the top should dismiss the tray")
+    }
+
     // MARK: Inline chips: FileRef sheet, LinkRef preview, CodePill copy
 
     func testChipTaps() {
-        // FileRef opens the mock file sheet.
+        // FileRef opens the mock file sheet. It sits in the first turn,
+        // above the fold: the transcript's rows are built lazily, so
+        // scroll back until its row exists.
         let fileLink = app.links["ComposerView.swift"]
+        _ = fileLink.waitForExistence(timeout: 3)
+        for _ in 0..<8 where !fileLink.exists || !fileLink.isHittable {
+            app.scrollViews.firstMatch.swipeDown()
+            Thread.sleep(forTimeInterval: 0.4)
+        }
         XCTAssertTrue(fileLink.waitForExistence(timeout: 12))
         fileLink.tap()
         XCTAssertTrue(el(.button, "Done").waitForExistence(timeout: 8),
@@ -291,15 +340,25 @@ final class PraxisChatUITests: XCTestCase {
         XCTAssertTrue(el(.button, "Record voice message").waitForExistence(timeout: 8))
     }
 
-    // MARK: Recording: mic → waveform → mock transcription
+    // MARK: Recording: mic → recording UI → transcription in the draft
 
     func testRecordingTypesTranscription() {
+        // The placeholder is gone: capture is simulated from the bundled
+        // fixture and the transcript is scripted (DEBUG seams, no mic or
+        // network), but the flow is the real one.
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES",
+                                "-PraxisFakeRecording", "voice-fake.m4a",
+                                "-PraxisFakeTranscript", "Draft a follow-up on the glass contrast audit"]
+        app.launch()
+        XCTAssertTrue(el(.button, "History").waitForExistence(timeout: 15))
         el(.button, "Record voice message").tap()
         XCTAssertTrue(el(.button, "Stop recording").waitForExistence(timeout: 8))
         shot("11-recording")
         el(.button, "Stop recording").tap()
-        XCTAssertTrue(el(.button, "Send message").waitForExistence(timeout: 8),
-                      "stopping should type a transcription and morph mic into send")
+        XCTAssertTrue(el(.button, "Send message").waitForExistence(timeout: 15),
+                      "stopping should transcribe into the draft and morph mic into send")
         shot("12-transcribed")
     }
 
@@ -356,6 +415,20 @@ final class PraxisChatUITests: XCTestCase {
         let settled = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: stop)
         wait(for: [settled], timeout: 45)
 
+        // The answer pushed the bubble above the fold, and the transcript
+        // builds rows lazily: scroll back until it is on screen again. The
+        // keyboard is still up after sending, and a swipe over it taps the
+        // suggestion bar — drag above it, after dismissing it.
+        let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
+        let lower = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+        if app.keyboards.firstMatch.exists {
+            top.press(forDuration: 0.3, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78)),
+                      withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
+        for _ in 0..<6 where !bubble.exists || !bubble.isHittable {
+            top.press(forDuration: 0.05, thenDragTo: lower)
+            Thread.sleep(forTimeInterval: 0.4)
+        }
         bubble.press(forDuration: 1.2)
         XCTAssertTrue(el(.button, "Edit").waitForExistence(timeout: 10),
                       "context menu should offer Edit")
@@ -494,5 +567,38 @@ final class PraxisChatUITests: XCTestCase {
                       "finished stress turn should show its action row")
         shot("24-stress-finished")
         if el(.button, "Stop generating").exists { el(.button, "Stop generating").tap() }
+    }
+
+    // MARK: Attachment → Hide from code (long-press menu)
+
+    func testHideAttachmentFromCode() {
+        el(.button, "New chat").tap()
+        el(.button, "Add photos, files and more").tap()
+        XCTAssertTrue(el(.button, "Plan").waitForExistence(timeout: 15), "tray should open")
+        let shotThumb = el(.button, "Screenshot 1")
+        XCTAssertTrue(shotThumb.waitForExistence(timeout: 12), "screenshot strip should load")
+        tapReliably(shotThumb)
+        XCTAssertTrue(el(.button, "Add 1").waitForExistence(timeout: 8))
+        el(.button, "Add 1").tap()
+        XCTAssertTrue(elBegins(.button, "Remove").waitForExistence(timeout: 8), "attachment lands in the composer")
+
+        // The composer's thumbnail (the tray is closed now).
+        let thumb = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@ AND NOT (label BEGINSWITH 'Remove')", "Screenshot 1")).firstMatch
+        XCTAssertTrue(thumb.waitForExistence(timeout: 8))
+        thumb.press(forDuration: 1.0)
+        let hide = el(.button, "Hide from code")
+        XCTAssertTrue(hide.waitForExistence(timeout: 8), "long-press offers Hide from code")
+        hide.tap()
+        let hiddenValue = expectation(for: NSPredicate(format: "value == %@", "Hidden from code"), evaluatedWith: thumb)
+        wait(for: [hiddenValue], timeout: 8)
+        shot("25-hidden-from-code")
+
+        thumb.press(forDuration: 1.0)
+        let allow = el(.button, "Available to code")
+        XCTAssertTrue(allow.waitForExistence(timeout: 8), "a hidden file offers Available to code")
+        allow.tap()
+        let shownValue = expectation(for: NSPredicate(format: "value != %@", "Hidden from code"), evaluatedWith: thumb)
+        wait(for: [shownValue], timeout: 8)
     }
 }

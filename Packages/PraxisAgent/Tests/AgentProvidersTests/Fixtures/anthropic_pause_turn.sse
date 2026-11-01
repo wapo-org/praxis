@@ -1,0 +1,24 @@
+event: message_start
+data: {"type":"message_start","message":{"id":"msg_05Pt","type":"message","role":"assistant","model":"claude-opus-5-5","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":3000,"output_tokens":2}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"srvtoolu_01Pause","name":"web_fetch","input":{}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"url\": \"https://swift.org/blog/\"}"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"web_fetch_tool_result","tool_use_id":"srvtoolu_01Pause","content":{"type":"web_fetch_result","url":"https://swift.org/blog/","retrieved_at":"2026-10-22T09:12:00Z","content":{"type":"document","source":{"type":"text","media_type":"text/plain","data":"Swift.org Blog ..."},"title":"Swift.org - Blog"}}}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"pause_turn","stop_sequence":null},"usage":{"output_tokens":40}}
+
+event: message_stop
+data: {"type":"message_stop"}
+

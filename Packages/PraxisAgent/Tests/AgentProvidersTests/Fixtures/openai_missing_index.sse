@@ -1,0 +1,8 @@
+data: {"id":"local-1","object":"chat.completion.chunk","created":1761123003,"model":"qwen3-coder","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"call_q1","type":"function","function":{"name":"search","arguments":"{\"q\":"}}]},"finish_reason":null}]}
+
+data: {"id":"local-1","object":"chat.completion.chunk","created":1761123003,"model":"qwen3-coder","choices":[{"index":0,"delta":{"tool_calls":[{"function":{"arguments":"\"cats\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"local-1","object":"chat.completion.chunk","created":1761123003,"model":"qwen3-coder","choices":[{"index":0,"delta":{"tool_calls":[{"type":"function","function":{"name":"search","arguments":{"q":"dogs"}}}]},"finish_reason":null}]}
+
+data: {"id":"local-1","object":"chat.completion.chunk","created":1761123003,"model":"qwen3-coder","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+

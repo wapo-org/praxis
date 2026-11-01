@@ -24,6 +24,7 @@ private struct PraxisGlassModifier<S: InsettableShape>: ViewModifier {
         return Group {
             if reduceTransparency {
                 content
+                    .background { if let tint { shape.fill(tint) } }
                     .background(FrostedGlass(shape: shape))
                     .overlay(shape.strokeBorder(Color.white.opacity(0.2), lineWidth: 1))
                     .overlay(shape.inset(by: 1).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))

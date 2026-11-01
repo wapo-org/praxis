@@ -1,9 +1,23 @@
 import Foundation
+import AgentCore
 
 struct CommandScript {
     var code: String
     var lines: [String]
     var exitCode: Int
+}
+
+/// A step that needs the user's go-ahead: run through the real
+/// `ToolPolicy` (an untrusted connector tool counts as destructive), so
+/// the mode decides between asking and refusing.
+struct ApprovalScript {
+    var toolName: String
+    var title: String
+    var serverID: String
+    var serverName: String
+    var arguments: JSONValue
+    /// Row summary when the user declines (or the mode refuses).
+    var deniedFinal: String
 }
 
 struct StepScript {
@@ -12,11 +26,23 @@ struct StepScript {
     var final: String
     var traces: [Trace] = []
     var command: CommandScript?
+    var approval: ApprovalScript?
+    /// Adds one image trace per attached file.
+    var showsAttachments = false
+    /// The call's input: its key argument (a query, a URL) shows on the
+    /// activity line, the whole of it under "Call" when the line opens.
+    var arguments: JSONValue?
+    /// What the tool returned, shown under "Result" when the line opens.
+    var result: String?
 }
 
 struct Scenario {
+    /// Reasoning streamed before the first tool at High/Max effort.
+    var plan: String?
     var steps: [StepScript]
     var answer: String
+    /// Answer used instead of `answer` when an approval was declined.
+    var answerIfDenied: String?
     /// Optional second activity block interleaved between paragraphs (§10).
     var secondSteps: [StepScript]?
     var answerAfterSecond: String?
@@ -32,7 +58,9 @@ enum Scenarios {
     static func pick(prompt: String, hasAttachments: Bool, webSearch: Bool) -> Scenario {
         let p = prompt.lowercased()
         var s: Scenario
-        if p.contains("haptic") { s = haptics }
+        if p.contains("table") { s = table }
+        else if p.contains("merge") || p.contains("deploy") || p.contains("ship") || p.contains("release") { s = ship }
+        else if p.contains("haptic") { s = haptics }
         else if p.contains("fail") || p.contains("build") && p.contains("why") || p.contains("error") { s = failing }
         else if p.contains("research") || p.contains("blur") || p.contains("search") || p.contains("what") || p.contains("why") || p.contains("audit") || p.contains("contrast") { s = research }
         else {
@@ -45,8 +73,9 @@ enum Scenarios {
         }
         if hasAttachments {
             s.steps.insert(StepScript(
-                kind: .think, running: "Analyzing attachments…", final: "Analyzed the attached screenshots",
-                traces: [Trace(kind: .api, text: "vision.describe × attachments → layout, contrast, hierarchy")]
+                kind: .readFile, running: "Analyzing attachments…", final: "Analyzed the attached screenshots",
+                traces: [Trace(kind: .api, text: "vision.describe × attachments → layout, contrast, hierarchy")],
+                showsAttachments: true
             ), at: 0)
         }
         return s
@@ -54,9 +83,11 @@ enum Scenarios {
 
     // (a) Haptics: read → edit 4 components → build exit 0 (§10a)
     static let haptics = Scenario(
+        plan: "Plan: read the button components, add sensoryFeedback to each tap target, build to verify.",
         steps: [
             StepScript(kind: .readFile, running: "Reading button components…", final: "Read 4 button components",
-                       traces: [Trace(kind: .skill, text: "praxis-ui · audit-surface")]),
+                       traces: [Trace(kind: .skill, text: "praxis-ui · audit-surface")],
+                       result: "ComposerView.swift\nPlusTray.swift\nUserBubble.swift\nAgentActivityView.swift"),
             StepScript(kind: .edits, running: "Adding haptics to buttons…", final: "Edited 4 components to use sensoryFeedback",
                        traces: [
                            Trace(kind: .api, text: "POST /v1/edits — ComposerView.swift, PlusTray.swift"),
@@ -65,8 +96,10 @@ enum Scenarios {
             StepScript(kind: .command, running: "Running a shell command…", final: "Ran a shell command to build the preview",
                        command: CommandScript(code: "xcodebuild -project PraxisChat.xcodeproj -scheme PraxisChat build",
                                               lines: ["CompileSwift Inter-400.ttf", "Link PraxisChat.app", "Validate PraxisChat.app", "** BUILD SUCCEEDED **"], exitCode: 0)),
-            StepScript(kind: .integration, running: "Checking connected tools…", final: "Checked [GitHub](praxis-app://GitHub) for open feedback",
-                       traces: [Trace(kind: .api, text: "GET api.github.com/repos/praxis/chat/pulls → 200")]),
+            StepScript(kind: .integration, running: "GitHub: Searching pull requests…", final: "GitHub: Search pull requests",
+                       traces: [Trace(kind: .api, text: "GET api.github.com/repos/praxis/chat/pulls → 200")],
+                       arguments: ["query": "is:open label:feedback", "repo": "praxis/chat"],
+                       result: "2 open pull requests\n#42 Add haptics to buttons\n#39 Soften the tray's close motion"),
         ],
         answer: """
         ## Haptics are in
@@ -84,15 +117,19 @@ enum Scenarios {
 
     // (b) Research: web search/fetch traces, LinkRefs + quote (§10b)
     static let research = Scenario(
+        plan: "Compare scrim techniques first, then check them against the glass contrast rules.",
         steps: [
-            StepScript(kind: .webSearch, running: "Searching the web…", final: "Searched the web for progressive blur techniques",
-                       traces: [Trace(kind: .api, text: "GET search.praxis.dev?q=progressive+blur+scrim → 200")]),
-            StepScript(kind: .webFetch, running: "Fetching sources…", final: "Fetched 3 sources on feathered blur",
+            StepScript(kind: .webSearch, running: "Searching the web…", final: "Searched the web",
+                       traces: [Trace(kind: .api, text: "GET search.praxis.dev?q=progressive+blur+scrim → 200")],
+                       arguments: ["query": "progressive blur scrim techniques", "numResults": 8],
+                       result: "1. Progressive blur in SwiftUI — developer.apple.com\n2. Materials — wapo-dp.vercel.app\n3. Feathering a blur mask — swiftbysundell.com"),
+            StepScript(kind: .webFetch, running: "Fetching sources…", final: "Fetched 3 pages",
                        traces: [
                            Trace(kind: .api, text: "GET developer.apple.com/documentation/swiftui → 200"),
                            Trace(kind: .api, text: "GET wapo-dp.vercel.app/#/materials → 200"),
-                       ]),
-            StepScript(kind: .think, running: "Synthesizing findings…", final: "Synthesized a recommendation",
+                       ],
+                       arguments: ["urls": ["developer.apple.com/documentation/swiftui", "wapo-dp.vercel.app/#/materials"]]),
+            StepScript(kind: .skill, running: "Synthesizing findings…", final: "Synthesized a recommendation",
                        traces: [Trace(kind: .skill, text: "praxis-research · cite-sources")]),
         ],
         answer: """
@@ -112,7 +149,8 @@ enum Scenarios {
         """,
         secondSteps: [
             StepScript(kind: .webFetch, running: "Verifying contrast ratios…", final: "Verified contrast against the glass ramp",
-                       traces: [Trace(kind: .api, text: "GET webaim.org/resources/contrastchecker → 200")]),
+                       traces: [Trace(kind: .api, text: "GET webaim.org/resources/contrastchecker → 200")],
+                       arguments: ["url": "webaim.org/resources/contrastchecker"]),
         ],
         answerAfterSecond: """
         One more check: text over Thin glass only clears 4.5:1 on calm content. Anything carrying body text sits on Regular or Thick — that is the legibility floor, and it is why the plus tray never drops below Thick.
@@ -120,6 +158,7 @@ enum Scenarios {
 
     // (c) Failing command: exit 1 destructive, retry, exit 0 (§10c)
     static let failing = Scenario(
+        plan: "Reproduce the failure first, read the failing test, then fix the smallest condition.",
         steps: [
             StepScript(kind: .command, running: "Running a shell command…", final: "Ran the test suite — 1 failure",
                        command: CommandScript(code: "xcodebuild test -scheme PraxisChat",
@@ -137,6 +176,85 @@ enum Scenarios {
         The mic only morphed into send when the field had text. Attachments alone left it as a mic, so `testMicMorph` failed with exit 1. The fix is one condition in [ComposerView.swift](praxis-file://ComposerView.swift): morph when there is text **or** an attachment.
 
         The retry passes clean — 12 tests, 0 failures. Worth keeping the failing run in the transcript: the red `EXIT 1` and the green `EXIT 0` tell the whole story without a paragraph of apology.
+        """)
+
+    // (d) Ship: read → test → merge on GitHub, which asks first. Decline
+    // and the answer says the PR was left open.
+    static let ship = Scenario(
+        plan: "Check the pull request is green before merging; merging needs the user's go-ahead.",
+        steps: [
+            StepScript(kind: .readFile, running: "Reading the pull request…", final: "Read PR #42 and its review threads",
+                       traces: [Trace(kind: .api, text: "GET api.github.com/repos/praxis/chat/pulls/42 → 200")]),
+            StepScript(kind: .command, running: "Running the test suite…", final: "Ran the test suite — all passing",
+                       command: CommandScript(code: "xcodebuild test -scheme PraxisChat",
+                                              lines: ["Test Suite 'All tests' started", "Executed 21 tests, with 0 failures", "** TEST SUCCEEDED **"], exitCode: 0)),
+            StepScript(kind: .integration, running: "Merging on GitHub…", final: "Merged #42 into main",
+                       traces: [Trace(kind: .api, text: "PUT api.github.com/repos/praxis/chat/pulls/42/merge → 200")],
+                       approval: ApprovalScript(
+                           toolName: "merge_pull_request", title: "Merge pull request #42",
+                           serverID: "github", serverName: "GitHub",
+                           arguments: ["owner": "praxis", "repo": "chat", "pull_number": 42,
+                                       "merge_method": "squash", "commit_title": "Add haptics to buttons (#42)"],
+                           deniedFinal: "Left #42 open — merge declined")),
+        ],
+        answer: """
+        ## Merged
+
+        PR #42 is in `main` as one squashed commit. The suite was green first — 21 tests, 0 failures — so nothing landed untested.
+
+        - [ComposerView.swift](praxis-file://ComposerView.swift) and [PlusTray.swift](praxis-file://PlusTray.swift) carry the new haptics
+        - The branch can go; [GitHub](praxis-app://GitHub) keeps the review threads
+        """,
+        answerIfDenied: """
+        ## Ready, not merged
+
+        PR #42 is green — 21 tests, 0 failures — but I left it open since you declined the merge. Say the word and I'll squash-merge it, or merge it yourself from [GitHub](praxis-app://GitHub).
+        """)
+
+    // (e) A table and the rest of GFM: header, alignment, inline chips in
+    // cells, a task list, strikethrough, a quote and a rule. A tool line
+    // with a query shows the compact activity too.
+    static let table = Scenario(
+        plan: "Gather the options first, then lay them out side by side.",
+        steps: [
+            StepScript(kind: .webSearch, running: "Searching the web…", final: "Searched the web",
+                       arguments: ["query": "glass blur approaches on iOS 26"],
+                       result: "Three approaches turned up: native glass, masked blur bands, flat tint."),
+            StepScript(kind: .readFile, running: "Reading the scrim code…", final: "Read the scrim implementation",
+                       result: "ProgressiveBlurScrim.swift"),
+        ],
+        answer: """
+        ## Scrim options, side by side
+
+        Here's a quick comparison you can adapt:
+
+        | Approach | Cost | Blur | Best for |
+        | :--- | :---: | ---: | :--- |
+        | Native `glassEffect` | Low | Adaptive | Controls and chrome |
+        | Masked blur bands | Medium | Feathered | Toolbars over scrolling text |
+        | Flat tint | **None** | ~~Soft~~ none | Reduce Transparency |
+        | Per-frame `CIFilter` | High | Exact | Not recommended, see [the notes](https://wapo-dp.vercel.app/#/materials) |
+
+        A wider one, to check the sideways scroll:
+
+        | Surface | Material | Radius | Hairline | Tint | Motion | Fallback |
+        | --- | --- | --- | --- | --- | --- | --- |
+        | Composer dock | Regular glass | 28pt | Rim | 5% white | Morph spring | Frost |
+        | Plus tray | Thick glass | 28pt | Rim | 6% white | Snap spring | Frost |
+        | Code block | Fill 1 | 12pt | Hairline | None | None | Same |
+
+        Next steps:
+
+        - [x] Compare the three approaches
+        - [x] Pick masked bands for toolbars
+        - [ ] ~~Prototype a shader~~ skipped
+        - [ ] Ship the scrim to the history sheet
+
+        > Tables scroll sideways when they are wider than the screen.
+
+        ---
+
+        That is the whole comparison.
         """)
 
     /// Seeded launch conversation (spec §5): collapsed 3m 51s block,
@@ -172,7 +290,7 @@ enum Scenarios {
             isFinished: true)
 
         let day: TimeInterval = 86_400
-        return [
+        var conversations = [
             Conversation(title: "Add haptics to buttons",
                          updatedAt: Date(timeIntervalSinceNow: -5 * day),
                          turns: [turn1, turn2], isPinned: true),
@@ -194,5 +312,50 @@ enum Scenarios {
             Conversation(title: "Welcome to Praxis",
                          updatedAt: Date(timeIntervalSinceNow: -30 * day), turns: []),
         ]
+        // `-PraxisLongThread YES` (UI tests) opens on a long thread instead.
+        if UserDefaults.standard.bool(forKey: "PraxisLongThread") {
+            conversations.insert(longThread(turn1: turn1, turn2: turn2), at: 0)
+        }
+        // Seeded threads get a transcript so a follow-up has history.
+        for conversation in conversations {
+            for i in conversation.turns.indices {
+                let answer = conversation.turns[i].blocks.compactMap {
+                    if case .markdown(_, let source, _) = $0 { return source }; return nil
+                }.joined(separator: "\n\n")
+                conversation.turns[i].transcript = [.user(conversation.turns[i].userText),
+                                                    Message(role: .assistant, parts: [.text(answer)])]
+            }
+        }
+        return conversations
+    }
+
+    /// A long live-looking thread: tall answers with activity, then a run
+    /// of short failed turns at the bottom — the shape where a send used
+    /// to land several turns up.
+    private static func longThread(turn1: Turn, turn2: Turn) -> Conversation {
+        func copy(_ turn: Turn, _ text: String) -> Turn {
+            var t = turn
+            t.id = UUID()
+            t.userText = text
+            t.blocks = t.blocks.map { block in
+                switch block {
+                case .activity(var a): a.id = UUID(); return .activity(a)
+                case .markdown(_, let source, let streaming): return .markdown(id: UUID(), source: source, isStreaming: streaming)
+                case .compaction(var m): m.id = UUID(); return .compaction(m)
+                }
+            }
+            return t
+        }
+        var turns: [Turn] = []
+        for i in 1...4 {
+            turns.append(copy(turn1, "Long answer \(i): add haptics to buttons"))
+            turns.append(copy(turn2, "Long answer \(i): research progressive blur"))
+        }
+        turns.append(copy(turn1, "try creating new doc saying hello world"))
+        for text in ["do you see what's on this image?", "oh okay", "what"] {
+            turns.append(Turn(userText: text, isFinished: true,
+                              outcome: .failed("HTTP 404: No endpoints found that support image input")))
+        }
+        return Conversation(title: "Long thread", updatedAt: Date(), turns: turns)
     }
 }

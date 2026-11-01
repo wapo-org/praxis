@@ -1,0 +1,10 @@
+{
+  "name": "@praxis/agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": { "@praxis/protocol": "*", "zod": "^4.6.7" }
+}

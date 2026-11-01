@@ -22,7 +22,7 @@ private struct ComposerPreview: View {
     @State private var tray = false
     @Namespace private var ns
     var body: some View {
-        ComposerView(trayOpen: $tray, namespace: ns) {}
+        ComposerView(trayOpen: tray, namespace: ns, onToggleTray: { tray.toggle() }) {}
             .environment(store)
             .environment(store.haptics)
             .padding(.bottom, 12)
@@ -46,7 +46,7 @@ private struct ComposerPreview: View {
         }
         AgentActivityView(activity: ActivityData(
             steps: [Step(kind: .command, runningSummary: "Running a shell command…", finalSummary: "",
-                         command: CommandData(code: "xcodebuild build", lines: ["** BUILD SUCCEEDED **"], exitCode: 0, duration: 1.8, isExpanded: true))],
+                         status: .running, command: CommandData(code: "xcodebuild build", lines: ["** BUILD SUCCEEDED **"], exitCode: 0, duration: 1.8, isExpanded: true))],
             isRunning: true, isExpanded: true), turnID: UUID())
     }
     .padding(20)

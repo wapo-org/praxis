@@ -1,0 +1,16 @@
+# Tools feature integration
+
+`createToolsRoutes(context: (req: Request) => Promise<FeatureContext>, ports?: ToolsPorts): Hono`
+from `apps/api/src/features/tools/index.ts`; mount with `app.route('/v1', routes)` **after authentication**. The context must contain the verified user ID, Store, KV, injected fetch, local flag, and optional encryption key. The root router must allow POST and PUT for raw uploads in CORS. No root/package files are modified here.
+
+Routes: `/skills` and `/skill-registries` CRUD, registry `/:id/search` and `/:id/install`; `/uploads` URL, `/uploads/content/:token` raw POST/PUT proxy, `/uploads/complete`, attachment GET/PATCH/DELETE and `/:id/download`; `/transcribe` JSON and multipart. All Store calls use the context user. Lists return protocol pages; cursors bind user, collection, and query. Skill names/descriptions must match validated frontmatter. Scripts are never installed or executed.
+
+Optional `ToolsPorts` are defined in `ports.ts`. `storage` is mandatory outside local mode; unconfigured production returns 503. `createLocalToolsStorage(baseUrl)` is an explicit local fixture, forbidden under production/VERCEL, also selected automatically by local route factories. It binds one-use upload tickets and stored bytes to users, checks requested size/media type/name/chat, and never returns the storage ID in attachment metadata. `changed(ctx,kind,id,publicValue|null)` lets A invalidate bootstrap/cache and publish events; mutations are already persisted, so this callback must **not replace** attachment rows with their public projection (which omits storageId). Storage implementors must authorize `verify/read/delete` themselves. Production should use the data delegate's ticket proxy, never an unbound Convex write URL.
+
+Voice accepts multipart `file,model?,language?,prompt?` and the web client's JSON `{type:'transcribe.request',audioBase64,mediaType?,model?,language?,prompt?}`. Audio max 25 MB. Empty language explicitly clears a stored language. Production reads encrypted `voiceSecret/current.key` using existing `unseal(..., userId, 'voice', encryptionKey)`, or `GROQ_API_KEY`; an injected `voiceKey` can override it. Groq uses multipart `/openai/v1/audio/transcriptions`, verbose_json, and forwards continuity prompt. Upstream failure bodies and keys never leave the feature. Local mode is deterministic, requires no accounts.
+
+Registry v1 currently accepts a bounded JSON array or `{skills:[...]}` / `{entries:[...]}` containing id,name,description,url? (SKILL.md),document?,digest? (`sha256:`). Downloads are public HTTP(S), bounded, no redirects/private addresses. Digests, if present, are checked before import. GitHub/discovery archive support is tracked below as follow-up during implementation.
+
+Dependencies (A adds to `apps/api/package.json` and regenerates lockfile): `yaml@2.8.1`, robust SKILL.md frontmatter with duplicate-key/alias rejection; `quickjs-emscripten@0.31.0`, in-process WASM sandbox with CPU/memory limits. Installed locally with `npm install --no-save --package-lock=false yaml@2.8.1 quickjs-emscripten@0.31.0`.
+
+External APIs verified against primary documentation: [Groq speech to text](https://console.groq.com/docs/speech-to-text), [QuickJS bindings](https://github.com/justjake/quickjs-emscripten), [YAML](https://eemeli.org/yaml/).

@@ -5,23 +5,36 @@ import SwiftUI
 /// Buttons stay pinned to the bottom line; radius stays concentric.
 struct ComposerView: View {
     @Environment(ChatStore.self) private var store
-    @Binding var trayOpen: Bool
+    var trayOpen: Bool
     var namespace: Namespace.ID
+    /// Opening/closing goes through the owner so haptics, spring and page
+    /// reset are the same from every trigger.
+    var onToggleTray: () -> Void = {}
     var onSend: () -> Void
     var onAttachmentTap: (Attachment) -> Void = { _ in }
     var onCamera: () -> Void = {}
     /// False when the composer row lives inside the morphed tray
     /// card, which supplies the shared glass instead.
     var showsGlass: Bool = true
+    /// True while the tray's Model page is open: the field becomes the
+    /// model search (bound to `store.modelQuery`, the draft untouched)
+    /// and the send button hides. Recording keeps precedence (voice).
+    var isModelSearch: Bool = false
+    /// Return in search mode: the owner selects the top result.
+    var onModelSearchSubmit: () -> Void = {}
 
     @FocusState private var focused: Bool
-    @State private var isRecording = false
-    @State private var recordingStart = Date()
+    /// The text just sent, for a short while: see `send()`.
+    @State private var lastSend: (text: String, at: Date)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.sendLaunch) private var sendLaunch
 
     private var hasText: Bool { !store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var canSend: Bool { hasText || !store.attachments.isEmpty }
     private var isStreaming: Bool { store.isRunning }
+    /// Voice input state (nil in previews: the mic then does nothing).
+    private var voice: VoiceInputController? { store.voice }
+    private var voiceShowsUI: Bool { voice?.showsRecordingUI == true }
 
     var body: some View {
         @Bindable var store = store
@@ -34,14 +47,17 @@ struct ComposerView: View {
                 composerRow
             }
         }
-        .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.morph, value: canSend)
-        .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.reflow, value: store.attachments.count)
-        .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.morph, value: isRecording)
+        .animation(reduceMotion ? Motion.reduced : Motion.morph, value: canSend)
+        .animation(reduceMotion ? Motion.reduced : Motion.morph, value: isStreaming)
+        .animation(reduceMotion ? Motion.reduced : Motion.reflow, value: store.attachments.count)
+        .animation(reduceMotion ? Motion.reduced : Motion.morph, value: voiceShowsUI)
     }
 
     private var composerRow: some View {
         VStack(spacing: 0) {
             if !store.attachments.isEmpty { attachmentStrip }
+            if let hint = store.imageInputHint { ImageInputHintRow(hint: hint) }
+            if let hint = store.toolSupportHint { ToolSupportHintRow(hint: hint) }
             HStack(alignment: .bottom, spacing: 8) {
                 plusButton
                 middle
@@ -55,20 +71,21 @@ struct ComposerView: View {
 
     private var plusButton: some View {
         Button {
-            store.haptics.fire(.light)
-            withAnimation(reduceMotion ? .easeOut(duration: 0.15) : Motion.morph) { trayOpen.toggle() }
             focused = false
+            onToggleTray()
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Praxis.ink)
+                .foregroundStyle(Praxis.canvas)
                 .rotationEffect(.degrees(trayOpen ? 45 : 0))
+                .animation(reduceMotion ? Motion.reduced : Motion.pop, value: trayOpen)
                 .frame(width: 38, height: 38)
                 .contentShape(Circle())
         }
         .buttonStyle(PressScaleStyle())
-        .praxisGlass(in: Circle())
-        .glassEffectID("plusButton", in: namespace)
+        // Solid ink, not glass: the composer field stays glass, its
+        // satellite buttons read as solid black/white (item 10).
+        .background(Praxis.ink, in: Circle())
         .accessibilityLabel(trayOpen ? "Close add menu" : "Add photos, files and more")
     }
 
@@ -76,19 +93,10 @@ struct ComposerView: View {
 
     @ViewBuilder
     private var middle: some View {
-        if isRecording {
-            HStack(spacing: 10) {
-                Waveform()
-                    .frame(maxWidth: .infinity)
-                TimelineView(.periodic(from: .now, by: 0.5)) { tl in
-                    Text(DurationFormatter.live(tl.date.timeIntervalSince(recordingStart)))
-                        .font(Type.mono(13, .footnote))
-                        .foregroundStyle(Praxis.mutedInk)
-                        .monospacedDigit()
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 38)
-            .padding(.leading, 6)
+        if let voice, voice.showsRecordingUI {
+            VoiceRecordingMiddle(voice: voice)
+        } else if isModelSearch {
+            searchField
         } else {
             @Bindable var store = store
             TextField(store.mode.placeholder, text: $store.draft, axis: .vertical)
@@ -98,11 +106,71 @@ struct ComposerView: View {
                 .focused($focused)
                 .submitLabel(.send)
                 .frame(minHeight: 38)
+                // Where a sent bubble rises from.
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sendLaunch?.track($0) }
                 .padding(.leading, 6)
-                .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.reflow, value: store.draft)
+                // Animate the field only when a line wraps, not per keystroke.
+                .animation(reduceMotion ? Motion.reduced : Motion.reflow, value: lineEstimate)
                 .accessibilityLabel("Message")
                 .accessibilityHint(store.mode.placeholder)
+                .onChange(of: store.draft) { _, text in rejectRecommit(text) }
         }
+    }
+
+    // MARK: Model search (tray Model page open)
+
+    /// The field rebound as the model search: single line, no
+    /// autocorrection (model ids), Return picks the top result. A
+    /// separate branch from the draft field, so the two never share a
+    /// text view.
+    private var searchField: some View {
+        TextField("Search models", text: Binding(get: { store.modelQuery }, set: { store.modelQuery = $0 }))
+            .font(Type.inter(17))
+            .foregroundStyle(Praxis.ink)
+            .submitLabel(.search)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+            .frame(minHeight: 38)
+            .padding(.leading, 6)
+            .accessibilityLabel("Search models")
+            .onSubmit { onModelSearchSubmit() }
+    }
+
+    // MARK: Sending
+
+    /// Sends, then makes sure the field is really empty.
+    ///
+    /// Clearing `draft` alone loses a race with the keyboard: the binding's
+    /// "" only reaches the text view on SwiftUI's next update, and any edit
+    /// the keyboard makes before that — committing a candidate or marked
+    /// text, an autocorrect replacement, a late keystroke — makes SwiftUI
+    /// copy the view's text (still the whole sent message) back into
+    /// `draft`. The update then finds the two agreeing and clears nothing.
+    /// Emptying the text view in the same turn as the send leaves nothing
+    /// stale for such an edit to copy back.
+    private func send() {
+        let text = store.draft
+        onSend()
+        // Held for consent (or nothing to send): the draft stays.
+        guard store.draft.isEmpty, !text.isEmpty else { return }
+        lastSend = (text, Date())
+        ComposerInput.clearFocusedTextView()
+        #if DEBUG
+        ComposerInput.simulateKeyboardEditIfTesting()
+        #endif
+    }
+
+    /// Backstop for the same race: the keyboard committing the old text
+    /// right after a send. A user can't retype most of a message in under
+    /// a second, so a draft that reappears that fast is the sent text.
+    private func rejectRecommit(_ text: String) {
+        guard let sent = lastSend, !text.isEmpty else { return }
+        guard Date().timeIntervalSince(sent.at) < 1 else { lastSend = nil; return }
+        let shared = zip(text, sent.text).prefix { $0 == $1 }.count
+        guard text.count >= 2, shared * 2 >= sent.text.count else { return }
+        lastSend = nil
+        store.draft = ""
+        ComposerInput.clearFocusedTextView()
     }
 
     // MARK: Trailing — camera + mic ↔ send ↔ stop morph
@@ -111,13 +179,12 @@ struct ComposerView: View {
         Button { onCamera() } label: {
             Image(systemName: "camera")
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Praxis.ink)
+                .foregroundStyle(Praxis.canvas)
                 .frame(width: 38, height: 38)
                 .contentShape(Circle())
         }
         .buttonStyle(PressScaleStyle())
-        .praxisGlass(in: Circle())
-        .glassEffectID("cameraButton", in: namespace)
+        .background(Praxis.ink, in: Circle())
         .accessibilityLabel("Take photo")
     }
 
@@ -125,7 +192,8 @@ struct ComposerView: View {
         HStack(spacing: 8) {
             // Camera sits left of the mic while idle; once typing
             // starts it fades out to the right as send takes over.
-            if !isStreaming && !canSend && !isRecording {
+            // Search mode shows neither camera nor mic.
+            if !isStreaming && !canSend && !voiceShowsUI && !isModelSearch {
                 cameraButton
                     .transition(reduceMotion ? .opacity : .asymmetric(
                         insertion: .opacity.combined(with: .offset(x: 8)),
@@ -133,6 +201,12 @@ struct ComposerView: View {
             }
             trailingMorph
         }
+    }
+
+    /// Coarse line count driving the growth animation: changes when the
+    /// draft wraps or gains a newline, not on every character.
+    private var lineEstimate: Int {
+        store.draft.reduce(into: 1) { if $1 == "\n" { $0 += 1 } } + store.draft.count / 34
     }
 
     private var trailingMorph: some View {
@@ -148,8 +222,26 @@ struct ComposerView: View {
                 .frame(width: 38, height: 38)
                 .tint(Praxis.ink)
                 .accessibilityLabel("Stop generating")
+            } else if isModelSearch {
+                // Search mode: no send, no mic — a clear button while
+                // there's a query, else a spacer holding the row shape.
+                // (Stop above still wins while streaming.)
+                if !store.modelQuery.isEmpty {
+                    Button { store.modelQuery = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 17))
+                            .foregroundStyle(Praxis.mutedInk)
+                            .frame(width: 38, height: 38)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(PressScaleStyle())
+                    .accessibilityLabel("Clear search")
+                } else {
+                    Color.clear.frame(width: 38, height: 38)
+                        .accessibilityHidden(true)
+                }
             } else if canSend {
-                Button { onSend() } label: {
+                Button { send() } label: {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(Praxis.canvas)
@@ -158,9 +250,10 @@ struct ComposerView: View {
                 .buttonBorderShape(.circle)
                 .frame(width: 38, height: 38)
                 .tint(Praxis.ink)
+                .transition(reduceMotion ? .opacity : .scale(scale: 0.5).combined(with: .opacity))
                 .accessibilityLabel("Send message")
-            } else if isRecording {
-                Button { stopRecording() } label: {
+            } else if voice?.showsStopButton == true {
+                Button { voice?.stopAndTranscribe() } label: {
                     Image(systemName: "stop.fill")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(.white)
@@ -170,16 +263,18 @@ struct ComposerView: View {
                 .frame(width: 38, height: 38)
                 .tint(Praxis.destructive)
                 .accessibilityLabel("Stop recording")
-            } else {
-                Button { startRecording() } label: {
+                // Review, transcribing and notices own their actions in the
+                // middle; nothing trails them.
+            } else if !voiceShowsUI {
+                Button { voice?.micTapped() } label: {
                     Image(systemName: "mic")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Praxis.ink)
+                        .foregroundStyle(Praxis.canvas)
                         .frame(width: 38, height: 38)
                         .contentShape(Circle())
                 }
                 .buttonStyle(PressScaleStyle())
-                .praxisGlass(in: Circle())
+                .background(Praxis.ink, in: Circle())
                 .accessibilityLabel("Record voice message")
             }
         }
@@ -195,6 +290,9 @@ struct ComposerView: View {
                 ForEach(store.attachments) { att in
                     ZStack(alignment: .topTrailing) {
                         AttachmentThumbnail(attachment: att, size: 56)
+                            .codeAccessMenu(att) { hidden in
+                                withAnimation(Motion.snap) { store.setHiddenFromCode(hidden, attachmentID: att.id) }
+                            }
                             .onTapGesture { onAttachmentTap(att) }
                             .matchedTransitionSource(id: att.id, in: namespace)
                         Button {
@@ -223,42 +321,51 @@ struct ComposerView: View {
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
-    // MARK: Recording (simulated amplitudes, §6)
+    // MARK: Recording — VoiceInputController owns it (see
+    // Services/Voice/); the mic button above only calls into it.
+}
 
-    private func startRecording() {
-        store.haptics.fire(.light)
-        recordingStart = Date()
-        withAnimation(Motion.morph) { isRecording = true }
+/// The UIKit text view behind the focused composer field (SwiftUI's
+/// vertical `TextField` is a `UITextView` subclass while it's focused).
+@MainActor
+enum ComposerInput {
+    fileprivate static weak var reported: UIResponder?
+
+    /// The current first responder, if any.
+    static func firstResponder() -> UIResponder? {
+        reported = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.praxisReportFirstResponder), to: nil, from: nil, for: nil)
+        return reported
     }
 
-    private func stopRecording() {
-        withAnimation(Motion.morph) { isRecording = false }
-        // Mock transcription types into the field (§6).
-        let transcript = "Draft a follow-up on the glass contrast audit"
-        store.draft = transcript
-        focused = true
+    /// Empties the first responder's text if it's a text view, dropping
+    /// any marked text (composition, inline prediction) with it. The
+    /// field's binding is already "" by then, so the two agree at once.
+    static func clearFocusedTextView() {
+        guard let textView = firstResponder() as? UITextView,
+              textView.markedTextRange != nil || !textView.text.isEmpty else { return }
+        // Replacing the text ends the composition without committing it
+        // (`unmarkText()` would commit it and echo it back through the
+        // delegate into the draft).
+        textView.text = ""
     }
 }
 
-/// Live waveform with simulated amplitudes (§6). Bars fill
-/// whatever width the composer middle offers.
-private struct Waveform: View {
-    var body: some View {
-        GeometryReader { geo in
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
-                let t = tl.date.timeIntervalSinceReferenceDate
-                let count = max(8, Int(geo.size.width / 7))
-                HStack(spacing: 3) {
-                    ForEach(0..<count, id: \.self) { i in
-                        RoundedRectangle(cornerRadius: 2, style: .continuous)
-                            .fill(Praxis.ink)
-                            .frame(width: 3, height: 6 + 14 * abs(sin(t * 3 + Double(i) * 0.7)))
-                    }
-                }
-                .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
-            }
-        }
-        .frame(height: 26)
-        .accessibilityLabel("Recording")
+#if DEBUG
+extension ComposerInput {
+    /// UI tests (`-PraxisSimulateKeyboardCommit YES`): play the edit a
+    /// device keyboard makes right after a send — committing its
+    /// candidate — inside the race window, before SwiftUI's next update.
+    static func simulateKeyboardEditIfTesting() {
+        guard UserDefaults.standard.bool(forKey: "PraxisSimulateKeyboardCommit"),
+              let textView = firstResponder() as? UITextView else { return }
+        textView.delegate?.textViewDidChange?(textView)
+    }
+}
+#endif
+
+extension UIResponder {
+    @objc fileprivate func praxisReportFirstResponder() {
+        ComposerInput.reported = self
     }
 }
