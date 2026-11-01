@@ -11,7 +11,7 @@ export function PlusTray({ onPickFiles }: PlusTrayProps) {
   if (!store.plusTrayOpen) return null;
   const model = store.models.find(m => m.providerId === store.selectedProviderId && m.id === store.selectedModelId);
   const efforts = model?.reasoningEfforts ?? [];
-  return <GlassSurface radius={28} material="regular" data-testid="plus-tray" className="plus-tray">
+  return <GlassSurface radius={28} material="thick" data-testid="plus-tray" className="plus-tray">
     <div className="tray-segments" role="group" aria-label="Mode">
       {(['auto', 'ask', 'plan', 'build'] as const).map(mode => <button key={mode} data-testid={`tray-mode-${mode}`} aria-pressed={mode === store.selectedMode} onClick={() => store.setSelectedMode(mode)}>{mode}</button>)}
     </div>

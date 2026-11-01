@@ -3,7 +3,7 @@
   inset: 0 0 auto;
   z-index: 20;
   display: grid;
-  grid-template-columns: 1fr minmax(0, auto) 1fr;
+  grid-template-columns: 1fr minmax(0, 480px) 1fr;
   align-items: center;
   gap: var(--space-3);
   height: var(--topbar-height);
@@ -15,7 +15,6 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-width: 0;
 }
 
 .end {
@@ -47,6 +46,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-self: center;
   min-width: 0;
   max-width: 100%;
   padding: var(--space-1) var(--space-3);

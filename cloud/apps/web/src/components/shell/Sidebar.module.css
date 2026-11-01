@@ -154,9 +154,15 @@
   color: var(--color-ink-3);
 }
 
-.rowMenu {
+.rowMenuWrap {
   position: absolute;
+  top: 50%;
   right: var(--space-1);
+  display: flex;
+  transform: translateY(-50%);
+}
+
+.rowMenu {
   display: inline-flex;
   align-items: center;
   justify-content: center;

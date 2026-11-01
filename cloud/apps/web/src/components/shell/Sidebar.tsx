@@ -19,7 +19,11 @@ export function Sidebar() {
   if (!store.desktopSidebarOpen) return null;
 
   return (
-    <aside className={`screen-sidebar ${styles.sidebar}`} aria-label="Conversation history" data-testid="app-sidebar">
+    <aside
+      className={`screen-sidebar ${styles.sidebar}`}
+      aria-label="Conversation history"
+      data-testid="app-sidebar"
+    >
       <div className={styles.header}>
         <span className={styles.brand}>Praxis</span>
         <button
@@ -100,7 +104,9 @@ function ChatRow({ chat, active }: { chat: Chat; active: boolean }) {
   const [title, setTitle] = React.useState(chat.title);
   const [error, setError] = React.useState('');
   const run = (task: () => Promise<unknown>) =>
-    void task().catch((err: unknown) => setError(err instanceof Error ? err.message : 'Something went wrong'));
+    void task().catch((err: unknown) =>
+      setError(err instanceof Error ? err.message : 'Something went wrong'),
+    );
 
   if (renaming)
     return (
@@ -139,35 +145,40 @@ function ChatRow({ chat, active }: { chat: Chat; active: boolean }) {
         <span className={styles.rowTitle}>{chat.title || 'New chat'}</span>
         {chat.pinned ? <Pin size={16} aria-label="Pinned" className={styles.rowPin} /> : null}
       </button>
-      <GlassDropdown portal align="start">
-        <GlassDropdown.Trigger asChild>
-          <button type="button" className={styles.rowMenu} aria-label={`Actions for ${chat.title}`}>
-            <MoreHorizontal size={16} />
-          </button>
-        </GlassDropdown.Trigger>
-        <GlassDropdown.Content minWidth={180}>
-          <GlassDropdown.Item icon={<Pin size={16} />} onSelect={() => run(() => store.togglePinChat(chat.id))}>
-            {chat.pinned ? 'Unpin' : 'Pin'}
-          </GlassDropdown.Item>
-          <GlassDropdown.Item
-            icon={<Pencil size={16} />}
-            onSelect={() => {
-              setTitle(chat.title);
-              setRenaming(true);
-            }}
-          >
-            Rename
-          </GlassDropdown.Item>
-          <GlassDropdown.Separator variant="section" />
-          <GlassDropdown.Item
-            tone="destructive"
-            icon={<Trash2 size={16} />}
-            onSelect={() => run(() => store.deleteChats([chat.id]))}
-          >
-            Delete
-          </GlassDropdown.Item>
-        </GlassDropdown.Content>
-      </GlassDropdown>
+      <span className={styles.rowMenuWrap}>
+        <GlassDropdown portal align="start">
+          <GlassDropdown.Trigger asChild>
+            <button type="button" className={styles.rowMenu} aria-label={`Actions for ${chat.title}`}>
+              <MoreHorizontal size={16} />
+            </button>
+          </GlassDropdown.Trigger>
+          <GlassDropdown.Content minWidth={180}>
+            <GlassDropdown.Item
+              icon={<Pin size={16} />}
+              onSelect={() => run(() => store.togglePinChat(chat.id))}
+            >
+              {chat.pinned ? 'Unpin' : 'Pin'}
+            </GlassDropdown.Item>
+            <GlassDropdown.Item
+              icon={<Pencil size={16} />}
+              onSelect={() => {
+                setTitle(chat.title);
+                setRenaming(true);
+              }}
+            >
+              Rename
+            </GlassDropdown.Item>
+            <GlassDropdown.Separator variant="section" />
+            <GlassDropdown.Item
+              tone="destructive"
+              icon={<Trash2 size={16} />}
+              onSelect={() => run(() => store.deleteChats([chat.id]))}
+            >
+              Delete
+            </GlassDropdown.Item>
+          </GlassDropdown.Content>
+        </GlassDropdown>
+      </span>
       {error ? (
         <p role="alert" className={styles.rowError}>
           {error}

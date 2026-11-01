@@ -16,6 +16,8 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
 
   const combinedText = textParts.map((p) => (p.type === 'text' ? (p.text ?? '') : '')).join('\n');
 
+  if (!combinedText && mediaParts.length === 0) return null;
+
   return (
     <>
       <div data-testid="user-message-bubble" className={styles.turn}>

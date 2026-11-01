@@ -4,7 +4,9 @@
   font-size: 15px;
   line-height: 1.4;
 }
-.praxis-sheets-portal *,
+.praxis-sheets-portal * {
+  box-sizing: border-box;
+}
 .screen-overlay {
   position: fixed;
   inset: 0;

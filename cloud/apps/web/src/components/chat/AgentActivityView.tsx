@@ -146,7 +146,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
               isRunning || hasApproval || hasElicitation ? `0 0 0 3px ${statusColor}28` : 'none',
             animation:
               isRunning || runningToolsCount > 0
-                ? 'praxisPulseDot 1.4s ease-in-out infinite'
+                ? 'praxisPulseDot var(--duration-ambient) var(--ease-ambient) infinite'
                 : 'none',
           }}
         />

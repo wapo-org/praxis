@@ -18,7 +18,7 @@ try {
     await page.getByTestId('chat-top-bar').waitFor();
     await page.getByTestId('nav-new-chat-button').click();
     await page.getByTestId('starter-chip-0').waitFor();
-    const boxes = await page.locator('.chat-header > :not(.chat-header-desktop)').evaluateAll(nodes => nodes.map(n => { const b = n.getBoundingClientRect(); return { x: b.x, right: b.right, width: b.width }; }));
+    const boxes = await page.locator('[data-testid="chat-top-bar"] > *').evaluateAll(nodes => nodes.map(n => { const b = n.getBoundingClientRect(); return { x: b.x, right: b.right, width: b.width }; }));
     assert(boxes.every(b => b.width > 0 && b.x >= 0 && b.right <= 402));
     assert(boxes[0].right <= boxes[1].x && boxes[1].right <= boxes[2].x);
     await page.screenshot({ path: `${out}/${theme}-top-bar-402.png` });

@@ -50,7 +50,7 @@ const GlassDropdownRoot = React.forwardRef<
     sideOffset = 8,
     closeOnSelect = true,
     dismissOnOutsideClick = true,
-    material = 'regular',
+    material,
     children,
     className = '',
     style,

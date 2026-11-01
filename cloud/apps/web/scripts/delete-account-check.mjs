@@ -21,7 +21,7 @@ try {
   );
   await page.reload();
   await page.getByTestId('chat-top-bar').waitFor();
-  await page.getByTestId('nav-history-button').click();
+  if (await page.getByTestId('nav-history-button').isVisible()) await page.getByTestId('nav-history-button').click(); // desktop (WP-D1): chats live in the sidebar
   await page.getByText(title, { exact: true }).first().waitFor();
   // The replica must really be on disk before deletion, or "IndexedDB is empty" proves nothing.
   await page.waitForFunction(
@@ -66,7 +66,7 @@ try {
   assert.equal(status, 200, 'fresh dev sign-in after deletion must work');
   await page.goto(BASE); // the tab is still on /settings; open the chat screen, then the history
   await page.getByTestId('chat-top-bar').waitFor();
-  await page.getByTestId('nav-history-button').click();
+  if (await page.getByTestId('nav-history-button').isVisible()) await page.getByTestId('nav-history-button').click(); // desktop (WP-D1): chats live in the sidebar
   await page.waitForTimeout(500);
   assert.equal(await page.getByText(title, { exact: true }).count(), 0);
   console.log(

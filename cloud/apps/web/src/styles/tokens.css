@@ -93,11 +93,14 @@
   --duration-base: 200ms;
   --duration-slow: 320ms;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  /* Ambient status loops only (running dot, shimmer); never for interaction. */
+  --duration-ambient: 1600ms;
+  --ease-ambient: cubic-bezier(0.45, 0, 0.55, 1);
 
   /* Glass material recipes (packages/glass/src/glass.module.css) */
   --glass-regular-tint: rgba(252, 252, 250, 0.72);
   --glass-regular-blur: 20px;
-  --glass-thick-tint: rgba(252, 252, 250, 0.86);
+  --glass-thick-tint: rgba(252, 252, 250, 0.9);
   --glass-thick-blur: 32px;
   --glass-clear-tint: rgba(255, 255, 255, 0.42);
   --glass-clear-blur: 12px;

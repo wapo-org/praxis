@@ -222,7 +222,8 @@ test('translucent frosted material guarantees AA over every background luminance
       };
     });
   await expect(page.getByRole('menu')).toHaveCSS('filter', 'none');
-  expect(result.tint.replace(/\s/g, '')).toBe('rgba(250,249,246,.74)');
+  const [tr, tg, tb, ta] = result.tint.match(/[\d.]+/g)!.map(Number) as [number, number, number, number];
+  expect(ta).toBeGreaterThanOrEqual(0.7);
   const luminance = (rgb: number[]) =>
     rgb
       .map((v) => v / 255)
@@ -237,7 +238,7 @@ test('translucent frosted material guarantees AA over every background luminance
     );
     for (const underlying of [0, 255]) {
       const background = luminance(
-        [250, 249, 246].map((v) => v * 0.74 + underlying * 0.26),
+        [tr, tg, tb].map((v) => v * ta + underlying * (1 - ta)),
       );
       expect((background + 0.05) / (text + 0.05)).toBeGreaterThanOrEqual(4.5);
     }

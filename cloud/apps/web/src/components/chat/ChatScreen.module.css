@@ -36,6 +36,11 @@
   gap: var(--space-4);
 }
 
+/* A tool turn followed by its answer: 20 px total with the activity row's own spacing. */
+.assistantTurn + .assistantTurn {
+  margin-top: var(--space-2);
+}
+
 .error {
   display: flex;
   align-items: center;

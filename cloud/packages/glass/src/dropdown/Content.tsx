@@ -171,7 +171,6 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                       : window.innerWidth - 16,
                   ),
                   maxWidth: 'calc(100vw - 16px)',
-                  overflowY: 'auto',
                   touchAction: 'pan-y',
                   x: reduced ? 0 : pullX,
                   y: reduced ? 0 : pullY,

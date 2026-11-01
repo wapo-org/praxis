@@ -29,10 +29,10 @@ try {
   await page.reload(); await page.getByTestId('chat-top-bar').waitFor();
   await page.getByTestId('nav-chat-title-pill').getByText('Desktop keyboard check', { exact: true }).waitFor();
   const chatBounds = await page.getByTestId('composer-dock').boundingBox();
-  assert(chatBounds.width <= 442 && chatBounds.x >= 280);
+  assert(chatBounds.width <= 720 && chatBounds.x >= 260); // WP-D1: 720 px column beside the 260 px sidebar
   await page.getByTestId('nav-settings-button').click(); await page.waitForURL('**/settings');
   const dialog = page.getByRole('dialog', { name: 'Settings', exact: true }); await dialog.waitFor();
-  const bounds = await dialog.boundingBox(); assert(bounds.x > 280 && bounds.width <= 640);
+  const bounds = await dialog.boundingBox(); assert(bounds.x > 260 && bounds.width <= 640);
   await dialog.getByRole('button', { name: 'Add provider', exact: true }).click(); await page.waitForURL('**/settings/providers/new');
   await page.reload(); await page.getByRole('dialog', { name: 'Provider', exact: true }).waitFor();
   assert.equal(await page.getByRole('switch').count(), 12);
@@ -48,12 +48,13 @@ try {
   assert.equal(await page.getByRole('textbox', { name: 'Name', exact: true }).inputValue(), 'Restored provider');
   await page.goto(`${base}/settings/providers/missing`); await page.getByText('Provider not found.', { exact: true }).waitFor();
   await page.goto(`${base}${chatPath}`); await page.getByTestId('chat-top-bar').waitFor();
+  // WP-D1: with the desktop sidebar open, Meta-K focuses its search field instead of opening the Chats sheet.
   await page.keyboard.press('Meta+k');
-  await page.getByRole('dialog', { name: 'Chats', exact: true }).waitFor();
-  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Search conversations' && !!document.activeElement?.closest('[role="dialog"]'));
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Search conversations' && !!document.activeElement?.closest('[data-testid="app-sidebar"]'));
+  assert.equal(await page.getByRole('dialog', { name: 'Chats', exact: true }).count(), 0);
   await page.keyboard.press('Escape'); await page.waitForURL(`**${chatPath}`);
   // Selecting a sidebar row must update the chat route.
-  await page.getByTestId('nav-new-chat-button').click(); await page.waitForURL(`${base}/`);
+  await page.getByTestId('sidebar-new-chat').click(); await page.waitForURL(`${base}/`);
   await page.locator('.screen-sidebar .screen-history-select').filter({ hasText: 'Desktop keyboard check' }).click();
   await page.waitForURL(`**${chatPath}`);
   // Server-only results and cursor loading, beyond bootstrap's first model page.
@@ -70,7 +71,7 @@ try {
   await page.getByRole('option', { name: /Cursor model/ }).waitFor();
   assert(queries.some(q => q.q === 'remote')); assert(queries.some(q => q.cursor === 'next'));
   await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
-  await page.getByTestId('nav-new-chat-button').click();
+  await page.getByTestId('sidebar-new-chat').click();
   await page.getByTestId('starter-chip-2').click();
   await page.getByRole('button', { name: 'Allow Once', exact: true }).waitFor();
   assert.equal(await page.getByTestId('assistant-turn').count(), 0, 'Pending run must have a single live activity disclosure');

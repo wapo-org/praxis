@@ -10,7 +10,7 @@ try {
     const ink = document.createElement('span'); ink.style.background = 'var(--paper-ink)'; document.body.append(ink);
     const expected = getComputedStyle(ink).backgroundColor;
     const fills = ['.composer-camera', '[data-testid="composer-voice-button"]'].map(selector => getComputedStyle(document.querySelector(selector)).backgroundColor);
-    ink.remove(); return { expected, fills, history: !!document.querySelector('[data-testid="nav-history-button"] .tabler-icon-history') };
+    ink.remove(); return { expected, fills, history: !!document.querySelector('[data-testid="nav-history-button"] .lucide-history') };
   });
   assert.equal(controls.history, true); assert.deepEqual(controls.fills, [controls.expected, controls.expected]);
   // Cold / must persist bootstrap before any chat mutation.
