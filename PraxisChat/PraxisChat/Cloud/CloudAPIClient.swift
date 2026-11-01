@@ -159,6 +159,16 @@ struct CloudAPIClient: Sendable {
         try await tokens.setToken(nil, for: configuration.origin)
     }
 
+    /// Erases the account server-side, then drops the revoked credential.
+    func deleteAccount(password: String?) async throws {
+        struct Request: Encodable { let type = "account.delete"; let password: String? }
+        struct Response: Decodable, Sendable { let type: String }
+        let body = try JSONEncoder().encode(Request(password: password?.isEmpty == false ? password : nil))
+        let response: Response = try await send("/v1/account", method: "DELETE", body: body)
+        guard response.type == "account.deleted" else { throw CloudAPIError.invalidResponse }
+        try await tokens.setToken(nil, for: configuration.origin)
+    }
+
     static func segment(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
     }

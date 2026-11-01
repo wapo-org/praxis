@@ -191,6 +191,13 @@ final class CloudTestBackend: @unchecked Sendable {
         let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
         func parameter(_ name: String) -> String? { query.first { $0.name == name }?.value }
         switch (method, path) {
+        case ("DELETE", "/v1/account"):
+            // Mirrors the API: a wrong password is a 403 whose message the client shows.
+            guard input["type"] as? String == "account.delete", input["password"] as? String != "wrong" else {
+                failure("confirmation_required", "Confirm your current password or sign in again", 403); return
+            }
+            authenticated = false; chats.removeAll(); runs.removeAll()
+            reply(["type": "account.deleted"])
         case ("GET", "/v1/bootstrap"):
             reply(["type": "bootstrap", "protocolVersion": Self.protocolVersion, "user": user,
                    "chats": Array(chats.values), "providers": [provider], "models": [model],

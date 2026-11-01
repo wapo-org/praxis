@@ -119,6 +119,7 @@ struct CloudSettingsAccountScreen: View {
     @State private var password = ""
     @State private var overrideURL = ""
     @State private var savedOverride = false
+    @State private var deleting = false
 
     var body: some View {
         CloudSettingsPage(title: "Account & server") {
@@ -135,8 +136,15 @@ struct CloudSettingsAccountScreen: View {
                 Text(services.account.map { $0.email ?? $0.name } ?? "Signed out")
                     .font(Type.inter(15, .body)).foregroundStyle(Praxis.ink)
                     .accessibilityIdentifier("cloudAccountStatus")
+                if services.accountDeleted {
+                    Text("Account deleted").font(Type.inter(13, .footnote)).foregroundStyle(Praxis.mutedInk)
+                        .accessibilityIdentifier("cloudAccountDeleted")
+                }
                 if services.isSignedIn {
                     CloudSettingsAction("Sign out", identifier: "cloudSignOut", destructive: true) { try await services.signOut() }
+                    Button(role: .destructive) { deleting = true } label: { PraxisButtonLabel("Delete account") }
+                        .buttonStyle(.praxisSecondary(fillsWidth: true))
+                        .accessibilityIdentifier("cloudDeleteAccount")
                 } else {
                     SettingsCard {
                         TextField("Email", text: $email).keyboardType(.emailAddress).textContentType(.username)
@@ -174,6 +182,40 @@ struct CloudSettingsAccountScreen: View {
             }
         }
         .onAppear { overrideURL = services.serverURL.absoluteString }
+        .onDisappear { password = "" }
+        .sheet(isPresented: $deleting) { CloudDeleteAccountSheet(services: services) }
+    }
+}
+
+/// Destructive confirmation: the API checks the current password (or a fresh
+/// session) and its message is shown verbatim on failure.
+struct CloudDeleteAccountSheet: View {
+    let services: CloudServices
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("This permanently erases your chats, settings, connectors, skills and uploads on every device. It can't be undone.")
+                    .font(Type.inter(15, .body)).foregroundStyle(Praxis.ink).fixedSize(horizontal: false, vertical: true)
+                SettingsCard {
+                    SecureField("Current password", text: $password).textContentType(.password).padding(14)
+                        .accessibilityLabel("Current password").accessibilityIdentifier("cloudDeletePassword")
+                }
+                CloudSettingsAction("Delete account permanently", identifier: "cloudConfirmDeleteAccount", destructive: true) {
+                    defer { password = "" }
+                    try await services.deleteAccount(password: password)
+                    dismiss()
+                }
+                Spacer()
+            }
+            .padding(20)
+            .navigationTitle("Delete account")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+        .presentationDetents([.medium, .large])
         .onDisappear { password = "" }
     }
 }

@@ -10,6 +10,8 @@ final class CloudServices: VoiceSettingsReader {
     @ObservationIgnored let client: CloudAPIClient
     @ObservationIgnored var onSessionChanged: (@MainActor (CloudUser?) -> Void)?
     private(set) var account: CloudUser?
+    /// Shows the "Account deleted" notice until the next sign-in.
+    private(set) var accountDeleted = false
     private(set) var providers: [CloudCatalogProvider] = []
     private(set) var models: [CloudCatalogModel] = []
     private(set) var favoriteModels: [CloudCatalogModel] = []
@@ -108,9 +110,19 @@ final class CloudServices: VoiceSettingsReader {
         hasLoaded = true
     }
 
+    /// Success signs out through `onSessionChanged`, which wipes the replica,
+    /// journals, attachments and recordings of the deleted account.
+    func deleteAccount(password: String) async throws {
+        try await client.deleteAccount(password: password)
+        clearAccount()
+        accountDeleted = true
+        onSessionChanged?(nil)
+        hasLoaded = true
+    }
+
     private func clearAccount() {
         accountRevision = UUID(); searchRevision = UUID()
-        account = nil
+        account = nil; accountDeleted = false
         providers = []; models = []; favoriteModels = []; connectors = []
         skills = []; skillUpdates = []; registries = []; consents = []; preferences = nil
         nextModelCursor = nil; modelQuery = ""; modelProviderID = nil
