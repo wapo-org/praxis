@@ -25,7 +25,9 @@ export interface Events {
  /** Id of the newest event (0 if none), so a client can subscribe from "now" without replaying the channel. */
  latest?(userId:string,channel:string):Promise<number>;
 }
-export interface AdapterBundle {store:Store;kv:KV;events:Events;purgeOwner?(userId:string):Promise<void>}
+export interface AdapterBundle {store:Store;kv:KV;events:Events;purgeOwner?(userId:string):Promise<void>;
+ /** dev:local only: lets a fresh dev sign-in recreate an erased user as a clean, empty account. */
+ reopenOwner?(userId:string):Promise<void>}
 export interface FeatureContext {userId:string;store:Store;kv:KV;fetch:typeof fetch;
  /** SSRF-guarded fetch for user-controlled URLs: DNS validated and pinned per hop (adapters/security.ts createSafeFetch). */
  egress:typeof fetch;

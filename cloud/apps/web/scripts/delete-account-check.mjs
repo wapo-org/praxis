@@ -58,8 +58,19 @@ try {
   await page.reload();
   await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
   assert.equal(await page.getByText(title, { exact: true }).count(), 0);
+  // dev:local: the same dev user can sign in again and gets a clean, working account (no 500s).
+  const status = await page.evaluate(async (suffix) => {
+    await (await import('/src/lib/dev-auth.ts')).devAuth(`wp-d2-${suffix}`);
+    return (await fetch('/v1/bootstrap', { credentials: 'include' })).status;
+  }, suffix);
+  assert.equal(status, 200, 'fresh dev sign-in after deletion must work');
+  await page.goto(BASE); // the tab is still on /settings; open the chat screen, then the history
+  await page.getByTestId('chat-top-bar').waitFor();
+  await page.getByTestId('nav-history-button').click();
+  await page.waitForTimeout(500);
+  assert.equal(await page.getByText(title, { exact: true }).count(), 0);
   console.log(
-    'PASS: Settings → Account → Delete account: API session gone (cookie+bearer 401), IndexedDB empty, sign-in with notice',
+    'PASS: Settings → Account → Delete account: API session gone (cookie+bearer 401), IndexedDB empty, sign-in with notice; fresh dev sign-in is a clean account',
   );
 } finally {
   await browser.close();

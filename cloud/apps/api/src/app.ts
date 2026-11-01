@@ -18,6 +18,8 @@ import {featureContext} from './features.js';
 import {registerSyncRoutes} from './sync-routes.js';
 type Env={Variables:{userId:string;requestId:string}};
 export interface AppOptions {
+ /** dev:local only: a fresh dev sign-in recreates an erased user as a clean account. */
+ reopenDevUser?:(userId:string)=>Promise<void>;
  accountDeletion?:{confirm?(request:Request,password?:string):Promise<{userId:string;sessionId:string}|null>;purge(userId:string,sessionId:string):Promise<void>};
  service:ApiService;encryptionKey?:string;fetcher?:typeof fetch;
  resolveSession?:(request:Request)=>Promise<{user:User;expiresAt:string}|null>;
@@ -50,7 +52,7 @@ export function createApp(options:AppOptions){
  }
  app.post('/v1/auth/dev',async c=>{
   if(!service.local)throw new ApiError(404,'not_found','Endpoint not found');
-  const input=await body(c,z.object({type:z.literal('auth.dev'),userId:z.string().min(1).max(100).optional()}));const userId=input.userId??'local-user';const token=userId==='local-user'?'dev-local':randomUUID();devTokens.set(token,userId);devCreated.set(token,Date.now());await service.seed(userId);setCookie(c,'praxis_session',token,{httpOnly:true,sameSite:'Lax',path:'/',maxAge:86400});return c.json({type:'session',user:{type:'user',id:userId,name:'Local developer'},bearerToken:token,expiresAt:new Date(Date.now()+86400000).toISOString()});
+  const input=await body(c,z.object({type:z.literal('auth.dev'),userId:z.string().min(1).max(100).optional()}));const userId=input.userId??'local-user';const token=userId==='local-user'?'dev-local':randomUUID();await options.reopenDevUser?.(userId);await service.seed(userId);devTokens.set(token,userId);devCreated.set(token,Date.now());setCookie(c,'praxis_session',token,{httpOnly:true,sameSite:'Lax',path:'/',maxAge:86400});return c.json({type:'session',user:{type:'user',id:userId,name:'Local developer'},bearerToken:token,expiresAt:new Date(Date.now()+86400000).toISOString()});
  });
  app.post('/v1/auth/sign-up',c=>auth(c));app.post('/v1/auth/sign-in',c=>auth(c));
  async function auth(c:Context){if(!options.authHandler)throw new ApiError(503,'auth_unconfigured','Email authentication is not configured');return options.authHandler(c.req.raw);}

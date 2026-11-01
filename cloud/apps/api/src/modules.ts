@@ -24,6 +24,7 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
   return [
     {
       deleteAccount: async userId=>{await storage?.purgeOwner?.(userId);},
+      restoreAccount: async userId=>{await storage?.reopenOwner?.(userId);},
       publicPaths: ['/v1/connectors/oauth/callback', '/v1/oauth/client-metadata.json'],
       routes: contextFor => {
         const app = new Hono();

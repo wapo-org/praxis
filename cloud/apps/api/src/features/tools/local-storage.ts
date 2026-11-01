@@ -13,6 +13,7 @@ export function createLocalToolsStorage(baseUrl:string):ToolsStorage{
  const state=createLocalToolsState();
  return {
   state,
+  async reopenOwner(userId){closed.delete(hash(userId));await state.reopenOwner?.(userId);},
   async purgeOwner(userId){closed.add(hash(userId));for(const [id,row]of tickets)if(row.userId===userId)tickets.delete(id);for(const [id,row]of files)if(row.userId===userId)files.delete(id);await state.purgeOwner?.(userId);},
   async createUpload(userId,input){guard(userId);const token=randomUUID(),expires=Date.now()+600000;tickets.set(token,{userId,input,expires});return {uploadUrl:new URL(`/v1/uploads/content/${token}`,baseUrl).href,expiresAt:new Date(expires).toISOString(),method:'PUT'};},
   async acceptUpload(userId,token,bytes,mediaType){const t=tickets.get(token);if(!t||t.userId!==userId||t.expires<Date.now())throw new ApiError(404,'not_found','Upload ticket not found');if(bytes.byteLength!==t.input.size||mediaType.split(';')[0]!==t.input.mediaType)throw new ApiError(400,'upload_mismatch','Upload size or media type differs from request');tickets.delete(token);const id=randomUUID();files.set(id,{...t,bytes:bytes.slice()});return id;},
