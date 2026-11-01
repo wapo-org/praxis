@@ -88,6 +88,9 @@ struct CloudCatalogConnectorsScreen: View {
     let services: CloudServices
     var body: some View {
         CloudSettingsPage(title: "Connectors") {
+            NavigationLink { CloudConnectorRegistryScreen(services: services) } label: {
+                CloudSettingsRow(title: "Browse MCP registry", symbol: "magnifyingglass")
+            }.buttonStyle(PressHighlightStyle()).accessibilityIdentifier("cloudBrowseMCPRegistry")
             Text("Remote MCP servers run through your cloud server. Tool changes apply to new chats; turning a frozen tool off refuses it in the current chat.")
                 .font(Type.inter(13, .footnote)).foregroundStyle(Praxis.mutedInk)
             SettingsCard {
@@ -215,10 +218,14 @@ struct CloudCatalogConnectorEditor: View {
     @Environment(\.dismiss) private var dismiss
     let services: CloudServices
     var connector: CloudCatalogConnector?
+    var registryEntry: CloudConnectorRegistryEntry?
     @State private var name = ""
     @State private var url = ""
     @State private var transport = "streamableHttp"
     @State private var token = ""
+    @State private var replaceHeaders = false
+    @State private var headers: [CloudSettingsHeaderDraft] = []
+    @State private var added: CloudCatalogConnector?
     @State private var loaded = false
     var body: some View {
         CloudSettingsPage(title: connector == nil ? "Add connector" : "Edit connector") {
@@ -234,22 +241,41 @@ struct CloudCatalogConnectorEditor: View {
                 SecureField("Optional bearer token", text: $token).textInputAutocapitalization(.never).autocorrectionDisabled().padding(14)
                     .accessibilityLabel("Connector token")
             }
+            CloudSettingsHeaderFields(replace: $replaceHeaders, headers: $headers, savedNames: connector?.headerNames ?? [])
+            if let registryEntry, registryEntry.requiresConfiguration {
+                Text("Fill in URL placeholders and required headers before adding: " + registryEntry.headerNames.joined(separator: ", "))
+                    .font(Type.inter(12, .caption)).foregroundStyle(Praxis.mutedInk)
+            }
+            if let added {
+                Text("Added \(added.name) · \(added.presentationStatus)").accessibilityIdentifier("cloudRegistryAddedStatus")
+                if let error = added.error { CloudSettingsErrorText(message: error) }
+                NavigationLink { CloudCatalogConnectorScreen(services: services, connectorID: added.id) } label: {
+                    CloudSettingsRow(title: "Connection details", symbol: "link")
+                }.buttonStyle(PressHighlightStyle())
+            }
             Text("Tokens are write-only and encrypted by the server. OAuth sign-in is available after adding the connector. Local processes and stdio connectors are unsupported.")
                 .font(Type.inter(12, .caption)).foregroundStyle(Praxis.mutedInk)
             CloudSettingsAction(connector == nil ? "Add connector" : "Save connector", identifier: "cloudSaveConnector") {
-                defer { token = "" }
-                _ = try await services.saveConnector(id: connector?.id, input: CloudCatalogConnectorInput(
+                defer { token = ""; headers = [] }
+                let saved = try await services.saveConnector(id: connector?.id, input: CloudCatalogConnectorInput(
                     name: name.trimmingCharacters(in: .whitespacesAndNewlines), url: url.trimmingCharacters(in: .whitespacesAndNewlines),
                     transport: transport, enabled: connector?.enabled ?? true, trusted: connector?.trusted ?? false,
-                    disabledTools: connector?.disabledTools ?? [], token: token.isEmpty ? nil : token))
-                dismiss()
-            }.disabled(name.isEmpty || url.isEmpty)
+                    disabledTools: connector?.disabledTools ?? [], token: token.isEmpty ? nil : token,
+                    extraHeaders: replaceHeaders ? try CloudSettingsHeaderDraft.values(headers) : nil))
+                if registryEntry != nil { added = saved } else { dismiss() }
+            }.disabled(name.isEmpty || url.isEmpty || url.contains("{") || url.contains("}") || added != nil ||
+                       (registryEntry?.headerNames.contains { required in !headers.contains { $0.name == required && !$0.value.isEmpty } } ?? false))
         }
         .onAppear {
             guard !loaded else { return }; loaded = true
             if let connector { name = connector.name; url = connector.url; transport = connector.transport }
+            else if let registryEntry {
+                name = registryEntry.input.name; url = registryEntry.input.url; transport = registryEntry.input.transport
+                replaceHeaders = !registryEntry.headerNames.isEmpty
+                headers = registryEntry.headerNames.map { CloudSettingsHeaderDraft(name: $0) }
+            }
         }
-        .onDisappear { token = "" }
+        .onDisappear { token = ""; headers = [] }
     }
 }
 

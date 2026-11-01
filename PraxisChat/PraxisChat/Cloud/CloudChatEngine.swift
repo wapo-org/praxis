@@ -205,33 +205,7 @@ struct CloudChatEngine: ChatEngine {
     private func upload(_ attachment: Attachment, bytes: Data, chatID: String, hidden: Bool) async throws -> String {
         let name = AttachmentMedia.fileName(for: attachment)
         let mediaType = attachment.mediaType ?? AttachmentMedia.mediaType(forFileName: name)
-        let upload: CloudUploadURL = try await client.send("/v1/uploads", method: "POST", body: JSONEncoder().encode(CloudUploadRequest(name: name, mediaType: mediaType, size: bytes.count, chatId: chatID)))
-        guard let originURL = URL(string: "/", relativeTo: upload.uploadUrl)?.absoluteURL,
-              (try? CloudServerConfiguration(baseURL: originURL)) != nil else { throw CloudAPIError.invalidServer }
-        var request = URLRequest(url: upload.uploadUrl)
-        request.httpMethod = upload.method?.rawValue ?? "POST"; request.httpBody = bytes
-        request.setValue(mediaType, forHTTPHeaderField: "Content-Type")
-        request.httpShouldHandleCookies = false
-        // Local API upload routes require the API bearer. A Convex one-time
-        // URL is a different origin and must never receive that credential,
-        // including any Authorization supplied by session default headers.
-        let uploadOrigin = try CloudServerConfiguration(baseURL: originURL).origin
-        let token = uploadOrigin == client.configuration.origin
-            ? try await client.tokens.token(for: client.configuration.origin) : nil
-        request.setValue(token.map { "Bearer " + $0 } ?? "", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await client.session.data(for: request, delegate: CloudRedirectGuard())
-        try CloudAPIClient.validate(response, data: data)
-        let storage = try JSONDecoder().decode(CloudStorageReceipt.self, from: data)
-        guard !storage.storageId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CloudAPIError.invalidResponse }
-        let complete = CloudUploadComplete(storageId: storage.storageId, name: name, mediaType: mediaType, size: bytes.count, chatId: chatID)
-        // v0 upload.complete lacks privacy metadata; send an additive field so
-        // servers with v1 support can enforce Hide from code before the run.
-        var object = try JSONEncoder().encode(complete)
-        var json = try JSONDecoder().decode(JSONValue.self, from: object)
-        if case .object(var fields) = json { fields["hiddenFromCode"] = .bool(hidden); json = .object(fields) }
-        object = Data(json.encodedString().utf8)
-        let saved: CloudAttachment = try await client.send("/v1/uploads/complete", method: "POST", body: object)
-        return saved.id
+        return try await CloudFileUpload.send(client: client, bytes: bytes, name: name, mediaType: mediaType, chatID: chatID, hidden: hidden)
     }
 
     static func modelSelection(_ id: String) -> (provider: String?, model: String?) {

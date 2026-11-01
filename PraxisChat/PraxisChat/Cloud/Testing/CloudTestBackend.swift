@@ -216,7 +216,7 @@ final class CloudTestBackend: @unchecked Sendable {
                 return (item["displayName"] as? String ?? "").localizedCaseInsensitiveContains(q)
             }
             reply(page(parameter("cursor") == nil ? matches : []))
-        case ("GET", "/v1/connectors"), ("GET", "/v1/skills"), ("GET", "/v1/skill-registries"), ("GET", "/v1/consents"):
+        case ("GET", "/v1/skills/updates"), ("GET", "/v1/connectors"), ("GET", "/v1/skills"), ("GET", "/v1/skill-registries"), ("GET", "/v1/consents"):
             reply(page([]))
         case ("GET", "/v1/preferences"): reply(preferences)
         case ("PATCH", "/v1/preferences"):

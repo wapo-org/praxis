@@ -102,6 +102,7 @@ struct CloudCatalogConnector: Codable, Identifiable, Sendable, Equatable {
     var disabledTools: [String]
     var authStatus: String
     var updatedAt: String
+    var headerNames: [String]? = nil
     var status: String? = nil
     var error: String? = nil
 
@@ -124,7 +125,7 @@ struct CloudCatalogConnector: Codable, Identifiable, Sendable, Equatable {
     }
 }
 
-struct CloudCatalogConnectorInput: Encodable, Sendable {
+struct CloudCatalogConnectorInput: Codable, Sendable {
     var type = "connector.input"
     var name: String
     var url: String
@@ -133,6 +134,7 @@ struct CloudCatalogConnectorInput: Encodable, Sendable {
     var trusted = false
     var disabledTools: [String] = []
     var token: String?
+    var extraHeaders: [String: String]?
 }
 
 struct CloudCatalogConnectorPatch: Encodable, Sendable {
@@ -144,6 +146,7 @@ struct CloudCatalogConnectorPatch: Encodable, Sendable {
     var trusted: Bool?
     var disabledTools: [String]?
     var token: String?
+    var extraHeaders: [String: String]?
 }
 
 struct CloudCatalogTool: Decodable, Identifiable, Sendable, Equatable {
@@ -169,6 +172,9 @@ struct CloudCatalogSkill: Codable, Identifiable, Sendable, Equatable {
     var document: String
     var enabled: Bool
     var updatedAt: String
+    var registryId: String?
+    var registryEntryId: String?
+    var registryDigest: String?
 }
 
 struct CloudCatalogSkillInput: Encodable, Sendable {
@@ -198,6 +204,9 @@ struct CloudCatalogProbe: Decodable, Sendable {
     var type: String
     var ok: Bool
     var models: [CloudCatalogModel]
+    var probe: CloudCapabilityProbe?
+    var error: CloudProviderProbeError?
+    var message: String?
 }
 
 struct CloudCatalogOAuthAuthorization: Decodable, Sendable {

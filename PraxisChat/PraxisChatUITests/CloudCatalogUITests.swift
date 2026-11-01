@@ -34,7 +34,9 @@ final class CloudCatalogUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Select Cloud Fixture"].exists)
     }
     func testCloudConnectorsOpenRemoteEditor() {
-        open("Connectors"); app.buttons["cloudAddConnector"].tap()
+        open("Connectors")
+        XCTAssertTrue(app.buttons["cloudBrowseMCPRegistry"].exists)
+        app.buttons["cloudAddConnector"].tap()
         XCTAssertTrue(app.navigationBars["Add connector"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.textFields["Server URL"].exists)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'stdio connectors are unsupported'")).firstMatch.exists)
@@ -42,6 +44,8 @@ final class CloudCatalogUITests: XCTestCase {
     func testCloudSkillsExposeCreateAndImport() {
         open("Skills")
         XCTAssertTrue(app.buttons["cloudImportSkill"].exists)
+        XCTAssertTrue(app.buttons["cloudImportSkillArchive"].exists)
+        XCTAssertTrue(app.buttons["cloudCheckSkillUpdates"].exists)
         app.buttons["Create skill"].tap()
         XCTAssertTrue(app.navigationBars["Create skill"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.textFields["Name"].exists)

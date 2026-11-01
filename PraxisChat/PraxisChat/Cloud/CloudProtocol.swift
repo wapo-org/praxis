@@ -68,7 +68,7 @@ struct CloudUploadRequest: Encodable, Sendable {
     let name: String
     let mediaType: String
     let size: Int
-    let chatId: String
+    let chatId: String?
 }
 struct CloudUploadURL: Decodable, Sendable {
     enum Method: String, Decodable, Sendable { case POST, PUT }
@@ -83,6 +83,7 @@ struct CloudUploadComplete: Encodable, Sendable {
     let name: String
     let mediaType: String
     let size: Int
-    let chatId: String
+    let chatId: String?
+    var hiddenFromCode = false
 }
 struct CloudAttachment: Decodable, Sendable { let id: String }
