@@ -76,7 +76,7 @@ export function MessageAttachment({
         fontSize: 13,
       }}
     >
-      {part.type === 'document' ? <FileText size={17} /> : <Paperclip size={17} />}
+      {part.type === 'document' ? <FileText size={18} /> : <Paperclip size={18} />}
       <span>
         {unavailable
           ? 'Attachment unavailable'

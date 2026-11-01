@@ -12,6 +12,7 @@ import {
   Settings,
   Trash2,
 } from '../../lib/icons';
+import { CHAT_GROUPS as GROUPS, dateGroup } from '../../lib/chatGroups';
 import { usePraxisStore } from '../../state/store.js';
 import {
   ScreenBody,
@@ -21,21 +22,6 @@ import {
   TaskError,
   useScreenTask,
 } from './ScreenUI.js';
-
-const GROUPS = ['Pinned', 'Today', 'Yesterday', 'Previous 7 Days', 'Older'] as const;
-
-function dateGroup(chat: Chat, now: Date): (typeof GROUPS)[number] {
-  if (chat.pinned) return 'Pinned';
-  const date = new Date(chat.updatedAt);
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  const week = new Date(today);
-  week.setDate(today.getDate() - 7);
-  if (date >= today) return 'Today';
-  if (date >= yesterday) return 'Yesterday';
-  return date >= week ? 'Previous 7 Days' : 'Older';
-}
 
 function relativeTime(value: string): string {
   const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
@@ -246,7 +232,7 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                           <span className="screen-row-copy">
                             <span className="screen-history-title">
                               <span className="screen-truncate">{chat.title || 'New chat'}</span>
-                              {chat.pinned ? <Pin size={11} aria-label="Pinned" /> : null}
+                              {chat.pinned ? <Pin size={16} aria-label="Pinned" /> : null}
                             </span>
                             {preview ? (
                               <span className="screen-detail screen-truncate">{preview}</span>
@@ -260,7 +246,7 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                             </time>
                           </span>
                           {store.activeChatId === chat.id ? (
-                            <Check size={15} aria-label="Current chat" />
+                            <Check size={16} aria-label="Current chat" />
                           ) : null}
                         </button>
                       )}
@@ -276,7 +262,7 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                           >
                             <GlassDropdown.Item
                               disabled={task.busy}
-                              icon={<Pin size={15} />}
+                              icon={<Pin size={16} />}
                               onSelect={() => {
                                 void task.run(() => store.togglePinChat(chat.id));
                               }}
@@ -284,7 +270,7 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                               {chat.pinned ? 'Unpin' : 'Pin'}
                             </GlassDropdown.Item>
                             <GlassDropdown.Item
-                              icon={<Pencil size={15} />}
+                              icon={<Pencil size={16} />}
                               onSelect={() => {
                                 setTitle(chat.title);
                                 setRenaming(chat.id);
@@ -296,7 +282,7 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                             <GlassDropdown.Item
                               disabled={task.busy}
                               tone="destructive"
-                              icon={<Trash2 size={15} />}
+                              icon={<Trash2 size={16} />}
                               onSelect={() => {
                                 void task.run(() => store.deleteChats([chat.id]));
                               }}
@@ -341,13 +327,13 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
               });
             }}
           >
-            <Plus size={17} />
+            <Plus size={18} />
             New chat
           </ScreenButton>
         )}
         <label style={{ position: 'relative' }}>
           <Search
-            size={17}
+            size={18}
             aria-hidden="true"
             style={{
               position: 'absolute',

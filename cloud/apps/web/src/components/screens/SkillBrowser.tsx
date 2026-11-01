@@ -112,7 +112,7 @@ export function SkillBrowser() {
                     void task.run(() => store.removeSkillRegistry(registry.id));
                   }}
                 >
-                  <Trash2 size={15} />
+                  <Trash2 size={16} />
                 </ScreenButton>
               </div>
             ))}

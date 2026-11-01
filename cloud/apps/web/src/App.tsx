@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChatScreen } from './components/chat/ChatScreen';
+import { Sidebar } from './components/shell/Sidebar';
 import { SheetsRoot } from './components/screens/SheetsRoot';
 import { parseRoute } from './lib/navigation';
 import { usePraxisStore } from './state/store';
@@ -33,6 +34,10 @@ export function App() {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
+        const sidebarSearch = store.desktopSidebarOpen
+          ? document.querySelector<HTMLInputElement>('[data-testid="app-sidebar"] [aria-label="Search conversations"]')
+          : null;
+        if (sidebarSearch) return sidebarSearch.focus();
         store.setActiveSheet('history');
         requestAnimationFrame(() =>
           (
@@ -50,8 +55,8 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [store]);
-  const lab = import.meta.env.DEV ? () => navigate('/lab/glass') : undefined;
-  if (import.meta.env.DEV && GlassLabPage && pathname === '/lab/glass')
+  const lab = import.meta.env.DEV ? () => navigate('/lab') : undefined;
+  if (import.meta.env.DEV && GlassLabPage && (pathname === '/lab' || pathname === '/lab/glass'))
     return (
       <React.Suspense fallback={<p>Loading lab…</p>}>
         <GlassLabPage onNavigateBack={() => navigate('/')} />
@@ -68,7 +73,8 @@ export function App() {
     );
   return (
     <div data-testid="praxis-app-root" className="praxis-app-root">
-      <ChatScreen onOpenGlassLab={lab} />
+      <Sidebar />
+      <ChatScreen />
       <SheetsRoot onOpenGlassLab={lab} />
     </div>
   );

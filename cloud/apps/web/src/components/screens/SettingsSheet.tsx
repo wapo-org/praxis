@@ -48,7 +48,7 @@ export function SettingsSheet({ onOpenGlassLab }: { onOpenGlassLab?: () => void 
             store.setActiveSheet('provider-editor');
           }}
         >
-          <Plus size={17} />
+          <Plus size={18} />
           Add provider
         </ScreenButton>
         <p className="screen-footnote">API keys are write-only. A saved key is never shown here.</p>
@@ -114,15 +114,17 @@ export function SettingsSheet({ onOpenGlassLab }: { onOpenGlassLab?: () => void 
         </div>
       </Section>
       {import.meta.env.DEV && onOpenGlassLab ? (
-        <ScreenButton
-          onClick={() => {
-            store.setActiveSheet(null);
-            onOpenGlassLab();
-          }}
-        >
-          <FlaskConical size={17} />
-          Open Liquid Glass Lab
-        </ScreenButton>
+        <Section title="Developer">
+          <ScreenButton
+            onClick={() => {
+              store.setActiveSheet(null);
+              onOpenGlassLab();
+            }}
+          >
+            <FlaskConical size={18} />
+            Liquid Glass Lab
+          </ScreenButton>
+        </Section>
       ) : null}
     </ScreenBody>
   );

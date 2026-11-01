@@ -5,9 +5,6 @@
   line-height: 1.4;
 }
 .praxis-sheets-portal *,
-.screen-sidebar * {
-  box-sizing: border-box;
-}
 .screen-overlay {
   position: fixed;
   inset: 0;
@@ -406,30 +403,6 @@
   accent-color: var(--paper-ink);
   flex-shrink: 0;
 }
-.screen-sidebar {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 40;
-  width: 280px;
-  flex-shrink: 0;
-  height: 100dvh;
-  border-right: 1px solid var(--paper-hairline);
-  color: var(--paper-ink);
-  font: 15px/1.4 var(--font-sans, Inter, system-ui, sans-serif);
-}
-.screen-sidebar > div,
-.screen-sidebar > div > div:last-child {
-  height: 100%;
-}
-.screen-sidebar .screen-header {
-  padding-inline: 14px;
-}
-.screen-sidebar .screen-body,
-.screen-sidebar .screen-history-footer {
-  padding-inline: 14px;
-}
 .screen-consent-heading {
   font-size: 23px;
   font-weight: 600;
@@ -438,16 +411,9 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
-.praxis-sheets-portal :is(button, input, textarea, select, a):focus-visible,
-.screen-sidebar :is(button, input):focus-visible {
+.praxis-sheets-portal :is(button, input, textarea, select, a):focus-visible {
   outline: 2px solid var(--paper-secondary-ink);
   outline-offset: 3px;
-}
-@media (min-width: 1024px) {
-  [data-testid='praxis-app-root']:has(> .screen-sidebar) {
-    box-sizing: border-box;
-    padding-left: 280px;
-  }
 }
 @media (max-width: 1023px) {
   .screen-overlay {
@@ -470,9 +436,6 @@
   .screen-field textarea,
   .screen-search {
     font-size: 16px;
-  }
-  .screen-sidebar {
-    display: none;
   }
 }
 /* iOS-style destructive row: red label and icon in a grouped card. */

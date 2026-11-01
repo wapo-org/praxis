@@ -1,6 +1,6 @@
 import { MotionConfig } from 'framer-motion';
 import React from 'react';
-import type { GlassMaterialControls } from '../glass-store';
+import type { GlassMaterialControls } from '../GlassSurface';
 import type {
   GlassDropdownAlign,
   GlassDropdownContextValue,
@@ -51,14 +51,6 @@ const GlassDropdownRoot = React.forwardRef<
     closeOnSelect = true,
     dismissOnOutsideClick = true,
     material = 'regular',
-    intensity,
-    refraction,
-    frost,
-    finish,
-    backdrop,
-    stretchable = true,
-    bounce,
-    spotlight = true,
     children,
     className = '',
     style,
@@ -192,28 +184,8 @@ const GlassDropdownRoot = React.forwardRef<
   );
 
   const materialControls = React.useMemo<GlassMaterialControls>(
-    () => ({
-      material,
-      intensity,
-      refraction,
-      frost,
-      finish,
-      backdrop,
-      stretchable,
-      bounce,
-      spotlight,
-    }),
-    [
-      material,
-      intensity,
-      refraction,
-      frost,
-      finish,
-      backdrop,
-      stretchable,
-      bounce,
-      spotlight,
-    ],
+    () => ({ material }),
+    [material],
   );
 
   const ctxValue = React.useMemo<GlassDropdownContextValue>(

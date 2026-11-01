@@ -184,11 +184,11 @@ export function ActivityDetails({
                   }}
                 >
                   {step.running ? (
-                    <Clock size={14} />
+                    <Clock size={16} />
                   ) : isError ? (
-                    <X size={14} />
+                    <X size={16} />
                   ) : (
-                    <Check size={14} />
+                    <Check size={16} />
                   )}
                 </span>
                 <span

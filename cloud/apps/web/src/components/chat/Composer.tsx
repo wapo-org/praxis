@@ -6,10 +6,10 @@ import type { Attachment } from '@praxis/protocol';
 import { DotMeter, GlassSurface } from '@praxis/glass';
 import { usePraxisStore } from '../../state/store';
 import { PlusTray } from './PlusTray';
+import styles from './Composer.module.css';
 
 export const Composer: React.FC = () => {
   const {
-    plusTrayOpen,
     setPlusTrayOpen,
     inlineModelSearchActive,
     setInlineModelSearchActive,
@@ -20,7 +20,6 @@ export const Composer: React.FC = () => {
     cacheModels,
     activeLiveRun,
     sendMessage,
-    cancelActiveRun,
     uploadFiles,
     transcribeAudioBlob,
   } = usePraxisStore();
@@ -35,15 +34,6 @@ export const Composer: React.FC = () => {
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
   const audioChunksRef = React.useRef<BlobPart[]>([]);
-
-  const isRunning =
-    activeLiveRun?.run.status === 'running' ||
-    activeLiveRun?.run.status === 'awaitingApproval' ||
-    activeLiveRun?.run.status === 'awaitingElicitation';
-
-  const currentModel =
-    models.find((m) => m.providerId === selectedProviderId && m.id === selectedModelId) ??
-    models[0];
 
   const handlePickFiles = (accept = '*/*', capture = false) => {
     const input = fileInputRef.current;
@@ -156,195 +146,88 @@ export const Composer: React.FC = () => {
   const inlineMatchingModels = modelSearch.items;
 
   return (
-    <div
-      data-testid="composer-dock"
-      style={{
-        width: '100%',
-        maxWidth: 680,
-        margin: '0 auto',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'stretch',
-        pointerEvents: 'auto',
-      }}
-    >
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        data-testid="composer-file-input"
-        onChange={handleFileChange}
-        style={{ display: 'none' }}
-      />
+    <div data-testid="composer-dock" className={styles.dock}>
+      <input ref={fileInputRef} type="file" multiple data-testid="composer-file-input" onChange={handleFileChange} hidden />
 
-      {mediaError && <div role="alert">{mediaError}</div>}
-      {/* Inline Model Search Results Overlay */}
-      {inlineModelSearchActive && (
-        <GlassSurface
-          material="regular"
-          intensity="medium"
-          radius={20}
-          data-testid="inline-model-search-results"
-          style={{
-            padding: 8,
-            marginBottom: 8,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '4px 10px',
-              fontSize: 11.5,
-              fontWeight: 600,
-              color: 'var(--paper-ink-3)',
-              textTransform: 'uppercase',
-            }}
-          >
-            <span>Filter Models Inline</span>
-            <button
-              type="button"
-              onClick={() => setInlineModelSearchActive(false)}
-              style={{
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--paper-ink-2)',
-                fontSize: 11.5,
-                cursor: 'pointer',
-              }}
-            >
+      {mediaError ? (
+        <div role="alert" className={styles.alert}>
+          {mediaError}
+        </div>
+      ) : null}
+
+      {inlineModelSearchActive ? (
+        <GlassSurface material="thick" radius={20} data-testid="inline-model-search-results" className={styles.models}>
+          <div className={styles.modelsHeader}>
+            <span>Filter models</span>
+            <button type="button" onClick={() => setInlineModelSearchActive(false)}>
               Done
             </button>
           </div>
-          {modelSearch.error && <p role="alert">{modelSearch.error}</p>}
-          {modelSearch.busy && <p role="status">Searching…</p>}
-          {modelSearch.cursor && <button type="button" onClick={modelSearch.loadMore}>Load more models</button>}
+          {modelSearch.error ? <p role="alert" className={styles.note}>{modelSearch.error}</p> : null}
+          {modelSearch.busy ? <p role="status" className={styles.note}>Searching…</p> : null}
+          {modelSearch.cursor ? (
+            <button type="button" className={styles.modelRow} onClick={modelSearch.loadMore}>
+              Load more models
+            </button>
+          ) : null}
           {inlineMatchingModels.map((m) => (
             <button
               key={`${m.providerId}-${m.id}`}
               type="button"
+              className={styles.modelRow}
               data-testid={`inline-model-option-${m.id}`}
+              data-selected={m.providerId === selectedProviderId && m.id === selectedModelId}
               onClick={() => {
                 cacheModels([m]);
                 setSelectedModel(m.providerId, m.id);
                 setInlineModelSearchActive(false);
                 setText('');
               }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '8px 12px',
-                borderRadius: 12,
-                border: 'none',
-                background:
-                  m.providerId === selectedProviderId && m.id === selectedModelId
-                    ? 'var(--paper-fill-1)'
-                    : 'transparent',
-                color: 'var(--paper-ink)',
-                cursor: 'pointer',
-                textAlign: 'left',
-              }}
             >
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{m.displayName}</div>
-                <div style={{ fontSize: 12, color: 'var(--paper-ink-2)' }}>
-                  {m.tagline ?? m.providerId}
-                </div>
-              </div>
-              {typeof m.speed === 'number' && <DotMeter value={m.speed} />}
+              <span className={styles.modelCopy}>
+                <span className={styles.modelName}>{m.displayName}</span>
+                <span className={styles.modelDetail}>{m.tagline ?? m.providerId}</span>
+              </span>
+              {typeof m.speed === 'number' ? <DotMeter value={m.speed} /> : null}
             </button>
           ))}
         </GlassSurface>
-      )}
+      ) : null}
 
-      {/* Expandable Plus Tray */}
       <PlusTray onPickFiles={handlePickFiles} />
 
-      {/* Main Floating Glass Composer Pill */}
-      <GlassSurface
-        material="regular"
-        intensity="medium"
-        radius={28}
-        data-testid="composer-surface"
-        style={{
-          padding: '8px 10px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-        }}
-      >
-        {/* Queued Attachments Strip */}
-        {(queuedAttachments.length > 0 || uploading) && (
-          <div
-            data-testid="composer-attachments-strip"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              overflowX: 'auto',
-              padding: '4px 6px 2px',
-            }}
-          >
+      <GlassSurface material="regular" radius={28} data-testid="composer-surface" className={styles.pill}>
+        {queuedAttachments.length > 0 || uploading ? (
+          <div data-testid="composer-attachments-strip" className={styles.attachments}>
             {queuedAttachments.map((att) => (
-              <div
-                key={att.id}
-                style={{
-                  position: 'relative',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '5px 10px',
-                  borderRadius: 12,
-                  background: 'var(--paper-fill-1)',
-                  border: '0.5px solid var(--paper-hairline)',
-                  fontSize: 12.5,
-                  color: 'var(--paper-ink)',
-                }}
-              >
-                <span>{att.mediaType.startsWith('image/') ? <Photo size={16} /> : <Paperclip size={16} />}</span>
-                <span
-                  style={{
-                    maxWidth: 120,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {att.name}
-                </span>
+              <div key={att.id} className={styles.attachment}>
+                {att.mediaType.startsWith('image/') ? <Photo size={16} /> : <Paperclip size={16} />}
+                <span className={styles.attachmentName}>{att.name}</span>
                 <button
                   type="button"
                   aria-label={`Remove ${att.name}`}
-                  onClick={() =>
-                    setQueuedAttachments((prev) => prev.filter((x) => x.id !== att.id))
-                  }
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    color: 'var(--paper-ink-3)',
-                    cursor: 'pointer',
-                    padding: '0 2px',
-                    fontSize: 13,
-                  }}
+                  onClick={() => setQueuedAttachments((prev) => prev.filter((x) => x.id !== att.id))}
                 >
-                  <X size={14} />
+                  <X size={16} />
                 </button>
               </div>
             ))}
-            {uploading && (
-              <span style={{ fontSize: 12, color: 'var(--paper-ink-3)' }}>Uploading...</span>
-            )}
+            {uploading ? <span className={styles.note}>Uploading…</span> : null}
           </div>
-        )}
+        ) : null}
 
-        <ComposerBar inputRef={textareaRef} text={text} onTextChange={setText} onKeyDown={handleKeyDown}
-          recording={recording} transcribing={transcribing} onCamera={() => handlePickFiles('image/*', true)}
-          onToggleVoice={() => void handleToggleVoice()} onSend={() => void handleSend()} attachmentCount={queuedAttachments.length} />
+        <ComposerBar
+          inputRef={textareaRef}
+          text={text}
+          onTextChange={setText}
+          onKeyDown={handleKeyDown}
+          recording={recording}
+          transcribing={transcribing}
+          onCamera={() => handlePickFiles('image/*', true)}
+          onToggleVoice={() => void handleToggleVoice()}
+          onSend={() => void handleSend()}
+          attachmentCount={queuedAttachments.length}
+        />
       </GlassSurface>
     </div>
   );

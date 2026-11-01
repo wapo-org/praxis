@@ -1,4 +1,5 @@
 import { useMotionValue, useSpring, useTransform } from 'framer-motion';
+import { SPRING_VALUE } from '../motion';
 import React from 'react';
 import { scrollContainer } from './gestures';
 import type { GlassDropdownContextValue } from './context';
@@ -9,8 +10,8 @@ export function usePressMotion(
 ) {
   const pullX = useMotionValue(0);
   const pullY = useMotionValue(0);
-  const springPullX = useSpring(pullX, { stiffness: 420, damping: 26 });
-  const springPullY = useSpring(pullY, { stiffness: 420, damping: 26 });
+  const springPullX = useSpring(pullX, SPRING_VALUE);
+  const springPullY = useSpring(pullY, SPRING_VALUE);
   const stretchScaleY = useTransform(
     springPullY,
     (y) => 1 + Math.min(0.055, Math.abs(y) / 920),

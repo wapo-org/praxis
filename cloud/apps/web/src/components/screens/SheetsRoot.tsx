@@ -1,4 +1,3 @@
-import { GlassSurface } from '@praxis/glass';
 import { usePraxisStore, type ActiveSheet } from '../../state/store.js';
 import {
   ConnectorAddURL,
@@ -73,27 +72,12 @@ function SheetContent({
   }
 }
 
-export function DesktopHistorySidebar() {
-  const store = usePraxisStore();
-  if (!store.desktopSidebarOpen) return null;
-  return (
-    <aside className="screen-sidebar" aria-label="Conversation history">
-      <GlassSurface shape="free" radius={0} material="thin">
-        <div className="screen-shell">
-          <HistorySheet />
-        </div>
-      </GlassSurface>
-    </aside>
-  );
-}
-
 export function SheetsRoot({ onOpenGlassLab }: { onOpenGlassLab?: () => void }) {
   const store = usePraxisStore();
   const sheet = store.activeSheet;
   const config = sheet ? SHEETS[sheet] : null;
   return (
     <>
-      <DesktopHistorySidebar />
       {sheet && config ? (
         <SheetDialog label={config.title} onDismiss={() => store.setActiveSheet(null)}>
           {sheet !== 'history' && (

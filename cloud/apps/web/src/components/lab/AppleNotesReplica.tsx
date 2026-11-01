@@ -93,7 +93,7 @@ export function AppleNotesReplica() {
                   </GlassChip>
 
                   <GlassIconButton label="Share Note">
-                    <Share size={15} />
+                    <Share size={16} />
                   </GlassIconButton>
 
                   <GlassDropdown
@@ -149,14 +149,14 @@ export function AppleNotesReplica() {
 
                       {/* Primary Action List */}
                       <GlassDropdown.Item
-                        icon={<Search size={15} />}
+                        icon={<Search size={16} />}
                         onSelect={() => setLastNotesAction('Find in Note')}
                       >
                         Find in Note
                       </GlassDropdown.Item>
 
                       <GlassDropdown.Item
-                        icon={<Folder size={15} />}
+                        icon={<Folder size={16} />}
                         onSelect={() => setLastNotesAction('Move Note')}
                       >
                         Move Note
@@ -166,11 +166,11 @@ export function AppleNotesReplica() {
                       <GlassDropdown.Sub
                         id="recent-notes"
                         label="Recent Notes"
-                        icon={<Clock size={15} />}
+                        icon={<Clock size={16} />}
                       >
                         <GlassDropdown.SubTrigger
                           data-testid="recent-notes-subtrigger"
-                          icon={<Clock size={15} />}
+                          icon={<Clock size={16} />}
                         >
                           Recent Notes
                         </GlassDropdown.SubTrigger>
@@ -179,7 +179,7 @@ export function AppleNotesReplica() {
                               <GlassDropdown.Item
                                 key={note.id}
                                 lines={3}
-                                icon={<FileText size={15} />}
+                                icon={<FileText size={16} />}
                                 onSelect={() =>
                                   setLastNotesAction(`Opened recent note: ${note.text.slice(0, 28)}…`)
                                 }
@@ -194,10 +194,10 @@ export function AppleNotesReplica() {
                       <GlassDropdown.Sub
                         id="math-results"
                         label="Math Results"
-                        icon={<Plus size={15} />}
+                        icon={<Plus size={16} />}
                       >
                         <GlassDropdown.SubTrigger
-                          icon={<Plus size={15} />}
+                          icon={<Plus size={16} />}
                           subtitle={mathResultsMode === 'insert' ? 'Insert Results' : 'Suggest Results'}
                         >
                           Math Results
@@ -221,7 +221,7 @@ export function AppleNotesReplica() {
                       </GlassDropdown.Sub>
 
                       <GlassDropdown.Item
-                        icon={<Grid size={15} />}
+                        icon={<Grid size={16} />}
                         onSelect={() => setLastNotesAction('Lines & Grids')}
                       >
                         Lines &amp; Grids
@@ -230,9 +230,9 @@ export function AppleNotesReplica() {
                       <GlassDropdown.Sub
                         id="attachment-view"
                         label="Attachment View"
-                        icon={<LayoutGrid size={15} />}
+                        icon={<LayoutGrid size={16} />}
                       >
-                        <GlassDropdown.SubTrigger icon={<LayoutGrid size={15} />}>
+                        <GlassDropdown.SubTrigger icon={<LayoutGrid size={16} />}>
                           Attachment View
                         </GlassDropdown.SubTrigger>
                         <GlassDropdown.SubContent>
@@ -257,7 +257,7 @@ export function AppleNotesReplica() {
                       {/* Destructive Footer Section */}
                       <GlassDropdown.Item
                         tone="destructive"
-                        icon={<Trash2 size={15} />}
+                        icon={<Trash2 size={16} />}
                         onSelect={() => setLastNotesAction('Deleted Note')}
                       >
                         Delete

@@ -68,7 +68,7 @@ export function renderInlineTokens(
             }}
           >
             <span aria-hidden="true" style={{ fontSize: 11, color: 'var(--paper-accent)' }}>
-              <FileText size={13} />
+              <FileText size={16} />
             </span>
             <span>{label}</span>
           </button>,
@@ -142,7 +142,7 @@ export function renderInlineTokens(
         >
           {isFileRef && (
             <span aria-hidden="true" style={{ fontSize: 11, color: 'var(--paper-accent)' }}>
-              <FileText size={13} />
+              <FileText size={16} />
             </span>
           )}
           <span>{codeContent}</span>

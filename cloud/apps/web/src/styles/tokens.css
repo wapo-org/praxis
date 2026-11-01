@@ -1,0 +1,181 @@
+/* Praxis web design tokens. The only place raw values live; see cloud/docs/web/DESIGN.md.
+   Source of truth: PraxisChat/PraxisChat/DesignSystem/Tokens.swift (colours) and the iOS references. */
+
+:root,
+[data-theme='light'] {
+  /* Spacing: 4 px scale */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Type: one UI sans, one display serif, mono for code only. Fixed line heights. */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  --font-display: 'Source Serif 4', 'Newsreader', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  --text-xs: 12px;
+  --leading-xs: 16px;
+  --text-sm: 13px;
+  --leading-sm: 18px;
+  --text-md: 15px;
+  --leading-md: 22px;
+  --text-lg: 17px;
+  --leading-lg: 28px;
+  --text-xl: 20px;
+  --leading-xl: 28px;
+  --text-2xl: 28px;
+  --leading-2xl: 34px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --tracking-tight: -0.01em;
+  --tracking-display: -0.02em;
+
+  /* Controls */
+  --control-sm: 28px;
+  --control-md: 36px;
+  --control-lg: 44px;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+  --radius-full: 9999px;
+
+  /* Icons: three sizes, one stroke */
+  --icon-sm: 16px;
+  --icon-md: 18px;
+  --icon-lg: 20px;
+  --icon-stroke: 1.75;
+
+  /* Layout */
+  --sidebar-width: 260px;
+  --column-width: 720px;
+  --topbar-height: 56px;
+
+  /* Colour: warm paper neutrals, black primary controls */
+  --color-paper: #fbfbf9;
+  --color-sidebar: #f6f5f1;
+  --color-surface: #ffffff;
+  --color-fill-1: #f4f2ec;
+  --color-fill-2: #e9e6df;
+  --color-bubble: #ecebe5;
+  --color-ink: #15140f;
+  --color-ink-2: #6e6b62;
+  --color-ink-3: #8a877e;
+  --color-hairline: rgba(21, 20, 15, 0.08);
+  --color-hairline-strong: rgba(21, 20, 15, 0.14);
+  --color-hover: rgba(21, 20, 15, 0.045);
+  --color-pressed: rgba(21, 20, 15, 0.08);
+  --color-accent: #15140f;
+  --color-on-accent: #fbfbf9;
+  --color-danger: #b3382e;
+  --color-success: #17653f;
+  --color-focus: rgba(21, 20, 15, 0.32);
+  --color-scrim: rgba(21, 20, 15, 0.18);
+
+  /* Elevation: three levels */
+  --shadow-1: 0 1px 2px rgba(21, 20, 15, 0.05);
+  --shadow-2: 0 2px 6px rgba(21, 20, 15, 0.05), 0 8px 24px rgba(21, 20, 15, 0.07);
+  --shadow-3: 0 4px 12px rgba(21, 20, 15, 0.06), 0 20px 48px rgba(21, 20, 15, 0.12);
+
+  /* Motion (mirrors packages/glass/src/motion.ts) */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Glass material recipes (packages/glass/src/glass.module.css) */
+  --glass-regular-tint: rgba(252, 252, 250, 0.72);
+  --glass-regular-blur: 20px;
+  --glass-thick-tint: rgba(252, 252, 250, 0.86);
+  --glass-thick-blur: 32px;
+  --glass-clear-tint: rgba(255, 255, 255, 0.42);
+  --glass-clear-blur: 12px;
+  --glass-saturate: 180%;
+  --glass-rim-top: rgba(255, 255, 255, 0.95);
+  --glass-rim-bottom: rgba(255, 255, 255, 0.35);
+  --glass-edge: rgba(21, 20, 15, 0.09);
+  --glass-highlight: rgba(255, 255, 255, 0.7);
+  --glass-fallback: #fbfbf9;
+
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --color-paper: #0b0b0a;
+  --color-sidebar: #111110;
+  --color-surface: #151513;
+  --color-fill-1: #151513;
+  --color-fill-2: #2a2926;
+  --color-bubble: #232220;
+  --color-ink: #f1efe9;
+  --color-ink-2: #a8a49a;
+  --color-ink-3: #8f8c84;
+  --color-hairline: rgba(241, 239, 233, 0.08);
+  --color-hairline-strong: rgba(241, 239, 233, 0.14);
+  --color-hover: rgba(241, 239, 233, 0.05);
+  --color-pressed: rgba(241, 239, 233, 0.09);
+  --color-accent: #f1efe9;
+  --color-on-accent: #0b0b0a;
+  --color-danger: #ff7a6e;
+  --color-success: #4cc38a;
+  --color-focus: rgba(241, 239, 233, 0.36);
+  --color-scrim: rgba(0, 0, 0, 0.5);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.36);
+  --shadow-3: 0 4px 12px rgba(0, 0, 0, 0.36), 0 20px 48px rgba(0, 0, 0, 0.5);
+
+  --glass-regular-tint: rgba(28, 28, 26, 0.68);
+  --glass-thick-tint: rgba(26, 26, 24, 0.86);
+  --glass-clear-tint: rgba(40, 40, 37, 0.44);
+  --glass-saturate: 150%;
+  --glass-rim-top: rgba(255, 255, 255, 0.16);
+  --glass-rim-bottom: rgba(255, 255, 255, 0.04);
+  --glass-edge: rgba(0, 0, 0, 0.5);
+  --glass-highlight: rgba(255, 255, 255, 0.06);
+  --glass-fallback: #1a1a18;
+
+  color-scheme: dark;
+}
+
+/* Legacy aliases: screens not yet redesigned (D2/D3) read these names. New code uses --color-*. */
+:root,
+[data-theme='light'],
+[data-theme='dark'] {
+  --paper-canvas: var(--color-paper);
+  --paper-card: var(--color-surface);
+  --paper-surface: var(--color-surface);
+  --paper-surface-2: var(--color-fill-1);
+  --paper-ink: var(--color-ink);
+  --paper-ink-2: var(--color-ink-2);
+  --paper-ink-3: var(--color-ink-3);
+  --paper-secondary-ink: var(--color-ink-2);
+  --paper-muted-ink: var(--color-ink-3);
+  --paper-pressed-muted: var(--color-ink-3);
+  --paper-hairline: var(--color-hairline-strong);
+  --paper-rule-strong: var(--color-hairline-strong);
+  --paper-fill-1: var(--color-fill-1);
+  --paper-fill-2: var(--color-fill-2);
+  --paper-tile: var(--color-ink);
+  --paper-tile-glyph: var(--color-paper);
+  --paper-accent: var(--color-accent);
+  --paper-success: var(--color-success);
+  --paper-destructive: var(--color-danger);
+  --paper-danger: var(--color-danger);
+  --paper-warn: var(--color-ink-2);
+  --font-serif: var(--font-display);
+  --dropdown-highlight: var(--color-pressed);
+  --glass-tint: var(--glass-regular-tint);
+  --glass-tile-bg: var(--color-fill-1);
+}

@@ -1,0 +1,68 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-md);
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-ink);
+  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.chip[data-active='true'] {
+  background: var(--color-pressed);
+}
+.chipIcon {
+  display: inline-flex;
+  color: var(--color-ink-2);
+}
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-md);
+  height: var(--control-md);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+.iconButton[data-active='true'] {
+  background: var(--color-pressed);
+}
+@media (hover: hover) {
+  .chip:hover,
+  .iconButton:hover {
+    background: var(--color-hover);
+  }
+}
+.chip:focus-visible,
+.iconButton:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.meterLabel {
+  margin-inline-end: 2px;
+  color: var(--color-ink-2);
+  font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-mono);
+}
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--color-fill-2);
+}
+.dot[data-on='true'] {
+  background: var(--color-ink);
+}

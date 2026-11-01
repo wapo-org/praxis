@@ -256,7 +256,7 @@ export function ProviderEditor() {
                   setHeaders((previous) => previous.filter((_, i) => i !== index));
                 }}
               >
-                <Trash2 size={15} />
+                <Trash2 size={16} />
               </ScreenButton>
             </div>
           ))}
@@ -266,7 +266,7 @@ export function ProviderEditor() {
               setHeaders((previous) => [...previous, { key: '', value: '' }]);
             }}
           >
-            <Plus size={15} />
+            <Plus size={16} />
             Add header
           </ScreenButton>
           {provider?.headerNames?.length && !headersEdited ? (

@@ -1,4 +1,3 @@
-import { GlassSurface } from '@praxis/glass';
 import React from 'react';
 import { ChevronRight } from '../../lib/icons';
 import { useActivityClock } from './useActivityClock';
@@ -112,13 +111,9 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
       }}
     >
       {/* Level 0: Folded / Expandable Pill Header */}
-      <GlassSurface
+      <div
         role="button"
         tabIndex={0}
-        material="thin"
-        intensity="subtle"
-        radius={18}
-        interactive
         data-testid="agent-activity-toggle"
         aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
@@ -126,8 +121,11 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
           display: 'inline-flex',
           alignItems: 'center',
           gap: 9,
-          padding: '6px 13px',
+          height: 'var(--control-sm)',
+          padding: '0 var(--space-3)',
           border: 'none',
+          borderRadius: 'var(--radius-full)',
+          background: 'var(--color-fill-1)',
           cursor: 'pointer',
           color: 'var(--paper-ink)',
           fontSize: 13,
@@ -167,12 +165,12 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
             fontSize: 11,
             color: 'var(--paper-ink-3)',
             transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1)',
+            transition: 'transform var(--duration-base) var(--ease-standard)',
           }}
         >
-          <ChevronRight size={14} />
+          <ChevronRight size={16} />
         </span>
-      </GlassSurface>
+      </div>
 
       {/* Level 1 & Level 2: Expanded Steps + Reasoning + Vision + Compaction */}
       {expanded && (

@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import React from 'react';
 import { GlassSurface } from '../GlassSurface';
 import { ScrollBlur } from '../ProgressiveBlurScrim';
-import type { GlassMaterialControls } from '../glass-store';
+import type { GlassMaterialControls } from '../GlassSurface';
 import { MorphPanel } from './MorphPanel';
 import { MorphRows } from './MorphRows';
 import { MorphHeader } from './MorphHeader';
@@ -21,6 +21,7 @@ import { resolveMorphTrail } from './morph';
 import { useMenuReducedMotion } from './motion';
 import { usePositioning } from './positioning';
 import { usePressMotion } from './pressMotion';
+import { popIn, press, SPRING, TRANSITION } from '../motion';
 export interface ContentProps
   extends
     Omit<
@@ -30,6 +31,8 @@ export interface ContentProps
     GlassMaterialControls {
   maxHeight?: number;
   minWidth?: number;
+  /** Rubber-band pull while scrubbing (transform only). */
+  stretchable?: boolean;
   children?: React.ReactNode;
 }
 
@@ -40,14 +43,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
     children,
     className = '',
     material,
-    intensity,
-    refraction,
-    frost,
-    finish,
-    backdrop,
     stretchable = true,
-    bounce,
-    spotlight = true,
     onKeyDown,
     style,
     ...otherProps
@@ -102,17 +98,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
     [highlightedId, setHighlightedId, scopeId, pathKey],
   );
 
-  const mergedControls: GlassMaterialControls = {
-    material: material ?? ctx.materialControls.material ?? 'regular',
-    intensity: intensity ?? ctx.materialControls.intensity,
-    refraction: refraction ?? ctx.materialControls.refraction,
-    frost: frost ?? ctx.materialControls.frost,
-    finish: finish ?? ctx.materialControls.finish,
-    backdrop: backdrop ?? ctx.materialControls.backdrop,
-    stretchable: false,
-    bounce,
-    spotlight: spotlight ?? ctx.materialControls.spotlight ?? true,
-  };
+  const glassMaterial = material ?? ctx.materialControls.material ?? 'thick';
 
   const morphState = React.useMemo(() => {
     if (ctx.submenuMode !== 'morph' || ctx.activeSubPath.length === 0) {
@@ -170,37 +156,10 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                 }}
                 /* Keep CSS filter off this ancestor: even blur(0) blocks backdrop sampling. */
                 /* IMG_7745–IMG_7752 Unfurl Pop Motion */
-                initial={
-                  reduced
-                    ? false
-                    : {
-                        opacity: 0,
-                        scale: 0.33,
-                      }
-                }
-                animate={{
-                  opacity: 1,
-                  scale: 1,
-                }}
-                exit={
-                  reduced
-                    ? { opacity: 0, transition: { duration: 0.08 } }
-                    : {
-                        opacity: 0,
-                        scale: 0.74,
-                        transition: { duration: 0.12, ease: 'easeIn' },
-                      }
-                }
-                transition={
-                  reduced
-                    ? { duration: 0 }
-                    : {
-                        type: 'spring',
-                        stiffness: 380,
-                        damping: 24,
-                        mass: 0.82,
-                      }
-                }
+                initial={reduced ? false : { scale: popIn.initial.scale }}
+                animate={{ scale: 1 }}
+                exit={reduced ? undefined : { scale: popIn.exit.scale, transition: TRANSITION.fast }}
+                transition={reduced ? TRANSITION.none : SPRING}
                 className={`praxis-glass-dropdown-content ${className}`.trim()}
                 style={{
                   position: ctx.portal ? 'fixed' : 'absolute',
@@ -223,40 +182,23 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                 {...otherProps}
               >
                 <GlassSurface
-                  shape="free"
-                  radius={24}
-                  {...mergedControls}
+                  material={glassMaterial}
+                  radius={16}
+                  initial={reduced ? { opacity: 0 } : { opacity: popIn.initial.opacity }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0, transition: TRANSITION.fast }}
+                  transition={reduced ? TRANSITION.fast : TRANSITION.base}
                   style={{
                     width: '100%',
                     overflow:
                       ctx.submenuMode === 'cascade' ? 'visible' : 'hidden',
-                    padding: '6px',
-                    background: 'transparent',
-                    backdropFilter: 'blur(24px)',
-                    WebkitBackdropFilter: 'blur(24px)',
-                    border: '1px solid rgba(150,150,145,.32)',
-                    boxShadow: '0 14px 34px rgba(0,0,0,.14), inset 0 1px 1px rgba(255,255,255,.9)',
-                    color: '#20201e',
-                    ...({
-                      '--glass-tint': 'rgba(250,249,246,.74)',
-                      '--paper-card': '#faf9f6',
-                      '--paper-hairline': 'rgba(90,90,85,.16)',
-                      '--paper-ink': '#20201e',
-                      '--paper-secondary-ink': '#41413c',
-                      '--paper-muted-ink': '#41413c',
-                      '--paper-destructive': '#8b2117',
-                    } as React.CSSProperties),
+                    padding: 'var(--space-1)',
                   }}
                 >
                   {/* Layout-spring height container (IMG_7769–IMG_7774 submenu morph) */}
                   <motion.div
                     layout={reduced ? false : 'size'}
-                    transition={{
-                      type: 'spring',
-                      stiffness: 360,
-                      damping: 26,
-                      mass: 0.85,
-                    }}
+                    transition={SPRING}
                     style={{ width: '100%' }}
                   >
                     <AnimatePresence
@@ -274,7 +216,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                             : {
                                 opacity: 0,
                                 y: ctx.morphDirection > 0 ? 12 : -12,
-                                scale: 0.97,
+                                scale: press.whileTap.scale,
                               }
                         }
                         animate={{
@@ -288,20 +230,11 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                             : {
                                 opacity: 0,
                                 y: ctx.morphDirection > 0 ? -12 : 12,
-                                scale: 0.97,
-                                transition: { duration: 0.12 },
+                                scale: press.whileTap.scale,
+                                transition: TRANSITION.fast,
                               }
                         }
-                        transition={
-                          reduced
-                            ? { duration: 0 }
-                            : {
-                                type: 'spring',
-                                stiffness: 420,
-                                damping: 30,
-                                mass: 0.8,
-                              }
-                        }
+                        transition={reduced ? TRANSITION.none : SPRING}
                         style={{
                           display: 'flex',
                           flexDirection: 'column',
@@ -315,7 +248,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                         {topPinnedNodes}
 
                         {/* Scrollable items with progressive blur edge scrims */}
-                        <ScrollBlur maxHeight={maxHeight} scrimHeight={20}>
+                        <ScrollBlur maxHeight={maxHeight} scrimHeight={16}>
                           <DepthContext.Provider
                             value={morphState.trail.length}
                           >

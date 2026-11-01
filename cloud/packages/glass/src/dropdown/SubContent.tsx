@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import React from 'react';
 import { GlassSurface } from '../GlassSurface';
-import type { GlassMaterialControls } from '../glass-store';
+import { popIn, SPRING, TRANSITION } from '../motion';
+import type { GlassMaterialControls } from '../GlassSurface';
 import type { PanelHighlightContextValue } from './context';
 import {
   DepthContext,
@@ -51,23 +52,10 @@ const SubContent = React.forwardRef<HTMLDivElement, SubContentProps>(
                 aria-label={
                   typeof sub.label === 'string' ? sub.label : 'Submenu'
                 }
-                initial={{
-                  opacity: 0,
-                  scale: 0.62,
-                  x: sub.openSide === 'right' ? -10 : 10,
-                }}
-                animate={{ opacity: 1, scale: 1, x: 0 }}
-                exit={{
-                  opacity: 0,
-                  scale: 0.78,
-                  transition: { duration: 0.12 },
-                }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 460,
-                  damping: 28,
-                  mass: 0.8,
-                }}
+                initial={{ scale: popIn.initial.scale, x: sub.openSide === 'right' ? -8 : 8 }}
+                animate={{ scale: 1, x: 0 }}
+                exit={{ scale: popIn.exit.scale, transition: TRANSITION.fast }}
+                transition={SPRING}
                 style={{
                   position: 'absolute',
                   zIndex: 60,
@@ -82,10 +70,13 @@ const SubContent = React.forwardRef<HTMLDivElement, SubContentProps>(
                 {...rest}
               >
                 <GlassSurface
-                  shape="free"
-                  radius={22}
-                  {...ctx.materialControls}
-                  style={{ padding: 6 }}
+                  material={ctx.materialControls.material ?? 'thick'}
+                  radius={16}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0, transition: TRANSITION.fast }}
+                  transition={TRANSITION.base}
+                  style={{ padding: 'var(--space-1)' }}
                 >
                   <div
                     style={{ display: 'flex', flexDirection: 'column', gap: 2 }}

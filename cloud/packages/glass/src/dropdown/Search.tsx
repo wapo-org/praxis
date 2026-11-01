@@ -1,4 +1,4 @@
-import { Search as SearchIcon, X } from 'lucide-react';
+import { Search as SearchIcon, X } from '../icons';
 import React from 'react';
 import { SEARCH_MARKER, useGlassDropdownContext } from './context';
 export interface SearchProps extends Omit<
@@ -29,7 +29,7 @@ const Search = React.forwardRef<HTMLInputElement, SearchProps>(function Search(
       }}
     >
       <SearchIcon
-        size={14}
+        size={16}
         style={{ color: 'var(--paper-muted-ink)', flexShrink: 0 }}
       />
       <input
@@ -71,7 +71,7 @@ const Search = React.forwardRef<HTMLInputElement, SearchProps>(function Search(
             cursor: 'pointer',
           }}
         >
-          <X size={13} />
+          <X size={16} />
         </button>
       ) : null}
     </div>

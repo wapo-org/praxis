@@ -1,7 +1,6 @@
 import React from 'react';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { GlassRuntime } from '@praxis/glass';
 import { PraxisStoreProvider } from './state/store';
 import { UserBubble } from './components/chat/UserBubble';
 import { AgentActivityView } from './components/chat/AgentActivityView';
@@ -45,7 +44,7 @@ describe('@praxis/web core chat & lab components', () => {
 
   it('renders AgentActivityView with tool steps, pending approval, and pending elicitation', () => {
     const html = renderToStaticMarkup(
-      <GlassRuntime>
+      
         <AgentActivityView
           runId="run-1"
           isRunning={true}
@@ -100,7 +99,7 @@ describe('@praxis/web core chat & lab components', () => {
             },
           ]}
         />
-      </GlassRuntime>,
+      ,
     );
     expect(html).toContain('agent-activity-view');
     expect(html).toContain('approval-card-app-1');
@@ -148,13 +147,11 @@ describe('@praxis/web core chat & lab components', () => {
     expect(html).toContain('120 in · 85 out');
   });
 
-  it('renders ChatScreen inside PraxisStoreProvider and GlassRuntime', () => {
+  it('renders ChatScreen inside PraxisStoreProvider', () => {
     const html = renderToStaticMarkup(
-      <GlassRuntime>
-        <PraxisStoreProvider>
-          <ChatScreen onOpenGlassLab={() => {}} />
-        </PraxisStoreProvider>
-      </GlassRuntime>,
+      <PraxisStoreProvider>
+        <ChatScreen />
+      </PraxisStoreProvider>,
     );
     expect(html).toContain('chat-screen');
     expect(html).toContain('chat-top-bar');
@@ -164,9 +161,9 @@ describe('@praxis/web core chat & lab components', () => {
 
   it('renders GlassLabPage with Apple Notes 35-frame reference demo and 500-model virtual picker', () => {
     const html = renderToStaticMarkup(
-      <GlassRuntime>
+      
         <GlassLabPage onNavigateBack={() => {}} />
-      </GlassRuntime>,
+      ,
     );
     expect(html).toContain('Liquid Glass');
     expect(html).toContain('Recent Notes');

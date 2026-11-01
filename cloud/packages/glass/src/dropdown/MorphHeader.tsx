@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft } from '../icons';
 import { useGlassDropdownContext, type SubLevelInfo } from './context';
 import { Separator } from './parts';
 import { SubmenuChevron } from './SubmenuChevron';
@@ -51,7 +51,7 @@ export function MorphHeader({
               </span>
             ) : (
               <ChevronLeft
-                size={15}
+                size={16}
                 style={{ color: 'var(--paper-secondary-ink)' }}
               />
             )}

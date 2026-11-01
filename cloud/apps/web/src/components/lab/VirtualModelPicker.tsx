@@ -1,11 +1,11 @@
-import { DotMeter, GlassDropdown, GlassSurface, useGlassRuntime } from '@praxis/glass';
+import { DotMeter, GlassDropdown, GlassSurface } from '@praxis/glass';
 import React from 'react';
 import { Eye, Star, Zap } from '../../lib/icons';
 import './lab.css';
 
 import { SYNTHETIC_500_MODELS } from './syntheticModels';
 export function VirtualModelPicker() {
-  const material = useGlassRuntime((s) => s.overrides.material ?? 'regular');
+  const material = 'thick' as const;
   // 2. 500-Model Virtualized Picker state
   const [modelPickerOpen, setModelPickerOpen] = React.useState(false);
   const [modelSearch, setModelSearch] = React.useState('');
@@ -94,7 +94,7 @@ export function VirtualModelPicker() {
           >
             <GlassDropdown.Trigger
               data-testid="virtual-model-picker-trigger"
-              icon={<Zap size={14} />}
+              icon={<Zap size={16} />}
               value={selectedModel.contextWindow}
             >
               {selectedModel.name}
@@ -131,7 +131,7 @@ export function VirtualModelPicker() {
                         >
                           {model.vision ? (
                             <Eye
-                              size={12}
+                              size={16}
                               aria-label="Vision supported"
                               style={{ color: 'var(--paper-secondary-ink)' }}
                             />
@@ -154,7 +154,7 @@ export function VirtualModelPicker() {
                             display: 'inline-flex',
                           }}
                         >
-                          <Star size={13} fill={isPinned ? 'currentColor' : 'none'} />
+                          <Star size={16} fill={isPinned ? 'currentColor' : 'none'} />
                         </button>
                       }
                     >
@@ -292,7 +292,7 @@ export function VirtualModelPicker() {
                             display: 'inline-flex',
                           }}
                         >
-                          <Star size={13} fill={isPinned ? 'currentColor' : 'none'} />
+                          <Star size={16} fill={isPinned ? 'currentColor' : 'none'} />
                         </button>
                       }
                     >

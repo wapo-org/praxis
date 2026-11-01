@@ -1,11 +1,12 @@
 import { motion } from 'framer-motion';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown } from '../icons';
 import React from 'react';
 import { closeAndFocusNext } from './focus';
 import { GlassSurface } from '../GlassSurface';
-import type { GlassMaterialControls } from '../glass-store';
+import type { GlassMaterialControls } from '../GlassSurface';
 import { assignForwardedRef, useGlassDropdownContext } from './context';
 import { useMenuReducedMotion } from './motion';
+import { press, SPRING, TRANSITION } from '../motion';
 export interface TriggerProps
   extends
     Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'value'>,
@@ -27,14 +28,6 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
       children,
       className = '',
       material,
-      intensity,
-      refraction,
-      frost,
-      finish,
-      backdrop,
-      stretchable = false,
-      bounce = true,
-      spotlight = true,
       onClick,
       onPointerDown,
       onKeyDown,
@@ -118,25 +111,13 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
 
     return (
       <motion.div
-        animate={{ scale: !reduced && ctx.open ? 0.965 : 1 }}
-        transition={
-          reduced
-            ? { duration: 0 }
-            : { type: 'spring', stiffness: 520, damping: 32 }
-        }
+        animate={{ scale: !reduced && ctx.open ? press.whileTap.scale : 1 }}
+        transition={reduced ? TRANSITION.none : SPRING}
         style={{ display: 'inline-flex', maxWidth: '100%' }}
       >
         <GlassSurface
           shape="capsule"
           material={material ?? ctx.materialControls.material ?? 'regular'}
-          intensity={intensity ?? ctx.materialControls.intensity}
-          refraction={refraction ?? ctx.materialControls.refraction}
-          frost={frost ?? ctx.materialControls.frost}
-          finish={finish ?? ctx.materialControls.finish}
-          backdrop={backdrop ?? ctx.materialControls.backdrop}
-          stretchable={stretchable}
-          bounce={bounce}
-          spotlight={spotlight}
           className={className}
           style={{ display: 'inline-flex', maxWidth: '100%' }}
         >
@@ -210,11 +191,11 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
             {!hideChevron ? (
               <ChevronDown
                 aria-hidden="true"
-                size={14}
+                size={16}
                 style={{
                   color: 'var(--paper-muted-ink)',
                   transform: ctx.open ? 'rotate(180deg)' : 'rotate(0deg)',
-                  transition: 'transform 180ms ease',
+                  transition: 'transform var(--duration-base) var(--ease-standard)',
                 }}
               />
             ) : null}

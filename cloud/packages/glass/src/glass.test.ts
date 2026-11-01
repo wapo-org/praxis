@@ -1,78 +1,64 @@
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  PAPER,
-  PAPER_LIGHT,
-  PAPER_DARK,
-  RHYTHM,
-  TYPOGRAPHY,
-  MOTION,
-  MATERIAL_RAMP,
-  negotiateStrategy,
-  generateDisplacementMaps,
-  BAKED_PROFILES,
-} from './index';
+import { PAPER_DARK, PAPER_LIGHT, popIn, press, resolvePreset, sheet, SPRING, glassClassName } from './index';
 
-describe('@praxis/glass tokens & engine', () => {
-  it('matches exact Swift Paper color tokens in light and dark mode', () => {
-    expect(PAPER_LIGHT.canvas).toBe('#FBFBF9');
-    expect(PAPER_LIGHT.card).toBe('#FFFFFF');
-    expect(PAPER_LIGHT.ink).toBe('#15140F');
-    expect(PAPER_LIGHT.secondaryInk).toBe('#6E6B62');
-    expect(PAPER_LIGHT.hairline).toBe('#E9E6DF');
-    expect(PAPER_LIGHT.fill1).toBe('#F4F2EC');
-    expect(PAPER_LIGHT.fill2).toBe('#E9E6DF');
-    expect(PAPER_LIGHT.tile).toBe('#2A2926');
-    expect(PAPER_LIGHT.tileGlyph).toBe('#F4F2EC');
-    expect(PAPER_LIGHT.success).toBe('#17653F');
-    expect(PAPER_LIGHT.destructive).toBe('#B3382E');
+const here = new URL('.', import.meta.url).pathname;
+const tokensCss = readFileSync(join(here, '../../../apps/web/src/styles/tokens.css'), 'utf8');
+const block = (selector: string) => {
+  const start = tokensCss.indexOf(`${selector} {`);
+  return tokensCss.slice(start, tokensCss.indexOf('\n}', start));
+};
+const KEYS: Record<keyof typeof PAPER_LIGHT, string> = {
+  paper: '--color-paper', surface: '--color-surface', ink: '--color-ink', ink2: '--color-ink-2',
+  ink3: '--color-ink-3', fill1: '--color-fill-1', fill2: '--color-fill-2',
+  success: '--color-success', danger: '--color-danger',
+};
+function files(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory() ? files(path) : [path];
+  });
+}
 
-    expect(PAPER_DARK.canvas).toBe('#0B0B0A');
-    expect(PAPER_DARK.card).toBe('#151513');
-    expect(PAPER_DARK.ink).toBe('#F1EFE9');
-    expect(PAPER_DARK.secondaryInk).toBe('#A8A49A');
-    expect(PAPER_DARK.hairline).toBe('#2A2926');
-    expect(PAPER_DARK.tile).toBe('#DDD9CF');
-    expect(PAPER_DARK.tileGlyph).toBe('#151513');
-    expect(PAPER_DARK.success).toBe('#4CC38A');
-    expect(PAPER_DARK.destructive).toBe('#FF7A6E');
-    expect(PAPER.var.canvas).toBe('var(--paper-canvas)');
+describe('@praxis/glass design system', () => {
+  it('keeps tokens.css on the iOS Paper palette in light and dark', () => {
+    const light = block("[data-theme='light']");
+    const dark = block("[data-theme='dark']");
+    for (const [key, cssVar] of Object.entries(KEYS)) {
+      expect(light).toContain(`${cssVar}: ${PAPER_LIGHT[key as keyof typeof KEYS]};`);
+      expect(dark).toContain(`${cssVar}: ${PAPER_DARK[key as keyof typeof KEYS]};`);
+    }
   });
 
-  it('matches exact Swift Rhythm & Motion spring parameters', () => {
-    expect(RHYTHM.margin).toBe(20);
-    expect(RHYTHM.turnGap).toBe(32);
-    expect(RHYTHM.composerRadius).toBe(28);
-    expect(RHYTHM.maxReadingWidth).toBe(680);
-
-    expect(MOTION.press.response).toBe(0.16);
-    expect(MOTION.press.dampingFraction).toBe(0.86);
-    expect(MOTION.pop.response).toBe(0.36);
-    expect(MOTION.pop.dampingFraction).toBe(0.62);
-    expect(MOTION.reflow.dampingFraction).toBe(0.92);
-    expect(TYPOGRAPHY.sizes.body.fontSize).toBe('17px');
-    expect(TYPOGRAPHY.sizes.body.lineHeight).toBe('27px');
+  it('ships dark glass tints that are actually dark', () => {
+    const dark = block("[data-theme='dark']");
+    for (const recipe of ['regular', 'thick', 'clear']) {
+      const match = dark.match(new RegExp(`--glass-${recipe}-tint: rgba\\((\\d+), (\\d+), (\\d+)`));
+      expect(match, recipe).not.toBeNull();
+      expect(Math.max(...match!.slice(1).map(Number))).toBeLessThan(64);
+    }
   });
 
-  it('generates and caches kube.io displacement and specular maps', () => {
-    const maps1 = generateDisplacementMaps({
-      width: 256,
-      height: 400,
-      radius: 24,
-      bezel: MATERIAL_RAMP.regular.bezel,
-      material: 'regular',
-    });
-    expect(maps1.displacementUrl).toMatch(/^data:image\//);
-    expect(maps1.specularUrl).toMatch(/^data:image\//);
+  it('exposes exactly three glass recipes', () => {
+    expect(glassClassName('regular')).toMatch(/regular/);
+    expect(glassClassName('thick', 'capsule')).toMatch(/thick.*capsule/);
+    expect(glassClassName('clear')).toMatch(/clear/);
+  });
 
-    const maps2 = generateDisplacementMaps({
-      width: 256,
-      height: 400,
-      radius: 24,
-      bezel: MATERIAL_RAMP.regular.bezel,
-      material: 'regular',
-    });
-    expect(maps2).toBe(maps1);
-    expect(BAKED_PROFILES.regular.length).toBe(41);
-    expect(negotiateStrategy()).toMatch(/^(svg-displacement|webgl-refraction|progressive-frost|reduced-transparency)$/);
+  it('uses one spring and collapses presets to a fade under reduced motion', () => {
+    expect(popIn.transition).toBe(SPRING);
+    expect(sheet.transition).toBe(SPRING);
+    expect(press.whileTap.scale).toBe(0.97);
+    expect(resolvePreset(popIn, true).initial).toEqual({ opacity: 0 });
+    expect(resolvePreset(popIn, false)).toBe(popIn);
+  });
+
+  it('has no WebGL, canvas, rAF loop or animated blur in the glass package', () => {
+    for (const file of files(here).filter((f) => /\.(tsx?|css)$/.test(f) && !/test|\.pw\./.test(f))) {
+      const src = readFileSync(file, 'utf8');
+      expect(src, file).not.toMatch(/getContext\(|WebGL|requestAnimationFrame\((tick|loop|frame|render|draw)|<canvas/);
+      expect(src, file).not.toMatch(/transition:[^;]*backdrop-filter/);
+    }
   });
 });

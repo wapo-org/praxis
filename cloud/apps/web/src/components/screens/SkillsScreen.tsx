@@ -144,7 +144,7 @@ export function SkillsScreen() {
                           void task.run(() => store.removeSkill(skill.id));
                         }}
                       >
-                        <Trash2 size={15} />
+                        <Trash2 size={16} />
                         Delete
                       </ScreenButton>
                     </div>
@@ -161,11 +161,11 @@ export function SkillsScreen() {
       </Section>
       <div className="screen-actions">
         <ScreenButton onClick={() => store.setActiveSheet('skill-import')}>
-          <Download size={17} />
+          <Download size={18} />
           Import skill
         </ScreenButton>
         <ScreenButton onClick={() => store.setActiveSheet('skill-browser')}>
-          <Grid2X2 size={17} />
+          <Grid2X2 size={18} />
           Browse skills
         </ScreenButton>
       </div>

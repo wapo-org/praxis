@@ -1,0 +1,83 @@
+/* CSS-only liquid glass. No JS per frame, no re-capture: the browser composites
+   backdrop-filter on the GPU. Never animate the blur radius; animate transform/opacity only.
+   Recipe values are tokens (apps/web/src/styles/tokens.css → --glass-*). */
+
+.glass {
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--glass-radius, var(--radius-xl));
+  background-color: var(--glass-tint);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 0 0 0.5px var(--glass-edge),
+    var(--glass-shadow);
+}
+
+/* Specular rim: a 1 px gradient border, cut out with a mask so only the edge paints. */
+.glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    180deg,
+    var(--glass-rim-top) 0%,
+    var(--glass-rim-bottom) 42%,
+    var(--glass-rim-bottom) 70%,
+    var(--glass-rim-top) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  pointer-events: none;
+}
+
+.regular {
+  --glass-tint: var(--glass-regular-tint);
+  --glass-blur: var(--glass-regular-blur);
+  --glass-shadow: var(--shadow-2);
+}
+
+.thick {
+  --glass-tint: var(--glass-thick-tint);
+  --glass-blur: var(--glass-thick-blur);
+  --glass-shadow: var(--shadow-3);
+}
+
+.clear {
+  --glass-tint: var(--glass-clear-tint);
+  --glass-blur: var(--glass-clear-blur);
+  --glass-shadow: var(--shadow-1);
+}
+
+.capsule {
+  --glass-radius: var(--radius-full);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background-color: var(--glass-fallback);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background-color: var(--glass-fallback);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .glass {
+    border: 1px solid CanvasText;
+  }
+}

@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
-import { Check } from 'lucide-react';
+import { SPRING } from '../motion';
+import { Check } from '../icons';
 import React from 'react';
 import { PanelHighlightContext, useGlassDropdownContext } from './context';
 export interface ItemProps extends Omit<
@@ -127,12 +128,7 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
           <motion.span
             layoutId={`${panelHighlight?.layoutScopeId ?? 'menu'}-highlight`}
             aria-hidden="true"
-            transition={{
-              type: 'spring',
-              stiffness: 520,
-              damping: 36,
-              mass: 0.7,
-            }}
+            transition={SPRING}
             style={{
               position: 'absolute',
               inset: 0,
@@ -181,7 +177,7 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
               justifyContent: 'center',
             }}
           >
-            {selected ? <Check size={14} strokeWidth={2.25} /> : null}
+            {selected ? <Check size={16} /> : null}
           </span>
         ) : null}
 
@@ -228,7 +224,7 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
               color: 'var(--paper-ink)',
             }}
           >
-            <Check size={14} strokeWidth={2.25} />
+            <Check size={16} />
           </span>
         ) : null}
 

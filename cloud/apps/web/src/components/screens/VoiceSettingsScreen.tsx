@@ -131,7 +131,7 @@ export function VoiceSettingsScreen() {
           <Card>
             {recordings.map((recording) => (
               <div className="screen-row" key={recording.id}>
-                <Mic size={17} aria-hidden="true" />
+                <Mic size={18} aria-hidden="true" />
                 <span className="screen-row-copy">
                   <span>{recording.name}</span>
                   <span className="screen-detail">

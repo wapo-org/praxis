@@ -1,5 +1,5 @@
 import React from 'react';
-import type { GlassMaterialControls } from '../glass-store';
+import type { GlassMaterialControls } from '../GlassSurface';
 export type GlassDropdownAlign = 'start' | 'center' | 'end';
 export type GlassDropdownSide = 'top' | 'bottom' | 'auto';
 export type GlassDropdownSubmenuMode = 'morph' | 'cascade';

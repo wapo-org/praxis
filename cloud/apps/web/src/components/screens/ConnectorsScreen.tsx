@@ -192,14 +192,14 @@ export function ConnectorsScreen() {
                             });
                           }}
                         >
-                          <RefreshCw size={14} />
+                          <RefreshCw size={16} />
                           Refresh tools
                         </ScreenButton>
                         {connector.status === 'needs_auth' ||
                         connector.status === 'needs_reauth' ||
                         connector.authStatus === 'required' ? (
                           <ScreenButton disabled={task.busy} onClick={() => signIn(connector.id)}>
-                            <ExternalLink size={14} />
+                            <ExternalLink size={16} />
                             Sign in
                           </ScreenButton>
                         ) : null}
@@ -235,7 +235,7 @@ export function ConnectorsScreen() {
                           void task.run(() => store.removeConnector(connector.id));
                         }}
                       >
-                        <Trash2 size={15} />
+                        <Trash2 size={16} />
                         Delete connector
                       </ScreenButton>
                     </div>
@@ -254,19 +254,19 @@ export function ConnectorsScreen() {
       <Section title="Add a connector">
         <Card>
           <NavRow
-            icon={<Link size={17} />}
+            icon={<Link size={18} />}
             title="Add by URL"
             detail="A server address, with a token if it needs one"
             onClick={() => store.setActiveSheet('connector-add-url')}
           />
           <NavRow
-            icon={<FileJson size={17} />}
+            icon={<FileJson size={18} />}
             title="Paste a config"
             detail="mcp.json or claude_desktop_config.json"
             onClick={() => store.setActiveSheet('connector-paste-config')}
           />
           <NavRow
-            icon={<Grid2X2 size={17} />}
+            icon={<Grid2X2 size={18} />}
             title="Browse the MCP registry"
             detail="Public servers you can reach by URL"
             onClick={() => store.setActiveSheet('connector-registry')}

@@ -2,7 +2,7 @@ import {
   GlassCard,
   GlassDropdown,
   GlassIconButton,
-  MOTION,
+  press,
   ProgressiveBlurScrim,
 } from '@praxis/glass';
 import { motion } from 'framer-motion';
@@ -54,8 +54,7 @@ export function ScreenButton({
   return (
     <motion.button
       type="button"
-      whileTap={{ scale: 0.97, opacity: 0.84 }}
-      transition={MOTION.press}
+      {...press}
       className={`screen-button screen-button--${tone} ${className}`}
       {...props}
     >

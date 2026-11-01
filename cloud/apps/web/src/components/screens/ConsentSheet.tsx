@@ -25,7 +25,7 @@ export function ConsentSheet() {
   const items = voice
     ? [
         {
-          icon: <Mic size={17} />,
+          icon: <Mic size={18} />,
           title: 'Voice recordings',
           detail: 'The audio you recorded, to turn into text.',
         },
@@ -33,12 +33,12 @@ export function ConsentSheet() {
     : prompt.purpose === 'vision'
       ? [
           {
-            icon: <Paperclip size={17} />,
+            icon: <Paperclip size={18} />,
             title: 'Images',
             detail: 'The images you ask this model to read.',
           },
           {
-            icon: <FileText size={17} />,
+            icon: <FileText size={18} />,
             title: 'Questions about the image',
             detail: 'The context needed to describe and understand your image.',
           },
@@ -46,12 +46,12 @@ export function ConsentSheet() {
       : prompt.purpose === 'connector'
         ? [
             {
-              icon: <Wrench size={17} />,
+              icon: <Wrench size={18} />,
               title: 'Tool requests',
               detail: 'The tool names and arguments sent to this connector.',
             },
             {
-              icon: <Link size={17} />,
+              icon: <Link size={18} />,
               title: 'Connector data',
               detail:
                 'Results returned by this connector may be shared with your chat provider.',
@@ -59,23 +59,23 @@ export function ConsentSheet() {
           ]
         : [
             {
-              icon: <FileText size={17} />,
+              icon: <FileText size={18} />,
               title: 'Your messages',
               detail: 'This chat’s messages so far, and each new one.',
             },
             {
-              icon: <Paperclip size={17} />,
+              icon: <Paperclip size={18} />,
               title: 'Attachments',
               detail: 'Photos and files you add to the chat.',
             },
             {
-              icon: <Wrench size={17} />,
+              icon: <Wrench size={18} />,
               title: 'Tool results',
               detail:
                 'What the agent’s tools return, like web pages or code output.',
             },
             {
-              icon: <Link size={17} />,
+              icon: <Link size={18} />,
               title: 'Connector data',
               detail:
                 'What the connectors enabled for this chat return to the agent.',
@@ -100,7 +100,7 @@ export function ConsentSheet() {
         </h2>
         <div>
           <span className="screen-badge">
-            <Globe size={13} aria-hidden="true" />
+            <Globe size={16} aria-hidden="true" />
             {prompt.host}
           </span>
         </div>

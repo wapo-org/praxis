@@ -23,7 +23,7 @@ export function PlusTray({ onPickFiles }: PlusTrayProps) {
       {[
         { name: 'Photos', Icon: Photo, accept: 'image/*' }, { name: 'Camera', Icon: Camera, accept: 'image/*', capture: true },
         { name: 'Files', Icon: Folder, accept: '*/*' }, { name: 'Screenshot', Icon: Copy, accept: 'image/*' },
-      ].map(({ name, Icon, accept, capture }) => <button key={name} data-testid={`tray-tile-${name.toLowerCase()}`} onClick={() => onPickFiles(accept, capture)}><Icon size={22} /><span>{name}</span></button>)}
+      ].map(({ name, Icon, accept, capture }) => <button key={name} data-testid={`tray-tile-${name.toLowerCase()}`} onClick={() => onPickFiles(accept, capture)}><Icon size={20} /><span>{name}</span></button>)}
     </div>
     <button className="tray-photo-access" onClick={() => onPickFiles('image/*')}>Allow Photos access</button>
     <p className="tray-detail">Choose a saved screenshot from your files. Your browser grants access only to selected photos.</p>

@@ -1,0 +1,83 @@
+/* Progressive blur: static stacked bands, each masked toward the edge. No JS, no per-frame work. */
+.scrim {
+  position: absolute;
+  inset-inline: 0;
+  height: var(--scrim-height, 64px);
+  pointer-events: none;
+  z-index: 15;
+}
+.top { top: 0; --scrim-dir: to bottom; }
+.bottom { bottom: 0; --scrim-dir: to top; }
+
+.band,
+.feather {
+  position: absolute;
+  inset-inline: 0;
+  -webkit-mask-image: linear-gradient(var(--scrim-dir), #000 0%, transparent 100%);
+  mask-image: linear-gradient(var(--scrim-dir), #000 0%, transparent 100%);
+}
+.top .band { top: 0; }
+.bottom .band { bottom: 0; }
+.band:nth-child(1) { height: 100%; -webkit-backdrop-filter: blur(1px); backdrop-filter: blur(1px); }
+.band:nth-child(2) { height: 72%; -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.band:nth-child(3) { height: 46%; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.band:nth-child(4) { height: 24%; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+
+.feather {
+  inset: 0;
+  -webkit-mask-image: none;
+  mask-image: none;
+  background: linear-gradient(
+    var(--scrim-dir),
+    color-mix(in srgb, var(--scrim-tint, var(--color-paper)) 88%, transparent) 0%,
+    color-mix(in srgb, var(--scrim-tint, var(--color-paper)) 40%, transparent) 55%,
+    transparent 100%
+  );
+}
+
+/* Scroll fade for menus and lists: a mask, not a blur, so it is free on glass. */
+@property --fade-top {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --fade-bottom {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+.scroll {
+  position: relative;
+  overflow: hidden;
+}
+.viewport {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--fade-top),
+    #000 calc(100% - var(--fade-bottom)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--fade-top),
+    #000 calc(100% - var(--fade-bottom)),
+    transparent 100%
+  );
+}
+@supports (animation-timeline: scroll()) {
+  .viewport {
+    animation: scroll-fade linear both;
+    animation-timeline: scroll(self);
+  }
+}
+@keyframes scroll-fade {
+  0% { --fade-top: 0px; --fade-bottom: var(--fade-size, 16px); }
+  8% { --fade-top: var(--fade-size, 16px); }
+  92% { --fade-bottom: var(--fade-size, 16px); }
+  100% { --fade-top: var(--fade-size, 16px); --fade-bottom: 0px; }
+}

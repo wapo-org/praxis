@@ -1,5 +1,5 @@
-import { GlassSurface, MOTION } from '@praxis/glass';
-import { motion, useReducedMotion } from 'framer-motion';
+import { GlassSurface, sheet, usePreset } from '@praxis/glass';
+import { motion } from 'framer-motion';
 import React from 'react';
 import { createPortal } from 'react-dom';
 
@@ -15,7 +15,7 @@ export function SheetDialog({
   children: React.ReactNode;
   consent?: boolean;
 }) {
-  const reduced = useReducedMotion();
+  const sheetMotion = usePreset(sheet);
   const [portal] = React.useState(() => document.createElement('div'));
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const dismissRef = React.useRef(onDismiss);
@@ -81,11 +81,18 @@ export function SheetDialog({
     >
       <motion.div
         className="screen-dialog-position"
-        initial={{ opacity: 0, y: reduced ? 0 : 36, scale: reduced ? 1 : 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={reduced ? { duration: 0.15 } : MOTION.morph}
+        initial={{ y: sheetMotion.initial.y, scale: sheetMotion.initial.scale }}
+        animate={{ y: 0, scale: 1 }}
+        transition={sheetMotion.transition}
       >
-        <GlassSurface className="screen-dialog" radius={24} shape="free" material="regular">
+        <GlassSurface
+          className="screen-dialog"
+          radius={24}
+          material="thick"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={sheetMotion.transition}
+        >
           <div
             className="screen-shell"
             ref={dialogRef}

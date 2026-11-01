@@ -1,10 +1,9 @@
-import { GlassChip, useGlassMaterial, useGlassRuntime, type GlassStrategy } from '@praxis/glass';
+import { GlassChip } from '@praxis/glass';
 import React from 'react';
 import { ArrowLeft, Moon, Sun } from '../../lib/icons';
 import { AppleNotesReplica } from './AppleNotesReplica';
 import { DropdownPositions } from './DropdownPositions';
 import './lab.css';
-import { MaterialControls } from './MaterialControls';
 import { ScrimComparison } from './ScrimComparison';
 import { VirtualModelPicker } from './VirtualModelPicker';
 
@@ -13,11 +12,6 @@ export interface GlassLabPageProps {
 }
 
 export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
-  const { strategy: contextStrategy } = useGlassMaterial();
-  const runtimeStrategy = useGlassRuntime((s) => s.strategy);
-  const setRuntimeStrategy = useGlassRuntime((s) => s.setStrategy);
-
-  const activeStrategy: GlassStrategy = runtimeStrategy || contextStrategy;
 
   const [theme, setTheme] = React.useState<'light' | 'dark'>(() => {
     if (typeof document !== 'undefined') {
@@ -77,7 +71,7 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <GlassChip
             data-testid="glass-lab-back-button"
-            icon={<ArrowLeft size={14} />}
+            icon={<ArrowLeft size={16} />}
             onClick={() => onNavigateBack?.()}
           >
             Back to Chat
@@ -100,7 +94,7 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
           </div>
         </div>
 
-        {/* Engine Strategy Badge & Theme Switcher */}
+        {/* Theme switcher */}
         <div
           style={{
             display: 'flex',
@@ -109,82 +103,10 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
             flexWrap: 'wrap',
           }}
         >
-          <div
-            data-testid="glass-lab-strategy-badge"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '5px 11px',
-              borderRadius: '9999px',
-              backgroundColor: 'var(--paper-fill-1)',
-              border: '1px solid var(--paper-hairline)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '11px',
-              fontWeight: 500,
-              color: 'var(--paper-ink)',
-            }}
-          >
-            <span
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: '9999px',
-                backgroundColor:
-                  activeStrategy === 'svg-displacement'
-                    ? 'var(--paper-success)'
-                    : activeStrategy === 'progressive-frost'
-                      ? '#D97706'
-                      : 'var(--paper-muted-ink)',
-              }}
-            />
-            <span>Engine: {activeStrategy}</span>
-          </div>
-
-          <div
-            role="group"
-            aria-label="Simulate glass engine strategy"
-            style={{
-              display: 'inline-flex',
-              padding: '2px',
-              borderRadius: '9999px',
-              backgroundColor: 'var(--paper-fill-1)',
-              border: '1px solid var(--paper-hairline)',
-            }}
-          >
-            {(
-              ['svg-displacement', 'progressive-frost', 'reduced-transparency'] as GlassStrategy[]
-            ).map((strat) => (
-              <button
-                key={strat}
-                type="button"
-                onClick={() => setRuntimeStrategy(strat)}
-                style={{
-                  border: 'none',
-                  borderRadius: '9999px',
-                  padding: '4px 9px',
-                  fontSize: '11px',
-                  fontFamily: 'var(--font-mono)',
-                  cursor: 'pointer',
-                  backgroundColor: activeStrategy === strat ? 'var(--paper-tile)' : 'transparent',
-                  color:
-                    activeStrategy === strat
-                      ? 'var(--paper-tile-glyph)'
-                      : 'var(--paper-secondary-ink)',
-                }}
-              >
-                {strat === 'svg-displacement'
-                  ? 'SVG'
-                  : strat === 'progressive-frost'
-                    ? 'Frost'
-                    : 'Opaque'}
-              </button>
-            ))}
-          </div>
 
           <GlassChip
             data-testid="glass-lab-theme-toggle"
-            icon={theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+            icon={theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             onClick={toggleTheme}
           >
             {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
@@ -203,8 +125,6 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
           gap: '28px',
         }}
       >
-        {/* 1. Live Material Controls Panel */}
-        <MaterialControls />
 
         <DropdownPositions compact />
         {/* Two-column showcase: Apple Notes 35-Frame Replica & 500-Model Virtualized Picker */}

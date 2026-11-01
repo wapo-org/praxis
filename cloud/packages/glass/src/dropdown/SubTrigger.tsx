@@ -1,4 +1,5 @@
 import { SubmenuChevron } from './SubmenuChevron';
+import { SPRING } from '../motion';
 export interface SubTriggerProps extends Omit<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
   'value' | 'onAnimationStart' | 'onDrag' | 'onDragEnd' | 'onDragStart'
@@ -128,12 +129,7 @@ const SubTrigger = React.forwardRef<HTMLButtonElement, SubTriggerProps>(
           <motion.span
             layoutId={`${panelHighlight?.layoutScopeId ?? 'menu'}-highlight`}
             aria-hidden="true"
-            transition={{
-              type: 'spring',
-              stiffness: 520,
-              damping: 36,
-              mass: 0.7,
-            }}
+            transition={SPRING}
             style={{
               position: 'absolute',
               inset: 0,
