@@ -1,5 +1,42 @@
 import XCTest
 
+/// Reads the user events channel exactly as the web client subscribes to it.
+private final class UserEventsProbe: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffer = ""
+    private var session: URLSession!
+    init(after cursor: Int, token: String = "dev-local") {
+        super.init()
+        session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:8807/v1/events")!)
+        request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.setValue(String(cursor), forHTTPHeaderField: "Last-Event-ID")
+        request.timeoutInterval = 300
+        session.dataTask(with: request).resume()
+    }
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        lock.lock(); buffer += String(decoding: data, as: UTF8.self); lock.unlock()
+    }
+    /// Decoded `user.event` payloads received so far.
+    var events: [[String: Any]] {
+        lock.lock(); defer { lock.unlock() }
+        return buffer.split(separator: "\n").compactMap { line in
+            guard line.hasPrefix("data: ") else { return nil }
+            return try? JSONSerialization.jsonObject(with: Data(line.dropFirst(6).utf8)) as? [String: Any]
+        }
+    }
+    func waitForRun(_ matches: (String) -> Bool, timeout: TimeInterval = 20) -> String? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let id = events.last(where: { $0["entity"] as? String == "run" && matches($0["entityId"] as? String ?? "") })?["entityId"] as? String { return id }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        return nil
+    }
+    func stop() { session.invalidateAndCancel() }
+}
+
 /// Opt-in real-server walkthrough. No URLProtocol, fabricated account or
 /// connector OAuth completion is used by these screenshots.
 final class CloudWalkthroughUITests: XCTestCase {
@@ -79,6 +116,7 @@ final class CloudWalkthroughUITests: XCTestCase {
                                                          "script": "approval", "idempotencyKey": UUID().uuidString])
         XCTAssertTrue((200..<300).contains(runStatus), "\(run)")
         let runID = try! XCTUnwrap(run["id"] as? String)
+        let probe = UserEventsProbe(after: eventCursor())
         // The app stays in the foreground: only the user events channel can surface this run.
         tap(app.buttons["History"])
         tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", token)).firstMatch)
@@ -91,9 +129,35 @@ final class CloudWalkthroughUITests: XCTestCase {
             if status != "completed" { Thread.sleep(forTimeInterval: 0.5) }
         }
         XCTAssertEqual(status, "completed")
+        XCTAssertNotNil(probe.waitForRun { $0 == runID }, "The web's user events channel reports the run approved on iOS")
+        probe.stop()
         let messages = api("GET", "/v1/chats/" + chatID + "/messages").1["items"] as? [[String: Any]] ?? []
         // Tool results are user-role rows; a re-sent prompt would show up as a second run.
         XCTAssertEqual(Set(messages.compactMap { $0["runId"] as? String }), [runID], "The phone must not re-send the web prompt")
+    }
+    private func eventCursor() -> Int { api("GET", "/v1/bootstrap").1["eventCursor"] as? Int ?? 0 }
+    /// Reverse direction: a run started on the phone appears on the web's channel
+    /// with the same answer the phone shows.
+    private func watchPhoneRunOnWebLive() {
+        let probe = UserEventsProbe(after: eventCursor())
+        defer { probe.stop() }
+        send("text")
+        XCTAssertTrue(app.buttons["Stop generating"].waitForNonExistence(timeout: 20))
+        let runID = try! XCTUnwrap(probe.waitForRun { _ in true }, "The web's user events channel announces the phone's run")
+        var snapshot: [String: Any] = [:]
+        for _ in 0..<40 {
+            snapshot = api("GET", "/v1/runs/" + runID + "/snapshot").1
+            if (snapshot["run"] as? [String: Any])?["status"] as? String == "completed" { break }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        XCTAssertEqual((snapshot["run"] as? [String: Any])?["status"] as? String, "completed")
+        let answer = (snapshot["blocks"] as? [[String: Any]] ?? []).filter { $0["type"] as? String == "text" }
+            .compactMap { $0["text"] as? String }.joined()
+        XCTAssertFalse(answer.isEmpty, "The web reads the phone's answer from the run snapshot")
+        let prefix = String(answer.prefix(24))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", prefix)).firstMatch.waitForExistence(timeout: 10),
+                      "Phone and web show the same answer: \(prefix)")
+        shot("phone-run-seen-on-web-channel")
     }
     /// Deletion runs last: dev:local answers 500 to the same dev user afterwards.
     private func deleteAccountLive() {
@@ -137,6 +201,7 @@ final class CloudWalkthroughUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Sign in to Local Connector to continue."].waitForExistence(timeout: 20))
         shot("elicitation-url"); tap(app.buttons["Cancel request"])
         followWebStartedRunLive()
+        watchPhoneRunOnWebLive()
         deleteAccountLive()
     }
 }
