@@ -31,6 +31,7 @@ export class RefractionRenderer {
     if (!gl) throw Error('WebGL unavailable');
     this.gl = gl;
     this.canvas.addEventListener('webglcontextlost', (e) => {
+      // preventDefault lets the browser restore the context; the runtime listens for that.
       e.preventDefault();
       onLost();
     });

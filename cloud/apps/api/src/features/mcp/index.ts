@@ -132,6 +132,6 @@ export function createMcpRoutes(context: (req: Request) => Promise<FeatureContex
     return c.json(await withClient(ctx, value, options, async client => { const result = await client.getPrompt({ name: input.name, arguments: input.arguments }); return { type: 'mcp.prompt.result', description: result.description, messages: result.messages.map(v => JsonObjectSchema.parse(v)) }; }));
   });
   app.get('/consents', async c => { const ctx = await authenticated(c.req.raw); return c.json(page((await ctx.store.list(ctx.userId, 'consent')).map(r => ConsentSchema.parse(r.value)), c.req.query(), JSON.stringify([ctx.userId, 'consents']))); });
-  app.post('/consents', async c => { const ctx = await authenticated(c.req.raw); const input = await body(c, ConsentSchema); const host = new URL(`https://${input.host}`).hostname.toLowerCase(); if (input.host.toLowerCase() !== host) throw new McpError(400, 'invalid_host', 'Supply a hostname'); const value = { ...input, host, updatedAt: now() }; await ctx.store.put(ctx.userId, 'consent', host, value); return c.json(value); });
+  app.post('/consents', async c => { const ctx = await authenticated(c.req.raw); const input = await body(c, ConsentSchema); const host = new URL(`https://${input.host}`).host.toLowerCase(); if (input.host.toLowerCase() !== host) throw new McpError(400, 'invalid_host', 'Supply a host (hostname, optionally with a port)'); const value = { ...input, host, updatedAt: now() }; await ctx.store.put(ctx.userId, 'consent', host, value); return c.json(value); });
   return app;
 }
