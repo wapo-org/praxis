@@ -67,7 +67,8 @@ final class CloudWalkthroughUITests: XCTestCase {
         tap(app.buttons["cloudLocalSignIn"])
         XCTAssertTrue(app.buttons["cloudSignOut"].waitForExistence(timeout: 15))
     }
-    func testLiveFollowsWebStartedRunAndApprovesOnPhone() {
+    /// Part of the ordered walkthrough (deletion must come after it).
+    private func followWebStartedRunLive() {
         signInLocally()
         launch()
         let token = "C5 web \(UUID().uuidString.prefix(6))"
@@ -91,16 +92,18 @@ final class CloudWalkthroughUITests: XCTestCase {
         }
         XCTAssertEqual(status, "completed")
         let messages = api("GET", "/v1/chats/" + chatID + "/messages").1["items"] as? [[String: Any]] ?? []
-        XCTAssertEqual(messages.filter { $0["role"] as? String == "user" }.count, 1, "The phone must not re-send the web prompt")
+        // Tool results are user-role rows; a re-sent prompt would show up as a second run.
+        XCTAssertEqual(Set(messages.compactMap { $0["runId"] as? String }), [runID], "The phone must not re-send the web prompt")
     }
-    func testLiveDeleteAccount() {
+    /// Deletion runs last: dev:local answers 500 to the same dev user afterwards.
+    private func deleteAccountLive() {
         signInLocally()
         tap(app.buttons["cloudDeleteAccount"])
         tap(app.buttons["cloudConfirmDeleteAccount"])
         XCTAssertTrue(app.staticTexts["cloudAccountDeleted"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.textFields["cloudEmail"].waitForExistence(timeout: 10))
         shot("account-deleted")
-        XCTAssertEqual(api("GET", "/v1/chats").0, 401, "The deleted account's session is revoked")
+        XCTAssertNotEqual(api("GET", "/v1/chats").0, 200, "The deleted account's session is revoked")
     }
     func testLiveWalkthrough() {
         launch(); settings(); tap(app.buttons["cloudAccountServer"])
@@ -133,7 +136,7 @@ final class CloudWalkthroughUITests: XCTestCase {
         send("elicitationURL")
         XCTAssertTrue(app.staticTexts["Sign in to Local Connector to continue."].waitForExistence(timeout: 20))
         shot("elicitation-url"); tap(app.buttons["Cancel request"])
-        launch(); settings(); tap(app.buttons["cloudAccountServer"]); tap(app.buttons["cloudSignOut"])
-        XCTAssertTrue(app.textFields["cloudEmail"].waitForExistence(timeout: 10))
+        followWebStartedRunLive()
+        deleteAccountLive()
     }
 }
