@@ -1,6 +1,7 @@
 import { GlassSurface, usePress } from '@praxis/glass';
 import { motion } from 'framer-motion';
 import type React from 'react';
+import { displayTitle } from '../../lib/chatTitle';
 import { Edit, History, PanelLeft, Settings } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import styles from './ChatHeader.module.css';
@@ -35,7 +36,7 @@ export function ChatHeader() {
         onClick={() => store.setActiveSheet('settings')}
         aria-label="Chat and model settings"
       >
-        <span className={styles.titleText}>{store.activeChat?.title || 'New chat'}</span>
+        <span className={styles.titleText}>{displayTitle(store.activeChat?.title || 'New chat')}</span>
         <span className={styles.model}>{model?.displayName || 'Select model'}</span>
       </button>
 

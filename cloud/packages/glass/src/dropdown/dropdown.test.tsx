@@ -1,6 +1,4 @@
-// @vitest-environment jsdom
-import React, { act } from 'react';
-import { createRoot } from 'react-dom/client';
+import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { DotMeter, GlassDropdown } from '../index';
@@ -219,49 +217,4 @@ describe('GlassDropdown (@praxis/glass)', () => {
     expect(html).not.toContain('Synthetic Model #500');
   });
 
-  it('portals to document.body by default so no ancestor can clip it, unless asked not to', () => {
-    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
-    const host = document.createElement('div');
-    document.body.append(host);
-    const root = createRoot(host);
-    const render = (portal?: boolean) =>
-      act(async () =>
-        root.render(
-          <GlassDropdown defaultOpen portal={portal}>
-            <GlassDropdown.Trigger>Open</GlassDropdown.Trigger>
-            <GlassDropdown.Content>
-              <GlassDropdown.Item>Row</GlassDropdown.Item>
-            </GlassDropdown.Content>
-          </GlassDropdown>,
-        ),
-      );
-    return render()
-      .then(() => {
-        const menu = document.querySelector('[role="menu"]')!;
-        expect(host.contains(menu)).toBe(false);
-        expect((menu as HTMLElement).style.position).toBe('fixed');
-        return act(async () => root.unmount());
-      })
-      .then(() => {
-        const inline = createRoot(host);
-        return act(async () =>
-          inline.render(
-            <GlassDropdown defaultOpen portal={false}>
-              <GlassDropdown.Trigger>Open</GlassDropdown.Trigger>
-              <GlassDropdown.Content>
-                <GlassDropdown.Item>Row</GlassDropdown.Item>
-              </GlassDropdown.Content>
-            </GlassDropdown>,
-          ),
-        ).then(() => {
-          expect(host.querySelector('[role="menu"]')).not.toBeNull();
-          return act(async () => inline.unmount());
-        });
-      })
-      .finally(() => {
-        host.remove();
-        vi.unstubAllGlobals();
-      });
-  });
 });

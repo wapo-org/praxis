@@ -53,15 +53,7 @@ export function attachmentTitle(rows: AttachmentRow[]): string | undefined {
 
 export function makeTitle(text: string, rows: AttachmentRow[]): string | undefined {
   const collapsed = text.split(/\s+/).filter(Boolean).join(' ');
-  return collapsed ? shortenTitle(collapsed) : attachmentTitle(rows);
-}
-
-/** Cuts at a word boundary and says so, instead of ending a title mid-word. */
-function shortenTitle(title: string): string {
-  if (title.length <= MAX_TITLE) return title;
-  const cut = title.slice(0, MAX_TITLE - 1);
-  const space = cut.lastIndexOf(' ');
-  return `${(space >= MAX_TITLE / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
+  return collapsed ? collapsed.slice(0, MAX_TITLE) : attachmentTitle(rows);
 }
 
 /** Whether this message should (re)name the chat: untitled, or titled after attachments alone and now there are words. */

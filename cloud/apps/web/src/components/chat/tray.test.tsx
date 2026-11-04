@@ -105,11 +105,12 @@ describe('composer tray', () => {
   it('toggles a chat connector with a switch, never a bare checkbox', async () => {
     await act(async () => root.unmount());
     const now = new Date().toISOString();
+    const chat = { type: 'chat', id: 'c1', title: 'Chat', mode: 'build', pinned: false, connectorIds: [], disabledConnectorIds: [], createdAt: now, updatedAt: now };
     vi.spyOn(apiClient, 'bootstrap').mockResolvedValue({
       type: 'bootstrap',
       protocolVersion: 1,
       user: { type: 'user', id: 'u', name: 'U' },
-      chats: [{ type: 'chat', id: 'c1', title: 'Chat', mode: 'build', pinned: false, connectorIds: [], disabledConnectorIds: [], createdAt: now, updatedAt: now }],
+      chats: [chat],
       models: [model('a', true)],
       providers: [],
       connectors: [{ type: 'connector', id: 'docs', name: 'Docs', url: 'https://docs.example/mcp', enabled: true, transport: 'streamableHttp', authStatus: 'none', tools: [] }],
@@ -120,7 +121,9 @@ describe('composer tray', () => {
       serverTime: now,
     } as never);
     vi.spyOn(apiClient, 'listMessages').mockResolvedValue(page([]));
-    const patch = vi.spyOn(apiClient, 'patchChat').mockResolvedValue({} as never);
+    const patch = vi
+      .spyOn(apiClient, 'patchChat')
+      .mockImplementation(async (_id, change) => ({ ...chat, ...change }) as never);
     root = createRoot(host);
     await act(async () =>
       root.render(
@@ -129,7 +132,8 @@ describe('composer tray', () => {
         </PraxisStoreProvider>,
       ),
     );
-    await flush();
+    await act(async () => store.refreshAll());
+    expect(store.connectors).toHaveLength(1);
     await act(async () => store.selectChat('c1'));
     await flush();
     await openTray();
