@@ -1,5 +1,6 @@
 import React from 'react';
 import { ScrollBlur } from '../ProgressiveBlurScrim';
+import styles from './dropdown.module.css';
 export interface VirtualListProps<T> {
   items: readonly T[];
   itemHeight?: number;
@@ -99,14 +100,7 @@ function VirtualList<T>({
 
   if (items.length === 0) {
     return (
-      <div
-        style={{
-          padding: '24px 12px',
-          textAlign: 'center',
-          fontSize: '13px',
-          color: 'var(--paper-muted-ink)',
-        }}
-      >
+      <div className={styles.empty}>
         {emptyState ?? 'No matching items'}
       </div>
     );
@@ -123,22 +117,13 @@ function VirtualList<T>({
       <ScrollBlur
         viewportRef={viewport}
         maxHeight={Math.min(height, totalHeight + 12)}
-        scrimHeight={22}
+        scrimHeight={16}
         onViewportScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       >
-        <div
-          style={{ position: 'relative', height: totalHeight, width: '100%' }}
-        >
+        <div className={styles.virtualSpacer} style={{ height: totalHeight }}>
           <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              transform: `translateY(${offsetY}px)`,
-              display: 'flex',
-              flexDirection: 'column',
-            }}
+            className={styles.virtualWindow}
+            style={{ transform: `translateY(${offsetY}px)` }}
           >
             {items.slice(startIndex, endIndex).map((item, i) => (
               <div

@@ -1,3 +1,4 @@
+import styles from './dropdown.module.css';
 import React from 'react';
 import {
   ACTION_GRID_MARKER,
@@ -20,25 +21,12 @@ function ActionGrid({
     <div
       role="group"
       data-slot="dropdown-action-grid"
-      className={className}
-      style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-        gap: 0,
-        background: 'transparent',
-        borderBottom: 'none',
-        margin: '-6px -6px 4px -6px',
-        borderTopLeftRadius: '24px',
-        borderTopRightRadius: '24px',
-        overflow: 'hidden',
-        position: 'relative',
-        paddingBottom: 8,
-        ...style,
-      }}
+      className={`${styles.actionGrid} ${className}`.trim()}
+      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, ...style }}
       {...rest}
     >
       {children}
-      <span aria-hidden style={{ position: 'absolute', bottom: 0, left: 16, right: 16, height: 1, background: 'var(--paper-hairline)' }} />
+      <span aria-hidden className={styles.actionRule} />
     </div>
   );
 }
@@ -104,50 +92,15 @@ const TileItem = React.forwardRef<HTMLButtonElement, TileItemProps>(
           onClick?.(e);
           if (!e.defaultPrevented) activate();
         }}
-        style={{
-          position: 'relative',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '5px',
-          minHeight: '58px',
-          padding: '10px 6px',
-          border: 'none',
-          background: active
-            ? 'rgba(21,20,15,0.09)'
-            : isHighlighted
-              ? 'rgba(21,20,15,0.06)'
-              : 'transparent',
-          color: 'var(--paper-ink)',
-          fontFamily: 'var(--font-sans)',
-          fontSize: '12px',
-          fontWeight: 500,
-          lineHeight: '15px',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          opacity: disabled ? 0.4 : 1,
-          userSelect: 'none',
-          outline: 'none',
-          ...style,
-        }}
+        data-active={active || undefined}
+        className={styles.tile}
+        style={style}
         {...rest}
       >
-        <span
-          aria-hidden="true"
-          style={{ display: 'inline-flex', color: 'var(--paper-ink)' }}
-        >
+        <span aria-hidden="true" className={styles.tileIcon}>
           {icon}
         </span>
-        <span
-          style={{
-            maxWidth: '100%',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {children}
-        </span>
+        <span className={styles.truncate}>{children}</span>
       </button>
     );
   },

@@ -3,6 +3,7 @@ import React from 'react';
 import { GlassSurface } from '../GlassSurface';
 import { ScrollBlur } from '../ProgressiveBlurScrim';
 import type { GlassMaterialControls } from '../GlassSurface';
+import styles from './dropdown.module.css';
 import { MorphPanel } from './MorphPanel';
 import { MorphRows } from './MorphRows';
 import { MorphHeader } from './MorphHeader';
@@ -160,7 +161,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                 animate={{ scale: 1 }}
                 exit={reduced ? undefined : { scale: popIn.exit.scale, transition: TRANSITION.fast }}
                 transition={reduced ? TRANSITION.none : SPRING}
-                className={`praxis-glass-dropdown-content ${className}`.trim()}
+                className={`praxis-glass-dropdown-content ${styles.content} ${className}`.trim()}
                 style={{
                   position: ctx.portal ? 'fixed' : 'absolute',
                   zIndex: 80,
@@ -170,8 +171,6 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                       ? minWidth
                       : window.innerWidth - 16,
                   ),
-                  maxWidth: 'calc(100vw - 16px)',
-                  touchAction: 'pan-y',
                   x: reduced ? 0 : pullX,
                   y: reduced ? 0 : pullY,
                   scaleY: reduced ? 1 : stretchScaleY,
@@ -183,22 +182,18 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                 <GlassSurface
                   material={glassMaterial}
                   radius={16}
+                  className={styles.surface}
                   initial={reduced ? { opacity: 0 } : { opacity: popIn.initial.opacity }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0, transition: TRANSITION.fast }}
                   transition={reduced ? TRANSITION.fast : TRANSITION.base}
-                  style={{
-                    width: '100%',
-                    overflow:
-                      ctx.submenuMode === 'cascade' ? 'visible' : 'hidden',
-                    padding: 'var(--space-1)',
-                  }}
+                  style={{ overflow: ctx.submenuMode === 'cascade' ? 'visible' : 'hidden' }}
                 >
                   {/* Layout-spring height container (IMG_7769–IMG_7774 submenu morph) */}
                   <motion.div
                     layout={reduced ? false : 'size'}
                     transition={SPRING}
-                    style={{ width: '100%' }}
+                    className={styles.sizer}
                   >
                     <AnimatePresence
                       mode="popLayout"
@@ -234,11 +229,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                               }
                         }
                         transition={reduced ? TRANSITION.none : SPRING}
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          width: '100%',
-                        }}
+                        className={styles.panel}
                       >
                         {/* Elevated Submenu Sticky Header (IMG_7773–IMG_7774: "Recent Notes ⌄") */}
                         <MorphHeader level={activeMorphLevel ?? null} />
@@ -261,12 +252,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                               aria-labelledby={
                                 ctx.searchable ? ctx.triggerId : undefined
                               }
-                              style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '2px',
-                                width: '100%',
-                              }}
+                              className={styles.list}
                             >
                               <MorphRows stagger={!!activeMorphLevel} reduced={reduced}>{scrollableNodes}</MorphRows>
                             </div>

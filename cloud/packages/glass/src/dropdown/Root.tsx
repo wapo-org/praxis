@@ -16,7 +16,10 @@ import { useMenuReducedMotion } from './motion';
 import { usePointerRelease } from './pointer';
 export interface GlassDropdownRootProps
   extends React.HTMLAttributes<HTMLDivElement>, GlassMaterialControls {
+  /** Render in document.body so no ancestor can clip the menu. On by default. */
   portal?: boolean;
+  /** Keep the menu inside this element instead of the viewport (non-portal menus in a clipped sheet). */
+  boundary?: () => HTMLElement | null;
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -37,7 +40,8 @@ const GlassDropdownRoot = React.forwardRef<
   GlassDropdownRootProps
 >(function GlassDropdownRoot(
   {
-    portal = false,
+    portal = true,
+    boundary,
     open: controlledOpen,
     defaultOpen = false,
     onOpenChange,
@@ -191,6 +195,7 @@ const GlassDropdownRoot = React.forwardRef<
   const ctxValue = React.useMemo<GlassDropdownContextValue>(
     () => ({
       portal,
+      boundary,
       searchable: containsSearch(children),
       open,
       setOpen,
@@ -220,6 +225,7 @@ const GlassDropdownRoot = React.forwardRef<
     }),
     [
       portal,
+      boundary,
       children,
       open,
       setOpen,

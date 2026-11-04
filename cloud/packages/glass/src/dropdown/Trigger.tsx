@@ -5,6 +5,7 @@ import { closeAndFocusNext } from './focus';
 import { GlassSurface } from '../GlassSurface';
 import type { GlassMaterialControls } from '../GlassSurface';
 import { assignForwardedRef, useGlassDropdownContext } from './context';
+import styles from './dropdown.module.css';
 import { useMenuReducedMotion } from './motion';
 import { press, SPRING, TRANSITION } from '../motion';
 export interface TriggerProps
@@ -113,13 +114,12 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
       <motion.div
         animate={{ scale: !reduced && ctx.open ? press.whileTap.scale : 1 }}
         transition={reduced ? TRANSITION.none : SPRING}
-        style={{ display: 'inline-flex', maxWidth: '100%' }}
+        className={styles.triggerWrap}
       >
         <GlassSurface
           shape="capsule"
           material={material ?? ctx.materialControls.material ?? 'regular'}
-          className={className}
-          style={{ display: 'inline-flex', maxWidth: '100%' }}
+          className={`${styles.triggerSurface} ${className}`.trim()}
         >
           <button
             ref={setRef}
@@ -132,72 +132,21 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
             onPointerDown={handlePointerDown}
             onClick={handleClick}
             onKeyDown={handleKeyDown}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '7px 13px',
-              borderRadius: '9999px',
-              border: 'none',
-              background: ctx.open ? 'rgba(21,20,15,0.06)' : 'transparent',
-              color: 'var(--paper-ink)',
-              fontFamily: 'var(--font-sans)',
-              fontSize: '13px',
-              fontWeight: 600,
-              lineHeight: '16px',
-              cursor: 'pointer',
-              userSelect: 'none',
-              touchAction: 'none',
-              outline: 'none',
-              ...style,
-            }}
+            className={styles.trigger}
+            style={style}
             {...otherProps}
           >
             {icon ? (
-              <span
-                aria-hidden="true"
-                style={{
-                  display: 'inline-flex',
-                  color: 'var(--paper-secondary-ink)',
-                }}
-              >
+              <span aria-hidden="true" className={styles.triggerIcon}>
                 {icon}
               </span>
             ) : null}
-            <span
-              style={{
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {children}
-            </span>
+            <span className={styles.truncate}>{children}</span>
             {value !== undefined && value !== null ? (
-              <span
-                style={{
-                  borderRadius: '9999px',
-                  background: 'var(--paper-fill-2)',
-                  padding: '2px 8px',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '11px',
-                  fontWeight: 500,
-                  color: 'var(--paper-secondary-ink)',
-                }}
-              >
-                {value}
-              </span>
+              <span className={styles.triggerValue}>{value}</span>
             ) : null}
             {!hideChevron ? (
-              <ChevronDown
-                aria-hidden="true"
-                size={16}
-                style={{
-                  color: 'var(--paper-muted-ink)',
-                  transform: ctx.open ? 'rotate(180deg)' : 'rotate(0deg)',
-                  transition: 'transform var(--duration-base) var(--ease-standard)',
-                }}
-              />
+              <ChevronDown aria-hidden="true" size={16} className={styles.triggerChevron} />
             ) : null}
           </button>
         </GlassSurface>

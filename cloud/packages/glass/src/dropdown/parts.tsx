@@ -1,4 +1,5 @@
 import React from 'react';
+import styles from './dropdown.module.css';
 export interface HeaderProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
   'title'
@@ -10,77 +11,19 @@ export interface HeaderProps extends Omit<
 }
 
 const Header = React.forwardRef<HTMLDivElement, HeaderProps>(function Header(
-  { title, subtitle, icon, badge, style, ...rest },
+  { title, subtitle, icon, badge, className = '', ...rest },
   ref,
 ) {
   return (
-    <div
-      ref={ref}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-        padding: '8px 12px',
-        userSelect: 'none',
-        ...style,
-      }}
-      {...rest}
-    >
+    <div ref={ref} className={`${styles.header} ${className}`.trim()} {...rest}>
       {icon ? (
-        <span
-          aria-hidden="true"
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: 9,
-            border: '1px solid var(--paper-hairline)',
-            background: 'var(--paper-fill-1)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--paper-ink)',
-          }}
-        >
+        <span aria-hidden="true" className={styles.headerIcon}>
           {icon}
         </span>
       ) : null}
-      <div
-        style={{
-          flex: 1,
-          minWidth: 0,
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        <span
-          style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize: '13px',
-            fontWeight: 600,
-            lineHeight: '17px',
-            color: 'var(--paper-ink)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {title}
-        </span>
-        {subtitle ? (
-          <span
-            style={{
-              fontFamily: 'var(--font-sans)',
-              fontSize: '11px',
-              lineHeight: '14px',
-              color: 'var(--paper-secondary-ink)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {subtitle}
-          </span>
-        ) : null}
+      <div className={styles.copy}>
+        <span className={`${styles.headerTitle} ${styles.truncate}`}>{title}</span>
+        {subtitle ? <span className={styles.subtitle}>{subtitle}</span> : null}
       </div>
       {badge ? <span>{badge}</span> : null}
     </div>
@@ -92,23 +35,13 @@ export interface LabelProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const Label = React.forwardRef<HTMLDivElement, LabelProps>(function Label(
-  { inset = false, children, style, ...rest },
+  { inset = false, children, className = '', ...rest },
   ref,
 ) {
   return (
     <div
       ref={ref}
-      style={{
-        padding: `6px 12px 4px ${inset ? '34px' : '12px'}`,
-        fontFamily: 'var(--font-mono)',
-        fontSize: '10px',
-        fontWeight: 500,
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-        color: 'var(--paper-muted-ink)',
-        userSelect: 'none',
-        ...style,
-      }}
+      className={`${styles.label} ${inset ? styles.labelInset : ''} ${className}`.trim()}
       {...rest}
     >
       {children}
@@ -121,21 +54,11 @@ export interface GroupProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const Group = React.forwardRef<HTMLDivElement, GroupProps>(function Group(
-  { label, children, style, ...rest },
+  { label, children, className = '', ...rest },
   ref,
 ) {
   return (
-    <div
-      ref={ref}
-      role="group"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        width: '100%',
-        ...style,
-      }}
-      {...rest}
-    >
+    <div ref={ref} role="group" className={`${styles.group} ${className}`.trim()} {...rest}>
       {label ? <Label>{label}</Label> : null}
       {children}
     </div>
@@ -147,28 +70,12 @@ export interface SeparatorProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const Separator = React.forwardRef<HTMLDivElement, SeparatorProps>(
-  function Separator({ variant = 'hairline', style, ...rest }, ref) {
+  function Separator({ variant = 'hairline', className = '', ...rest }, ref) {
     return (
       <div
         ref={ref}
         role="separator"
-        style={
-          variant === 'section'
-            ? {
-                margin: '4px -6px',
-                height: '7px',
-                background: 'rgba(21,20,15,0.035)',
-                borderTop: '1px solid var(--paper-hairline)',
-                borderBottom: '1px solid var(--paper-hairline)',
-                ...style,
-              }
-            : {
-                margin: '3px -6px',
-                height: '1px',
-                background: 'var(--paper-hairline)',
-                ...style,
-              }
-        }
+        className={`${variant === 'section' ? styles.separatorSection : styles.separator} ${className}`.trim()}
         {...rest}
       />
     );

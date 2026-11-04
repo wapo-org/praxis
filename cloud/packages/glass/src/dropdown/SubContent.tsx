@@ -1,3 +1,4 @@
+import styles from './dropdown.module.css';
 import { AnimatePresence, motion } from 'framer-motion';
 import React from 'react';
 import { GlassSurface } from '../GlassSurface';
@@ -56,31 +57,20 @@ const SubContent = React.forwardRef<HTMLDivElement, SubContentProps>(
                 animate={{ scale: 1, x: 0 }}
                 exit={{ scale: popIn.exit.scale, transition: TRANSITION.fast }}
                 transition={SPRING}
-                style={{
-                  position: 'absolute',
-                  zIndex: 60,
-                  minWidth: 224,
-                  top: -6,
-                  ...(sub.openSide === 'right'
-                    ? { left: 'calc(100% + 8px)' }
-                    : { right: 'calc(100% + 8px)' }),
-                  ...style,
-                }}
+                className={`${styles.subContent} ${sub.openSide === 'right' ? styles.subRight : styles.subLeft}`}
+                style={style}
                 onPointerLeave={() => setHighlightedId(null)}
                 {...rest}
               >
                 <GlassSurface
                   material={ctx.materialControls.material ?? 'thick'}
-                  radius={16}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0, transition: TRANSITION.fast }}
                   transition={TRANSITION.base}
-                  style={{ padding: 'var(--space-1)' }}
+                  className={styles.surface}
                 >
-                  <div
-                    style={{ display: 'flex', flexDirection: 'column', gap: 2 }}
-                  >
+                  <div className={styles.list}>
                     {children}
                   </div>
                 </GlassSurface>

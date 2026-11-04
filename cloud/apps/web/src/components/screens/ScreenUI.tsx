@@ -234,30 +234,11 @@ export function ScreenMenu({
   icon: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [position, setPosition] = React.useState({ left: 0, top: 0 });
   const trigger = React.useRef<HTMLButtonElement>(null);
   const content = React.useRef<HTMLDivElement>(null);
   const target = trigger.current?.closest<HTMLElement>('.screen-shell');
-  React.useLayoutEffect(() => {
-    if (!open || !target || !trigger.current) return;
-    const measure = () => {
-      const anchor = trigger.current!.getBoundingClientRect();
-      const shell = target.getBoundingClientRect();
-      const height = content.current?.offsetHeight || 160;
-      const width = content.current?.offsetWidth || 200;
-      const below = anchor.bottom - shell.top + 8;
-      setPosition({
-        left: Math.max(8, Math.min(anchor.right - shell.left - width, shell.width - width - 8)),
-        top: Math.max(
-          8,
-          Math.min(
-            below + height <= shell.height - 8 ? below : anchor.top - shell.top - height - 8,
-            shell.height - height - 8,
-          ),
-        ),
-      });
-    };
-    measure();
+  React.useEffect(() => {
+    if (!open) return;
     const onOutside = (event: PointerEvent) => {
       if (
         event.target instanceof Node &&
@@ -267,16 +248,17 @@ export function ScreenMenu({
         setOpen(false);
     };
     document.addEventListener('pointerdown', onOutside);
-    target.addEventListener('scroll', measure, true);
-    window.addEventListener('resize', measure);
-    return () => {
-      document.removeEventListener('pointerdown', onOutside);
-      target.removeEventListener('scroll', measure, true);
-      window.removeEventListener('resize', measure);
-    };
-  }, [open, target]);
+    return () => document.removeEventListener('pointerdown', onOutside);
+  }, [open]);
   return (
-    <GlassDropdown open={open} onOpenChange={setOpen} dismissOnOutsideClick={false} align="end">
+    <GlassDropdown
+      open={open}
+      onOpenChange={setOpen}
+      dismissOnOutsideClick={false}
+      align="end"
+      portal={false}
+      boundary={() => trigger.current?.closest<HTMLElement>('.screen-shell') ?? null}
+    >
       <GlassDropdown.Trigger
         asChild={contextOnly}
         ref={trigger}
@@ -303,16 +285,7 @@ export function ScreenMenu({
               ref={content}
               minWidth={200}
               maxHeight={240}
-              style={{
-                position: 'absolute',
-                insetInlineStart: 'auto',
-                insetInlineEnd: 'auto',
-                bottom: 'auto',
-                left: position.left,
-                top: position.top,
-                marginLeft: 0,
-                zIndex: 60,
-              }}
+              style={{ zIndex: 60 }}
             >
               {children}
             </GlassDropdown.Content>,

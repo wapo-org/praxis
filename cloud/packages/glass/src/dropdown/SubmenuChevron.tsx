@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { SPRING } from '../motion';
 import { ChevronDown, ChevronRight } from '../icons';
+import styles from './dropdown.module.css';
 import { useMenuReducedMotion } from './motion';
 export function SubmenuChevron({
   id,
@@ -24,11 +25,7 @@ export function SubmenuChevron({
       initial={{ rotate: 0 }}
       animate={{ rotate: expanded ? 90 : 0 }}
       transition={SPRING}
-      style={{
-        display: 'inline-flex',
-        flexShrink: 0,
-        color: 'var(--paper-secondary-ink)',
-      }}
+      className={styles.chevron}
     >
       <ChevronRight size={16} />
     </motion.span>

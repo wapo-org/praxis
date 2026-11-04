@@ -55,16 +55,20 @@ export function usePositioning(
     if (!menu || !trigger) return;
     const update = () => {
       const rect = trigger.getBoundingClientRect();
-      const result = placeMenu(
-        rect,
+      const box = ctx.boundary?.()?.getBoundingClientRect();
+      const offsetX = box?.left ?? 0;
+      const offsetY = box?.top ?? 0;
+      const placed = placeMenu(
+        new DOMRect(rect.left - offsetX, rect.top - offsetY, rect.width, rect.height),
         menu.offsetWidth || minWidth,
         menu.scrollHeight,
-        window.innerWidth,
-        window.innerHeight,
+        box?.width ?? window.innerWidth,
+        box?.height ?? window.innerHeight,
         ctx.side,
         ctx.align,
         ctx.sideOffset,
       );
+      const result = { ...placed, left: placed.left + offsetX, top: placed.top + offsetY };
       const parent = ctx.portal
         ? undefined
         : menu.offsetParent?.getBoundingClientRect();
@@ -102,6 +106,7 @@ export function usePositioning(
     minWidth,
     ctx.getContentEl,
     ctx.getTriggerEl,
+    ctx.boundary,
   ]);
   return { position, resolvedSide };
 }

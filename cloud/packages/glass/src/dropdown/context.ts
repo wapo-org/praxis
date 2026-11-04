@@ -14,6 +14,7 @@ export interface SubLevelInfo {
 
 export interface GlassDropdownContextValue {
   portal: boolean;
+  boundary?: () => HTMLElement | null;
   searchable: boolean;
   open: boolean;
   setOpen: (next: boolean) => void;
