@@ -14,8 +14,8 @@
   z-index: 110;
 }
 .position {
-  width: 640px;
-  height: min(720px, calc(100dvh - var(--space-12)));
+  width: var(--sheet-width);
+  height: min(var(--sheet-height), calc(100dvh - var(--space-12)));
   max-width: calc(100vw - var(--space-10));
 }
 .position[data-size='settings'] {

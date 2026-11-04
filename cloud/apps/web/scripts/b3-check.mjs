@@ -71,7 +71,9 @@ try {
   await page.getByRole('option', { name: 'Load more models', exact: true }).click();
   await page.getByRole('option', { name: /Cursor model/ }).waitFor();
   assert(queries.some(q => q.q === 'remote')); assert(queries.some(q => q.cursor === 'next'));
-  await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape'); await page.getByRole('listbox', { name: 'Models' }).waitFor({ state: 'detached' });
+  assert.equal(await page.getByTestId('tray-model-picker-trigger').getAttribute('aria-expanded'), 'false', 'Esc leaves the list and keeps the tray open');
+  await page.keyboard.press('Escape'); await page.getByTestId('plus-tray').waitFor({ state: 'detached' });
   await page.getByTestId('sidebar-new-chat').click();
   await page.getByTestId('starter-chip-2').click();
   await page.getByRole('button', { name: 'Allow Once', exact: true }).waitFor();

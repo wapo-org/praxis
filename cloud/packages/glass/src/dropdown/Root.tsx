@@ -103,7 +103,7 @@ const GlassDropdownRoot = React.forwardRef<
   }, []);
   const getContentEl = React.useCallback(() => contentElRef.current, []);
   const focusTrigger = React.useCallback(() => {
-    triggerElRef.current?.focus();
+    triggerElRef.current?.focus({ preventScroll: true });
   }, []);
 
   const startScrub = React.useCallback((source: 'trigger' | 'content' = 'content') => {

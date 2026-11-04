@@ -116,7 +116,7 @@ export function ConsentSheet() {
               >
                 <span className={styles.rowIcon}>{item.icon}</span>
                 <span className={styles.rowCopy}>
-                  <strong>{item.title}</strong>
+                  <span>{item.title}</span>
                   <span className={styles.detail}>{item.detail}</span>
                 </span>
               </div>

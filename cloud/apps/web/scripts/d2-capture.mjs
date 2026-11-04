@@ -88,6 +88,76 @@ for (const theme of ['light', 'dark'])
       await page.screenshot({ path: join(OUT, `${tag}-settings-${name}.png`) });
       await context.close();
     }
+    if (want('tray-chat')) {
+      // A real chat behind the glass, with a connector: the row toggles and no ghost text.
+      const { context, page } = await open(theme, viewport);
+      await page.evaluate(async () => {
+        const { apiClient } = await import('/src/lib/api.ts');
+        const boot = await apiClient.bootstrap();
+        if (!boot.connectors.length) await apiClient.createConnector({ name: 'Docs MCP', url: 'https://mcp.does-not-exist.invalid/mcp' });
+      });
+      await page.reload();
+      await page.getByTestId('composer-input').fill('Write three long paragraphs so the glass has text behind it.');
+      await page.getByTestId('composer-input').press('Enter');
+      await page.waitForFunction(() => !document.querySelector('[aria-label="Stop generating"]'));
+      await page.getByTestId('composer-plus-button').click();
+      await settle(page);
+      await page.screenshot({ path: join(OUT, `${tag}-tray-chat.png`) });
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(200);
+      if (vpName === 'desktop') {
+        const row = page.locator('[data-testid="app-sidebar"] .screen-history-row').first();
+        await row.hover();
+        await row.getByRole('button', { name: /^Actions for/ }).click();
+        await page.getByRole('menu').waitFor();
+        await settle(page);
+        await page.screenshot({ path: join(OUT, `${tag}-sidebar-menu.png`) });
+      }
+      await context.close();
+    }
+    if (want('sheet-menu')) {
+      const { context, page } = await open(theme, viewport, '/settings/providers/new');
+      await settle(page); // Let the sheet finish entering, so the click doesn't scroll it.
+      await page.getByRole('button', { name: 'Provider preset', exact: true }).click();
+      await page.getByRole('menu').waitFor();
+      await settle(page);
+      await page.screenshot({ path: join(OUT, `${tag}-sheet-menu.png`) });
+      await context.close();
+    }
+    if (want('delete-sheet')) {
+      const { context, page } = await open(theme, viewport, '/settings/account');
+      await page.getByTestId('delete-account-row').click();
+      await settle(page);
+      await page.screenshot({ path: join(OUT, `${tag}-delete-sheet.png`) });
+      await context.close();
+    }
+    if (want('consent')) {
+      const { context, page } = await open(theme, viewport);
+      // Sign in as a fresh user first: the session only applies to requests after the reload.
+      await page.evaluate(async (user) => {
+        await (await import('/src/lib/dev-auth.ts')).devAuth(user);
+      }, `d2-consent-${theme}-${vpName}-${Date.now()}`);
+      await page.reload();
+      await page.getByTestId('chat-top-bar').waitFor();
+      const provider = await page.evaluate(async () => {
+        const { apiClient } = await import('/src/lib/api.ts');
+        return apiClient.createProvider({ name: 'Test provider', flavor: 'openAIChat', baseUrl: 'https://consent.invalid/v1', defaultModel: 'consent-model' });
+      });
+      // A new provider has no catalog until a real endpoint answers, so stub its one model.
+      await page.route('**/v1/models?**', (route) => route.fulfill({ json: { type: 'page', items: [{ ...CATALOG[0], id: 'consent-model', displayName: 'consent-model', providerId: provider.id }], nextCursor: null } }));
+      await page.reload();
+      await page.getByTestId('composer-plus-button').click();
+      await page.getByTestId('tray-model-picker-trigger').click();
+      await page.getByRole('option', { name: /consent-model/ }).first().click();
+      await page.getByTestId('tray-model-picker-trigger').getByText('consent-model').waitFor();
+      await page.keyboard.press('Escape');
+      await page.getByTestId('composer-input').fill('Hello');
+      await page.getByTestId('composer-input').press('Enter');
+      await page.getByTestId('consentTitle').waitFor();
+      await settle(page);
+      await page.screenshot({ path: join(OUT, `${tag}-consent.png`) });
+      await context.close();
+    }
     if (want('menu-edge') && vpName === 'desktop') {
       // A real menu: the chat row's actions at the bottom-left, plus the lab's edge triggers.
       const { context, page } = await open(theme, viewport);
@@ -116,6 +186,7 @@ for (const theme of ['light', 'dark'])
 // Side-by-side boards: web (desktop, narrow) next to the iOS reference.
 const pairs = {
   tray: 'tray-2-main',
+  consent: 'consent-0-sheet',
   'tray-models': 'tray-0-models-top',
   'settings-root': 'settings-0-root',
   'settings-connectors': 'settings-2-connectors',

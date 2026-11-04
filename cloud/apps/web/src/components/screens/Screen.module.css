@@ -51,6 +51,9 @@
 .row[data-align='top'] {
   align-items: flex-start;
 }
+.row[data-align='top'] .rowIcon {
+  margin-top: 2px;
+}
 .navRow {
   cursor: pointer;
 }
@@ -209,6 +212,7 @@
   gap: var(--space-1);
   padding: 0;
   border: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-ink-2);
   font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);

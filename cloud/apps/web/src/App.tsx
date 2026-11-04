@@ -47,7 +47,8 @@ export function App() {
           )?.focus(),
         );
       }
-      if (event.key === 'Escape') {
+      // The tray handles its own Escape first: leaving the model list must not close the tray.
+      if (event.key === 'Escape' && !event.defaultPrevented) {
         store.setPlusTrayOpen(false);
         if (store.activeSheet) store.setActiveSheet(null);
       }

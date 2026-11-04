@@ -28,7 +28,7 @@ The target is a calm desktop chat app with the iOS identity: warm paper neutrals
 | Controls | `--control-sm` 28 (row actions, chips in dense UI), `--control-md` 36 (default), `--control-lg` 44 (touch, account row) |
 | Radii | `--radius-sm` 8 (rows, small buttons), `md` 12 (cards, code), `lg` 16 (menus, tiles), `xl` 20 (bubbles), `2xl` 28 (composer, tray), `full` |
 | Icons | `--icon-sm/md/lg` 16/18/20 with `--icon-stroke` 1.75 (`ICON_STROKE` in TS) |
-| Layout | `--sidebar-width` 260, `--column-width` 720, `--topbar-height` 56 |
+| Layout | `--sidebar-width` 260, `--column-width` 720, `--topbar-height` 56, `--tray-width` 400, `--settings-width`/`--settings-height` 720×560, `--settings-nav-width` 200, `--sheet-width`/`--sheet-height` 640×720, `--menu-min-width` 224, `--row-model` 56 |
 | Colour | `--color-paper` canvas, `--color-sidebar`, `--color-surface` card, `--color-fill-1/2`, `--color-bubble` (user bubble), `--color-ink`, `--color-ink-2` secondary, `--color-ink-3` tertiary, `--color-hairline` (and `-strong`), `--color-hover`, `--color-pressed`, `--color-accent` (black in light, paper in dark) with `--color-on-accent`, `--color-danger`, `--color-success`, `--color-focus`, `--color-scrim` |
 | Elevation | `--shadow-1` (chips, inspector), `--shadow-2` (regular glass), `--shadow-3` (menus, sheets). No other shadows |
 | Motion | `--duration-fast` 120, `--duration-base` 200, `--duration-slow` 320 ms, `--ease-standard` `cubic-bezier(.2,0,0,1)`; `--duration-ambient` and `--ease-ambient` are only for status loops |
@@ -38,7 +38,7 @@ Two values deviate on purpose:
 - The web hairline is translucent ink (8%/14%), so it reads the same on paper, sidebar and glass.
 - The pressed and tile colours are aliased.
 
-Legacy `--paper-*` names alias to `--color-*` so the D2/D3 screens keep rendering. New code must not use them.
+Legacy `--paper-*` names alias to `--color-*` so the D3 screens (chat activity, approvals, History, Lab) keep rendering. New code must not use them.
 
 ## Glass (`packages/glass`)
 `<GlassSurface material="regular|thick|clear" shape="card|capsule" radius?>` renders a single `motion.div` styled by `glass.module.css`:
@@ -61,7 +61,12 @@ Other behaviour:
 - To fade glass in, put `opacity` on the `GlassSurface` itself. Put scale on a parent: `transform` is fine there, but `opacity` or `filter` on an ancestor breaks backdrop sampling.
 - Never put a CSS `filter` (for example a hover brightness) on an ancestor of glass.
 - `ProgressiveBlurScrim edge="top|bottom"`: 4 static, masked backdrop-blur bands (1/3/6/12 px) plus a paper feather. Used under the top bar (72 px) and above the composer (112 px).
-- `ScrollBlur` (menus, lists): a mask fade driven by `animation-timeline: scroll()`. It appears only at the scrolled edges and has zero JS.
+- `ScrollBlur` (menus, lists, sheet bodies): a mask fade driven by `animation-timeline: scroll()`. It appears only at the scrolled edges and has zero JS.
+
+## Dropdown (`packages/glass/src/dropdown`, `dropdown.module.css`)
+- `thick` glass, `--radius-lg` panel, 36 px rows with `--radius-sm` highlight, labels at 15/22. No inline styles except truly dynamic values; `style` props still pass through.
+- It portals to `document.body` by default, so no ancestor can clip it, and `placeMenu` keeps it 8 px inside the viewport.
+- Inside a modal, use `ScreenMenu`: it renders inline to stay in the focus trap and passes `boundary` so the menu stays inside the sheet.
 
 ## Motion (`packages/glass/src/motion.ts`, the only TS source)
 - `SPRING` = stiffness 520, damping 38 (damping ratio ≈ 0.83). It is the single spring; `SPRING_VALUE` is the same spring for `useSpring`.
@@ -72,6 +77,7 @@ Other behaviour:
   - `fade`: scrims.
   - `listItem`: opacity plus y 6.
   - `press`: `whileTap` scale 0.97.
+  - `slideIn` / `slideUnder`: push navigation inside the tray. The next page enters from x 24; the page under it recedes to x -24.
 - Hooks:
   - `usePreset(preset)` and `usePress()` are reduced-motion aware. Under `prefers-reduced-motion` every preset becomes an opacity-only fast fade.
   - `useReducedMotion()` reports the setting.
@@ -105,6 +111,23 @@ Other behaviour:
   - A glass `regular` pill (radius 28, padding 8) floating 20 px from the bottom.
   - Controls: + / auto-growing textarea (15/22, max 200 px; measured once per change) / camera / mic / send-or-stop.
   - Every control is a 36 px accent circle, as on iOS.
+- **Composer tray** (`chat/PlusTray`, `chat/ModelList`):
+  - Desktop: a 400 px `thick` popover anchored to the + button, opening with `popIn` from that corner. Narrow: the full dock width, above the composer.
+  - Order follows iOS: mode, model row, effort and its detail, attachment tiles, then a grouped card of web search, connectors (with per-chat switches) and providers. There is no photo-permission step on web; Photos opens the file picker with an image filter.
+  - Escape leaves the model list first, then closes the tray. An outside press closes it. It sets `defaultPrevented` so the global Escape handler in `App.tsx` stays out of the way.
+  - The model list is the tray's second page, not a separate dropdown: search, a Pinned section, then All models. A section with no models has no header, so "(0)" can't appear.
+  - Rows are 56 px: name first, then tagline and 16 px capability glyphs. They are windowed by hand with fixed heights; `MODEL_ROW_HEIGHT` mirrors `--row-model`. The next API page loads as you scroll, and a Load more row remains.
+  - `lib/useModelSearch` never empties the list while loading. It shows `store.models` until the first page arrives, keeps old results during a new search, and pinning patches in place.
+- **Controls** (`ui/controls`): `SegmentedControl` (the thumb is a CSS transform) and `Switch`. Use these, never native checkboxes or loose pills.
+- **Header title:** the API and iOS cap titles at 42 characters without an ellipsis (`ConversationTitle`, covered by a parity test). `lib/chatTitle.displayTitle` ends a capped title at a word with "…", and CSS handles width truncation.
+- **Top-bar clusters:** desktop keeps New chat and Settings together on the right; the sidebar toggle appears on the left only while the sidebar is collapsed.
+
+## Settings (`screens/SettingsModal`, `SettingsSections`, `Screen.module.css`)
+- One modal at 720×560. The sidebar-coloured rail lists General, Models & providers, Connectors, Skills, Data & privacy, Account and Developer (dev-only); the content pane is opaque paper. Below 1024 px it is a stacked navigation: section list, then section, then sub-page, with a back button.
+- `/settings` is General beside the rail on desktop and the section list on narrow screens. That choice is CSS only, so both are in the DOM at that route.
+- The dialog's accessible name is always "Settings". The `<h1>` always matches the page, and sub-pages highlight their parent section. `PAGES` in `SettingsModal.tsx` is the one table of titles, sections and back targets.
+- Sheets carry 96% paper over the glass, so forms never show ghosted text behind them. Cards inside are opaque (`--color-surface`).
+- One scale: 44 px rows with inset hairlines, 36 px fields and buttons (44 px below 1024 px, with 16 px field text so iOS doesn't zoom), `Select`, `ChoiceChip` and plain `ScreenMenu` triggers for form rows.
 
 ## Performance budget (measured 2026-11-01)
 Setup: Chromium, production build (`vite build` plus `vite preview` proxied to the local API), 1440×900.
@@ -114,6 +137,7 @@ Command: `node apps/web/scripts/d1-perf.mjs`. It writes `perf.json` next to the 
 |---|---|
 | No long task > 50 ms while scrolling a 200+ message chat | 220-message chat, 0 long tasks; scripted scroll frames p50 16.7 ms, p95 16.8–17.7 ms. The UI renders the latest 100 messages (existing `listMessages` limit) |
 | No long task > 50 ms when opening a menu | 5 opens, 0 long tasks |
+| No long task > 50 ms when opening the tray or a 500-model list (WP-D2, 2026-11-05) | 5 tray opens and 4 list opens plus a scroll through all 500, paged like the API: 0 long tasks, 14 options mounted |
 | No per-frame JS while idle | 0 rAF callbacks, 0 ms script, 0 layouts in 2 s; 0 canvases |
 | Lighthouse performance ≥ 90 (built app, authenticated `/`) | 96, 95 and 91 on three runs (FCP 2.0 s, LCP 2.6–3.2 s, TBT 0 ms, CLS 0.002) |
 
@@ -126,7 +150,9 @@ The JS bundle is 713 kB (216 kB gzip); code-splitting the sheets is the next win
 - sizes 1440×900 and 402×874, in light and dark
 - `compare-*.png` boards next to the iOS references
 
-## Left for D2 / D3
-- **D2:** tray contents, model picker, dropdown internals and settings screens. They currently use legacy classes in `theme.css` and `screens.css`.
-- **D3:** activity and tool rows, approvals, elicitation, the history sheet, sign-in and Lab.
-- Both: convert to CSS Modules and these tokens, and delete the legacy `--paper-*` aliases when nothing reads them.
+## Visual gate (D2)
+`node apps/web/scripts/d2-capture.mjs` (API on 8822, web on 5196; `ONLY=` filters states) writes to `~/.praxis-agent-state/cloud/design/D2/`: tray main, model list and search, tray over a chat, every Settings page, consent, delete account, menus at a viewport edge and inside a sheet, plus `compare-*.png` boards next to iOS.
+
+## Left for D3
+- Activity and tool rows, approvals, elicitation, the history sheet, sign-in and Lab.
+- `screens/screens.css` now holds only what `HistorySheet` reads. Convert it, then delete the file, the `.account-screen` rules and `.screen-history-*` hover rules in `theme.css`, and the `--paper-*` aliases once nothing reads them.

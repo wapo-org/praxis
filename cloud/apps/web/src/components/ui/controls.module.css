@@ -48,7 +48,7 @@
 .switch {
   position: relative;
   flex-shrink: 0;
-  width: var(--space-8);
+  width: var(--space-10);
   height: var(--space-6);
   margin: 0;
   border-radius: var(--radius-full);
