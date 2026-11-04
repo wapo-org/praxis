@@ -36,7 +36,7 @@ try{
  await page.getByRole('checkbox',{name:/Allow test messages/}).check();
  await page.getByRole('button',{name:'Test connection',exact:true}).click();await page.getByRole('status').filter({hasText:'Streaming: supported'}).waitFor();
  assert.equal(await page.getByRole('switch',{name:'Tool calling',exact:true}).isChecked(),true);
- await page.getByRole('button',{name:'Save provider',exact:true}).click();await page.getByRole('dialog',{name:'Settings',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Save provider',exact:true}).click();await page.getByTestId('settings-page').waitFor();
  assert.equal(await page.evaluate(async()=>{const {apiClient}=await import('/src/lib/api.ts');return (await apiClient.listProviders()).items.find(p=>p.name==='X1 Provider').capabilities.tools;}),true);
  // A refused key: Test connection shows the provider's real error and leaves the toggles alone.
  await page.getByRole('button',{name:'Add provider',exact:true}).click();

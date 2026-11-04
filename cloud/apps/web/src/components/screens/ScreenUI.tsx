@@ -4,7 +4,6 @@ import React from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown } from '../../lib/icons';
 import { Switch } from '../ui/controls';
 import styles from './Screen.module.css';
-import './screens.css'; // Legacy classes for HistorySheet until WP-D3 converts it.
 
 export function useScreenTask() {
   const [busy, setBusy] = React.useState(false);

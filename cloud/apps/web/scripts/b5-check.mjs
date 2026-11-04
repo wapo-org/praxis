@@ -45,8 +45,9 @@ try {
     await apiClient.startRun({ chatId: input.chatId, text: 'Document', attachmentIds: [att.id], script: 'text' });
   }, { input, storageId });
   await page.reload(); await page.getByTestId('document-attachment-chip').filter({ hasText: 'Protocol-notes.txt' }).waitFor();
-  await page.goto(`${BASE}/settings/account`); const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await page.goto(`${BASE}/settings/account`); const settings = page.getByTestId('settings-page');
   await settings.getByRole('button', { name: 'Sign out', exact: true }).waitFor();
+  assert.equal(await page.getByRole('dialog', { name: 'Settings', exact: true }).count(), 0);
   assert.equal(await page.locator('.account-sign-out').count(), 0);
   assert.equal(await settings.getByRole('button', { name: 'Close settings' }).textContent(), 'Done');
   // 402 px: stacked navigation. Section list -> section -> Back -> next section.
@@ -65,9 +66,11 @@ try {
   });
   await page.reload(); await page.getByText('Unreachable', { exact: false }).first().waitFor();
   assert.equal(await page.getByText('Connected', { exact: true }).count(), 0);
-  await page.goto(`${BASE}/chats`);
-  assert.equal(await page.locator('.screen-history-tools').count(), 0);
-  const row = page.locator('.screen-history-row').filter({ hasText: server.title }).first();
+  // History is the floating sidebar panel on narrow screens.
+  await page.goto(BASE); await page.getByTestId('nav-history-button').click();
+  const panel = page.getByTestId('app-sidebar'); await panel.waitFor();
+  assert.equal(await panel.getAttribute('aria-label'), 'Conversation history');
+  const row = page.locator('[data-testid="app-sidebar"] [data-sidebar-row]').filter({ hasText: server.title }).first();
   await row.click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Rename', exact: true }).waitFor();
   await page.keyboard.press('Escape');
   await page.goto(`${BASE}/settings/account`); await page.getByRole('button', { name: 'Sign out', exact: true }).click();

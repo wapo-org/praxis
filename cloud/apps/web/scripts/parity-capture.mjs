@@ -27,13 +27,15 @@ try {
     await page.getByText(/^Worked for \d+s$/).click(); await capture('activity-expanded');
     await page.getByTestId('nav-new-chat-button').click(); await page.getByTestId('starter-chip-2').click();
     const approval = page.getByRole('button', { name: 'Allow Once', exact: true }); await approval.waitFor(); await capture('approval'); await approval.click();
-    for (const [name, path, label] of [
-      ['history', '/chats', 'Chats'], ['settings', '/settings', 'Settings'], ['provider', '/settings/providers/new', 'Provider'],
-      ['connectors', '/settings/connectors', 'Connectors'], ['connector-add', '/settings/connectors/add', 'Add by URL'],
-      ['skills', '/settings/skills', 'Skills'], ['image-reader', '/settings/images', 'Image reading model'],
-      ['voice', '/settings/voice', 'Voice input'], ['sharing', '/settings/sharing', 'Data consents'],
+    await page.getByTestId('nav-history-button').click(); await page.getByTestId('app-sidebar').waitFor(); await capture('history');
+    await page.keyboard.press('Escape');
+    for (const [name, path] of [
+      ['settings', '/settings'], ['provider', '/settings/providers/new'],
+      ['connectors', '/settings/connectors'], ['connector-add', '/settings/connectors/add'],
+      ['skills', '/settings/skills'], ['image-reader', '/settings/images'],
+      ['voice', '/settings/voice'], ['sharing', '/settings/sharing'],
     ]) {
-      await page.goto(base + path); await page.getByRole('dialog', { name: label, exact: true }).waitFor();
+      await page.goto(base + path); await page.getByTestId('settings-page').waitFor();
       await capture(name);
       if (name === 'provider') {
         await page.getByText('Hosted web search', { exact: true }).scrollIntoViewIfNeeded(); await capture('provider-capabilities');

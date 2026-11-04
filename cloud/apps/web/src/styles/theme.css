@@ -126,11 +126,3 @@ button {
 .account-screen input, .account-screen button { height: var(--control-lg); padding: 0 var(--space-4); border-radius: var(--radius-md); border: 1px solid var(--color-hairline-strong); background: var(--color-surface); color: var(--color-ink); width: 100%; }
 .account-screen button { border: 0; background: var(--color-accent); color: var(--color-on-accent); font-weight: var(--weight-semibold); cursor: pointer; }
 .account-error { position: fixed; top: var(--space-16); z-index: 99; background: var(--color-surface); color: var(--color-danger); }
-
-@media (hover: hover) {
-  .screen-history-row:hover { background: var(--color-hover); border-radius: var(--radius-md); }
-  .screen-history-row > .screen-menu,
-  .screen-history-row [aria-haspopup] { opacity: 0; }
-  .screen-history-row:hover > .screen-menu, .screen-history-row:focus-within > .screen-menu,
-  .screen-history-row:hover [aria-haspopup], .screen-history-row:focus-within [aria-haspopup] { opacity: 1; }
-}

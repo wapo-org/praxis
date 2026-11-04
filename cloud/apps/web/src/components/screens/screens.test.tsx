@@ -130,7 +130,7 @@ afterEach(async () => {
 });
 
 async function mount(element: React.ReactNode) {
-  await act(async () => root.render(<div className="screen-shell">{element}</div>));
+  await act(async () => root.render(<div>{element}</div>));
 }
 function button(text: string): HTMLButtonElement {
   const match = Array.from(document.querySelectorAll('button')).find(
@@ -223,7 +223,7 @@ describe('history in the floating sidebar', () => {
     store.desktopSidebarOpen = true;
     store.selectChat = vi.fn().mockRejectedValue(new Error('Could not load this chat'));
     await mount(<Sidebar />);
-    await click(document.querySelector<HTMLButtonElement>('.screen-history-select')!);
+    await click(document.querySelector<HTMLButtonElement>('[data-sidebar-row-select]')!);
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('Could not load');
   });
 });

@@ -38,35 +38,36 @@ async function open(deleteAccount: AccountSession['deleteAccount']) {
   await act(async () =>
     (document.querySelector('[data-testid="delete-account-row"]') as HTMLElement).click(),
   );
-  const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
-  const input = dialog.querySelector('[data-testid="delete-account-password"]') as HTMLInputElement;
-  const confirm = [...dialog.querySelectorAll('button')].find(
+  const confirmBlock = document.querySelector('[data-testid="delete-account-confirm"]') as HTMLElement;
+  const input = confirmBlock.querySelector('[data-testid="delete-account-password"]') as HTMLInputElement;
+  const confirm = [...confirmBlock.querySelectorAll('button')].find(
     (b) => b.textContent === 'Delete account permanently',
   )!;
-  return { dialog, input, confirm };
+  return { confirmBlock, input, confirm };
 }
 function type(input: HTMLInputElement, value: string) {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
-it('confirms deletion in a sheet that explains the loss and sends the typed password', async () => {
+it('confirms deletion inline: explains the loss and sends the typed password', async () => {
   const deleteAccount = vi.fn().mockResolvedValue(undefined);
-  const { dialog, input, confirm } = await open(deleteAccount);
-  expect(dialog.textContent).toContain('chats and messages');
-  expect(dialog.textContent).toContain('can’t be undone');
-  expect(confirm.dataset.tone).toBe('destructive');
+  const { confirmBlock, input, confirm } = await open(deleteAccount);
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(confirmBlock.textContent).toContain('chats and messages');
+  expect(confirmBlock.textContent).toContain("can't be undone");
+  expect(confirmBlock.textContent).toContain('Delete your account?');
   act(() => type(input, 'hunter2-password'));
   await act(async () => confirm.click());
   expect(deleteAccount).toHaveBeenCalledWith('hunter2-password');
 });
-it("shows the API's own message, including rate limiting, and keeps the sheet open", async () => {
+it("shows the API's own message, including rate limiting, and keeps the confirm open", async () => {
   const deleteAccount = vi.fn().mockRejectedValue(Error('Too many account deletion attempts'));
-  const { dialog, confirm } = await open(deleteAccount);
+  const { confirmBlock, confirm } = await open(deleteAccount);
   await act(async () => confirm.click());
-  expect(dialog.querySelector('[role="alert"]')?.textContent).toBe(
+  expect(confirmBlock.querySelector('[role="alert"]')?.textContent).toBe(
     'Too many account deletion attempts',
   );
-  expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  expect(document.querySelector('[data-testid="delete-account-confirm"]')).not.toBeNull();
 });
 it('wipes every local replica database and owner marker', async () => {
   const items = new Map<string, string>();

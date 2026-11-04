@@ -61,7 +61,7 @@ const frames = await page.evaluate(async () => {
 
 // 2. Open and close a menu five times (sidebar row actions).
 await window_('menu');
-const row = page.locator('[data-testid="app-sidebar"] .screen-history-row').first();
+const row = page.locator('[data-testid="app-sidebar"] [data-sidebar-row]').first();
 for (let i = 0; i < 5; i++) {
   await row.hover();
   await row.getByRole('button', { name: /^Actions for/ }).click();
@@ -122,7 +122,46 @@ await page.keyboard.press('Escape');
 await page.keyboard.press('Escape');
 await page.unroute('**/v1/models?**');
 
-// 4. Idle: count script callbacks per frame for 2 s (rAF loops would show up as scripting time).
+// 4. Liquid Glass stretch: press-drag each glass surface; no long tasks, the
+// transform appears mid-drag and springs back to none on release.
+await window_('stretch');
+async function stretch(dragSelector, transformSelector, x, y) {
+  const box = await page.locator(dragSelector).boundingBox();
+  await page.mouse.move(box.x + (x ?? box.width / 2), box.y + (y ?? box.height / 2));
+  await page.mouse.down();
+  for (let i = 1; i <= 24; i++) {
+    await page.mouse.move(box.x + box.width / 2 + i * 3, box.y + box.height / 2 + i * 1.5);
+    await page.waitForTimeout(16);
+  }
+  const mid = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    return (el?.closest?.('[data-elastic-surface]') ?? el).style.transform;
+  }, transformSelector);
+  await page.mouse.up();
+  await page.waitForTimeout(900);
+  const rest = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    return (el?.closest?.('[data-elastic-surface]') ?? el).style.transform;
+  }, transformSelector);
+  return { mid, rest };
+}
+const stretchResults = {};
+stretchResults.sidebar = await stretch('[data-testid="app-sidebar"] [data-testid="sidebar-new-chat"]', '[data-testid="app-sidebar"] [data-elastic-surface]', 10, 10);
+stretchResults.composer = await stretch('[data-testid="composer-surface"]', '[data-testid="composer-surface"]', 120, 20);
+stretchResults.topbar = await stretch('[data-testid="nav-settings-button"]', '[data-testid="nav-settings-button"]', 10, 10);
+// A row-menu open + stretch while open.
+await row.hover();
+await row.getByRole('button', { name: /^Actions for/ }).click();
+await page.getByRole('menu').waitFor();
+stretchResults.menu = await stretch('[role="menu"]', '[role="menu"] [data-elastic-surface]', 40, 30);
+await page.keyboard.press('Escape');
+await page.getByRole('menu').waitFor({ state: 'detached' });
+const stretchTasks = await taken();
+const stretchOk = Object.values(stretchResults).every(
+  (r) => r.mid.startsWith('translate') && r.rest === 'none',
+);
+
+// 5. Idle: count script callbacks per frame for 2 s (rAF loops would show up as scripting time).
 const idle = await page.evaluate(async () => {
   let callbacks = 0;
   const raf = window.requestAnimationFrame;
@@ -145,10 +184,11 @@ const result = {
   menuOpen: { opens: 5, longTasks: menuTasks.length, maxLongTaskMs: Math.max(0, ...menuTasks) },
   trayOpen: { opens: 5, longTasks: trayTasks.length, maxLongTaskMs: Math.max(0, ...trayTasks) },
   modelList: { models: catalog.length, rowsLoaded: modelsLoaded, mountedOptions: windowSize, longTasks: modelTasks.length, maxLongTaskMs: Math.max(0, ...modelTasks) },
+  stretch: { surfaces: stretchResults, longTasks: stretchTasks.length, maxLongTaskMs: Math.max(0, ...stretchTasks), ok: stretchOk },
   idle: { ...idle, scriptMsIn2s: Math.round((after.ScriptDuration - before.ScriptDuration) * 1000 * 10) / 10, layoutsIn2s: after.LayoutCount - before.LayoutCount },
 };
 await mkdir(OUT, { recursive: true });
 await writeFile(`${OUT}/perf.json`, JSON.stringify(result, null, 2));
 console.log(JSON.stringify(result));
-const ok = result.scroll.maxLongTaskMs <= 50 && result.menuOpen.maxLongTaskMs <= 50 && result.trayOpen.maxLongTaskMs <= 50 && result.modelList.maxLongTaskMs <= 50 && result.idle.rafCallbacksIn2s === 0;
+const ok = result.scroll.maxLongTaskMs <= 50 && result.menuOpen.maxLongTaskMs <= 50 && result.trayOpen.maxLongTaskMs <= 50 && result.modelList.maxLongTaskMs <= 50 && result.stretch.maxLongTaskMs <= 50 && result.stretch.ok && result.idle.rafCallbacksIn2s === 0;
 if (!ok) { console.error('PERF BUDGET FAILED'); process.exit(1); }

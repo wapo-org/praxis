@@ -83,7 +83,7 @@ for (const theme of ['light', 'dark'])
     for (const [name, path] of Object.entries(SECTIONS)) {
       if (!want(`settings-${name}`)) continue;
       const { context, page } = await open(theme, viewport, path);
-      await page.getByRole('dialog', { name: 'Settings', exact: true }).waitFor();
+      await page.getByTestId('settings-page').waitFor();
       await settle(page);
       await page.screenshot({ path: join(OUT, `${tag}-settings-${name}.png`) });
       await context.close();

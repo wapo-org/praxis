@@ -70,12 +70,12 @@ for (const theme of ['light', 'dark'])
     await chat.page.screenshot({ path: join(OUT, `${tag}-tray.png`) });
     await chat.page.keyboard.press('Escape');
     await chat.page.getByTestId('nav-chat-title-pill').click();
-    await chat.page.getByRole('dialog', { name: 'Settings', exact: true }).waitFor();
+    await chat.page.getByTestId('settings-page').waitFor();
     await chat.page.waitForTimeout(500);
     await chat.page.screenshot({ path: join(OUT, `${tag}-sheet.png`) });
-    await chat.page.keyboard.press('Escape');
+    await chat.page.goto(`${BASE}${chatPath}`); await chat.page.getByTestId('chat-top-bar').waitFor();
     if (vpName === 'desktop') {
-      const row = chat.page.locator('[data-testid="app-sidebar"] .screen-history-row').first();
+      const row = chat.page.locator('[data-testid="app-sidebar"] [data-sidebar-row]').first();
       await row.hover();
       await row.getByRole('button', { name: /^Actions for/ }).click();
       await chat.page.getByRole('menu').waitFor();

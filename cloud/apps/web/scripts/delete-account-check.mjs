@@ -31,9 +31,10 @@ try {
   );
   await page.goto(`${BASE}/settings/account`);
   await page.getByTestId('delete-account-row').click();
-  const dialog = page.getByRole('dialog', { name: 'Delete account' });
-  await dialog.getByText('This can’t be undone', { exact: false }).waitFor();
-  await dialog.getByRole('button', { name: 'Delete account permanently' }).click();
+  const confirm = page.getByTestId('delete-account-confirm');
+  await confirm.getByText('permanently deletes', { exact: false }).waitFor();
+  assert.equal(await page.getByRole('dialog', { name: 'Delete account' }).count(), 0);
+  await confirm.getByRole('button', { name: 'Delete account permanently' }).click();
   await page.getByTestId('account-notice').filter({ hasText: 'Account deleted' }).waitFor();
   await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
   assert.equal(await page.getByTestId('chat-screen').count(), 0);

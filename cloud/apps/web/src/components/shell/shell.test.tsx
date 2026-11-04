@@ -98,9 +98,9 @@ describe('Sidebar', () => {
       setValue.call(input, 'old');
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    const titles = [...container.querySelectorAll('.screen-history-select')].map((b) => b.textContent);
+    const titles = [...container.querySelectorAll('[data-sidebar-row-select]')].map((b) => b.textContent);
     expect(titles).toEqual(['Chat old']);
-    await act(async () => container.querySelector<HTMLButtonElement>('.screen-history-select')!.click());
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-sidebar-row-select]')!.click());
     expect(store.selectChat).toHaveBeenCalledWith('old');
   });
 

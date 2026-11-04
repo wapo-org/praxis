@@ -213,10 +213,11 @@ function ChatRow({ chat, active }: { chat: Chat; active: boolean }) {
     );
 
   return (
-    <div className={`screen-history-row ${styles.row}`} data-active={active}>
+    <div className={styles.row} data-active={active} data-sidebar-row="">
       <button
         type="button"
-        className={`screen-history-select ${styles.rowSelect}`}
+        className={styles.rowSelect}
+        data-sidebar-row-select=""
         aria-current={active ? 'page' : undefined}
         title={chat.title || 'New chat'}
         onClick={() => run(() => store.selectChat(chat.id))}
