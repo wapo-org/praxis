@@ -5,6 +5,8 @@ import {
   ArrowUp as LArrowUp,
   Camera as LCamera,
   Check as LCheck,
+  ChevronDown as LChevronDown,
+  ChevronsUpDown as LChevronsUpDown,
   ChevronLeft as LChevronLeft,
   ChevronRight as LChevronRight,
   Clock as LClock,
@@ -65,6 +67,8 @@ export const ArrowLeft = bindIcon(LArrowLeft);
 export const ArrowUp = bindIcon(LArrowUp);
 export const Camera = bindIcon(LCamera);
 export const Check = bindIcon(LCheck);
+export const ChevronDown = bindIcon(LChevronDown);
+export const ChevronsUpDown = bindIcon(LChevronsUpDown);
 export const ChevronLeft = bindIcon(LChevronLeft);
 export const ChevronRight = bindIcon(LChevronRight);
 export const Clock = bindIcon(LClock);

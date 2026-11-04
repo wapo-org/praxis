@@ -25,12 +25,12 @@ export const TRANSITION = {
   none: { duration: 0 } as Transition,
 } as const;
 
-export interface MotionFrame {
+export type MotionFrame = {
   opacity?: number;
   scale?: number;
   x?: number;
   y?: number;
-}
+};
 
 export interface MotionPreset {
   initial: MotionFrame;
@@ -69,6 +69,22 @@ export const listItem: MotionPreset = {
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, transition: TRANSITION.fast },
   transition: TRANSITION.base,
+};
+
+/** Push navigation inside a tray or settings stack: the next page slides in from the trailing edge. */
+export const slideIn: MotionPreset = {
+  initial: { opacity: 0, x: 24 },
+  animate: { opacity: 1, x: 0 },
+  exit: { opacity: 0, x: 24, transition: TRANSITION.fast },
+  transition: SPRING,
+};
+
+/** The page underneath a push: it recedes a little towards the leading edge. */
+export const slideUnder: MotionPreset = {
+  initial: { opacity: 1, x: 0 },
+  animate: { opacity: 0, x: -24 },
+  exit: { opacity: 1, x: 0 },
+  transition: SPRING,
 };
 
 /** Press feedback for every tappable control. */

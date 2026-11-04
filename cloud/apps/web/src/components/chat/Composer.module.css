@@ -1,4 +1,5 @@
 .dock {
+  position: relative;
   width: 100%;
   max-width: var(--column-width);
   margin: 0 auto;

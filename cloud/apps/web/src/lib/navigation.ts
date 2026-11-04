@@ -1,6 +1,7 @@
 import type { ActiveSheet } from '../state/store';
 export const sheetPaths: Partial<Record<NonNullable<ActiveSheet>, string>> = {
-  history: '/chats', settings: '/settings', providers: '/settings/providers',
+  history: '/chats', settings: '/settings', general: '/settings/general', account: '/settings/account',
+  developer: '/settings/developer', providers: '/settings/providers',
   connectors: '/settings/connectors', 'connector-add-url': '/settings/connectors/add',
   'connector-paste-config': '/settings/connectors/config', 'connector-registry': '/settings/connectors/registry',
   skills: '/settings/skills', 'skill-import': '/settings/skills/import', 'skill-browser': '/settings/skills/browse',

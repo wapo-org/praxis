@@ -1,7 +1,8 @@
-import { GlassSurface, sheet, usePreset } from '@praxis/glass';
+import { fade, GlassSurface, sheet, usePreset } from '@praxis/glass';
 import { motion } from 'framer-motion';
 import React from 'react';
 import { createPortal } from 'react-dom';
+import styles from './Sheet.module.css';
 
 /** Each portal isolates the background, traps focus, and restores it on dismissal. */
 export function SheetDialog({
@@ -9,20 +10,22 @@ export function SheetDialog({
   onDismiss,
   children,
   consent = false,
+  size = 'default',
 }: {
   label: string;
   onDismiss: () => void;
   children: React.ReactNode;
   consent?: boolean;
+  size?: 'default' | 'settings' | 'compact';
 }) {
   const sheetMotion = usePreset(sheet);
+  const scrimMotion = usePreset(fade);
   const [portal] = React.useState(() => document.createElement('div'));
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const dismissRef = React.useRef(onDismiss);
   dismissRef.current = onDismiss;
   React.useLayoutEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    portal.className = 'praxis-sheets-portal';
     const siblings = Array.from(document.body.children).filter(
       (node): node is HTMLElement => node instanceof HTMLElement,
     );
@@ -73,28 +76,33 @@ export function SheetDialog({
     }
   };
   return createPortal(
-    <div
-      className={`screen-overlay${consent ? ' screen-overlay--consent' : ''}`}
+    <motion.div
+      className={styles.overlay}
+      data-consent={consent || undefined}
+      initial={scrimMotion.initial}
+      animate={scrimMotion.animate}
+      transition={scrimMotion.transition}
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) dismissRef.current();
       }}
     >
       <motion.div
-        className="screen-dialog-position"
+        className={styles.position}
+        data-size={size}
         initial={{ y: sheetMotion.initial.y, scale: sheetMotion.initial.scale }}
         animate={{ y: 0, scale: 1 }}
         transition={sheetMotion.transition}
       >
         <GlassSurface
-          className="screen-dialog"
-          radius={24}
+          className={styles.dialog}
           material="thick"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={sheetMotion.transition}
         >
+          {/* `screen-shell` is the hook ScreenMenu uses to stay inside the focus trap. */}
           <div
-            className="screen-shell"
+            className={`screen-shell ${styles.shell}`}
             ref={dialogRef}
             role="dialog"
             aria-modal="true"
@@ -106,7 +114,7 @@ export function SheetDialog({
           </div>
         </GlassSurface>
       </motion.div>
-    </div>,
+    </motion.div>,
     portal,
   );
 }

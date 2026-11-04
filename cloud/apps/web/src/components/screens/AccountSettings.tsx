@@ -2,35 +2,43 @@ import React from 'react';
 import { useAccount } from '../../lib/account';
 import { Trash2 } from '../../lib/icons';
 import { DeleteAccountSheet } from './DeleteAccountSheet';
-import { Card, ScreenButton, Section, TaskError } from './ScreenUI';
+import { Card, Section, TaskError } from './ScreenUI';
+import styles from './Screen.module.css';
 export function AccountSettings() {
   const account = useAccount();
   const [deleting, setDeleting] = React.useState(false);
   if (!account) return null;
   return (
-    <Section title="Account">
+    <Section title="Signed in as">
       <Card>
-        <div className="screen-row-copy" style={{ padding: 14 }}>
-          <strong>{account.userId}</strong>
-          <span className="screen-detail">Server: {account.server}</span>
+        <div className={styles.row}>
+          <span className={styles.rowCopy}>
+            <span>{account.userId}</span>
+            <span className={styles.detail}>Server: {account.server}</span>
+          </span>
         </div>
+        <button
+          type="button"
+          className={`${styles.row} ${styles.navRow}`}
+          disabled={account.busy}
+          onClick={() => void account.signOut()}
+        >
+          Sign out
+        </button>
       </Card>
       <TaskError error={account.error || null} />
-      <ScreenButton disabled={account.busy} onClick={() => void account.signOut()}>
-        Sign out
-      </ScreenButton>
       <Card>
         <button
           type="button"
-          className="screen-row screen-nav-row screen-row--destructive"
+          className={`${styles.row} ${styles.navRow} ${styles.rowDestructive}`}
           data-testid="delete-account-row"
           onClick={() => setDeleting(true)}
         >
-          <span className="screen-row-icon">
+          <span className={styles.rowIcon}>
             <Trash2 size={18} aria-hidden="true" />
           </span>
-          <span className="screen-row-copy">
-            <strong>Delete account</strong>
+          <span className={styles.rowCopy}>
+            Delete account
           </span>
         </button>
       </Card>

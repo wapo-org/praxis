@@ -13,6 +13,7 @@ import {
   requireHttpUrl,
   useScreenTask,
 } from './ScreenUI';
+import styles from './Screen.module.css';
 const isAuthorization = (name: string) => name.toLowerCase() === 'authorization';
 
 export function ConnectorRegistry() {
@@ -75,7 +76,7 @@ export function ConnectorRegistry() {
   return (
     <ScreenBody>
       <input
-        className="screen-search"
+        className={styles.search}
         type="search"
         aria-label="Search MCP registry"
         placeholder="Search servers…"
@@ -106,10 +107,10 @@ export function ConnectorRegistry() {
           {entries.map((entry) => {
             const installed = store.connectors.some((c) => c.url === entry.input.url);
             return (
-              <div className="screen-row" key={`${entry.id}:${entry.input.url}`}>
-                <span className="screen-row-copy">
+              <div className={styles.row} key={`${entry.id}:${entry.input.url}`}>
+                <span className={styles.rowCopy}>
                   <strong>{entry.input.name}</strong>
-                  <span className="screen-detail">{entry.description}</span>
+                  <span className={styles.detail}>{entry.description}</span>
                 </span>
                 <ScreenButton
                   disabled={task.busy || installed}
@@ -142,7 +143,7 @@ export function ConnectorRegistry() {
       {chosen ? (
         <Section title={`Configure ${chosen.input.name}`}>
           <form
-            className="screen-form"
+            className={styles.form}
             onSubmit={(e) => {
               e.preventDefault();
               void task.run(() => add(chosen, url, token, headers));
@@ -184,7 +185,7 @@ export function ConnectorRegistry() {
           </form>
         </Section>
       ) : null}
-      <p className="screen-footnote">
+      <p className={styles.footnote}>
         From registry.modelcontextprotocol.io. Listed servers aren’t reviewed by Praxis; check a
         server before trusting it. Adding a server checks its connection.
       </p>

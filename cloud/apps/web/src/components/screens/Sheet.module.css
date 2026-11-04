@@ -1,0 +1,57 @@
+/* Modal chrome shared by every sheet. Thick glass, scale on the parent, opacity on the glass. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-scrim);
+  color: var(--color-ink);
+  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
+}
+.overlay[data-consent='true'] {
+  z-index: 110;
+}
+.position {
+  width: 640px;
+  height: min(720px, calc(100dvh - var(--space-12)));
+  max-width: calc(100vw - var(--space-10));
+}
+.position[data-size='settings'] {
+  width: var(--settings-width);
+  height: min(var(--settings-height), calc(100dvh - var(--space-12)));
+}
+.position[data-size='compact'] {
+  width: var(--tray-width);
+  height: min(var(--settings-height), calc(100dvh - var(--space-12)));
+}
+.dialog {
+  --glass-radius: var(--radius-xl);
+  height: 100%;
+  overflow: hidden;
+}
+.shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* Forms stay legible: only the edge of a sheet shows the glass, never ghosted text behind it. */
+  background: color-mix(in srgb, var(--color-paper) 96%, transparent);
+  outline: none;
+}
+@media (max-width: 1023px) {
+  .overlay {
+    align-items: flex-end;
+  }
+  .position,
+  .position[data-size='settings'],
+  .position[data-size='compact'] {
+    width: 100%;
+    max-width: 100%;
+    height: calc(100dvh - max(var(--space-5), env(safe-area-inset-top)));
+  }
+  .dialog {
+    --glass-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  }
+}

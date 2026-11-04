@@ -31,6 +31,7 @@
   --text-xl: 20px;
   --leading-xl: 28px;
   --text-2xl: 28px;
+  --text-input-touch: 16px; /* iOS zooms into focused fields below this */
   --leading-2xl: 34px;
   --weight-regular: 400;
   --weight-medium: 500;
@@ -59,6 +60,12 @@
 
   /* Layout */
   --sidebar-width: 260px;
+  --tray-width: 400px;
+  --tray-models-min-height: 420px;
+  --settings-width: 720px;
+  --settings-height: 560px;
+  --settings-nav-width: 200px;
+  --row-model: 56px; /* two-line model row; MODEL_ROW_HEIGHT in ModelList.tsx */
   --column-width: 720px;
   --topbar-height: 56px;
 

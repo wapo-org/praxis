@@ -10,6 +10,7 @@ import {
   TaskError,
   useScreenTask,
 } from './ScreenUI.js';
+import styles from './Screen.module.css';
 
 const SPEECH_MODELS = [
   { id: 'whisper-large-v3-turbo', detail: 'Fast, multilingual transcription' },
@@ -34,7 +35,7 @@ export function VoiceSettingsScreen() {
   return (
     <ScreenBody>
       <form
-        className="screen-form"
+        className={styles.form}
         onSubmit={(event) => {
           event.preventDefault();
           void task.run(async () => {
@@ -72,7 +73,7 @@ export function VoiceSettingsScreen() {
             />
           </Field>
           {store.preferences?.voice.configured ? (
-            <span className="screen-badge screen-badge--success">
+            <span className={`${styles.badge} ${styles.badgeSuccess}`}>
               Key configured
             </span>
           ) : null}
@@ -80,7 +81,7 @@ export function VoiceSettingsScreen() {
         <Section title="Speech model">
           <Card>
             {SPEECH_MODELS.map((item) => (
-              <label className="screen-row" key={item.id}>
+              <label className={styles.row} key={item.id}>
                 <input
                   type="radio"
                   name="speech-model"
@@ -91,9 +92,9 @@ export function VoiceSettingsScreen() {
                     setSaved(false);
                   }}
                 />
-                <span className="screen-row-copy">
-                  <span className="screen-mono">{item.id}</span>
-                  <span className="screen-detail">{item.detail}</span>
+                <span className={styles.rowCopy}>
+                  <span className={styles.mono}>{item.id}</span>
+                  <span className={styles.detail}>{item.detail}</span>
                 </span>
                 {model === item.id ? (
                   <Check size={16} aria-hidden="true" />
@@ -121,7 +122,7 @@ export function VoiceSettingsScreen() {
           {task.busy ? 'Saving…' : 'Save voice settings'}
         </ScreenButton>
         {saved ? (
-          <p className="screen-success" role="status">
+          <p className={styles.success} role="status">
             Voice settings saved.
           </p>
         ) : null}
@@ -130,11 +131,11 @@ export function VoiceSettingsScreen() {
         {recordings.length ? (
           <Card>
             {recordings.map((recording) => (
-              <div className="screen-row" key={recording.id}>
+              <div className={styles.row} key={recording.id}>
                 <Mic size={18} aria-hidden="true" />
-                <span className="screen-row-copy">
+                <span className={styles.rowCopy}>
                   <span>{recording.name}</span>
-                  <span className="screen-detail">
+                  <span className={styles.detail}>
                     {Math.max(1, Math.round(recording.size / 1024))} KB
                   </span>
                   {recording.url ? (
@@ -146,7 +147,7 @@ export function VoiceSettingsScreen() {
                       style={{ width: '100%', maxWidth: 340 }}
                     />
                   ) : (
-                    <span className="screen-footnote">
+                    <span className={styles.footnote}>
                       Audio playback is unavailable for this recording.
                     </span>
                   )}
@@ -155,7 +156,7 @@ export function VoiceSettingsScreen() {
             ))}
           </Card>
         ) : (
-          <p className="screen-empty">
+          <p className={styles.empty}>
             No recordings. Audio recordings attached to your conversations
             appear here.
           </p>

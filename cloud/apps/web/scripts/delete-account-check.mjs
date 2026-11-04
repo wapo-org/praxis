@@ -29,7 +29,7 @@ try {
       (await indexedDB.databases()).some((d) => d.name === 'praxis-cloud-scoped-v2') &&
       Object.keys(localStorage).some((k) => k.startsWith('praxis-replica-owner:')),
   );
-  await page.goto(`${BASE}/settings`);
+  await page.goto(`${BASE}/settings/account`);
   await page.getByTestId('delete-account-row').click();
   const dialog = page.getByRole('dialog', { name: 'Delete account' });
   await dialog.getByText('This can’t be undone', { exact: false }).waitFor();

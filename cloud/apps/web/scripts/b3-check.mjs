@@ -32,12 +32,13 @@ try {
   assert(chatBounds.width <= 720 && chatBounds.x >= 260); // WP-D1: 720 px column beside the 260 px sidebar
   await page.getByTestId('nav-settings-button').click(); await page.waitForURL('**/settings');
   const dialog = page.getByRole('dialog', { name: 'Settings', exact: true }); await dialog.waitFor();
-  const bounds = await dialog.boundingBox(); assert(bounds.x > 260 && bounds.width <= 640);
+  const bounds = await dialog.boundingBox(); assert(bounds.x > 260 && bounds.width <= 720 && bounds.height <= 560);
+  await dialog.getByRole('button', { name: 'Models & providers', exact: true }).click(); await page.waitForURL('**/settings/providers');
   await dialog.getByRole('button', { name: 'Add provider', exact: true }).click(); await page.waitForURL('**/settings/providers/new');
-  await page.reload(); await page.getByRole('dialog', { name: 'Provider', exact: true }).waitFor();
+  await page.reload(); await page.getByRole('dialog', { name: 'Settings', exact: true }).getByRole('heading', { name: 'Add provider', exact: true }).waitFor();
   assert.equal(await page.getByRole('switch').count(), 12);
-  await page.goBack(); await page.getByRole('dialog', { name: 'Settings', exact: true }).waitFor();
-  await page.goForward(); await page.getByRole('dialog', { name: 'Provider', exact: true }).waitFor();
+  await page.goBack(); await page.getByRole('heading', { name: 'Models & providers', exact: true }).waitFor();
+  await page.goForward(); await page.getByRole('heading', { name: 'Add provider', exact: true }).waitFor();
   await page.keyboard.press('Escape'); await page.waitForURL('**/');
   const saved = await page.evaluate(async () => {
     const { apiClient } = await import('/src/lib/api.ts');

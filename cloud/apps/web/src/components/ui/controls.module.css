@@ -1,0 +1,86 @@
+/* Shared form controls for the tray and Settings. CSS-only motion: transform on the thumb. */
+.segmented {
+  position: relative;
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  padding: 2px;
+  border-radius: var(--radius-full);
+  background: var(--color-fill-1);
+}
+.thumb {
+  position: absolute;
+  inset-block: 2px;
+  inset-inline-start: 2px;
+  width: calc((100% - 4px) / var(--segment-count));
+  border-radius: var(--radius-full);
+  background: var(--color-fill-2);
+  transform: translateX(calc(100% * var(--segment-index)));
+  transition: transform var(--duration-base) var(--ease-standard);
+}
+.segment {
+  position: relative;
+  height: calc(var(--control-md) - 4px);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-ink-2);
+  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  text-transform: capitalize;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+.segment[aria-pressed='true'] {
+  color: var(--color-ink);
+}
+.segment:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+@media (hover: hover) {
+  .segment:hover {
+    color: var(--color-ink);
+  }
+}
+
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--space-8);
+  height: var(--space-6);
+  margin: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-fill-2);
+  cursor: pointer;
+  appearance: none;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.switch::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: var(--space-5);
+  height: var(--space-5);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-1);
+  transition: transform var(--duration-base) var(--ease-standard);
+}
+.switch:checked {
+  background: var(--color-accent);
+}
+.switch:checked::before {
+  background: var(--color-on-accent);
+  transform: translateX(var(--space-4));
+}
+.switch:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.switch:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}

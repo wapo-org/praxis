@@ -68,6 +68,9 @@ export interface LiveRunState {
 }
 
 export type ActiveSheet =
+  | 'general'
+  | 'account'
+  | 'developer'
   | null
   | 'history'
   | 'settings'

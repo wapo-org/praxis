@@ -10,7 +10,9 @@ import { ConsentSheet } from './ConsentSheet.js';
 import { HistorySheet } from './HistorySheet.js';
 import { ImageReaderScreen } from './ImageReaderScreen.js';
 import { SheetDialog } from './ScreenUI.js';
-import { ProviderEditor, SettingsSheet } from './SettingsSheet.js';
+import { ProviderEditor } from './ProviderEditor.js';
+import { SettingsModal } from './SettingsModal.js';
+import { GeneralSection, ModelsSection } from './SettingsSections.js';
 import { SheetsRoot } from './SheetsRoot.js';
 import { SkillsScreen } from './SkillsScreen.js';
 import { VoiceSettingsScreen } from './VoiceSettingsScreen.js';
@@ -251,18 +253,45 @@ describe('connector health status', () => {
 
 describe('settings and capabilities', () => {
   it('navigates to providers and tools, and updates the appearance preference', async () => {
-    await mount(<SettingsSheet />);
+    await mount(<ModelsSection />);
     await click(button('Add provider'));
     expect(store.setEditingProviderId).toHaveBeenCalledWith(null);
     expect(store.setActiveSheet).toHaveBeenCalledWith('provider-editor');
+    await mount(<GeneralSection />);
     await click(button('Light'));
     expect(store.setThemeMode).toHaveBeenCalledWith('light');
-    await click(
-      Array.from(document.querySelectorAll<HTMLButtonElement>('.screen-nav-row')).find((node) =>
-        node.textContent?.includes('Connectors'),
-      )!,
-    );
+    await mount(<SettingsModal sheet="settings" />);
+    await click(document.querySelector<HTMLButtonElement>('[data-testid="settings-nav-connectors"]')!);
     expect(store.setActiveSheet).toHaveBeenCalledWith('connectors');
+  });
+  it('titles every page after its section, not "Model providers" over everything', async () => {
+    const titleOf = () => document.querySelector('header h1')?.textContent;
+    const current = () => document.querySelector('[aria-current="page"]')?.textContent;
+    for (const [sheet, title, nav] of [
+      ['settings', 'General', 'General'],
+      ['general', 'General', 'General'],
+      ['providers', 'Models & providers', 'Models & providers'],
+      ['image-reader', 'Image reading model', 'Models & providers'],
+      ['connectors', 'Connectors', 'Connectors'],
+      ['connector-add-url', 'Add by URL', 'Connectors'],
+      ['skills', 'Skills', 'Skills'],
+      ['consents', 'Data & privacy', 'Data & privacy'],
+      ['voice-settings', 'Voice input', 'General'],
+    ] as const) {
+      await mount(<SettingsModal sheet={sheet} />);
+      expect(titleOf()).toBe(title);
+      expect(current()).toBe(nav);
+    }
+    await mount(<SettingsModal sheet="provider-editor" />);
+    expect(titleOf()).toBe('Add provider');
+  });
+  it('goes back to the parent page, and sections back to the list', async () => {
+    await mount(<SettingsModal sheet="connector-add-url" />);
+    await click(button('Back'));
+    expect(store.setActiveSheet).toHaveBeenLastCalledWith('connectors');
+    await mount(<SettingsModal sheet="connectors" />);
+    await click(button('Back'));
+    expect(store.setActiveSheet).toHaveBeenLastCalledWith('settings');
   });
   it('preserves saved secrets when editing a provider and leaves verification failures visible', async () => {
     store.providers = [provider];

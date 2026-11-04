@@ -98,7 +98,7 @@ it('shows iOS tray order and sends the supported Web search toggle to the API', 
   await act(async () => { store.cacheModels([model('hosted')]); store.setSelectedModel('p', 'hosted'); store.setPlusTrayOpen(true); });
   const groups = [...node.querySelectorAll('[role="group"]')];
   expect(groups.map(g => g.getAttribute('aria-label'))).toEqual(['Mode', 'Reasoning effort']);
-  expect([...node.querySelectorAll('.tray-media button')].map(n => n.textContent)).toEqual(['Photos', 'Camera', 'Files', 'Screenshot']);
+  expect([...node.querySelectorAll('[data-testid^="tray-tile-"]')].map(n => n.textContent)).toEqual(['Photos', 'Camera', 'Files', 'Screenshot']);
   await act(async () => node.querySelector<HTMLInputElement>('[aria-label="Web search"]')!.click());
   await act(async () => store.sendMessage('Question'));
   expect(start).toHaveBeenCalledWith(expect.objectContaining({ webSearch: true }));

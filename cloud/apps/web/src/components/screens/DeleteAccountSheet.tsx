@@ -7,6 +7,7 @@ import {
   TaskError,
   useScreenTask,
 } from './ScreenUI';
+import styles from './Screen.module.css';
 
 /** Destructive confirmation for DELETE /v1/account: the API needs the password unless the session is fresh. */
 export function DeleteAccountSheet({
@@ -22,23 +23,23 @@ export function DeleteAccountSheet({
   const task = useScreenTask();
   const submit = () => void task.run(() => onDelete(password));
   return (
-    <SheetDialog label="Delete account" onDismiss={() => !task.busy && onDismiss()}>
+    <SheetDialog label="Delete account" size="compact" onDismiss={() => !task.busy && onDismiss()}>
       <ScreenHeader title="Delete account" />
       <ScreenBody>
         <form
-          className="screen-delete-account"
+          className={styles.stack}
           onSubmit={(event) => {
             event.preventDefault();
             submit();
           }}
         >
-          <h2 className="screen-consent-heading">Delete your account?</h2>
-          <p className="screen-intro">
+          <h2 className={styles.heading}>Delete your account?</h2>
+          <p className={styles.intro}>
             This permanently deletes your account on {server}: all chats and messages, runs,
             attachments, skills, connectors and their sign-ins, provider keys, settings and
             consents. Every device is signed out. This can’t be undone.
           </p>
-          <label className="screen-field">
+          <label className={styles.field}>
             Password
             <input
               type="password"
@@ -48,7 +49,7 @@ export function DeleteAccountSheet({
               onChange={(event) => setPassword(event.target.value)}
             />
           </label>
-          <p className="screen-footnote">
+          <p className={styles.footnote}>
             Signed in less than five minutes ago? You can leave the password empty.
           </p>
           <TaskError error={task.error} />

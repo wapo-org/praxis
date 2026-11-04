@@ -45,12 +45,12 @@ try {
     await apiClient.startRun({ chatId: input.chatId, text: 'Document', attachmentIds: [att.id], script: 'text' });
   }, { input, storageId });
   await page.reload(); await page.getByTestId('document-attachment-chip').filter({ hasText: 'Protocol-notes.txt' }).waitFor();
-  await page.goto(`${BASE}/settings`); const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await page.goto(`${BASE}/settings/account`); const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
   await settings.getByRole('button', { name: 'Sign out', exact: true }).waitFor();
   assert.equal(await page.locator('.account-sign-out').count(), 0);
   assert.equal(await settings.getByRole('button', { name: 'Close settings' }).textContent(), 'Done');
-  const tools = settings.locator('section').filter({ has: page.getByRole('heading', { name: 'Tools', exact: true }) });
-  await tools.getByText('Voice input', { exact: true }).waitFor(); await tools.getByText('Image reading model', { exact: true }).waitFor();
+  await settings.getByRole('button', { name: 'General', exact: true }).click(); await settings.getByText('Voice input', { exact: true }).waitFor();
+  await settings.getByRole('button', { name: 'Models & providers', exact: true }).click(); await settings.getByText('Image reading model', { exact: true }).waitFor();
   await settings.getByRole('button', { name: 'Add provider', exact: true }).click();
   await page.getByRole('button', { name: 'Provider preset', exact: true }).click();
   await page.getByRole('menuitem', { name: 'OpenAI', exact: true }).click();
@@ -67,7 +67,7 @@ try {
   const row = page.locator('.screen-history-row').filter({ hasText: server.title }).first();
   await row.click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Rename', exact: true }).waitFor();
   await page.keyboard.press('Escape');
-  await page.goto(`${BASE}/settings`); await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await page.goto(`${BASE}/settings/account`); await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
   console.log('PASS: first bootstrap replica; authoritative title/no client title PATCH; icon actions; real document chip; Account sign-out; Tools grouping/Done; glass Preset; unreachable connector health; contextual history actions');
 } finally { await browser.close(); }

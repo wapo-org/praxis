@@ -12,6 +12,7 @@ import {
   TaskError,
   useScreenTask,
 } from './ScreenUI.js';
+import styles from './Screen.module.css';
 
 export function SkillBrowser() {
   const store = usePraxisStore();
@@ -32,7 +33,7 @@ export function SkillBrowser() {
     <ScreenBody>
       <TaskError error={task.error} />
       <form
-        className="screen-actions"
+        className={styles.actions}
         role="search"
         onSubmit={(event) => {
           event.preventDefault();
@@ -41,7 +42,7 @@ export function SkillBrowser() {
       >
         <input
           style={{ flex: '1 1 200px' }}
-          className="screen-search"
+          className={styles.search}
           type="search"
           aria-label="Search skills"
           placeholder="Search skills…"
@@ -62,10 +63,10 @@ export function SkillBrowser() {
                 const isInstalled =
                   installed.has(key) || store.skills.some((skill) => skill.registryId === registry.id && skill.registryEntryId === entry.id);
                 return (
-                  <div className="screen-row" key={entry.id}>
-                    <span className="screen-row-copy">
+                  <div className={styles.row} key={entry.id}>
+                    <span className={styles.rowCopy}>
                       <strong>{entry.name}</strong>
-                      <span className="screen-detail">{entry.description}</span>
+                      <span className={styles.detail}>{entry.description}</span>
                     </span>
                     <ScreenButton
                       disabled={task.busy || isInstalled}
@@ -83,7 +84,7 @@ export function SkillBrowser() {
               })}
             </Card>
           ) : (
-            <p className="screen-footnote">
+            <p className={styles.footnote}>
               {searched ? 'No skills found in this registry.' : 'Search to browse this registry.'}
             </p>
           )}
@@ -96,10 +97,10 @@ export function SkillBrowser() {
         {store.registries.length ? (
           <Card>
             {store.registries.map((registry) => (
-              <div className="screen-row" key={registry.id}>
-                <span className="screen-row-copy">
+              <div className={styles.row} key={registry.id}>
+                <span className={styles.rowCopy}>
                   <strong>{registry.name}</strong>
-                  <span className="screen-detail">
+                  <span className={styles.detail}>
                     {hostLabel(registry.url)}
                     {registry.enabled ? '' : ' · Disabled'}
                   </span>
@@ -118,10 +119,10 @@ export function SkillBrowser() {
             ))}
           </Card>
         ) : (
-          <p className="screen-empty">No registries yet. Add one to browse and install skills.</p>
+          <p className={styles.empty}>No registries yet. Add one to browse and install skills.</p>
         )}
         <form
-          className="screen-form"
+          className={styles.form}
           onSubmit={(event) => {
             event.preventDefault();
             void task.run(async () => {

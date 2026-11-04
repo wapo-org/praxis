@@ -3,6 +3,7 @@ import { usePraxisStore } from '../../state/store.js';
 import { Field, ScreenBody, ScreenButton, Section, TaskError, useScreenTask } from './ScreenUI.js';
 
 import { apiClient } from '../../lib/api';
+import styles from './Screen.module.css';
 export function SkillImport() {
   const store = usePraxisStore();
   // Separate tasks: an archive failure must not show up on (or block) the manual form, and vice versa.
@@ -44,7 +45,7 @@ export function SkillImport() {
         {report ? <p role="status">{report}</p> : null}
       </Section>
       <form
-        className="screen-form"
+        className={styles.form}
         onSubmit={(event) => {
           event.preventDefault();
           void task.run(async () => {
@@ -79,7 +80,7 @@ export function SkillImport() {
         </Field>
         <Field label="SKILL.md markdown">
           <textarea
-            className="screen-mono"
+            className={styles.mono}
             rows={16}
             required
             maxLength={500000}

@@ -9,12 +9,14 @@ import {
   NavRow,
   requireHttpUrl,
   ScreenBody,
+  Select,
   ScreenButton,
   Section,
   TaskError,
   Toggle,
   useScreenTask,
 } from './ScreenUI.js';
+import styles from './Screen.module.css';
 
 interface ConnectorInput {
   name: string;
@@ -140,10 +142,10 @@ export function ConnectorsScreen() {
                   }[connector.status] ?? 'Status unknown')
                 : 'Status unknown';
               return (
-                <div className="screen-list-item" key={connector.id}>
+                <div className={styles.listItem} key={connector.id}>
                   <button
                     type="button"
-                    className="screen-row screen-nav-row"
+                    className={`${styles.row} ${styles.navRow}`}
                     aria-expanded={open}
                     aria-controls={`tools-${connector.id}`}
                     onClick={() => {
@@ -156,23 +158,23 @@ export function ConnectorsScreen() {
                       if (!open) void task.run(() => store.loadConnectorTools(connector.id));
                     }}
                   >
-                    <span className="screen-avatar">
+                    <span className={styles.avatar}>
                       {connector.name.slice(0, 1).toUpperCase()}
                     </span>
-                    <span className="screen-row-copy">
+                    <span className={styles.rowCopy}>
                       <strong>{connector.name}</strong>
-                      <span className="screen-detail">{hostLabel(connector.url)}</span>
+                      <span className={styles.detail}>{hostLabel(connector.url)}</span>
                       <span
-                        className={`screen-detail ${status === 'Connected' ? 'screen-success' : ''}`}
+                        className={`${styles.detail} ${status === 'Connected' ? styles.success : ''}`}
                       >
                         {status} · {tools?.length ?? connector.toolCount ?? 0} tools
                       </span>
                     </span>
-                    {connector.hasNewTools ? <span className="screen-badge">New tool</span> : null}
+                    {connector.hasNewTools ? <span className={styles.badge}>New tool</span> : null}
                     <span aria-hidden="true">{open ? '⌄' : '›'}</span>
                   </button>
                   {open ? (
-                    <div className="screen-list-detail" id={`tools-${connector.id}`}>
+                    <div className={styles.listDetail} id={`tools-${connector.id}`}>
                       <Toggle
                         label={`Enable ${connector.name}`}
                         checked={connector.enabled}
@@ -181,8 +183,8 @@ export function ConnectorsScreen() {
                           void task.run(() => store.updateConnector(connector.id, { enabled }));
                         }}
                       />
-                      {connector.error ? <p className="screen-error">{connector.error}</p> : null}
-                      <div className="screen-actions">
+                      {connector.error ? <p className={styles.error}>{connector.error}</p> : null}
+                      <div className={styles.actions}>
                         <ScreenButton
                           disabled={task.busy}
                           onClick={() => {
@@ -221,10 +223,10 @@ export function ConnectorsScreen() {
                             />
                           ))
                         ) : (
-                          <p className="screen-footnote">No tools returned by this connector.</p>
+                          <p className={styles.footnote}>No tools returned by this connector.</p>
                         )
                       ) : (
-                        <p className="screen-footnote">
+                        <p className={styles.footnote}>
                           {task.busy ? 'Loading tools…' : 'Refresh tools to try again.'}
                         </p>
                       )}
@@ -245,7 +247,7 @@ export function ConnectorsScreen() {
             })}
           </Card>
         ) : (
-          <p className="screen-empty">
+          <p className={styles.empty}>
             No connectors yet. Add one below to give the agent tools like your issue tracker or
             docs.
           </p>
@@ -273,7 +275,7 @@ export function ConnectorsScreen() {
           />
         </Card>
       </Section>
-      <p className="screen-footnote">
+      <p className={styles.footnote}>
         Connectors are remote MCP servers. Servers that run local programs are not supported.
       </p>
     </ScreenBody>
@@ -290,7 +292,7 @@ export function ConnectorAddURL() {
   return (
     <ScreenBody>
       <form
-        className="screen-form"
+        className={styles.form}
         onSubmit={(event) => {
           event.preventDefault();
           void task.run(async () => {
@@ -326,13 +328,13 @@ export function ConnectorAddURL() {
           />
         </Field>
         <Field label="Transport">
-          <select
+          <Select
             value={transport}
             onChange={(event) => setTransport(event.target.value as typeof transport)}
           >
             <option value="streamableHttp">Streamable HTTP</option>
             <option value="sse">Server-sent events (SSE)</option>
-          </select>
+          </Select>
         </Field>
         <Field
           label="Bearer token (optional)"
@@ -366,7 +368,7 @@ export function ConnectorPasteConfig() {
   return (
     <ScreenBody>
       <form
-        className="screen-form"
+        className={styles.form}
         onSubmit={(event) => {
           event.preventDefault();
           void task.run(async () => {
@@ -382,19 +384,19 @@ export function ConnectorPasteConfig() {
           });
         }}
       >
-        <p className="screen-intro">
+        <p className={styles.intro}>
           Paste a remote MCP server URL or a config with an mcpServers object. Bearer authorization
           headers are supported.
         </p>
         <TaskError error={task.error} />
         {completed.length ? (
-          <p className="screen-success" role="status">
+          <p className={styles.success} role="status">
             Added: {completed.join(', ')}. Retry to finish importing the remaining servers.
           </p>
         ) : null}
         <Field label="Server config">
           <textarea
-            className="screen-mono"
+            className={styles.mono}
             value={source}
             onChange={(event) => setSource(event.target.value)}
             rows={14}

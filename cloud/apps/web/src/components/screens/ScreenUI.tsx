@@ -1,15 +1,11 @@
-import {
-  GlassCard,
-  GlassDropdown,
-  GlassIconButton,
-  press,
-  ProgressiveBlurScrim,
-} from '@praxis/glass';
+import { GlassDropdown, ScrollBlur, usePress } from '@praxis/glass';
 import { motion } from 'framer-motion';
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight } from '../../lib/icons';
-import './screens.css';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown } from '../../lib/icons';
+import { Switch } from '../ui/controls';
+import styles from './Screen.module.css';
+import './screens.css'; // Legacy classes for HistorySheet until WP-D3 converts it.
 
 export function useScreenTask() {
   const [busy, setBusy] = React.useState(false);
@@ -34,7 +30,7 @@ export function useScreenTask() {
 
 export function TaskError({ error }: { error: string | null }) {
   return error ? (
-    <p className="screen-error" role="alert">
+    <p className={styles.error} role="alert">
       {error}
     </p>
   ) : null;
@@ -51,11 +47,13 @@ export function ScreenButton({
 > & {
   tone?: 'primary' | 'secondary' | 'destructive';
 }) {
+  const pressProps = usePress();
   return (
     <motion.button
       type="button"
-      {...press}
-      className={`screen-button screen-button--${tone} ${className}`}
+      {...pressProps}
+      data-tone={tone}
+      className={`${styles.button} ${className}`.trim()}
       {...props}
     >
       {children}
@@ -74,28 +72,19 @@ export function Section({
 }) {
   const id = React.useId();
   return (
-    <section className="screen-section" aria-labelledby={id}>
-      <h2 id={id} className="screen-section-title">
+    <section className={styles.section} aria-labelledby={id}>
+      <h2 id={id} className={styles.sectionTitle}>
         {title}
       </h2>
       {children}
-      {hint ? <p className="screen-footnote">{hint}</p> : null}
+      {hint ? <p className={styles.footnote}>{hint}</p> : null}
     </section>
   );
 }
 
+/** Grouped rows: an opaque card on the sheet. Content is never glass. */
 export function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <GlassCard
-      className="screen-card"
-      style={{
-        background: 'var(--paper-card)',
-        border: '1px solid var(--paper-hairline)',
-      }}
-    >
-      {children}
-    </GlassCard>
-  );
+  return <div className={styles.card}>{children}</div>;
 }
 
 export function NavRow({
@@ -104,22 +93,31 @@ export function NavRow({
   detail,
   value,
   onClick,
+  testId,
 }: {
   icon?: React.ReactNode;
   title: string;
   detail?: string;
   value?: React.ReactNode;
   onClick: () => void;
+  testId?: string;
 }) {
   return (
-    <button type="button" className="screen-row screen-nav-row" onClick={onClick}>
-      {icon ? <span className="screen-row-icon">{icon}</span> : null}
-      <span className="screen-row-copy">
+    <button
+      type="button"
+      className={`${styles.row} ${styles.navRow}`}
+      data-testid={testId}
+      onClick={onClick}
+    >
+      {icon ? <span className={styles.rowIcon}>{icon}</span> : null}
+      <span className={styles.rowCopy}>
         <span>{title}</span>
-        {detail ? <span className="screen-detail">{detail}</span> : null}
+        {detail ? <span className={styles.detail}>{detail}</span> : null}
       </span>
-      {value !== undefined ? <span className="screen-row-value">{value}</span> : null}
-      <ChevronRight size={16} aria-hidden="true" />
+      {value !== undefined ? <span className={styles.rowValue}>{value}</span> : null}
+      <span className={styles.chevron}>
+        <ChevronRight size={16} aria-hidden="true" />
+      </span>
     </button>
   );
 }
@@ -138,19 +136,12 @@ export function Toggle({
   detail?: string;
 }) {
   return (
-    <label className="screen-row screen-toggle-row">
-      <span className="screen-row-copy">
+    <label className={styles.row}>
+      <span className={styles.rowCopy}>
         <span>{label}</span>
-        {detail ? <span className="screen-detail">{detail}</span> : null}
+        {detail ? <span className={styles.detail}>{detail}</span> : null}
       </span>
-      <input
-        className="screen-toggle"
-        type="checkbox"
-        role="switch"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-      />
+      <Switch checked={checked} disabled={disabled} onChange={onChange} />
     </label>
   );
 }
@@ -165,11 +156,38 @@ export function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label className="screen-field">
+    <label className={styles.field}>
       <span>{label}</span>
       {children}
-      {hint ? <span className="screen-footnote">{hint}</span> : null}
+      {hint ? <span className={styles.footnote}>{hint}</span> : null}
     </label>
+  );
+}
+
+/** Native select (the OS picker is the right control) dressed to match the other fields. */
+export function Select({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <span className={styles.select}>
+      <select {...props}>{children}</select>
+      <ChevronDown size={16} aria-hidden="true" />
+    </span>
+  );
+}
+
+/** One-of-many choice when the options can overflow a segmented control. */
+export function ChoiceChip({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className={styles.chip} aria-pressed={active} onClick={onClick}>
+      {children}
+    </button>
   );
 }
 
@@ -185,23 +203,19 @@ export function ScreenHeader({
   trailing?: React.ReactNode;
 }) {
   return (
-    <header className="screen-header">
-      <div className="screen-header-side">
-        {onBack ? (
-          <GlassIconButton label="Back" onClick={onBack}>
-            <ChevronLeft size={20} />
-          </GlassIconButton>
-        ) : null}
+    <header className={styles.header}>
+      <div className={styles.headerSide}>
+        {onBack ? <BackButton onClick={onBack} /> : null}
       </div>
-      <h1 className="screen-title">{title}</h1>
-      <div className="screen-header-side screen-header-side--end">
+      <h1 className={styles.title}>{title}</h1>
+      <div className={`${styles.headerSide} ${styles.headerEnd}`}>
         {trailing ??
           (onClose ? (
             <button
               type="button"
               aria-label={`Close ${title.toLowerCase()}`}
               onClick={onClose}
-              className="screen-text-button"
+              className={styles.textButton}
             >
               Done
             </button>
@@ -211,12 +225,33 @@ export function ScreenHeader({
   );
 }
 
+export function BackButton({
+  onClick,
+  className = '',
+  ...rest
+}: { onClick: () => void; className?: string } & React.HTMLAttributes<HTMLButtonElement> & {
+    'data-section-root'?: string;
+  }) {
+  return (
+    <button
+      type="button"
+      className={`${styles.iconButton} ${className}`.trim()}
+      aria-label="Back"
+      title="Back"
+      onClick={onClick}
+      {...rest}
+    >
+      <ChevronLeft size={20} />
+    </button>
+  );
+}
+
 export function ScreenBody({ children }: { children: React.ReactNode }) {
   return (
-    <div className="screen-scroll-frame">
-      <div className="screen-body">{children}</div>
-      <ProgressiveBlurScrim edge="top" height={12} />
-      <ProgressiveBlurScrim edge="bottom" height={24} />
+    <div className={styles.frame}>
+      <ScrollBlur height="100%">
+        <div className={styles.body}>{children}</div>
+      </ScrollBlur>
     </div>
   );
 }
@@ -227,8 +262,11 @@ export function ScreenMenu({
   children,
   icon,
   contextOnly = false,
+  plain = false,
 }: {
   contextOnly?: boolean;
+  /** Render the trigger as an inline value + chevron (form rows), not a glass capsule. */
+  plain?: boolean;
   label: string;
   children: React.ReactNode;
   icon: React.ReactNode;
@@ -260,7 +298,7 @@ export function ScreenMenu({
       boundary={() => trigger.current?.closest<HTMLElement>('.screen-shell') ?? null}
     >
       <GlassDropdown.Trigger
-        asChild={contextOnly}
+        asChild={contextOnly || plain}
         ref={trigger}
         aria-label={label}
         hideChevron
@@ -277,7 +315,16 @@ export function ScreenMenu({
             : undefined
         }
       >
-        {contextOnly ? <button type="button">{icon}</button> : icon}
+        {contextOnly ? (
+          <button type="button">{icon}</button>
+        ) : plain ? (
+          <button type="button" className={styles.menuValue} aria-label={label}>
+            {icon}
+            <ChevronsUpDown size={16} aria-hidden="true" />
+          </button>
+        ) : (
+          icon
+        )}
       </GlassDropdown.Trigger>
       {open && target
         ? createPortal(

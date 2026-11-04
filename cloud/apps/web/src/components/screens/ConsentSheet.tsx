@@ -12,6 +12,7 @@ import {
   Toggle,
   useScreenTask,
 } from './ScreenUI.js';
+import styles from './Screen.module.css';
 
 export function ConsentSheet() {
   const store = usePraxisStore();
@@ -86,7 +87,7 @@ export function ConsentSheet() {
       <ScreenHeader title="AI data sharing" />
       <ScreenBody>
         <h2
-          className="screen-consent-heading"
+          className={styles.heading}
           id="consentTitle"
           data-testid="consentTitle"
         >
@@ -99,32 +100,32 @@ export function ConsentSheet() {
                 : 'Share this chat with this provider?'}
         </h2>
         <div>
-          <span className="screen-badge">
+          <span className={styles.badge}>
             <Globe size={16} aria-hidden="true" />
             {prompt.host}
           </span>
         </div>
-        <p className="screen-intro">{prompt.description}</p>
+        <p className={styles.intro}>{prompt.description}</p>
         <Section title="What’s sent">
           <Card>
             {items.map((item) => (
               <div
-                className="screen-row"
+                className={styles.row}
                 key={item.title}
-                style={{ alignItems: 'flex-start' }}
+                data-align="top"
               >
-                <span className="screen-row-icon">{item.icon}</span>
-                <span className="screen-row-copy">
+                <span className={styles.rowIcon}>{item.icon}</span>
+                <span className={styles.rowCopy}>
                   <strong>{item.title}</strong>
-                  <span className="screen-detail">{item.detail}</span>
+                  <span className={styles.detail}>{item.detail}</span>
                 </span>
               </div>
             ))}
           </Card>
         </Section>
-        <p className="screen-footnote">
+        <p className={styles.footnote}>
           The service’s own terms and privacy policy apply to what it receives.
-          You can withdraw permission in Settings → Data consents. Praxis then
+          You can withdraw permission in Settings → Data & privacy. Praxis then
           asks again before sending.
         </p>
         <ScreenButton tone="primary" onClick={prompt.onAllow}>
@@ -141,7 +142,7 @@ export function ConsentsScreen() {
   const task = useScreenTask();
   return (
     <ScreenBody>
-      <p className="screen-intro">
+      <p className={styles.intro}>
         Praxis asks before it first sends data to a service. Withdraw permission
         here to be asked again before sending.
       </p>
@@ -167,7 +168,7 @@ export function ConsentsScreen() {
             ))}
           </Card>
         ) : (
-          <p className="screen-empty">
+          <p className={styles.empty}>
             No services have been granted permission yet.
           </p>
         )}

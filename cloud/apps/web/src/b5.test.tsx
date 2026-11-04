@@ -14,7 +14,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AgentActivityView } from './components/chat/AgentActivityView';
 import { AgentMessageView } from './components/chat/AgentMessageView';
 import { UserBubble } from './components/chat/UserBubble';
-import { SettingsSheet } from './components/screens/SettingsSheet';
+import { AccountSection, GeneralSection, ModelsSection } from './components/screens/SettingsSections';
 import { AccountContext } from './lib/account';
 import { apiClient } from './lib/api';
 import { clearReplica, readReplicaSync, setReplicaIdentity } from './lib/idb';
@@ -271,7 +271,7 @@ it('uses the server title and never generates a client title PATCH', async () =>
   expect(read).toHaveBeenCalledWith('c');
   expect(get().activeChat?.title).toBe('Authoritative server title');
 });
-it('places sign-out under Settings Account and keeps image/voice rows under Tools', async () => {
+it('places sign-out under Settings Account, voice under General and image reading under Models', async () => {
   vi.spyOn(apiClient, 'bootstrap').mockResolvedValue(bootstrap());
   const signOut = vi.fn().mockResolvedValue(undefined);
   await act(async () =>
@@ -287,7 +287,9 @@ it('places sign-out under Settings Account and keeps image/voice rows under Tool
         }}
       >
         <PraxisStoreProvider>
-          <SettingsSheet />
+          <AccountSection />
+          <GeneralSection />
+          <ModelsSection />
         </PraxisStoreProvider>
       </AccountContext.Provider>,
     ),
@@ -302,7 +304,10 @@ it('places sign-out under Settings Account and keeps image/voice rows under Tool
     (n) => n.querySelector('h2')?.textContent === 'Tools',
   )!;
   expect(tools.textContent).toContain('Image reading model');
-  expect(tools.textContent).toContain('Voice input');
+  const input = [...container.querySelectorAll('section')].find(
+    (n) => n.querySelector('h2')?.textContent === 'Input',
+  )!;
+  expect(input.textContent).toContain('Voice input');
   expect(container.querySelector('.account-sign-out')).toBeNull();
 });
 

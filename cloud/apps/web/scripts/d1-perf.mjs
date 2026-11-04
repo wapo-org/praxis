@@ -72,7 +72,57 @@ for (let i = 0; i < 5; i++) {
 }
 const menuTasks = await taken();
 
-// 3. Idle: count script callbacks per frame for 2 s (rAF loops would show up as scripting time).
+// 3. Composer tray and a 500-model list, paged like the real API: open, scroll to the end, back, close.
+const catalog = Array.from({ length: 500 }, (_, i) => ({
+  type: 'model', id: `perf-${i}`, providerId: 'scripted', displayName: `Perf model ${String(i + 1).padStart(3, '0')}`, tagline: 'A realistic tagline for this model',
+  capabilities: { type: 'capabilities', tools: true, parallelToolCalls: true, vision: i % 2 === 0, documents: false, imagesInToolResults: false, reasoningEffort: i % 3 === 0, streamUsage: true, explicitPromptCaching: false, serverWebSearch: i % 4 === 0, midConversationSystem: false, serverCompaction: false, toolSearch: false },
+  reasoningEfforts: ['low', 'medium', 'high'], pinned: i < 3, favorite: false,
+}));
+await page.route('**/v1/models?**', async (route) => {
+  const query = new URL(route.request().url()).searchParams;
+  const start = Number(query.get('cursor') ?? 0);
+  const limit = Number(query.get('limit') ?? 50);
+  await route.fulfill({ json: { type: 'page', items: catalog.slice(start, start + limit), nextCursor: start + limit < catalog.length ? String(start + limit) : null } });
+});
+await page.mouse.move(1300, 200);
+await window_('tray');
+for (let i = 0; i < 5; i++) {
+  await page.getByTestId('composer-plus-button').click();
+  await page.getByTestId('plus-tray').waitFor();
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Escape');
+  await page.getByTestId('plus-tray').waitFor({ state: 'detached' });
+}
+const trayTasks = await taken();
+await page.getByTestId('composer-plus-button').click();
+await page.getByTestId('plus-tray').waitFor();
+await window_('models');
+let modelsLoaded = 0;
+for (let i = 0; i < 3; i++) {
+  await page.getByTestId('tray-model-picker-trigger').click();
+  await page.getByRole('option').first().waitFor();
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Escape');
+  await page.getByRole('listbox', { name: 'Models' }).waitFor({ state: 'detached' });
+}
+await page.getByTestId('tray-model-picker-trigger').click();
+await page.getByRole('option').first().waitFor();
+const list = page.getByRole('listbox', { name: 'Models' });
+const box = await list.boundingBox();
+await page.mouse.move(box.x + 100, box.y + 100);
+for (let i = 0; i < 240; i++) {
+  await page.mouse.wheel(0, 300);
+  await page.waitForTimeout(16);
+  if (i % 40 === 39) await page.waitForTimeout(150);
+}
+const windowSize = await page.getByRole('option').count();
+modelsLoaded = await list.evaluate((el) => Math.round(el.getBoundingClientRect().height / 56));
+const modelTasks = await taken();
+await page.keyboard.press('Escape');
+await page.keyboard.press('Escape');
+await page.unroute('**/v1/models?**');
+
+// 4. Idle: count script callbacks per frame for 2 s (rAF loops would show up as scripting time).
 const idle = await page.evaluate(async () => {
   let callbacks = 0;
   const raf = window.requestAnimationFrame;
@@ -93,10 +143,12 @@ const result = {
   userBubblesRendered: rendered,
   scroll: { longTasks: scrollTasks.length, maxLongTaskMs: Math.max(0, ...scrollTasks), frameMs: frames },
   menuOpen: { opens: 5, longTasks: menuTasks.length, maxLongTaskMs: Math.max(0, ...menuTasks) },
+  trayOpen: { opens: 5, longTasks: trayTasks.length, maxLongTaskMs: Math.max(0, ...trayTasks) },
+  modelList: { models: catalog.length, rowsLoaded: modelsLoaded, mountedOptions: windowSize, longTasks: modelTasks.length, maxLongTaskMs: Math.max(0, ...modelTasks) },
   idle: { ...idle, scriptMsIn2s: Math.round((after.ScriptDuration - before.ScriptDuration) * 1000 * 10) / 10, layoutsIn2s: after.LayoutCount - before.LayoutCount },
 };
 await mkdir(OUT, { recursive: true });
 await writeFile(`${OUT}/perf.json`, JSON.stringify(result, null, 2));
 console.log(JSON.stringify(result));
-const ok = result.scroll.maxLongTaskMs <= 50 && result.menuOpen.maxLongTaskMs <= 50 && result.idle.rafCallbacksIn2s === 0;
+const ok = result.scroll.maxLongTaskMs <= 50 && result.menuOpen.maxLongTaskMs <= 50 && result.trayOpen.maxLongTaskMs <= 50 && result.modelList.maxLongTaskMs <= 50 && result.idle.rafCallbacksIn2s === 0;
 if (!ok) { console.error('PERF BUDGET FAILED'); process.exit(1); }

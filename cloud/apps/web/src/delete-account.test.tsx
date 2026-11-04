@@ -54,7 +54,7 @@ it('confirms deletion in a sheet that explains the loss and sends the typed pass
   const { dialog, input, confirm } = await open(deleteAccount);
   expect(dialog.textContent).toContain('chats and messages');
   expect(dialog.textContent).toContain('can’t be undone');
-  expect(confirm.className).toContain('screen-button--destructive');
+  expect(confirm.dataset.tone).toBe('destructive');
   act(() => type(input, 'hunter2-password'));
   await act(async () => confirm.click());
   expect(deleteAccount).toHaveBeenCalledWith('hunter2-password');

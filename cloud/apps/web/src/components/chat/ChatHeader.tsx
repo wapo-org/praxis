@@ -24,9 +24,6 @@ export function ChatHeader() {
             <BarButton label="Open sidebar" testId="nav-sidebar-button" onClick={() => store.setDesktopSidebarOpen(true)}>
               <PanelLeft size={18} />
             </BarButton>
-            <BarButton label="New chat" testId="nav-new-chat-desktop" onClick={() => store.startNewConversation()}>
-              <Edit size={18} />
-            </BarButton>
           </Cluster>
         ) : null}
       </div>
@@ -49,6 +46,9 @@ export function ChatHeader() {
           </BarButton>
         </Cluster>
         <Cluster className={styles.desktop}>
+          <BarButton label="New chat" testId="nav-new-chat-desktop" onClick={() => store.startNewConversation()}>
+            <Edit size={18} />
+          </BarButton>
           <BarButton label="Settings" testId="nav-settings-button" onClick={() => store.setActiveSheet('settings')}>
             <Settings size={18} />
           </BarButton>
