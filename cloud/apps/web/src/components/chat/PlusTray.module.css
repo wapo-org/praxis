@@ -3,15 +3,9 @@
   position: absolute;
   bottom: calc(100% + var(--space-2));
   left: 0;
-  right: 0;
   z-index: 30;
+  width: min(var(--tray-width), 100%);
   transform-origin: var(--space-6) 100%;
-}
-@media (min-width: 1024px) {
-  .anchor {
-    right: auto;
-    width: var(--tray-width);
-  }
 }
 .surface {
   overflow: hidden;
