@@ -1,6 +1,7 @@
 import { GlassChip } from '@praxis/glass';
 import React from 'react';
-import { ArrowLeft, Moon, Sun } from '../../lib/icons';
+import { ArrowLeft, Moon, Shield, Sun } from '../../lib/icons';
+import { usePraxisStore } from '../../state/store';
 import { AppleNotesReplica } from './AppleNotesReplica';
 import { DropdownPositions } from './DropdownPositions';
 import './lab.css';
@@ -111,6 +112,8 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
           >
             {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
           </GlassChip>
+          {/* Dev-only demo: drive the real ConsentPopover through real store state. */}
+          <ConsentDemoChip onNavigateBack={onNavigateBack} />
         </div>
       </header>
 
@@ -143,9 +146,36 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
           <VirtualModelPicker />
         </div>
 
+
         {/* 4. ProgressiveBlurScrim Scroll Container Demo (Side-by-Side Comparison) */}
         <ScrimComparison />
       </main>
     </div>
+  );
+}
+
+/**
+ * Dev-only: drive the real AI data-consent popover through real store state,
+ * so the anchored popover (and its send-blocking) can be inspected live.
+ */
+function ConsentDemoChip({ onNavigateBack }: { onNavigateBack?: () => void }) {
+  const store = usePraxisStore();
+  return (
+    <GlassChip
+      data-testid="glass-lab-consent-demo"
+      icon={<Shield size={16} />}
+      onClick={() => {
+        store.setPendingConsentPrompt({
+          host: 'example.com',
+          purpose: 'chat',
+          description: 'Allow Praxis to send conversation messages and attachments to Example (example.com)?',
+          onAllow: () => store.setPendingConsentPrompt(null),
+          onCancel: () => store.setPendingConsentPrompt(null),
+        });
+        onNavigateBack?.();
+      }}
+    >
+      Consent popover
+    </GlassChip>
   );
 }

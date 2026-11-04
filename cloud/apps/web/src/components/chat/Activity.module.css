@@ -34,12 +34,11 @@
   display: inline-flex;
   flex-shrink: 0;
   color: var(--color-ink-3);
-  transform: rotate(90deg);
   transition: transform var(--duration-base) var(--ease-standard);
 }
 
 .chevron[data-open='true'] {
-  transform: rotate(-90deg);
+  transform: rotate(90deg);
 }
 
 .label {

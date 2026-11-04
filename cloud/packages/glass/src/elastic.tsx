@@ -263,16 +263,24 @@ function cleanupSession(session: DragSession) {
 }
 
 /**
- * A real drag must not fire the click. Swallow exactly one capture-phase
- * click at the window so React handlers never run for that gesture.
+ * A real drag must not fire the click. A single permanent capture-phase
+ * listener swallows the first click within 600 ms of a drag's pointerup,
+ * so React handlers never run for that gesture. The listener is installed
+ * once and never stacks, so it cannot leak between gestures.
  */
+let ignoreClickUntil = 0;
+let clickSwallowerInstalled = false;
+
 function suppressNextClick() {
+  ignoreClickUntil = Date.now() + 600;
+  if (clickSwallowerInstalled) return;
+  clickSwallowerInstalled = true;
   const swallow = (event: Event) => {
+    if (Date.now() >= ignoreClickUntil) return;
+    ignoreClickUntil = 0;
     event.stopImmediatePropagation();
     event.preventDefault();
-    window.removeEventListener('click', swallow, true);
   };
   window.addEventListener('click', swallow, true);
-  window.setTimeout(() => window.removeEventListener('click', swallow, true), 1500);
   void CLICK_CAPTURE_DELAY;
 }

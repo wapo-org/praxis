@@ -21,7 +21,7 @@ async function open(theme, viewport, path = '/') {
   await Promise.race([signIn.waitFor(), page.getByTestId('chat-top-bar').waitFor()]);
   if (await signIn.isVisible()) await signIn.click();
   await page.getByTestId('chat-top-bar').waitFor();
-  if (path !== '/') await page.goto(`${BASE}${path}`);
+  if (path !== '/') await page.evaluate((p) => { history.pushState({}, '', p); window.dispatchEvent(new PopStateEvent('popstate')); }, path);
   await page.getByTestId('chat-top-bar').waitFor();
   await page.evaluate(() => document.fonts.ready);
   return { context, page };
@@ -73,7 +73,7 @@ for (const theme of ['light', 'dark'])
     await chat.page.getByTestId('settings-page').waitFor();
     await chat.page.waitForTimeout(500);
     await chat.page.screenshot({ path: join(OUT, `${tag}-sheet.png`) });
-    await chat.page.goto(`${BASE}${chatPath}`); await chat.page.getByTestId('chat-top-bar').waitFor();
+    await chat.page.evaluate((p) => { history.pushState({}, '', p); window.dispatchEvent(new PopStateEvent('popstate')); }, chatPath); await chat.page.getByTestId('chat-top-bar').waitFor();
     if (vpName === 'desktop') {
       const row = chat.page.locator('[data-testid="app-sidebar"] [data-sidebar-row]').first();
       await row.hover();

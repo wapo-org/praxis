@@ -41,7 +41,14 @@ export function Sidebar() {
   );
 }
 
-function SidebarBody({ onClose }: { onClose?: () => void }) {
+function SidebarBody({
+  onClose,
+  onNavigate,
+}: {
+  onClose?: () => void;
+  /** Narrow panel only: close after navigating. */
+  onNavigate?: () => void;
+}) {
   const store = usePraxisStore();
   const account = useAccount();
   const [query, setQuery] = React.useState('');
@@ -72,7 +79,10 @@ function SidebarBody({ onClose }: { onClose?: () => void }) {
           type="button"
           className={styles.action}
           data-testid="sidebar-new-chat"
-          onClick={() => store.startNewConversation()}
+          onClick={() => {
+            store.startNewConversation();
+            onNavigate?.();
+          }}
           {...pressProps}
         >
           <Edit size={18} />
@@ -99,7 +109,7 @@ function SidebarBody({ onClose }: { onClose?: () => void }) {
             <section key={group} aria-label={group} className={styles.group}>
               <h2 className={styles.groupTitle}>{group}</h2>
               {chats.map((chat) => (
-                <ChatRow key={chat.id} chat={chat} active={store.activeChatId === chat.id} />
+                <ChatRow key={chat.id} chat={chat} active={store.activeChatId === chat.id} onNavigate={onNavigate} />
               ))}
             </section>
           ))
@@ -111,7 +121,10 @@ function SidebarBody({ onClose }: { onClose?: () => void }) {
           type="button"
           className={styles.account}
           data-testid="sidebar-account"
-          onClick={() => store.setActiveSheet('settings')}
+          onClick={() => {
+            store.setActiveSheet('settings');
+            onNavigate?.();
+          }}
           {...pressProps}
         >
           <span className={styles.avatar} aria-hidden="true">
@@ -171,13 +184,21 @@ function SidebarPanel({ onClose }: { onClose: () => void }) {
       data-testid="app-sidebar"
       data-variant="panel"
     >
-      <SidebarBody onClose={onClose} />
+      <SidebarBody onClose={onClose} onNavigate={onClose} />
     </aside>,
     document.body,
   );
 }
 
-function ChatRow({ chat, active }: { chat: Chat; active: boolean }) {
+function ChatRow({
+  chat,
+  active,
+  onNavigate,
+}: {
+  chat: Chat;
+  active: boolean;
+  onNavigate?: () => void;
+}) {
   const store = usePraxisStore();
   const [renaming, setRenaming] = React.useState(false);
   const [title, setTitle] = React.useState(chat.title);
@@ -220,7 +241,10 @@ function ChatRow({ chat, active }: { chat: Chat; active: boolean }) {
         data-sidebar-row-select=""
         aria-current={active ? 'page' : undefined}
         title={chat.title || 'New chat'}
-        onClick={() => run(() => store.selectChat(chat.id))}
+        onClick={() => {
+          run(() => store.selectChat(chat.id));
+          onNavigate?.();
+        }}
       >
         <span className={styles.rowTitle}>{chat.title || 'New chat'}</span>
         {chat.pinned ? <Pin size={16} aria-label="Pinned" className={styles.rowPin} /> : null}

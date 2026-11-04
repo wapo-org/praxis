@@ -35,7 +35,7 @@ try {
       ['skills', '/settings/skills'], ['image-reader', '/settings/images'],
       ['voice', '/settings/voice'], ['sharing', '/settings/sharing'],
     ]) {
-      await page.goto(base + path); await page.getByTestId('settings-page').waitFor();
+      await page.evaluate((p) => { history.pushState({}, '', p); window.dispatchEvent(new PopStateEvent('popstate')); }, path); await page.getByTestId('settings-page').waitFor();
       await capture(name);
       if (name === 'provider') {
         await page.getByText('Hosted web search', { exact: true }).scrollIntoViewIfNeeded(); await capture('provider-capabilities');

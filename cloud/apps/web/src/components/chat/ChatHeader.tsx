@@ -16,7 +16,8 @@ export function ChatHeader() {
     <header className={styles.bar} data-testid="chat-top-bar">
       <div className={styles.side}>
         <Cluster className={styles.narrow}>
-          <BarButton label="History" testId="nav-history-button" onClick={() => store.setActiveSheet('history')}>
+          {/* History is the floating sidebar panel on narrow screens. */}
+          <BarButton label="History" testId="nav-history-button" onClick={() => store.setDesktopSidebarOpen(true)}>
             <History size={18} />
           </BarButton>
         </Cluster>

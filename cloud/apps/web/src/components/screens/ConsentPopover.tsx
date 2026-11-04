@@ -80,36 +80,38 @@ export function ConsentPopover() {
         transition={pop.transition}
       >
         <div className={styles.body}>
-          <h2 className={styles.heading} id="consentTitle" data-testid="consentTitle">
-            {voice
-              ? 'Share this recording for transcription?'
-              : prompt.purpose === 'vision'
-                ? 'Share images with this model?'
-                : prompt.purpose === 'connector'
-                  ? 'Share data with this connector?'
-                  : 'Share this chat with this provider?'}
-          </h2>
-          <p className={styles.host}>
-            <Globe size={16} aria-hidden="true" />
-            {prompt.host}
-          </p>
-          <p className={styles.intro}>{prompt.description}</p>
-          <div className={styles.list}>
-            {items.map((item) => (
-              <div className={styles.row} key={item.title}>
-                <span className={styles.rowIcon}>{item.icon}</span>
-                <span className={styles.rowCopy}>
-                  <strong>{item.title}</strong>
-                  <span className={styles.detail}>{item.detail}</span>
-                </span>
-              </div>
-            ))}
+          <div className={styles.scroll}>
+            <h2 className={styles.heading} id="consentTitle" data-testid="consentTitle">
+              {voice
+                ? 'Share this recording for transcription?'
+                : prompt.purpose === 'vision'
+                  ? 'Share images with this model?'
+                  : prompt.purpose === 'connector'
+                    ? 'Share data with this connector?'
+                    : 'Share this chat with this provider?'}
+            </h2>
+            <p className={styles.host}>
+              <Globe size={16} aria-hidden="true" />
+              {prompt.host}
+            </p>
+            <p className={styles.intro}>{prompt.description}</p>
+            <div className={styles.list}>
+              {items.map((item) => (
+                <div className={styles.row} key={item.title}>
+                  <span className={styles.rowIcon}>{item.icon}</span>
+                  <span className={styles.rowCopy}>
+                    <strong>{item.title}</strong>
+                    <span className={styles.detail}>{item.detail}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className={styles.footnote}>
+              The service’s own terms and privacy policy apply to what it receives.
+              You can withdraw permission in Settings → Data & privacy. Praxis then
+              asks again before sending.
+            </p>
           </div>
-          <p className={styles.footnote}>
-            The service’s own terms and privacy policy apply to what it receives.
-            You can withdraw permission in Settings → Data & privacy. Praxis then
-            asks again before sending.
-          </p>
           <button type="button" className={styles.primary} onClick={prompt.onAllow}>
             Allow
           </button>

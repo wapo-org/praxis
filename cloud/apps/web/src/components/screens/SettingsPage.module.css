@@ -8,6 +8,14 @@
   max-width: 960px;
   margin: 0 auto;
   height: 100dvh;
+  box-sizing: border-box;
+}
+
+@media (min-width: 1024px) {
+  /* The floating sidebar covers the left edge: keep the page clear of it. */
+  .pageShell[data-sidebar='true'] {
+    padding-left: calc(var(--sidebar-width) + var(--float-margin) * 2);
+  }
 }
 .nav {
   display: flex;

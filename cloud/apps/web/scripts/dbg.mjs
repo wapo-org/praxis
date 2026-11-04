@@ -1,0 +1,17 @@
+import { chromium } from '@playwright/test';
+const browser = await chromium.launch();
+const context = await browser.newContext({ viewport: { width: 402, height: 874 }, hasTouch: true, isMobile: true });
+const page = await context.newPage();
+page.setDefaultTimeout(20000);
+await page.goto('http://localhost:5201/');
+const signIn = page.getByRole('button', { name: 'Continue as local dev user' });
+await Promise.race([signIn.waitFor(), page.getByTestId('chat-top-bar').waitFor()]);
+if (await signIn.isVisible().catch(() => false)) await signIn.click();
+await page.getByTestId('chat-top-bar').waitFor();
+await page.getByTestId('nav-history-button').click();
+await page.getByTestId('app-sidebar').waitFor();
+const h = await page.getByTestId('app-sidebar').evaluate((el) => Math.round(el.getBoundingClientRect().height));
+const w = await page.getByTestId('app-sidebar').evaluate((el) => Math.round(el.getBoundingClientRect().width));
+console.log('panel h/w (limit 480/320):', h, w);
+await context.close();
+await browser.close();
