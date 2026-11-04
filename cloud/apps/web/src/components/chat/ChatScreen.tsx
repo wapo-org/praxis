@@ -120,6 +120,7 @@ export function ChatScreen() {
                 finishedAt={activeLiveRun.run.updatedAt}
                 runId={activeLiveRun.run.id}
                 isRunning={status === 'running'}
+                runStatus={status}
                 reasoningBlocks={activeLiveRun.reasoningBlocks}
                 toolSteps={activeLiveRun.toolSteps}
                 pendingApprovals={activeLiveRun.pendingApprovals}

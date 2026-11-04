@@ -4,6 +4,11 @@ export function workedLabel(startedAt?: string, finishedAt?: string) {
   const elapsed = Date.parse(finishedAt) - Date.parse(startedAt);
   return Number.isFinite(elapsed) ? `Worked for ${Math.max(0, Math.round(elapsed / 1000))}s` : 'Worked';
 }
+export function stoppedLabel(startedAt?: string, finishedAt?: string) {
+  if (!startedAt || !finishedAt) return 'Stopped';
+  const elapsed = Date.parse(finishedAt) - Date.parse(startedAt);
+  return Number.isFinite(elapsed) ? `Stopped after ${Math.max(0, Math.round(elapsed / 1000))}s` : 'Stopped';
+}
 export function useActivityClock(running: boolean, startedAt?: string, finishedAt?: string) {
   const [now, setNow] = React.useState(() => new Date().toISOString());
   React.useEffect(() => {

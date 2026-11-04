@@ -1,11 +1,30 @@
-.sidebar {
-  flex: 0 0 var(--sidebar-width);
+/* Floating liquid-glass sidebar: detached from every edge, content passes
+   behind the glass (the chat layer is full-bleed). See DESIGN.md. */
+
+.docked {
+  position: fixed;
+  top: var(--float-margin);
+  left: var(--float-margin);
+  bottom: var(--float-margin);
+  z-index: 40;
   width: var(--sidebar-width);
-  height: 100dvh;
+}
+
+.panel {
+  position: fixed;
+  top: var(--float-margin);
+  left: var(--float-margin);
+  z-index: 40;
+  width: min(320px, calc(100vw - var(--float-margin) * 2));
+  max-height: var(--popover-max-height);
+}
+
+.surface {
   display: flex;
   flex-direction: column;
-  background: var(--color-sidebar);
-  border-right: 1px solid var(--color-hairline);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .header {
@@ -14,6 +33,7 @@
   justify-content: space-between;
   height: var(--topbar-height);
   padding: 0 var(--space-3) 0 var(--space-5);
+  flex-shrink: 0;
 }
 
 .brand {
@@ -40,6 +60,7 @@
   flex-direction: column;
   gap: var(--space-1);
   padding: 0 var(--space-3) var(--space-2);
+  flex-shrink: 0;
 }
 
 .action,
@@ -216,6 +237,7 @@
 .footer {
   padding: var(--space-2) var(--space-3) var(--space-3);
   border-top: 1px solid var(--color-hairline);
+  flex-shrink: 0;
 }
 
 .account {
@@ -284,10 +306,4 @@
 .search:focus-within {
   outline: 2px solid var(--color-focus);
   outline-offset: -2px;
-}
-
-@media (max-width: 1023px) {
-  .sidebar {
-    display: none;
-  }
 }

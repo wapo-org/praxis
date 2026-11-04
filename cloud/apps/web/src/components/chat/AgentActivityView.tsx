@@ -1,17 +1,29 @@
 import React from 'react';
 import { ChevronRight } from '../../lib/icons';
-import { useActivityClock } from './useActivityClock';
+import { stoppedLabel, useActivityClock } from './useActivityClock';
 
+import styles from './Activity.module.css';
 import { ActivityDetails } from './ActivityDetails';
 import type { AgentActivityViewProps } from './activityTypes';
 import { ApprovalCards } from './ApprovalCards';
 import { ElicitationCards } from './ElicitationCards';
+
 export type { AgentActivityViewProps } from './activityTypes';
-export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
+
+/**
+ * iOS parity (PraxisChat AgentActivity.swift, spec §9): one plain line,
+ * folded by default. A small chevron on the left, then muted 13 px medium
+ * text — "Currently working…" (shimmer) while running, "Worked for Ns"
+ * when done, "Stopped after Ns" when the run was cancelled or failed.
+ * No pill, background, border, dot or shadow. Approvals and questions
+ * always show under the header, even folded.
+ */
+export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: string }> = ({
   runId,
   startedAt,
   finishedAt,
   isRunning = false,
+  runStatus,
   reasoningBlocks = [],
   toolSteps,
   pendingApprovals = [],
@@ -45,43 +57,35 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
   const totalToolsCount = toolSteps.length;
   const hasApproval = pendingApprovals.length > 0;
   const hasElicitation = pendingElicitations.length > 0;
+  const stopped =
+    !isRunning && (runStatus === 'cancelled' || runStatus === 'failed' || runStatus === 'refused');
 
-  let statusColor = 'var(--paper-accent)';
-  let summaryLabel = 'Completed activity';
-
+  let label = worked;
+  let subLine = '';
   if (hasApproval) {
-    statusColor = 'var(--paper-warn)';
-    summaryLabel = `Waiting for tool approval (${pendingApprovals.length})`;
+    label = `Waiting for tool approval (${pendingApprovals.length})`;
   } else if (hasElicitation) {
-    statusColor = 'var(--paper-warn)';
-    summaryLabel = 'Waiting for your input';
+    label = 'Waiting for your input';
   } else if (isRunning || runningToolsCount > 0) {
-    statusColor = 'var(--paper-ink-2)';
+    label = 'Currently working…';
     const currentStep = toolSteps.find((s) => s.running) ?? toolSteps[toolSteps.length - 1];
     if (currentStep) {
-      const stepTitle =
-        currentStep.statusText ||
+      subLine = currentStep.statusText ||
         currentStep.activity.presentation?.runningTitle ||
         currentStep.activity.name;
-      summaryLabel = `${stepTitle}${totalToolsCount > 1 ? ` · ${totalToolsCount} steps` : ''}`;
+      if (totalToolsCount > 1) subLine = `${subLine} · ${totalToolsCount} steps`;
     } else if (reasoningBlocks.some((b) => !b.finished)) {
-      summaryLabel = 'Thinking...';
-    } else {
-      summaryLabel = 'Working...';
+      subLine = 'Thinking…';
     }
+  } else if (stopped) {
+    label = stoppedLabel(startedAt, finishedAt);
   } else if (totalToolsCount > 0) {
     const failedCount = toolSteps.filter(
       (s) => s.completion?.status === 'failed' || s.completion?.status === 'denied',
     ).length;
-    if (failedCount > 0) {
-      statusColor = 'var(--paper-danger)';
-      summaryLabel = `${worked} (${failedCount} failed)`;
-    } else {
-      statusColor = 'var(--paper-accent)';
-      summaryLabel = worked;
-    }
+    if (failedCount > 0) label = `${worked} (${failedCount} failed)`;
   } else if (reasoningBlocks.length > 0) {
-    summaryLabel = 'Thought process';
+    label = 'Thought process';
   }
 
   const toggleStepDetail = (callId: string) => {
@@ -99,80 +103,26 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
   };
 
   return (
-    <div
-      data-testid="agent-activity-view"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'flex-start',
-        gap: 10,
-        marginBottom: 12,
-        width: '100%',
-      }}
-    >
-      {/* Level 0: Folded / Expandable Pill Header */}
-      <div
-        role="button"
-        tabIndex={0}
+    <div data-testid="agent-activity-view" className={styles.root}>
+      {/* Level 1: plain disclosure header, like iOS. */}
+      <button
+        type="button"
         data-testid="agent-activity-toggle"
         aria-expanded={expanded}
+        aria-label={expanded ? 'Hide agent activity' : 'Show agent activity'}
         onClick={() => setExpanded((v) => !v)}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 9,
-          height: 'var(--control-sm)',
-          padding: '0 var(--space-3)',
-          border: 'none',
-          borderRadius: 'var(--radius-full)',
-          background: 'var(--color-fill-1)',
-          cursor: 'pointer',
-          color: 'var(--paper-ink)',
-          fontSize: 13,
-          lineHeight: '18px',
-          fontWeight: 500,
-          maxWidth: '100%',
-        }}
+        className={styles.header}
       >
-        <span
-          aria-hidden="true"
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            backgroundColor: statusColor,
-            flexShrink: 0,
-            boxShadow:
-              isRunning || hasApproval || hasElicitation ? `0 0 0 3px ${statusColor}28` : 'none',
-            animation:
-              isRunning || runningToolsCount > 0
-                ? 'praxisPulseDot var(--duration-ambient) var(--ease-ambient) infinite'
-                : 'none',
-          }}
-        />
-        <span
-          style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {summaryLabel}
-        </span>
-        <span
-          aria-hidden="true"
-          style={{
-            fontSize: 11,
-            color: 'var(--paper-ink-3)',
-            transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform var(--duration-base) var(--ease-standard)',
-          }}
-        >
+        <span className={styles.chevron} data-open={expanded} aria-hidden="true">
           <ChevronRight size={16} />
         </span>
-      </div>
+        <span className={`${styles.label} ${label === 'Currently working…' ? 'praxis-shimmer-text' : ''}`}>
+          {label}
+        </span>
+        {subLine ? <span className={styles.detail}>{subLine}</span> : null}
+      </button>
 
-      {/* Level 1 & Level 2: Expanded Steps + Reasoning + Vision + Compaction */}
+      {/* Level 2: one line per call; level 3: details inside the line. */}
       {expanded && (
         <ActivityDetails
           reasoningBlocks={reasoningBlocks}
@@ -186,14 +136,13 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
         />
       )}
 
-      {/* Inline Pending Tool Approval Cards */}
+      {/* Always visible, even folded: what needs the user. */}
       <ApprovalCards
         pendingApprovals={pendingApprovals}
         runId={runId}
         onResolveApproval={onResolveApproval}
       />
 
-      {/* Inline Pending Elicitation Form Cards */}
       <ElicitationCards
         pendingElicitations={pendingElicitations}
         runId={runId}

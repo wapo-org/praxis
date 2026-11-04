@@ -1,5 +1,6 @@
 export * from './tokens';
 export * from './motion';
+export * from './elastic';
 export * from './GlassSurface';
 export * from './ProgressiveBlurScrim';
 export * from './primitives';

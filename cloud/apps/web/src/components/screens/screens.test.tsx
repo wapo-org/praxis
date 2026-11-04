@@ -5,15 +5,13 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../../lib/api.js';
 import type { PraxisStoreContextValue } from '../../state/store.js';
+import { Sidebar } from '../shell/Sidebar.js';
 import { ConnectorsScreen, parseConnectorConfig } from './ConnectorsScreen.js';
-import { ConsentSheet } from './ConsentSheet.js';
-import { HistorySheet } from './HistorySheet.js';
+import { ConsentPopover } from './ConsentPopover.js';
 import { ImageReaderScreen } from './ImageReaderScreen.js';
-import { SheetDialog } from './ScreenUI.js';
 import { ProviderEditor } from './ProviderEditor.js';
-import { SettingsModal } from './SettingsModal.js';
+import { SettingsPage } from './SettingsPage.js';
 import { GeneralSection, ModelsSection } from './SettingsSections.js';
-import { SheetsRoot } from './SheetsRoot.js';
 import { SkillsScreen } from './SkillsScreen.js';
 import { VoiceSettingsScreen } from './VoiceSettingsScreen.js';
 
@@ -202,31 +200,30 @@ describe('remote connector import', () => {
   });
 });
 
-describe('history interactions', () => {
-  it('groups pinned chats and deletes exactly the selected chat IDs', async () => {
+describe('history in the floating sidebar', () => {
+  // Multi-select history was intentionally removed: history is the floating
+  // sidebar (single select + per-row actions) on every screen size.
+  it('groups pinned chats first and filters by search', async () => {
     store.chats = [chat('one', true), chat('two')];
-    await mount(<HistorySheet />);
+    store.desktopSidebarOpen = true;
+    await mount(<Sidebar />);
     expect(document.querySelector('section[aria-label="Pinned"]')?.textContent).toContain(
       'Chat one',
     );
     expect(document.querySelector('section[aria-label="Today"]')?.textContent).toContain(
       'Chat two',
     );
-    await click(button('History options'));
-    // The menu lives outside the scrolling body, within the focus-trapped sheet.
-    expect(document.querySelector('[role="menu"]')?.parentElement?.className).toBe('screen-shell');
-    await click(button('Select chats'));
-    await click(document.querySelector<HTMLInputElement>('[aria-label="Select Chat two"]')!);
-    await click(button('Delete selected (1)'));
-    expect(store.deleteChats).toHaveBeenCalledWith(['two']);
+    const search = document.querySelector<HTMLInputElement>('input[aria-label="Search conversations"]')!;
+    await fill(search, 'two');
+    expect(document.body.textContent).not.toContain('Chat one');
+    expect(document.body.textContent).toContain('Chat two');
   });
-  it('keeps history open and shows a useful failure if opening a chat fails', async () => {
+  it('shows a useful failure if opening a chat fails', async () => {
     store.chats = [chat('one')];
+    store.desktopSidebarOpen = true;
     store.selectChat = vi.fn().mockRejectedValue(new Error('Could not load this chat'));
-    const close = vi.fn();
-    await mount(<HistorySheet onSelect={close} />);
+    await mount(<Sidebar />);
     await click(document.querySelector<HTMLButtonElement>('.screen-history-select')!);
-    expect(close).not.toHaveBeenCalled();
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('Could not load');
   });
 });
@@ -260,7 +257,7 @@ describe('settings and capabilities', () => {
     await mount(<GeneralSection />);
     await click(button('Light'));
     expect(store.setThemeMode).toHaveBeenCalledWith('light');
-    await mount(<SettingsModal sheet="settings" />);
+    await mount(<SettingsPage sheet="settings" />);
     await click(document.querySelector<HTMLButtonElement>('[data-testid="settings-nav-connectors"]')!);
     expect(store.setActiveSheet).toHaveBeenCalledWith('connectors');
   });
@@ -278,18 +275,18 @@ describe('settings and capabilities', () => {
       ['consents', 'Data & privacy', 'Data & privacy'],
       ['voice-settings', 'Voice input', 'General'],
     ] as const) {
-      await mount(<SettingsModal sheet={sheet} />);
+      await mount(<SettingsPage sheet={sheet} />);
       expect(titleOf()).toBe(title);
       expect(current()).toBe(nav);
     }
-    await mount(<SettingsModal sheet="provider-editor" />);
+    await mount(<SettingsPage sheet="provider-editor" />);
     expect(titleOf()).toBe('Add provider');
   });
   it('goes back to the parent page, and sections back to the list', async () => {
-    await mount(<SettingsModal sheet="connector-add-url" />);
+    await mount(<SettingsPage sheet="connector-add-url" />);
     await click(button('Back'));
     expect(store.setActiveSheet).toHaveBeenLastCalledWith('connectors');
-    await mount(<SettingsModal sheet="connectors" />);
+    await mount(<SettingsPage sheet="connectors" />);
     await click(button('Back'));
     expect(store.setActiveSheet).toHaveBeenLastCalledWith('settings');
   });
@@ -409,7 +406,7 @@ describe('settings and capabilities', () => {
   });
 });
 
-describe('sheet and consent lifecycle', () => {
+describe('consent popover', () => {
   it('shows consent independently of activeSheet and calls only the chosen callback', async () => {
     const allow = vi.fn();
     const cancel = vi.fn();
@@ -420,10 +417,9 @@ describe('sheet and consent lifecycle', () => {
       onAllow: allow,
       onCancel: cancel,
     };
-    await mount(<SheetsRoot />);
-    expect(document.querySelector('[role="dialog"]')?.getAttribute('aria-label')).toBe(
-      'AI data sharing',
-    );
+    await mount(<ConsentPopover />);
+    const dialog = document.querySelector('[data-testid="consent-popover"]');
+    expect(dialog?.getAttribute('aria-modal')).toBe('false');
     expect(document.querySelector('#consentTitle')?.textContent).toContain('recording');
     expect(document.body.textContent).toContain('voice.example.com');
     expect(document.body.textContent).not.toContain('Your messages');
@@ -431,7 +427,7 @@ describe('sheet and consent lifecycle', () => {
     expect(allow).toHaveBeenCalledOnce();
     expect(cancel).not.toHaveBeenCalled();
   });
-  it('cancels consent on Escape', async () => {
+  it('is not a modal: no scrim, no inert background, Escape does not dismiss', async () => {
     const cancel = vi.fn();
     store.pendingConsentPrompt = {
       host: 'example.com',
@@ -440,46 +436,15 @@ describe('sheet and consent lifecycle', () => {
       onAllow: vi.fn(),
       onCancel: cancel,
     };
-    await mount(<ConsentSheet />);
-    await act(async () =>
-      document
-        .querySelector('[role="dialog"]')!
-        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
-    );
-    expect(cancel).toHaveBeenCalledOnce();
-    expect(store.setPendingConsentPrompt).toHaveBeenCalledWith(null);
-  });
-  it('isolates the background, traps keyboard focus, and restores focus on unmount', async () => {
-    const opener = document.createElement('button');
-    document.body.append(opener);
-    opener.focus();
-    const dismiss = vi.fn();
-    await mount(
-      <SheetDialog label="Test sheet" onDismiss={dismiss}>
-        <button>First</button>
-        <button>Last</button>
-      </SheetDialog>,
-    );
-    expect(container.inert).toBe(true);
-    expect(document.activeElement?.getAttribute('role')).toBe('dialog');
-    // jsdom has no layout; expose the two controls as visible to the focus trap.
-    vi.spyOn(HTMLElement.prototype, 'getClientRects').mockImplementation(
-      () => [{ width: 10, height: 10 }] as unknown as DOMRectList,
-    );
-    await act(async () =>
-      document
-        .querySelector('[role="dialog"]')!
-        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })),
-    );
-    expect(document.activeElement?.textContent).toBe('First');
-    button('Last').focus();
-    await act(async () =>
-      button('Last').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })),
-    );
-    expect(document.activeElement?.textContent).toBe('First');
-    await mount(null);
+    await mount(<ConsentPopover />);
+    expect(document.querySelector('[aria-modal="true"]')).toBeNull();
     expect(container.inert).toBeFalsy();
-    expect(document.activeElement).toBe(opener);
-    opener.remove();
+    await act(async () =>
+      document
+        .querySelector('[data-testid="consent-popover"]')!
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })),
+    );
+    expect(cancel).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-testid="consent-popover"]')).not.toBeNull();
   });
 });

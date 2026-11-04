@@ -1,0 +1,113 @@
+/* Anchored consent popover: 360 x 480 at most, no scrim, no modal trap. */
+.anchor {
+  position: fixed;
+  z-index: 90;
+  width: min(var(--popover-width), calc(100vw - var(--space-6)));
+  transform-origin: 50% 100%;
+}
+
+.panel {
+  max-height: var(--popover-max-height);
+  overflow-y: auto;
+  outline: none;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+.heading {
+  margin: 0;
+  color: var(--color-ink);
+  font: var(--weight-semibold) var(--text-lg) / var(--leading-lg) var(--font-sans);
+  letter-spacing: var(--tracking-tight);
+}
+
+.host {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.intro {
+  margin: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-md);
+  background: var(--color-fill-1);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.row + .row {
+  border-top: 1px solid var(--color-hairline);
+}
+
+.rowIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding-top: 2px;
+  color: var(--color-ink-2);
+}
+
+.rowCopy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  color: var(--color-ink);
+}
+
+.detail {
+  font-weight: var(--weight-regular);
+  color: var(--color-ink-2);
+}
+
+.footnote {
+  margin: 0;
+  color: var(--color-ink-3);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}
+
+.primary,
+.secondary {
+  height: var(--control-md);
+  border-radius: var(--radius-sm);
+  font: var(--weight-semibold) var(--text-md) / var(--leading-md) var(--font-sans);
+  cursor: pointer;
+}
+
+.primary {
+  border: 0;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.secondary {
+  border: 1px solid var(--color-hairline-strong);
+  background: transparent;
+  color: var(--color-ink);
+}
+
+.primary:focus-visible,
+.secondary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}

@@ -3,7 +3,7 @@ import { usePraxisStore } from '../../state/store.js';
 import { SegmentedControl } from '../ui/controls';
 import { AccountSettings } from './AccountSettings';
 import styles from './Screen.module.css';
-import { Card, hostLabel, NavRow, ScreenBody, ScreenButton, Section } from './ScreenUI.js';
+import { Card, hostLabel, NavRow, ScreenBody, ScreenButton, Section, TaskError, Toggle, useScreenTask } from './ScreenUI.js';
 
 const THEMES = ['light', 'dark', 'system'] as const;
 const capitalized = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
@@ -103,6 +103,42 @@ export function AccountSection() {
   return (
     <ScreenBody>
       <AccountSettings />
+    </ScreenBody>
+  );
+}
+
+export function ConsentsSection() {
+  const { consents, grantConsent } = usePraxisStore();
+  const task = useScreenTask();
+  return (
+    <ScreenBody>
+      <p className={styles.intro}>
+        Praxis asks before it first sends data to a service. Withdraw permission
+        here to be asked again before sending.
+      </p>
+      <TaskError error={task.error} />
+      <Section title="Data consents">
+        {consents.length ? (
+          <Card>
+            {consents.map((consent) => (
+              <Toggle
+                key={consent.host}
+                label={consent.host}
+                detail={
+                  consent.allowed ? 'Allowed to receive data' : 'Permission withdrawn'
+                }
+                checked={consent.allowed}
+                disabled={task.busy}
+                onChange={(allowed) => {
+                  void task.run(() => grantConsent(consent.host, allowed));
+                }}
+              />
+            ))}
+          </Card>
+        ) : (
+          <p className={styles.empty}>No services have been granted permission yet.</p>
+        )}
+      </Section>
     </ScreenBody>
   );
 }

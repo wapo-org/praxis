@@ -1,4 +1,4 @@
-/* Composer tray: a popover anchored to the + button on desktop, an iOS-style sheet on narrow screens. */
+/* Composer tray: a compact popover anchored to the + button (360 x 480 max). */
 .anchor {
   position: absolute;
   bottom: calc(100% + var(--space-2));
@@ -16,6 +16,7 @@
 .surface {
   overflow: hidden;
   outline: none;
+  max-height: var(--popover-max-height);
 }
 .views {
   position: relative;
@@ -28,7 +29,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  max-height: calc(100dvh - var(--topbar-height) - var(--control-lg) * 2 - var(--space-5));
+  max-height: calc(var(--popover-max-height) - var(--space-6));
   padding: var(--space-3);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -36,6 +37,8 @@
 .models {
   position: absolute;
   inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .effort {
   display: flex;

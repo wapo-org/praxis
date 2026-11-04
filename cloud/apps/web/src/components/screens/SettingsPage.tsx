@@ -7,18 +7,18 @@ import {
   ConnectorRegistry,
   ConnectorsScreen,
 } from './ConnectorsScreen.js';
-import { ConsentsScreen } from './ConsentSheet.js';
 import { ImageReaderScreen } from './ImageReaderScreen.js';
 import { ProviderEditor } from './ProviderEditor.js';
 import { BackButton } from './ScreenUI.js';
 import screen from './Screen.module.css';
 import {
   AccountSection,
+  ConsentsSection,
   DeveloperSection,
   GeneralSection,
   ModelsSection,
 } from './SettingsSections.js';
-import styles from './SettingsModal.module.css';
+import styles from './SettingsPage.module.css';
 import { SkillBrowser, SkillImport, SkillsScreen } from './SkillsScreen.js';
 import { VoiceSettingsScreen } from './VoiceSettingsScreen.js';
 
@@ -89,7 +89,7 @@ function PageContent({ sheet, onOpenGlassLab }: { sheet: SettingsSheet; onOpenGl
     case 'skill-browser':
       return <SkillBrowser />;
     case 'consents':
-      return <ConsentsScreen />;
+      return <ConsentsSection />;
     case 'account':
       return <AccountSection />;
     case 'developer':
@@ -98,10 +98,11 @@ function PageContent({ sheet, onOpenGlassLab }: { sheet: SettingsSheet; onOpenGl
 }
 
 /**
- * The Settings surface. The bare /settings route shows General beside the rail on desktop and the
- * section list on narrow screens; which one is visible is CSS only (see the module's breakpoints).
+ * The Settings page: a normal routed page in the main content area (no modal,
+ * no scrim). The bare /settings route shows General beside the rail on desktop
+ * and the section list on narrow screens; which one is visible is CSS only.
  */
-export function SettingsModal({
+export function SettingsPage({
   sheet,
   onOpenGlassLab,
 }: {
@@ -131,7 +132,7 @@ export function SettingsModal({
   const items = NAV.filter((item) => !item.devOnly || (import.meta.env.DEV && onOpenGlassLab));
 
   return (
-    <div className={styles.modal} data-root={isRoot}>
+    <div className={styles.pageShell} data-root={isRoot}>
       {isRoot ? (
         <div className={styles.rootHeader}>
           <h1 className={styles.paneTitle}>Settings</h1>

@@ -2,6 +2,15 @@
    backdrop-filter on the GPU. Never animate the blur radius; animate transform/opacity only.
    Recipe values are tokens (apps/web/src/styles/tokens.css → --glass-*). */
 
+/* Stretch wrapper: owns the elastic transform (see elastic.tsx). It has no
+   backdrop of its own, so glass never nests inside another backdrop root.
+   `pan-y` lets vertical touch scrolls take the gesture (pointercancel). */
+.elastic {
+  display: block;
+  transform-origin: 50% 50%;
+  touch-action: pan-y;
+}
+
 .glass {
   position: relative;
   isolation: isolate;

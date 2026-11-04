@@ -62,7 +62,9 @@ button {
   width: 100%;
   height: 100dvh;
   overflow: hidden;
-  background: var(--color-paper);
+  /* Full-bleed content layer: the floating sidebar and composer blur what
+     passes behind them. The gradient gives the blur something real to sample. */
+  background: var(--paper-gradient, var(--color-paper));
   color: var(--color-ink);
 }
 

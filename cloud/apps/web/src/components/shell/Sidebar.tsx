@@ -1,29 +1,56 @@
-import { GlassDropdown, usePress } from '@praxis/glass';
+import { GlassDropdown, GlassSurface, usePress } from '@praxis/glass';
 import type { Chat } from '@praxis/protocol';
 import { motion } from 'framer-motion';
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { useAccount } from '../../lib/account';
 import { groupChats } from '../../lib/chatGroups';
 import { MoreHorizontal, PanelLeft, Pencil, Pin, Search, Settings, Edit, Trash2 } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import styles from './Sidebar.module.css';
 
-/** Desktop sidebar (≥1024 px, 260 px, collapsible): new chat, search, chats by date, account. */
+function useIsNarrow() {
+  const query = '(max-width: 1023px)';
+  const [narrow, setNarrow] = React.useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
+  );
+  React.useEffect(() => {
+    const media = window.matchMedia(query);
+    const apply = () => setNarrow(media.matches);
+    apply();
+    media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
+  }, []);
+  return narrow;
+}
+
+/**
+ * Floating liquid-glass sidebar (desktop ≥1024 px docked; narrow screens get
+ * the same content as a floating panel). It floats over the full-bleed chat
+ * layer, so scrolling messages pass behind its glass.
+ */
 export function Sidebar() {
+  const store = usePraxisStore();
+  const narrow = useIsNarrow();
+  if (!store.desktopSidebarOpen) return null;
+  if (narrow) return <SidebarPanel onClose={() => store.setDesktopSidebarOpen(false)} />;
+  return (
+    <aside className={styles.docked} aria-label="Conversation history" data-testid="app-sidebar">
+      <SidebarBody onClose={() => store.setDesktopSidebarOpen(false)} />
+    </aside>
+  );
+}
+
+function SidebarBody({ onClose }: { onClose?: () => void }) {
   const store = usePraxisStore();
   const account = useAccount();
   const [query, setQuery] = React.useState('');
   const searchRef = React.useRef<HTMLInputElement>(null);
   const groups = groupChats(store.chats, query, new Date());
   const pressProps = usePress();
-  if (!store.desktopSidebarOpen) return null;
 
   return (
-    <aside
-      className={`screen-sidebar ${styles.sidebar}`}
-      aria-label="Conversation history"
-      data-testid="app-sidebar"
-    >
+    <GlassSurface material="thick" radius={20} className={styles.surface}>
       <div className={styles.header}>
         <span className={styles.brand}>Praxis</span>
         <button
@@ -31,7 +58,10 @@ export function Sidebar() {
           className={styles.iconButton}
           aria-label="Close sidebar"
           data-testid="sidebar-toggle"
-          onClick={() => store.setDesktopSidebarOpen(false)}
+          onClick={() => {
+            store.setDesktopSidebarOpen(false);
+            onClose?.();
+          }}
         >
           <PanelLeft size={18} />
         </button>
@@ -94,7 +124,56 @@ export function Sidebar() {
           <Settings size={18} />
         </motion.button>
       </footer>
-    </aside>
+    </GlassSurface>
+  );
+}
+
+/**
+ * Narrow-screen history: the sidebar content as a floating glass panel
+ * anchored top-left. No scrim, no modal trap; Escape or outside click closes
+ * and focus returns to the History button.
+ */
+function SidebarPanel({ onClose }: { onClose: () => void }) {
+  const asideRef = React.useRef<HTMLElement>(null);
+  const close = React.useRef(onClose);
+  close.current = onClose;
+
+  React.useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    asideRef.current?.querySelector<HTMLInputElement>('input[aria-label="Search conversations"]')?.focus({ preventScroll: true });
+    const onPointerDown = (event: PointerEvent) => {
+      if (asideRef.current?.contains(event.target as Node)) return;
+      close.current();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        close.current();
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+      document
+        .querySelector<HTMLElement>('[data-testid="nav-history-button"]')
+        ?.focus({ preventScroll: true });
+      if (previous?.isConnected && previous !== document.body) previous.focus({ preventScroll: true });
+    };
+  }, []);
+
+  return createPortal(
+    <aside
+      ref={asideRef}
+      className={styles.panel}
+      aria-label="Conversation history"
+      data-testid="app-sidebar"
+      data-variant="panel"
+    >
+      <SidebarBody onClose={onClose} />
+    </aside>,
+    document.body,
   );
 }
 

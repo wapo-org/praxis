@@ -6,7 +6,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--color-paper);
+  /* Transparent: messages scroll behind the floating sidebar / composer. */
+  background: transparent;
 }
 
 .viewport {

@@ -1,8 +1,13 @@
-/* One modal: nav rail + content pane on desktop; a stacked iOS-style navigation on narrow screens. */
-.modal {
+/* Settings page: nav rail + content pane on desktop; a stacked iOS-style
+   navigation on narrow screens. A normal page in the main content area. */
+.pageShell {
   display: flex;
   flex: 1;
   min-height: 0;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  height: 100dvh;
 }
 .nav {
   display: flex;
@@ -81,7 +86,8 @@
   flex: 1;
   flex-direction: column;
   min-width: 0;
-  background: var(--color-paper);
+  min-height: 0;
+  background: transparent;
 }
 .paneHeader {
   display: flex;
@@ -133,12 +139,13 @@
 }
 
 @media (max-width: 1023px) {
-  .modal {
+  .pageShell {
     flex-direction: column;
+    max-width: none;
   }
   /* The root shows the nav as a grouped list; every other page shows the pane with a back button. */
-  .modal[data-root='true'] .pane,
-  .modal[data-root='false'] .nav {
+  .pageShell[data-root='true'] .pane,
+  .pageShell[data-root='false'] .nav {
     display: none;
   }
   .nav {

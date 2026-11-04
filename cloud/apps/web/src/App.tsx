@@ -1,8 +1,9 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChatScreen } from './components/chat/ChatScreen';
+import { ConsentPopover } from './components/screens/ConsentPopover';
+import { SettingsPage, type SettingsSheet } from './components/screens/SettingsPage';
 import { Sidebar } from './components/shell/Sidebar';
-import { SheetsRoot } from './components/screens/SheetsRoot';
 import { parseRoute } from './lib/navigation';
 import { usePraxisStore } from './state/store';
 const GlassLabPage = import.meta.env.DEV
@@ -34,23 +35,15 @@ export function App() {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        const sidebarSearch = store.desktopSidebarOpen
-          ? document.querySelector<HTMLInputElement>('[data-testid="app-sidebar"] [aria-label="Search conversations"]')
-          : null;
-        if (sidebarSearch) return sidebarSearch.focus();
-        store.setActiveSheet('history');
+        // History lives in the floating sidebar on every screen size.
+        store.setDesktopSidebarOpen(true);
         requestAnimationFrame(() =>
-          (
-            document.querySelector<HTMLInputElement>(
-              '[role="dialog"] [aria-label="Search conversations"]',
-            ) ?? document.querySelector<HTMLInputElement>('[aria-label="Search conversations"]')
-          )?.focus(),
+          document
+            .querySelector<HTMLInputElement>('[data-testid="app-sidebar"] [aria-label="Search conversations"]')
+            ?.focus(),
         );
       }
-      if (event.key === 'Escape') {
-        store.setPlusTrayOpen(false);
-        if (store.activeSheet) store.setActiveSheet(null);
-      }
+      if (event.key === 'Escape') store.setPlusTrayOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -71,11 +64,14 @@ export function App() {
         </div>
       </main>
     );
+  const sheet = parseRoute(pathname).sheet;
+  // Settings is a routed page, not a modal: there are no sheets or scrims.
+  const settingsSheet: SettingsSheet | null = sheet && sheet !== 'history' ? sheet : null;
   return (
     <div data-testid="praxis-app-root" className="praxis-app-root">
       <Sidebar />
-      <ChatScreen />
-      <SheetsRoot onOpenGlassLab={lab} />
+      {settingsSheet ? <SettingsPage sheet={settingsSheet} onOpenGlassLab={lab} /> : <ChatScreen />}
+      <ConsentPopover />
     </div>
   );
 }

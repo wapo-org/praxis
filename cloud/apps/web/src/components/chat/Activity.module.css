@@ -1,0 +1,303 @@
+/* Agent activity: plain text rows per iOS AgentActivity.swift (no badges).
+   One line per call, 13px medium; cards are compact surface rows. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  width: 100%;
+}
+
+.header {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  min-height: var(--control-md);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-2);
+  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.header :focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-ink-3);
+  transform: rotate(90deg);
+  transition: transform var(--duration-base) var(--ease-standard);
+}
+
+.chevron[data-open='true'] {
+  transform: rotate(-90deg);
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink-3);
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: var(--space-1) 0 var(--space-2);
+}
+
+.reasoning {
+  padding: var(--space-1) 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / 19px var(--font-sans);
+  white-space: pre-wrap;
+}
+
+.reasoningCaption {
+  margin-bottom: var(--space-1);
+  color: var(--color-ink-3);
+  font: var(--weight-semibold) var(--text-xs) / var(--leading-xs) var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.toolStep {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.toolStepHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.toolStepMain {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1;
+}
+
+.toolStepIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-ink-2);
+}
+
+.toolStepIcon[data-tone='error'] {
+  color: var(--color-danger);
+}
+
+.toolStepIcon[data-tone='done'] {
+  color: var(--color-ink-3);
+}
+
+.toolStepName {
+  flex-shrink: 0;
+  color: var(--color-ink);
+  font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-mono);
+}
+
+.toolStepSummary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink-2);
+}
+
+.toolStepToggle {
+  flex-shrink: 0;
+  color: var(--color-ink-3);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}
+
+.toolStepDetail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-1) var(--space-2) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-fill-1);
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.toolStepDetailHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.toolStepDetailLabel {
+  color: var(--color-ink-3);
+  font: var(--weight-semibold) var(--text-xs) / var(--leading-xs) var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.toolStepCopy {
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-2);
+  font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-sans);
+  cursor: pointer;
+}
+
+.vision,
+.compaction {
+  padding: var(--space-1) 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  white-space: pre-wrap;
+}
+
+.card {
+  width: 100%;
+  margin-top: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-ink);
+  font: var(--weight-semibold) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.cardSource {
+  flex-shrink: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}
+
+.cardReason {
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.cardArgs {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-fill-1);
+  color: var(--color-ink);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.cardButton {
+  min-height: var(--control-sm);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  font: var(--weight-semibold) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  cursor: pointer;
+}
+
+.cardButton[data-tone='primary'] {
+  border: 0;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.cardButton[data-tone='secondary'] {
+  border: 1px solid var(--color-hairline-strong);
+  background: transparent;
+  color: var(--color-ink);
+}
+
+.cardButton[data-tone='danger'] {
+  border: 1px solid var(--color-hairline-strong);
+  background: transparent;
+  color: var(--color-danger);
+}
+
+.cardField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}
+
+.cardFieldName {
+  color: var(--color-ink);
+  font-weight: var(--weight-medium);
+}
+
+.cardFieldHint {
+  color: var(--color-ink-3);
+}
+
+.cardInput {
+  min-height: var(--control-md);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.cardInput:focus-visible,
+.cardButton:focus-visible,
+.toolStepHeader:focus-visible,
+.toolStepCopy:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.cardLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-ink);
+  font: var(--weight-semibold) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}

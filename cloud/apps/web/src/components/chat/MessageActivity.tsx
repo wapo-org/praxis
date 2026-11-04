@@ -51,6 +51,7 @@ export function MessageActivity({
       startedAt={run?.createdAt}
       finishedAt={run?.updatedAt}
       isRunning={false}
+      runStatus={run?.status}
       toolSteps={liveSteps ?? recoveredSteps ?? steps}
       reasoningBlocks={message.parts
         .filter((p) => p.type === 'reasoning')

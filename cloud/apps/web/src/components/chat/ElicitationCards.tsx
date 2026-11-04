@@ -1,6 +1,7 @@
 import React from 'react';
 import { safeLink } from '../../lib/links';
 
+import styles from './Activity.module.css';
 import type { AgentActivityViewProps } from './activityTypes';
 export function ElicitationCards({
   pendingElicitations = [],
@@ -20,12 +21,7 @@ export function ElicitationCards({
         const schemaProps =
           (elicitation.schema?.properties as Record<
             string,
-            {
-              type?: string;
-              title?: string;
-              description?: string;
-              default?: unknown;
-            }
+            { type?: string; title?: string; description?: string; default?: unknown }
           >) ?? {};
         const propKeys = Object.keys(schemaProps);
         const currentForm = elicitationValues[elicitation.id] ?? {};
@@ -33,37 +29,14 @@ export function ElicitationCards({
         const setFieldValue = (key: string, val: unknown) => {
           setElicitationValues((prev) => ({
             ...prev,
-            [elicitation.id]: {
-              ...(prev[elicitation.id] ?? {}),
-              [key]: val,
-            },
+            [elicitation.id]: { ...(prev[elicitation.id] ?? {}), [key]: val },
           }));
         };
 
         return (
-          <div
-            key={elicitation.id}
-            data-testid={`elicitation-card-${elicitation.id}`}
-            style={{
-              width: '100%',
-              borderRadius: 16,
-              padding: 16,
-              background: 'var(--paper-surface)',
-              border: '1px solid var(--paper-accent)',
-              boxShadow: '0 8px 24px rgba(47, 122, 77, 0.10)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 600,
-                color: 'var(--paper-ink)',
-              }}
-            >
-              {elicitation.message || 'Additional details requested'}
+          <div key={elicitation.id} data-testid={`elicitation-card-${elicitation.id}`} className={styles.card}>
+            <div className={styles.cardTitle}>
+              <span>{elicitation.message || 'Additional details requested'}</span>
             </div>
 
             {elicitation.mode === 'url' && safeLink(elicitation.url) ? (
@@ -71,14 +44,7 @@ export function ElicitationCards({
                 href={safeLink(elicitation.url)}
                 target="_blank"
                 rel="noreferrer"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  color: 'var(--paper-accent)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                }}
+                className={styles.cardLink}
               >
                 Open external authorization ({elicitation.url}) ↗
               </a>
@@ -93,32 +59,15 @@ export function ElicitationCards({
                         ? String(spec.default)
                         : '';
                   return (
-                    <label
-                      key={key}
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 4,
-                        fontSize: 12.5,
-                        color: 'var(--paper-ink-2)',
-                      }}
-                    >
-                      <span style={{ fontWeight: 500, color: 'var(--paper-ink)' }}>
-                        {spec.title || key}
-                      </span>
-                      {spec.description && (
-                        <span
-                          style={{
-                            fontSize: 11.5,
-                            color: 'var(--paper-ink-3)',
-                          }}
-                        >
-                          {spec.description}
-                        </span>
-                      )}
+                    <label key={key} className={styles.cardField}>
+                      <span className={styles.cardFieldName}>{spec.title || key}</span>
+                      {spec.description ? (
+                        <span className={styles.cardFieldHint}>{spec.description}</span>
+                      ) : null}
                       <input
                         type={spec.type === 'number' || spec.type === 'integer' ? 'number' : 'text'}
                         data-testid={`elicitation-input-${key}`}
+                        className={styles.cardInput}
                         value={val}
                         placeholder={`Enter ${spec.title || key}...`}
                         onChange={(e) =>
@@ -129,14 +78,6 @@ export function ElicitationCards({
                               : e.target.value,
                           )
                         }
-                        style={{
-                          padding: '8px 11px',
-                          borderRadius: 10,
-                          border: '0.5px solid var(--paper-hairline)',
-                          background: 'var(--paper-canvas)',
-                          color: 'var(--paper-ink)',
-                          fontSize: 13.5,
-                        }}
                       />
                     </label>
                   );
@@ -146,24 +87,19 @@ export function ElicitationCards({
               <input
                 type="text"
                 data-testid="elicitation-input-response"
+                className={styles.cardInput}
                 placeholder="Type your response..."
                 value={String(currentForm.response ?? '')}
                 onChange={(e) => setFieldValue('response', e.target.value)}
-                style={{
-                  padding: '8px 11px',
-                  borderRadius: 10,
-                  border: '0.5px solid var(--paper-hairline)',
-                  background: 'var(--paper-canvas)',
-                  color: 'var(--paper-ink)',
-                  fontSize: 13.5,
-                }}
               />
             )}
 
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className={styles.cardActions}>
               <button
                 type="button"
                 data-testid="elicitation-submit"
+                data-tone="primary"
+                className={styles.cardButton}
                 onClick={() => {
                   if (!runId) return;
                   const payload =
@@ -175,48 +111,24 @@ export function ElicitationCards({
                         }, {});
                   onResolveElicitation?.(runId, elicitation.id, 'accept', payload);
                 }}
-                style={{
-                  padding: '7px 14px',
-                  borderRadius: 10,
-                  border: 'none',
-                  background: 'var(--paper-accent)',
-                  color: 'var(--paper-canvas)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
               >
                 Submit
               </button>
               <button
                 type="button"
                 data-testid="elicitation-decline"
+                data-tone="secondary"
+                className={styles.cardButton}
                 onClick={() => runId && onResolveElicitation?.(runId, elicitation.id, 'decline')}
-                style={{
-                  padding: '7px 14px',
-                  borderRadius: 10,
-                  border: '0.5px solid var(--paper-hairline)',
-                  background: 'var(--paper-fill-1)',
-                  color: 'var(--paper-ink)',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                }}
               >
                 Decline
               </button>
               <button
                 type="button"
                 data-testid="elicitation-cancel"
+                data-tone="danger"
+                className={styles.cardButton}
                 onClick={() => runId && onResolveElicitation?.(runId, elicitation.id, 'cancel')}
-                style={{
-                  padding: '7px 14px',
-                  borderRadius: 10,
-                  border: 'none',
-                  background: 'transparent',
-                  color: 'var(--paper-ink-3)',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                }}
               >
                 Cancel
               </button>

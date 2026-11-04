@@ -1,7 +1,6 @@
 import { GlassDropdown, ScrollBlur, usePress } from '@praxis/glass';
 import { motion } from 'framer-motion';
 import React from 'react';
-import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown } from '../../lib/icons';
 import { Switch } from '../ui/controls';
 import styles from './Screen.module.css';
@@ -256,15 +255,15 @@ export function ScreenBody({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Keep the current non-portaling dropdown API above the sheet's scroll viewport. */
+/** Menu opened from a settings row: the content portals to the document root
+ * (GlassDropdown `portal`), so it is never clipped by a scroll container,
+ * an ancestor's overflow, or another glass surface's backdrop root. */
 export function ScreenMenu({
   label,
   children,
   icon,
-  contextOnly = false,
   plain = false,
 }: {
-  contextOnly?: boolean;
   /** Render the trigger as an inline value + chevron (form rows), not a glass capsule. */
   plain?: boolean;
   label: string;
@@ -273,51 +272,23 @@ export function ScreenMenu({
 }) {
   const [open, setOpen] = React.useState(false);
   const trigger = React.useRef<HTMLButtonElement>(null);
-  const content = React.useRef<HTMLDivElement>(null);
-  const target = trigger.current?.closest<HTMLElement>('.screen-shell');
   React.useEffect(() => {
     if (!open) return;
     const onOutside = (event: PointerEvent) => {
-      if (
-        event.target instanceof Node &&
-        !trigger.current?.contains(event.target) &&
-        !content.current?.contains(event.target)
-      )
-        setOpen(false);
+      if (event.target instanceof Node && !trigger.current?.contains(event.target)) setOpen(false);
     };
     document.addEventListener('pointerdown', onOutside);
     return () => document.removeEventListener('pointerdown', onOutside);
   }, [open]);
   return (
-    <GlassDropdown
-      open={open}
-      onOpenChange={setOpen}
-      dismissOnOutsideClick={false}
-      align="end"
-      portal={false}
-      boundary={() => trigger.current?.closest<HTMLElement>('.screen-shell') ?? null}
-    >
+    <GlassDropdown open={open} onOpenChange={setOpen} dismissOnOutsideClick={false} align="end" portal>
       <GlassDropdown.Trigger
-        asChild={contextOnly || plain}
+        asChild={plain}
         ref={trigger}
         aria-label={label}
         hideChevron
-        tabIndex={contextOnly ? -1 : undefined}
-        style={
-          contextOnly
-            ? {
-                opacity: 0,
-                pointerEvents: 'none',
-                width: 1,
-                height: 1,
-                padding: 0,
-              }
-            : undefined
-        }
       >
-        {contextOnly ? (
-          <button type="button">{icon}</button>
-        ) : plain ? (
+        {plain ? (
           <button type="button" className={styles.menuValue} aria-label={label}>
             {icon}
             <ChevronsUpDown size={16} aria-hidden="true" />
@@ -326,24 +297,12 @@ export function ScreenMenu({
           icon
         )}
       </GlassDropdown.Trigger>
-      {open && target
-        ? createPortal(
-            <GlassDropdown.Content
-              ref={content}
-              minWidth={200}
-              maxHeight={240}
-              style={{ zIndex: 60 }}
-            >
-              {children}
-            </GlassDropdown.Content>,
-            target,
-          )
-        : null}
+      <GlassDropdown.Content minWidth={200} maxHeight={240}>
+        {children}
+      </GlassDropdown.Content>
     </GlassDropdown>
   );
 }
-
-export { SheetDialog } from './SheetDialog';
 
 export function requireHttpUrl(value: string): string {
   const url = new URL(value.trim());
