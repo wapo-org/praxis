@@ -38,7 +38,7 @@ Two values deviate on purpose:
 - The web hairline is translucent ink (8%/14%), so it reads the same on paper, sidebar and glass.
 - The pressed and tile colours are aliased.
 
-Legacy `--paper-*` names alias to `--color-*` so the D2/D3 screens keep rendering. New code must not use them.
+Legacy `--paper-*` names alias to `--color-*` so the D3 screens (chat activity, approvals, History, Lab) keep rendering. New code must not use them.
 
 ## Glass (`packages/glass`)
 `<GlassSurface material="regular|thick|clear" shape="card|capsule" radius?>` renders a single `motion.div` styled by `glass.module.css`:
@@ -90,6 +90,7 @@ No centered dialogs and no dimmed backdrops, on any screen size. `SettingsModal`
   - `fade`: scrims.
   - `listItem`: opacity plus y 6.
   - `press`: `whileTap` scale 0.97.
+  - `slideIn` / `slideUnder`: push navigation inside the tray. The next page enters from x 24; the page under it recedes to x -24.
 - Hooks:
   - `usePreset(preset)` and `usePress()` are reduced-motion aware. Under `prefers-reduced-motion` every preset becomes an opacity-only fast fade.
   - `useReducedMotion()` reports the setting.
@@ -140,6 +141,7 @@ Command: `node apps/web/scripts/d1-perf.mjs`. It writes `perf.json` next to the 
 |---|---|
 | No long task > 50 ms while scrolling a 200+ message chat | 220-message chat, 0 long tasks; scripted scroll frames p50 16.7 ms, p95 16.8–17.7 ms. The UI renders the latest 100 messages (existing `listMessages` limit) |
 | No long task > 50 ms when opening a menu | 5 opens, 0 long tasks |
+| No long task > 50 ms when opening the tray or a 500-model list (WP-D2, 2026-11-05) | 5 tray opens and 4 list opens plus a scroll through all 500, paged like the API: 0 long tasks, 14 options mounted |
 | No per-frame JS while idle | 0 rAF callbacks, 0 ms script, 0 layouts in 2 s; 0 canvases |
 | Lighthouse performance ≥ 90 (built app, authenticated `/`) | 96, 95 and 91 on three runs (FCP 2.0 s, LCP 2.6–3.2 s, TBT 0 ms, CLS 0.002) |
 
@@ -152,7 +154,9 @@ The JS bundle is 713 kB (216 kB gzip); code-splitting the sheets is the next win
 - sizes 1440×900 and 402×874, in light and dark
 - `compare-*.png` boards next to the iOS references
 
-## Left for D2 / D3
-- **D2:** tray contents, model picker, dropdown internals and settings screens. They currently use legacy classes in `theme.css` and `screens.css`.
-- **D3:** activity and tool rows, approvals, elicitation, the history sheet, sign-in and Lab.
-- Both: convert to CSS Modules and these tokens, and delete the legacy `--paper-*` aliases when nothing reads them.
+## Visual gate (D2)
+`node apps/web/scripts/d2-capture.mjs` (API on 8822, web on 5196; `ONLY=` filters states) writes to `~/.praxis-agent-state/cloud/design/D2/`: tray main, model list and search, tray over a chat, every Settings page, consent, delete account, menus at a viewport edge and inside a sheet, plus `compare-*.png` boards next to iOS.
+
+## Left for D3
+- Activity and tool rows, approvals, elicitation, the history sheet, sign-in and Lab.
+- `screens/screens.css` now holds only what `HistorySheet` reads. Convert it, then delete the file, the `.account-screen` rules and `.screen-history-*` hover rules in `theme.css`, and the `--paper-*` aliases once nothing reads them.

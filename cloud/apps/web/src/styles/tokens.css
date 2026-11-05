@@ -65,7 +65,10 @@
   --popover-max-height: 480px;
   --tray-width: 360px;
   --tray-models-min-height: 420px;
+  --sheet-width: 640px;
+  --sheet-height: 720px;
   --settings-width: 720px;
+  --menu-min-width: 224px;
   --settings-height: 560px;
   --settings-nav-width: 200px;
   --row-model: 56px; /* two-line model row; MODEL_ROW_HEIGHT in ModelList.tsx */
