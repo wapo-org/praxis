@@ -4,7 +4,8 @@
  * Only transform and opacity are ever animated.
  */
 import React from 'react';
-import type { Transition } from 'framer-motion';
+import { LazyMotion, type Transition } from 'framer-motion';
+import { createElement, type ReactNode } from 'react';
 
 export const DURATION = { fast: 0.12, base: 0.2, slow: 0.32 } as const;
 export const EASE_STANDARD = [0.2, 0, 0, 1] as const;
@@ -127,4 +128,11 @@ export function usePreset(preset: MotionPreset) {
 
 export function usePress() {
   return useReducedMotion() ? {} : press;
+}
+
+const loadMotionFeatures = () => import('./motionFeatures').then((module) => module.default);
+
+/** Wrap the app once. Components use `m`, so the engine (layout, gestures) is a lazy chunk. */
+export function MotionProvider({ children }: { children: ReactNode }) {
+  return createElement(LazyMotion, { features: loadMotionFeatures }, children);
 }

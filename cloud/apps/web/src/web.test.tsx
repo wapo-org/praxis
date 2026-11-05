@@ -103,8 +103,8 @@ describe('@praxis/web core chat & lab components', () => {
     );
     expect(html).toContain('agent-activity-view');
     expect(html).toContain('approval-card-app-1');
-    expect(html).toContain('Allow Once');
-    expect(html).toContain('Always Allow');
+    expect(html).toContain('Allow once');
+    expect(html).toContain('Always allow');
     expect(html).toContain('Deny');
     expect(html).toContain('elicitation-card-elic-1');
     expect(html).toContain('Confirm target environment');
@@ -159,13 +159,11 @@ describe('@praxis/web core chat & lab components', () => {
     expect(html).toContain('What are we working on?');
   });
 
-  it('renders GlassLabPage with Apple Notes 35-frame reference demo and 500-model virtual picker', () => {
-    const html = renderToStaticMarkup(
-      
-        <GlassLabPage onNavigateBack={() => {}} />
-      ,
-    );
-    expect(html).toContain('Liquid Glass');
-    expect(html).toContain('Recent Notes');
+  it('renders the Lab as a gallery of real components, with no leftover demo', () => {
+    const html = renderToStaticMarkup(<GlassLabPage onNavigateBack={() => {}} />);
+    for (const section of ['lab-recipes', 'lab-dropdowns', 'lab-models', 'lab-scrim', 'lab-motion'])
+      expect(html).toContain(section);
+    expect(html).toContain('role="listbox"');
+    expect(html).not.toMatch(/Apple Notes|Snell|protest|lorem/i);
   });
 });

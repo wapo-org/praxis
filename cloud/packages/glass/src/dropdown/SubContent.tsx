@@ -1,5 +1,5 @@
 import styles from './dropdown.module.css';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m as motion } from 'framer-motion';
 import React from 'react';
 import { GlassSurface } from '../GlassSurface';
 import { popIn, SPRING, TRANSITION } from '../motion';

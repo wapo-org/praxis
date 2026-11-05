@@ -1,7 +1,9 @@
 import React from 'react';
 import { AccountContext } from '../../lib/account';
 import { apiClient } from '../../lib/api';
+import { ChevronRight } from '../../lib/icons';
 import { clearReplica, loadReplica, setReplicaIdentity, wipeReplicaStorage } from '../../lib/idb';
+import styles from './AccountGate.module.css';
 
 export function canUseLocalDev(isDev: boolean, mode: string) {
   return isDev && mode === 'local';
@@ -102,7 +104,14 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
     setNotice('Account deleted');
     setUser(null);
   }
-  if (checking) return <main className="account-screen">Checking session…</main>;
+  if (checking)
+    return (
+      <main className={styles.screen}>
+        <p className={styles.message} role="status">
+          Checking session…
+        </p>
+      </main>
+    );
   if (user)
     return (
       <AccountContext.Provider
@@ -120,22 +129,22 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
       </AccountContext.Provider>
     );
   return (
-    <main className="account-screen">
+    <main className={styles.screen}>
       <form
+        className={styles.form}
         onSubmit={(e) => {
           e.preventDefault();
           void signIn(false);
         }}
       >
-        <h1>Account</h1>
-        <p>Sign in to your Praxis server</p>
-        <label>
-          Server
-          <input readOnly value={apiClient.getBaseUrl() || window.location.origin} />
-        </label>
-        <label>
+        <div className={styles.intro}>
+          <h1 className={styles.brand}>Praxis</h1>
+          <p className={styles.lede}>Sign in to continue</p>
+        </div>
+        <label className={styles.field}>
           Email
           <input
+            className={styles.input}
             type="email"
             autoComplete="username"
             required
@@ -143,9 +152,10 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
             onChange={(e) => setEmail(e.target.value)}
           />
         </label>
-        <label>
+        <label className={styles.field}>
           Password
           <input
+            className={styles.input}
             type="password"
             autoComplete="current-password"
             required
@@ -154,16 +164,43 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
           />
         </label>
         {notice && (
-          <p role="status" data-testid="account-notice">
+          <p role="status" className={styles.notice} data-testid="account-notice">
             {notice}
           </p>
         )}
-        {error && <p role="alert">{error}</p>}
-        <button disabled={busy}>Sign in</button>
+        {error && (
+          <p role="alert" className={styles.error}>
+            {error}
+          </p>
+        )}
+        <button className={styles.button} disabled={busy}>
+          Sign in
+        </button>
+        <details className={styles.advanced}>
+          <summary>
+            <span className={styles.advancedChevron}>
+              <ChevronRight size={16} />
+            </span>
+            Advanced
+          </summary>
+          <label className={styles.field}>
+            Server
+            <input className={styles.input} readOnly value={apiClient.getBaseUrl() || window.location.origin} />
+          </label>
+        </details>
         {import.meta.env.DEV && local && (
-          <button type="button" disabled={busy} onClick={() => void signIn(true)}>
-            Continue as local dev user
-          </button>
+          <div className={styles.dev}>
+            <button
+              type="button"
+              className={styles.button}
+              data-tone="secondary"
+              disabled={busy}
+              onClick={() => void signIn(true)}
+            >
+              Continue as local dev user
+            </button>
+            <p className={styles.devNote}>Only on a local development server.</p>
+          </div>
         )}
       </form>
     </main>

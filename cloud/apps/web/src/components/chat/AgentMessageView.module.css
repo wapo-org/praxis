@@ -7,6 +7,10 @@
   letter-spacing: -0.005em;
 }
 
+.message strong {
+  font-weight: var(--weight-semibold);
+}
+
 .actions {
   display: flex;
   align-items: center;

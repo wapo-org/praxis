@@ -13,7 +13,7 @@ export interface SubTriggerProps extends Omit<
   children?: React.ReactNode;
 }
 
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import React from 'react';
 import {
   assignForwardedRef,

@@ -106,7 +106,7 @@ for (const theme of ['light', 'dark'])
       await page.keyboard.press('Escape');
       await page.waitForTimeout(200);
       if (vpName === 'desktop') {
-        const row = page.locator('[data-testid="app-sidebar"] .screen-history-row').first();
+        const row = page.locator('[data-testid="app-sidebar"] [data-testid="history-row"]').first();
         await row.hover();
         await row.getByRole('button', { name: /^Actions for/ }).click();
         await page.getByRole('menu').waitFor();

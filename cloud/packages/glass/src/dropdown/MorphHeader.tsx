@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import { ChevronLeft } from '../icons';
 import { useGlassDropdownContext, type SubLevelInfo } from './context';
 import styles from './dropdown.module.css';

@@ -1,11 +1,10 @@
 import { GlassDropdown, ScrollBlur, usePress } from '@praxis/glass';
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown } from '../../lib/icons';
 import { Switch } from '../ui/controls';
 import styles from './Screen.module.css';
-import './screens.css'; // Legacy classes for HistorySheet until WP-D3 converts it.
 
 export function useScreenTask() {
   const [busy, setBusy] = React.useState(false);
@@ -303,20 +302,11 @@ export function ScreenMenu({
         aria-label={label}
         hideChevron
         tabIndex={contextOnly ? -1 : undefined}
-        style={
-          contextOnly
-            ? {
-                opacity: 0,
-                pointerEvents: 'none',
-                width: 1,
-                height: 1,
-                padding: 0,
-              }
-            : undefined
-        }
       >
         {contextOnly ? (
-          <button type="button">{icon}</button>
+          <button type="button" className={styles.contextTrigger}>
+            {icon}
+          </button>
         ) : plain ? (
           <button type="button" className={styles.menuValue} aria-label={label}>
             {icon}

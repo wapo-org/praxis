@@ -1,35 +1,104 @@
-import { GlassChip } from '@praxis/glass';
+import {
+  fade,
+  GlassChip,
+  GlassSurface,
+  listItem,
+  type MotionPreset,
+  popIn,
+  ProgressiveBlurScrim,
+  ScrollBlur,
+  sheet,
+  slideIn,
+  usePreset,
+  usePress,
+} from '@praxis/glass';
+import { m as motion } from 'framer-motion';
 import React from 'react';
-import { ArrowLeft, Moon, Sun } from '../../lib/icons';
-import { AppleNotesReplica } from './AppleNotesReplica';
+import { ArrowDown, ArrowLeft, Moon, Sun } from '../../lib/icons';
 import { DropdownPositions } from './DropdownPositions';
-import './lab.css';
-import { ScrimComparison } from './ScrimComparison';
-import { VirtualModelPicker } from './VirtualModelPicker';
+import { LabModels } from './LabModels';
+import styles from './Lab.module.css';
 
 export interface GlassLabPageProps {
   onNavigateBack?: () => void;
 }
 
+function Section({ id, title, note, children }: { id: string; title: string; note: string; children: React.ReactNode }) {
+  return (
+    <section className={styles.section} data-testid={id} aria-label={title}>
+      <h2 className={styles.sectionTitle}>{title}</h2>
+      <p className={styles.sectionNote}>{note}</p>
+      {children}
+    </section>
+  );
+}
+
+const RECIPES = [
+  { material: 'regular', note: 'Composer pill, top-bar clusters' },
+  { material: 'thick', note: 'Menus, popovers, sheets, tray' },
+  { material: 'clear', note: 'Small floating chips' },
+] as const;
+
+const PASSAGE = [
+  'Glass is for floating chrome only. Messages, activity rows and cards sit on the paper, and the chrome floats above them.',
+  'Four static bands of blur, each masked to its own depth, dissolve the text as it reaches the edge. Nothing runs per frame.',
+  'The browser composites the blur on the GPU, so scrolling this panel costs the same as scrolling plain text.',
+  'Scroll to see each line soften under the top edge and again above the bottom edge, where the composer would sit.',
+  'The feather on top of the bands keeps the paper colour at the very edge, so a line never ends on a hard cut.',
+];
+
+function Passage() {
+  return PASSAGE.concat(PASSAGE).map((text, index) => (
+    <p key={index} className={styles.scrimText}>
+      {text}
+    </p>
+  ));
+}
+
+function MotionTile({ name, preset }: { name: string; preset: MotionPreset }) {
+  const motionProps = usePreset(preset);
+  const [run, setRun] = React.useState(0);
+  return (
+    <button type="button" className={styles.motionTile} onClick={() => setRun((n) => n + 1)}>
+      <span className={styles.motionStage}>
+        <motion.span
+          key={run}
+          className={styles.motionChip}
+          initial={motionProps.initial}
+          animate={motionProps.animate}
+          transition={motionProps.transition}
+        />
+      </span>
+      {name}
+    </button>
+  );
+}
+
+function PressTile() {
+  const pressProps = usePress();
+  return (
+    <motion.button type="button" className={styles.motionTile} {...pressProps}>
+      <span className={styles.motionStage}>
+        <span className={styles.motionChip} />
+      </span>
+      press (hold)
+    </motion.button>
+  );
+}
+
+/** The Lab: the real glass recipes, dropdowns, model list, blur and motion, and nothing else. */
 export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
-
-  const [theme, setTheme] = React.useState<'light' | 'dark'>(() => {
-    if (typeof document !== 'undefined') {
-      return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-    }
-    return 'light';
-  });
-
+  const [theme, setTheme] = React.useState<'light' | 'dark'>(() =>
+    typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light',
+  );
   const toggleTheme = () => {
     const next = theme === 'light' ? 'dark' : 'light';
     setTheme(next);
-    if (typeof document !== 'undefined') {
-      document.documentElement.setAttribute('data-theme', next);
-    }
-    if (typeof localStorage !== 'undefined') {
-      try {
-        localStorage.setItem('praxis-theme', next);
-      } catch {}
+    document.documentElement.setAttribute('data-theme', next);
+    try {
+      localStorage.setItem('praxis-theme', next);
+    } catch {
+      /* Private mode: the change still applies to this page. */
     }
   };
 
@@ -37,114 +106,82 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
     return <DropdownPositions />;
 
   return (
-    <div
-      data-testid="glass-lab-page"
-      style={{
-        width: '100vw',
-        height: '100dvh',
-        overflowY: 'auto',
-        backgroundColor: 'var(--paper-canvas)',
-        color: 'var(--paper-ink)',
-        fontFamily: 'var(--font-sans)',
-        paddingBottom: '80px',
-      }}
-    >
-      {/* Top Sticky Floating Header */}
-      <header
-        className="glass-lab-header"
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 90,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '12px',
-          padding: '14px 24px',
-          borderBottom: '1px solid var(--paper-hairline)',
-          backgroundColor: 'color-mix(in srgb, var(--paper-canvas) 82%, transparent)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <GlassChip
-            data-testid="glass-lab-back-button"
-            icon={<ArrowLeft size={16} />}
-            onClick={() => onNavigateBack?.()}
-          >
-            Back to Chat
-          </GlassChip>
-          <div>
-            <h1
-              style={{
-                margin: 0,
-                fontFamily: 'var(--font-serif)',
-                fontSize: '20px',
-                fontWeight: 600,
-                letterSpacing: '-0.01em',
-              }}
-            >
-              Liquid Glass Optical Lab
-            </h1>
-            <div style={{ fontSize: '12px', color: 'var(--paper-secondary-ink)' }}>
-              @praxis/glass · Snell Squircle Refraction &amp; 35-Frame UIMenu Physics
-            </div>
-          </div>
-        </div>
-
-        {/* Theme switcher */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            flexWrap: 'wrap',
-          }}
+    <div data-testid="glass-lab-page" className={styles.page}>
+      <header className={styles.header} data-testid="lab-header">
+        <GlassChip data-testid="glass-lab-back-button" icon={<ArrowLeft size={16} />} onClick={() => onNavigateBack?.()}>
+          Chat
+        </GlassChip>
+        <h1 className={styles.title}>Lab</h1>
+        <GlassChip
+          data-testid="glass-lab-theme-toggle"
+          aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          icon={theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          onClick={toggleTheme}
         >
-
-          <GlassChip
-            data-testid="glass-lab-theme-toggle"
-            icon={theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            onClick={toggleTheme}
-          >
-            {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-          </GlassChip>
-        </div>
+          {theme === 'dark' ? 'Light' : 'Dark'}
+        </GlassChip>
       </header>
 
-      <main
-        className="glass-lab-main"
-        style={{
-          maxWidth: '1240px',
-          margin: '0 auto',
-          padding: '24px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '28px',
-        }}
-      >
+      <main className={styles.main} data-testid="lab-main">
+        <Section id="lab-recipes" title="Glass recipes" note="The three materials and the chip, on a pattern loud enough to judge them.">
+          <div className={styles.backdrop}>
+            {RECIPES.map(({ material, note }) => (
+              <GlassSurface key={material} material={material} className={styles.recipe}>
+                <div className={styles.recipeBody}>
+                  <span className={styles.recipeName}>{material}</span>
+                  <span className={styles.recipeNote}>{note}</span>
+                </div>
+              </GlassSurface>
+            ))}
+            <div className={styles.capsules}>
+              <GlassChip icon={<ArrowDown size={16} />}>Jump to latest</GlassChip>
+            </div>
+          </div>
+        </Section>
 
-        <DropdownPositions compact />
-        {/* Two-column showcase: Apple Notes 35-Frame Replica & 500-Model Virtualized Picker */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))',
-            gap: '24px',
-            alignItems: 'start',
-          }}
-        >
-          {/* 2. Apple Notes 35-Frame Reference Replica Dropdown (IMG_7744 – IMG_7778) */}
-          <AppleNotesReplica />
+        <Section id="lab-dropdowns" title="Dropdown placements" note="Nine anchors. Each opens the same menu and stays inside the viewport.">
+          <DropdownPositions compact />
+        </Section>
 
-          {/* 3. 500-Model Virtualized Picker Demo */}
-          <VirtualModelPicker />
-        </div>
+        <Section id="lab-models" title="500-model picker" note="The tray's model list with 500 local models. Only the visible rows are mounted.">
+          <LabModels />
+        </Section>
 
-        {/* 4. ProgressiveBlurScrim Scroll Container Demo (Side-by-Side Comparison) */}
-        <ScrimComparison />
+        <Section id="lab-scrim" title="Progressive blur" note="The chat's scrims on the left, a menu or sheet body's scroll fade on the right.">
+          <div className={styles.scrims}>
+            <figure className={styles.scrimCaption}>
+              <figcaption>ProgressiveBlurScrim</figcaption>
+              <div className={styles.scrimPanel}>
+                <ProgressiveBlurScrim edge="top" height={72} />
+                <div className={styles.scrimScroll} tabIndex={0} aria-label="Blur scrim sample">
+                  <Passage />
+                </div>
+                <ProgressiveBlurScrim edge="bottom" height={112} />
+              </div>
+            </figure>
+            <figure className={styles.scrimCaption}>
+              <figcaption>ScrollBlur</figcaption>
+              <div className={styles.scrimPanel}>
+                <ScrollBlur height="100%">
+                  <div className={styles.scrimScroll}>
+                    <Passage />
+                  </div>
+                </ScrollBlur>
+              </div>
+            </figure>
+          </div>
+        </Section>
+
+        <Section id="lab-motion" title="Motion" note="Every preset from @praxis/glass. Click a tile to replay it.">
+          <div className={styles.motionGrid}>
+            <MotionTile name="popIn" preset={popIn} />
+            <MotionTile name="sheet" preset={sheet} />
+            <MotionTile name="fade" preset={fade} />
+            <MotionTile name="listItem" preset={listItem} />
+            <MotionTile name="slideIn" preset={slideIn} />
+            <PressTile />
+          </div>
+        </Section>
       </main>
     </div>
   );

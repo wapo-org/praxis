@@ -1,17 +1,34 @@
 import React from 'react';
 import { ChevronRight } from '../../lib/icons';
-import { useActivityClock } from './useActivityClock';
-
-import { ActivityDetails } from './ActivityDetails';
+import { ActivityDetails, stepIcon } from './ActivityDetails';
+import { activityLabel, argumentSummary, stepTitle, type ActivityPhase } from './activityLine';
 import type { AgentActivityViewProps } from './activityTypes';
-import { ApprovalCards } from './ApprovalCards';
-import { ElicitationCards } from './ElicitationCards';
+import { ApprovalCard } from './ApprovalCards';
+import { ElicitationCard } from './ElicitationCards';
+import styles from './AgentActivity.module.css';
+
 export type { AgentActivityViewProps } from './activityTypes';
+
+/** The text plus a moving highlight. Screen readers and selection get the base copy only. */
+function ShimmerText({ text }: { text: string }) {
+  return (
+    <span className={styles.shimmer}>
+      {text}
+      <span className={styles.shimmerBand} aria-hidden="true">
+        <span className={styles.shimmerInk}>{text}</span>
+      </span>
+    </span>
+  );
+}
+
+/** One expanding object, as iOS: a folded line, then a list of calls, then a call's details.
+ *  What needs the user never waits behind a tap: it shows under its line, or under the header. */
 export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
   runId,
   startedAt,
   finishedAt,
   isRunning = false,
+  isStopped = false,
   reasoningBlocks = [],
   toolSteps,
   pendingApprovals = [],
@@ -21,14 +38,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
   onResolveApproval,
   onResolveElicitation,
 }) => {
-  const [expanded, setExpanded] = React.useState<boolean>(false);
-  const [openStepIds, setOpenStepIds] = React.useState<Record<string, boolean>>({});
-  const [copiedStepId, setCopiedStepId] = React.useState<string | null>(null);
-  const [elicitationValues, setElicitationValues] = React.useState<
-    Record<string, Record<string, unknown>>
-  >({});
-
-  const worked = useActivityClock(isRunning, startedAt, finishedAt);
+  const [expanded, setExpanded] = React.useState(false);
   const hasActivity =
     toolSteps.length > 0 ||
     reasoningBlocks.length > 0 ||
@@ -36,171 +46,95 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
     pendingElicitations.length > 0 ||
     visionActivities.length > 0 ||
     compactions.length > 0;
+  if (!hasActivity && !isRunning && !isStopped) return null;
 
-  if (!hasActivity && !isRunning) {
-    return null;
-  }
+  // A run that ended never leaves a line pulsing, whatever its last event said.
+  const steps = isRunning ? toolSteps : toolSteps.map((step) => (step.running ? { ...step, running: false } : step));
+  const thoughts = isRunning ? reasoningBlocks : reasoningBlocks.map((block) => ({ ...block, finished: true }));
+  const phase: ActivityPhase = isRunning ? 'running' : isStopped ? 'stopped' : 'finished';
+  const label = activityLabel(phase, startedAt, finishedAt);
+  const liveStep = !expanded && isRunning ? (steps.find((s) => s.running) ?? null) : null;
+  const LiveIcon = liveStep ? stepIcon(liveStep) : null;
+  const liveTitle = liveStep ? stepTitle(liveStep) : '';
+  const liveDetail = liveStep ? argumentSummary(liveStep, liveTitle) : undefined;
+  const ownerCalls = new Set(steps.map((s) => s.callId));
+  const approvalCall = (approval: (typeof pendingApprovals)[number]) =>
+    approval.parentCallId && ownerCalls.has(approval.parentCallId) ? approval.parentCallId : approval.callId;
 
-  const runningToolsCount = toolSteps.filter((t) => t.running).length;
-  const totalToolsCount = toolSteps.length;
-  const hasApproval = pendingApprovals.length > 0;
-  const hasElicitation = pendingElicitations.length > 0;
+  const approvalCards = (items: typeof pendingApprovals) =>
+    items.map((approval) => (
+      <ApprovalCard key={approval.id} approval={approval} runId={runId} onResolveApproval={onResolveApproval} />
+    ));
+  const elicitationCards = (items: typeof pendingElicitations) =>
+    items.map((elicitation) => (
+      <ElicitationCard key={elicitation.id} elicitation={elicitation} runId={runId} onResolveElicitation={onResolveElicitation} />
+    ));
 
-  let statusColor = 'var(--paper-accent)';
-  let summaryLabel = 'Completed activity';
-
-  if (hasApproval) {
-    statusColor = 'var(--paper-warn)';
-    summaryLabel = `Waiting for tool approval (${pendingApprovals.length})`;
-  } else if (hasElicitation) {
-    statusColor = 'var(--paper-warn)';
-    summaryLabel = 'Waiting for your input';
-  } else if (isRunning || runningToolsCount > 0) {
-    statusColor = 'var(--paper-ink-2)';
-    const currentStep = toolSteps.find((s) => s.running) ?? toolSteps[toolSteps.length - 1];
-    if (currentStep) {
-      const stepTitle =
-        currentStep.statusText ||
-        currentStep.activity.presentation?.runningTitle ||
-        currentStep.activity.name;
-      summaryLabel = `${stepTitle}${totalToolsCount > 1 ? ` · ${totalToolsCount} steps` : ''}`;
-    } else if (reasoningBlocks.some((b) => !b.finished)) {
-      summaryLabel = 'Thinking...';
-    } else {
-      summaryLabel = 'Working...';
-    }
-  } else if (totalToolsCount > 0) {
-    const failedCount = toolSteps.filter(
-      (s) => s.completion?.status === 'failed' || s.completion?.status === 'denied',
-    ).length;
-    if (failedCount > 0) {
-      statusColor = 'var(--paper-danger)';
-      summaryLabel = `${worked} (${failedCount} failed)`;
-    } else {
-      statusColor = 'var(--paper-accent)';
-      summaryLabel = worked;
-    }
-  } else if (reasoningBlocks.length > 0) {
-    summaryLabel = 'Thought process';
-  }
-
-  const toggleStepDetail = (callId: string) => {
-    setOpenStepIds((prev) => ({ ...prev, [callId]: !prev[callId] }));
+  const waitingFor = (callId: string) => {
+    const approvals = pendingApprovals.filter((a) => approvalCall(a) === callId);
+    const elicitations = pendingElicitations.filter((e) => e.callId === callId);
+    if (!approvals.length && !elicitations.length) return null;
+    return (
+      <>
+        {approvalCards(approvals)}
+        {elicitationCards(elicitations)}
+      </>
+    );
   };
-
-  const copyText = (id: string, text: string) => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      void navigator.clipboard.writeText(text);
-    }
-    setCopiedStepId(id);
-    setTimeout(() => {
-      setCopiedStepId((curr) => (curr === id ? null : curr));
-    }, 1500);
-  };
+  // Folded, or a request with no line of its own yet: it sits under the header.
+  const looseApprovals = expanded ? pendingApprovals.filter((a) => !ownerCalls.has(approvalCall(a))) : pendingApprovals;
+  const looseElicitations = expanded
+    ? pendingElicitations.filter((e) => !e.callId || !ownerCalls.has(e.callId))
+    : pendingElicitations;
 
   return (
     <div
       data-testid="agent-activity-view"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'flex-start',
-        gap: 10,
-        marginBottom: 12,
-        width: '100%',
-      }}
+      className={styles.activity}
+      aria-label={isRunning ? 'Agent activity, currently working' : `Agent activity, ${label}`}
+      role="group"
     >
-      {/* Level 0: Folded / Expandable Pill Header */}
-      <div
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
+        className={styles.header}
         data-testid="agent-activity-toggle"
         aria-expanded={expanded}
-        onClick={() => setExpanded((v) => !v)}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 9,
-          height: 'var(--control-sm)',
-          padding: '0 var(--space-3)',
-          border: 'none',
-          borderRadius: 'var(--radius-full)',
-          background: 'var(--color-fill-1)',
-          cursor: 'pointer',
-          color: 'var(--paper-ink)',
-          fontSize: 13,
-          lineHeight: '18px',
-          fontWeight: 500,
-          maxWidth: '100%',
-        }}
+        onClick={() => setExpanded((value) => !value)}
       >
-        <span
-          aria-hidden="true"
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            backgroundColor: statusColor,
-            flexShrink: 0,
-            boxShadow:
-              isRunning || hasApproval || hasElicitation ? `0 0 0 3px ${statusColor}28` : 'none',
-            animation:
-              isRunning || runningToolsCount > 0
-                ? 'praxisPulseDot var(--duration-ambient) var(--ease-ambient) infinite'
-                : 'none',
-          }}
-        />
-        <span
-          style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {summaryLabel}
-        </span>
-        <span
-          aria-hidden="true"
-          style={{
-            fontSize: 11,
-            color: 'var(--paper-ink-3)',
-            transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform var(--duration-base) var(--ease-standard)',
-          }}
-        >
+        <span className={styles.chevron}>
           <ChevronRight size={16} />
         </span>
-      </div>
+        <span className={styles.label}>{phase === 'finished' ? label : <ShimmerText text={label} />}</span>
+        {liveStep && LiveIcon ? (
+          <span className={styles.live} data-testid="agent-activity-live">
+            <span aria-hidden="true">·</span>
+            <span className={styles.liveIcon}>
+              <LiveIcon size={16} />
+            </span>
+            <span className={styles.rowText}>
+              {liveTitle}
+              {liveDetail ? `: ${liveDetail}` : null}
+            </span>
+          </span>
+        ) : null}
+      </button>
 
-      {/* Level 1 & Level 2: Expanded Steps + Reasoning + Vision + Compaction */}
-      {expanded && (
+      {expanded ? (
         <ActivityDetails
-          reasoningBlocks={reasoningBlocks}
+          reasoningBlocks={thoughts}
           visionActivities={visionActivities}
           compactions={compactions}
-          toolSteps={toolSteps}
-          openStepIds={openStepIds}
-          copiedStepId={copiedStepId}
-          toggleStepDetail={toggleStepDetail}
-          copyText={copyText}
+          toolSteps={steps}
+          waitingFor={waitingFor}
         />
-      )}
+      ) : null}
 
-      {/* Inline Pending Tool Approval Cards */}
-      <ApprovalCards
-        pendingApprovals={pendingApprovals}
-        runId={runId}
-        onResolveApproval={onResolveApproval}
-      />
-
-      {/* Inline Pending Elicitation Form Cards */}
-      <ElicitationCards
-        pendingElicitations={pendingElicitations}
-        runId={runId}
-        onResolveElicitation={onResolveElicitation}
-        elicitationValues={elicitationValues}
-        setElicitationValues={setElicitationValues}
-      />
+      {looseApprovals.length || looseElicitations.length ? (
+        <div className={styles.waiting}>
+          {approvalCards(looseApprovals)}
+          {elicitationCards(looseElicitations)}
+        </div>
+      ) : null}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import { motion, useIsPresent, type HTMLMotionProps } from 'framer-motion';
+import { m as motion, useIsPresent, type HTMLMotionProps } from 'framer-motion';
 import React from 'react';
 /** Exiting layers stay visible for the crossfade, but leave the accessibility/focus tree. */
 export const MorphPanel = React.forwardRef<

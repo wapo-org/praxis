@@ -103,19 +103,17 @@ const ModelRow = React.memo(function ModelRow({
       >
         <span className={styles.copy}>
           <span className={styles.name}>{model.displayName}</span>
-          <span className={styles.meta}>
-            <span className={styles.tagline}>{model.tagline || providerName}</span>
-            {capabilities.length ? (
-              <span className={styles.badges}>
-                {capabilities.map(({ label, Icon }) => (
-                  <span key={label} title={label} aria-label={label} role="img">
-                    <Icon size={16} />
-                  </span>
-                ))}
-              </span>
-            ) : null}
-          </span>
+          <span className={styles.tagline}>{model.tagline || providerName}</span>
         </span>
+        {capabilities.length ? (
+          <span className={styles.badges} data-testid="model-capabilities">
+            {capabilities.map(({ label, Icon }) => (
+              <span key={label} className={styles.badge} title={label} aria-label={label} role="img">
+                <Icon size={16} />
+              </span>
+            ))}
+          </span>
+        ) : null}
         {selected ? (
           <span className={styles.check}>
             <Check size={18} />
@@ -140,6 +138,59 @@ export function ModelList({ onBack, autoFocus = true }: { onBack: () => void; au
   const store = usePraxisStore();
   const [query, setQuery] = React.useState('');
   const search = useModelSearch(query, true, store.models);
+  const select = React.useCallback(
+    (model: Model) => {
+      store.cacheModels([model]);
+      store.setSelectedModel(model.providerId, model.id);
+      onBack();
+    },
+    [store.cacheModels, store.setSelectedModel, onBack],
+  );
+  const { patch, refresh } = search;
+  const togglePin = React.useCallback(
+    (model: Model) => {
+      patch({ providerId: model.providerId, id: model.id, pinned: !model.pinned });
+      void store.toggleModelPin(model.providerId, model.id, !model.pinned).catch(refresh);
+    },
+    [store.toggleModelPin, patch, refresh],
+  );
+  return (
+    <ModelListView
+      query={query}
+      onQueryChange={setQuery}
+      search={search}
+      providerName={(model) => store.providers.find((p) => p.id === model.providerId)?.name ?? model.providerId}
+      isSelected={(model) => model.id === store.selectedModelId && model.providerId === store.selectedProviderId}
+      onSelect={select}
+      onTogglePin={togglePin}
+      onBack={onBack}
+      autoFocus={autoFocus}
+    />
+  );
+}
+
+/** The list itself. It takes its data as props, so the Lab shows this same component with 500 models. */
+export function ModelListView({
+  query,
+  onQueryChange: setQuery,
+  search,
+  providerName,
+  isSelected,
+  onSelect: select,
+  onTogglePin: togglePin,
+  onBack,
+  autoFocus = true,
+}: {
+  query: string;
+  onQueryChange: (query: string) => void;
+  search: { items: Model[]; cursor: string | null; busy: boolean; error: string; loadMore: () => void };
+  providerName: (model: Model) => string;
+  isSelected: (model: Model) => boolean;
+  onSelect: (model: Model) => void;
+  onTogglePin: (model: Model) => void;
+  onBack: () => void;
+  autoFocus?: boolean;
+}) {
   const searching = !!query.trim();
   const rows = React.useMemo(
     () => buildModelRows(search.items, searching, !!search.cursor),
@@ -176,23 +227,6 @@ export function ModelList({ onBack, autoFocus = true }: { onBack: () => void; au
     if (next !== firstVisible) setFirstVisible(next);
     if (el.scrollTop + el.clientHeight > total - MODEL_ROW_HEIGHT * 4) search.loadMore();
   };
-
-  const select = React.useCallback(
-    (model: Model) => {
-      store.cacheModels([model]);
-      store.setSelectedModel(model.providerId, model.id);
-      onBack();
-    },
-    [store.cacheModels, store.setSelectedModel, onBack],
-  );
-  const { patch, refresh } = search;
-  const togglePin = React.useCallback(
-    (model: Model) => {
-      patch({ providerId: model.providerId, id: model.id, pinned: !model.pinned });
-      void store.toggleModelPin(model.providerId, model.id, !model.pinned).catch(refresh);
-    },
-    [store.toggleModelPin, patch, refresh],
-  );
 
   const activate = (row: ModelListRow | undefined) => {
     if (row?.kind === 'model') select(row.model);
@@ -313,13 +347,9 @@ export function ModelList({ onBack, autoFocus = true }: { onBack: () => void; au
                 ) : (
                   <ModelRow
                     model={row.model}
-                    providerName={
-                      store.providers.find((p) => p.id === row.model.providerId)?.name ?? row.model.providerId
-                    }
+                    providerName={providerName(row.model)}
                     optionId={optionId(index)}
-                    selected={
-                      row.model.id === store.selectedModelId && row.model.providerId === store.selectedProviderId
-                    }
+                    selected={isSelected(row.model)}
                     active={index === activeIndex}
                     onSelect={select}
                     onTogglePin={togglePin}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion, type HTMLMotionProps } from 'framer-motion';
+import { m as motion, type HTMLMotionProps } from 'framer-motion';
 import styles from './glass.module.css';
 
 /** Three recipes: regular (composer, top-bar cluster), thick (menus, sheets), clear (small chips). */

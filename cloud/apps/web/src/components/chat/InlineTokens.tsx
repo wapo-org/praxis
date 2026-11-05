@@ -1,6 +1,7 @@
 import React from 'react';
 import { FileText } from '../../lib/icons';
 import { safeLink } from '../../lib/links';
+import styles from './MarkdownContent.module.css';
 
 export interface ChipInspection {
   kind: 'file' | 'link' | 'code';
@@ -39,6 +40,7 @@ export function renderInlineTokens(
       if (url.startsWith('file://') || FILE_PATH_PATTERN.test(label)) {
         nodes.push(
           <button
+            className={styles.inlineCode}
             key={`file-${keyIdx++}`}
             type="button"
             data-testid="inline-file-chip"
@@ -49,57 +51,23 @@ export function renderInlineTokens(
                 detail: url,
               })
             }
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '1px 8px',
-              margin: '0 2px',
-              borderRadius: 7,
-              background: 'var(--paper-fill-1)',
-              border: '0.5px solid var(--paper-hairline)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 13.5,
-              lineHeight: '20px',
-              color: 'var(--paper-ink)',
-              cursor: 'pointer',
-              verticalAlign: 'baseline',
-              whiteSpace: 'nowrap',
-            }}
           >
-            <span aria-hidden="true" style={{ fontSize: 11, color: 'var(--paper-accent)' }}>
-              <FileText size={16} />
-            </span>
+            <FileText size={16} />
             <span>{label}</span>
           </button>,
         );
       } else if (safeLink(url)) {
         nodes.push(
           <a
+            className={styles.link}
             key={`link-${keyIdx++}`}
             href={safeLink(url)}
             target="_blank"
             rel="noreferrer"
             data-testid="inline-link-chip"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '1px 9px',
-              margin: '0 2px',
-              borderRadius: 999,
-              background: 'var(--paper-fill-1)',
-              border: '0.5px solid var(--paper-hairline)',
-              fontSize: 14,
-              lineHeight: '20px',
-              color: 'var(--paper-ink)',
-              textDecoration: 'none',
-              verticalAlign: 'baseline',
-              whiteSpace: 'nowrap',
-            }}
           >
-            <span style={{ fontWeight: 500 }}>{label}</span>
-            <span style={{ fontSize: 11.5, color: 'var(--paper-ink-3)' }}>{domain} ↗</span>
+            {label}
+            <span className={styles.linkHost}>{domain} ↗</span>
           </a>,
         );
       } else {
@@ -110,6 +78,7 @@ export function renderInlineTokens(
       const isFileRef = FILE_PATH_PATTERN.test(codeContent);
       nodes.push(
         <button
+          className={styles.inlineCode}
           key={`code-${keyIdx++}`}
           type="button"
           data-testid={isFileRef ? 'inline-file-chip' : 'inline-code-pill'}
@@ -122,37 +91,16 @@ export function renderInlineTokens(
                 : `Symbol / code snippet: ${codeContent}`,
             })
           }
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: '2px 7px',
-            margin: '0 1.5px',
-            borderRadius: 6,
-            background: 'var(--paper-fill-1)',
-            border: '0.5px solid var(--paper-hairline)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 14,
-            lineHeight: '20px',
-            color: 'var(--paper-ink)',
-            cursor: 'pointer',
-            verticalAlign: 'baseline',
-            whiteSpace: 'nowrap',
-          }}
         >
           {isFileRef && (
-            <span aria-hidden="true" style={{ fontSize: 11, color: 'var(--paper-accent)' }}>
-              <FileText size={16} />
-            </span>
+            <FileText size={16} />
           )}
           <span>{codeContent}</span>
         </button>,
       );
     } else if (match[5] !== undefined) {
       nodes.push(
-        <strong key={`bold-${keyIdx++}`} style={{ fontWeight: 600 }}>
-          {match[5]}
-        </strong>,
+        <strong key={`bold-${keyIdx++}`}>{match[5]}</strong>,
       );
     } else if (match[6] !== undefined) {
       nodes.push(<em key={`em-${keyIdx++}`}>{match[6]}</em>);

@@ -166,27 +166,6 @@
 :root,
 [data-theme='light'],
 [data-theme='dark'] {
-  --paper-canvas: var(--color-paper);
-  --paper-card: var(--color-surface);
-  --paper-surface: var(--color-surface);
-  --paper-surface-2: var(--color-fill-1);
-  --paper-ink: var(--color-ink);
-  --paper-ink-2: var(--color-ink-2);
-  --paper-ink-3: var(--color-ink-3);
-  --paper-secondary-ink: var(--color-ink-2);
-  --paper-muted-ink: var(--color-ink-3);
-  --paper-pressed-muted: var(--color-ink-3);
-  --paper-hairline: var(--color-hairline-strong);
-  --paper-rule-strong: var(--color-hairline-strong);
-  --paper-fill-1: var(--color-fill-1);
-  --paper-fill-2: var(--color-fill-2);
-  --paper-tile: var(--color-ink);
-  --paper-tile-glyph: var(--color-paper);
-  --paper-accent: var(--color-accent);
-  --paper-success: var(--color-success);
-  --paper-destructive: var(--color-danger);
-  --paper-danger: var(--color-danger);
-  --paper-warn: var(--color-ink-2);
   --font-serif: var(--font-display);
   --dropdown-highlight: var(--color-pressed);
   --glass-tint: var(--glass-regular-tint);

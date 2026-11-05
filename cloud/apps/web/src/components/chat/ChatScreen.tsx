@@ -1,24 +1,17 @@
 import React from 'react';
-import type { Message } from '@praxis/protocol';
 import { GlassChip, ProgressiveBlurScrim } from '@praxis/glass';
 import { ArrowDown } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import { AgentActivityView } from './AgentActivityView';
 import { AgentMessageView } from './AgentMessageView';
+import { AssistantTurn, groupTranscript, OutcomeNote, UnansweredTurn } from './AssistantTurn';
 import { ChatHeader } from './ChatHeader';
 import { Composer } from './Composer';
 import { EmptyState } from './EmptyState';
-import { extractMessageToolSteps } from './messageTools';
-import { MessageActivity } from './MessageActivity';
 import { UserBubble } from './UserBubble';
 import styles from './ChatScreen.module.css';
 
-function messageText(message: Message, joiner: string) {
-  return message.parts
-    .filter((p) => p.type === 'text')
-    .map((p) => p.text ?? '')
-    .join(joiner);
-}
+const RUNNING_STATUSES = ['queued', 'running', 'awaitingApproval', 'awaitingElicitation', 'continuing'];
 
 export function ChatScreen() {
   const {
@@ -53,18 +46,22 @@ export function ChatScreen() {
   }, [activeChat?.id, scrollToBottom]);
 
   const status = activeLiveRun?.run.status;
-  const hasLiveStreamingContent =
-    !!activeLiveRun &&
-    (status === 'running' ||
-      status === 'awaitingApproval' ||
-      status === 'awaitingElicitation' ||
-      status === 'failed');
+  const isRunning = !!status && RUNNING_STATUSES.includes(status);
+  // A stopped or failed run stays on screen with its note: neither saves an answer of its own.
+  const hasLiveStreamingContent = isRunning || status === 'failed' || status === 'cancelled';
   const isEmpty = activeMessages.length === 0 && !hasLiveStreamingContent;
-  const lastUserText = () => {
+  const transcript = React.useMemo(
+    () => groupTranscript(activeMessages, hasLiveStreamingContent ? activeLiveRun?.run.id : undefined),
+    [activeMessages, hasLiveStreamingContent, activeLiveRun?.run.id],
+  );
+  const retryLast = () => {
     const last = [...activeMessages].reverse().find((m) => m.role === 'user');
-    return last ? messageText(last, '\n') : '';
+    const text = last?.parts
+      .filter((p) => p.type === 'text')
+      .map((p) => p.text ?? '')
+      .join('\n');
+    if (text) void sendMessage(text);
   };
-  const error = errorBanner || activeLiveRun?.run.error;
 
   return (
     <main data-testid="chat-screen" className={styles.screen}>
@@ -73,9 +70,9 @@ export function ChatScreen() {
 
       <div ref={scrollRef} data-testid="chat-scroll-viewport" onScroll={handleScroll} className={styles.viewport}>
         <div className={styles.column} data-empty={isEmpty}>
-          {error ? (
+          {errorBanner ? (
             <div role="alert" data-testid="chat-error-banner" className={styles.error}>
-              <span>{error}</span>
+              <span>{errorBanner}</span>
               <button type="button" onClick={clearErrorBanner}>
                 Dismiss
               </button>
@@ -85,32 +82,15 @@ export function ChatScreen() {
           {isEmpty ? (
             <EmptyState onPick={(prompt, script) => void sendMessage(prompt, { script })} />
           ) : (
-            activeMessages.map((msg) => {
-              if (msg.role === 'assistant' && hasLiveStreamingContent && msg.runId === activeLiveRun?.run.id)
-                return null;
-              if (msg.role === 'user')
-                return <UserBubble key={msg.id} message={msg} attachmentsById={attachmentsById} />;
-              const steps = extractMessageToolSteps(msg);
-              const hasReasoning = msg.parts.some((p) => p.type === 'reasoning');
-              const text = messageText(msg, '\n\n');
-              const live = activeLiveRun?.run.id === msg.runId ? activeLiveRun : undefined;
-              return (
-                <div key={msg.id} data-testid="assistant-turn" className={styles.assistantTurn}>
-                  {steps.length > 0 || hasReasoning ? (
-                    <MessageActivity message={msg} steps={steps} liveRun={live?.run} liveSteps={live?.toolSteps} />
-                  ) : null}
-                  {text ? (
-                    <AgentMessageView
-                      text={text}
-                      onRetry={() => {
-                        const retry = lastUserText();
-                        if (retry) void sendMessage(retry);
-                      }}
-                    />
-                  ) : null}
-                </div>
-              );
-            })
+            transcript.map((item) =>
+              item.kind === 'user' ? (
+                <UserBubble key={item.key} message={item.message} attachmentsById={attachmentsById} />
+              ) : item.kind === 'assistant' ? (
+                <AssistantTurn key={item.key} messages={item.messages} onRetry={retryLast} />
+              ) : (
+                <UnansweredTurn key={item.key} runId={item.runId} />
+              ),
+            )
           )}
 
           {hasLiveStreamingContent && activeLiveRun ? (
@@ -119,11 +99,12 @@ export function ChatScreen() {
                 startedAt={activeLiveRun.run.createdAt}
                 finishedAt={activeLiveRun.run.updatedAt}
                 runId={activeLiveRun.run.id}
-                isRunning={status === 'running'}
+                isRunning={isRunning}
+                isStopped={status === 'cancelled'}
                 reasoningBlocks={activeLiveRun.reasoningBlocks}
                 toolSteps={activeLiveRun.toolSteps}
-                pendingApprovals={activeLiveRun.pendingApprovals}
-                pendingElicitations={activeLiveRun.pendingElicitations}
+                pendingApprovals={isRunning ? activeLiveRun.pendingApprovals : []}
+                pendingElicitations={isRunning ? activeLiveRun.pendingElicitations : []}
                 visionActivities={activeLiveRun.visionActivities}
                 compactions={activeLiveRun.compactions}
                 onResolveApproval={(rId, aId, decision) => void resolveApproval(rId, aId, decision)}
@@ -134,10 +115,11 @@ export function ChatScreen() {
               {activeLiveRun.textBlocks.length > 0 ? (
                 <AgentMessageView
                   text={activeLiveRun.textBlocks.map((b) => b.text).join('\n\n')}
-                  isStreaming={status === 'running'}
+                  isStreaming={isRunning}
                   usage={activeLiveRun.usage}
                 />
               ) : null}
+              <OutcomeNote run={activeLiveRun.run} />
             </div>
           ) : null}
         </div>

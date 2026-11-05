@@ -1,5 +1,5 @@
 import { GlassSurface, popIn, slideIn, slideUnder, usePreset } from '@praxis/glass';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m as motion } from 'framer-motion';
 import React from 'react';
 import { Camera, ChevronRight, Copy, Folder, Globe, Link, Photo, Settings } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';

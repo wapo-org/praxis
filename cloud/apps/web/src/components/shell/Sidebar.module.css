@@ -187,6 +187,11 @@
 .row:focus-within .rowTitle {
   margin-right: var(--space-6);
 }
+/* The "…" takes the pin's place while it shows. */
+.row:hover .rowPin,
+.row:focus-within .rowPin {
+  display: none;
+}
 
 .rowError {
   position: absolute;
@@ -198,19 +203,22 @@
 }
 
 .rename {
-  padding: var(--space-1) 0;
+  display: flex;
+  align-items: center;
+  height: var(--control-md);
 }
 
 .rename input {
   width: 100%;
-  height: var(--control-sm);
+  height: var(--control-md);
   padding: 0 var(--space-2);
   border: 1px solid var(--color-hairline-strong);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-ink);
   font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
-  outline: none;
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
 }
 
 .footer {

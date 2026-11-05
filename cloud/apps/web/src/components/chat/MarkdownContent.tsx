@@ -1,4 +1,5 @@
 import React from 'react';
+import { Check, Copy } from '../../lib/icons';
 import type { ParsedBlock } from './markdownBlocks';
 import styles from './MarkdownContent.module.css';
 
@@ -18,12 +19,15 @@ export function MarkdownContent({
     <>
       {blocks.map((block, idx) => {
         switch (block.type) {
-          case 'heading':
+          case 'heading': {
+            const level = block.level ?? 3;
+            const Heading = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4';
             return (
-              <div key={idx} className={styles.heading} data-level={block.level ?? 3}>
+              <Heading key={idx} className={styles.heading} data-level={level}>
                 {renderInlineTokens(block.content ?? '')}
-              </div>
+              </Heading>
             );
+          }
 
           case 'code':
             return (
@@ -33,9 +37,11 @@ export function MarkdownContent({
                   <button
                     type="button"
                     data-testid="code-copy-button"
+                    aria-label={copiedCodeIdx === idx ? 'Copied' : 'Copy code'}
+                    title="Copy"
                     onClick={() => handleCopyCode(idx, block.content ?? '')}
                   >
-                    {copiedCodeIdx === idx ? 'Copied' : 'Copy'}
+                    {copiedCodeIdx === idx ? <Check size={16} /> : <Copy size={16} />}
                   </button>
                 </div>
                 <pre>
@@ -51,7 +57,9 @@ export function MarkdownContent({
                   <thead>
                     <tr>
                       {(block.headers ?? []).map((h, hIdx) => (
-                        <th key={hIdx}>{renderInlineTokens(h)}</th>
+                        <th key={hIdx} data-align={block.aligns?.[hIdx]}>
+                          {renderInlineTokens(h)}
+                        </th>
                       ))}
                     </tr>
                   </thead>
@@ -59,7 +67,9 @@ export function MarkdownContent({
                     {(block.rows ?? []).map((row, rIdx) => (
                       <tr key={rIdx}>
                         {row.map((cell, cIdx) => (
-                          <td key={cIdx}>{renderInlineTokens(cell)}</td>
+                          <td key={cIdx} data-align={block.aligns?.[cIdx]}>
+                            {renderInlineTokens(cell)}
+                          </td>
                         ))}
                       </tr>
                     ))}

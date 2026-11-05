@@ -1,0 +1,27 @@
+.image {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-fill-1);
+  cursor: pointer;
+}
+.image img {
+  display: block;
+  max-width: calc(var(--space-16) * 3);
+  max-height: calc(var(--space-16) * 2.5);
+  object-fit: cover;
+}
+.document {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-md);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-fill-1);
+  color: var(--color-ink);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}

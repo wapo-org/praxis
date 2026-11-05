@@ -26,7 +26,9 @@ import {
   Images as LImages,
   Laptop as LLaptop,
   LayoutGrid as LLayoutGrid,
+  Lightbulb as LLightbulb,
   Link as LLink,
+  Link2 as LLink2,
   Lock as LLock,
   Menu as LMenu,
   MessageCircle as LMessageCircle,
@@ -53,6 +55,8 @@ import {
   SquarePen as LSquarePen,
   Star as LStar,
   Sun as LSun,
+  SquareTerminal as LSquareTerminal,
+  Waypoints as LWaypoints,
   ThumbsDown as LThumbsDown,
   ThumbsUp as LThumbsUp,
   Trash2 as LTrash2,
@@ -63,64 +67,68 @@ import {
 } from 'lucide-react';
 import { bindIcon } from '@praxis/glass';
 
-export const ArrowLeft = bindIcon(LArrowLeft);
-export const ArrowUp = bindIcon(LArrowUp);
-export const Camera = bindIcon(LCamera);
-export const Check = bindIcon(LCheck);
-export const ChevronDown = bindIcon(LChevronDown);
-export const ChevronsUpDown = bindIcon(LChevronsUpDown);
-export const ChevronLeft = bindIcon(LChevronLeft);
-export const ChevronRight = bindIcon(LChevronRight);
-export const Clock = bindIcon(LClock);
-export const Copy = bindIcon(LCopy);
-export const Download = bindIcon(LDownload);
-export const Edit = bindIcon(LSquarePen);
-export const ExternalLink = bindIcon(LExternalLink);
-export const Eye = bindIcon(LEye);
-export const FileJson = bindIcon(LFileJson);
-export const FileText = bindIcon(LFileText);
-export const FlaskConical = bindIcon(LFlaskConical);
-export const Folder = bindIcon(LFolder);
-export const Globe = bindIcon(LGlobe);
-export const Grid = bindIcon(LGrip);
-export const Grid2X2 = bindIcon(LLayoutGrid);
-export const History = bindIcon(LHistory);
-export const LayoutGrid = bindIcon(LLayoutGrid);
-export const Link = bindIcon(LLink);
-export const Lock = bindIcon(LLock);
-export const Menu = bindIcon(LMenu);
-export const MessageCircle = bindIcon(LMessageCircle);
-export const Mic = bindIcon(LMic);
-export const Moon = bindIcon(LMoon);
-export const MoreHorizontal = bindIcon(LEllipsis);
-export const Paperclip = bindIcon(LPaperclip);
-export const Pencil = bindIcon(LPencil);
-export const Photo = bindIcon(LImage);
-export const Pin = bindIcon(LPin);
-export const Plus = bindIcon(LPlus);
-export const RefreshCw = bindIcon(LRefreshCw);
-export const Retry = bindIcon(LRotateCw);
-export const RotateCcw = bindIcon(LRotateCcw);
-export const Scan = bindIcon(LScan);
-export const ScanLine = bindIcon(LScanLine);
-export const Search = bindIcon(LSearch);
-export const Settings = bindIcon(LSettings);
-export const Share = bindIcon(LShare);
-export const Shield = bindIcon(LShield);
-export const Sliders = bindIcon(LSlidersHorizontal);
-export const Sparkles = bindIcon(LSparkles);
-export const Square = bindIcon(LSquare);
-export const Star = bindIcon(LStar);
-export const Sun = bindIcon(LSun);
-export const Trash2 = bindIcon(LTrash2);
-export const Wrench = bindIcon(LWrench);
-export const X = bindIcon(LX);
-export const Zap = bindIcon(LZap);
-export const PanelLeft = bindIcon(LPanelLeft);
-export const ThumbsUp = bindIcon(LThumbsUp);
-export const ThumbsDown = bindIcon(LThumbsDown);
-export const ArrowDown = bindIcon(LArrowDown);
-export const Laptop = bindIcon(LLaptop);
-export const User = bindIcon(LUser);
-export const Images = bindIcon(LImages);
-export const Monitor = bindIcon(LMonitor);
+export const ArrowLeft = /* @__PURE__ */ bindIcon(LArrowLeft);
+export const ArrowUp = /* @__PURE__ */ bindIcon(LArrowUp);
+export const Camera = /* @__PURE__ */ bindIcon(LCamera);
+export const Check = /* @__PURE__ */ bindIcon(LCheck);
+export const ChevronDown = /* @__PURE__ */ bindIcon(LChevronDown);
+export const ChevronsUpDown = /* @__PURE__ */ bindIcon(LChevronsUpDown);
+export const ChevronLeft = /* @__PURE__ */ bindIcon(LChevronLeft);
+export const ChevronRight = /* @__PURE__ */ bindIcon(LChevronRight);
+export const Clock = /* @__PURE__ */ bindIcon(LClock);
+export const Copy = /* @__PURE__ */ bindIcon(LCopy);
+export const Download = /* @__PURE__ */ bindIcon(LDownload);
+export const Edit = /* @__PURE__ */ bindIcon(LSquarePen);
+export const ExternalLink = /* @__PURE__ */ bindIcon(LExternalLink);
+export const Eye = /* @__PURE__ */ bindIcon(LEye);
+export const FileJson = /* @__PURE__ */ bindIcon(LFileJson);
+export const FileText = /* @__PURE__ */ bindIcon(LFileText);
+export const FlaskConical = /* @__PURE__ */ bindIcon(LFlaskConical);
+export const Folder = /* @__PURE__ */ bindIcon(LFolder);
+export const Globe = /* @__PURE__ */ bindIcon(LGlobe);
+export const Grid = /* @__PURE__ */ bindIcon(LGrip);
+export const Grid2X2 = /* @__PURE__ */ bindIcon(LLayoutGrid);
+export const History = /* @__PURE__ */ bindIcon(LHistory);
+export const LayoutGrid = /* @__PURE__ */ bindIcon(LLayoutGrid);
+export const Link = /* @__PURE__ */ bindIcon(LLink);
+export const Lock = /* @__PURE__ */ bindIcon(LLock);
+export const Menu = /* @__PURE__ */ bindIcon(LMenu);
+export const MessageCircle = /* @__PURE__ */ bindIcon(LMessageCircle);
+export const Mic = /* @__PURE__ */ bindIcon(LMic);
+export const Moon = /* @__PURE__ */ bindIcon(LMoon);
+export const MoreHorizontal = /* @__PURE__ */ bindIcon(LEllipsis);
+export const Paperclip = /* @__PURE__ */ bindIcon(LPaperclip);
+export const Pencil = /* @__PURE__ */ bindIcon(LPencil);
+export const Photo = /* @__PURE__ */ bindIcon(LImage);
+export const Pin = /* @__PURE__ */ bindIcon(LPin);
+export const Plus = /* @__PURE__ */ bindIcon(LPlus);
+export const RefreshCw = /* @__PURE__ */ bindIcon(LRefreshCw);
+export const Retry = /* @__PURE__ */ bindIcon(LRotateCw);
+export const RotateCcw = /* @__PURE__ */ bindIcon(LRotateCcw);
+export const Scan = /* @__PURE__ */ bindIcon(LScan);
+export const ScanLine = /* @__PURE__ */ bindIcon(LScanLine);
+export const Search = /* @__PURE__ */ bindIcon(LSearch);
+export const Settings = /* @__PURE__ */ bindIcon(LSettings);
+export const Share = /* @__PURE__ */ bindIcon(LShare);
+export const Shield = /* @__PURE__ */ bindIcon(LShield);
+export const Sliders = /* @__PURE__ */ bindIcon(LSlidersHorizontal);
+export const Sparkles = /* @__PURE__ */ bindIcon(LSparkles);
+export const Square = /* @__PURE__ */ bindIcon(LSquare);
+export const Star = /* @__PURE__ */ bindIcon(LStar);
+export const Sun = /* @__PURE__ */ bindIcon(LSun);
+export const Trash2 = /* @__PURE__ */ bindIcon(LTrash2);
+export const Wrench = /* @__PURE__ */ bindIcon(LWrench);
+export const X = /* @__PURE__ */ bindIcon(LX);
+export const Zap = /* @__PURE__ */ bindIcon(LZap);
+export const Lightbulb = /* @__PURE__ */ bindIcon(LLightbulb);
+export const Link2 = /* @__PURE__ */ bindIcon(LLink2);
+export const Terminal = /* @__PURE__ */ bindIcon(LSquareTerminal);
+export const Waypoints = /* @__PURE__ */ bindIcon(LWaypoints);
+export const PanelLeft = /* @__PURE__ */ bindIcon(LPanelLeft);
+export const ThumbsUp = /* @__PURE__ */ bindIcon(LThumbsUp);
+export const ThumbsDown = /* @__PURE__ */ bindIcon(LThumbsDown);
+export const ArrowDown = /* @__PURE__ */ bindIcon(LArrowDown);
+export const Laptop = /* @__PURE__ */ bindIcon(LLaptop);
+export const User = /* @__PURE__ */ bindIcon(LUser);
+export const Images = /* @__PURE__ */ bindIcon(LImages);
+export const Monitor = /* @__PURE__ */ bindIcon(LMonitor);

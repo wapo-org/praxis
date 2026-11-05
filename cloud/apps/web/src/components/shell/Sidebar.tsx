@@ -1,12 +1,15 @@
-import { GlassDropdown, usePress } from '@praxis/glass';
+import { usePress } from '@praxis/glass';
 import type { Chat } from '@praxis/protocol';
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import React from 'react';
 import { useAccount } from '../../lib/account';
 import { groupChats } from '../../lib/chatGroups';
-import { MoreHorizontal, PanelLeft, Pencil, Pin, Search, Settings, Edit, Trash2 } from '../../lib/icons';
+import { MoreHorizontal, PanelLeft, Pin, Search, Settings, Edit } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import styles from './Sidebar.module.css';
+
+const loadRowMenu = () => import('./ChatRowMenu');
+const ChatRowMenu = React.lazy(() => loadRowMenu().then((m) => ({ default: m.ChatRowMenu })));
 
 /** Desktop sidebar (≥1024 px, 260 px, collapsible): new chat, search, chats by date, account. */
 export function Sidebar() {
@@ -20,7 +23,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`screen-sidebar ${styles.sidebar}`}
+      className={styles.sidebar}
       aria-label="Conversation history"
       data-testid="app-sidebar"
     >
@@ -126,6 +129,7 @@ function ChatRow({ chat, active }: { chat: Chat; active: boolean }) {
           autoFocus
           value={title}
           maxLength={200}
+          onFocus={(event) => event.target.select()}
           onChange={(event) => setTitle(event.target.value)}
           onBlur={() => setRenaming(false)}
           onKeyDown={(event) => event.key === 'Escape' && setRenaming(false)}
@@ -134,10 +138,11 @@ function ChatRow({ chat, active }: { chat: Chat; active: boolean }) {
     );
 
   return (
-    <div className={`screen-history-row ${styles.row}`} data-active={active}>
+    <div className={styles.row} data-testid="history-row" data-active={active}>
       <button
         type="button"
-        className={`screen-history-select ${styles.rowSelect}`}
+        className={styles.rowSelect}
+        data-testid="history-row-select"
         aria-current={active ? 'page' : undefined}
         title={chat.title || 'New chat'}
         onClick={() => run(() => store.selectChat(chat.id))}
@@ -146,38 +151,25 @@ function ChatRow({ chat, active }: { chat: Chat; active: boolean }) {
         {chat.pinned ? <Pin size={16} aria-label="Pinned" className={styles.rowPin} /> : null}
       </button>
       <span className={styles.rowMenuWrap}>
-        <GlassDropdown portal align="start">
-          <GlassDropdown.Trigger asChild>
+        {/* Until the chunk arrives the same button shows, so the row never shifts. */}
+        <React.Suspense
+          fallback={
             <button type="button" className={styles.rowMenu} aria-label={`Actions for ${chat.title}`}>
               <MoreHorizontal size={16} />
             </button>
-          </GlassDropdown.Trigger>
-          <GlassDropdown.Content minWidth={180}>
-            <GlassDropdown.Item
-              icon={<Pin size={16} />}
-              onSelect={() => run(() => store.togglePinChat(chat.id))}
-            >
-              {chat.pinned ? 'Unpin' : 'Pin'}
-            </GlassDropdown.Item>
-            <GlassDropdown.Item
-              icon={<Pencil size={16} />}
-              onSelect={() => {
-                setTitle(chat.title);
-                setRenaming(true);
-              }}
-            >
-              Rename
-            </GlassDropdown.Item>
-            <GlassDropdown.Separator variant="section" />
-            <GlassDropdown.Item
-              tone="destructive"
-              icon={<Trash2 size={16} />}
-              onSelect={() => run(() => store.deleteChats([chat.id]))}
-            >
-              Delete
-            </GlassDropdown.Item>
-          </GlassDropdown.Content>
-        </GlassDropdown>
+          }
+        >
+          <ChatRowMenu
+            title={chat.title}
+            pinned={chat.pinned}
+            onTogglePin={() => run(() => store.togglePinChat(chat.id))}
+            onRename={() => {
+              setTitle(chat.title);
+              setRenaming(true);
+            }}
+            onDelete={() => run(() => store.deleteChats([chat.id]))}
+          />
+        </React.Suspense>
       </span>
       {error ? (
         <p role="alert" className={styles.rowError}>

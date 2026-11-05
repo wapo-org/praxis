@@ -5,6 +5,8 @@ export interface AgentActivityViewProps {
   finishedAt?: string;
   runId?: string;
   isRunning?: boolean;
+  /** The run was cancelled: the label reads "Stopped after…". */
+  isStopped?: boolean;
   reasoningBlocks?: Array<{ id: string; text: string; finished: boolean }>;
   toolSteps: ActiveToolStep[];
   pendingApprovals?: Approval[];

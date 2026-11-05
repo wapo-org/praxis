@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion, type HTMLMotionProps } from 'framer-motion';
+import { m as motion, type HTMLMotionProps } from 'framer-motion';
 import { GlassSurface, type GlassSurfaceProps } from './GlassSurface';
 import { usePress } from './motion';
 import styles from './primitives.module.css';

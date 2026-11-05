@@ -5,6 +5,7 @@ import { Sidebar } from './components/shell/Sidebar';
 import { SheetsRoot } from './components/screens/SheetsRoot';
 import { parseRoute } from './lib/navigation';
 import { usePraxisStore } from './state/store';
+import gate from './components/screens/AccountGate.module.css';
 const GlassLabPage = import.meta.env.DEV
   ? React.lazy(() =>
       import('./components/lab/GlassLabPage').then((m) => ({
@@ -59,16 +60,18 @@ export function App() {
   const lab = import.meta.env.DEV ? () => navigate('/lab') : undefined;
   if (import.meta.env.DEV && GlassLabPage && (pathname === '/lab' || pathname === '/lab/glass'))
     return (
-      <React.Suspense fallback={<p>Loading lab…</p>}>
+      <React.Suspense fallback={null}>
         <GlassLabPage onNavigateBack={() => navigate('/')} />
       </React.Suspense>
     );
   if (!parseRoute(pathname).valid)
     return (
-      <main className="account-screen">
-        <div>
+      <main className={gate.screen}>
+        <div className={gate.message}>
           <h1>Page not found</h1>
-          <button onClick={() => navigate('/')}>New chat</button>
+          <button type="button" className={gate.button} onClick={() => navigate('/')}>
+            New chat
+          </button>
         </div>
       </main>
     );

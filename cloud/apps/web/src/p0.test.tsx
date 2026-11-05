@@ -263,3 +263,20 @@ it('validates CRLF SSE frames at the boundary before dispatch', async () => {
     });
   });
 });
+
+it('sign-in: the server sits under a closed Advanced, and there is no dev button outside local dev', async () => {
+  vi.spyOn(apiClient, 'request').mockImplementation(async (path: string) => {
+    if (path === '/health') return { mode: 'hosted' } as never;
+    throw Object.assign(new Error('Sign in'), { status: 401 });
+  });
+  const node = document.createElement('div');
+  const root = createRoot(node);
+  await act(async () => root.render(<AccountGate><p>Private</p></AccountGate>));
+  expect(node.querySelector('h1')?.textContent).toBe('Praxis');
+  const advanced = node.querySelector('details')!;
+  expect(advanced.open).toBe(false);
+  expect(advanced.querySelector('summary')?.textContent).toBe('Advanced');
+  expect(advanced.querySelector('input')?.readOnly).toBe(true);
+  expect(node.textContent).not.toContain('Continue as local dev user');
+  await act(async () => root.unmount());
+});

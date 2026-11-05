@@ -1,0 +1,255 @@
+/* The AgentActivity object: plain text on the canvas, never a badge, card or glass. */
+.activity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-md);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-ink-3);
+  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  text-align: start;
+  cursor: pointer;
+}
+
+.chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+[aria-expanded='true'] > .chevron {
+  transform: rotate(90deg);
+}
+
+.label {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Folded and working: the call running now, lighter than the label. */
+.live {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  opacity: 0.8;
+  font-weight: var(--weight-regular);
+}
+.liveIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+/* Shimmer: a band that sweeps over an ink copy of the text. The counter-moving inner layer keeps
+   the letters still, so this is transform-only and runs on the compositor with no JS. */
+.shimmer {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+}
+.shimmerBand {
+  position: absolute;
+  inset: 0;
+  animation: shimmer-band var(--duration-ambient) linear infinite;
+  mask-image: linear-gradient(90deg, transparent, black, transparent);
+}
+.shimmerInk {
+  display: block;
+  color: var(--color-ink);
+  animation: shimmer-ink var(--duration-ambient) linear infinite;
+}
+@keyframes shimmer-band {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes shimmer-ink {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shimmerBand {
+    display: none;
+  }
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-sm);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-ink-3);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  text-align: start;
+}
+button.row {
+  cursor: pointer;
+}
+
+.rowIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.rowIcon[data-running='true'] {
+  animation: step-pulse var(--duration-ambient) var(--ease-ambient) infinite;
+}
+@keyframes step-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.rowText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rowSource {
+  font-weight: var(--weight-medium);
+}
+
+.tag {
+  flex-shrink: 0;
+  font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}
+.tag[data-danger='true'] {
+  color: var(--color-danger);
+}
+
+.rowChevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+[aria-expanded='true'] > .rowChevron {
+  transform: rotate(90deg);
+}
+
+/* Level 3: flush with the line's text, so the details read as its children. */
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-1) 0 var(--space-2) calc(var(--icon-sm) + var(--space-2));
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.blockLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--control-sm);
+  margin-bottom: calc(-1 * var(--space-1));
+  color: var(--color-ink-3);
+  font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.blockLabel[data-danger='true'] {
+  color: var(--color-danger);
+}
+.blockText {
+  display: -webkit-box;
+  margin: 0;
+  padding: var(--space-3);
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--color-fill-1);
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-md) var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 14;
+}
+
+.note {
+  margin: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}
+
+.copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-ink-3);
+  cursor: pointer;
+}
+
+.waiting {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) 0 var(--space-2);
+}
+
+@media (hover: hover) {
+  .header:hover,
+  button.row:hover {
+    color: var(--color-ink-2);
+  }
+  .copy:hover {
+    background: var(--color-hover);
+    color: var(--color-ink);
+  }
+}
+
+.header:focus-visible,
+button.row:focus-visible,
+.copy:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}

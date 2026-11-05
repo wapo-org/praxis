@@ -1,3 +1,4 @@
+import { MotionProvider } from '@praxis/glass';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { PraxisStoreProvider } from './state/store';
@@ -22,9 +23,11 @@ const rootEl = document.getElementById('root');
 if (rootEl) {
   ReactDOM.createRoot(rootEl).render(
     <React.StrictMode>
-      <BrowserRouter>
-        <RoutedApp />
-      </BrowserRouter>
+      <MotionProvider>
+        <BrowserRouter>
+          <RoutedApp />
+        </BrowserRouter>
+      </MotionProvider>
     </React.StrictMode>,
   );
 }

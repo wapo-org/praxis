@@ -27,7 +27,7 @@ try {
     await page.screenshot({ path: `${out}/${theme}-chat-tools.png` });
     await page.getByTestId('nav-new-chat-button').click();
     await page.getByTestId('starter-chip-2').click();
-    const approval = page.getByRole('button', { name: 'Allow Once', exact: true });
+    const approval = page.getByRole('button', { name: 'Allow once', exact: true });
     await approval.waitFor({ timeout: 20000 });
     const colors = await approval.evaluate(n => ({ text: getComputedStyle(n).color, background: getComputedStyle(n).backgroundColor }));
     assert.notEqual(colors.text, colors.background);

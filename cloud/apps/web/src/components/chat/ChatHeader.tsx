@@ -1,5 +1,5 @@
 import { GlassSurface, usePress } from '@praxis/glass';
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import type React from 'react';
 import { displayTitle } from '../../lib/chatTitle';
 import { Edit, History, PanelLeft, Settings } from '../../lib/icons';

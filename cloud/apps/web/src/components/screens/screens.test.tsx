@@ -220,12 +220,36 @@ describe('history interactions', () => {
     await click(button('Delete selected (1)'));
     expect(store.deleteChats).toHaveBeenCalledWith(['two']);
   });
+  it('renames inline: Escape leaves the rename and not the sheet, Enter saves', async () => {
+    store.chats = [{ ...(store.chats[0] as object), id: 'one', title: 'Chat one', pinned: true, updatedAt: new Date().toISOString() }] as never;
+    store.activeChatId = 'one';
+    store.renameChat = vi.fn().mockResolvedValue(undefined);
+    await mount(<HistorySheet />);
+    expect(document.querySelector('section[aria-label="Pinned"]')?.textContent).toContain('Chat one');
+    expect(document.querySelector('[aria-label="Current chat"]')).not.toBeNull();
+    const row = document.querySelector<HTMLElement>('[data-testid="history-row"]')!;
+    expect(row.hasAttribute('data-row-actions')).toBe(true);
+    await act(async () => row.querySelector<HTMLButtonElement>('[data-history-row-action] button')!.click());
+    await click(button('Rename'));
+    const input = document.querySelector<HTMLInputElement>('[aria-label="Chat title"]')!;
+    const outer = vi.fn();
+    row.parentElement!.addEventListener('keydown', outer);
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(document.querySelector('[aria-label="Chat title"]')).toBeNull();
+    await act(async () => row.querySelector<HTMLButtonElement>('[data-history-row-action] button')!.click());
+    await click(button('Rename'));
+    await click(button('Save'));
+    expect(store.renameChat).toHaveBeenCalledWith('one', 'Chat one');
+  });
+
   it('keeps history open and shows a useful failure if opening a chat fails', async () => {
     store.chats = [chat('one')];
     store.selectChat = vi.fn().mockRejectedValue(new Error('Could not load this chat'));
     const close = vi.fn();
     await mount(<HistorySheet onSelect={close} />);
-    await click(document.querySelector<HTMLButtonElement>('.screen-history-select')!);
+    await click(document.querySelector<HTMLButtonElement>('[data-testid="history-row-select"]')!);
     expect(close).not.toHaveBeenCalled();
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('Could not load');
   });

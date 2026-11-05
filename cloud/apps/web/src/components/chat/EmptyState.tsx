@@ -1,5 +1,5 @@
 import { usePress } from '@praxis/glass';
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import styles from './ChatScreen.module.css';
 
 type Script = 'text' | 'tools' | 'approval' | 'elicitation';

@@ -5,8 +5,10 @@ import React from 'react';
 import type { Attachment } from '@praxis/protocol';
 import { DotMeter, GlassSurface } from '@praxis/glass';
 import { usePraxisStore } from '../../state/store';
-import { PlusTray } from './PlusTray';
 import styles from './Composer.module.css';
+
+const loadTray = () => import('./PlusTray');
+const PlusTray = React.lazy(() => loadTray().then((m) => ({ default: m.PlusTray })));
 
 export const Composer: React.FC = () => {
   const {
@@ -194,7 +196,9 @@ export const Composer: React.FC = () => {
         </GlassSurface>
       ) : null}
 
-      <PlusTray onPickFiles={handlePickFiles} />
+      <React.Suspense fallback={null}>
+        <PlusTray onPickFiles={handlePickFiles} />
+      </React.Suspense>
 
       <GlassSurface material="regular" radius={28} data-testid="composer-surface" className={styles.pill}>
         {queuedAttachments.length > 0 || uploading ? (

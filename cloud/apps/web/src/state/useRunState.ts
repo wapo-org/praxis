@@ -295,6 +295,8 @@ export function useRunState(state: PraxisState) {
                 ? 'cancelled'
                 : 'completed';
           next.run.outcome = event.outcome;
+          // The elapsed label ("Stopped after 5s") reads this; the snapshot's value is from the start.
+          next.run.updatedAt = envelope.createdAt;
           if (event.message && event.outcome === 'failed') {
             next.run.error = event.message;
           }

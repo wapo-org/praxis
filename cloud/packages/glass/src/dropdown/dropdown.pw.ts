@@ -55,7 +55,7 @@ test('focus, disabled skipping, navigation, typeahead, selection, Escape and Tab
   await page.keyboard.press('Home');
   await page.keyboard.press('PageDown');
   await expect(
-    page.getByRole('menuitem', { name: 'Recent Notes' }),
+    page.getByRole('menuitem', { name: 'Recent chats' }),
   ).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(
@@ -63,10 +63,10 @@ test('focus, disabled skipping, navigation, typeahead, selection, Escape and Tab
   ).toBeFocused();
   await page.keyboard.press('PageUp');
   await expect(
-    page.getByRole('menuitem', { name: 'Pin Note', exact: true }),
+    page.getByRole('menuitem', { name: 'Pin chat', exact: true }),
   ).toBeFocused();
   await page.keyboard.type('mov');
-  await expect(page.getByRole('menuitem', { name: 'Move Note' })).toBeFocused();
+  await expect(page.getByRole('menuitem', { name: 'Move chat' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(trigger).toBeFocused();
   await trigger.click();
@@ -150,7 +150,7 @@ test('mouse and touch press-drag-release select; outside release and cancel dism
       clientX: 25,
       clientY: 20,
     });
-    const target = page.getByRole('menuitem', { name: 'Move Note' });
+    const target = page.getByRole('menuitem', { name: 'Move chat' });
     await expect(target).toBeVisible();
     await expect(async () => expect((await page.getByRole('menu').boundingBox())!.width).toBeCloseTo(240, 0)).toPass();
     const box = await target.boundingBox();
@@ -196,7 +196,7 @@ test('translucent frosted material guarantees AA over every background luminance
 }) => {
   await page.getByTestId('position-top-start').click();
   const result = await page
-    .getByRole('menuitem', { name: 'Move Note' })
+    .getByRole('menuitem', { name: 'Move chat' })
     .evaluate((el) => {
       const bg = getComputedStyle(
         el.closest('.praxis-glass-surface') ?? el.parentElement!,
@@ -251,11 +251,11 @@ test('submenu header rises in one sheet, expands and reverses; reduced motion ne
   await page.getByTestId('position-top-end').click();
   const menu = page.getByRole('menu');
   const old = await menu.boundingBox();
-  const recent = page.getByRole('menuitem', { name: 'Recent Notes' });
+  const recent = page.getByRole('menuitem', { name: 'Recent chats' });
   const row = await recent.boundingBox();
   await recent.click();
   await expect(page.getByRole('menuitem')).toHaveCount(6);
-  const header = page.getByRole('menuitem', { name: 'Recent Notes' });
+  const header = page.getByRole('menuitem', { name: 'Recent chats' });
   await expect(async () =>
     expect((await header.boundingBox())!.y).toBeLessThan(row!.y),
   ).toPass();
@@ -277,7 +277,7 @@ test('submenu header rises in one sheet, expands and reverses; reduced motion ne
     path: shot(info, `IMG_7774-${info.project.name}.png`),
   });
   await header.click();
-  await expect(page.getByRole('menuitem', { name: 'Move Note' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Move chat' })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.getByTestId('position-top-end').click();
@@ -300,7 +300,7 @@ test('native mouse drag selects exactly once and suppressed release click cannot
   const box = await trigger.boundingBox();
   await page.mouse.move(box!.x + 20, box!.y + 15);
   await page.mouse.down();
-  const item = page.getByRole('menuitem', { name: 'Move Note' });
+  const item = page.getByRole('menuitem', { name: 'Move chat' });
   await expect(item).toBeVisible();
   await expect(async () => expect((await page.getByRole('menu').boundingBox())!.width).toBeCloseTo(240, 0)).toPass();
   const target = await item.boundingBox();
@@ -312,28 +312,21 @@ test('native mouse drag selects exactly once and suppressed release click cannot
   await expect(page.getByRole('menu')).toHaveCount(0);
 });
 
-test('reference replica captures stay on-screen inside the lab card', async ({
+test('a menu opened inside the Lab stays on screen and its submenu expands in place', async ({
   page,
 }, info) => {
-  await page.goto('/lab/glass');
-  const trigger = page.getByTestId('apple-notes-menu-trigger');
+  await page.goto('/lab');
+  const trigger = page.getByTestId('position-middle-center');
   await trigger.scrollIntoViewIfNeeded();
   await trigger.click();
   const id = await trigger.getAttribute('aria-controls');
   const sheet = page.locator(`[id="${id}"]`);
   await expect(sheet).toBeVisible();
   await expect(sheet).toBeInViewport({ ratio: 1 });
-  await page.screenshot({
-    path: shot(info, `IMG_7752-replica-${info.project.name}.png`),
-  });
-  await page.getByTestId('recent-notes-subtrigger').click();
-  await expect(
-    page.getByRole('menuitem', { name: 'Recent Notes', exact: true }),
-  ).toHaveCount(1);
-  await expect(
-    page.getByRole('menuitem', { name: 'Recent Notes', exact: true }),
-  ).toHaveAttribute('aria-expanded', 'true');
-  await page.screenshot({
-    path: shot(info, `IMG_7774-replica-${info.project.name}.png`),
-  });
+  await page.screenshot({ path: shot(info, `lab-menu-${info.project.name}.png`) });
+  await page.getByRole('menuitem', { name: 'Recent chats', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Recent chats', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('menuitem', { name: 'Recent chats', exact: true })).toHaveAttribute('aria-expanded', 'true');
+  await page.screenshot({ path: shot(info, `lab-submenu-${info.project.name}.png`) });
+});
 });

@@ -8,7 +8,7 @@ const files = (dir: string): string[] =>
     return statSync(path).isDirectory() ? files(path) : [path];
   });
 const sources = [...files(join(__dirname)), ...files(join(__dirname, '../../../packages/glass/src'))].filter(
-  (f) => /\.(tsx?|css)$/.test(f) && !/\.test\.|\.pw\.|\/lab\/|tokens\.css$|motion\.ts$/.test(f),
+  (f) => /\.(tsx?|css)$/.test(f) && !/\.test\.|\.pw\.|tokens\.css$|motion\.ts$/.test(f),
 );
 
 describe('design system guard rails', () => {
@@ -26,6 +26,22 @@ describe('design system guard rails', () => {
       expect(src, file).not.toMatch(/transition[^;\n]*backdrop-filter|animate=\{\{[^}]*backdropFilter/);
     }
     expect(readFileSync(join(__dirname, '../package.json'), 'utf8')).not.toContain('@tabler');
+  });
+
+  it('has no legacy aliases, screens.css or sign-in rules left', () => {
+    for (const file of sources) expect(readFileSync(file, 'utf8'), file).not.toMatch(/--paper-|screen-history|account-screen/);
+    expect(readFileSync(join(__dirname, 'styles/tokens.css'), 'utf8')).not.toContain('--paper-');
+  });
+
+  it('never gives the activity line a badge: no background, border, shadow or dot', () => {
+    const css = readFileSync(join(__dirname, 'components/chat/AgentActivity.module.css'), 'utf8');
+    const header = /\.header \{([^}]*)\}/.exec(css)![1]!;
+    expect(header).toMatch(/background: none/);
+    expect(header).toMatch(/border: 0/);
+    expect(header).not.toMatch(/box-shadow|border-radius/);
+    expect(header).toContain('var(--text-sm)');
+    expect(header).toContain('var(--weight-medium)');
+    expect(header).toContain('var(--color-ink-3)');
   });
 
   it('keeps the Lab out of the main chat chrome', () => {

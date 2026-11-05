@@ -1,8 +1,9 @@
 import type { Message } from '@praxis/protocol';
 import type { ActiveToolStep } from '../../state/store';
-export function extractMessageToolSteps(msg: Message): ActiveToolStep[] {
+/** Tool calls and their results across a turn's messages; a result may arrive in a later message. */
+export function extractToolSteps(messages: Message[]): ActiveToolStep[] {
   const byCallId = new Map<string, ActiveToolStep>();
-  for (const part of msg.parts) {
+  for (const part of messages.flatMap((message) => message.parts)) {
     if (part.type === 'toolCall' && part.callId) {
       byCallId.set(part.callId, {
         callId: part.callId,

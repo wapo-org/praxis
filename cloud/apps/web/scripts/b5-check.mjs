@@ -66,8 +66,8 @@ try {
   await page.reload(); await page.getByText('Unreachable', { exact: false }).first().waitFor();
   assert.equal(await page.getByText('Connected', { exact: true }).count(), 0);
   await page.goto(`${BASE}/chats`);
-  assert.equal(await page.locator('.screen-history-tools').count(), 0);
-  const row = page.locator('.screen-history-row').filter({ hasText: server.title }).first();
+  assert.equal(await page.getByRole('button', { name: 'Select chats' }).count(), 0, 'history actions stay contextual');
+  const row = page.getByTestId('history-row').filter({ hasText: server.title }).first();
   await row.click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Rename', exact: true }).waitFor();
   await page.keyboard.press('Escape');
   await page.goto(`${BASE}/settings/account`); await page.getByRole('button', { name: 'Sign out', exact: true }).click();

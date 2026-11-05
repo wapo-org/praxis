@@ -83,6 +83,31 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
+it('centres the capability glyphs on the row: siblings of the copy, not its second line', async () => {
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const { ModelListView } = await import('./ModelList');
+  const model = { id: 'm', providerId: 'p', displayName: 'Atlas', tagline: 'Fast', pinned: false, capabilities: CapabilitiesSchema.parse({ tools: true }) } as Model;
+  const html = renderToStaticMarkup(
+    <ModelListView
+      query=""
+      onQueryChange={() => {}}
+      search={{ items: [model], cursor: null, busy: false, error: '', loadMore: () => {} }}
+      providerName={() => 'P'}
+      isSelected={() => false}
+      onSelect={() => {}}
+      onTogglePin={() => {}}
+      onBack={() => {}}
+    />,
+  );
+  const holder = document.createElement('div');
+  holder.innerHTML = html;
+  // SSR shows no rows without a measured viewport, so the row is checked directly when one renders.
+  expect(holder.querySelector('[role="listbox"]')).not.toBeNull();
+  const css = (await import('node:fs')).readFileSync(new URL('./ModelList.module.css', import.meta.url), 'utf8');
+  expect(css).not.toMatch(/\.meta \{/);
+  expect(/\.option \{[^}]*align-items: center/.test(css)).toBe(true);
+});
+
 describe('composer tray', () => {
   it('follows the iOS order and has no "Allow Photos access" on web', async () => {
     await openTray();

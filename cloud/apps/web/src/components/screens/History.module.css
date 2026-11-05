@@ -1,0 +1,223 @@
+/* The narrow-screen chat list, matching iOS: icon, title, time; New chat and search at the foot. */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.group {
+  display: flex;
+  flex-direction: column;
+}
+.groupTitle {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-ink-3);
+  font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}
+.empty {
+  margin: 0;
+  padding: var(--space-3) var(--space-2);
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--row-model);
+  border-radius: var(--radius-sm);
+  touch-action: pan-y;
+}
+.select {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: var(--row-model);
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.select[aria-current='page'] {
+  background: var(--color-hover);
+}
+.leading {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-ink-2);
+}
+.copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
+}
+.titleText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pin {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-ink-3);
+}
+.time {
+  color: var(--color-ink-3);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}
+.current {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-ink-2);
+}
+.actions {
+  position: absolute;
+  top: 50%;
+  right: var(--space-2);
+  display: flex;
+  transform: translateY(-50%);
+}
+
+.check {
+  flex-shrink: 0;
+  width: var(--space-5);
+  height: var(--space-5);
+  margin: 0 0 0 var(--space-2);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-full);
+  appearance: none;
+  background: var(--color-surface);
+  cursor: pointer;
+}
+.check:checked {
+  border: 6px solid var(--color-accent);
+  background: var(--color-on-accent);
+}
+
+.rename {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: 0 var(--space-1);
+}
+.renameInput {
+  flex: 1;
+  min-width: 0;
+  height: var(--control-md);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
+}
+.renameAction {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-md);
+  height: var(--control-md);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-ink-2);
+  cursor: pointer;
+}
+.renameAction:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.footer {
+  position: relative;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5) max(var(--space-5), env(safe-area-inset-bottom));
+}
+.footer > button {
+  width: 100%;
+}
+.search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--control-lg);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-ink-2);
+}
+.search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--color-ink);
+  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
+}
+.search input::placeholder {
+  color: var(--color-ink-3);
+}
+.search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+@media (hover: hover) {
+  .row:hover .select {
+    background: var(--color-hover);
+  }
+  .row:hover .select[aria-current='page'] {
+    background: var(--color-pressed);
+  }
+  .row:hover .current,
+  .row:focus-within .current {
+    visibility: hidden;
+  }
+  .renameAction:hover:not(:disabled) {
+    background: var(--color-hover);
+    color: var(--color-ink);
+  }
+}
+
+.select:focus-visible,
+.check:focus-visible,
+.renameInput:focus-visible,
+.renameAction:focus-visible,
+.search:focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+/* iOS zooms any field under 16 px. */
+@media (max-width: 1023px) {
+  .renameInput,
+  .search input {
+    font-size: var(--text-input-touch);
+  }
+}

@@ -4,7 +4,7 @@
 }
 
 .heading {
-  margin-top: var(--space-2);
+  margin: var(--space-2) 0 0;
   color: var(--color-ink);
   font-family: var(--font-display);
   font-weight: var(--weight-semibold);
@@ -47,13 +47,16 @@
   font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-mono);
 }
 .codeHeader button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-sm);
   height: var(--control-sm);
-  padding: 0 var(--space-2);
+  padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--color-ink-2);
-  font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-sans);
+  color: var(--color-ink-3);
   cursor: pointer;
 }
 .code pre {
@@ -61,7 +64,7 @@
   padding: var(--space-3) var(--space-4);
   overflow-x: auto;
   color: var(--color-ink);
-  font: var(--weight-regular) var(--text-sm) / 20px var(--font-mono);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-md) var(--font-mono);
 }
 
 .table {
@@ -89,7 +92,13 @@
   border-bottom: 1px solid var(--color-hairline);
 }
 .table td {
-  color: var(--color-ink-2);
+  color: var(--color-ink);
+}
+.table [data-align='center'] {
+  text-align: center;
+}
+.table [data-align='right'] {
+  text-align: right;
 }
 .table tbody tr + tr td {
   border-top: 1px solid var(--color-hairline);
@@ -124,9 +133,58 @@
   border-top: 1px solid var(--color-hairline);
 }
 
+.inlineCode {
+  display: inline;
+  padding: 1px var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-fill-1);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  line-height: inherit;
+  cursor: pointer;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  overflow-wrap: anywhere;
+}
+.inlineCode svg {
+  margin-right: var(--space-1);
+  color: var(--color-ink-3);
+  vertical-align: -2px;
+}
+
+.link {
+  color: var(--color-ink);
+  font-weight: var(--weight-medium);
+  text-decoration: underline;
+  text-decoration-color: var(--color-hairline-strong);
+  text-underline-offset: 2px;
+}
+.linkHost {
+  margin-left: var(--space-1);
+  color: var(--color-ink-3);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 @media (hover: hover) {
   .codeHeader button:hover {
     background: var(--color-hover);
     color: var(--color-ink);
   }
+  .inlineCode:hover {
+    background: var(--color-fill-2);
+  }
+  .link:hover {
+    text-decoration-color: currentColor;
+  }
+}
+
+.codeHeader button:focus-visible,
+.inlineCode:focus-visible,
+.link:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }

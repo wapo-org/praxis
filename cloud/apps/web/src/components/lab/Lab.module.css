@@ -1,0 +1,226 @@
+/* The Lab: a small gallery of the real components. Dev-only. */
+.page {
+  width: 100vw;
+  height: 100dvh;
+  overflow-y: auto;
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--topbar-height);
+  padding: var(--space-2) var(--space-6);
+  border-bottom: 1px solid var(--color-hairline);
+  background: var(--color-paper);
+}
+.title {
+  margin: 0;
+  font: var(--weight-semibold) var(--text-xl) / var(--leading-xl) var(--font-display);
+  letter-spacing: var(--tracking-display);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  min-width: 0;
+  max-width: calc(var(--column-width) + var(--space-16) * 2);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6) var(--space-16);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.sectionTitle {
+  margin: 0;
+  font: var(--weight-semibold) var(--text-md) / var(--leading-md) var(--font-sans);
+}
+.sectionNote {
+  margin: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+/* A deliberately loud test pattern: glass has nothing to prove on plain paper. Not a UI colour. */
+.backdrop {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(var(--space-16) * 2.5), 1fr));
+  gap: var(--space-4);
+  min-height: calc(var(--space-16) * 4);
+  padding: var(--space-6);
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background:
+    repeating-linear-gradient(115deg, hsl(0 0% 100% / 0.5) 0 2px, transparent 2px 22px),
+    radial-gradient(circle at 15% 20%, hsl(16 90% 62%), transparent 45%),
+    radial-gradient(circle at 80% 15%, hsl(205 85% 58%), transparent 50%),
+    radial-gradient(circle at 60% 90%, hsl(140 60% 48%), transparent 45%),
+    radial-gradient(circle at 25% 85%, hsl(280 60% 60%), transparent 45%),
+    hsl(45 80% 70%);
+}
+.recipe {
+  --glass-radius: var(--radius-lg);
+  min-height: calc(var(--space-16) * 2);
+}
+.recipeBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+}
+.recipeName {
+  font: var(--weight-semibold) var(--text-md) / var(--leading-md) var(--font-sans);
+}
+.recipeNote {
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}
+.capsules {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Nine anchors. In the Lab they fill a panel; `?dropdown` stretches them to the viewport's edges. */
+.anchors {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100dvh;
+  background: var(--color-fill-1);
+}
+.anchorRow {
+  display: flex;
+  justify-content: space-between;
+}
+.anchors[data-compact='true'] {
+  height: calc(var(--space-16) * 5);
+  padding: var(--space-3);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-lg);
+}
+.anchors[data-compact='true'] .anchorRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+.anchors[data-compact='true'] .anchorRow > :nth-child(2) {
+  justify-self: center;
+}
+.anchors[data-compact='true'] .anchorRow > :nth-child(3) {
+  justify-self: end;
+}
+.fixtureTools {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+.modelPanel {
+  height: calc(var(--space-16) * 7);
+  max-width: var(--tray-width);
+  overflow: hidden;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.scrims {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(var(--space-16) * 4), 1fr));
+  gap: var(--space-4);
+}
+.scrimPanel {
+  position: relative;
+  height: calc(var(--space-16) * 5);
+  overflow: hidden;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--color-paper);
+}
+.scrimScroll {
+  height: 100%;
+  padding: var(--space-16) var(--space-4);
+  overflow-y: auto;
+}
+.scrimText {
+  margin: 0 0 var(--space-4);
+  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
+}
+.scrimCaption {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+}
+.scrimCaption figcaption {
+  color: var(--color-ink-2);
+  font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-mono);
+}
+
+.motionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--space-16) * 1.75), 1fr));
+  gap: var(--space-3);
+}
+.motionTile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  cursor: pointer;
+}
+.motionStage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: var(--space-16);
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--color-fill-1);
+}
+.motionChip {
+  display: block;
+  width: var(--control-lg);
+  height: var(--control-md);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+}
+.motionTile:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+  .header {
+    padding: var(--space-2) var(--space-3);
+  }
+  .main {
+    padding: var(--space-5) var(--space-3) var(--space-12);
+  }
+  .backdrop {
+    padding: var(--space-4);
+  }
+}

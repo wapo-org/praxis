@@ -3,6 +3,7 @@ import type { Chat } from '@praxis/protocol';
 import React from 'react';
 import {
   Check,
+  X,
   MessageCircle,
   MoreHorizontal,
   Pencil,
@@ -22,6 +23,7 @@ import {
   TaskError,
   useScreenTask,
 } from './ScreenUI.js';
+import styles from './History.module.css';
 
 function relativeTime(value: string): string {
   const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
@@ -94,7 +96,7 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
       <ScreenBody>
         <TaskError error={task.error} />
         {visible.length === 0 ? (
-          <p className="screen-empty">
+          <p className={styles.empty}>
             {query
               ? 'No chats match your search.'
               : filter === 'pinned'
@@ -102,28 +104,20 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                 : 'No conversations yet. Start a new chat below.'}
           </p>
         ) : null}
-        <div className="screen-history-list">
+        <div className={styles.list}>
           {GROUPS.map((group) => {
             const rows = visible.filter((chat) => dateGroup(chat, now) === group);
             if (!rows.length) return null;
             return (
-              <section className="screen-history-group" key={group} aria-label={group}>
-                <h2 className="screen-section-title">{group}</h2>
+              <section className={styles.group} key={group} aria-label={group}>
+                <h2 className={styles.groupTitle}>{group}</h2>
                 {rows.map((chat) => {
-                  const messages = store.messagesByChat[chat.id] ?? [];
-                  const last = messages.at(-1);
-                  const preview =
-                    last?.parts
-                      .filter((part) => part.type === 'text')
-                      .map((part) => part.text)
-                      .join(' ')
-                      ?.replace(/[#*_`~>]/g, '')
-                      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') ?? '';
                   return (
                     <div
                       key={chat.id}
-                      className="screen-history-row"
-                      style={{ position: 'relative' }}
+                      className={styles.row}
+                      data-testid="history-row"
+                      data-row-actions
                       onContextMenu={(event) => {
                         event.preventDefault();
                         openActions(event.currentTarget);
@@ -163,7 +157,7 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                     >
                       {selecting ? (
                         <input
-                          className="screen-history-check"
+                          className={styles.check}
                           type="checkbox"
                           aria-label={`Select ${chat.title}`}
                           checked={selected.has(chat.id)}
@@ -179,8 +173,7 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                       ) : null}
                       {renaming === chat.id ? (
                         <form
-                          className="screen-actions"
-                          style={{ flex: 1 }}
+                          className={styles.rename}
                           onSubmit={(event) => {
                             event.preventDefault();
                             void task.run(async () => {
@@ -190,22 +183,43 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                           }}
                         >
                           <input
-                            className="screen-search"
+                            className={styles.renameInput}
                             aria-label="Chat title"
                             autoFocus
                             value={title}
                             onChange={(event) => setTitle(event.target.value)}
+                            onFocus={(event) => event.target.select()}
+                            onKeyDown={(event) => {
+                              // Escape leaves the rename, not the sheet.
+                              if (event.key === 'Escape') {
+                                event.stopPropagation();
+                                setRenaming(null);
+                              }
+                            }}
                             maxLength={200}
                             required
                           />
-                          <ScreenButton type="submit" disabled={task.busy || !title.trim()}>
-                            Save
-                          </ScreenButton>
-                          <ScreenButton onClick={() => setRenaming(null)}>Cancel</ScreenButton>
+                          <button
+                            type="submit"
+                            className={styles.renameAction}
+                            aria-label="Save"
+                            disabled={task.busy || !title.trim()}
+                          >
+                            <Check size={18} />
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.renameAction}
+                            aria-label="Cancel"
+                            onClick={() => setRenaming(null)}
+                          >
+                            <X size={18} />
+                          </button>
                         </form>
                       ) : (
                         <button
-                          className="screen-history-select"
+                          className={styles.select}
+                          data-testid="history-row-select"
                           type="button"
                           aria-current={store.activeChatId === chat.id ? 'page' : undefined}
                           disabled={task.busy}
@@ -228,33 +242,31 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
                               });
                           }}
                         >
-                          <MessageCircle size={18} aria-hidden="true" />
-                          <span className="screen-row-copy">
-                            <span className="screen-history-title">
-                              <span className="screen-truncate">{chat.title || 'New chat'}</span>
-                              {chat.pinned ? <Pin size={16} aria-label="Pinned" /> : null}
+                          <span className={styles.leading}>
+                            <MessageCircle size={18} aria-hidden="true" />
+                          </span>
+                          <span className={styles.copy}>
+                            <span className={styles.title}>
+                              <span className={styles.titleText}>{chat.title || 'New chat'}</span>
+                              {chat.pinned ? (
+                                <span className={styles.pin}>
+                                  <Pin size={16} aria-label="Pinned" />
+                                </span>
+                              ) : null}
                             </span>
-                            {preview ? (
-                              <span className="screen-detail screen-truncate">{preview}</span>
-                            ) : null}
-                            <time
-                              className="screen-footnote"
-                              style={{ margin: 0 }}
-                              dateTime={chat.updatedAt}
-                            >
+                            <time className={styles.time} dateTime={chat.updatedAt}>
                               {relativeTime(chat.updatedAt)}
                             </time>
                           </span>
                           {store.activeChatId === chat.id ? (
-                            <Check size={16} aria-label="Current chat" />
+                            <span className={styles.current}>
+                              <Check size={18} aria-label="Current chat" />
+                            </span>
                           ) : null}
                         </button>
                       )}
                       {!selecting && renaming !== chat.id ? (
-                        <div
-                          data-history-row-action
-                          style={{ position: 'absolute', right: 0, top: 0 }}
-                        >
+                        <div data-history-row-action className={styles.actions}>
                           <ScreenMenu
                             contextOnly
                             label={`Actions for ${chat.title}`}
@@ -300,7 +312,7 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
           })}
         </div>
       </ScreenBody>
-      <footer className="screen-history-footer">
+      <footer className={styles.footer}>
         {selecting ? (
           <ScreenButton
             tone="destructive"
@@ -331,23 +343,12 @@ export function HistorySheet({ onSelect }: { onSelect?: () => void } = {}) {
             New chat
           </ScreenButton>
         )}
-        <label style={{ position: 'relative' }}>
-          <Search
-            size={18}
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              left: 14,
-              top: 14,
-              color: 'var(--paper-secondary-ink)',
-            }}
-          />
+        <label className={styles.search}>
+          <Search size={18} aria-hidden="true" />
           <input
             type="search"
-            className="screen-search"
-            style={{ borderRadius: 9999, paddingLeft: 40 }}
             aria-label="Search conversations"
-            placeholder="Search conversations..."
+            placeholder="Search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />

@@ -122,28 +122,24 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  color: var(--color-ink-3);
-  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
-}
 .tagline {
-  flex: 1;
   min-width: 0;
   overflow: hidden;
+  color: var(--color-ink-3);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A sibling of the copy, not its second line: centred on the row, level with the star. */
 .badges {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
   gap: var(--space-1);
-  height: var(--leading-xs);
   color: var(--color-ink-3);
+}
+.badge {
+  display: inline-flex;
 }
 .check {
   display: inline-flex;

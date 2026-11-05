@@ -61,7 +61,7 @@ const frames = await page.evaluate(async () => {
 
 // 2. Open and close a menu five times (sidebar row actions).
 await window_('menu');
-const row = page.locator('[data-testid="app-sidebar"] .screen-history-row').first();
+const row = page.locator('[data-testid="app-sidebar"] [data-testid="history-row"]').first();
 for (let i = 0; i < 5; i++) {
   await row.hover();
   await row.getByRole('button', { name: /^Actions for/ }).click();

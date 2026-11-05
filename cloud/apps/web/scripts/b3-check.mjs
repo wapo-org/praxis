@@ -15,7 +15,7 @@ try {
   const page = await context.newPage();
   await login(page, `wp-b3-desktop-${Date.now()}`);
   await page.getByRole('complementary', { name: 'Conversation history' }).waitFor();
-  assert.equal(await page.locator('.screen-sidebar').isVisible(), true);
+  assert.equal(await page.getByTestId('app-sidebar').isVisible(), true);
   assert.equal(new URL(page.url()).pathname, '/');
   const input = page.getByTestId('composer-input');
   await input.fill('Desktop keyboard check');
@@ -56,7 +56,7 @@ try {
   await page.keyboard.press('Escape'); await page.waitForURL(`**${chatPath}`);
   // Selecting a sidebar row must update the chat route.
   await page.getByTestId('sidebar-new-chat').click(); await page.waitForURL(`${base}/`);
-  await page.locator('.screen-sidebar .screen-history-select').filter({ hasText: 'Desktop keyboard check' }).click();
+  await page.getByTestId('app-sidebar').getByTestId('history-row-select').filter({ hasText: 'Desktop keyboard check' }).click();
   await page.waitForURL(`**${chatPath}`);
   // Server-only results and cursor loading, beyond bootstrap's first model page.
   const template = await page.evaluate(async () => { const { apiClient } = await import('/src/lib/api.ts'); return (await apiClient.bootstrap()).models[0]; });
@@ -76,9 +76,9 @@ try {
   await page.keyboard.press('Escape'); await page.getByTestId('plus-tray').waitFor({ state: 'detached' });
   await page.getByTestId('sidebar-new-chat').click();
   await page.getByTestId('starter-chip-2').click();
-  await page.getByRole('button', { name: 'Allow Once', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Allow once', exact: true }).waitFor();
   assert.equal(await page.getByTestId('assistant-turn').count(), 0, 'Pending run must have a single live activity disclosure');
-  await page.getByRole('button', { name: 'Allow Once', exact: true }).click();
+  await page.getByRole('button', { name: 'Allow once', exact: true }).click();
   const restoredChat = await page.evaluate(async () => {
     const { apiClient } = await import('/src/lib/api.ts'); const boot = await apiClient.bootstrap();
     return apiClient.createChat({ title: 'Route options', mode: 'plan', effort: 'high', modelId: boot.models[0].id, providerId: boot.models[0].providerId });
@@ -90,7 +90,7 @@ try {
   await context.close();
   const touch = await browser.newContext({ viewport: { width: 402, height: 874 }, colorScheme: 'dark', isMobile: true, hasTouch: true });
   const mobile = await touch.newPage(); await login(mobile, `wp-b3-touch-${Date.now()}`);
-  assert.equal(await mobile.locator('.screen-sidebar').count(), 0);
+  assert.equal(await mobile.getByTestId('app-sidebar').count(), 0);
   assert.equal(await mobile.locator('html').getAttribute('data-theme'), 'dark');
   const mobileInput = mobile.getByTestId('composer-input'); await mobileInput.fill('Touch newline'); await mobileInput.press('Enter');
   assert.equal(await mobileInput.inputValue(), 'Touch newline\n'); assert.equal(new URL(mobile.url()).pathname, '/');

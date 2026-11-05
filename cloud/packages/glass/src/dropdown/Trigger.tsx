@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import { ChevronDown } from '../icons';
 import React from 'react';
 import { closeAndFocusNext } from './focus';

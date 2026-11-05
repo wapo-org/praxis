@@ -1,5 +1,5 @@
 import { fade, GlassSurface, sheet, usePreset } from '@praxis/glass';
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import React from 'react';
 import { createPortal } from 'react-dom';
 import styles from './Sheet.module.css';

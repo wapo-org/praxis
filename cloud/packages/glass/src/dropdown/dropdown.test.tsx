@@ -25,7 +25,7 @@ describe('GlassDropdown (@praxis/glass)', () => {
     expect(GlassDropdown.VirtualList).toBeDefined();
   });
 
-  it('renders the Apple Notes 35-frame reference replica (ActionGrid, TileItems, SubTriggers, CheckboxItem, Separator, and destructive Item)', () => {
+  it('renders a full menu (ActionGrid, TileItems, SubTriggers, CheckboxItem, Separator, and destructive Item)', () => {
     const html = renderToStaticMarkup(
       <GlassDropdown open submenuMode="morph" align="end" side="bottom">
         <GlassDropdown.Trigger>More Actions</GlassDropdown.Trigger>

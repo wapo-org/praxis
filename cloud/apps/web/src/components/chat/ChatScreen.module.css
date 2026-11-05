@@ -33,7 +33,15 @@
 .assistantTurn {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
+}
+
+/* What ended a turn early. Quiet, like the iOS note: never a banner. */
+.outcome {
+  margin: 0;
+  color: var(--color-ink-3);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  overflow-wrap: anywhere;
 }
 
 /* A tool turn followed by its answer: 20 px total with the activity row's own spacing. */

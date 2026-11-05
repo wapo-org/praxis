@@ -5,8 +5,18 @@ export interface ParsedBlock {
   content?: string;
   headers?: string[];
   rows?: string[][];
+  aligns?: Array<'left' | 'center' | 'right' | undefined>;
   ordered?: boolean;
   items?: Array<{ checked?: boolean; text: string }>;
+}
+
+const TABLE_DELIMITER = /^\s*\|?[\s:-]+\|[\s|:-]*$/;
+const isTableStart = (line: string, next?: string) => line.includes('|') && next !== undefined && TABLE_DELIMITER.test(next);
+
+function columnAlign(cell: string) {
+  const left = cell.startsWith(':');
+  const right = cell.endsWith(':');
+  return left && right ? 'center' : right ? 'right' : left ? 'left' : undefined;
 }
 
 export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
@@ -60,11 +70,7 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
     }
 
     // GFM Table
-    if (
-      line.includes('|') &&
-      i + 1 < lines.length &&
-      /^\s*\|?[\s:-]+\|[\s|:-]*$/.test(lines[i + 1]!)
-    ) {
+    if (isTableStart(line, lines[i + 1])) {
       const parseRow = (rowStr: string) =>
         rowStr
           .trim()
@@ -74,13 +80,14 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
           .map((cell) => cell.trim());
 
       const headers = parseRow(line);
+      const aligns = parseRow(lines[i + 1]!).map(columnAlign);
       i += 2; // skip header and separator
       const rows: string[][] = [];
       while (i < lines.length && lines[i]!.includes('|') && lines[i]!.trim() !== '') {
         rows.push(parseRow(lines[i]!));
         i++;
       }
-      blocks.push({ type: 'table', headers, rows });
+      blocks.push({ type: 'table', headers, rows, aligns });
       continue;
     }
 
@@ -136,7 +143,8 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
       !/^(#{1,4})\s+/.test(lines[i]!) &&
       !/^\s*[-*+]\s+/.test(lines[i]!) &&
       !/^\s*\d+\.\s+/.test(lines[i]!) &&
-      !lines[i]!.trim().startsWith('>')
+      !lines[i]!.trim().startsWith('>') &&
+      !isTableStart(lines[i]!, lines[i + 1])
     ) {
       paraLines.push(lines[i]!);
       i++;

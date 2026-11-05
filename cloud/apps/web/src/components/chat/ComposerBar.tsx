@@ -1,5 +1,5 @@
 import { usePress } from '@praxis/glass';
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import React from 'react';
 import { ArrowUp, Camera, Mic, Plus, Square } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';

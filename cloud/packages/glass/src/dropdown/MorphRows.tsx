@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { m as motion } from 'framer-motion';
 import { STAGGER, TRANSITION } from '../motion';
 import React from 'react';
 /** Children follow the shared header as it rises, rather than appearing as a single opaque block. */

@@ -1,171 +1,67 @@
+import type { Approval } from '@praxis/protocol';
+import { FileText, Link2, Waypoints } from '../../lib/icons';
 import type { AgentActivityViewProps } from './activityTypes';
-export function ApprovalCards({
-  pendingApprovals = [],
+import { humanizeToolName } from './activityLine';
+import styles from './InlineCard.module.css';
+
+function formatArguments(value: Approval['arguments']) {
+  if (value === undefined || value === null) return '';
+  const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  return text === '{}' ? '' : text;
+}
+
+/** Inline approval: what will run, why it asks, the exact arguments, and three answers.
+ *  A call made from inside code says so: the model didn't call the tool itself, its code did. */
+export function ApprovalCard({
+  approval,
   runId,
   onResolveApproval,
-}: Pick<AgentActivityViewProps, 'pendingApprovals' | 'runId' | 'onResolveApproval'>) {
+}: { approval: Approval } & Pick<AgentActivityViewProps, 'runId' | 'onResolveApproval'>) {
+  const fromCode = Boolean(approval.parentCallId);
+  const tool = humanizeToolName(approval.toolName);
+  const server = approval.source?.serverName;
+  const origin = [fromCode ? 'From code' : null, server, tool].filter(Boolean).join(' · ');
+  const OriginIcon = fromCode ? FileText : server ? Link2 : Waypoints;
+  const args = formatArguments(approval.arguments);
+  // The API writes titles like "Allow local_write?": the raw name never reaches the card.
+  const title = (approval.title || tool).replaceAll(approval.toolName, tool.toLowerCase());
+  const answer = (decision: 'allowOnce' | 'allowAlways' | 'deny') => {
+    if (runId) onResolveApproval?.(runId, approval.id, decision);
+  };
   return (
-    <>
-      {pendingApprovals.map((approval) => {
-        const formattedApprovalArgs =
-          approval.arguments !== undefined
-            ? typeof approval.arguments === 'string'
-              ? approval.arguments
-              : JSON.stringify(approval.arguments, null, 2)
-            : '';
-
-        return (
-          <div
-            key={approval.id}
-            data-testid={`approval-card-${approval.id}`}
-            style={{
-              width: '100%',
-              borderRadius: 16,
-              padding: 16,
-              background: 'var(--paper-surface)',
-              border: '1px solid var(--paper-warn)',
-              boxShadow: '0 8px 24px rgba(184, 120, 34, 0.10)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    background: 'var(--paper-warn)',
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: 'var(--paper-ink)',
-                  }}
-                >
-                  Approval required: {approval.title || approval.toolName}
-                </span>
-              </div>
-              {approval.source?.serverName && (
-                <span
-                  style={{
-                    fontSize: 11.5,
-                    padding: '2px 8px',
-                    borderRadius: 999,
-                    background: 'var(--paper-fill-1)',
-                    color: 'var(--paper-ink-2)',
-                  }}
-                >
-                  {approval.source.serverName}
-                </span>
-              )}
-            </div>
-
-            {approval.reason && (
-              <div
-                style={{
-                  fontSize: 13,
-                  color: 'var(--paper-ink-2)',
-                  lineHeight: '18px',
-                }}
-              >
-                {approval.reason}
-              </div>
-            )}
-
-            {formattedApprovalArgs && (
-              <pre
-                style={{
-                  margin: 0,
-                  padding: '8px 10px',
-                  borderRadius: 10,
-                  background: 'var(--paper-surface-2)',
-                  border: '0.5px solid var(--paper-hairline)',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 11.5,
-                  lineHeight: '16px',
-                  color: 'var(--paper-ink)',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}
-              >
-                {formattedApprovalArgs}
-              </pre>
-            )}
-
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 8,
-                marginTop: 4,
-              }}
-            >
-              <button
-                type="button"
-                data-testid="approval-allow-once"
-                onClick={() => runId && onResolveApproval?.(runId, approval.id, 'allowOnce')}
-                style={{
-                  padding: '7px 14px',
-                  borderRadius: 10,
-                  border: 'none',
-                  background: 'var(--paper-accent)',
-                  color: 'var(--paper-canvas)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Allow Once
-              </button>
-              <button
-                type="button"
-                data-testid="approval-allow-always"
-                onClick={() => runId && onResolveApproval?.(runId, approval.id, 'allowAlways')}
-                style={{
-                  padding: '7px 14px',
-                  borderRadius: 10,
-                  border: '0.5px solid var(--paper-hairline)',
-                  background: 'var(--paper-fill-1)',
-                  color: 'var(--paper-ink)',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
-                Always Allow
-              </button>
-              <button
-                type="button"
-                data-testid="approval-deny"
-                onClick={() => runId && onResolveApproval?.(runId, approval.id, 'deny')}
-                style={{
-                  padding: '7px 14px',
-                  borderRadius: 10,
-                  border: '0.5px solid var(--paper-hairline)',
-                  background: 'transparent',
-                  color: 'var(--paper-danger)',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
-                Deny
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </>
+    <section
+      className={styles.card}
+      data-testid={`approval-card-${approval.id}`}
+      aria-label={`Approval needed: ${title}`}
+    >
+      <div className={styles.origin}>
+        <span className={styles.originIcon}>
+          <OriginIcon size={16} />
+        </span>
+        <span>{origin}</span>
+      </div>
+      <div className={styles.copy}>
+        <h3 className={styles.title}>{title}</h3>
+        {approval.reason ? <p className={styles.reason}>{approval.reason}</p> : null}
+        {fromCode ? (
+          <p className={styles.reason} data-muted="true">
+            The code above is calling this tool. It waits for your answer.
+          </p>
+        ) : null}
+      </div>
+      {args ? <pre className={styles.arguments}>{args}</pre> : null}
+      <div className={styles.actions}>
+        <button type="button" className={styles.button} data-tone="primary" data-testid="approval-allow-once" onClick={() => answer('allowOnce')}>
+          Allow once
+        </button>
+        <button type="button" className={styles.button} data-tone="secondary" data-testid="approval-allow-always" onClick={() => answer('allowAlways')}>
+          Always allow
+        </button>
+        <span className={styles.spacer} />
+        <button type="button" className={styles.button} data-tone="ghost" data-testid="approval-deny" onClick={() => answer('deny')}>
+          Deny
+        </button>
+      </div>
+    </section>
   );
 }

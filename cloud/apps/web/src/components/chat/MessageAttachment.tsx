@@ -3,6 +3,7 @@ import React from 'react';
 import { apiClient } from '../../lib/api';
 import { FileText, Paperclip } from '../../lib/icons';
 import { safeLink } from '../../lib/links';
+import styles from './MessageAttachment.module.css';
 export function MessageAttachment({
   part,
   attachment,
@@ -40,41 +41,19 @@ export function MessageAttachment({
     return (
       <button
         type="button"
+        className={styles.image}
         onClick={() => onPreview(url)}
-        style={{
-          padding: 0,
-          border: '1px solid var(--paper-hairline)',
-          borderRadius: 14,
-          overflow: 'hidden',
-          background: 'var(--paper-fill-1)',
-        }}
       >
         <img
           src={url}
           alt={att?.name || 'Attached image'}
-          style={{
-            maxWidth: 180,
-            maxHeight: 160,
-            display: 'block',
-            objectFit: 'cover',
-          }}
         />
       </button>
     );
   return (
     <div
+      className={styles.document}
       data-testid="document-attachment-chip"
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 7,
-        padding: '9px 12px',
-        borderRadius: 12,
-        background: 'var(--paper-fill-1)',
-        border: '1px solid var(--paper-hairline)',
-        color: 'var(--paper-ink)',
-        fontSize: 13,
-      }}
     >
       {part.type === 'document' ? <FileText size={18} /> : <Paperclip size={18} />}
       <span>

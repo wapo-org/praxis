@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m as motion } from 'framer-motion';
 import React from 'react';
 import { GlassSurface } from '../GlassSurface';
 import { ScrollBlur } from '../ProgressiveBlurScrim';

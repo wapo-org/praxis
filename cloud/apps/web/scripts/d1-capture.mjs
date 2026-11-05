@@ -75,7 +75,7 @@ for (const theme of ['light', 'dark'])
     await chat.page.screenshot({ path: join(OUT, `${tag}-sheet.png`) });
     await chat.page.keyboard.press('Escape');
     if (vpName === 'desktop') {
-      const row = chat.page.locator('[data-testid="app-sidebar"] .screen-history-row').first();
+      const row = chat.page.locator('[data-testid="app-sidebar"] [data-testid="history-row"]').first();
       await row.hover();
       await row.getByRole('button', { name: /^Actions for/ }).click();
       await chat.page.getByRole('menu').waitFor();

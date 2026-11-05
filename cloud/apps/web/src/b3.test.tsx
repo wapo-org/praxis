@@ -9,7 +9,7 @@ import { CapabilitiesSchema, ModelSchema } from '@praxis/protocol';
 import { apiClient } from './lib/api';
 import { parseRoute, pathForSheet, sheetPaths } from './lib/navigation';
 import { useModelSearch } from './lib/useModelSearch';
-import { workedLabel } from './components/chat/useActivityClock';
+import { workedLabel } from './components/chat/activityLine';
 import { AgentMessageView } from './components/chat/AgentMessageView';
 import { PlusTray } from './components/chat/PlusTray';
 import { PraxisStoreProvider, usePraxisStore } from './state/store';
@@ -27,6 +27,8 @@ it('round-trips chat and every settings sub-page through route paths', () => {
 });
 it('uses real timestamps for Worked for Ns and does not invent missing duration', () => {
   expect(workedLabel('2026-01-01T00:00:00Z', '2026-01-01T00:00:03Z')).toBe('Worked for 3s');
+  expect(workedLabel('2026-01-01T00:00:00Z', '2026-01-01T00:00:00.400Z')).toBe('Worked for <1s');
+  expect(workedLabel('2026-01-01T00:00:00Z', '2026-01-01T00:01:05Z')).toBe('Worked for 1m 5s');
   expect(workedLabel()).toBe('Worked');
   expect(workedLabel('invalid', 'invalid')).toBe('Worked');
 });
@@ -34,7 +36,7 @@ it('renders GFM strikethrough and SVG icons', () => {
   const html = renderToStaticMarkup(<AgentMessageView text="Use ~~Soft~~ and `inline`" />);
   expect(html).toContain('<del>Soft</del>'); expect(html).toContain('<svg');
 });
-it('matches the native light/dark palette and monochrome primary action aliases', () => {
+it('matches the native light/dark palette and monochrome primary action', () => {
   // Relative to this file, so it passes from the cloud root and from the web workspace alike.
   const swift = readFileSync(join(__dirname, '../../../../PraxisChat/PraxisChat/DesignSystem/Tokens.swift'), 'utf8');
   const css = readFileSync(join(__dirname, 'styles/tokens.css'), 'utf8').toLowerCase();
@@ -57,7 +59,6 @@ it('matches the native light/dark palette and monochrome primary action aliases'
   }
   expect(light).toContain('--color-accent: #15140f;');
   expect(dark).toContain('--color-accent: #f1efe9;');
-  expect(css).toContain('--paper-accent: var(--color-accent)');
 });
 it('debounces server model search, loads cursors, and ignores stale responses', async () => {
   vi.useFakeTimers();
