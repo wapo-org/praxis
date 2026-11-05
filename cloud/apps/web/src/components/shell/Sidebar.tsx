@@ -6,22 +6,8 @@ import { usePraxisStore } from '../../state/store';
 import { isSettingsSheet } from '../screens/settingsNav';
 import { SidebarChats } from './SidebarChats';
 import { SidebarSettings } from './SidebarSettings';
+import { useIsNarrow } from './useIsNarrow';
 import styles from './Sidebar.module.css';
-
-export function useIsNarrow() {
-  const query = '(max-width: 1023px)';
-  const [narrow, setNarrow] = React.useState(
-    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
-  );
-  React.useEffect(() => {
-    const media = window.matchMedia(query);
-    const apply = () => setNarrow(media.matches);
-    apply();
-    media.addEventListener('change', apply);
-    return () => media.removeEventListener('change', apply);
-  }, []);
-  return narrow;
-}
 
 /**
  * The floating liquid-glass navigation (docked at ≥1024 px; on narrow screens the

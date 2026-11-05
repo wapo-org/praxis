@@ -55,8 +55,8 @@ export const TRANSITION = {
 export type MotionFrame = {
   opacity?: number;
   scale?: number;
-  x?: number;
-  y?: number;
+  x?: number | string;
+  y?: number | string;
 };
 
 export interface MotionPreset {
@@ -98,11 +98,14 @@ export const listItem: MotionPreset = {
   transition: SPRING,
 };
 
-/** The floating sidebar sliding in from the leading edge; the far edge travels past the window. */
+/**
+ * The floating sidebar, all the way off the leading edge and back. Never a fade:
+ * opacity on an ancestor would blank the lens for the whole trip.
+ */
 export const sidebarSlide: MotionPreset = {
-  initial: { opacity: 0, x: -48 },
-  animate: { opacity: 1, x: 0 },
-  exit: { opacity: 0, x: -48, transition: PANEL },
+  initial: { x: '-110%' },
+  animate: { x: 0 },
+  exit: { x: '-110%', transition: PANEL },
   transition: PANEL,
 };
 

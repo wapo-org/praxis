@@ -8,6 +8,10 @@
   width: 100%;
   padding: var(--space-1);
 }
+/* Menu text must hold AA over any backdrop, the destructive row included. */
+.surface.surface {
+  --glass-tint: var(--glass-menu-tint);
+}
 .list {
   display: flex;
   flex-direction: column;

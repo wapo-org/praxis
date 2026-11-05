@@ -130,7 +130,7 @@ async function stretch(dragSelector, transformSelector, x, y) {
     page.evaluate((s) => {
       const el = document.querySelector(s);
       if (!el) return '';
-      return (el?.closest?.('[data-elastic-surface]') ?? el).style.transform;
+      return (el?.closest?.('[data-glass-surface]') ?? el).style.scale;
     }, sel);
   let mid = '';
   for (let attempt = 0; attempt < 3 && !mid.startsWith('translate'); attempt++) {
@@ -148,7 +148,7 @@ async function stretch(dragSelector, transformSelector, x, y) {
   return { mid, rest: await read(transformSelector) };
 }
 const stretchResults = {};
-stretchResults.sidebar = await stretch('[data-testid="app-sidebar"] [data-testid="sidebar-new-chat"]', '[data-testid="app-sidebar"] [data-elastic-surface]', 10, 10);
+stretchResults.sidebar = await stretch('[data-testid="app-sidebar"] [data-testid="sidebar-new-chat"]', '[data-testid="app-sidebar"] [data-glass-surface]', 10, 10);
 // Composer: start on the pill's bottom-left padding (not the textarea — typing keeps priority).
 stretchResults.composer = await stretch('[data-testid="composer-surface"]', '[data-testid="composer-surface"]', 360, 48);
 stretchResults.topbar = await stretch('[data-testid="nav-settings-button"]', '[data-testid="nav-settings-button"]', 10, 10);
@@ -157,7 +157,7 @@ stretchResults.topbar = await stretch('[data-testid="nav-settings-button"]', '[d
 await row.hover();
 await row.getByRole('button', { name: /^Actions for/ }).click();
 await page.getByRole('menu').waitFor();
-stretchResults.menu = await stretch('[role="menu"]', '[role="menu"] [data-elastic-surface]', 40, 30);
+stretchResults.menu = await stretch('[role="menu"]', '[role="menu"] [data-glass-surface]', 40, 30);
 await page.keyboard.press('Escape').catch(() => {});
 await page.getByRole('menu').waitFor({ state: 'detached' }).catch(() => {});
 const stretchTasks = await taken();

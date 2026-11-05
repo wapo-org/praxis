@@ -41,61 +41,68 @@ Two values deviate on purpose:
 Legacy `--paper-*` names alias to `--color-*` so the D3 screens (chat activity, approvals, History, Lab) keep rendering. New code must not use them.
 
 ## Glass (`packages/glass`)
-`<GlassSurface material="regular|thick|clear" shape="card|capsule" radius?>` renders a single `motion.div` styled by `glass.module.css`:
-- `backdrop-filter: blur(var) saturate(var)` over a tint
-- a 1 px specular rim: a gradient border cut out with `mask-composite`
-- an inset top highlight, a 0.5 px edge, and an elevation shadow
+`<GlassSurface material="regular|thick|clear" shape="card|capsule" radius? stretch? spotlight?>` is the material. Motion props go straight on it.
 
-| Recipe | Use | Light tint / blur | Dark tint |
-|---|---|---|---|
-| `regular` | composer pill, top-bar clusters | paper 72% / 20 px | `rgba(28,28,26,.68)` |
-| `thick` | sidebar, menus, popovers, tray | paper 90% / 32 px (AA for danger text over black) | `rgba(26,26,24,.86)` |
-| `clear` | small floating chips (jump to latest) | white 42% / 12 px | `rgba(40,40,37,.44)` |
+**Chromium: a real lens.** `backdrop-filter: url(#id)` with the kube.io construction ported from `wapo.dp` (`displacement-map.ts`, `LensFilter.tsx`): base-chroma correction, core frost, a rim frost through a mask, `feDisplacementMap` with the baked bezel curves, and a specular rim. Backdrop bends only in the bezel; the map is neutral elsewhere. **Other engines: progressive frost.** Three stacked, masked backdrop-blur bands. Negotiated by `glassTier()`, never by `CSS.supports` (it tests parsing, not rendering). The source's WebGL tier and DOM capture are deliberately not ported.
 
-What the glass layer does not do:
-- It never measures, re-captures the DOM, uses canvas/WebGL, or runs `requestAnimationFrame`. The old DOM-repaint WebGL engine, the displacement maps and the engine toggles are deleted.
-- The browser composites the blur on the GPU.
+**Every tier:** the same paint on a child layer (dual sheen, rim, hairline ring, inner shading), the outer shadow on the root, and a pointer-tracked spotlight that only moves a transform (off for touch and reduced motion).
+
+**The glass wakes when held** (`rig.ts`): refraction 0.8 → 1.0 on spring {250, 14}, shadow {340, 30} and {220, 24}. Imperative, no re-render; nothing stays inline at rest.
+
+| Recipe | Use | Optics (`material.ts`): refraction / core blur | Light tint | Dark tint |
+|---|---|---|---|---|
+| `regular` | composer pill, navbar title and clusters | 1.0 / 3 | paper 50% | `rgba(26,26,24,.48)` |
+| `thick` | sidebar, popovers, tray | 1.25 / 9 | paper 72% | `rgba(24,24,22,.72)` |
+| `thick` + `--glass-menu-tint` | menus (AA for danger text over black) | 1.25 / 9 | paper 90% | `rgba(24,24,22,.86)` |
+| `clear` | small floating chips (jump to latest) | 0.875 / 3 | white 46% | `rgba(40,40,37,.5)` |
+
+**Cost.** Chromium re-uploads `feImage` textures whenever the lens redraws, so map size is the cost, not the filter nodes. `PIXEL_BUDGET` (60k map pixels per surface) is what holds 120 Hz; the source's 1.1M dropped scrolling to 60 Hz. Maps build at rest size, off the frame, after decoding (an undecoded `feImage` displaces the whole backdrop), debounced on real resize, in a bounded cache (48). Never rebuilt in a gesture: transforms do not resize. Idle: no JS at all.
 
 Other behaviour:
 - `prefers-reduced-transparency` falls back to an opaque `--glass-fallback`.
-- To fade glass in, put `opacity` on the `GlassSurface` itself. Put scale on a parent: `transform` is fine there, but `opacity` or `filter` on an ancestor breaks backdrop sampling.
+- **Never put `opacity` on the glass root or an ancestor while you want the lens:** it makes a backdrop root and the lens samples nothing. `GlassSurface` routes an `opacity` motion prop to `--glass-fade`, which the layers and content read. A wrapper can animate `--glass-fade` itself (`ChatScreen`'s jump chip). Scale and translate are fine anywhere.
 - Never put a CSS `filter` (for example a hover brightness) on an ancestor of glass.
-- `ProgressiveBlurScrim edge="top|bottom"`: 4 static, masked backdrop-blur bands (1/3/6/12 px) plus a paper feather. Used under the top bar (72 px) and above the composer (112 px).
+- `ProgressiveBlurScrim edge="top|bottom"`: 4 static, masked backdrop-blur bands (1/3/6/12 px) plus a paper feather. Used under the top bar (48 px) and the composer (64 px), short enough that content reaches the glass, which is what the lens bends.
 - `ScrollBlur` (menus, lists): a mask fade driven by `animation-timeline: scroll()`. It appears only at the scrolled edges and has zero JS.
-- The elastic stretch has no backdrop of its own: the `GlassSurface` wrapper carries the stretch transform, so nested glass never sits inside another backdrop root.
 - Menus never clip: `GlassDropdown` content portals to `document.body` (positioned against the viewport), and `ScreenMenu` uses `portal` with no `boundary`. Glass inside another glass (for example a `ScreenMenu` inside a settings popover) is always portaled outside the parent backdrop root.
 - Viewport edges: menus flip and clamp inside the viewport (dropdown `positioning.ts`); popovers clamp their own fixed position to the viewport.
 
-## Stretch (`packages/glass/src/elastic.tsx`, one shared implementation)
-Every glass element (`GlassSurface`, and everything built on it: sidebar, composer pill, top-bar clusters, menus, popovers, glass buttons) stretches elastically toward the pointer while pressed and dragged, then springs back on release. It never changes position permanently.
-- Resistance curve: `tanh` (max pull 26 px, max stretch 7%). Scale-only (no skew or rotate), secondary-axis scale stays near 1, so text is never squashed and corners never visibly distort.
-- Transforms only, written directly to the wrapper element in a single rAF-batched loop; React never re-renders per pointer move. Release runs the one spring (`SPRING`, stiffness 520 / damping 38) back to rest (`transform: none`).
-- A real drag (> 6 px) swallows the following trusted click (synthetic `row.click()` from the dropdown's drag-select passes through). Pointerdown is never `preventDefault`ed, so focus, typing and text selection still work; a document selection aborts the drag; touch vertical scrolls arrive as `pointercancel` (spring back, click kept); input/textarea/select/contenteditable/`[data-no-elastic]` targets never start a drag.
-- `prefers-reduced-motion` disables the effect entirely.
+## Stretch (`packages/glass/src/stretch.ts`, math verbatim from `wapo.dp`)
+Hold any glass and pull: it grows toward the pointer in any direction, and the far side stays put. Written to the root's `scale` and `translate` properties, which compose with framer-motion's own `transform`. There is no wrapper.
+- **Math:** tanh `saturatePull` against the elliptical `directionalBudget` (~1 cm or 22% of the axis, per material), axis-aligned, never sheared. Follow spring {340, 30} with velocity handoff. Release uses per-material `bounce` and `settle`, so it crosses zero and wobbles. Engages at 3 px with no jump.
+- **Starts anywhere, over anything:** buttons, links, chat rows, switches, icons. The nearest surface owns the pull. Only a text field holding text, an active selection, a range input, a scrollbar and `[data-glass-no-stretch]` refuse.
+- **Click:** no pointer capture and no `preventDefault` on press, so focus and clicks work. Past 8 px of travel the trusted click is swallowed; synthetic `row.click()` passes.
+- **Menus** (`stretch="edge"`): press-drag-release still scrubs inside; past the edge the menu stretches toward the pointer, and releasing there selects nothing. A press on a `[data-press-opens]` trigger belongs to the menu.
+- **Scrollers inside glass:** touch pans vertically until the limit; at the limit or sideways it stretches. A mouse drag always stretches; the wheel scrolls.
+- `prefers-reduced-motion` turns it off. `glass.test.ts` enumerates every `GlassSurface` use and forbids `stretch={false}`.
 
 ## No modals
 No centered dialogs and no dimmed backdrops, on any screen size. `SettingsModal`, `SheetDialog`, `SheetsRoot`, `SettingsSheet`, `HistorySheet`, `ConsentSheet` and `DeleteAccountSheet` are deleted.
-- Settings is a normal routed page (`SettingsPage`) in the main content area.
+- Settings takes over the floating nav: the same panel changes from chats to the settings sections with a push, its back row returns to chats, and the content is a routed page (`SettingsPage`) in the remaining space. There is no second rail and no Done button. Narrow screens follow the same model.
 - History is the floating sidebar: docked on desktop, a floating panel on narrow screens.
 - The AI data-consent step is a small anchored popover (`ConsentPopover`) above the composer: no scrim, no focus trap, no background inertness; Escape and outside clicks do nothing, and the send path still blocks until answered.
 - Account deletion is an inline two-step confirm (`AccountSettings` → `DeleteAccountConfirm`).
 - The composer plus menu is a compact popover: 360 × 480 px at most, controls 36 px (44 px max). The only height exception is the two-line model row (56 px, `--row-model`).
 
 ## Motion (`packages/glass/src/motion.ts`, the only TS source)
-- `SPRING` = stiffness 520, damping 38 (damping ratio ≈ 0.83). It is the single spring; `SPRING_VALUE` is the same spring for `useSpring`.
-- `TRANSITION.fast/base/slow` = tweens on `EASE_STANDARD`. `STAGGER` is 30 ms between rows.
+- **Springs with carried velocity for everything spatial.** A retargeted framer spring keeps its velocity, so any animation reverses from where it is. CSS curves (`--duration-*`) are for colour fades and ambient loops only.
+- The family (`SPRINGS`): `SPRING` {520, 38} default; `snap` {760, 46} press, switch, segmented thumb, chevrons; `glide` {460, 36} the highlight between rows; `panel` {340, 32} sidebar, panel content, pages; `follow`, `lens`, `shadow`, `shadowAlpha` for the stretch and the held rig. `TRANSITION.*` are near-critically damped versions for fades.
+- `GlideHighlight`: one pill per list that glides between hovered rows; another tracks the current row. Layout is read once per row change.
+- Disclosure and arrivals: `chat/chatMotion.ts`. A height change happens once in layout and what follows glides there with transforms (FLIP). A new message rises in; a loaded history does not.
+- Only `transform` and `opacity` animate, plus the lens scale for the held rig.
+- `STAGGER` is 30 ms between rows.
 - Presets:
-  - `popIn`: menus and popovers. Opacity plus scale 0.96 from the anchor's `transform-origin`.
+  - `popIn`: menus, popovers, tray. Opacity plus scale 0.88, growing from the anchor's `transform-origin`.
   - `sheet`: y 16, scale 0.99, plus fade.
   - `fade`: scrims.
-  - `listItem`: opacity plus y 6.
+  - `listItem`: opacity plus y 10.
+  - `sidebarSlide`: fully off the leading edge and back, never a fade. `pageChange`: a small settle between pages.
   - `press`: `whileTap` scale 0.97.
   - `slideIn` / `slideUnder`: push navigation inside the tray. The next page enters from x 24; the page under it recedes to x -24.
 - Hooks:
   - `usePreset(preset)` and `usePress()` are reduced-motion aware. Under `prefers-reduced-motion` every preset becomes an opacity-only fast fade.
   - `useReducedMotion()` reports the setting.
-- CSS equivalents use the `--duration-*` and `--ease-standard` tokens.
-  - Message enter (`UserBubble`) is a CSS keyframe equivalent to `listItem`.
+- Colour fades use the `--duration-*` and `--ease-standard` tokens.
   - The global reduced-motion rule collapses all CSS animation.
 
 ## Shell (`apps/web/src/components`)
@@ -110,7 +117,7 @@ No centered dialogs and no dimmed backdrops, on any screen size. `SettingsModal`
   - The account/settings row sits at the bottom.
 - **Top bar** (`chat/ChatHeader`):
   - 56 px, transparent over the progressive scrim.
-  - Centered title (15/600) and model (12, ink-3). Tapping it opens Settings.
+  - A glass `regular` capsule navbar pill: centered title (13/600) and model (12, ink-2). Tapping it opens Settings.
   - Glass `regular` capsule clusters of 36 px buttons:
     - narrow: History on the left, New chat on the right
     - desktop: sidebar toggle and New chat on the left (only while the sidebar is collapsed), Settings on the right
@@ -132,6 +139,9 @@ No centered dialogs and no dimmed backdrops, on any screen size. `SettingsModal`
   - Controls: + / auto-growing textarea (15/22, max 200 px; measured once per change) / camera / mic / send-or-stop.
   - Every control is a 36 px accent circle, as on iOS.
   - The plus menu is a compact popover (360 × 480 px at most), anchored to the pill.
+
+## Performance budget (WP-G1, measured 2026-11-05)
+`node apps/web/scripts/g1-perf.mjs` (production build; `HEADED=1` for a real GPU). Numbers and the budget live in `~/.praxis-agent-state/cloud/design/G1/perf-*.json`; earlier `d1-perf.mjs` results follow.
 
 ## Performance budget (measured 2026-11-01)
 Setup: Chromium, production build (`vite build` plus `vite preview` proxied to the local API), 1440×900.

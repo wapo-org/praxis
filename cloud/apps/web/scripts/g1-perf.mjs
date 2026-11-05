@@ -31,7 +31,7 @@ if (!chatId) {
   }
   console.log('chat', chatId);
 }
-const browser = await chromium.launch({ headless: !HEADED, args: HEADED ? ['--enable-gpu-rasterization', '--ignore-gpu-blocklist', '--disable-frame-rate-limit=false'] : [] });
+const browser = await chromium.launch({ headless: !HEADED, args: HEADED ? ['--enable-gpu-rasterization', '--ignore-gpu-blocklist', ...(process.env.UNCAPPED ? ['--disable-frame-rate-limit', '--disable-gpu-vsync'] : [])] : [] });
 const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: HEADED ? 2 : 1 })).newPage();
 await page.addInitScript(() => {
   window.__longTasks = [];

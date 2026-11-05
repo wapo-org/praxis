@@ -26,7 +26,7 @@ try{
  await page.getByRole('button',{name:'Configure',exact:true}).click();await page.getByLabel('X-Api-Key',{exact:true}).fill('k-123');
  await page.getByRole('button',{name:'Add server',exact:true}).click();await page.getByRole('status').filter({hasText:'X1 Keyed Docs · Connected'}).waitFor();
  // Test connection performs real provider discovery + streamed tool/vision probe through local API.
- await page.goto(`${BASE}/settings`);await page.getByRole('button',{name:'Add provider',exact:true}).click();
+ await page.goto(`${BASE}/settings/providers`);await page.getByRole('button',{name:'Add provider',exact:true}).click();
  await page.getByRole('button',{name:'Provider preset',exact:true}).click();await page.getByRole('menuitem',{name:'Custom',exact:true}).press('Enter');
  await page.getByRole('textbox',{name:'Name',exact:true}).fill('X1 Provider');await page.getByRole('textbox',{name:'Base URL',exact:true}).fill('https://example.com/x1/v1');
  await page.getByLabel(/^Flavor/).selectOption('openAIChat');

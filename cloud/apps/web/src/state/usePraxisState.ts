@@ -75,7 +75,10 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     providerIdRef.current = id;
     setEditingProviderIdState(id);
   };
-  const [desktopSidebarOpen, setDesktopSidebarOpen] = React.useState<boolean>(false);
+  // Right from the first render, so the sidebar does not fly in on every load.
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = React.useState<boolean>(
+    () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1024px)').matches,
+  );
   const [plusTrayOpen, setPlusTrayOpen] = React.useState<boolean>(false);
   const [inlineModelSearchActive, setInlineModelSearchActive] = React.useState<boolean>(false);
 

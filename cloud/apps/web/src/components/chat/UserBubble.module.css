@@ -3,7 +3,6 @@
   flex-direction: column;
   align-items: flex-end;
   margin: var(--space-8) 0 var(--space-4);
-  animation: enter var(--duration-base) var(--ease-standard) both;
 }
 
 .turn:first-child {
@@ -52,15 +51,4 @@
   box-shadow: var(--shadow-3);
 }
 
-@keyframes enter {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .turn {
-    animation: none;
-  }
-}

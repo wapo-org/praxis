@@ -54,12 +54,13 @@ try {
   await settings.getByRole('button', { name: 'Sign out', exact: true }).waitFor();
   assert.equal(await page.getByRole('dialog', { name: 'Settings', exact: true }).count(), 0);
   assert.equal(await page.locator('.account-sign-out').count(), 0);
-  assert.equal(await settings.getByRole('button', { name: 'Close settings' }).textContent(), 'Done');
-  // 402 px: stacked navigation. Section list -> section -> Back -> next section.
-  await settings.getByRole('button', { name: 'Back', exact: true }).click(); await settings.getByRole('heading', { name: 'Settings', exact: true }).waitFor();
-  await settings.getByRole('button', { name: 'General', exact: true }).click(); await settings.getByText('Voice input', { exact: true }).waitFor();
-  await settings.getByRole('button', { name: 'Back', exact: true }).click();
-  await settings.getByRole('button', { name: 'Models & providers', exact: true }).click(); await settings.getByText('Image reading model', { exact: true }).waitFor();
+  assert.equal(await settings.getByRole('button', { name: 'Done' }).count(), 0, 'Settings has no Done button: the floating nav is the way out');
+  // 402 px: the same floating nav. Open it, pick a section, it closes on the page; its back row leaves Settings.
+  await page.getByTestId('nav-sidebar-button').click();
+  await page.getByTestId('app-sidebar').getByRole('button', { name: 'Close settings' }).waitFor();
+  await page.getByTestId('settings-nav-general').click(); await settings.getByText('Voice input', { exact: true }).waitFor();
+  await page.getByTestId('nav-sidebar-button').click();
+  await page.getByTestId('settings-nav-providers').click(); await settings.getByText('Image reading model', { exact: true }).waitFor();
   await settings.getByRole('button', { name: 'Add provider', exact: true }).click();
   await page.getByRole('button', { name: 'Provider preset', exact: true }).click();
   await page.getByRole('menuitem', { name: 'OpenAI', exact: true }).click();

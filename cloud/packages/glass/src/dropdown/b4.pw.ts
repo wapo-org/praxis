@@ -127,17 +127,21 @@ test('plain morph header, centered preview icons and staggered children respect 
   await page.getByTestId('position-top-start').click(); await page.getByRole('menuitem', { name: 'Recent Notes', exact: true }).click();
   await expect(page.locator('[data-dropdown-panel="recent"] [data-dropdown-child]').last()).toHaveCSS('opacity', '1');
 });
-test('elastic mouse pull moves the sheet and cancellation springs it back without dismissal', async ({ page }) => {
+test('a mouse drag past the edge stretches the glass and cancellation springs it back without dismissal', async ({ page }) => {
   await page.getByTestId('position-top-start').click();
-  const menu = page.getByRole('menu'); const box = await menu.boundingBox();
-  await page.mouse.move(box!.x + box!.width - 3, box!.y + 20); await page.mouse.down();
-  await page.mouse.move(box!.x + box!.width - 35, box!.y + 100, { steps: 8 });
-  await expect(async () => {
-    const y = await menu.evaluate(el => new DOMMatrix(getComputedStyle(el).transform).m42); expect(Math.abs(y)).toBeGreaterThan(5);
-  }).toPass();
+  const menu = page.getByRole('menu'); await page.waitForTimeout(400);
+  const surface = menu.locator('[data-glass-surface]').first(); const rest = (await surface.boundingBox())!;
+  await page.mouse.move(rest.x + rest.width - 3, rest.y + 20); await page.mouse.down();
+  // Inside it scrubs, and the glass rests.
+  await page.mouse.move(rest.x + rest.width - 35, rest.y + 60, { steps: 6 });
+  expect(Math.abs((await surface.boundingBox())!.height - rest.height)).toBeLessThanOrEqual(1);
+  // Past the bottom edge it stretches toward the pointer; the top stays.
+  await page.mouse.move(rest.x + rest.width - 35, rest.y + rest.height + 80, { steps: 8 });
+  await expect(async () => expect((await surface.boundingBox())!.height).toBeGreaterThan(rest.height + 5)).toPass();
+  expect(Math.abs((await surface.boundingBox())!.y - rest.y)).toBeLessThanOrEqual(1);
   await menu.dispatchEvent('pointercancel', { pointerType: 'mouse', pointerId: 1 }); await page.mouse.up();
   await expect(menu).toBeVisible();
-  await expect(async () => expect(Math.abs(await menu.evaluate(el => new DOMMatrix(getComputedStyle(el).transform).m42))).toBeLessThan(1)).toPass();
+  await expect(async () => expect(Math.abs((await surface.boundingBox())!.height - rest.height)).toBeLessThan(1)).toPass();
 });
 test('full lab fits 402 px, keeps position triggers in their own section and replica in viewport', async ({ page }) => {
   await page.goto('/lab/glass');

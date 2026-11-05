@@ -114,9 +114,10 @@
      are in material.ts; these are the paint, per theme. Tuned on warm paper. */
   --glass-regular-tint: rgba(252, 252, 250, 0.5);
   --glass-regular-blur: 20px;
-  --glass-thick-tint: rgba(252, 252, 250, 0.62);
+  --glass-thick-tint: rgba(252, 252, 250, 0.72);
+  --glass-menu-tint: rgba(252, 252, 250, 0.9); /* AA over any backdrop: dropdown.pw.ts */
   --glass-thick-blur: 32px;
-  --glass-clear-tint: rgba(255, 255, 255, 0.26);
+  --glass-clear-tint: rgba(255, 255, 255, 0.46);
   --glass-clear-blur: 12px;
   --glass-sheen-a: 0.21;
   --glass-inner: 0.4;
@@ -127,7 +128,7 @@
   --glass-regular-ambient: 0 8px 24px rgba(21, 20, 15, 0.07);
   --glass-thick-ambient: 0 20px 48px rgba(21, 20, 15, 0.12);
   --glass-clear-ambient: 0 2px 6px rgba(21, 20, 15, 0.05);
-  --glass-spot: rgba(18, 18, 26, 0.07);
+  --glass-spot: rgba(18, 18, 26, 0.04);
   --glass-fallback: #fbfbf9;
   /* Subtle paper depth so floating glass blurs something real (see DESIGN.md). */
   --paper-gradient:
@@ -165,8 +166,9 @@
   --shadow-3: 0 4px 12px rgba(0, 0, 0, 0.36), 0 20px 48px rgba(0, 0, 0, 0.5);
 
   --glass-regular-tint: rgba(26, 26, 24, 0.48);
-  --glass-thick-tint: rgba(24, 24, 22, 0.6);
-  --glass-clear-tint: rgba(40, 40, 37, 0.3);
+  --glass-thick-tint: rgba(24, 24, 22, 0.72);
+  --glass-menu-tint: rgba(24, 24, 22, 0.86);
+  --glass-clear-tint: rgba(40, 40, 37, 0.5);
   --glass-sheen-a: 0.07;
   --glass-inner: 0.5;
   --glass-rim: 0.32;
@@ -176,7 +178,7 @@
   --glass-regular-ambient: 0 8px 24px rgba(0, 0, 0, 0.36);
   --glass-thick-ambient: 0 20px 48px rgba(0, 0, 0, 0.5);
   --glass-clear-ambient: 0 2px 6px rgba(0, 0, 0, 0.3);
-  --glass-spot: rgba(255, 255, 255, 0.05);
+  --glass-spot: rgba(255, 255, 255, 0.04);
   --glass-fallback: #1a1a18;
   --paper-gradient:
     radial-gradient(70% 55% at 8% 12%, rgba(120, 104, 78, 0.16), transparent 70%),

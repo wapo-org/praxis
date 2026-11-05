@@ -125,7 +125,8 @@
   position: absolute;
   inset-inline: 0;
   bottom: calc(var(--space-16) + var(--space-8));
-  z-index: 25;
+  /* Below the dock, so an open tray covers it. */
+  z-index: 18;
   display: flex;
   justify-content: center;
   pointer-events: none;

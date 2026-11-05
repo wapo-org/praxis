@@ -36,7 +36,8 @@ try {
   // Settings is a routed page now: no dialog chrome, content in the main area.
   const settings = page.getByTestId('settings-page'); await settings.waitFor();
   assert.equal(await page.getByRole('dialog', { name: 'Settings', exact: true }).count(), 0);
-  const bounds = await settings.boundingBox(); assert(bounds.width <= 960 && bounds.height <= 900);
+  const bounds = await settings.boundingBox(); assert(bounds.height <= 900); // full-bleed; content sits in the column beside the floating nav
+  const heading = await settings.getByRole('heading', { level: 1 }).first().boundingBox(); assert(heading.width <= 720 && heading.x > sidebarBounds.x + sidebarBounds.width);
   await page.getByRole('button', { name: 'Models & providers', exact: true }).click(); await page.waitForURL('**/settings/providers');
   await page.getByRole('button', { name: 'Add provider', exact: true }).click(); await page.waitForURL('**/settings/providers/new');
   await page.reload(); await page.getByRole('heading', { name: 'Add provider', exact: true }).waitFor();

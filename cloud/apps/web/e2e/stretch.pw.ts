@@ -6,7 +6,7 @@ async function signIn(page: Page, path = '/') {
   await Promise.race([dev.waitFor(), page.getByTestId('chat-top-bar').waitFor(), page.getByTestId('settings-page').waitFor()]);
   if (await dev.isVisible().catch(() => false)) await dev.click();
   await Promise.race([page.getByTestId('chat-top-bar').waitFor(), page.getByTestId('settings-page').waitFor()]);
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(900); // anything still settling from sign-in has stopped
 }
 
 const surfaceOf = (locator: Locator) => locator.locator('xpath=ancestor-or-self::*[@data-glass-surface][1]');
@@ -147,7 +147,7 @@ test.describe('the stretch', () => {
   });
 
   test('a pull from a chat row stretches without selecting; a click selects', async ({ page }) => {
-    const row = page.locator('[data-sidebar-row-select]').last();
+    const row = page.locator('[data-sidebar-row-select]').nth(1); // the seeded list may run past the window
     const url = page.url();
     expect(await realClickAfterPull(page, row, sidebar(page))).toBeGreaterThan(8);
     expect(page.url()).toBe(url);
@@ -373,5 +373,65 @@ test.describe('settings takes over the floating nav', () => {
     await expect(page.getByTestId('settings-nav-skills')).toBeVisible();
     await page.getByTestId('settings-back').click();
     await expect(page.getByTestId('sidebar-new-chat')).toBeVisible();
+  });
+});
+
+test.describe('touch inside glass', () => {
+  test.skip(({ browserName }) => browserName !== 'chromium', 'Touch input is synthesised over CDP');
+  test.use({ hasTouch: true, viewport: { width: 1440, height: 900 } });
+
+  async function drag(page: Page, from: { x: number; y: number }, dx: number, dy: number, during: () => Promise<void>) {
+    const cdp = await page.context().newCDPSession(page);
+    const point = (x: number, y: number) => ({ touchPoints: [{ x, y }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', ...point(from.x, from.y) });
+    for (let i = 1; i <= 12; i++) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', ...point(from.x + (dx * i) / 12, from.y + (dy * i) / 12) });
+      await page.waitForTimeout(16);
+    }
+    await page.waitForTimeout(250);
+    await during();
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(900);
+  }
+  const manyChats = (page: Page) =>
+    page.addInitScript(() => {
+      const original = window.fetch;
+      window.fetch = async (input, init) => {
+        const response = await original(input, init);
+        if (!String(input instanceof Request ? input.url : input).includes('/v1/bootstrap') || !response.ok) return response;
+        const body = await response.json();
+        const template = body.chats[0];
+        body.chats = Array.from({ length: 60 }, (_, i) => ({ ...template, id: `${template.id}-${i}`, title: `Chat ${i + 1}`, pinned: false }));
+        return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      };
+    });
+  const listOf = (page: Page) => page.locator('[data-sidebar-row]').first().locator('xpath=ancestor::*[contains(@class, "list")][1]');
+
+  test('a vertical pan scrolls the list instead of stretching', async ({ page }) => {
+    await manyChats(page);
+    await signIn(page);
+    const surface = sidebar(page);
+    const rest = (await surface.boundingBox())!;
+    const list = listOf(page);
+    const box = (await list.boundingBox())!;
+    await drag(page, { x: box.x + 100, y: box.y + 300 }, 0, -200, async () => {
+      expect(Math.abs((await surface.boundingBox())!.height - rest.height)).toBeLessThanOrEqual(1);
+    });
+    expect(await list.evaluate((el) => el.scrollTop)).toBeGreaterThan(50);
+  });
+
+  test('sideways stretches, and a pull at the scroll limit stretches', async ({ page }) => {
+    await manyChats(page);
+    await signIn(page);
+    const surface = sidebar(page);
+    const rest = (await surface.boundingBox())!;
+    const box = (await listOf(page).boundingBox())!;
+    await drag(page, { x: box.x + 100, y: box.y + 300 }, 120, 0, async () => {
+      expect((await surface.boundingBox())!.width).toBeGreaterThan(rest.width + 5);
+    });
+    expect(await listOf(page).evaluate((el) => el.scrollTop)).toBe(0);
+    await drag(page, { x: box.x + 100, y: box.y + 200 }, 0, 160, async () => {
+      expect((await surface.boundingBox())!.height).toBeGreaterThan(rest.height + 5);
+    });
   });
 });

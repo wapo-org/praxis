@@ -4,7 +4,7 @@ import type React from 'react';
 import { displayTitle } from '../../lib/chatTitle';
 import { Edit, History, PanelLeft, Settings } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
-import { useIsNarrow } from '../shell/Sidebar';
+import { useIsNarrow } from '../shell/useIsNarrow';
 import { useContentShift } from '../shell/useContentShift';
 import styles from './ChatHeader.module.css';
 

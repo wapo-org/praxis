@@ -34,7 +34,7 @@
   gap: var(--space-2);
   min-height: var(--topbar-height);
   margin-top: var(--float-margin);
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-6);
 }
 
 .paneHeader[data-nested='true'] {
@@ -79,9 +79,6 @@
 }
 
 @media (max-width: 1023px) {
-  .pageShell {
-    padding-inline: var(--space-1);
-  }
   /* Clear of the floating button in the corner. */
   .paneHeader {
     padding-inline-start: calc(var(--control-md) + var(--float-margin) + var(--space-3));
