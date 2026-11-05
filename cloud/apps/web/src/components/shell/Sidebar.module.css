@@ -16,6 +16,11 @@
   left: var(--float-margin);
   z-index: 40;
   width: min(320px, calc(100vw - var(--float-margin) * 2));
+}
+
+/* The capped height lives on the surface itself: the elastic wrapper in
+   between makes percentage heights indefinite, so cap by max-height here. */
+.panel .surface {
   max-height: var(--popover-max-height);
 }
 

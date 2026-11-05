@@ -49,6 +49,7 @@ async function stretch(page, locator, sx, sy, mx, my) {
 }
 // 1. Sidebar
 await stretch(rec.page, rec.page.locator('[data-testid="app-sidebar"] [data-elastic-surface]'), 130, 200, 210, 240);
+await rec.page.waitForTimeout(150);
 // 2. Composer pill
 await stretch(rec.page, rec.page.getByTestId('composer-surface'), 200, 24, 300, 60);
 // 3. A glass button (top-bar settings cluster button area)
