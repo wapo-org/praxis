@@ -9,6 +9,7 @@
  *    sidebar with a 20 px radius and a 32 px bezel) stays a full ring instead of
  *    collapsing to a thin band.
  *  - Maps are built at rest size only, never during a gesture, and cached.
+ *  - Maps are far smaller than the source's: see PIXEL_BUDGET.
  */
 import type { GlassMaterial } from './material';
 
@@ -42,7 +43,7 @@ export interface MapSpec {
   radius: number;
   bezel: number;
   material: GlassMaterial;
-  /** Total map pixel budget before the render downsamples. */
+  /** Map pixel budget before the render downsamples. See PIXEL_BUDGET. */
   pixelBudget?: number;
 }
 
@@ -158,6 +159,17 @@ function frostMask(canvas: HTMLCanvasElement, mw: number, mh: number): string | 
   return canvas.toDataURL('image/png');
 }
 
+/**
+ * Chromium re-uploads feImage textures on every frame the lens redraws, so map
+ * size is the lens's main cost: measured headed on an M4 Pro at 120 Hz, a sidebar
+ * at the source's 1.1M budget drops scrolling to 60 Hz; at this budget it holds 120.
+ * Displacement is smooth and bilinear-filtered back up, so it loses nothing visible;
+ * the crisp 1 px rim on big surfaces comes from the CSS finish.
+ */
+export const PIXEL_BUDGET = 60_000;
+/** The frost mask is one smooth radial gradient, so it never needs more than this. */
+const MASK_SIZE = 96;
+
 /** Bounded: oldest geometry out first. Sizes repeat, so this rarely evicts. */
 const CACHE_LIMIT = 48;
 const cache = new Map<string, GeneratedMaps>();
@@ -175,7 +187,7 @@ export function generateMaps(spec: MapSpec): GeneratedMaps | null {
   const hit = cache.get(key);
   if (hit) return hit;
   const dpr = Math.min(2, typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
-  const budget = spec.pixelBudget ?? 1_100_000;
+  const budget = spec.pixelBudget ?? PIXEL_BUDGET;
   const raw = spec.width * spec.height * dpr * dpr;
   const eff = raw > budget ? dpr * Math.sqrt(budget / raw) : dpr;
   const mw = Math.max(2, Math.round(spec.width * eff));
@@ -194,7 +206,7 @@ export function generateMaps(spec: MapSpec): GeneratedMaps | null {
   renderSpecular(image.data, mw, mh, radius, 2, (-60 * Math.PI) / 180, eff);
   ctx.putImageData(image, 0, 0);
   const specularUrl = canvas.toDataURL('image/png');
-  const frostMaskUrl = frostMask(canvas, mw, mh);
+  const frostMaskUrl = frostMask(canvas, Math.min(mw, MASK_SIZE), Math.min(mh, MASK_SIZE));
   if (!displacementUrl || !specularUrl || !frostMaskUrl) return null;
   const maps = { width: spec.width, height: spec.height, displacementUrl, specularUrl, frostMaskUrl };
   if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value as string);

@@ -42,7 +42,6 @@ function routeFade<T extends MotionFrame | HTMLMotionProps<'div'>['exit'] | HTML
   return { ...rest, '--glass-fade': opacity } as unknown as T;
 }
 
-const LARGE_AREA = 160_000;
 const RESIZE_DEBOUNCE_MS = 120;
 
 /** Built at rest size and reused; never rebuilt during a gesture (transforms do not resize). */
@@ -84,10 +83,8 @@ function useLensMaps(rootRef: React.RefObject<HTMLElement | null>, material: Gla
         return;
       }
       first = false;
-      // Big surfaces build off the first paint; small ones are a millisecond.
-      if (el.offsetWidth * el.offsetHeight > LARGE_AREA && 'requestIdleCallback' in window) {
-        window.requestIdleCallback(build, { timeout: 250 });
-      } else build();
+      // Never inside the observer callback: that is in the frame, and encoding takes milliseconds.
+      timer = setTimeout(build, 0);
     });
     observer.observe(el);
     return () => {

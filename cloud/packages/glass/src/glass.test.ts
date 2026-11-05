@@ -58,3 +58,26 @@ describe('@praxis/glass design system', () => {
     }
   });
 });
+
+describe('every GlassSurface stretches', () => {
+  const root = join(here, '../../..');
+  const uses = [...files(join(root, 'apps/web/src')), ...files(here)].filter(
+    (file) => /\.tsx$/.test(file) && !/\.test\.|\/lab\//.test(file) && /<GlassSurface\b/.test(readFileSync(file, 'utf8')),
+  );
+  it('knows every use, so a new one has to be looked at', () => {
+    expect(uses.map((file) => file.slice(file.lastIndexOf('/') + 1)).sort()).toEqual([
+      'ChatHeader.tsx',
+      'Composer.tsx',
+      'ConsentPopover.tsx',
+      'Content.tsx',
+      'PlusTray.tsx',
+      'Sidebar.tsx',
+      'SubContent.tsx',
+      'Trigger.tsx',
+      'primitives.tsx',
+    ]);
+  });
+  it('never turns the stretch off', () => {
+    for (const file of uses) expect(readFileSync(file, 'utf8'), file).not.toMatch(/<GlassSurface[^>]*\bstretch=\{false\}/);
+  });
+});
