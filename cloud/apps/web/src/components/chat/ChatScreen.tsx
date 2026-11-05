@@ -1,11 +1,14 @@
 import React from 'react';
 import type { Message } from '@praxis/protocol';
-import { GlassChip, ProgressiveBlurScrim } from '@praxis/glass';
+import { GlassChip, PANEL, popIn, ProgressiveBlurScrim, SPRING } from '@praxis/glass';
+import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowDown } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import { AgentActivityView } from './AgentActivityView';
 import { AgentMessageView } from './AgentMessageView';
+import { useContentShift } from '../shell/useContentShift';
 import { ChatHeader } from './ChatHeader';
+import { useMessageArrival } from './chatMotion';
 import { Composer } from './Composer';
 import { EmptyState } from './EmptyState';
 import { extractMessageToolSteps } from './messageTools';
@@ -34,6 +37,8 @@ export function ChatScreen() {
   } = usePraxisStore();
 
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
+  const shift = useContentShift();
+  const columnRef = React.useRef<HTMLDivElement | null>(null);
   const [showJumpToLatest, setShowJumpToLatest] = React.useState(false);
 
   const handleScroll = () => {
@@ -65,14 +70,21 @@ export function ChatScreen() {
     return last ? messageText(last, '\n') : '';
   };
   const error = errorBanner || activeLiveRun?.run.error;
+  const liveRunId = hasLiveStreamingContent ? activeLiveRun?.run.id : undefined;
+  const arrivalKeys = React.useMemo(() => {
+    const keys = activeMessages.map((m) => (m.role === 'user' ? `m:${m.id}` : `r:${m.runId ?? m.id}`));
+    if (liveRunId) keys.push(`r:${liveRunId}`);
+    return keys;
+  }, [activeMessages, liveRunId]);
+  useMessageArrival(columnRef, activeChat?.id, arrivalKeys);
 
   return (
     <main data-testid="chat-screen" className={styles.screen}>
-      <ProgressiveBlurScrim edge="top" height={72} />
+      <ProgressiveBlurScrim edge="top" height={48} />
       <ChatHeader />
 
       <div ref={scrollRef} data-testid="chat-scroll-viewport" onScroll={handleScroll} className={styles.viewport}>
-        <div className={styles.column} data-empty={isEmpty}>
+        <motion.div ref={columnRef} data-chat-column="" className={styles.column} data-empty={isEmpty} initial={false} animate={{ x: shift }} transition={PANEL}>
           {error ? (
             <div role="alert" data-testid="chat-error-banner" className={styles.error}>
               <span>{error}</span>
@@ -95,7 +107,7 @@ export function ChatScreen() {
               const text = messageText(msg, '\n\n');
               const live = activeLiveRun?.run.id === msg.runId ? activeLiveRun : undefined;
               return (
-                <div key={msg.id} data-testid="assistant-turn" className={styles.assistantTurn}>
+                <div key={msg.id} data-testid="assistant-turn" data-message-key={`r:${msg.runId ?? msg.id}`} className={styles.assistantTurn}>
                   {steps.length > 0 || hasReasoning ? (
                     <MessageActivity message={msg} steps={steps} liveRun={live?.run} liveSteps={live?.toolSteps} />
                   ) : null}
@@ -114,7 +126,7 @@ export function ChatScreen() {
           )}
 
           {hasLiveStreamingContent && activeLiveRun ? (
-            <div data-testid="live-run-streaming-turn" className={styles.assistantTurn}>
+            <div data-testid="live-run-streaming-turn" data-message-key={`r:${activeLiveRun.run.id}`} className={styles.assistantTurn}>
               <AgentActivityView
                 startedAt={activeLiveRun.run.createdAt}
                 finishedAt={activeLiveRun.run.updatedAt}
@@ -141,26 +153,36 @@ export function ChatScreen() {
               ) : null}
             </div>
           ) : null}
-        </div>
+        </motion.div>
       </div>
 
-      <ProgressiveBlurScrim edge="bottom" height={112} />
+      <ProgressiveBlurScrim edge="bottom" height={64} />
 
-      {showJumpToLatest ? (
-        <div className={styles.jump}>
-          <GlassChip
-            data-testid="jump-to-latest-button"
-            icon={<ArrowDown size={16} />}
-            onClick={() => scrollToBottom('smooth')}
-          >
-            Jump to latest
-          </GlassChip>
-        </div>
-      ) : null}
+      <div className={styles.jump}>
+        <AnimatePresence initial={false}>
+          {showJumpToLatest ? (
+            // `--glass-fade` rather than opacity: opacity here would blank the lens inside.
+            <motion.div
+              initial={{ scale: popIn.initial.scale, y: 8, '--glass-fade': 0 } as never}
+              animate={{ scale: 1, y: 0, '--glass-fade': 1 } as never}
+              exit={{ scale: popIn.exit.scale, y: 8, '--glass-fade': 0 } as never}
+              transition={SPRING}
+            >
+              <GlassChip
+                data-testid="jump-to-latest-button"
+                icon={<ArrowDown size={16} />}
+                onClick={() => scrollToBottom('smooth')}
+              >
+                Jump to latest
+              </GlassChip>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
 
-      <div className={styles.dock}>
+      <motion.div className={styles.dock} initial={false} animate={{ x: shift }} transition={PANEL}>
         <Composer />
-      </div>
+      </motion.div>
     </main>
   );
 }

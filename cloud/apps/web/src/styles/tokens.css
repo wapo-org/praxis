@@ -110,21 +110,31 @@
   --duration-ambient: 1600ms;
   --ease-ambient: cubic-bezier(0.45, 0, 0.55, 1);
 
-  /* Glass material recipes (packages/glass/src/glass.module.css) */
-  --glass-regular-tint: rgba(252, 252, 250, 0.72);
+  /* Glass material (packages/glass/src/glass.module.css, material.ts). The optics
+     are in material.ts; these are the paint, per theme. Tuned on warm paper. */
+  --glass-regular-tint: rgba(252, 252, 250, 0.5);
   --glass-regular-blur: 20px;
-  --glass-thick-tint: rgba(252, 252, 250, 0.9);
+  --glass-thick-tint: rgba(252, 252, 250, 0.62);
   --glass-thick-blur: 32px;
-  --glass-clear-tint: rgba(255, 255, 255, 0.42);
+  --glass-clear-tint: rgba(255, 255, 255, 0.26);
   --glass-clear-blur: 12px;
-  --glass-saturate: 180%;
-  --glass-rim-top: rgba(255, 255, 255, 0.95);
-  --glass-rim-bottom: rgba(255, 255, 255, 0.35);
-  --glass-edge: rgba(21, 20, 15, 0.09);
-  --glass-highlight: rgba(255, 255, 255, 0.7);
+  --glass-sheen-a: 0.21;
+  --glass-inner: 0.4;
+  --glass-rim: 0.9;
+  --glass-border: 0.7;
+  --glass-shadow: 1;
+  --glass-shadow-rgb: 21, 20, 15;
+  --glass-regular-ambient: 0 8px 24px rgba(21, 20, 15, 0.07);
+  --glass-thick-ambient: 0 20px 48px rgba(21, 20, 15, 0.12);
+  --glass-clear-ambient: 0 2px 6px rgba(21, 20, 15, 0.05);
+  --glass-spot: rgba(18, 18, 26, 0.07);
   --glass-fallback: #fbfbf9;
   /* Subtle paper depth so floating glass blurs something real (see DESIGN.md). */
-  --paper-gradient: linear-gradient(180deg, #fdfdfb 0%, var(--color-paper) 45%, #f5f4ef 100%);
+  --paper-gradient:
+    radial-gradient(70% 55% at 8% 12%, rgba(214, 196, 164, 0.22), transparent 70%),
+    radial-gradient(55% 60% at 96% 90%, rgba(176, 186, 170, 0.2), transparent 70%),
+    radial-gradient(45% 40% at 62% 42%, rgba(226, 214, 200, 0.14), transparent 75%),
+    var(--color-paper);
 
   color-scheme: light;
 }
@@ -154,16 +164,25 @@
   --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.36);
   --shadow-3: 0 4px 12px rgba(0, 0, 0, 0.36), 0 20px 48px rgba(0, 0, 0, 0.5);
 
-  --glass-regular-tint: rgba(28, 28, 26, 0.68);
-  --glass-thick-tint: rgba(26, 26, 24, 0.86);
-  --glass-clear-tint: rgba(40, 40, 37, 0.44);
-  --glass-saturate: 150%;
-  --glass-rim-top: rgba(255, 255, 255, 0.16);
-  --glass-rim-bottom: rgba(255, 255, 255, 0.04);
-  --glass-edge: rgba(0, 0, 0, 0.5);
-  --glass-highlight: rgba(255, 255, 255, 0.06);
+  --glass-regular-tint: rgba(26, 26, 24, 0.48);
+  --glass-thick-tint: rgba(24, 24, 22, 0.6);
+  --glass-clear-tint: rgba(40, 40, 37, 0.3);
+  --glass-sheen-a: 0.07;
+  --glass-inner: 0.5;
+  --glass-rim: 0.32;
+  --glass-border: 0.55;
+  --glass-shadow: 1.8;
+  --glass-shadow-rgb: 0, 0, 0;
+  --glass-regular-ambient: 0 8px 24px rgba(0, 0, 0, 0.36);
+  --glass-thick-ambient: 0 20px 48px rgba(0, 0, 0, 0.5);
+  --glass-clear-ambient: 0 2px 6px rgba(0, 0, 0, 0.3);
+  --glass-spot: rgba(255, 255, 255, 0.05);
   --glass-fallback: #1a1a18;
-  --paper-gradient: linear-gradient(180deg, #101010 0%, var(--color-paper) 45%, #080808 100%);
+  --paper-gradient:
+    radial-gradient(70% 55% at 8% 12%, rgba(120, 104, 78, 0.16), transparent 70%),
+    radial-gradient(55% 60% at 96% 90%, rgba(78, 92, 84, 0.15), transparent 70%),
+    radial-gradient(45% 40% at 62% 42%, rgba(90, 80, 70, 0.08), transparent 75%),
+    var(--color-paper);
 
   color-scheme: dark;
 }

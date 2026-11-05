@@ -1,5 +1,8 @@
+import { SNAP, SPRING } from '@praxis/glass';
+import { motion } from 'framer-motion';
 import React from 'react';
 import { ChevronRight } from '../../lib/icons';
+import { glideFollowing } from './chatMotion';
 import { stoppedLabel, useActivityClock } from './useActivityClock';
 
 import styles from './Activity.module.css';
@@ -39,6 +42,17 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
   const [elicitationValues, setElicitationValues] = React.useState<
     Record<string, Record<string, unknown>>
   >({});
+
+  // The height change happens once in layout; what follows glides there (FLIP).
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const height = React.useRef(0);
+  React.useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const next = el.offsetHeight;
+    if (height.current) glideFollowing(el, next - height.current);
+    height.current = next;
+  }, [expanded, openStepIds]);
 
   const worked = useActivityClock(isRunning, startedAt, finishedAt);
   const hasActivity =
@@ -103,7 +117,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
   };
 
   return (
-    <div data-testid="agent-activity-view" className={styles.root}>
+    <div ref={rootRef} data-testid="agent-activity-view" className={styles.root}>
       {/* Level 1: plain disclosure header, like iOS. */}
       <button
         type="button"
@@ -113,9 +127,9 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
         onClick={() => setExpanded((v) => !v)}
         className={styles.header}
       >
-        <span className={styles.chevron} data-open={expanded} aria-hidden="true">
+        <motion.span className={styles.chevron} aria-hidden="true" initial={false} animate={{ rotate: expanded ? 90 : 0 }} transition={SNAP}>
           <ChevronRight size={16} />
-        </span>
+        </motion.span>
         <span className={`${styles.label} ${label === 'Currently working…' ? 'praxis-shimmer-text' : ''}`}>
           {label}
         </span>
@@ -124,16 +138,18 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
 
       {/* Level 2: one line per call; level 3: details inside the line. */}
       {expanded && (
-        <ActivityDetails
-          reasoningBlocks={reasoningBlocks}
-          visionActivities={visionActivities}
-          compactions={compactions}
-          toolSteps={toolSteps}
-          openStepIds={openStepIds}
-          copiedStepId={copiedStepId}
-          toggleStepDetail={toggleStepDetail}
-          copyText={copyText}
-        />
+        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
+          <ActivityDetails
+            reasoningBlocks={reasoningBlocks}
+            visionActivities={visionActivities}
+            compactions={compactions}
+            toolSteps={toolSteps}
+            openStepIds={openStepIds}
+            copiedStepId={copiedStepId}
+            toggleStepDetail={toggleStepDetail}
+            copyText={copyText}
+          />
+        </motion.div>
       )}
 
       {/* Always visible, even folded: what needs the user. */}

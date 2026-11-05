@@ -24,6 +24,13 @@ body,
   text-rendering: optimizeLegibility;
 }
 
+.praxis-page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+}
+
 button,
 input,
 textarea,

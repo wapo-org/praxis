@@ -1,15 +1,14 @@
-import { GlassDropdown, GlassSurface, usePress } from '@praxis/glass';
-import type { Chat } from '@praxis/protocol';
-import { motion } from 'framer-motion';
+import { GlassSurface, PANEL, sidebarSlide, usePreset, useReducedMotion } from '@praxis/glass';
+import { AnimatePresence, motion } from 'framer-motion';
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { useAccount } from '../../lib/account';
-import { groupChats } from '../../lib/chatGroups';
-import { MoreHorizontal, PanelLeft, Pencil, Pin, Search, Settings, Edit, Trash2 } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
+import { isSettingsSheet } from '../screens/settingsNav';
+import { SidebarChats } from './SidebarChats';
+import { SidebarSettings } from './SidebarSettings';
 import styles from './Sidebar.module.css';
 
-function useIsNarrow() {
+export function useIsNarrow() {
   const query = '(max-width: 1023px)';
   const [narrow, setNarrow] = React.useState(
     () => typeof window !== 'undefined' && window.matchMedia(query).matches,
@@ -25,137 +24,98 @@ function useIsNarrow() {
 }
 
 /**
- * Floating liquid-glass sidebar (desktop ≥1024 px docked; narrow screens get
- * the same content as a floating panel). It floats over the full-bleed chat
- * layer, so scrolling messages pass behind its glass.
+ * The floating liquid-glass navigation (docked at ≥1024 px; on narrow screens the
+ * same panel floats over the page). One surface for the whole app: chats normally,
+ * the settings sections while Settings is open, so opening Settings changes this
+ * panel's content rather than adding a second rail. It sits over the full-bleed
+ * content layer and is always the window height minus its margins.
  */
-export function Sidebar() {
+export function Sidebar({ devTools = false }: { devTools?: boolean }) {
   const store = usePraxisStore();
   const narrow = useIsNarrow();
-  if (!store.desktopSidebarOpen) return null;
-  if (narrow) return <SidebarPanel onClose={() => store.setDesktopSidebarOpen(false)} />;
+  const inSettings = isSettingsSheet(store.activeSheet);
+  const atSettingsRoot = store.activeSheet === 'settings';
+  // Entering Settings reveals its navigation; on narrow screens only at the root,
+  // because a section link should land on its page.
+  React.useEffect(() => {
+    if (inSettings && (!narrow || atSettingsRoot)) store.setDesktopSidebarOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inSettings, atSettingsRoot, narrow]);
+  const close = () => store.setDesktopSidebarOpen(false);
   return (
-    <aside className={styles.docked} aria-label="Conversation history" data-testid="app-sidebar">
-      <SidebarBody onClose={() => store.setDesktopSidebarOpen(false)} />
-    </aside>
+    <AnimatePresence initial={false}>
+      {!store.desktopSidebarOpen ? null : narrow ? (
+        <SidebarPanel key="panel" onClose={close} devTools={devTools} />
+      ) : (
+        <Docked key="docked" onClose={close} devTools={devTools} />
+      )}
+    </AnimatePresence>
   );
 }
 
-function SidebarBody({
-  onClose,
-  onNavigate,
-}: {
-  onClose?: () => void;
-  /** Narrow panel only: close after navigating. */
-  onNavigate?: () => void;
-}) {
-  const store = usePraxisStore();
-  const account = useAccount();
-  const [query, setQuery] = React.useState('');
-  const searchRef = React.useRef<HTMLInputElement>(null);
-  const groups = groupChats(store.chats, query, new Date());
-  const pressProps = usePress();
+function Docked({ onClose, devTools }: { onClose: () => void; devTools: boolean }) {
+  const slide = usePreset(sidebarSlide);
+  return (
+    <motion.aside
+      {...slide}
+      className={styles.docked}
+      aria-label="Conversation history"
+      data-testid="app-sidebar"
+    >
+      <SidebarBody onClose={onClose} devTools={devTools} />
+    </motion.aside>
+  );
+}
 
+function SidebarBody({ onClose, onNavigate, devTools }: { onClose?: () => void; onNavigate?: () => void; devTools: boolean }) {
+  const store = usePraxisStore();
+  const reduced = useReducedMotion();
+  const sheet = store.activeSheet;
+  // Chats sit to the left of Settings: a push forward, a push back.
+  const pane = (side: 1 | -1) =>
+    reduced
+      ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: PANEL }
+      : {
+          initial: { opacity: 0, x: 44 * side },
+          animate: { opacity: 1, x: 0 },
+          exit: { opacity: 0, x: 44 * side },
+          transition: PANEL,
+        };
   return (
     <GlassSurface material="thick" radius={20} className={styles.surface}>
-      <div className={styles.header}>
-        <span className={styles.brand}>Praxis</span>
-        <button
-          type="button"
-          className={styles.iconButton}
-          aria-label="Close sidebar"
-          data-testid="sidebar-toggle"
-          onClick={() => {
-            store.setDesktopSidebarOpen(false);
-            onClose?.();
-          }}
-        >
-          <PanelLeft size={18} />
-        </button>
-      </div>
-
-      <nav className={styles.actions}>
-        <motion.button
-          type="button"
-          className={styles.action}
-          data-testid="sidebar-new-chat"
-          onClick={() => {
-            store.startNewConversation();
-            onNavigate?.();
-          }}
-          {...pressProps}
-        >
-          <Edit size={18} />
-          New chat
-        </motion.button>
-        <label className={styles.search}>
-          <Search size={18} />
-          <input
-            ref={searchRef}
-            type="search"
-            aria-label="Search conversations"
-            placeholder="Search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </label>
-      </nav>
-
-      <div className={styles.list}>
-        {groups.length === 0 ? (
-          <p className={styles.empty}>{query ? 'No chats match your search.' : 'No conversations yet.'}</p>
+      <AnimatePresence initial={false}>
+        {isSettingsSheet(sheet) ? (
+          <motion.div key="settings" className={styles.pane} {...pane(1)}>
+            <SidebarSettings sheet={sheet} onNavigate={onNavigate} devTools={devTools} />
+          </motion.div>
         ) : (
-          groups.map(({ group, chats }) => (
-            <section key={group} aria-label={group} className={styles.group}>
-              <h2 className={styles.groupTitle}>{group}</h2>
-              {chats.map((chat) => (
-                <ChatRow key={chat.id} chat={chat} active={store.activeChatId === chat.id} onNavigate={onNavigate} />
-              ))}
-            </section>
-          ))
+          <motion.div key="chats" className={styles.pane} {...pane(-1)}>
+            <SidebarChats onClose={onClose} onNavigate={onNavigate} />
+          </motion.div>
         )}
-      </div>
-
-      <footer className={styles.footer}>
-        <motion.button
-          type="button"
-          className={styles.account}
-          data-testid="sidebar-account"
-          onClick={() => {
-            store.setActiveSheet('settings');
-            onNavigate?.();
-          }}
-          {...pressProps}
-        >
-          <span className={styles.avatar} aria-hidden="true">
-            {(account?.userId ?? 'P').slice(0, 1).toUpperCase()}
-          </span>
-          <span className={styles.accountCopy}>
-            <span className={styles.accountName}>{account?.userId ?? 'Praxis'}</span>
-            <span className={styles.accountDetail}>Settings</span>
-          </span>
-          <Settings size={18} />
-        </motion.button>
-      </footer>
+      </AnimatePresence>
     </GlassSurface>
   );
 }
 
 /**
- * Narrow-screen history: the sidebar content as a floating glass panel
- * anchored top-left. No scrim, no modal trap; Escape or outside click closes
- * and focus returns to the History button.
+ * Narrow screens: the panel floats over the page, the same model as desktop. No
+ * scrim, no modal trap; Escape or an outside press closes it and focus returns to
+ * the button that opened it.
  */
-function SidebarPanel({ onClose }: { onClose: () => void }) {
+function SidebarPanel({ onClose, devTools }: { onClose: () => void; devTools: boolean }) {
   const asideRef = React.useRef<HTMLElement>(null);
   const close = React.useRef(onClose);
   close.current = onClose;
+  const slide = usePreset(sidebarSlide);
 
   React.useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     asideRef.current?.querySelector<HTMLInputElement>('input[aria-label="Search conversations"]')?.focus({ preventScroll: true });
     const onPointerDown = (event: PointerEvent) => {
       if (asideRef.current?.contains(event.target as Node)) return;
+      // Menus portal to the body: a press inside one is not an outside press.
+      if ((event.target as Element).closest?.('.praxis-glass-dropdown-content')) return;
       close.current();
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -170,141 +130,23 @@ function SidebarPanel({ onClose }: { onClose: () => void }) {
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
       document
-        .querySelector<HTMLElement>('[data-testid="nav-history-button"]')
+        .querySelector<HTMLElement>('[data-testid="nav-history-button"], [data-testid="nav-sidebar-button"]')
         ?.focus({ preventScroll: true });
       if (previous?.isConnected && previous !== document.body) previous.focus({ preventScroll: true });
     };
   }, []);
 
   return createPortal(
-    <aside
+    <motion.aside
+      {...slide}
       ref={asideRef}
       className={styles.panel}
       aria-label="Conversation history"
       data-testid="app-sidebar"
       data-variant="panel"
     >
-      <SidebarBody onClose={onClose} onNavigate={onClose} />
-    </aside>,
+      <SidebarBody onClose={onClose} onNavigate={onClose} devTools={devTools} />
+    </motion.aside>,
     document.body,
-  );
-}
-
-function ChatRow({
-  chat,
-  active,
-  onNavigate,
-}: {
-  chat: Chat;
-  active: boolean;
-  onNavigate?: () => void;
-}) {
-  const store = usePraxisStore();
-  const [renaming, setRenaming] = React.useState(false);
-  const [title, setTitle] = React.useState(chat.title);
-  const [error, setError] = React.useState('');
-  const run = (task: () => Promise<unknown>) =>
-    void task().catch((err: unknown) =>
-      setError(err instanceof Error ? err.message : 'Something went wrong'),
-    );
-
-  if (renaming)
-    return (
-      <form
-        className={styles.rename}
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!title.trim()) return;
-          run(async () => {
-            await store.renameChat(chat.id, title.trim());
-            setRenaming(false);
-          });
-        }}
-      >
-        <input
-          aria-label="Chat title"
-          autoFocus
-          value={title}
-          maxLength={200}
-          onChange={(event) => setTitle(event.target.value)}
-          onBlur={() => setRenaming(false)}
-          onKeyDown={(event) => event.key === 'Escape' && setRenaming(false)}
-        />
-      </form>
-    );
-
-  // Right-click opens the row actions, matching the old history sheet.
-  const openRowMenu = (row: HTMLElement | null) =>
-    row?.querySelector<HTMLButtonElement>(`[aria-label^="Actions for"]`)?.click();
-  return (
-    <div
-      className={styles.row}
-      data-active={active}
-      data-sidebar-row=""
-      onContextMenu={(event) => {
-        event.preventDefault();
-        openRowMenu(event.currentTarget);
-      }}
-      onKeyDown={(event) => {
-        if (event.shiftKey && event.key === 'F10') {
-          event.preventDefault();
-          openRowMenu(event.currentTarget);
-        }
-      }}
-    >
-      <button
-        type="button"
-        className={styles.rowSelect}
-        data-sidebar-row-select=""
-        aria-current={active ? 'page' : undefined}
-        title={chat.title || 'New chat'}
-        onClick={() => {
-          run(() => store.selectChat(chat.id));
-          onNavigate?.();
-        }}
-      >
-        <span className={styles.rowTitle}>{chat.title || 'New chat'}</span>
-        {chat.pinned ? <Pin size={16} aria-label="Pinned" className={styles.rowPin} /> : null}
-      </button>
-      <span className={styles.rowMenuWrap}>
-        <GlassDropdown portal align="start">
-          <GlassDropdown.Trigger asChild>
-            <button type="button" className={styles.rowMenu} aria-label={`Actions for ${chat.title}`}>
-              <MoreHorizontal size={16} />
-            </button>
-          </GlassDropdown.Trigger>
-          <GlassDropdown.Content minWidth={180}>
-            <GlassDropdown.Item
-              icon={<Pin size={16} />}
-              onSelect={() => run(() => store.togglePinChat(chat.id))}
-            >
-              {chat.pinned ? 'Unpin' : 'Pin'}
-            </GlassDropdown.Item>
-            <GlassDropdown.Item
-              icon={<Pencil size={16} />}
-              onSelect={() => {
-                setTitle(chat.title);
-                setRenaming(true);
-              }}
-            >
-              Rename
-            </GlassDropdown.Item>
-            <GlassDropdown.Separator variant="section" />
-            <GlassDropdown.Item
-              tone="destructive"
-              icon={<Trash2 size={16} />}
-              onSelect={() => run(() => store.deleteChats([chat.id]))}
-            >
-              Delete
-            </GlassDropdown.Item>
-          </GlassDropdown.Content>
-        </GlassDropdown>
-      </span>
-      {error ? (
-        <p role="alert" className={styles.rowError}>
-          {error}
-        </p>
-      ) : null}
-    </div>
   );
 }

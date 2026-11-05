@@ -1,6 +1,9 @@
+import { GlassIconButton, pageChange, PANEL, slideIn, usePreset, useReducedMotion } from '@praxis/glass';
+import { AnimatePresence, motion } from 'framer-motion';
 import React from 'react';
-import { ChevronRight, FlaskConical, Link, Settings, Shield, Sparkles, Star, User } from '../../lib/icons';
-import { usePraxisStore, type ActiveSheet } from '../../state/store.js';
+import { PanelLeft } from '../../lib/icons';
+import { usePraxisStore } from '../../state/store.js';
+import { useContentShift } from '../shell/useContentShift';
 import {
   ConnectorAddURL,
   ConnectorPasteConfig,
@@ -21,41 +24,9 @@ import {
 import styles from './SettingsPage.module.css';
 import { SkillBrowser, SkillImport, SkillsScreen } from './SkillsScreen.js';
 import { VoiceSettingsScreen } from './VoiceSettingsScreen.js';
+import { settingsDepth, settingsPage, type SettingsSheet } from './settingsNav';
 
-export type SettingsSheet = Exclude<NonNullable<ActiveSheet>, 'history'>;
-type Section = 'general' | 'providers' | 'connectors' | 'skills' | 'consents' | 'account' | 'developer';
-
-const NAV: Array<{ sheet: Section; title: string; Icon: typeof Settings; devOnly?: boolean }> = [
-  { sheet: 'general', title: 'General', Icon: Settings },
-  { sheet: 'providers', title: 'Models & providers', Icon: Star },
-  { sheet: 'connectors', title: 'Connectors', Icon: Link },
-  { sheet: 'skills', title: 'Skills', Icon: Sparkles },
-  { sheet: 'consents', title: 'Data & privacy', Icon: Shield },
-  { sheet: 'account', title: 'Account', Icon: User },
-  { sheet: 'developer', title: 'Developer', Icon: FlaskConical, devOnly: true },
-];
-
-/** Every page: which section it belongs to, what its back button returns to, and how deep it sits. */
-const PAGES: Record<Exclude<SettingsSheet, 'settings'>, { title: string; section: Section; parent?: SettingsSheet }> = {
-  general: { title: 'General', section: 'general' },
-  'voice-settings': { title: 'Voice input', section: 'general', parent: 'general' },
-  providers: { title: 'Models & providers', section: 'providers' },
-  'provider-editor': { title: 'Provider', section: 'providers', parent: 'providers' },
-  'image-reader': { title: 'Image reading model', section: 'providers', parent: 'providers' },
-  connectors: { title: 'Connectors', section: 'connectors' },
-  'connector-add-url': { title: 'Add by URL', section: 'connectors', parent: 'connectors' },
-  'connector-paste-config': { title: 'Paste a config', section: 'connectors', parent: 'connectors' },
-  'connector-registry': { title: 'MCP registry', section: 'connectors', parent: 'connectors' },
-  skills: { title: 'Skills', section: 'skills' },
-  'skill-import': { title: 'Import skill', section: 'skills', parent: 'skills' },
-  'skill-browser': { title: 'Browse skills', section: 'skills', parent: 'skills' },
-  consents: { title: 'Data & privacy', section: 'consents' },
-  account: { title: 'Account', section: 'account' },
-  developer: { title: 'Developer', section: 'developer' },
-};
-
-const depth = (sheet: SettingsSheet) =>
-  sheet === 'settings' ? 0 : PAGES[sheet].parent ? 2 : 1;
+export type { SettingsSheet } from './settingsNav';
 
 function PageContent({ sheet, onOpenGlassLab }: { sheet: SettingsSheet; onOpenGlassLab?: () => void }) {
   const store = usePraxisStore();
@@ -98,9 +69,9 @@ function PageContent({ sheet, onOpenGlassLab }: { sheet: SettingsSheet; onOpenGl
 }
 
 /**
- * The Settings page: a normal routed page in the main content area (no modal,
- * no scrim). The bare /settings route shows General beside the rail on desktop
- * and the section list on narrow screens; which one is visible is CSS only.
+ * The Settings content: a normal routed page in the space beside the floating
+ * navigation, which Settings has taken over (see shell/Sidebar). No modal, no
+ * second rail, no close button: the way out is the panel's back row.
  */
 export function SettingsPage({
   sheet,
@@ -110,78 +81,55 @@ export function SettingsPage({
   onOpenGlassLab?: () => void;
 }) {
   const store = usePraxisStore();
-  const isRoot = sheet === 'settings';
-  const page = isRoot ? PAGES.general : PAGES[sheet];
+  const page = settingsPage(sheet);
   const provider = store.providers.find((p) => p.id === store.editingProviderId);
-  const title =
-    sheet === 'provider-editor' ? (provider?.name ?? 'Add provider') : page.title;
+  const title = sheet === 'provider-editor' ? (provider?.name ?? 'Add provider') : page.title;
+  const reduced = useReducedMotion();
+  const shift = useContentShift();
 
   const previous = React.useRef(sheet);
-  const direction = depth(sheet) >= depth(previous.current) ? 'forward' : 'back';
+  const forward = settingsDepth(sheet) >= settingsDepth(previous.current);
   React.useEffect(() => {
     previous.current = sheet;
   }, [sheet]);
-
-  const close = () => store.setActiveSheet(null);
-  const back = () => store.setActiveSheet(page.parent ?? 'settings');
-  const done = (
-    <button type="button" aria-label="Close settings" onClick={close} className={screen.textButton}>
-      Done
-    </button>
-  );
-  const items = NAV.filter((item) => !item.devOnly || (import.meta.env.DEV && onOpenGlassLab));
+  const nested = usePreset(slideIn);
+  const settle = usePreset(pageChange);
+  // A push for nested pages; sibling sections just settle in place.
+  const enter = page.parent || settingsDepth(previous.current) === 2
+    ? { ...nested, initial: reduced ? nested.initial : { opacity: 0, x: forward ? 24 : -24 } }
+    : settle;
 
   return (
-    <div className={styles.pageShell} data-root={isRoot} data-sidebar={store.desktopSidebarOpen} data-testid="settings-page">
-      {isRoot ? (
-        <div className={styles.rootHeader}>
-          <h1 className={styles.paneTitle}>Settings</h1>
-          {done}
+    <div className={styles.pageShell} data-testid="settings-page">
+      {!store.desktopSidebarOpen ? (
+        <div className={styles.navCluster}>
+          <GlassIconButton
+            label="Open sidebar"
+            data-testid="nav-sidebar-button"
+            onClick={() => store.setDesktopSidebarOpen(true)}
+          >
+            <PanelLeft size={18} />
+          </GlassIconButton>
         </div>
       ) : null}
-      <nav className={styles.nav} aria-label="Settings sections">
-        <p className={styles.navTitle}>Settings</p>
-        <div className={styles.navList}>
-          {items.map(({ sheet: target, title: label, Icon }) => (
-            <button
-              key={target}
-              type="button"
-              className={styles.navRow}
-              data-testid={`settings-nav-${target}`}
-              aria-current={page.section === target ? 'page' : undefined}
-              onClick={() => store.setActiveSheet(target)}
-            >
-              <span className={styles.navIcon}>
-                <Icon size={18} />
-              </span>
-              <span className={styles.navLabel}>{label}</span>
-              <span className={styles.navChevron}>
-                <ChevronRight size={16} />
-              </span>
-            </button>
-          ))}
-        </div>
-      </nav>
-      <div className={styles.pane}>
+      <motion.div className={styles.pane} initial={false} animate={{ x: shift }} transition={PANEL}>
         <header className={styles.paneHeader} data-nested={!!page.parent}>
-          {page.parent ? (
-            <BackButton onClick={back} />
-          ) : (
-            <BackButton className={styles.back} onClick={back} data-section-root="true" />
-          )}
+          {page.parent ? <BackButton onClick={() => store.setActiveSheet(page.parent ?? 'settings')} /> : null}
           <h1 className={styles.paneTitle}>{title}</h1>
           {sheet === 'provider-editor' ? (
             <button className={screen.textButton} type="submit" form="provider-editor-form">
               Save
             </button>
-          ) : (
-            done
-          )}
+          ) : null}
         </header>
-        <div className={styles.page} key={sheet} data-direction={direction}>
-          <PageContent sheet={sheet} onOpenGlassLab={onOpenGlassLab} />
+        <div className={styles.pageStack}>
+          <AnimatePresence initial={false}>
+            <motion.div key={sheet} className={styles.page} {...enter}>
+              <PageContent sheet={sheet} onOpenGlassLab={onOpenGlassLab} />
+            </motion.div>
+          </AnimatePresence>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

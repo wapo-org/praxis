@@ -1,10 +1,15 @@
 import React from 'react';
-import { motion, type HTMLMotionProps } from 'framer-motion';
-import { useElasticStretch } from './elastic';
+import { animate, motion, motionValue, type HTMLMotionProps } from 'framer-motion';
+import { generateMaps, type GeneratedMaps } from './displacement-map';
+import { LensFilter } from './LensFilter';
+import { MATERIAL_RAMP, glassTier, useBaseChroma, type GlassMaterial } from './material';
+import { TRANSITION } from './motion';
+import { createRig } from './rig';
+import { attachStretch, reducedMotion } from './stretch';
 import styles from './glass.module.css';
 
-/** Three recipes: regular (composer, top-bar cluster), thick (menus, sheets), clear (small chips). */
-export type GlassMaterial = 'regular' | 'thick' | 'clear';
+export type { GlassMaterial } from './material';
+/** `capsule` is fully round; `card` uses `radius` or the token default. */
 export type GlassShape = 'capsule' | 'card';
 
 export interface GlassMaterialControls {
@@ -16,73 +21,193 @@ export interface GlassSurfaceProps extends HTMLMotionProps<'div'>, GlassMaterial
   /** Corner radius in px for `card`; ignored for `capsule`. Prefer the token default. */
   radius?: number;
   /**
-   * Liquid Glass stretch (default true): the surface stretches toward the
-   * pointer while pressed and dragged, then springs back. The stretch runs on
-   * a wrapper so the backdrop-filter element and its framer-motion transform
-   * are never disturbed.
+   * The elastic stretch (default on, from anywhere on the glass). `edge` only
+   * pulls once the pointer is past the edge, for menus that scrub inside.
    */
-  elastic?: boolean;
+  stretch?: boolean | 'edge';
+  /** Pointer-tracked focus glow (default on). Off for touch and reduced motion regardless. */
+  spotlight?: boolean;
 }
 
-export function glassClassName(material: GlassMaterial = 'regular', shape: GlassShape = 'card'): string {
-  return [styles.glass, styles[material], shape === 'capsule' ? styles.capsule : '']
-    .filter(Boolean)
-    .join(' ');
+type MotionFrame = HTMLMotionProps<'div'>['animate'];
+
+/**
+ * `opacity` on the root would make it a backdrop root and blank the lens inside
+ * it for the whole fade, so a fade is routed through a variable the layers and
+ * the content read. Everything else (scale, x, y) stays on the root's transform.
+ */
+function routeFade<T extends MotionFrame | HTMLMotionProps<'div'>['exit'] | HTMLMotionProps<'div'>['initial']>(frame: T): T {
+  if (!frame || typeof frame !== 'object' || Array.isArray(frame) || !('opacity' in frame)) return frame;
+  const { opacity, ...rest } = frame as Record<string, unknown>;
+  return { ...rest, '--glass-fade': opacity } as unknown as T;
+}
+
+const LARGE_AREA = 160_000;
+const RESIZE_DEBOUNCE_MS = 120;
+
+/** Built at rest size and reused; never rebuilt during a gesture (transforms do not resize). */
+function useLensMaps(rootRef: React.RefObject<HTMLElement | null>, material: GlassMaterial, shape: GlassShape, radius?: number) {
+  const [maps, setMaps] = React.useState<GeneratedMaps | null>(null);
+  React.useEffect(() => {
+    const el = rootRef.current;
+    if (!el || glassTier() !== 'svg' || typeof ResizeObserver === 'undefined') return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let lastW = 0;
+    let lastH = 0;
+    const build = () => {
+      if (disposed) return;
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      if (w < 8 || h < 8 || (w === lastW && h === lastH)) return;
+      lastW = w;
+      lastH = h;
+      const r = shape === 'capsule' ? Math.min(w, h) / 2 : (radius ?? Number.parseFloat(getComputedStyle(el).borderTopLeftRadius)) || 0;
+      const next = generateMaps({ width: w, height: h, radius: r, bezel: MATERIAL_RAMP[material].bezel, material });
+      if (!next) return;
+      // An undecoded feImage is transparent, which displaces the whole backdrop: wait for it.
+      void Promise.all(
+        [next.displacementUrl, next.specularUrl, next.frostMaskUrl].map((src) => {
+          const img = new Image();
+          img.src = src;
+          return img.decode().catch(() => undefined);
+        }),
+      ).then(() => {
+        if (!disposed) setMaps(next);
+      });
+    };
+    let first = true;
+    const observer = new ResizeObserver(() => {
+      clearTimeout(timer);
+      if (!first) {
+        timer = setTimeout(build, RESIZE_DEBOUNCE_MS);
+        return;
+      }
+      first = false;
+      // Big surfaces build off the first paint; small ones are a millisecond.
+      if (el.offsetWidth * el.offsetHeight > LARGE_AREA && 'requestIdleCallback' in window) {
+        window.requestIdleCallback(build, { timeout: 250 });
+      } else build();
+    });
+    observer.observe(el);
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [rootRef, material, shape, radius]);
+  return maps;
+}
+
+/** The radial glow at the cursor. Transform-only, so tracking repaints nothing. */
+function attachSpotlight(el: HTMLElement) {
+  const opacity = motionValue(0);
+  const off = opacity.on('change', (value) => {
+    const spot = el.querySelector<HTMLElement>(':scope > [data-glass-spot-clip] > [data-glass-spot]');
+    if (spot) spot.style.opacity = String(value);
+  });
+  const place = (event: PointerEvent) => {
+    const spot = el.querySelector<HTMLElement>(':scope > [data-glass-spot-clip] > [data-glass-spot]');
+    if (!spot) return;
+    const rect = el.getBoundingClientRect();
+    spot.style.transform = `translate3d(${event.clientX - rect.left}px, ${event.clientY - rect.top}px, 0)`;
+  };
+  const enter = (event: PointerEvent) => {
+    if (event.pointerType !== 'mouse' || reducedMotion()) return;
+    place(event);
+    animate(opacity, 1, TRANSITION.base);
+  };
+  const move = (event: PointerEvent) => {
+    if (event.pointerType === 'mouse') place(event);
+  };
+  const leave = () => {
+    animate(opacity, 0, TRANSITION.slow);
+  };
+  el.addEventListener('pointerenter', enter);
+  el.addEventListener('pointermove', move, { passive: true });
+  el.addEventListener('pointerleave', leave);
+  return () => {
+    off();
+    opacity.stop();
+    el.removeEventListener('pointerenter', enter);
+    el.removeEventListener('pointermove', move);
+    el.removeEventListener('pointerleave', leave);
+  };
 }
 
 /**
- * A static CSS material. It never measures, never re-renders on scroll and runs no JS per frame.
- * Motion props (initial/animate/exit) go on this element so opacity fades the blur with it.
+ * Liquid glass. On Chromium a real lens (`backdrop-filter: url(#id)`, the kube.io
+ * construction from wapo.dp); elsewhere a progressive frost with the same finish.
+ * Layout and DOM geometry never move: the stretch is `scale` + `translate` on this
+ * root and framer-motion's own transform composes with it. No re-render per frame.
  */
 export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(function GlassSurface(
-  { material = 'regular', shape = 'card', radius, elastic = true, className = '', style, children, ...rest },
-  ref,
+  { material = 'regular', shape = 'card', radius, stretch = true, spotlight = true, className = '', style, initial, animate: animateProp, exit, children, ...rest },
+  forwardedRef,
 ) {
-  const elasticRef = useElasticStretch<HTMLDivElement>({ disabled: !elastic });
-  if (!elastic) {
-    return (
-      <motion.div
-        ref={ref}
-        data-glass-surface=""
-        data-glass-material={material}
-        className={`${glassClassName(material, shape)} praxis-glass-surface ${className}`.trim()}
-        style={
-          radius === undefined || shape === 'capsule'
-            ? style
-            : ({ ...style, '--glass-radius': `${radius}px` } as HTMLMotionProps<'div'>['style'])
-        }
-        {...rest}
-      >
-        {children}
-      </motion.div>
-    );
-  }
-  // The elastic wrapper owns the stretch transform; it carries no backdrop,
-  // so nested glass never sits inside another backdrop root.
-  const display = typeof style?.display === 'string' ? style.display : undefined;
-  const { display: _display, ...innerStyle } = (style ?? {}) as React.CSSProperties;
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const setRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      rootRef.current = node;
+      if (typeof forwardedRef === 'function') forwardedRef(node);
+      else if (forwardedRef) forwardedRef.current = node;
+    },
+    [forwardedRef],
+  );
+  const tier = glassTier();
+  const maps = useLensMaps(rootRef, material, shape, shape === 'capsule' ? undefined : radius);
+  const chroma = useBaseChroma();
+  const filterId = `glass-lens-${React.useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+  const mode = stretch === 'edge' ? 'edge' : stretch ? 'press' : null;
+
+  React.useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const rig = createRig(el, material);
+    const detachStretch = mode ? attachStretch(el, { material, mode, onHold: (held) => rig.hold(held) }) : undefined;
+    const detachSpot = spotlight ? attachSpotlight(el) : undefined;
+    return () => {
+      detachStretch?.();
+      detachSpot?.();
+      rig.destroy();
+    };
+  }, [material, mode, spotlight]);
+
+  const lensStyle: React.CSSProperties | undefined =
+    tier === 'svg' && maps ? { backdropFilter: `url(#${filterId})`, WebkitBackdropFilter: `url(#${filterId})` } : undefined;
+  const rootStyle = (
+    radius === undefined || shape === 'capsule' ? style : { ...style, '--glass-radius': `${radius}px` }
+  ) as HTMLMotionProps<'div'>['style'];
+  const [core, mid, rim] = MATERIAL_RAMP[material].frost;
+
   return (
-    <div
-      ref={elasticRef}
-      data-elastic-surface=""
+    <motion.div
+      ref={setRef}
+      data-glass-surface={tier}
       data-glass-material={material}
-      className={styles.elastic}
-      style={display ? { display } : undefined}
+      data-glass-stretch={mode ?? undefined}
+      className={`${styles.glass} ${styles[material]} ${shape === 'capsule' ? styles.capsule : ''} praxis-glass-surface ${className}`.trim()}
+      style={rootStyle}
+      initial={routeFade(initial)}
+      animate={routeFade(animateProp)}
+      exit={routeFade(exit)}
+      {...rest}
     >
-      <motion.div
-        ref={ref}
-        data-glass-surface=""
-        data-glass-material={material}
-        className={`${glassClassName(material, shape)} praxis-glass-surface ${className}`.trim()}
-        style={
-          radius === undefined || shape === 'capsule'
-            ? (innerStyle as HTMLMotionProps<'div'>['style'])
-            : ({ ...innerStyle, '--glass-radius': `${radius}px` } as HTMLMotionProps<'div'>['style'])
-        }
-        {...rest}
-      >
-        {children}
-      </motion.div>
-    </div>
+      {tier === 'svg' && maps ? <LensFilter id={filterId} material={material} maps={maps} chroma={chroma} /> : null}
+      {tier === 'frost' ? (
+        <>
+          <span aria-hidden="true" className={styles.band} style={{ '--band-blur': `${core}px` } as React.CSSProperties} />
+          <span aria-hidden="true" className={`${styles.band} ${styles.bandMid}`} style={{ '--band-blur': `${mid}px` } as React.CSSProperties} />
+          <span aria-hidden="true" className={`${styles.band} ${styles.bandRim}`} style={{ '--band-blur': `${rim}px` } as React.CSSProperties} />
+        </>
+      ) : null}
+      <span aria-hidden="true" data-glass-lens="" className={tier === 'svg' ? styles.lens : styles.finish} style={lensStyle} />
+      {spotlight ? (
+        <span aria-hidden="true" data-glass-spot-clip="" className={styles.spotClip}>
+          <span data-glass-spot="" className={styles.spot} />
+        </span>
+      ) : null}
+      {children as React.ReactNode}
+    </motion.div>
   );
 });

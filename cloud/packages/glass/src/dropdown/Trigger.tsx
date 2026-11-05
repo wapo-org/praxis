@@ -7,7 +7,7 @@ import type { GlassMaterialControls } from '../GlassSurface';
 import { assignForwardedRef, useGlassDropdownContext } from './context';
 import styles from './dropdown.module.css';
 import { useMenuReducedMotion } from './motion';
-import { press, SPRING, TRANSITION } from '../motion';
+import { press, SNAP, SPRING, TRANSITION } from '../motion';
 export interface TriggerProps
   extends
     Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'value'>,
@@ -103,6 +103,7 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
           'aria-expanded': ctx.open,
           'aria-controls': ctx.open ? ctx.menuId : undefined,
           'data-state': ctx.open ? 'open' : 'closed',
+          'data-press-opens': '',
           onPointerDown: handlePointerDown,
           onClick: handleClick,
           onKeyDown: handleKeyDown,
@@ -129,6 +130,7 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
             aria-expanded={ctx.open}
             aria-controls={ctx.open ? ctx.menuId : undefined}
             data-state={ctx.open ? 'open' : 'closed'}
+            data-press-opens=""
             onPointerDown={handlePointerDown}
             onClick={handleClick}
             onKeyDown={handleKeyDown}
@@ -146,7 +148,15 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
               <span className={styles.triggerValue}>{value}</span>
             ) : null}
             {!hideChevron ? (
-              <ChevronDown aria-hidden="true" size={16} className={styles.triggerChevron} />
+              <motion.span
+                aria-hidden="true"
+                className={styles.triggerChevron}
+                initial={false}
+                animate={{ rotate: ctx.open ? 180 : 0 }}
+                transition={reduced ? TRANSITION.none : SNAP}
+              >
+                <ChevronDown size={16} />
+              </motion.span>
             ) : null}
           </button>
         </GlassSurface>

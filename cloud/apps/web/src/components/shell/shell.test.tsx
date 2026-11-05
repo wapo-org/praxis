@@ -119,10 +119,16 @@ describe('ChatHeader', () => {
     const open = renderToStaticMarkup(<ChatHeader />);
     expect(open).not.toMatch(/Lab/);
     expect(open).not.toContain('nav-sidebar-button');
-    expect(open).toContain('nav-history-button');
     expect(open).toContain('nav-settings-button');
     store = { ...store, desktopSidebarOpen: false };
     expect(renderToStaticMarkup(<ChatHeader />)).toContain('nav-sidebar-button');
+  });
+  it('shows History instead on narrow screens, and renders no empty glass for the other size', () => {
+    window.matchMedia = ((query: string) => ({ matches: true, media: query, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+    const narrow = renderToStaticMarkup(<ChatHeader />);
+    expect(narrow).toContain('nav-history-button');
+    expect(narrow).not.toContain('nav-settings-button');
+    expect(narrow.match(/data-glass-surface/g)).toHaveLength(3); // history, title, new chat
   });
 });
 

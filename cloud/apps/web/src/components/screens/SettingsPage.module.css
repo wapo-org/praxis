@@ -1,239 +1,96 @@
-/* Settings page: nav rail + content pane on desktop; a stacked iOS-style
-   navigation on narrow screens. A normal page in the main content area. */
+/* The Settings content: one centred column beside the floating navigation, which
+   Settings has taken over. Content sits in the window, not in a rail. */
 .pageShell {
+  position: relative;
   display: flex;
   flex: 1;
+  justify-content: center;
   min-height: 0;
   width: 100%;
-  max-width: 960px;
-  margin: 0 auto;
   height: 100dvh;
   box-sizing: border-box;
 }
 
-@media (min-width: 1024px) {
-  /* The floating sidebar covers the left edge: keep the page clear of it. */
-  .pageShell[data-sidebar='true'] {
-    padding-left: calc(var(--sidebar-width) + var(--float-margin) * 2);
-  }
-}
-.nav {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  gap: var(--space-1);
-  width: var(--settings-nav-width);
-  padding: var(--space-3) var(--space-2);
-  border-inline-end: 1px solid var(--color-hairline);
-  background: var(--color-sidebar);
-  overflow-y: auto;
-}
-.navTitle {
-  margin: 0;
-  padding: var(--space-1) var(--space-2) var(--space-3);
-  font: var(--weight-medium) var(--text-xl) / var(--leading-xl) var(--font-display);
-  letter-spacing: var(--tracking-display);
-}
-.navList {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.navRow {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  min-height: var(--control-md);
-  padding: 0 var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-ink);
-  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
-  text-align: start;
-  cursor: pointer;
-}
-.navRow[aria-current='page'] {
-  background: var(--color-pressed);
-  font-weight: var(--weight-medium);
-}
-.navIcon {
-  display: inline-flex;
-  flex-shrink: 0;
-  color: var(--color-ink-2);
-}
-.navLabel {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.navChevron {
-  display: none;
-  flex-shrink: 0;
-  color: var(--color-ink-3);
-}
-@media (hover: hover) {
-  .navRow:hover {
-    background: var(--color-hover);
-  }
-  .navRow[aria-current='page']:hover {
-    background: var(--color-pressed);
-  }
-}
-.navRow:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: -2px;
+.navCluster {
+  position: absolute;
+  top: var(--float-margin);
+  left: var(--float-margin);
+  z-index: 20;
 }
 
 .pane {
   display: flex;
-  flex: 1;
   flex-direction: column;
+  width: 100%;
+  max-width: var(--column-width);
   min-width: 0;
   min-height: 0;
-  background: transparent;
 }
+
 .paneHeader {
   display: flex;
   flex-shrink: 0;
   align-items: center;
   gap: var(--space-2);
   min-height: var(--topbar-height);
-  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-6);
+  margin-top: var(--float-margin);
+  padding: var(--space-2) var(--space-4);
 }
+
 .paneHeader[data-nested='true'] {
-  padding-inline-start: var(--space-3);
+  padding-inline-start: var(--space-2);
 }
+
 .paneTitle {
   flex: 1;
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font: var(--weight-semibold) var(--text-md) / var(--leading-md) var(--font-sans);
-  letter-spacing: var(--tracking-tight);
+  color: var(--color-ink);
+  font: var(--weight-semibold) var(--text-2xl) / var(--leading-2xl) var(--font-display);
+  letter-spacing: var(--tracking-display);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.back[data-section-root='true'] {
-  display: none;
+
+.paneHeader[data-nested='true'] .paneTitle {
+  font: var(--weight-semibold) var(--text-xl) / var(--leading-xl) var(--font-display);
 }
-.page {
-  display: flex;
+
+/* Old and new pages overlap while one replaces the other. */
+.pageStack {
+  position: relative;
   flex: 1;
+  min-height: 0;
+}
+
+.page {
+  position: absolute;
+  inset: 0;
+  display: flex;
   flex-direction: column;
   min-height: 0;
-  animation: settings-page-fade var(--duration-base) var(--ease-standard);
 }
-@keyframes settings-page-fade {
-  from {
-    opacity: 0;
-  }
-}
-@keyframes settings-page-forward {
-  from {
-    opacity: 0;
-    transform: translateX(var(--space-6));
-  }
-}
-@keyframes settings-page-back {
-  from {
-    opacity: 0;
-    transform: translateX(calc(var(--space-6) * -1));
+
+@media (min-width: 1024px) and (max-width: 1100px) {
+  .pane {
+    max-width: calc(100vw - var(--sidebar-width) - var(--float-margin) * 2 - var(--space-12));
   }
 }
 
 @media (max-width: 1023px) {
   .pageShell {
-    flex-direction: column;
-    max-width: none;
+    padding-inline: var(--space-1);
   }
-  /* The root shows the nav as a grouped list; every other page shows the pane with a back button. */
-  .pageShell[data-root='true'] .pane,
-  .pageShell[data-root='false'] .nav {
-    display: none;
+  /* Clear of the floating button in the corner. */
+  .paneHeader {
+    padding-inline-start: calc(var(--control-md) + var(--float-margin) + var(--space-3));
+    margin-top: 0;
   }
-  .nav {
-    flex: 1;
-    width: 100%;
-    padding: 0 var(--space-4) var(--space-8);
-    border: 0;
-    background: transparent;
-  }
-  .navTitle {
-    display: none;
-  }
-  .navList {
-    gap: 0;
-    border: 1px solid var(--color-hairline);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface);
-    overflow: hidden;
-  }
-  .navRow {
-    gap: var(--space-3);
-    min-height: var(--control-lg);
-    padding: 0 var(--space-4);
-    border-radius: 0;
-    font-size: var(--text-md);
-    line-height: var(--leading-md);
-  }
-  .navRow[aria-current='page'] {
-    background: transparent;
-    font-weight: var(--weight-regular);
-  }
-  .navRow + .navRow::before {
-    content: '';
-    position: absolute;
-    inset: 0 0 auto var(--space-4);
-    height: 1px;
-    background: var(--color-hairline);
-  }
-  .navChevron {
-    display: inline-flex;
-  }
-  .pane {
-    background: transparent;
-  }
-  .paneHeader,
-  .paneHeader[data-nested='true'],
-  .rootHeader {
-    display: grid;
-    flex-shrink: 0;
-    grid-template-columns: 1fr minmax(0, auto) 1fr;
-    align-items: center;
-    gap: var(--space-2);
-    min-height: var(--topbar-height);
-    padding: var(--space-2) var(--space-3);
-  }
-  .paneHeader > :first-child {
-    justify-self: start;
-  }
-  .paneHeader > :last-child,
-  .rootHeader > :last-child {
-    justify-self: end;
+  .paneHeader[data-nested='true'] {
+    padding-inline-start: calc(var(--control-md) + var(--float-margin) + var(--space-3));
   }
   .paneTitle {
-    text-align: center;
-  }
-  .back[data-section-root='true'] {
-    display: inline-flex;
-  }
-  .rootHeader .paneTitle {
-    grid-column: 2;
-  }
-  .page[data-direction='forward'] {
-    animation-name: settings-page-forward;
-  }
-  .page[data-direction='back'] {
-    animation-name: settings-page-back;
-  }
-}
-@media (min-width: 1024px) {
-  .rootHeader {
-    display: none;
+    font: var(--weight-semibold) var(--text-xl) / var(--leading-xl) var(--font-display);
   }
 }

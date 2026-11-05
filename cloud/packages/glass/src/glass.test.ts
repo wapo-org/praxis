@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { PAPER_DARK, PAPER_LIGHT, popIn, press, resolvePreset, sheet, SPRING, glassClassName } from './index';
+import { PAPER_DARK, PAPER_LIGHT, popIn, press, resolvePreset, sheet, SPRING } from './index';
 
 const here = new URL('.', import.meta.url).pathname;
 const tokensCss = readFileSync(join(here, '../../../apps/web/src/styles/tokens.css'), 'utf8');
@@ -40,13 +40,8 @@ describe('@praxis/glass design system', () => {
     }
   });
 
-  it('exposes exactly three glass recipes', () => {
-    expect(glassClassName('regular')).toMatch(/regular/);
-    expect(glassClassName('thick', 'capsule')).toMatch(/thick.*capsule/);
-    expect(glassClassName('clear')).toMatch(/clear/);
-  });
 
-  it('uses one spring and collapses presets to a fade under reduced motion', () => {
+  it('uses the spring family and collapses presets to a fade under reduced motion', () => {
     expect(popIn.transition).toBe(SPRING);
     expect(sheet.transition).toBe(SPRING);
     expect(press.whileTap.scale).toBe(0.97);
@@ -54,11 +49,12 @@ describe('@praxis/glass design system', () => {
     expect(resolvePreset(popIn, false)).toBe(popIn);
   });
 
-  it('has no WebGL, canvas, rAF loop or animated blur in the glass package', () => {
+  it('has no WebGL, DOM capture, rAF loop or animated blur; canvas only builds the lens maps', () => {
     for (const file of files(here).filter((f) => /\.(tsx?|css)$/.test(f) && !/test|\.pw\./.test(f))) {
       const src = readFileSync(file, 'utf8');
-      expect(src, file).not.toMatch(/getContext\(|WebGL|requestAnimationFrame\((tick|loop|frame|render|draw)|<canvas/);
+      expect(src, file).not.toMatch(/WebGL|webgl|html2canvas|drawWindow|requestAnimationFrame\((tick|loop|frame|render|draw)|<canvas/);
       expect(src, file).not.toMatch(/transition:[^;]*backdrop-filter/);
+      if (!file.endsWith('displacement-map.ts')) expect(src, file).not.toMatch(/getContext\(/);
     }
   });
 });

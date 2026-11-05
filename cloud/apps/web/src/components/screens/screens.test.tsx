@@ -10,6 +10,7 @@ import { ConnectorsScreen, parseConnectorConfig } from './ConnectorsScreen.js';
 import { ConsentPopover } from './ConsentPopover.js';
 import { ImageReaderScreen } from './ImageReaderScreen.js';
 import { ProviderEditor } from './ProviderEditor.js';
+import { SidebarSettings } from '../shell/SidebarSettings';
 import { SettingsPage } from './SettingsPage.js';
 import { GeneralSection, ModelsSection } from './SettingsSections.js';
 import { SkillsScreen } from './SkillsScreen.js';
@@ -257,7 +258,7 @@ describe('settings and capabilities', () => {
     await mount(<GeneralSection />);
     await click(button('Light'));
     expect(store.setThemeMode).toHaveBeenCalledWith('light');
-    await mount(<SettingsPage sheet="settings" />);
+    await mount(<SidebarSettings sheet="settings" devTools={false} />);
     await click(document.querySelector<HTMLButtonElement>('[data-testid="settings-nav-connectors"]')!);
     expect(store.setActiveSheet).toHaveBeenCalledWith('connectors');
   });
@@ -275,20 +276,29 @@ describe('settings and capabilities', () => {
       ['consents', 'Data & privacy', 'Data & privacy'],
       ['voice-settings', 'Voice input', 'General'],
     ] as const) {
-      await mount(<SettingsPage sheet={sheet} />);
+      await mount(
+        <>
+          <SettingsPage sheet={sheet} />
+          <SidebarSettings sheet={sheet} devTools={false} />
+        </>,
+      );
       expect(titleOf()).toBe(title);
       expect(current()).toBe(nav);
     }
     await mount(<SettingsPage sheet="provider-editor" />);
     expect(titleOf()).toBe('Add provider');
   });
-  it('goes back to the parent page, and sections back to the list', async () => {
+  it('goes back to the parent page; the way out of Settings is the floating nav, not a Done button', async () => {
     await mount(<SettingsPage sheet="connector-add-url" />);
     await click(button('Back'));
     expect(store.setActiveSheet).toHaveBeenLastCalledWith('connectors');
     await mount(<SettingsPage sheet="connectors" />);
-    await click(button('Back'));
-    expect(store.setActiveSheet).toHaveBeenLastCalledWith('settings');
+    expect(document.body.textContent).not.toContain('Done');
+    expect(document.querySelector('[aria-label="Back"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Settings sections"]')).toBeNull();
+    await mount(<SidebarSettings sheet="connectors" devTools={false} />);
+    await click(button('Close settings'));
+    expect(store.setActiveSheet).toHaveBeenLastCalledWith(null);
   });
   it('preserves saved secrets when editing a provider and leaves verification failures visible', async () => {
     store.providers = [provider];

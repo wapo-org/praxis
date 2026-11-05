@@ -55,7 +55,7 @@ const SubContent = React.forwardRef<HTMLDivElement, SubContentProps>(
                 }
                 initial={{ scale: popIn.initial.scale, x: sub.openSide === 'right' ? -8 : 8 }}
                 animate={{ scale: 1, x: 0 }}
-                exit={{ scale: popIn.exit.scale, transition: TRANSITION.fast }}
+                exit={{ scale: popIn.exit.scale, transition: popIn.exit.transition }}
                 transition={SPRING}
                 className={`${styles.subContent} ${sub.openSide === 'right' ? styles.subRight : styles.subLeft}`}
                 style={style}
@@ -64,6 +64,7 @@ const SubContent = React.forwardRef<HTMLDivElement, SubContentProps>(
               >
                 <GlassSurface
                   material={ctx.materialControls.material ?? 'thick'}
+                  stretch="edge"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0, transition: TRANSITION.fast }}

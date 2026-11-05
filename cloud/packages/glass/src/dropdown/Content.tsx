@@ -32,7 +32,7 @@ export interface ContentProps
     GlassMaterialControls {
   maxHeight?: number;
   minWidth?: number;
-  /** Rubber-band pull while scrubbing (transform only). */
+  /** The glass stretches toward a pointer dragged past its edge while scrubbing. */
   stretchable?: boolean;
   children?: React.ReactNode;
 }
@@ -84,11 +84,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
     position.visibility !== 'hidden',
   );
   const reduced = useMenuReducedMotion();
-  const { pullX, pullY, stretchScaleY, pointerDownOriginRef } = usePressMotion(
-    ctx,
-    stretchable && !reduced,
-    setHighlightedId,
-  );
+  const { pointerDownOriginRef } = usePressMotion(ctx, setHighlightedId);
 
   const highlightCtx = React.useMemo<PanelHighlightContextValue>(
     () => ({
@@ -159,7 +155,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                 /* IMG_7745–IMG_7752 Unfurl Pop Motion */
                 initial={reduced ? false : { scale: popIn.initial.scale }}
                 animate={{ scale: 1 }}
-                exit={reduced ? undefined : { scale: popIn.exit.scale, transition: TRANSITION.fast }}
+                exit={reduced ? undefined : { scale: popIn.exit.scale, transition: popIn.exit.transition }}
                 transition={reduced ? TRANSITION.none : SPRING}
                 className={`praxis-glass-dropdown-content ${styles.content} ${className}`.trim()}
                 style={{
@@ -171,9 +167,6 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                       ? minWidth
                       : window.innerWidth - 16,
                   ),
-                  x: reduced ? 0 : pullX,
-                  y: reduced ? 0 : pullY,
-                  scaleY: reduced ? 1 : stretchScaleY,
                   ...style,
                   ...position,
                 }}
@@ -182,6 +175,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                 <GlassSurface
                   material={glassMaterial}
                   radius={16}
+                  stretch={stretchable ? 'edge' : false}
                   className={styles.surface}
                   initial={reduced ? { opacity: 0 } : { opacity: popIn.initial.opacity }}
                   animate={{ opacity: 1 }}

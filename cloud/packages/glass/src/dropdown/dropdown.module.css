@@ -377,9 +377,6 @@
   font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-sans);
 }
 .triggerChevron {
+  display: inline-flex;
   color: var(--color-ink-3);
-  transition: transform var(--duration-base) var(--ease-standard);
-}
-.trigger[data-state='open'] .triggerChevron {
-  transform: rotate(180deg);
 }

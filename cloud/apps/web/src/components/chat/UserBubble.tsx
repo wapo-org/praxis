@@ -20,7 +20,7 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
 
   return (
     <>
-      <div data-testid="user-message-bubble" className={styles.turn}>
+      <div data-testid="user-message-bubble" data-message-key={`m:${message.id}`} className={styles.turn}>
         {mediaParts.length > 0 ? (
           <div className={styles.media} data-with-text={!!combinedText}>
             {mediaParts.map((part, index) => (

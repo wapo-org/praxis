@@ -48,11 +48,6 @@
 
 .plusIcon {
   display: inline-flex;
-  transition: transform var(--duration-base) var(--ease-standard);
-}
-
-.plusIcon[data-open='true'] {
-  transform: rotate(45deg);
 }
 
 .round:focus-visible {

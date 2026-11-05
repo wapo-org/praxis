@@ -1,7 +1,9 @@
+import { SNAP, useReducedMotion } from '@praxis/glass';
+import { motion } from 'framer-motion';
 import React from 'react';
 import styles from './controls.module.css';
 
-/** Equal-width segmented control. The thumb is a CSS transform; re-rendering it costs nothing. */
+/** Equal-width segmented control. The thumb springs between segments and reverses from wherever it is. */
 export function SegmentedControl<T extends string>({
   label,
   value,
@@ -18,16 +20,25 @@ export function SegmentedControl<T extends string>({
   testIdPrefix?: string;
 }) {
   const index = options.indexOf(value);
+  const reduced = useReducedMotion();
   return (
     <div
       className={styles.segmented}
       role="group"
       aria-label={label}
       style={
-        { '--segment-count': options.length, '--segment-index': Math.max(index, 0) } as React.CSSProperties
+        { '--segment-count': options.length } as React.CSSProperties
       }
     >
-      {index >= 0 ? <span className={styles.thumb} aria-hidden="true" /> : null}
+      {index >= 0 ? (
+        <motion.span
+          className={styles.thumb}
+          aria-hidden="true"
+          initial={false}
+          animate={{ x: `${index * 100}%` }}
+          transition={reduced ? { duration: 0 } : SNAP}
+        />
+      ) : null}
       {options.map((option) => (
         <button
           key={option}
@@ -55,15 +66,31 @@ export function Switch({
   disabled?: boolean;
   onChange: (checked: boolean) => void;
 }) {
+  const reduced = useReducedMotion();
   return (
-    <input
+    <motion.span
       className={styles.switch}
-      type="checkbox"
-      role="switch"
-      aria-label={label}
-      checked={checked}
-      disabled={disabled}
-      onChange={(event) => onChange(event.target.checked)}
-    />
+      data-checked={checked}
+      data-disabled={disabled || undefined}
+      whileTap={disabled || reduced ? undefined : 'pressed'}
+    >
+      <input
+        className={styles.switchInput}
+        type="checkbox"
+        role="switch"
+        aria-label={label}
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <motion.span
+        className={styles.knob}
+        aria-hidden="true"
+        initial={false}
+        animate={{ x: checked ? 16 : 0 }}
+        variants={{ pressed: { scaleX: 1.14 } }}
+        transition={reduced ? { duration: 0 } : SNAP}
+      />
+    </motion.span>
   );
 }

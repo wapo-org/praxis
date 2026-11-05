@@ -1,70 +1,121 @@
-/* CSS-only liquid glass. No JS per frame, no re-capture: the browser composites
-   backdrop-filter on the GPU. Never animate the blur radius; animate transform/opacity only.
-   Recipe values are tokens (apps/web/src/styles/tokens.css → --glass-*). */
-
-/* Stretch wrapper: owns the elastic transform (see elastic.tsx). It has no
-   backdrop of its own, so glass never nests inside another backdrop root.
-   `pan-y` lets vertical touch scrolls take the gesture (pointercancel). */
-.elastic {
-  display: block;
-  transform-origin: 50% 50%;
-  touch-action: pan-y;
-}
+/* Liquid glass. The lens lives on a child so nested glass never sits inside this
+   root's backdrop, and the outer shadow on the root so its clip never eats it.
+   Recipe values are tokens (apps/web/src/styles/tokens.css → --glass-*). The held
+   rig (rig.ts) animates the shadows from these exact rest values. */
 
 .glass {
   position: relative;
   isolation: isolate;
   border-radius: var(--glass-radius, var(--radius-xl));
-  background-color: var(--glass-tint);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    0 0 0 0.5px var(--glass-edge),
-    var(--glass-shadow);
+    0 4px 9px rgba(var(--glass-shadow-rgb), calc(0.16 * var(--glass-shadow) * var(--glass-fade, 1))),
+    var(--glass-ambient);
+  /* Press-drag is a stretch here, not a text selection or a native drag. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
-/* Specular rim: a 1 px gradient border, cut out with a mask so only the edge paints. */
-.glass::before {
-  content: '';
+.glass[data-glass-stretch='press'] {
+  touch-action: none;
+}
+
+.glass :is(input, textarea, [contenteditable='true'], [contenteditable='']) {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.glass :is(a, img) {
+  -webkit-user-drag: none;
+}
+
+/* A fade goes through --glass-fade (see routeFade): `opacity` on the root would
+   turn it into a backdrop root and blank the lens. Zero specificity on purpose. */
+:where(.glass) > * {
+  opacity: var(--glass-fade, 1);
+}
+
+.lens,
+.finish,
+.band,
+.spotClip {
   position: absolute;
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(
-    180deg,
-    var(--glass-rim-top) 0%,
-    var(--glass-rim-bottom) 42%,
-    var(--glass-rim-bottom) 70%,
-    var(--glass-rim-top) 100%
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box exclude,
-    linear-gradient(#000 0 0);
   pointer-events: none;
+}
+
+.lens,
+.finish {
+  background-color: var(--glass-tint);
+  background-image:
+    linear-gradient(160deg, rgba(255, 255, 255, var(--glass-sheen-a)) 0%, rgba(255, 255, 255, calc(var(--glass-sheen-a) * 0.24)) 26%, rgba(255, 255, 255, 0) 52%),
+    linear-gradient(340deg, rgba(255, 255, 255, calc(var(--glass-sheen-a) * 0.57)) 0%, rgba(255, 255, 255, calc(var(--glass-sheen-a) * 0.14)) 22%, rgba(255, 255, 255, 0) 44%);
+  box-shadow:
+    inset 0 2px 24px rgba(0, 0, 0, calc(0.2 * var(--glass-inner))),
+    inset 0 -2px 24px rgba(255, 255, 255, calc(0.2 * var(--glass-inner))),
+    inset 0 1px 0 0 rgba(255, 255, 255, calc(0.5 * var(--glass-rim))),
+    inset 0 -1px 0 0 rgba(255, 255, 255, calc(0.22 * var(--glass-rim))),
+    inset 0 0 0 1px rgba(255, 255, 255, calc(0.16 * var(--glass-border))),
+    inset 0 0 0 1px rgba(15, 15, 20, calc(0.07 * var(--glass-border)));
+}
+
+/* Chromium before its maps have decoded, and any engine that loses the filter. */
+.lens {
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+/* Progressive frost: a sharp core, the blur rising toward the rim. A single
+   uniform blur reads as a frosted card; the gradient reads as bending. */
+.band {
+  -webkit-backdrop-filter: blur(var(--band-blur));
+  backdrop-filter: blur(var(--band-blur));
+}
+
+.bandMid {
+  -webkit-mask-image: radial-gradient(closest-side, transparent 55%, black 85%);
+  mask-image: radial-gradient(closest-side, transparent 55%, black 85%);
+}
+
+.bandRim {
+  -webkit-backdrop-filter: blur(var(--band-blur)) saturate(1.5);
+  backdrop-filter: blur(var(--band-blur)) saturate(1.5);
+  -webkit-mask-image: radial-gradient(closest-side, transparent 78%, black 98%);
+  mask-image: radial-gradient(closest-side, transparent 78%, black 98%);
+}
+
+.spotClip {
+  overflow: hidden;
+}
+
+.spot {
+  position: absolute;
+  top: -132px;
+  left: -132px;
+  width: 264px;
+  height: 264px;
+  opacity: 0;
+  background: radial-gradient(closest-side, var(--glass-spot), transparent 68%);
 }
 
 .regular {
   --glass-tint: var(--glass-regular-tint);
   --glass-blur: var(--glass-regular-blur);
-  --glass-shadow: var(--shadow-2);
+  --glass-ambient: var(--glass-regular-ambient);
 }
 
 .thick {
   --glass-tint: var(--glass-thick-tint);
   --glass-blur: var(--glass-thick-blur);
-  --glass-shadow: var(--shadow-3);
+  --glass-ambient: var(--glass-thick-ambient);
 }
 
 .clear {
   --glass-tint: var(--glass-clear-tint);
   --glass-blur: var(--glass-clear-blur);
-  --glass-shadow: var(--shadow-1);
+  --glass-ambient: var(--glass-clear-ambient);
 }
 
 .capsule {
@@ -72,16 +123,21 @@
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass {
+  .lens,
+  .finish {
     background-color: var(--glass-fallback);
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .glass {
+  .lens,
+  .finish {
     background-color: var(--glass-fallback);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .band {
+    display: none;
   }
 }
 

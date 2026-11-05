@@ -1,4 +1,4 @@
-import { usePress } from '@praxis/glass';
+import { SNAP, usePress } from '@praxis/glass';
 import { motion } from 'framer-motion';
 import React from 'react';
 import { ArrowUp, Camera, Mic, Plus, Square } from '../../lib/icons';
@@ -57,9 +57,9 @@ export function ComposerBar({
         onClick={() => setPlusTrayOpen(!plusTrayOpen)}
         {...pressProps}
       >
-        <span className={styles.plusIcon} data-open={plusTrayOpen}>
+        <motion.span className={styles.plusIcon} initial={false} animate={{ rotate: plusTrayOpen ? 45 : 0 }} transition={SNAP}>
           <Plus size={20} />
-        </span>
+        </motion.span>
       </motion.button>
 
       <textarea
