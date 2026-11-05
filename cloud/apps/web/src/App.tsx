@@ -43,7 +43,9 @@ export function App() {
             ?.focus(),
         );
       }
-      if (event.key === 'Escape') store.setPlusTrayOpen(false);
+      // The tray handles Escape itself (models → main → close); stay out
+      // of the way when it already handled the key.
+      if (event.key === 'Escape' && !event.defaultPrevented) store.setPlusTrayOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

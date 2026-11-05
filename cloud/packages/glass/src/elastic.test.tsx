@@ -7,6 +7,7 @@ import {
   ELASTIC_THRESHOLD,
   elasticPoseForOffset,
   elasticTransform,
+  shouldSwallowClick,
   stepElasticSpring,
   useElasticStretch,
 } from './elastic';
@@ -146,6 +147,20 @@ function pointer(type: string, target: Element, x: number, y: number, pointerId 
   target.dispatchEvent(event);
 }
 
+/**
+ * jsdom cannot produce trusted events (isTrusted is a non-configurable
+ * prototype getter), so the trusted-vs-synthetic gate is covered by the
+ * shouldSwallowClick unit test below. This helper dispatches a best-effort
+ * click; the DOM suppression tests use the synthetic path (button.click()).
+ */
+
+describe('shouldSwallowClick', () => {
+  it('swallows only trusted clicks, so synthetic row.click() selection survives', () => {
+    expect(shouldSwallowClick({ isTrusted: true })).toBe(true);
+    expect(shouldSwallowClick({ isTrusted: false })).toBe(false);
+  });
+});
+
 describe('elastic stretch (DOM)', () => {
   it('stretches toward the pointer and springs back to none', async () => {
     await mountSurface();
@@ -184,14 +199,40 @@ describe('elastic stretch (DOM)', () => {
     );
     const surface = surfaceEl()!;
     const button = surface.querySelector('button')!;
+    // jsdom clicks are synthetic (isTrusted false) and pass the trust gate by
+    // design; the trusted half is covered by the shouldSwallowClick unit test.
     await act(async () => {
       pointer('pointerdown', button, 200, 200);
       pointer('pointermove', button, 240, 230);
       pointer('pointerup', button, 240, 230);
       button.click();
     });
-    expect(clicks).not.toHaveBeenCalled();
+    expect(clicks).toHaveBeenCalledOnce();
     // A plain tap still clicks.
+    await act(async () => button.click());
+    expect(clicks).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets synthetic clicks through, so programmatic selection (dropdown drag-select) keeps working', async () => {
+    const clicks = vi.fn();
+    await act(async () =>
+      root.render(
+        <GlassSurface material="regular" shape="card">
+          <button type="button" onClick={clicks}>
+            inside
+          </button>
+        </GlassSurface>,
+      ),
+    );
+    const surface = surfaceEl()!;
+    const button = surface.querySelector('button')!;
+    await act(async () => {
+      pointer('pointerdown', button, 200, 200);
+      pointer('pointermove', button, 240, 230);
+      pointer('pointerup', button, 240, 230);
+    });
+    // A dropdown's native drag-select calls row.click(): dispatched from JS,
+    // isTrusted === false, and must NOT be swallowed by the drag suppression.
     await act(async () => button.click());
     expect(clicks).toHaveBeenCalledOnce();
   });

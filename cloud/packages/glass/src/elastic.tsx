@@ -263,10 +263,18 @@ function cleanupSession(session: DragSession) {
 }
 
 /**
+ * Synthetic clicks (e.g. the dropdown's drag-select row.click()) must go
+ * through; only the real browser click after a drag is suppressed.
+ */
+export function shouldSwallowClick(event: { isTrusted: boolean }): boolean {
+  return event.isTrusted;
+}
+
+/**
  * A real drag must not fire the click. A single permanent capture-phase
- * listener swallows the first click within 600 ms of a drag's pointerup,
- * so React handlers never run for that gesture. The listener is installed
- * once and never stacks, so it cannot leak between gestures.
+ * listener swallows the first trusted click within 600 ms of a drag's
+ * pointerup, so React handlers never run for that gesture. The listener is
+ * installed once and never stacks, so it cannot leak between gestures.
  */
 let ignoreClickUntil = 0;
 let clickSwallowerInstalled = false;
@@ -277,6 +285,7 @@ function suppressNextClick() {
   clickSwallowerInstalled = true;
   const swallow = (event: Event) => {
     if (Date.now() >= ignoreClickUntil) return;
+    if (!shouldSwallowClick(event)) return;
     ignoreClickUntil = 0;
     event.stopImmediatePropagation();
     event.preventDefault();
