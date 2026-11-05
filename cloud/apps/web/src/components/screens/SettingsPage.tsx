@@ -132,7 +132,7 @@ export function SettingsPage({
   const items = NAV.filter((item) => !item.devOnly || (import.meta.env.DEV && onOpenGlassLab));
 
   return (
-    <div className={styles.pageShell} data-root={isRoot} data-sidebar={store.desktopSidebarOpen}>
+    <div className={styles.pageShell} data-root={isRoot} data-sidebar={store.desktopSidebarOpen} data-testid="settings-page">
       {isRoot ? (
         <div className={styles.rootHeader}>
           <h1 className={styles.paneTitle}>Settings</h1>
@@ -178,7 +178,7 @@ export function SettingsPage({
             done
           )}
         </header>
-        <div className={styles.page} key={sheet} data-direction={direction} data-testid="settings-page">
+        <div className={styles.page} key={sheet} data-direction={direction}>
           <PageContent sheet={sheet} onOpenGlassLab={onOpenGlassLab} />
         </div>
       </div>

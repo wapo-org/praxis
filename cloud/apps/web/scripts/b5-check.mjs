@@ -35,10 +35,15 @@ try {
     const { apiClient } = await import('/src/lib/api.ts');
     return apiClient.request('/v1/uploads', { method: 'POST', body: JSON.stringify({ type: 'upload.request', ...input }) });
   }, input);
-  // API request context bypasses the local API's missing PUT CORS method; no response is mocked.
-  const uploaded = await page.request.fetch(ticket.uploadUrl, { method: ticket.method, headers: { 'Content-Type': input.mediaType }, data: 'Document attachment test' });
-  assert.equal(uploaded.ok(), true);
-  const { storageId } = await uploaded.json();
+  // The PUT needs the session cookie: route it through the same origin like
+  // the app does (localUploadPath); no response is mocked.
+  const uploadPath = new URL(ticket.uploadUrl).pathname;
+  const uploaded = await page.evaluate(async ({ uploadPath, mediaType }) => {
+    const res = await fetch(uploadPath, { method: 'PUT', headers: { 'Content-Type': mediaType }, credentials: 'include', body: 'Document attachment test' });
+    return { ok: res.ok, status: res.status, json: res.ok ? await res.json() : null };
+  }, { uploadPath, mediaType: input.mediaType });
+  assert.equal(uploaded.ok, true, `upload PUT failed with ${uploaded.status}`);
+  const { storageId } = uploaded.json;
   await page.evaluate(async ({ input, storageId }) => {
     const { apiClient } = await import('/src/lib/api.ts');
     const att = await apiClient.request('/v1/uploads/complete', { method: 'POST', body: JSON.stringify({ type: 'upload.complete', ...input, storageId }) });

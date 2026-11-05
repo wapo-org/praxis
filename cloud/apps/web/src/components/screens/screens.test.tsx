@@ -406,6 +406,40 @@ describe('settings and capabilities', () => {
   });
 });
 
+describe('no global clipping', () => {
+  it('portals settings-row menus to the document root, outside scroll containers', async () => {
+    const { ScreenMenu } = await import('./ScreenUI.js');
+    await mount(
+      <div style={{ overflow: 'auto', maxHeight: 60 }}>
+        <div style={{ height: 200 }}>scrollable ancestor</div>
+        <ScreenMenu label="Clipping probe" icon={<span>Options</span>}>
+          <span>Clipped if nested</span>
+        </ScreenMenu>
+      </div>,
+    );
+    await click(button('Clipping probe'));
+    const menu = document.querySelector('[role="menu"]');
+    expect(menu).not.toBeNull();
+    // Portaled to document.body: outside the scroll container and the React root.
+    // (The menu element's own `overflow: visible` style is not an ancestor.)
+    expect(menu!.parentElement?.closest('div[style*="overflow"]')).toBeNull();
+    expect(container.contains(menu)).toBe(false);
+  });
+  it('leaves no modal or scrim in the settings and consent flows', async () => {
+    store.pendingConsentPrompt = {
+      host: 'example.com',
+      purpose: 'chat',
+      description: 'Share this chat.',
+      onAllow: vi.fn(),
+      onCancel: vi.fn(),
+    };
+    await mount(<ConsentPopover />);
+    expect(document.querySelector('[aria-modal="true"]')).toBeNull();
+    expect(document.querySelector('[class*="overlay"], [class*="scrim"]')).toBeNull();
+    expect(document.querySelector('[role="dialog"]')?.getAttribute('aria-modal')).toBe('false');
+  });
+});
+
 describe('consent popover', () => {
   it('shows consent independently of activeSheet and calls only the chosen callback', async () => {
     const allow = vi.fn();

@@ -52,7 +52,8 @@ async function open(theme, viewport, path = '/') {
   if (await signIn.isVisible()) await signIn.click();
   await page.getByTestId('chat-top-bar').waitFor();
   if (path !== '/') await page.evaluate((p) => { history.pushState({}, '', p); window.dispatchEvent(new PopStateEvent('popstate')); }, path);
-  await page.getByTestId('chat-top-bar').waitFor();
+  if (path === '/') await page.getByTestId('chat-top-bar').waitFor();
+  else await page.getByTestId('settings-page').waitFor();
   await page.evaluate(() => document.fonts.ready);
   return { context, page };
 }

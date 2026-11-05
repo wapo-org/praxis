@@ -43,6 +43,8 @@ try {
   assert.equal(await page.getByRole('switch').count(), 12);
   await page.goBack(); await page.getByRole('heading', { name: 'Models & providers', exact: true }).waitFor();
   await page.goForward(); await page.getByRole('heading', { name: 'Add provider', exact: true }).waitFor();
+  // The editor shows Save, not Done; go back to the list, then Done returns to the chat.
+  await page.goBack(); await page.waitForURL('**/settings/providers');
   await page.getByRole('button', { name: 'Close settings', exact: true }).click(); await page.waitForURL('**/');
   const saved = await page.evaluate(async () => {
     const { apiClient } = await import('/src/lib/api.ts');

@@ -1,7 +1,7 @@
 import { GlassChip } from '@praxis/glass';
 import React from 'react';
 import { ArrowLeft, Moon, Shield, Sun } from '../../lib/icons';
-import { usePraxisStore } from '../../state/store';
+import { PraxisStoreContext } from '../../state/context';
 import { AppleNotesReplica } from './AppleNotesReplica';
 import { DropdownPositions } from './DropdownPositions';
 import './lab.css';
@@ -159,7 +159,8 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
  * so the anchored popover (and its send-blocking) can be inspected live.
  */
 function ConsentDemoChip({ onNavigateBack }: { onNavigateBack?: () => void }) {
-  const store = usePraxisStore();
+  const store = React.useContext(PraxisStoreContext);
+  if (!store) return null;
   return (
     <GlassChip
       data-testid="glass-lab-consent-demo"

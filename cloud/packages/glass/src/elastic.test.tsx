@@ -110,7 +110,7 @@ beforeEach(() => {
       media: query,
       addEventListener() {},
       removeEventListener() {},
-    }) as MediaQueryList,
+    }) as unknown as MediaQueryList,
   );
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     return rectOf(this.matches?.('[data-elastic-surface]') ? 200 : 60);
@@ -263,7 +263,7 @@ describe('elastic stretch (DOM)', () => {
         media: query,
         addEventListener() {},
         removeEventListener() {},
-      }) as MediaQueryList,
+      }) as unknown as MediaQueryList,
     );
     await mountSurface();
     const surface = surfaceEl()!;
@@ -274,6 +274,60 @@ describe('elastic stretch (DOM)', () => {
     });
     expect(restTransform(surface)).toBe(true);
     await act(async () => pointer('pointerup', surface, 280, 260));
+  });
+
+  it('pointercancel (touch scroll takeover) springs back and keeps the click', async () => {
+    const clicks = vi.fn();
+    await act(async () =>
+      root.render(
+        <GlassSurface material="regular" shape="card">
+          <button type="button" onClick={clicks}>
+            inside
+          </button>
+        </GlassSurface>,
+      ),
+    );
+    const surface = surfaceEl()!;
+    const button = surface.querySelector('button')!;
+    await act(async () => {
+      pointer('pointerdown', button, 200, 200);
+      pointer('pointermove', button, 240, 230);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    expect(surface.style.transform).toContain('translate');
+    // The browser takes the gesture for scrolling: cancel springs back and
+    // does NOT arm click suppression — the user's tap still works.
+    await act(async () => {
+      pointer('pointercancel', button, 240, 230);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    });
+    expect(restTransform(surface)).toBe(true);
+    await act(async () => button.click());
+    expect(clicks).toHaveBeenCalledOnce();
+  });
+
+  it('aborts the stretch when the user selects text', async () => {
+    await mountSurface();
+    const surface = surfaceEl()!;
+    await act(async () => {
+      pointer('pointerdown', surface, 200, 200);
+      const text = surface.querySelector('div')!.firstChild!;
+      const range = document.createRange();
+      range.setStart(text, 0);
+      range.setEnd(text, Math.min(1, text.textContent?.length ?? 1));
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+      // The move must exist before selecting, otherwise there is no drag to abort.
+      // Select first, then drag.
+    });
+    expect(window.getSelection()?.toString().length).toBeGreaterThan(0);
+    await act(async () => {
+      pointer('pointermove', surface, 280, 240);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    expect(restTransform(surface)).toBe(true);
+    await act(async () => pointer('pointerup', surface, 280, 240));
+    window.getSelection()?.removeAllRanges();
   });
 
   it('useElasticStretch attaches no listeners when disabled', () => {

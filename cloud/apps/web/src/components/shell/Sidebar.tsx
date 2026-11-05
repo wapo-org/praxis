@@ -233,8 +233,25 @@ function ChatRow({
       </form>
     );
 
+  // Right-click opens the row actions, matching the old history sheet.
+  const openRowMenu = (row: HTMLElement | null) =>
+    row?.querySelector<HTMLButtonElement>(`[aria-label^="Actions for"]`)?.click();
   return (
-    <div className={styles.row} data-active={active} data-sidebar-row="">
+    <div
+      className={styles.row}
+      data-active={active}
+      data-sidebar-row=""
+      onContextMenu={(event) => {
+        event.preventDefault();
+        openRowMenu(event.currentTarget);
+      }}
+      onKeyDown={(event) => {
+        if (event.shiftKey && event.key === 'F10') {
+          event.preventDefault();
+          openRowMenu(event.currentTarget);
+        }
+      }}
+    >
       <button
         type="button"
         className={styles.rowSelect}
