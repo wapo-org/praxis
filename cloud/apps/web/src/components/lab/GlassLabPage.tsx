@@ -4,6 +4,7 @@ import { ArrowLeft, Moon, Shield, Sun } from '../../lib/icons';
 import { PraxisStoreContext } from '../../state/context';
 import { AppleNotesReplica } from './AppleNotesReplica';
 import { DropdownPositions } from './DropdownPositions';
+import { MorphLab } from './MorphLab';
 import './lab.css';
 import { ScrimComparison } from './ScrimComparison';
 import { VirtualModelPicker } from './VirtualModelPicker';
@@ -36,6 +37,8 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
 
   if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('dropdown'))
     return <DropdownPositions />;
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('morph'))
+    return <MorphLab />;
 
   return (
     <div
@@ -82,14 +85,14 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
               style={{
                 margin: 0,
                 fontFamily: 'var(--font-serif)',
-                fontSize: '20px',
+                fontSize: 'var(--text-xl)',
                 fontWeight: 600,
                 letterSpacing: '-0.01em',
               }}
             >
               Liquid Glass Optical Lab
             </h1>
-            <div style={{ fontSize: '12px', color: 'var(--paper-secondary-ink)' }}>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--paper-secondary-ink)' }}>
               @praxis/glass · Snell Squircle Refraction &amp; 35-Frame UIMenu Physics
             </div>
           </div>

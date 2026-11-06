@@ -24,7 +24,7 @@ export function ScrimComparison() {
         <span
           style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: '10px',
+            fontSize: 'var(--text-xs)',
             textTransform: 'uppercase',
             letterSpacing: '0.08em',
             color: 'var(--paper-muted-ink)',
@@ -32,13 +32,13 @@ export function ScrimComparison() {
         >
           ProgressiveBlurScrim.swift · 6-Band Variable Edge Feather
         </span>
-        <h2 style={{ margin: '2px 0 4px 0', fontSize: '16px', fontWeight: 600 }}>
+        <h2 style={{ margin: '2px 0 4px 0', fontSize: 'var(--text-lg)', fontWeight: 600 }}>
           ProgressiveBlurScrim (6-Band Feather) vs. Hard Clip Scroll Container
         </h2>
         <p
           style={{
             margin: 0,
-            fontSize: '13px',
+            fontSize: 'var(--text-sm)',
             color: 'var(--paper-secondary-ink)',
           }}
         >
@@ -72,7 +72,7 @@ export function ScrimComparison() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              fontSize: '12px',
+              fontSize: 'var(--text-xs)',
               fontWeight: 600,
             }}
           >
@@ -80,7 +80,7 @@ export function ScrimComparison() {
             <span
               style={{
                 fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
+                fontSize: 'var(--text-xs)',
                 color: 'var(--paper-success)',
               }}
             >
@@ -93,7 +93,7 @@ export function ScrimComparison() {
               style={{
                 padding: '28px 20px',
                 fontFamily: 'var(--font-serif)',
-                fontSize: '16px',
+                fontSize: 'var(--text-lg)',
                 lineHeight: '26px',
                 color: 'var(--paper-ink)',
               }}
@@ -124,7 +124,7 @@ export function ScrimComparison() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              fontSize: '12px',
+              fontSize: 'var(--text-xs)',
               fontWeight: 600,
             }}
           >
@@ -132,7 +132,7 @@ export function ScrimComparison() {
             <span
               style={{
                 fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
+                fontSize: 'var(--text-xs)',
                 color: 'var(--paper-muted-ink)',
               }}
             >
@@ -147,7 +147,7 @@ export function ScrimComparison() {
               overflowY: 'auto',
               padding: '28px 20px',
               fontFamily: 'var(--font-serif)',
-              fontSize: '16px',
+              fontSize: 'var(--text-lg)',
               lineHeight: '26px',
               color: 'var(--paper-ink)',
             }}
@@ -175,7 +175,7 @@ export function ScrimComparison() {
           alignItems: 'center',
           justifyContent: 'center',
           fontFamily: 'var(--font-mono)',
-          fontSize: '11px',
+          fontSize: 'var(--text-xs)',
           color: 'var(--paper-secondary-ink)',
         }}
       >

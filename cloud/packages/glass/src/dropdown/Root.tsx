@@ -13,7 +13,7 @@ import {
   GlassDropdownContext,
 } from './context';
 import { useMenuReducedMotion } from './motion';
-import { usePointerRelease } from './pointer';
+import { inGrowingMenu, usePointerRelease } from './pointer';
 export interface GlassDropdownRootProps
   extends React.HTMLAttributes<HTMLDivElement>, GlassMaterialControls {
   /** Render in document.body so no ancestor can clip the menu. On by default. */
@@ -168,7 +168,8 @@ const GlassDropdownRoot = React.forwardRef<
       if (!target || !target.isConnected) return;
       if (
         rootRef.current?.contains(target) ||
-        contentElRef.current?.contains(target)
+        contentElRef.current?.contains(target) ||
+        inGrowingMenu(contentElRef.current, event.clientX, event.clientY)
       )
         return;
       setOpen(false);

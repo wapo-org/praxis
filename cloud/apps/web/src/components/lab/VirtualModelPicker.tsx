@@ -72,7 +72,7 @@ export function VirtualModelPicker() {
             <span
               style={{
                 fontFamily: 'var(--font-mono)',
-                fontSize: '10px',
+                fontSize: 'var(--text-xs)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.08em',
                 color: 'var(--paper-muted-ink)',
@@ -80,7 +80,7 @@ export function VirtualModelPicker() {
             >
               60fps Windowed Combobox · 500 Synthetic Models
             </span>
-            <h2 style={{ margin: '2px 0 0 0', fontSize: '16px', fontWeight: 600 }}>
+            <h2 style={{ margin: '2px 0 0 0', fontSize: 'var(--text-lg)', fontWeight: 600 }}>
               500-Model Virtualized Picker Demo
             </h2>
           </div>
@@ -190,18 +190,18 @@ export function VirtualModelPicker() {
               <div
                 style={{
                   fontFamily: 'var(--font-mono)',
-                  fontSize: '11px',
+                  fontSize: 'var(--text-xs)',
                   color: 'var(--paper-secondary-ink)',
                 }}
               >
                 Active Selection · {selectedModel.provider}
               </div>
-              <div style={{ fontSize: '16px', fontWeight: 600, marginTop: '2px' }}>
+              <div style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginTop: '2px' }}>
                 {selectedModel.name}
               </div>
               <div
                 style={{
-                  fontSize: '12.5px',
+                  fontSize: 'var(--text-sm)',
                   color: 'var(--paper-secondary-ink)',
                   marginTop: '2px',
                 }}
@@ -231,7 +231,7 @@ export function VirtualModelPicker() {
               alignItems: 'center',
               justifyContent: 'space-between',
               marginBottom: '8px',
-              fontSize: '12px',
+              fontSize: 'var(--text-xs)',
               color: 'var(--paper-secondary-ink)',
             }}
           >
@@ -239,7 +239,7 @@ export function VirtualModelPicker() {
               Showing {filteredModels.length} of {SYNTHETIC_500_MODELS.length} models (
               {pinnedModelIds.size} pinned ★)
             </span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
               DOM window: ~18 nodes
             </span>
           </div>
@@ -309,7 +309,7 @@ export function VirtualModelPicker() {
       <div
         style={{
           marginTop: '16px',
-          fontSize: '12px',
+          fontSize: 'var(--text-xs)',
           fontFamily: 'var(--font-mono)',
           color: 'var(--paper-secondary-ink)',
           paddingTop: '12px',

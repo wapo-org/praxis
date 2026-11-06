@@ -73,7 +73,7 @@ export function MessageAttachment({
         background: 'var(--paper-fill-1)',
         border: '1px solid var(--paper-hairline)',
         color: 'var(--paper-ink)',
-        fontSize: 13,
+        fontSize: 'var(--text-sm)',
       }}
     >
       {part.type === 'document' ? <FileText size={18} /> : <Paperclip size={18} />}

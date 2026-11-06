@@ -1,5 +1,14 @@
 import React from 'react';
+import { morphStatus } from '../morph/registry';
 import { isScrollPan, scrollContainer } from './gestures';
+/** Is this point where the still-growing glass is about to be? It takes no pointer until it lands. */
+export function inGrowingMenu(menu: HTMLElement | null, x: number, y: number) {
+  if (menu?.style.pointerEvents !== 'none') return false;
+  const surface = menu.querySelector('[data-glass-surface]');
+  const box = surface ? morphStatus(surface)?.restRect() : null;
+  return !!box && x >= box.left && x <= box.right && y >= box.top && y <= box.bottom;
+}
+
 /** Hit-testing works with touch's implicit capture as well as mouse dragging. */
 export function usePointerRelease(
   open: boolean,
@@ -48,6 +57,8 @@ export function usePointerRelease(
         e.clientY,
       ) as HTMLElement | null;
       if (hit && getTrigger()?.contains(hit)) return;
+      // The glass is still growing: there is no row to choose yet, but outside its rest box is still outside.
+      if (inGrowingMenu(getMenu(), e.clientX, e.clientY)) return;
       const row = hit?.closest<HTMLElement>('[data-dropdown-item-id]');
       if (row && getMenu()?.contains(row) && !row.hasAttribute('disabled')) {
         row.click();

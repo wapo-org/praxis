@@ -33,6 +33,11 @@ const stopSampling = (page: Page) =>
     return w.__s;
   });
 
+/** Geometry is only meaningful once the glass has landed: the morph leaves nothing inline at rest. */
+async function landed(shell: Locator) {
+  await expect.poll(() => shell.evaluate((el: HTMLElement) => el.style.transform)).toBe('');
+}
+
 async function pull(page: Page, from: { x: number; y: number }, dx: number, dy: number, steps = 12) {
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
@@ -210,7 +215,7 @@ test.describe('the stretch', () => {
     await page.getByTestId('composer-plus-button').click();
     const tray = page.getByTestId('plus-tray');
     await tray.waitFor();
-    await page.waitForTimeout(500);
+    await landed(tray.locator('xpath=..'));
     const rest = (await tray.boundingBox())!;
     await pull(page, { x: rest.x + rest.width / 2, y: rest.y + 20 }, 0, -120);
     const box = (await tray.boundingBox())!;
@@ -229,7 +234,7 @@ test.describe('the stretch', () => {
     await page.mouse.down();
     const menu = page.getByRole('menu');
     await menu.waitFor();
-    await page.waitForTimeout(450);
+    await landed(menu);
     const surface = menu.locator('[data-glass-surface]').first();
     const rest = (await surface.boundingBox())!;
     // Inside: highlights, no stretch.

@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import React from 'react';
-import { GlassSurface } from '../GlassSurface';
+import { GlassMorph } from '../morph/GlassMorph';
 import { ScrollBlur } from '../ProgressiveBlurScrim';
 import type { GlassMaterialControls } from '../GlassSurface';
 import styles from './dropdown.module.css';
@@ -22,7 +22,10 @@ import { resolveMorphTrail } from './morph';
 import { useMenuReducedMotion } from './motion';
 import { usePositioning } from './positioning';
 import { usePressMotion } from './pressMotion';
-import { popIn, press, SPRING, TRANSITION } from '../motion';
+import { press, SPRING, TRANSITION } from '../motion';
+
+/** --radius-lg, the menu's rest corner. */
+const MENU_RADIUS = 16;
 export interface ContentProps
   extends
     Omit<
@@ -134,55 +137,46 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
         {ctx.open ? (
           <DepthContext.Provider value={0}>
             <PanelHighlightContext.Provider value={highlightCtx}>
-              <motion.div
-                ref={setRef}
-                transformTemplate={reduced ? () => 'none' : undefined}
-                id={ctx.menuId}
-                role={ctx.searchable ? undefined : 'menu'}
-                tabIndex={-1}
-                aria-labelledby={ctx.triggerId}
-                onKeyDown={handleKeyDown}
-                onPointerDown={(e) => {
-                  pointerDownOriginRef.current = { x: e.clientX, y: e.clientY };
-                  ctx.startScrub();
+              <GlassMorph
+                source={ctx.getTriggerEl}
+                ready={position.visibility !== 'hidden'}
+                shellRef={setRef}
+                shellProps={{
+                  ...otherProps,
+                  id: ctx.menuId,
+                  role: ctx.searchable ? undefined : 'menu',
+                  tabIndex: -1,
+                  'aria-labelledby': ctx.triggerId,
+                  onKeyDown: handleKeyDown,
+                  onPointerDown: (e) => {
+                    pointerDownOriginRef.current = { x: e.clientX, y: e.clientY };
+                    ctx.startScrub();
+                  },
+                  onPointerLeave: () => {
+                    if (!pointerDownOriginRef.current) {
+                      setHighlightedId(null);
+                    }
+                  },
+                  className: `praxis-glass-dropdown-content ${styles.content} ${className}`.trim(),
+                  style: {
+                    position: ctx.portal ? 'fixed' : 'absolute',
+                    zIndex: 80,
+                    minWidth: Math.min(
+                      minWidth,
+                      typeof window === 'undefined'
+                        ? minWidth
+                        : window.innerWidth - 16,
+                    ),
+                    ...style,
+                    ...position,
+                  },
                 }}
-                onPointerLeave={() => {
-                  if (!pointerDownOriginRef.current) {
-                    setHighlightedId(null);
-                  }
-                }}
-                /* Keep CSS filter off this ancestor: even blur(0) blocks backdrop sampling. */
-                /* IMG_7745–IMG_7752 Unfurl Pop Motion */
-                initial={reduced ? false : { scale: popIn.initial.scale }}
-                animate={{ scale: 1 }}
-                exit={reduced ? undefined : { scale: popIn.exit.scale, transition: popIn.exit.transition }}
-                transition={reduced ? TRANSITION.none : SPRING}
-                className={`praxis-glass-dropdown-content ${styles.content} ${className}`.trim()}
-                style={{
-                  position: ctx.portal ? 'fixed' : 'absolute',
-                  zIndex: 80,
-                  minWidth: Math.min(
-                    minWidth,
-                    typeof window === 'undefined'
-                      ? minWidth
-                      : window.innerWidth - 16,
-                  ),
-                  ...style,
-                  ...position,
-                }}
-                {...otherProps}
+                material={glassMaterial}
+                radius={MENU_RADIUS}
+                stretch={stretchable ? 'edge' : false}
+                className={styles.surface}
+                style={{ overflow: ctx.submenuMode === 'cascade' ? 'visible' : 'hidden' }}
               >
-                <GlassSurface
-                  material={glassMaterial}
-                  radius={16}
-                  stretch={stretchable ? 'edge' : false}
-                  className={styles.surface}
-                  initial={reduced ? { opacity: 0 } : { opacity: popIn.initial.opacity }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, transition: TRANSITION.fast }}
-                  transition={reduced ? TRANSITION.fast : TRANSITION.base}
-                  style={{ overflow: ctx.submenuMode === 'cascade' ? 'visible' : 'hidden' }}
-                >
                   {/* Layout-spring height container (IMG_7769–IMG_7774 submenu morph) */}
                   <motion.div
                     layout={reduced ? false : 'size'}
@@ -255,8 +249,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                       </MorphPanel>
                     </AnimatePresence>
                   </motion.div>
-                </GlassSurface>
-              </motion.div>
+              </GlassMorph>
             </PanelHighlightContext.Provider>
           </DepthContext.Provider>
         ) : null}

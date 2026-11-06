@@ -69,10 +69,8 @@ describe('every GlassSurface stretches', () => {
       'ChatHeader.tsx',
       'Composer.tsx',
       'ConsentPopover.tsx',
-      'Content.tsx',
-      'PlusTray.tsx',
+      'GlassMorph.tsx',
       'Sidebar.tsx',
-      'SubContent.tsx',
       'Trigger.tsx',
       'primitives.tsx',
     ]);

@@ -8,8 +8,8 @@
   isolation: isolate;
   border-radius: var(--glass-radius, var(--radius-xl));
   box-shadow:
-    0 4px 9px rgba(var(--glass-shadow-rgb), calc(0.16 * var(--glass-shadow) * var(--glass-fade, 1))),
-    var(--glass-ambient);
+    var(--glass-contact) rgba(var(--glass-shadow-rgb), calc(var(--glass-contact-a) * var(--glass-shadow) * var(--glass-fade, 1))),
+    var(--glass-lift) rgba(var(--glass-shadow-rgb), calc(var(--glass-lift-a) * var(--glass-shadow) * var(--glass-fade, 1)));
   /* Press-drag is a stretch here, not a text selection or a native drag. */
   user-select: none;
   -webkit-user-select: none;
@@ -103,19 +103,22 @@
 .regular {
   --glass-tint: var(--glass-regular-tint);
   --glass-blur: var(--glass-regular-blur);
-  --glass-ambient: var(--glass-regular-ambient);
+  --glass-lift: var(--glass-regular-lift);
+  --glass-lift-a: var(--glass-regular-lift-a);
 }
 
 .thick {
   --glass-tint: var(--glass-thick-tint);
   --glass-blur: var(--glass-thick-blur);
-  --glass-ambient: var(--glass-thick-ambient);
+  --glass-lift: var(--glass-thick-lift);
+  --glass-lift-a: var(--glass-thick-lift-a);
 }
 
 .clear {
   --glass-tint: var(--glass-clear-tint);
   --glass-blur: var(--glass-clear-blur);
-  --glass-ambient: var(--glass-clear-ambient);
+  --glass-lift: var(--glass-clear-lift);
+  --glass-lift-a: var(--glass-clear-lift-a);
 }
 
 .capsule {

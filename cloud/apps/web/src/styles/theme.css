@@ -133,3 +133,12 @@ button {
 .account-screen input, .account-screen button { height: var(--control-lg); padding: 0 var(--space-4); border-radius: var(--radius-md); border: 1px solid var(--color-hairline-strong); background: var(--color-surface); color: var(--color-ink); width: 100%; }
 .account-screen button { border: 0; background: var(--color-accent); color: var(--color-on-accent); font-weight: var(--weight-semibold); cursor: pointer; }
 .account-error { position: fixed; top: var(--space-16); z-index: 99; background: var(--color-surface); color: var(--color-danger); }
+
+/* Touch screens only: iOS zooms into a focused field below 16 px, whatever the type scale says. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type='checkbox'], [type='radio'], [type='range']),
+  textarea,
+  select {
+    font-size: var(--text-input-touch) !important;
+  }
+}

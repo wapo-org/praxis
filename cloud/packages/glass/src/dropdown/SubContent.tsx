@@ -1,8 +1,7 @@
 import styles from './dropdown.module.css';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import React from 'react';
-import { GlassSurface } from '../GlassSurface';
-import { popIn, SPRING, TRANSITION } from '../motion';
+import { GlassMorph } from '../morph/GlassMorph';
 import type { GlassMaterialControls } from '../GlassSurface';
 import type { PanelHighlightContextValue } from './context';
 import {
@@ -12,6 +11,9 @@ import {
   SubContext,
   useGlassDropdownContext,
 } from './context';
+/** --radius-lg, as the menu it came from. */
+const SUBMENU_RADIUS = 16;
+
 export interface SubContentProps
   extends
     Omit<
@@ -47,35 +49,26 @@ const SubContent = React.forwardRef<HTMLDivElement, SubContentProps>(
         {sub.isOpen ? (
           <DepthContext.Provider value={sub.depth + 1}>
             <PanelHighlightContext.Provider value={highlightCtx}>
-              <motion.div
-                ref={forwardedRef}
-                role="menu"
-                aria-label={
-                  typeof sub.label === 'string' ? sub.label : 'Submenu'
-                }
-                initial={{ scale: popIn.initial.scale, x: sub.openSide === 'right' ? -8 : 8 }}
-                animate={{ scale: 1, x: 0 }}
-                exit={{ scale: popIn.exit.scale, transition: popIn.exit.transition }}
-                transition={SPRING}
-                className={`${styles.subContent} ${sub.openSide === 'right' ? styles.subRight : styles.subLeft}`}
-                style={style}
-                onPointerLeave={() => setHighlightedId(null)}
-                {...rest}
+              <GlassMorph
+                source={sub.getSubTriggerEl}
+                radius={SUBMENU_RADIUS}
+                material={ctx.materialControls.material ?? 'thick'}
+                stretch="edge"
+                className={styles.surface}
+                shellRef={forwardedRef}
+                shellProps={{
+                  ...rest,
+                  role: 'menu',
+                  'aria-label': typeof sub.label === 'string' ? sub.label : 'Submenu',
+                  className: `${styles.subContent} ${sub.openSide === 'right' ? styles.subRight : styles.subLeft}`,
+                  style,
+                  onPointerLeave: () => setHighlightedId(null),
+                }}
               >
-                <GlassSurface
-                  material={ctx.materialControls.material ?? 'thick'}
-                  stretch="edge"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, transition: TRANSITION.fast }}
-                  transition={TRANSITION.base}
-                  className={styles.surface}
-                >
                   <div className={styles.list}>
                     {children}
                   </div>
-                </GlassSurface>
-              </motion.div>
+              </GlassMorph>
             </PanelHighlightContext.Provider>
           </DepthContext.Provider>
         ) : null}

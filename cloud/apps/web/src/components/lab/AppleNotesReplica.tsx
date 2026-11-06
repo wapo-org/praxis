@@ -65,7 +65,7 @@ export function AppleNotesReplica() {
                   <span
                     style={{
                       fontFamily: 'var(--font-mono)',
-                      fontSize: '10px',
+                      fontSize: 'var(--text-xs)',
                       textTransform: 'uppercase',
                       letterSpacing: '0.08em',
                       color: 'var(--paper-muted-ink)',
@@ -73,7 +73,7 @@ export function AppleNotesReplica() {
                   >
                     IMG_7744 – IMG_7778 Reference Replica
                   </span>
-                  <h2 style={{ margin: '2px 0 0 0', fontSize: '16px', fontWeight: 600 }}>
+                  <h2 style={{ margin: '2px 0 0 0', fontSize: 'var(--text-lg)', fontWeight: 600 }}>
                     Apple Notes Liquid Glass Pull-Down UIMenu
                   </h2>
                 </div>
@@ -275,7 +275,7 @@ export function AppleNotesReplica() {
                   backgroundColor: 'var(--paper-canvas)',
                   border: '1px solid var(--paper-hairline)',
                   fontFamily: 'var(--font-serif)',
-                  fontSize: '17px',
+                  fontSize: 'var(--text-lg)',
                   lineHeight: '28px',
                   color: 'var(--paper-ink)',
                 }}
@@ -283,7 +283,7 @@ export function AppleNotesReplica() {
                 <div
                   style={{
                     fontFamily: 'var(--font-mono)',
-                    fontSize: '11px',
+                    fontSize: 'var(--text-xs)',
                     color: 'var(--paper-muted-ink)',
                     marginBottom: '8px',
                   }}
@@ -302,7 +302,7 @@ export function AppleNotesReplica() {
                   and effortless to scan. Dragging across rows scrubs the fluid highlight pill and
                   stretches the glass card with asymptotic rubber-band physics.
                 </p>
-                <p style={{ margin: 0, color: 'var(--paper-secondary-ink)', fontSize: '15px' }}>
+                <p style={{ margin: 0, color: 'var(--paper-secondary-ink)', fontSize: 'var(--text-md)' }}>
                   Click <strong>Recent Notes</strong> inside the menu (or the quick morph chip in
                   the header) to trigger the in-place submenu elevation from <code>IMG_7769</code>–
                   <code>IMG_7774</code>, revealing 5 three-line note previews.
@@ -317,7 +317,7 @@ export function AppleNotesReplica() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                fontSize: '12px',
+                fontSize: 'var(--text-xs)',
                 fontFamily: 'var(--font-mono)',
                 color: 'var(--paper-secondary-ink)',
                 paddingTop: '12px',

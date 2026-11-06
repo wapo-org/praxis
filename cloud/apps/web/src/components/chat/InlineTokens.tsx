@@ -59,7 +59,7 @@ export function renderInlineTokens(
               background: 'var(--paper-fill-1)',
               border: '0.5px solid var(--paper-hairline)',
               fontFamily: 'var(--font-mono)',
-              fontSize: 13.5,
+              fontSize: 'var(--text-sm)',
               lineHeight: '20px',
               color: 'var(--paper-ink)',
               cursor: 'pointer',
@@ -67,7 +67,7 @@ export function renderInlineTokens(
               whiteSpace: 'nowrap',
             }}
           >
-            <span aria-hidden="true" style={{ fontSize: 11, color: 'var(--paper-accent)' }}>
+            <span aria-hidden="true" style={{ fontSize: 'var(--text-xs)', color: 'var(--paper-accent)' }}>
               <FileText size={16} />
             </span>
             <span>{label}</span>
@@ -90,7 +90,7 @@ export function renderInlineTokens(
               borderRadius: 999,
               background: 'var(--paper-fill-1)',
               border: '0.5px solid var(--paper-hairline)',
-              fontSize: 14,
+              fontSize: 'var(--text-md)',
               lineHeight: '20px',
               color: 'var(--paper-ink)',
               textDecoration: 'none',
@@ -99,7 +99,7 @@ export function renderInlineTokens(
             }}
           >
             <span style={{ fontWeight: 500 }}>{label}</span>
-            <span style={{ fontSize: 11.5, color: 'var(--paper-ink-3)' }}>{domain} ↗</span>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--paper-ink-3)' }}>{domain} ↗</span>
           </a>,
         );
       } else {
@@ -132,7 +132,7 @@ export function renderInlineTokens(
             background: 'var(--paper-fill-1)',
             border: '0.5px solid var(--paper-hairline)',
             fontFamily: 'var(--font-mono)',
-            fontSize: 14,
+            fontSize: 'var(--text-md)',
             lineHeight: '20px',
             color: 'var(--paper-ink)',
             cursor: 'pointer',
@@ -141,7 +141,7 @@ export function renderInlineTokens(
           }}
         >
           {isFileRef && (
-            <span aria-hidden="true" style={{ fontSize: 11, color: 'var(--paper-accent)' }}>
+            <span aria-hidden="true" style={{ fontSize: 'var(--text-xs)', color: 'var(--paper-accent)' }}>
               <FileText size={16} />
             </span>
           )}

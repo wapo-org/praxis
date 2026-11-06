@@ -4,6 +4,7 @@ export * from './stretch';
 export * from './material';
 export * from './GlideHighlight';
 export * from './GlassSurface';
+export * from './morph/GlassMorph';
 export * from './ProgressiveBlurScrim';
 export * from './primitives';
 export * from './dropdown/GlassDropdown';

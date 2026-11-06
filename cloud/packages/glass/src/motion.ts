@@ -38,7 +38,76 @@ export const SPRINGS = {
   shadowAlpha: { stiffness: 220, damping: 24 },
 } as const;
 
-const spring = (value: { stiffness: number; damping: number }): Transition => ({ type: 'spring', ...value });
+/**
+ * The menu morph (morph/*): fast, then soft. Measured from the iOS recording: the
+ * shape does nearly all its growth in about 150 ms after an 80-100 ms lift, then a
+ * long quiet settle with no bounce. Springs carry velocity, so any reversal is
+ * continuous. Both button classes use these same numbers.
+ */
+export const MORPH = {
+  open: {
+    /** Critically damped, so never a bounce; the settle below is its own slow term. */
+    shape: { stiffness: 1600, damping: 80 },
+    /** Much slower than the shape: rows are still oversized when the glass has landed. */
+    content: { stiffness: 289, damping: 34 },
+    /** The source lifts before the glass starts growing. */
+    lift: { stiffness: 2600, damping: 102 },
+    /** Seconds from the press before the glass starts to grow. */
+    shapeDelay: 0.11,
+    contentDelay: 0.11,
+  },
+  close: {
+    shape: { stiffness: 2500, damping: 100 },
+    content: { stiffness: 3600, damping: 120 },
+    lift: { stiffness: 1600, damping: 80 },
+  },
+  /** Under prefers-reduced-motion: a plain short fade, no shape change. */
+  fade: { stiffness: 1200, damping: 70 },
+  path: {
+    anchorBy: 0.35,
+    roundIn: 0.14,
+    roundOutFrom: 0.6,
+    roundOutTo: 1,
+    squareFrom: 0.58,
+    squareTo: 0.9,
+    settleFrom: 0.8,
+    settleWidth: 0.025,
+    settleHeight: 0.025,
+    /** Seconds: how slowly the last few percent bleed off. */
+    settleTau: 0.09,
+    /** Progress past which the settle starts bleeding off. */
+    settleStart: 0.9,
+    /** The panel carries on past its rest place, away from the button, by this share of its height. */
+    carry: 0.11,
+    carryInFrom: 0.1,
+    carryInTo: 0.7,
+    carryOutFrom: 0.7,
+    carryOutTo: 0.9,
+  },
+  content: {
+    oversize: 0.55,
+    sharpFrom: 0.62,
+    sharpTo: 0.88,
+    blurFrom: 0.12,
+    blurTo: 0.46,
+    blurOutFrom: 0.74,
+    blurOutTo: 0.93,
+    tintFrom: 0.62,
+    tintTo: 0.9,
+    /** Fixed strength of the filter on the arriving copy, in px: never animated. */
+    bend: 90,
+    blur: 1.6,
+  },
+  /** The lift's wider shadow, in px on screen, while the source is still source-sized. */
+  liftShadow: { y: 6, blur: 28, alpha: 0.16 },
+  /** Below this the source's own glass and the morph hand over to each other. */
+  sourceHandover: 0.06,
+  /** The attached class's blob is this share of the button's short side, within these px. */
+  blob: { share: 0.6, min: 12, max: 24 },
+} as const;
+
+export type SpringValue = { stiffness: number; damping: number };
+const spring = (value: SpringValue): Transition => ({ type: 'spring', ...value });
 export const SNAP = spring(SPRINGS.snap);
 export const GLIDE = spring(SPRINGS.glide);
 export const PANEL = spring(SPRINGS.panel);

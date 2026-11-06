@@ -3,7 +3,7 @@
 @media (max-width: 600px) {
   .glass-lab-header { padding: 12px !important; position: relative !important; }
   .glass-lab-header > div:first-child { min-width: 0; flex-wrap: wrap; }
-  .glass-lab-header h1 { font-size: 18px !important; }
+  .glass-lab-header h1 { font-size: var(--text-lg) !important; }
   .glass-lab-main { padding: 12px !important; }
   [data-testid="apple-notes-replica-section"] { padding: 14px !important; }
   .apple-notes-actions { flex-wrap: wrap; }

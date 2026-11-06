@@ -8,13 +8,18 @@ import { animate, frame, motionValue } from 'framer-motion';
 import { lensScale, type GlassMaterial } from './material';
 import { SPRINGS } from './motion';
 
-/** Rest (0, 4, 9, .16, .20) → held (4, 16, 24, .22, .27). Keep in sync with glass.module.css. */
-export function shadowAt(geometry: number, alpha: number) {
+/**
+ * The contact shadow, rest → held: it spreads and lifts, it never hardens. Rest geometry and
+ * alpha are --glass-contact and --glass-contact-a (tokens.css), which `contact` carries.
+ */
+export const HELD_SHADOW = { x: 4, y: 12, blur: 30, alpha: 0.04 } as const;
+
+export function shadowAt(geometry: number, alpha: number, contact = { y: 1, blur: 14, alpha: 0.03 }) {
   return {
-    x: 4 * geometry,
-    y: 4 + 12 * geometry,
-    blur: 9 + 15 * geometry,
-    alpha: 0.16 + 0.06 * alpha,
+    x: HELD_SHADOW.x * geometry,
+    y: contact.y + HELD_SHADOW.y * geometry,
+    blur: contact.blur + HELD_SHADOW.blur * geometry,
+    alpha: contact.alpha + HELD_SHADOW.alpha * alpha,
     inset: 0.2 + 0.07 * alpha,
   };
 }
@@ -27,13 +32,13 @@ export function createRig(el: HTMLElement, material: GlassMaterial) {
   const held = lensScale(material, true);
   let lens: HTMLElement | null = null;
   let map: Element | null = null;
-  let tokens = { rgb: '0, 0, 0', strength: 1, ambient: 'none', inner: 1, rim: 0.5, border: 0.5 };
+  let tokens = { rgb: '0, 0, 0', strength: 1, lift: 'none', contact: { y: 1, blur: 14, alpha: 0.03 }, inner: 1, rim: 0.5, border: 0.5 };
   let holding = false;
 
   const write = () => {
-    const shadow = shadowAt(geometry.get(), alpha.get());
+    const shadow = shadowAt(geometry.get(), alpha.get(), tokens.contact);
     map?.setAttribute('scale', String(rest + (held - rest) * ratio.get()));
-    el.style.boxShadow = `${shadow.x}px ${shadow.y}px ${shadow.blur}px rgba(${tokens.rgb}, ${(shadow.alpha * tokens.strength).toFixed(4)}), ${tokens.ambient}`;
+    el.style.boxShadow = `${shadow.x}px ${shadow.y}px ${shadow.blur}px rgba(${tokens.rgb}, ${(shadow.alpha * tokens.strength).toFixed(4)}), ${tokens.lift}`;
     if (lens) {
       const inset = (shadow.inset * tokens.inner).toFixed(4);
       lens.style.boxShadow = [
@@ -63,10 +68,18 @@ export function createRig(el: HTMLElement, material: GlassMaterial) {
       if (next) {
         const style = getComputedStyle(el);
         const num = (name: string, fallback: number) => Number.parseFloat(style.getPropertyValue(name)) || fallback;
+        const rgb = style.getPropertyValue('--glass-shadow-rgb').trim() || '0, 0, 0';
+        const strength = num('--glass-shadow', 1);
+        const contact = style.getPropertyValue('--glass-contact').trim().split(/\s+/);
         tokens = {
-          rgb: style.getPropertyValue('--glass-shadow-rgb').trim() || '0, 0, 0',
-          strength: num('--glass-shadow', 1),
-          ambient: style.getPropertyValue('--glass-ambient').trim() || '0 0 0 transparent',
+          rgb,
+          strength,
+          lift: `${style.getPropertyValue('--glass-lift').trim() || '0 0 0'} rgba(${rgb}, ${(num('--glass-lift-a', 0) * strength).toFixed(4)})`,
+          contact: {
+            y: Number.parseFloat(contact[1] ?? '') || 1,
+            blur: Number.parseFloat(contact[2] ?? '') || 14,
+            alpha: num('--glass-contact-a', 0.03),
+          },
           inner: num('--glass-inner', 1),
           rim: num('--glass-rim', 0.5),
           border: num('--glass-border', 0.5),

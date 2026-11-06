@@ -17,6 +17,7 @@
  */
 import { animate, frame, motionValue, type MotionValue } from 'framer-motion';
 import { MATERIAL_RAMP, STRETCH_BUDGET, type GlassMaterial } from './material';
+import { morphStatus } from './morph/registry';
 import { SPRINGS } from './motion';
 
 /** Pointer travel before the stretch engages: plain clicks stay inert. */
@@ -294,7 +295,10 @@ export function attachStretch(el: HTMLElement, options: StretchOptions): () => v
   /* Edge mode: the press usually began on the trigger, before this menu existed. */
   const onEdgeMove = (event: PointerEvent) => {
     if (!event.buttons || reducedMotion()) return releaseEdge();
-    const rect = edge ?? el.getBoundingClientRect();
+    // While the glass is still growing, the pointer being outside it is not a pull.
+    const morph = morphStatus(el);
+    if (!edge && morph?.growing()) return;
+    const rect = edge ?? morph?.restRect() ?? el.getBoundingClientRect();
     const dx = event.clientX - Math.min(Math.max(event.clientX, rect.left), rect.right);
     const dy = event.clientY - Math.min(Math.max(event.clientY, rect.top), rect.bottom);
     if (!edge) {

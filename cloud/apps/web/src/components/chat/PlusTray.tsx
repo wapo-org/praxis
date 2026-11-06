@@ -1,4 +1,4 @@
-import { GlassSurface, popIn, slideIn, slideUnder, usePreset } from '@praxis/glass';
+import { GlassMorph, slideIn, slideUnder, usePreset } from '@praxis/glass';
 import { AnimatePresence, motion } from 'framer-motion';
 import React from 'react';
 import { Camera, ChevronRight, Copy, Folder, Globe, Link, Photo, Settings } from '../../lib/icons';
@@ -12,6 +12,8 @@ export interface PlusTrayProps {
   onPickFiles: (accept?: string, capture?: boolean) => void;
 }
 
+/** --radius-2xl, the tray's rest corner. */
+const TRAY_RADIUS = 28;
 const MODES = ['auto', 'ask', 'plan', 'build'] as const;
 const TILES = [
   { name: 'Photos', Icon: Photo, accept: 'image/*' },
@@ -33,7 +35,6 @@ export function PlusTray({ onPickFiles }: PlusTrayProps) {
 
 function TrayPopover({ onPickFiles }: PlusTrayProps) {
   const store = usePraxisStore();
-  const pop = usePreset(popIn);
   const push = usePreset(slideIn);
   const under = usePreset(slideUnder);
   const [view, setView] = React.useState<'main' | 'models'>('main');
@@ -45,7 +46,7 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
   close.current = store.setPlusTrayOpen;
 
   const plusButton = () =>
-    surface.current?.closest('[data-testid="composer-dock"]')?.querySelector<HTMLElement>('[data-testid="composer-plus-button"]');
+    surface.current?.closest('[data-testid="composer-dock"]')?.querySelector<HTMLElement>('[data-testid="composer-plus-button"]') ?? null;
 
   React.useEffect(() => {
     surface.current?.focus({ preventScroll: true });
@@ -90,28 +91,18 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
   };
 
   return (
-    // Scale lives on this parent; opacity goes on the glass so its blur fades with it.
-    <motion.div
-      className={styles.anchor}
-      initial={{ scale: pop.initial.scale }}
-      animate={{ scale: 1 }}
-      exit={{ scale: pop.exit.scale, transition: pop.exit.transition }}
-      transition={pop.transition}
+    <GlassMorph
+      source={plusButton}
+      radius={TRAY_RADIUS}
+      material="thick"
+      shellProps={{ className: styles.anchor }}
+      surfaceRef={surface}
+      role="dialog"
+      aria-label="Composer options"
+      tabIndex={-1}
+      data-testid="plus-tray"
+      className={styles.surface}
     >
-      <GlassSurface
-        ref={surface}
-        radius={28}
-        material="thick"
-        role="dialog"
-        aria-label="Composer options"
-        tabIndex={-1}
-        data-testid="plus-tray"
-        className={styles.surface}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0, transition: pop.exit.transition }}
-        transition={pop.transition}
-      >
         <div className={styles.views} data-view={view}>
           <motion.div
             className={styles.main}
@@ -245,7 +236,6 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
             ) : null}
           </AnimatePresence>
         </div>
-      </GlassSurface>
-    </motion.div>
+    </GlassMorph>
   );
 }

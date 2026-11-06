@@ -4,7 +4,12 @@ test.beforeEach(async ({ page }) => {
   expect((await page.request.post('/v1/auth/dev', { data: { type: 'auth.dev', userId: 'b4-check' } })).ok()).toBeTruthy();
   await page.goto('/lab/glass?dropdown');
 });
+/** Geometry is only meaningful once the glass has landed: the morph leaves nothing inline at rest. */
+async function landed(menu: Locator) {
+  await expect.poll(() => menu.evaluate((el: HTMLElement) => el.style.transform)).toBe('');
+}
 async function scrollable(menu: Locator) {
+  await landed(menu);
   return menu.evaluate(el => {
     const nodes = [el, ...el.querySelectorAll('[data-slot="scroll-blur-viewport"]')];
     const node = nodes.find(n => !n.closest('[inert]') && n.scrollHeight > n.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(n).overflowY));
@@ -74,7 +79,7 @@ test('action grid corners, transparent tiles, native geometry and Math Results s
       await expect(tile).not.toHaveAttribute('data-highlighted', 'true');
     }
     const math = menu.getByRole('menuitem', { name: 'Math Results Suggest Results', exact: true });
-    await expect(math).toHaveCSS('font-size', '15px');
+    await expect(math).toHaveCSS('font-size', '14px');
     await expect(async () => expect((await menu.boundingBox())!.width).toBeCloseTo(240, 0)).toPass();
     const move = menu.getByRole('menuitem', { name: 'Move Note' }); expect(Math.round((await move.boundingBox())!.height)).toBeGreaterThanOrEqual(36);
     await page.keyboard.press('Escape');
@@ -129,7 +134,7 @@ test('plain morph header, centered preview icons and staggered children respect 
 });
 test('a mouse drag past the edge stretches the glass and cancellation springs it back without dismissal', async ({ page }) => {
   await page.getByTestId('position-top-start').click();
-  const menu = page.getByRole('menu'); await page.waitForTimeout(400);
+  const menu = page.getByRole('menu'); await landed(menu);
   const surface = menu.locator('[data-glass-surface]').first(); const rest = (await surface.boundingBox())!;
   await page.mouse.move(rest.x + rest.width - 3, rest.y + 20); await page.mouse.down();
   // Inside it scrubs, and the glass rests.

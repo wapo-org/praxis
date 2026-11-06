@@ -7,7 +7,7 @@ import type { GlassMaterialControls } from '../GlassSurface';
 import { assignForwardedRef, useGlassDropdownContext } from './context';
 import styles from './dropdown.module.css';
 import { useMenuReducedMotion } from './motion';
-import { press, SNAP, SPRING, TRANSITION } from '../motion';
+import { SNAP, TRANSITION } from '../motion';
 export interface TriggerProps
   extends
     Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'value'>,
@@ -112,11 +112,7 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
     }
 
     return (
-      <motion.div
-        animate={{ scale: !reduced && ctx.open ? press.whileTap.scale : 1 }}
-        transition={reduced ? TRANSITION.none : SPRING}
-        className={styles.triggerWrap}
-      >
+      <div className={styles.triggerWrap}>
         <GlassSurface
           shape="capsule"
           material={material ?? ctx.materialControls.material ?? 'regular'}
@@ -160,7 +156,7 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
             ) : null}
           </button>
         </GlassSurface>
-      </motion.div>
+      </div>
     );
   },
 );
