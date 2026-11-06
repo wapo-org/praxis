@@ -28,7 +28,11 @@ const BendFilter = React.memo(function BendFilter({ id, url, width, height }: { 
         <filter id={id} x="0" y="0" width="100%" height="100%">
           <feImage href={url} x={0} y={0} width={width} height={height} preserveAspectRatio="none" result="map" />
           <feDisplacementMap in="SourceGraphic" in2="map" scale={MORPH.content.bend} xChannelSelector="R" yChannelSelector="G" result="bent" />
-          <feGaussianBlur in="bent" stdDeviation={MORPH.content.blur} />
+          <feGaussianBlur in="bent" stdDeviation={MORPH.content.blur} result="soft" />
+          {/* Blur thins small type to a grey; the rows should arrive inky, as they do on iOS. */}
+          <feComponentTransfer in="soft">
+            <feFuncA type="linear" slope={MORPH.content.ink} />
+          </feComponentTransfer>
         </filter>
       </defs>
     </svg>

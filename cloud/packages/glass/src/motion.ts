@@ -59,7 +59,7 @@ export const MORPH = {
   close: {
     shape: { stiffness: 2500, damping: 100 },
     content: { stiffness: 3600, damping: 120 },
-    lift: { stiffness: 1600, damping: 80 },
+    lift: { stiffness: 3600, damping: 120 },
   },
   /** Under prefers-reduced-motion: a plain short fade, no shape change. */
   fade: { stiffness: 1200, damping: 70 },
@@ -88,15 +88,16 @@ export const MORPH = {
     oversize: 0.55,
     sharpFrom: 0.62,
     sharpTo: 0.88,
-    blurFrom: 0.12,
-    blurTo: 0.46,
+    blurFrom: 0.14,
+    blurTo: 0.55,
     blurOutFrom: 0.74,
     blurOutTo: 0.93,
     tintFrom: 0.62,
     tintTo: 0.9,
     /** Fixed strength of the filter on the arriving copy, in px: never animated. */
-    bend: 90,
+    bend: 36,
     blur: 1.6,
+    ink: 1.7,
   },
   /** The lift's wider shadow, in px on screen, while the source is still source-sized. */
   liftShadow: { y: 6, blur: 28, alpha: 0.16 },

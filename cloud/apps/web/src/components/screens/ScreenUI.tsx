@@ -274,7 +274,9 @@ export function ScreenMenu({
   React.useEffect(() => {
     if (!open) return;
     const onOutside = (event: PointerEvent) => {
-      if (event.target instanceof Node && !trigger.current?.contains(event.target)) setOpen(false);
+      // A press inside the menu is the menu's: it must stay open until the row has its click.
+      if (!(event.target instanceof Element) || trigger.current?.contains(event.target) || event.target.closest('.praxis-glass-dropdown-content')) return;
+      setOpen(false);
     };
     document.addEventListener('pointerdown', onOutside);
     return () => document.removeEventListener('pointerdown', onOutside);

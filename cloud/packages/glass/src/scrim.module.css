@@ -52,6 +52,8 @@
 }
 .viewport {
   height: 100%;
+  /* Separators run into the panel padding; that must not read as a sideways scroll (a visible bar on headed Chromium). */
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-mask-image: linear-gradient(

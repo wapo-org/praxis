@@ -40,4 +40,9 @@
   background: transparent;
   color: var(--color-ink);
   cursor: pointer;
+  outline: none;
+}
+.capsuleButton:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
 }

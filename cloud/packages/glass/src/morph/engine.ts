@@ -133,7 +133,7 @@ export function createMorph(options: MorphOptions) {
     put(lens, 'opacity', pose.tint.toFixed(3));
 
     const separate = source?.kind === 'separate';
-    const appear = separate ? lift.x : smoothstep(0, MORPH.sourceHandover, p.x);
+    const appear = separate ? lift.x : smoothstep(0, MORPH.sourceHandover, p.x) * lift.x;
     put(transit, 'opacity', (appear * (1 - smoothstep(0.82, 1, pose.tint))).toFixed(3));
     // The attached blob has no source glass to take over from: it appears on the button.
     put(surface, '--glass-fade', appear.toFixed(3));
@@ -149,8 +149,7 @@ export function createMorph(options: MorphOptions) {
 
     if (separate && source?.surface) {
       // The button's own glass hands over to this one. Nothing is left behind during the open.
-      const away = Math.max(lift.x, smoothstep(0, MORPH.sourceHandover, p.x));
-      source.surface.style.setProperty('--glass-fade', (1 - away).toFixed(3));
+      source.surface.style.setProperty('--glass-fade', (1 - lift.x).toFixed(3));
       sourceFaded = true;
     }
     if (glyph) {
@@ -302,13 +301,14 @@ export function createMorph(options: MorphOptions) {
       const step = Math.min(left, MAX_SUBSTEP);
       stepSpring(p, shapeTarget, spec.shape, step);
       stepSpring(c, contentTarget, spec.content, step);
-      stepSpring(lift, opening ? 1 : 0, spec.lift, step);
+      // On the way back the glass stays whole until it is on the button, then hands over to the source.
+      stepSpring(lift, opening || p.x > MORPH.sourceHandover ? 1 : 0, spec.lift, step);
       left -= step;
     }
     if (opening && p.x > MORPH.path.settleStart) settle *= Math.exp(-dt / MORPH.path.settleTau);
     write();
     if (opening && Math.abs(1 - p.x) < 8e-4 && Math.abs(p.v) < 0.02 && Math.abs(1 - c.x) < 2e-3 && settle < 0.01) finishOpen();
-    else if (!opening && p.x < 2e-3 && Math.abs(p.v) < 0.1) finishClose();
+    else if (!opening && p.x < 2e-3 && Math.abs(p.v) < 0.1 && lift.x < 0.01) finishClose();
   }
 
   const start = () => {
@@ -341,7 +341,6 @@ export function createMorph(options: MorphOptions) {
       if (!layers) return;
       if (options.reduced()) {
         phase = 'opening';
-        fade.x = phase === 'opening' && fade.x > 0 ? fade.x : 0;
         layers.surface.style.setProperty('--glass-fade', fade.x.toFixed(3));
         start();
         return;
