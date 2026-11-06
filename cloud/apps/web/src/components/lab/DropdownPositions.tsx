@@ -12,8 +12,6 @@ const previews = [
   'figure of around 40% refers to ethnic kazakhs and the population around them',
   'Hi, I got disconnected again. My name is Artem, and I have a question about this',
   'Hi Fiero, okay so to summarise the total code and the changes we discussed',
-  'Second pass over the release notes, with the open questions from the last review',
-  'Notes from the call about the migration plan and who is taking which of the steps',
 ];
 
 export function DropdownPositions({ compact = false }: { compact?: boolean }) {
@@ -53,7 +51,7 @@ export function DropdownPositions({ compact = false }: { compact?: boolean }) {
                 <GlassDropdown.Trigger data-testid={`position-${row}-${align}`} style={compact ? { fontSize: 'var(--text-xs)', padding: '6px 4px' } : undefined}>
                   {row} {align}
                 </GlassDropdown.Trigger>
-                <GlassDropdown.Content minWidth={240} maxHeight={480}>
+                <GlassDropdown.Content minWidth={240} maxHeight={340}>
                   <GlassDropdown.ActionGrid>
                     <GlassDropdown.TileItem icon={<Scan size={16} />}>
                       Scan

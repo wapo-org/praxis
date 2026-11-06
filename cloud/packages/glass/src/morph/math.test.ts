@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MORPH } from '../motion';
+import { MORPH, type SpringValue } from '../motion';
 import { contentAt, MAX_SUBSTEP, shapeAt, stepSpring, type MorphGeometry, type SpringState } from './math';
 
 const below: MorphGeometry = {
@@ -10,7 +10,7 @@ const below: MorphGeometry = {
 };
 const above: MorphGeometry = { ...below, source: { left: 12, top: 826, width: 42, height: 36 }, final: { left: 12, top: 640, width: 236, height: 175 } };
 
-const run = (spec: typeof MORPH.open.shape, seconds: number, delay = 0, from: SpringState = { x: 0, v: 0 }, target = 1) => {
+const run = (spec: SpringValue, seconds: number, delay = 0, from: SpringState = { x: 0, v: 0 }, target = 1) => {
   const state = { ...from };
   let t = 0;
   while (t < seconds) {
