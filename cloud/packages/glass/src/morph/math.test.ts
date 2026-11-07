@@ -112,15 +112,32 @@ describe('the morph timing, 15 % faster than the reference', () => {
     expect(at(205).p).toBeGreaterThan(0.97);
   });
 
-  it('lands the rows: oversized at 195, sharp by 246, on the final tint by 272', () => {
-    expect(contentAt(at(145).c).sharp).toBe(0);
-    const mid = contentAt(at(195).c);
-    expect(mid.scale).toBeGreaterThan(1.15);
-    expect(mid.scale).toBeLessThan(1.3);
-    expect(mid.blurred).toBeGreaterThan(0.9);
-    expect(contentAt(at(246).c).sharp).toBeGreaterThan(0.97);
-    expect(contentAt(at(272).c).tint).toBeGreaterThan(0.98);
-    expect(contentAt(at(500).c).scale).toBeLessThan(1.01);
+  it('the rows are sharp, inked and in place before the shape reaches 95 % of its size (WP-G4)', () => {
+    const p: SpringState = { x: 0, v: 0 };
+    const c: SpringState = { x: 0, v: 0 };
+    const f: SpringState = { x: 0, v: 0 };
+    let t = 0;
+    let shape95 = 0;
+    let rowsDone = 0;
+    let peak = 0;
+    let blurredSeen = false;
+    while (t < 0.8) {
+      stepSpring(p, t >= MORPH.open.shapeDelay ? (f.x >= MORPH.open.landAt ? 1 : 1 + MORPH.open.overshoot) : 0, MORPH.open.shape, MAX_SUBSTEP);
+      stepSpring(c, t >= MORPH.open.contentDelay ? 1 : 0, MORPH.open.content, MAX_SUBSTEP);
+      stepSpring(f, t >= MORPH.open.contentDelay ? 1 : 0, MORPH.open.form, MAX_SUBSTEP);
+      t += MAX_SUBSTEP;
+      const shape = shapeAt(p.x, f.x, below);
+      const pose = contentAt(c.x);
+      peak = Math.max(peak, shape.width / below.final.width);
+      if (pose.blurred > 0.5) blurredSeen = true;
+      if (!shape95 && shape.width >= 0.95 * below.final.width && shape.height >= 0.95 * below.final.height) shape95 = t;
+      if (!rowsDone && pose.sharp > 0.995 && pose.blurred < 0.005 && pose.tint > 0.995 && Math.abs(pose.scale - 1) < 0.005) rowsDone = t;
+    }
+    expect(blurredSeen).toBe(true); // they still arrive blurred
+    expect(rowsDone).toBeGreaterThan(0);
+    expect(rowsDone).toBeLessThan(shape95);
+    expect(shape95).toBeLessThan(0.26);
+    expect(peak).toBeGreaterThan(1.015); // the overshoot is kept
   });
 
   it('the overshoot is small and visible: the aim, plus almost no ringing', () => {

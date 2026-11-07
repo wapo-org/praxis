@@ -150,6 +150,9 @@ Close is the same path in reverse and faster. A menu opening up or left mirrors 
 - **Pointer:** until the glass has landed the shell takes no pointer, so the button under it keeps re-taps and a quick release selects nothing. A release outside the rest box still dismisses.
 - **Stretch:** nothing stays inline at rest. The morph owns the shell's transform and the stretch owns the root's `scale` and `translate`, so they compose. `morph/registry.ts` gives the stretch the rest box while the glass moves.
 - **Reduced motion:** a plain short fade through `--glass-fade`; no scale, no shape change, no copy.
+- **Two clocks after the press** (WP-G4): `form` holds the circle and squares it up; `content` lands the rows. The rows are sharp, at full ink and at scale 1 (within 0.5 %) before the shape reaches 95 % of its size: measured 206–218 ms against 227–239 ms. The overshoot rides on `form`.
+- **The corner never swaps at rest.** The morph lands on the rest radius from the first frame of the open: the token where `corner-shape` draws the curve, else the circle with the same apex. On an engine without `corner-shape`, the path comes back the moment the corner has squared, while the glass still moves; a panel resize uses the compensated circle until it lands.
+- **Leaving is a tween** (`LEAVE`, `LEAVE_CONTENT`, 120 ms and 72 ms): an exit has nothing to reverse into, and a spring's tail kept the search palette's text on screen and hit-testable for 420 ms. The search palette is inert from the first frame of its close.
 
 ## Corners and rows
 - **Squircle:** all glass cards and menus use `corner-shape: var(--glass-corner)`, `superellipse(1.46)` (exponent 2.75), measured from `IMG_7868`. Capsules stay round. No cost per frame. An engine without `corner-shape` gets the same curve as a clip path on the glass's layers, rebuilt only on resize, over the circle with the same apex (`squircle.ts`).
@@ -157,6 +160,7 @@ Close is the same path in reverse and faster. A menu opening up or left mirrors 
 - **Rows:** `--menu-row` 40, `--menu-pad` 10, `--menu-row-inset` 16; hover and selection are full pills, in menus and sidebar rows, and instant: nothing glides between rows. Drag-select still scrubs.
 - **Width:** `--menu-max-width` 280 for every menu, whatever its `minWidth`. Long labels truncate.
 - **Dividers:** `--color-divider` at `--divider-scale` of a pixel, inset by the row inset.
+- **Trailing icons** (selection check, pin star, chevrons, in menus and lists): one visual weight. Outline lucide glyphs at 16 px and the 1.75 stroke; state is colour (ink when on, ink-3 or hidden when off), never a fill. A filled star next to a thin check reads as two weights (`owner-check-star.png`). `design-system.test.ts` holds this.
 - **Labels:** 11 px text is ink-2, never ink-3 (a test holds this); ink-3 on paper does not meet AA at that size.
 
 ## Performance budget (WP-G2, measured 2026-11-07)

@@ -12,6 +12,15 @@ const sources = [...files(join(__dirname)), ...files(join(__dirname, '../../../p
 );
 
 describe('design system guard rails', () => {
+  it('trailing icons share one weight: outline at the 1.75 stroke, 16 px, state by colour, never a fill', () => {
+    for (const file of sources.filter((name) => name.endsWith('.tsx'))) {
+      const src = readFileSync(file, 'utf8');
+      // Check and Star are the trailing state icons in menus and lists.
+      expect(src, file).not.toMatch(/<(Check|Star)\b[^>]*\bfill=/);
+      for (const size of src.matchAll(/<(?:Check|Star)\b[^>]*\bsize=\{(\d+)\}/g)) expect(Number(size[1]), `${file}: ${size[0]}`).toBe(16);
+    }
+  });
+
   it('small labels are ink-2: ink-3 at 11 px does not hold AA on paper', () => {
     for (const file of sources.filter((name) => name.endsWith('.css'))) {
       for (const rule of readFileSync(file, 'utf8').match(/\{[^{}]*\}/g) ?? []) {

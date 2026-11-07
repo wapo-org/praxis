@@ -15,6 +15,10 @@ import { MORPH } from '../motion';
 import { copyScroll, inertCopy } from './copy';
 import { contentAt, lerp, MAX_SUBSTEP, shapeAt, smoothstep, stepSpring, type Box, type MorphGeometry, type SpringState } from './math';
 import { registerMorph } from './registry';
+import { hasCornerShape, ROUND_PER_CURVE_RADIUS } from '../squircle';
+
+/** The radius the glass rests at: the token where corner-shape draws the curve, else the circle under the path. */
+export const restRadius = (token: number) => (hasCornerShape() ? token : token * ROUND_PER_CURVE_RADIUS);
 import { readSource, type MorphSource } from './source';
 
 export interface MorphLayers {
@@ -64,6 +68,8 @@ export function createMorph(options: MorphOptions) {
   let phase: MorphPhase = 'idle';
   const p: SpringState = { x: 0, v: 0 };
   const c: SpringState = { x: 0, v: 0 };
+  /** The shape's own clock: circle, then squircle. Separate from `c`, so the rows can land before the shape does. */
+  const f: SpringState = { x: 0, v: 0 };
   const lift: SpringState = { x: 0, v: 0 };
   const resize: SpringState = { x: 1, v: 0 };
   let resizeFrom: Box | null = null;
@@ -130,7 +136,9 @@ export function createMorph(options: MorphOptions) {
       source: source.box,
       sourceRadius: source.radius,
       final,
-      radius: Number.parseFloat(style.getPropertyValue('--glass-radius-round') || style.getPropertyValue('--glass-radius')) || 0,
+      // Never --glass-radius-round: it is set by an observer that may not have run yet on the first open, and a
+      // morph that lands on the wrong radius swaps it when the inline styles clear (WP-G4 A2).
+      radius: restRadius(Number.parseFloat(style.getPropertyValue('--glass-radius')) || 0),
       corner: corner ? Number(corner[1]) : 1,
     };
     options.onSize?.(final.width, final.height);
@@ -140,7 +148,7 @@ export function createMorph(options: MorphOptions) {
   const write = () => {
     if (!layers || !geometry) return;
     const { shell, surface, body, sharp, lens, transit, flash, rim } = layers;
-    const shape = shapeAt(p.x, c.x, geometry);
+    const shape = shapeAt(p.x, f.x, geometry);
     const pose = contentAt(c.x);
     const { final } = geometry;
     const sx = Math.max(1e-3, shape.width / final.width);
@@ -152,6 +160,11 @@ export function createMorph(options: MorphOptions) {
     put(shell, 'transform', `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`);
     put(surface, 'borderRadius', `${(shape.radius / sx).toFixed(2)}px / ${(shape.radius / sy).toFixed(2)}px`);
     put(surface, 'cornerShape', `superellipse(${shape.corner.toFixed(3)})`);
+    const round = shape.corner < geometry.corner - 1e-3 || Math.abs(shape.radius - geometry.radius) > 0.5;
+    if ((surface.dataset.morphRound === 'true') !== round) {
+      if (round) surface.dataset.morphRound = 'true';
+      else delete surface.dataset.morphRound;
+    }
     // One crisp line at any scale, in every frame: the rim is what says this is a piece of glass.
     put(rim, '--morph-rim', `${(MORPH.rimWidth / Math.min(sx, sy)).toFixed(2)}px`);
     put(body, 'transform', `scale(${(pose.scale / sx).toFixed(4)}, ${(pose.scale / sy).toFixed(4)})`);
@@ -249,6 +262,7 @@ export function createMorph(options: MorphOptions) {
     surface.style.boxShadow = '';
     surface.style.removeProperty('--glass-fade');
     delete surface.dataset.morphing;
+    delete surface.dataset.morphRound;
     body.style.transform = '';
     body.style.transformOrigin = '';
     body.style.willChange = '';
@@ -300,6 +314,8 @@ export function createMorph(options: MorphOptions) {
     resize.v = 0;
     phase = 'resizing';
     layers.surface.dataset.morphing = 'true';
+    // The path cannot follow a non-uniform scale; the compensated circle can.
+    layers.surface.dataset.morphRound = 'true';
     layers.shell.style.willChange = 'transform';
     layers.body.style.willChange = 'transform';
     layers.body.style.transformOrigin = '0 0';
@@ -331,6 +347,8 @@ export function createMorph(options: MorphOptions) {
     p.v = 0;
     c.x = 1;
     c.v = 0;
+    f.x = 1;
+    f.v = 0;
     lift.x = 1;
     dropBlurred();
     dropGlyph();
@@ -404,7 +422,7 @@ export function createMorph(options: MorphOptions) {
     const opening = phase === 'opening';
     const spec = opening ? MORPH.open : MORPH.close;
     // Past the rest size until the rows have nearly landed: the overshoot shows on the squared-up panel, then returns.
-    const landing = c.x >= MORPH.open.landAt ? 1 : 1 + MORPH.open.overshoot;
+    const landing = f.x >= MORPH.open.landAt ? 1 : 1 + MORPH.open.overshoot;
     const shapeTarget = opening ? (!delayed || elapsed >= MORPH.open.shapeDelay ? landing : p.x) : 0;
     const contentTarget = opening ? (!delayed || elapsed >= MORPH.open.contentDelay ? 1 : c.x) : 0;
     let left = dt;
@@ -412,12 +430,13 @@ export function createMorph(options: MorphOptions) {
       const step = Math.min(left, MAX_SUBSTEP);
       stepSpring(p, shapeTarget, spec.shape, step);
       stepSpring(c, contentTarget, spec.content, step);
+      stepSpring(f, contentTarget, spec.form, step);
       // On the way back the glass stays whole until it is on the button, then hands over to the source.
       stepSpring(lift, opening || p.x > MORPH.sourceHandover ? 1 : 0, spec.lift, step);
       left -= step;
     }
     write();
-    if (opening && Math.abs(1 - p.x) < 8e-4 && Math.abs(p.v) < 0.02 && Math.abs(1 - c.x) < 2e-3) finishOpen();
+    if (opening && Math.abs(1 - p.x) < 8e-4 && Math.abs(p.v) < 0.02 && Math.abs(1 - c.x) < 2e-3 && Math.abs(1 - f.x) < 2e-3) finishOpen();
     else if (!opening && p.x < 2e-3 && Math.abs(p.v) < 0.1 && lift.x < 0.01) finishClose();
   }
 
@@ -497,6 +516,7 @@ export function createMorph(options: MorphOptions) {
       if (wasOpen) {
         p.x = 1;
         c.x = 1;
+        f.x = 1;
         lift.x = 1;
         written.clear();
       }

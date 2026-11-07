@@ -41,18 +41,18 @@ function anchorFraction(sourceCenter: number, start: number, size: number) {
 }
 
 /**
- * The glass at shape progress `p` and content progress `c`. It leaves the source's shape for a near-circle,
+ * The glass at shape progress `p` and form progress `form` (its own clock, `MORPH.*.form`). It leaves the source's shape for a near-circle,
  * holds it while growing away from the button (which mirrors by itself for a menu opening up or left), and
  * squares up late, into a superellipse. `p` passes 1 on landing, so the far edges overshoot and return.
  */
-export function shapeAt(p: number, c: number, g: MorphGeometry): Shape {
+export function shapeAt(p: number, form: number, g: MorphGeometry): Shape {
   const { source: s, final: f } = g;
   const { path } = MORPH;
   const rawW = lerp(s.width, f.width, p);
   const rawH = lerp(s.height, f.height, p);
   const aspect = Math.max(f.width / f.height, f.height / f.width);
   const pull = lerp(1, path.wideRound, smoothstep(path.wideFrom, path.wideTo, aspect));
-  const round = pull * smoothstep(0, path.roundIn, p) * (1 - smoothstep(path.roundOutFrom, path.roundOutTo, c));
+  const round = pull * smoothstep(0, path.roundIn, p) * (1 - smoothstep(path.roundOutFrom, path.roundOutTo, form));
   const circle = Math.sqrt(Math.max(0, rawW * rawH));
   const width = lerp(rawW, circle, round);
   const height = lerp(rawH, circle, round);
@@ -71,7 +71,7 @@ export function shapeAt(p: number, c: number, g: MorphGeometry): Shape {
 
   // Corner radius is part of the motion: near-circle, then squircle, then the rest corner.
   const half = Math.min(width, height) / 2;
-  const squared = smoothstep(path.squareFrom, path.squareTo, c);
+  const squared = smoothstep(path.squareFrom, path.squareTo, form);
   const moving = lerp(half, Math.min(g.radius, half), squared);
   const radius = Math.min(half, lerp(Math.min(g.sourceRadius, half), moving, smoothstep(0, path.roundIn, p)));
   return { left, top, width, height, radius, corner: lerp(1, g.corner, squared) };

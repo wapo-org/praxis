@@ -140,7 +140,7 @@ export function ImageReaderScreen() {
                       {enabled &&
                       vision?.providerId === model.providerId &&
                       vision.modelId === model.id ? (
-                        <Check size={18} aria-label="Selected" />
+                        <Check size={16} aria-label="Selected" />
                       ) : null}
                     </button>
                   ))}

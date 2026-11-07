@@ -47,6 +47,8 @@ export function attachSquircle(el: HTMLElement): () => void {
     el.style.setProperty('--glass-radius-round', `${(radius * ROUND_PER_CURVE_RADIUS).toFixed(2)}px`);
     el.style.setProperty('--glass-squircle', `path("${squirclePath(w, h, radius)}")`);
   };
+  // Now, not on the observer's first callback: whatever reads the corner on mount must see the final one.
+  build();
   const observer = new ResizeObserver(build);
   observer.observe(el);
   return () => {

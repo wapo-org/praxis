@@ -55,8 +55,9 @@
   clip-path: var(--glass-squircle, none);
 }
 
-/* The morph animates a circle into the corner; the path only applies at rest. */
-[data-morphing='true'] > :is(.lens, .finish, .band, .spotClip) {
+/* The morph animates a circle into the corner; the path returns the moment the corner has squared, while it
+   still moves (scaled with the glass by at most the overshoot), so it never swaps in at rest. */
+[data-morph-round='true'] > :is(.lens, .finish, .band, .spotClip) {
   clip-path: none;
 }
 

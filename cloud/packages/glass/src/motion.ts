@@ -44,8 +44,10 @@ export const MORPH = {
   open: {
     /** Nearly critical on the way out; the visible bounce is the target below, not ringing. */
     shape: { stiffness: 2025, damping: 76 },
-    /** Much slower than the shape: rows are still oversized when the glass has landed. */
-    content: { stiffness: 400, damping: 40 },
+    /** The rows: arrive blurred and oversized, and are sharp, inked and in place before the shape reaches 95 %. */
+    content: { stiffness: 3000, damping: 110 },
+    /** The shape's own clock: holds a circle, then squares up. The squaring is what brings it to 95 % of its size. */
+    form: { stiffness: 400, damping: 40 },
     /** The source lifts before the glass starts growing. */
     lift: { stiffness: 3200, damping: 113 },
     /** Seconds from the press before the glass starts to grow. */
@@ -53,13 +55,14 @@ export const MORPH = {
     contentDelay: 0.094,
     /** The shape aims this far past its rest size ... */
     overshoot: 0.035,
-    /** ... until the rows reach this progress, then it comes back. */
+    /** ... until the form clock reaches this progress, then it comes back. */
     landAt: 0.82,
   },
   close: {
     shape: { stiffness: 3000, damping: 110 },
-    /** Not faster than the shape: `c` drives the circle, so a quicker one would pop the panel round on the first frames. */
     content: { stiffness: 2500, damping: 100 },
+    /** Not faster than the shape: it drives the circle, so a quicker one would pop the panel round on the first frames. */
+    form: { stiffness: 2500, damping: 100 },
     lift: { stiffness: 6400, damping: 160 },
   },
   /** The open panel gliding to a new size: a submenu, a filtered list. Same family, a touch of the same bounce. */
@@ -82,7 +85,7 @@ export const MORPH = {
     squareTo: 0.92,
   },
   content: {
-    oversize: 0.6,
+    oversize: 0.3,
     sharpFrom: 0.6,
     sharpTo: 0.81,
     blurFrom: 0.14,
@@ -249,10 +252,18 @@ export function usePress() {
   return useReducedMotion() ? {} : press;
 }
 
-/** Spotlight: anchored arrival, barely overshoots; row contents never animate. */
+/**
+ * Leaving: a fixed, short fade that ends. A spring's tail keeps an element on screen (and in the hit test)
+ * for hundreds of ms after it looks gone; an exit has nothing to reverse into, so it does not need one.
+ */
+export const LEAVE: Transition = { type: 'tween', duration: DURATION.fast, ease: EASE_STANDARD };
+/** The text inside something leaving goes first, so no glyph outlives its glass. */
+export const LEAVE_CONTENT: Transition = { type: 'tween', duration: DURATION.fast * 0.6, ease: EASE_STANDARD };
+
+/** Spotlight: anchored arrival, barely overshoots; row contents never animate. Gone in ~120 ms on close. */
 export const searchArrival: MotionPreset = {
   initial: { opacity: 0, scale: 1.025 },
   animate: { opacity: 1, scale: 1 },
-  exit: { opacity: 0, transition: TRANSITION.fast },
+  exit: { opacity: 0, scale: 0.985, transition: LEAVE },
   transition: SNAP,
 };

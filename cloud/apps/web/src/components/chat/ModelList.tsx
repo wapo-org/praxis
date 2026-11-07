@@ -98,7 +98,7 @@ const ModelRow = React.memo(function ModelRow({
         </span>
         {selected ? (
           <span className={styles.check}>
-            <Check size={18} />
+            <Check size={16} />
           </span>
         ) : null}
       </button>
@@ -109,7 +109,7 @@ const ModelRow = React.memo(function ModelRow({
         aria-label={`${model.pinned ? 'Unpin' : 'Pin'} ${model.displayName}`}
         onClick={() => onTogglePin(model)}
       >
-        <Star size={16} fill={model.pinned ? 'currentColor' : 'none'} />
+        <Star size={16} />
       </button>
     </div>
   );

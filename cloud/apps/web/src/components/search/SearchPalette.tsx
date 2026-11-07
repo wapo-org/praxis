@@ -1,5 +1,5 @@
-import { GlassSurface, SPRING, TRANSITION, useReducedMotion, usePreset, searchArrival } from '@praxis/glass';
-import { AnimatePresence, motion } from 'framer-motion';
+import { GlassSurface, LEAVE_CONTENT, SPRING, TRANSITION, useReducedMotion, usePreset, searchArrival } from '@praxis/glass';
+import { AnimatePresence, motion, useIsPresent } from 'framer-motion';
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { ACTIONS, actionOptions, applyOption, type ActionId } from '../../actions/registry';
@@ -36,13 +36,22 @@ function Palette({ onClose }: { onClose: () => void }) {
   const list = React.useRef<HTMLDivElement>(null);
   const id = React.useId();
   const modelSearch = useModelSearch(level === 'model' ? query : '', level === 'model', store.models);
+  // Closing starts now, not when the exit ends: no focus, no hit-testing and no listeners while it fades.
+  const present = useIsPresent();
+  const previous = React.useRef<HTMLElement | null>(null);
   React.useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    previous.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     input.current?.focus({ preventScroll: true });
+  }, []);
+  React.useEffect(() => {
+    if (!present) {
+      if (surface.current?.contains(document.activeElement) && previous.current?.isConnected) previous.current.focus({ preventScroll: true });
+      return;
+    }
     const outside = (e: PointerEvent) => { if (!surface.current?.contains(e.target as Node)) onClose(); };
     document.addEventListener('pointerdown', outside);
-    return () => { document.removeEventListener('pointerdown', outside); if (previous?.isConnected) previous.focus({ preventScroll: true }); };
-  }, []);
+    return () => document.removeEventListener('pointerdown', outside);
+  }, [present, onClose]);
   React.useEffect(() => {
     let stale = false;
     setError('');
@@ -58,6 +67,7 @@ function Palette({ onClose }: { onClose: () => void }) {
   React.useEffect(() => { setActive(0); if (list.current) list.current.scrollTop = 0; }, [query, level]);
   const back = () => { setLevel(null); setQuery(''); input.current?.focus(); };
   React.useEffect(() => {
+    if (!present) return;
     const escape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
       event.preventDefault();
@@ -65,7 +75,7 @@ function Palette({ onClose }: { onClose: () => void }) {
     };
     document.addEventListener('keydown', escape);
     return () => document.removeEventListener('keydown', escape);
-  }, [level, onClose]);
+  }, [level, onClose, present]);
   const run = async (fn: () => unknown) => {
     try { await fn(); onClose(); } catch { setError('Unable to apply action. Try again.'); }
   };
@@ -118,18 +128,19 @@ function Palette({ onClose }: { onClose: () => void }) {
             aria-selected={row.selected} data-active={activeIndex === index} className={`${modelStyles.option} ${styles.row}`} tabIndex={-1}
             onPointerMove={() => setActive(index)} onClick={() => void row.apply()}>
             <row.Icon size={18} /><span className={styles.copy}><span><Highlight text={row.label} query={query} /></span>
-              {row.snippet ? <small><Highlight text={row.snippet} query={query} /></small> : null}</span>{row.selected ? <Check size={18} /> : null}
+              {row.snippet ? <small><Highlight text={row.snippet} query={query} /></small> : null}</span>{row.selected ? <Check size={16} /> : null}
           </button>)}
           {message ? <p className={styles.note} role="status">{message}</p> : null}
         </div>
       </div>
     </motion.div>
   </>;
-  return <div ref={surface} className={styles.position} data-testid="search-palette">
+  return <div ref={surface} className={styles.position} data-testid="search-palette" data-state={present ? 'open' : 'closing'}
+    inert={!present} style={present ? undefined : { pointerEvents: 'none' }}>
     <GlassSurface material="thick" className={styles.surface}
       {...arrival}>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={TRANSITION.fast}>{contents}</motion.div>
-      {!reduced ? <motion.div aria-hidden="true" className={`${styles.bar} ${styles.blur}`} initial={{ opacity: 1 }} animate={{ opacity: 0 }} exit={{ opacity: 1 }} transition={TRANSITION.fast}>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: LEAVE_CONTENT }} transition={TRANSITION.fast}>{contents}</motion.div>
+      {!reduced ? <motion.div aria-hidden="true" className={`${styles.bar} ${styles.blur}`} initial={{ opacity: 1 }} animate={{ opacity: 0 }} exit={{ opacity: 0, transition: LEAVE_CONTENT }} transition={TRANSITION.fast}>
         <Search size={20} /><span>{query || (level ? ACTIONS[level].label : 'Search chats and actions')}</span>
       </motion.div> : null}
     </GlassSurface>
