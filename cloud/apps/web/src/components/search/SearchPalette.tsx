@@ -7,8 +7,10 @@ import { apiClient } from '../../lib/api';
 import { Check, ChevronLeft, MessageCircle, Search } from '../../lib/icons';
 import { useModelSearch } from '../../lib/useModelSearch';
 import { usePraxisStore } from '../../state/store';
+import modelStyles from '../chat/ModelList.module.css';
 import styles from './SearchPalette.module.css';
 
+type SearchRow = { id: string; label: string; snippet: string; Icon: typeof Search; selected: boolean; apply: () => void | Promise<void> };
 type Hit = Awaited<ReturnType<typeof apiClient.searchChats>>['items'][number];
 export function Highlight({ text, query }: { text: string; query: string }) {
   const words = query.trim().split(/\s+/u).filter(Boolean).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
@@ -55,6 +57,15 @@ function Palette({ onClose }: { onClose: () => void }) {
   }, [query, level]);
   React.useEffect(() => { setActive(0); if (list.current) list.current.scrollTop = 0; }, [query, level]);
   const back = () => { setLevel(null); setQuery(''); input.current?.focus(); };
+  React.useEffect(() => {
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
+      event.preventDefault();
+      level ? back() : onClose();
+    };
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, [level, onClose]);
   const run = async (fn: () => unknown) => {
     try { await fn(); onClose(); } catch { setError('Unable to apply action. Try again.'); }
   };
@@ -62,16 +73,19 @@ function Palette({ onClose }: { onClose: () => void }) {
     .filter(o => level === 'model' || o.label.toLocaleLowerCase().includes(query.toLocaleLowerCase())) : [];
   const commands = level ? [] : (Object.keys(ACTIONS) as ActionId[]).filter(key =>
     ACTIONS[key].available(store) && ACTIONS[key].label.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
-  const rows = level ? options.map(option => ({ id: option.id, label: option.label, snippet: '', Icon: ACTIONS[level].Icon,
+  const rows: SearchRow[] = level ? options.map(option => ({ id: option.id, label: option.label, snippet: '', Icon: ACTIONS[level].Icon,
     selected: option.selected, apply: () => run(() => applyOption(level, store, option.id, modelSearch.items)) })) : [
     ...commands.map(key => ({ id: key, label: ACTIONS[key].label, snippet: '', Icon: ACTIONS[key].Icon, selected: false,
       apply: () => { if ('options' in ACTIONS[key]) { setLevel(key); setQuery(''); setHits([]); } else void run(() => applyOption(key, store, '')); } })),
     ...(query.trim() ? hits : []).map(hit => ({ id: `chat-${hit.chat.id}`, label: hit.chat.title || 'New chat', snippet: hit.snippet,
       Icon: MessageCircle, selected: false, apply: () => run(() => { store.setActiveSheet(null); return store.selectChat(hit.chat.id); }) })),
   ];
+  if (level === 'model' && modelSearch.cursor) rows.push({ id: 'load-more', label: 'Load more models', snippet: '',
+    Icon: Search, selected: false, apply: modelSearch.loadMore });
   // Start as the bar only. The first query reveals rows; subsequent swaps never animate rows.
   const showRows = !!query.trim() || !!level;
   const visibleRows = showRows ? rows : [];
+  const activeIndex = Math.min(active, Math.max(0, visibleRows.length - 1));
   const message = error || (level === 'model' ? modelSearch.error : '') || (showRows && !visibleRows.length && !(busy || modelSearch.busy) ? 'No results.' : '');
   const body = React.useRef<HTMLDivElement>(null);
   const [height, setHeight] = React.useState(0);
@@ -83,30 +97,29 @@ function Palette({ onClose }: { onClose: () => void }) {
     if (body.current) observer.observe(body.current);
     return () => observer.disconnect();
   }, []);
-  React.useEffect(() => { document.getElementById(`${id}-${active}`)?.scrollIntoView?.({ block: 'nearest' }); }, [active, id]);
+  React.useEffect(() => { document.getElementById(`${id}-${activeIndex}`)?.scrollIntoView?.({ block: 'nearest' }); }, [activeIndex, id]);
   const contents = <>
     <div className={styles.bar}>
       {level ? <button className={styles.back} aria-label="Back to search" onClick={back}><ChevronLeft size={18} /></button> : <Search size={20} />}
       <input ref={input} role="combobox" aria-label="Search conversations" aria-controls={id} aria-expanded={showRows}
-        aria-autocomplete="list" aria-activedescendant={visibleRows[active] ? `${id}-${active}` : undefined}
+        aria-autocomplete="list" aria-activedescendant={visibleRows[activeIndex] ? `${id}-${activeIndex}` : undefined}
         placeholder={level ? ACTIONS[level].label : 'Search chats and actions'} value={query}
         onChange={e => setQuery(e.target.value)} onKeyDown={e => {
           if (e.nativeEvent.isComposing) return;
           if (e.key === 'Escape' || (e.key === 'Backspace' && !query && level)) { e.preventDefault(); e.stopPropagation(); level ? back() : onClose(); }
           else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); setActive(a => Math.max(0, Math.min(visibleRows.length - 1, a + (e.key === 'ArrowDown' ? 1 : -1)))); }
-          else if (e.key === 'Enter') { e.preventDefault(); void visibleRows[active]?.apply(); }
+          else if (e.key === 'Enter') { e.preventDefault(); void visibleRows[activeIndex]?.apply(); }
         }} />
     </div>
     <motion.div className={styles.reveal} initial={false} animate={{ height }} transition={reduced ? TRANSITION.none : SPRING}>
       <div ref={body}>
         <div ref={list} id={id} role="listbox" aria-label={level ? ACTIONS[level].label : 'Search results'} className={styles.results}>
           {visibleRows.map((row, index) => <button key={row.id} id={`${id}-${index}`} type="button" role="option"
-            aria-selected={row.selected} data-active={active === index} className={styles.row} tabIndex={-1}
+            aria-selected={row.selected} data-active={activeIndex === index} className={`${modelStyles.option} ${styles.row}`} tabIndex={-1}
             onPointerMove={() => setActive(index)} onClick={() => void row.apply()}>
             <row.Icon size={18} /><span className={styles.copy}><span><Highlight text={row.label} query={query} /></span>
               {row.snippet ? <small><Highlight text={row.snippet} query={query} /></small> : null}</span>{row.selected ? <Check size={18} /> : null}
           </button>)}
-          {level === 'model' && modelSearch.cursor ? <button className={styles.row} onClick={modelSearch.loadMore}>Load more models</button> : null}
           {message ? <p className={styles.note} role="status">{message}</p> : null}
         </div>
       </div>

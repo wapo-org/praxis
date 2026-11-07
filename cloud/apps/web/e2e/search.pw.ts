@@ -40,6 +40,11 @@ test('command options stay in one panel, support filtering and back, and close o
   await expect(palette.getByRole('option').first()).toBeVisible();
   await input.press('Escape');
   await expect(input).toHaveAttribute('placeholder', 'Search chats and actions');
+  await input.press('Tab');
+  await page.keyboard.press('Escape');
+  await expect(palette).toHaveCount(0);
+  await page.keyboard.press('Control+k');
+  await expect(input).toBeFocused();
   await page.mouse.click(1100, 700);
   await expect(palette).toHaveCount(0);
 });

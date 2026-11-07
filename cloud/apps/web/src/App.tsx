@@ -24,7 +24,11 @@ export function App() {
   const page = usePreset(pageChange);
   const [searchOpen, setSearchOpen] = React.useState(false);
   React.useEffect(() => {
-    const open = () => { store.setPlusTrayOpen(false); setSearchOpen(true); };
+    const open = () => {
+      store.setPlusTrayOpen(false);
+      if (window.matchMedia('(max-width: 1023px)').matches) store.setDesktopSidebarOpen(false);
+      setSearchOpen(true);
+    };
     window.addEventListener('praxis:search', open);
     return () => window.removeEventListener('praxis:search', open);
   }, [store.setPlusTrayOpen]);

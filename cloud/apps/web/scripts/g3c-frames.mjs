@@ -1,5 +1,5 @@
 import { chromium, expect } from '@playwright/test';
-import { mkdir, readdir } from 'node:fs/promises';
+import { mkdir, readdir, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import sharp from 'sharp';
 import { record } from './g2-lib.mjs';
@@ -23,6 +23,7 @@ try {
   ];
   for (const [name, act] of clips) {
     const dir = `${OUT}/frames/${name}`;
+    await rm(dir, { recursive: true, force: true });
     await mkdir(dir, { recursive: true });
     await record(p, dir, name, async () => { await act(); await p.waitForTimeout(450); });
     const files = (await readdir(dir)).filter(n => n.endsWith('.jpg')).sort();
