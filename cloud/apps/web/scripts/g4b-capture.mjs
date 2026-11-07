@@ -74,6 +74,7 @@ for (const theme of ['light', 'dark'])
     await row.hover();
     await row.getByRole('button', { name: /^Actions for/ }).click();
     await p.getByRole('menuitem', { name: 'Pin', exact: true }).click();
+    await p.getByTestId('composer-input').focus();
     await p.mouse.move(390, 800);
     await shot('pinned');
     await row.hover();

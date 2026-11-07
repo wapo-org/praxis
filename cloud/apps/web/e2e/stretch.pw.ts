@@ -56,7 +56,7 @@ test.describe('the stretch', () => {
   test('pulling right moves only the right edge, from any start point', async ({ page }) => {
     const surface = sidebar(page);
     const rest = (await surface.boundingBox())!;
-    for (const start of [{ x: rest.x + 10, y: rest.y + 10 }, { x: rest.x + 130, y: rest.y + 400 }, { x: rest.x + 250, y: rest.y + rest.height - 10 }]) {
+    for (const start of [{ x: rest.x + 10, y: rest.y + 10 }, { x: rest.x + rest.width / 2, y: rest.y + rest.height / 2 }, { x: rest.x + rest.width - 10, y: rest.y + rest.height - 10 }]) {
       await pull(page, start, 120, 0);
       const box = (await surface.boundingBox())!;
       expect(Math.abs(box.x - rest.x)).toBeLessThanOrEqual(1);

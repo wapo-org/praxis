@@ -444,3 +444,5 @@
 }
 
 .primaryPill:focus-visible { outline-offset: 2px; }
+
+.action svg { color: var(--sidebar-ink); }
