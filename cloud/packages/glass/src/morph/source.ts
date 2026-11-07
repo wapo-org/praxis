@@ -1,8 +1,9 @@
 /**
- * What the menu grows out of. A button with its own glass is `separate`: that glass
- * becomes the menu. Anything else is `attached` (inside the composer pill, a chat
- * row, a toolbar, a menu row, or sharing glass with neighbours): the parent and the
- * button stay put, and the menu grows from a small blob on the button.
+ * What the menu grows out of. A button with its own glass that holds only an icon is
+ * `separate`: that glass becomes the menu. Anything else is `attached` (a button with
+ * text, or inside the composer pill, a chat row, a toolbar, a menu row, or sharing glass
+ * with neighbours): the parent and the button stay put, and the menu grows from a small
+ * blob on the button.
  */
 import { MORPH } from '../motion';
 import type { Box } from './math';
@@ -19,8 +20,14 @@ export interface MorphSource {
 
 const CONTROLS = 'button, a[href], input, textarea, select, [role="button"], [contenteditable="true"]';
 
-/** Own glass: this is the surface's only control, and the button fills most of it. */
+/** Nothing but a glyph: no visible text. An accessible name is not visible text. */
+export function iconOnly(trigger: HTMLElement): boolean {
+  return !trigger.textContent?.trim() && !!trigger.querySelector('svg, img');
+}
+
+/** Morphs: this is the surface's only control, the button fills most of it, and it is only an icon. */
 export function ownGlass(trigger: HTMLElement): HTMLElement | null {
+  if (!iconOnly(trigger)) return null;
   const surface = trigger.closest<HTMLElement>('[data-glass-surface]');
   if (!surface || surface === trigger) return null;
   if (surface.querySelectorAll(CONTROLS).length > 1) return null;

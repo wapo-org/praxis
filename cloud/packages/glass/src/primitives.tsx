@@ -65,9 +65,9 @@ export const GlassIconButton = React.forwardRef<HTMLButtonElement, GlassIconButt
 );
 
 /** GlassCard — a thick-glass card for floating panels. Not for content. */
-export function GlassCard({ radius = 20, children, ...rest }: GlassSurfaceProps) {
+export function GlassCard({ children, ...rest }: GlassSurfaceProps) {
   return (
-    <GlassSurface material="thick" radius={radius} {...rest}>
+    <GlassSurface material="thick" {...rest}>
       {children}
     </GlassSurface>
   );

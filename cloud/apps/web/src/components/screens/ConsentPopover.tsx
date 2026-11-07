@@ -69,7 +69,6 @@ export function ConsentPopover() {
       <GlassSurface
         ref={panelRef}
         material="thick"
-        radius={20}
         role="dialog"
         aria-modal="false"
         aria-label="AI data sharing"

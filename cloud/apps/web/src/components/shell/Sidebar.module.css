@@ -20,6 +20,7 @@
 }
 
 .surface {
+  --glass-radius: var(--radius-panel);
   height: 100%;
   overflow: hidden;
 }
@@ -31,10 +32,6 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-}
-
-.activePill {
-  --glide-color: var(--color-pressed);
 }
 
 .header {
@@ -83,9 +80,9 @@
   align-items: center;
   gap: var(--space-3);
   height: var(--control-md);
-  padding: 0 var(--space-2);
+  padding: 0 var(--space-3);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   background: transparent;
   color: var(--color-ink);
   font: var(--weight-medium) var(--text-md) / var(--leading-md) var(--font-sans);
@@ -147,6 +144,7 @@
 }
 
 .navRow[aria-current='page'] {
+  background: var(--color-pressed);
   font-weight: var(--weight-medium);
 }
 
@@ -171,7 +169,7 @@
 .groupTitle {
   margin: 0;
   padding: var(--space-1) var(--space-2);
-  color: var(--color-ink-3);
+  color: var(--color-ink-2);
   font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-sans);
 }
 
@@ -187,7 +185,11 @@
   z-index: 1;
   display: flex;
   align-items: center;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
+}
+
+.row[data-active='true'] {
+  background: var(--color-pressed);
 }
 
 .rowSelect {
@@ -197,8 +199,9 @@
   align-items: center;
   gap: var(--space-2);
   height: var(--control-md);
-  padding: 0 var(--space-2);
+  padding: 0 var(--space-3);
   border: 0;
+  border-radius: var(--radius-full);
   background: transparent;
   color: var(--color-ink);
   font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
@@ -234,7 +237,7 @@
   width: var(--control-sm);
   height: var(--control-sm);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   background: transparent;
   color: var(--color-ink-2);
   cursor: pointer;
@@ -332,13 +335,18 @@
 }
 
 .accountDetail {
-  color: var(--color-ink-3);
+  color: var(--color-ink-2);
   font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
 }
 
 @media (hover: hover) {
+  /* Hover is instant and pill-shaped: no animation, nothing glides between rows. */
   .iconButton:hover,
-  .back:hover {
+  .back:hover,
+  .action:hover,
+  .search:hover,
+  .navRow:not([aria-current='page']):hover,
+  .row:not([data-active='true']):hover {
     background: var(--color-hover);
   }
   .rowMenu:hover {

@@ -22,7 +22,7 @@
 }
 
 .detail {
-  color: var(--color-ink-3);
+  color: var(--color-ink-2);
   font-size: var(--text-xs);
   line-height: var(--leading-xs);
 }
@@ -90,7 +90,7 @@
 
 .footnote {
   margin: 0;
-  color: var(--color-ink-3);
+  color: var(--color-ink-2);
   font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
 }
 

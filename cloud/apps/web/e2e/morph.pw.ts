@@ -143,6 +143,175 @@ test.describe('a button in a bigger object: the object does not change', () => {
   });
 });
 
+test.describe('a button with text stays in place', () => {
+  test('it has its own glass, but only icon buttons morph: the menu grows from a blob at it', async ({ page }) => {
+    const trigger = page.getByTestId('text-top');
+    const surface = trigger.locator('xpath=ancestor::*[@data-glass-surface][1]');
+    const button = (await trigger.boundingBox())!;
+    await startSampling(page, 'text-top');
+    await trigger.click();
+    const menu = page.getByRole('menu');
+    await landed(menu);
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    const samples = await stopSampling(page);
+    for (const sample of samples) expect(sample.capsule!.fade).toBe('');
+    const first = samples.find((s) => s.menu)!.menu!;
+    expect(first.w).toBeLessThan(button.width / 2);
+    expect(await surface.evaluate((el: HTMLElement) => el.style.getPropertyValue('--glass-fade'))).toBe('');
+  });
+});
+
+test.describe('every frame is one piece of glass', () => {
+  test('the rim is there at any scale, through the lens handover and at rest', async ({ page }) => {
+    await page.evaluate(() => {
+      const w = window as unknown as { __rims: Array<{ onScreen: number; alpha: number }>; __on: boolean };
+      w.__rims = [];
+      w.__on = true;
+      const tick = () => {
+        if (!w.__on) return;
+        const menu = document.querySelector<HTMLElement>('[role="menu"]');
+        const rim = menu?.querySelector<HTMLElement>('[data-glass-rim]');
+        if (menu && rim) {
+          const style = getComputedStyle(rim);
+          const local = parseFloat(style.getPropertyValue('--morph-rim'));
+          const box = menu.getBoundingClientRect();
+          const color = /rgba\([^)]*,\s*([\d.]+)\)/.exec(style.boxShadow);
+          w.__rims.push({ onScreen: local * Math.min(box.width / menu.offsetWidth, box.height / menu.offsetHeight), alpha: Number(style.opacity) * Number(color?.[1] ?? 1) });
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await page.getByTestId('attached-top').click();
+    await landed(page.getByRole('menu'));
+    const rims = await page.evaluate(() => {
+      const w = window as unknown as { __rims: Array<{ onScreen: number; alpha: number }>; __on: boolean };
+      w.__on = false;
+      return w.__rims;
+    });
+    expect(rims.length).toBeGreaterThan(10);
+    // Once the blob has appeared, the line is about 1 px on screen and at full strength in every frame.
+    const shown = rims.slice(rims.findIndex((r) => r.alpha > 0.1) + 3);
+    for (const rim of shown) {
+      expect(rim.onScreen).toBeGreaterThan(0.9);
+      expect(rim.onScreen).toBeLessThan(1.15);
+      expect(rim.alpha).toBeGreaterThan(0.1);
+    }
+  });
+
+  test('it holds a circle through the fast phase, squares up late, and overshoots on landing', async ({ page }) => {
+    await startSampling(page, 'separate-top');
+    await page.getByTestId('separate-top').click();
+    const menu = page.getByRole('menu');
+    await landed(menu);
+    const samples = (await stopSampling(page)).filter((s) => s.menu);
+    const rest = samples[samples.length - 1]!.menu!;
+    const big = samples.filter((s) => s.menu!.w > rest.w * 0.75 && s.radius > Math.min(s.menu!.w, s.menu!.h) * 0.45);
+    expect(big.length).toBeGreaterThan(1);
+    for (const s of big) expect(s.menu!.w / s.menu!.h).toBeLessThan(1.12);
+    expect(Math.max(...samples.map((s) => s.menu!.w))).toBeGreaterThan(rest.w + 2);
+    expect(Math.max(...samples.map((s) => s.menu!.w))).toBeLessThan(rest.w * 1.07);
+  });
+});
+
+test.describe('the limits', () => {
+  test('a menu never passes the width cap, whatever its minWidth or labels; long labels truncate', async ({ page }) => {
+    await page.getByTestId('wide-menu').click();
+    const menu = page.getByRole('menu');
+    await landed(menu);
+    expect((await menu.boundingBox())!.width).toBeLessThanOrEqual(280.5);
+    const row = menu.getByRole('menuitem').first();
+    const clipped = await row.locator('span').filter({ hasText: 'am i missing' }).last().evaluate((el) => el.scrollWidth > el.clientWidth);
+    expect(clipped).toBe(true);
+  });
+
+  test('rows are pills, with more inset, under instant hover', async ({ page }) => {
+    await page.getByTestId('attached-top').click();
+    const menu = page.getByRole('menu');
+    await landed(menu);
+    const row = menu.getByRole('menuitem').first();
+    await row.hover();
+    await expect(row).toHaveAttribute('data-highlighted', 'true');
+    await expect(row).toHaveCSS('padding-left', '16px');
+    const box = (await row.boundingBox())!;
+    const radius = await row.evaluate((el) => parseFloat(getComputedStyle(el).borderTopLeftRadius));
+    expect(radius).toBeGreaterThanOrEqual(box.height / 2);
+    await expect(row).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  });
+
+  test('the divider is thin and faint', async ({ page }) => {
+    await page.getByTestId('attached-top').click();
+    const menu = page.getByRole('menu');
+    await landed(menu);
+    const line = menu.getByRole('separator');
+    const box = (await line.boundingBox())!;
+    expect(box.height).toBeLessThanOrEqual(1);
+    const alpha = await line.evaluate((el) => Number(/rgba\([^)]*,\s*([\d.]+)\)/.exec(getComputedStyle(el).backgroundColor)?.[1] ?? 1));
+    expect(alpha).toBeLessThan(0.08);
+  });
+});
+
+test.describe('nested menus', () => {
+  test('in place: the glass glides to the new height with its rows at rest size, and nothing stacks at the end', async ({ page }) => {
+    await page.getByTestId('nested-morph').click();
+    const menu = page.getByRole('menu');
+    await landed(menu);
+    const before = (await menu.boundingBox())!;
+    // Read after each paint: a rAF would see the new layout just before the ResizeObserver covers it, which no one sees.
+    await page.evaluate(() => {
+      const w = window as unknown as { __boxes: Array<{ y: number; h: number }>; __on: boolean };
+      w.__boxes = [];
+      w.__on = true;
+      const channel = new MessageChannel();
+      channel.port1.onmessage = () => {
+        const box = document.querySelector('[role="menu"]')?.getBoundingClientRect();
+        if (box) w.__boxes.push({ y: box.y, h: box.height });
+      };
+      const tick = () => {
+        if (!w.__on) return;
+        channel.port2.postMessage(0);
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await menu.getByRole('menuitem', { name: 'Save as', exact: true }).click();
+    await expect(menu.getByRole('menuitem', { name: 'Save as TXT' })).toBeVisible();
+    await landed(menu);
+    const samples = await page.evaluate(() => {
+      const w = window as unknown as { __boxes: Array<{ y: number; h: number }>; __on: boolean };
+      w.__on = false;
+      return w.__boxes;
+    });
+    const after = (await menu.boundingBox())!;
+    expect(after.height).toBeGreaterThan(before.height + 10);
+    const heights = samples.map((s) => s.h);
+    // Never a jump to the end on the first frame, and it passes through values in between.
+    expect(heights.filter((h) => h > before.height + 3 && h < after.height - 3).length).toBeGreaterThan(1);
+    expect(biggestStep(heights)).toBeLessThan((after.height - before.height) * 0.6);
+    for (const s of samples) expect(Math.abs(s.y - before.y)).toBeLessThan(1.5);
+  });
+
+  test('cascade: the submenu is visible beside its row, unclipped, and grows from it', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 800 });
+    await page.getByTestId('nested-cascade').click();
+    await landed(page.getByRole('menu').first());
+    const row = page.getByRole('menuitem', { name: 'Save as', exact: true });
+    const at = (await row.boundingBox())!;
+    await row.click();
+    const child = page.getByRole('menuitem', { name: 'Save as TXT' });
+    await expect(child).toBeVisible();
+    await expect.poll(async () => (await child.boundingBox())!.x).toBeGreaterThan(at.x + at.width - 2);
+    await expect.poll(() =>
+      child.evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return !!hit && el.contains(hit);
+      }),
+    ).toBe(true);
+  });
+});
+
 test.describe('interruption', () => {
   for (const id of ['separate-top', 'attached-top']) {
     test(`${id}: Escape mid-open reverses from the current shape with no jump`, async ({ page }) => {
@@ -277,7 +446,7 @@ test.describe('the rest of what menus do', () => {
     await trigger.click();
     await landed(menu);
     await expect(menu.locator('[class*="blurred"]')).toHaveCount(0);
-    await expect(menu.locator('[data-glass-surface]')).toHaveCSS('border-top-left-radius', '16px');
+    await expect(menu.locator('[data-glass-surface]')).toHaveCSS('border-top-left-radius', '42px');
   });
 
   test('keyboard: opens, moves focus in, Escape returns focus and the source', async ({ page }) => {
@@ -313,7 +482,7 @@ test.describe('prefers-reduced-motion', () => {
       expect(sample.transform).toBe('');
       expect(sample.menu!.w).toBeCloseTo(box.w, 1);
       expect(sample.menu!.x).toBeCloseTo(box.x, 1);
-      expect(sample.radius).toBeCloseTo(16, 1);
+      expect(sample.radius).toBeCloseTo(42, 0);
     }
     expect(await surface.evaluate((el: HTMLElement) => el.style.getPropertyValue('--glass-fade'))).toBe('');
   });

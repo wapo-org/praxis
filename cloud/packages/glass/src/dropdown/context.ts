@@ -61,7 +61,6 @@ export function useGlassDropdownContext(
 export interface PanelHighlightContextValue {
   highlightedId: string | null;
   setHighlightedId: (id: string | null) => void;
-  layoutScopeId: string;
 }
 
 export const PanelHighlightContext =

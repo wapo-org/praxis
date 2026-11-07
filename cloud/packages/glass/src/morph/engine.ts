@@ -13,7 +13,7 @@
 import { cancelFrame, frame } from 'framer-motion';
 import { MORPH } from '../motion';
 import { copyScroll, inertCopy } from './copy';
-import { contentAt, MAX_SUBSTEP, shapeAt, smoothstep, stepSpring, type Box, type MorphGeometry, type SpringState } from './math';
+import { contentAt, lerp, MAX_SUBSTEP, shapeAt, smoothstep, stepSpring, type Box, type MorphGeometry, type SpringState } from './math';
 import { registerMorph } from './registry';
 import { readSource, type MorphSource } from './source';
 
@@ -25,6 +25,7 @@ export interface MorphLayers {
   lens: HTMLElement | null;
   transit: HTMLElement | null;
   flash: HTMLElement | null;
+  rim: HTMLElement | null;
   blurredClass: string;
   /** Bends and blurs the arriving rows at a fixed strength; null until the map is decoded, or off Chromium. */
   bendFilter: string | null;
@@ -34,7 +35,6 @@ export interface MorphLayers {
 export interface MorphOptions {
   layers: () => MorphLayers | null;
   trigger: () => HTMLElement | null;
-  radius: number;
   reduced: () => boolean;
   /** The rest size changed, so the transit filter needs it. */
   onSize?: (width: number, height: number) => void;
@@ -43,20 +43,36 @@ export interface MorphOptions {
 }
 
 const MAX_FRAME = 0.04;
+const MAX_FIRST_FRAME = 0.1;
+
+/** The timeline runs from the press, not from when the menu finished mounting: a slow mount must not read as lag. */
+let lastInput = 0;
+if (typeof window !== 'undefined') {
+  const mark = () => { lastInput = performance.now(); };
+  window.addEventListener('pointerdown', mark, { capture: true, passive: true });
+  window.addEventListener('keydown', mark, { capture: true, passive: true });
+}
+function openedSince() {
+  const now = performance.now();
+  return now - lastInput < MAX_FIRST_FRAME * 1000 ? lastInput : now;
+}
 const GROWING_BELOW = 0.9;
 
-export type MorphPhase = 'idle' | 'opening' | 'open' | 'closing' | 'closed';
+export type MorphPhase = 'idle' | 'opening' | 'open' | 'resizing' | 'closing' | 'closed';
 
 export function createMorph(options: MorphOptions) {
   let phase: MorphPhase = 'idle';
   const p: SpringState = { x: 0, v: 0 };
   const c: SpringState = { x: 0, v: 0 };
   const lift: SpringState = { x: 0, v: 0 };
+  const resize: SpringState = { x: 1, v: 0 };
+  let resizeFrom: Box | null = null;
   const fade: SpringState = { x: 0, v: 0 };
-  let settle = 1;
   let elapsed = 0;
   let delayed = true;
   let running = false;
+  let firstTick = true;
+  let startedAt = 0;
   let unregister: (() => void) | undefined;
   let done: (() => void) | undefined;
   let layers: MorphLayers | null = null;
@@ -107,15 +123,24 @@ export function createMorph(options: MorphOptions) {
     const trigger = options.trigger();
     if (trigger) source = readSource(trigger);
     if (!final || !source) return false;
-    geometry = { source: source.box, sourceRadius: source.radius, final, radius: options.radius };
+    // From the tokens, never the live radius: this may be mid-flight, with the morph writing that one.
+    const style = getComputedStyle(layers!.surface);
+    const corner = /superellipse\(([\d.]+)\)/.exec(style.getPropertyValue('--glass-corner'));
+    geometry = {
+      source: source.box,
+      sourceRadius: source.radius,
+      final,
+      radius: Number.parseFloat(style.getPropertyValue('--glass-radius')) || 0,
+      corner: corner ? Number(corner[1]) : 1,
+    };
     options.onSize?.(final.width, final.height);
     return true;
   };
 
   const write = () => {
     if (!layers || !geometry) return;
-    const { shell, surface, body, sharp, lens, transit, flash } = layers;
-    const shape = shapeAt(p.x, c.x, settle, geometry);
+    const { shell, surface, body, sharp, lens, transit, flash, rim } = layers;
+    const shape = shapeAt(p.x, c.x, geometry);
     const pose = contentAt(c.x);
     const { final } = geometry;
     const sx = Math.max(1e-3, shape.width / final.width);
@@ -126,6 +151,9 @@ export function createMorph(options: MorphOptions) {
     put(shell, 'pointerEvents', phase === 'opening' && p.x >= GROWING_BELOW ? '' : 'none');
     put(shell, 'transform', `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`);
     put(surface, 'borderRadius', `${(shape.radius / sx).toFixed(2)}px / ${(shape.radius / sy).toFixed(2)}px`);
+    put(surface, 'cornerShape', `superellipse(${shape.corner.toFixed(3)})`);
+    // One crisp line at any scale, in every frame: the rim is what says this is a piece of glass.
+    put(rim, '--morph-rim', `${(MORPH.rimWidth / Math.min(sx, sy)).toFixed(2)}px`);
     put(body, 'transform', `scale(${(pose.scale / sx).toFixed(4)}, ${(pose.scale / sy).toFixed(4)})`);
     put(sharp, 'opacity', pose.sharp.toFixed(3));
     put(blurred, 'opacity', pose.blurred.toFixed(3));
@@ -172,7 +200,9 @@ export function createMorph(options: MorphOptions) {
     blurred = document.createElement('div');
     blurred.className = layers.blurredClass;
     blurred.setAttribute('aria-hidden', 'true');
-    if (layers.bendFilter) blurred.style.filter = `url(#${layers.bendFilter})`;
+    // Refraction on a reference-sized panel; a big one would only scribble its rows, so it just blurs.
+    const big = geometry && Math.max(geometry.final.width, geometry.final.height) > MORPH.content.bendMaxSide;
+    if (layers.bendFilter && !big) blurred.style.filter = `url(#${layers.bendFilter})`;
     blurredRows = inertCopy(layers.sharp);
     blurredRows.removeAttribute('style');
     blurred.appendChild(blurredRows);
@@ -209,7 +239,9 @@ export function createMorph(options: MorphOptions) {
 
   const clearInline = () => {
     if (!layers) return;
-    const { shell, surface, body, sharp, lens, transit, flash } = layers;
+    const { shell, surface, body, sharp, lens, transit, flash, rim } = layers;
+    rim?.style.removeProperty('--morph-rim');
+    surface.style.removeProperty('corner-shape');
     shell.style.transform = '';
     shell.style.willChange = '';
     shell.style.pointerEvents = '';
@@ -218,6 +250,7 @@ export function createMorph(options: MorphOptions) {
     surface.style.removeProperty('--glass-fade');
     delete surface.dataset.morphing;
     body.style.transform = '';
+    body.style.transformOrigin = '';
     body.style.willChange = '';
     sharp.style.opacity = '';
     sharp.style.willChange = '';
@@ -235,9 +268,61 @@ export function createMorph(options: MorphOptions) {
   const stop = () => {
     running = false;
     cancelFrame(tick);
+  };
+  const unobserve = () => {
     observer?.disconnect();
     observer = null;
   };
+
+  /**
+   * The open menu changed size in layout (a submenu, a filtered list, the tray's model view). Layout has
+   * already moved; the glass glides there from where it was, in transforms, with the rows held at scale 1.
+   */
+  const relayout = () => {
+    if (!layers || !geometry) return;
+    if (phase !== 'open' && phase !== 'resizing' && phase !== 'opening' && phase !== 'closing') return;
+    const was = geometry.final;
+    const next = measureFinal();
+    if (!next) return;
+    if (Math.abs(next.width - was.width) + Math.abs(next.height - was.height) + Math.abs(next.left - was.left) + Math.abs(next.top - was.top) < 0.5) return;
+    if (phase === 'opening' || phase === 'closing' || options.reduced()) {
+      geometry = { ...geometry, final: next };
+      return;
+    }
+    // Continue from what is on screen.
+    let from = was;
+    if (phase === 'resizing' && resizeFrom) {
+      from = { left: lerp(resizeFrom.left, was.left, resize.x), top: lerp(resizeFrom.top, was.top, resize.x), width: lerp(resizeFrom.width, was.width, resize.x), height: lerp(resizeFrom.height, was.height, resize.x) };
+    }
+    geometry = { ...geometry, final: next };
+    resizeFrom = from;
+    resize.x = 0;
+    resize.v = 0;
+    phase = 'resizing';
+    layers.surface.dataset.morphing = 'true';
+    layers.shell.style.willChange = 'transform';
+    layers.body.style.willChange = 'transform';
+    layers.body.style.transformOrigin = '0 0';
+    writeResize();
+    start();
+  };
+
+  function writeResize() {
+    if (!layers || !geometry || !resizeFrom) return;
+    const { shell, surface, body, rim } = layers;
+    const { final, radius } = geometry;
+    const left = lerp(resizeFrom.left, final.left, resize.x);
+    const top = lerp(resizeFrom.top, final.top, resize.x);
+    const sx = Math.max(1e-3, lerp(resizeFrom.width, final.width, resize.x) / final.width);
+    const sy = Math.max(1e-3, lerp(resizeFrom.height, final.height, resize.x) / final.height);
+    tx = left - final.left - origin.x * (1 - sx);
+    ty = top - final.top - origin.y * (1 - sy);
+    put(shell, 'transform', `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`);
+    put(surface, 'borderRadius', `${(radius / sx).toFixed(2)}px / ${(radius / sy).toFixed(2)}px`);
+    put(rim, '--morph-rim', `${(MORPH.rimWidth / Math.min(sx, sy)).toFixed(2)}px`);
+    // Pin the rows to the panel's top-left at their real size; the rim's clip reveals or hides the rest.
+    put(body, 'transform', `translate(${(body.offsetLeft * (1 / sx - 1)).toFixed(2)}px, ${(body.offsetTop * (1 / sy - 1)).toFixed(2)}px) scale(${(1 / sx).toFixed(4)}, ${(1 / sy).toFixed(4)})`);
+  }
 
   const finishOpen = () => {
     stop();
@@ -247,7 +332,6 @@ export function createMorph(options: MorphOptions) {
     c.x = 1;
     c.v = 0;
     lift.x = 1;
-    settle = 0;
     dropBlurred();
     dropGlyph();
     clearInline();
@@ -261,6 +345,7 @@ export function createMorph(options: MorphOptions) {
 
   const finishClose = () => {
     stop();
+    unobserve();
     phase = 'closed';
     restoreSource();
     dropBlurred();
@@ -294,12 +379,33 @@ export function createMorph(options: MorphOptions) {
 
   function tick({ delta }: { delta: number }) {
     if (!running) return;
-    const dt = Math.min(MAX_FRAME, delta / 1000);
+    // The scheduler's first delta after idle is a nominal frame; what passed is the time since this started.
+    const dt = firstTick ? Math.min(MAX_FIRST_FRAME, (performance.now() - startedAt) / 1000) : Math.min(MAX_FRAME, delta / 1000);
+    firstTick = false;
     if (options.reduced()) return tickFade(dt);
+    if (phase === 'resizing') {
+      let remaining = dt;
+      while (remaining > 0) {
+        const step = Math.min(remaining, MAX_SUBSTEP);
+        stepSpring(resize, 1, MORPH.resize, step);
+        remaining -= step;
+      }
+      writeResize();
+      if (Math.abs(1 - resize.x) < 1e-3 && Math.abs(resize.v) < 0.02) {
+        stop();
+        phase = 'open';
+        resize.x = 1;
+        resizeFrom = null;
+        clearInline();
+      }
+      return;
+    }
     elapsed += dt;
     const opening = phase === 'opening';
     const spec = opening ? MORPH.open : MORPH.close;
-    const shapeTarget = opening ? (!delayed || elapsed >= MORPH.open.shapeDelay ? 1 : p.x) : 0;
+    // Past the rest size until the rows have nearly landed: the overshoot shows on the squared-up panel, then returns.
+    const landing = c.x >= MORPH.open.landAt ? 1 : 1 + MORPH.open.overshoot;
+    const shapeTarget = opening ? (!delayed || elapsed >= MORPH.open.shapeDelay ? landing : p.x) : 0;
     const contentTarget = opening ? (!delayed || elapsed >= MORPH.open.contentDelay ? 1 : c.x) : 0;
     let left = dt;
     while (left > 0) {
@@ -310,9 +416,8 @@ export function createMorph(options: MorphOptions) {
       stepSpring(lift, opening || p.x > MORPH.sourceHandover ? 1 : 0, spec.lift, step);
       left -= step;
     }
-    if (opening && p.x > MORPH.path.settleStart) settle *= Math.exp(-dt / MORPH.path.settleTau);
     write();
-    if (opening && Math.abs(1 - p.x) < 8e-4 && Math.abs(p.v) < 0.02 && Math.abs(1 - c.x) < 2e-3 && settle < 0.01) finishOpen();
+    if (opening && Math.abs(1 - p.x) < 8e-4 && Math.abs(p.v) < 0.02 && Math.abs(1 - c.x) < 2e-3) finishOpen();
     else if (!opening && p.x < 2e-3 && Math.abs(p.v) < 0.1 && lift.x < 0.01) finishClose();
   }
 
@@ -320,12 +425,12 @@ export function createMorph(options: MorphOptions) {
     if (!layers) return;
     if (!running) {
       running = true;
+      firstTick = true;
+      startedAt = openedSince();
       frame.update(tick, true);
     }
     if (typeof ResizeObserver !== 'undefined' && !observer) {
-      observer = new ResizeObserver(() => {
-        if (phase === 'opening' || phase === 'closing') measure();
-      });
+      observer = new ResizeObserver(relayout);
       observer.observe(layers.shell);
     }
   };
@@ -364,10 +469,8 @@ export function createMorph(options: MorphOptions) {
       if (fresh) {
         elapsed = 0;
         delayed = true;
-        settle = 1;
       } else {
         delayed = false;
-        if (p.x < MORPH.path.settleFrom) settle = 1;
       }
       prepare();
       addBlurred();
@@ -386,14 +489,15 @@ export function createMorph(options: MorphOptions) {
         start();
         return;
       }
-      const wasOpen = phase === 'open';
+      const wasOpen = phase === 'open' || phase === 'resizing';
+      resizeFrom = null;
+      if (layers) layers.body.style.transformOrigin = '';
       if (!measure()) return queueMicrotask(finishClose);
       phase = 'closing';
       if (wasOpen) {
         p.x = 1;
         c.x = 1;
         lift.x = 1;
-        settle = 0;
         written.clear();
       }
       prepare();
@@ -412,8 +516,11 @@ export function createMorph(options: MorphOptions) {
       }
       start();
     },
+    /** The positioned box moved (a flip, a re-anchor): same as a size change. */
+    relayout,
     destroy() {
       stop();
+      unobserve();
       restoreSource();
       unregister?.();
       unregister = undefined;

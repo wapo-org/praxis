@@ -1,4 +1,4 @@
-import { GlideHighlight, usePress } from '@praxis/glass';
+import { usePress } from '@praxis/glass';
 import { motion } from 'framer-motion';
 import { ChevronLeft } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
@@ -27,14 +27,11 @@ export function SidebarSettings({ sheet, onNavigate, devTools }: { sheet: Settin
         </motion.button>
       </div>
       <nav className={styles.list} aria-label="Settings sections">
-        <GlideHighlight active='[aria-current="page"]' activeKey={current} className={styles.activePill} />
-        <GlideHighlight />
         {items.map(({ sheet: target, title, Icon }) => (
           <motion.button
             key={target}
             type="button"
             className={styles.navRow}
-            data-glide=""
             data-testid={`settings-nav-${target}`}
             aria-current={current === target ? 'page' : undefined}
             onClick={() => {

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Board from a recording: our frames (true time read from each frame's barcode) above reference frames.
 usage: g2-board.py frames_dir out.png '<json>'
-json: {viewport:[w,h], crop:[l,t,r,b] in CSS px, ref:[[ms,num]...], refDir, refCrop, times?:[ms...], select?:prefix}"""
+json: {viewport:[w,h], crop:[l,t,r,b] in CSS px, ref:[[ms,num]...], refDir, refCrop, times?:[ms...], select?:prefix,
+       speed?: ours runs this much faster than the reference, so a reference frame at ms pairs with ours at ms * speed}"""
 import glob, json, os, sys
 from PIL import Image, ImageDraw
 frames_dir, out, opts = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
@@ -35,8 +36,9 @@ ref = opts.get('ref')
 times = [ms for ms, _ in ref] if ref else opts['times']
 refs = {ms: fit(Image.open(f"{opts['refDir']}/IMG_{num}.PNG"), opts['refCrop']) for ms, num in ref} if ref else {}
 ours, chosen = [], []
+speed = opts.get('speed', 1)
 for ms in times:
-    at, path = min(frames, key=lambda f: abs(f[0] - ms))
+    at, path = min(frames, key=lambda f: abs(f[0] - ms * speed))
     im = Image.open(path).convert('RGB')
     s = im.width / vw
     ours.append(fit(im, [round(v * s) for v in opts['crop']]))
@@ -51,7 +53,7 @@ board = Image.new('RGB', (cols * (W + 4), rows * cell), (24, 24, 24))
 d = ImageDraw.Draw(board)
 for i, (ms, at) in enumerate(chosen):
     x, y = (i % cols) * (W + 4), (i // cols) * cell
-    d.text((x + 4, y + 2), f"ours {ms} ms (frame at {at})", fill=(255, 220, 90))
+    d.text((x + 4, y + 2), f"ours {round(ms * speed)} ms (frame at {at})", fill=(255, 220, 90))
     board.paste(ours[i], (x, y + 16))
     if refs:
         d.text((x + 4, y + 18 + oh), f"reference {ms} ms", fill=(120, 220, 255))

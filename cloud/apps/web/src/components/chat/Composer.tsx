@@ -156,7 +156,7 @@ export const Composer: React.FC = () => {
       ) : null}
 
       {inlineModelSearchActive ? (
-        <GlassSurface material="thick" radius={20} data-testid="inline-model-search-results" className={styles.models}>
+        <GlassSurface material="thick" data-testid="inline-model-search-results" className={styles.models}>
           <div className={styles.modelsHeader}>
             <span>Filter models</span>
             <button type="button" onClick={() => setInlineModelSearchActive(false)}>
@@ -196,7 +196,7 @@ export const Composer: React.FC = () => {
 
       <PlusTray onPickFiles={handlePickFiles} />
 
-      <GlassSurface material="regular" radius={28} data-testid="composer-surface" className={styles.pill}>
+      <GlassSurface material="regular" style={{ '--glass-radius': 'var(--radius-composer)' } as React.CSSProperties} data-testid="composer-surface" className={styles.pill}>
         {queuedAttachments.length > 0 || uploading ? (
           <div data-testid="composer-attachments-strip" className={styles.attachments}>
             {queuedAttachments.map((att) => (

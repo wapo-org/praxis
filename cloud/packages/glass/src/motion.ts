@@ -25,8 +25,6 @@ export const STAGGER = 0.03;
 export const SPRINGS = {
   /** Press feedback, switch knob, segmented thumb, chevrons: small, fast things. */
   snap: { stiffness: 760, damping: 46, mass: 1 },
-  /** The highlight gliding between rows. */
-  glide: { stiffness: 460, damping: 36, mass: 1 },
   /** Large things: the sidebar, panel content, pages. */
   panel: { stiffness: 340, damping: 32, mass: 1 },
   /** The material lags the pointer by its own mass (source: PULL_FOLLOW). */
@@ -39,73 +37,76 @@ export const SPRINGS = {
 } as const;
 
 /**
- * The menu morph (morph/*): fast, then soft. Measured from the iOS recording: the
- * shape does nearly all its growth in about 150 ms after an 80-100 ms lift, then a
- * long quiet settle with no bounce. Springs carry velocity, so any reversal is
- * continuous. Both button classes use these same numbers.
+ * The menu morph (morph/*), measured from the iOS recording, then 15 % faster and a touch bouncier (WP-G3,
+ * the owner's call). Springs carry velocity, so any reversal is continuous. One set of numbers for both classes.
  */
 export const MORPH = {
   open: {
-    /** Critically damped, so never a bounce; the settle below is its own slow term. */
-    shape: { stiffness: 1600, damping: 80 },
+    /** Nearly critical on the way out; the visible bounce is the target below, not ringing. */
+    shape: { stiffness: 2025, damping: 76 },
     /** Much slower than the shape: rows are still oversized when the glass has landed. */
-    content: { stiffness: 289, damping: 34 },
+    content: { stiffness: 400, damping: 40 },
     /** The source lifts before the glass starts growing. */
-    lift: { stiffness: 2600, damping: 102 },
+    lift: { stiffness: 3200, damping: 113 },
     /** Seconds from the press before the glass starts to grow. */
-    shapeDelay: 0.11,
-    contentDelay: 0.11,
+    shapeDelay: 0.094,
+    contentDelay: 0.094,
+    /** The shape aims this far past its rest size ... */
+    overshoot: 0.035,
+    /** ... until the rows reach this progress, then it comes back. */
+    landAt: 0.82,
   },
   close: {
-    shape: { stiffness: 2500, damping: 100 },
-    content: { stiffness: 3600, damping: 120 },
-    lift: { stiffness: 3600, damping: 120 },
+    shape: { stiffness: 3000, damping: 110 },
+    content: { stiffness: 6400, damping: 160 },
+    lift: { stiffness: 6400, damping: 160 },
   },
+  /** The open panel gliding to a new size: a submenu, a filtered list. Same family, a touch of the same bounce. */
+  resize: { stiffness: 900, damping: 50 },
+  /** In-place submenus: the outgoing rows are mostly gone before the incoming ones show, so text never stacks. */
+  panelFadeDelay: 0.05,
   /** Under prefers-reduced-motion: a plain short fade, no shape change. */
   fade: { stiffness: 1200, damping: 70 },
   path: {
     anchorBy: 0.35,
     roundIn: 0.14,
-    roundOutFrom: 0.6,
-    roundOutTo: 1,
-    squareFrom: 0.58,
-    squareTo: 0.9,
-    settleFrom: 0.8,
-    settleWidth: 0.025,
-    settleHeight: 0.025,
-    /** Seconds: how slowly the last few percent bleed off. */
-    settleTau: 0.09,
-    /** Progress past which the settle starts bleeding off. */
-    settleStart: 0.9,
-    /** The panel carries on past its rest place, away from the button, by this share of its height. */
-    carry: 0.11,
-    carryInFrom: 0.1,
-    carryInTo: 0.7,
-    carryOutFrom: 0.7,
-    carryOutTo: 0.9,
+    /** It holds a circle until the rows are nearly there (progress of `c`), then squares up quickly. */
+    roundOutFrom: 0.72,
+    roundOutTo: 0.86,
+    /** How far a very wide or tall menu is pulled toward the circle: it cannot be one. */
+    wideRound: 0.55,
+    wideFrom: 1.5,
+    wideTo: 2.6,
+    squareFrom: 0.62,
+    squareTo: 0.92,
   },
   content: {
-    oversize: 0.55,
-    sharpFrom: 0.62,
-    sharpTo: 0.88,
+    oversize: 0.6,
+    sharpFrom: 0.6,
+    sharpTo: 0.81,
     blurFrom: 0.14,
-    blurTo: 0.55,
-    blurOutFrom: 0.74,
-    blurOutTo: 0.93,
+    blurTo: 0.5,
+    blurOutFrom: 0.7,
+    blurOutTo: 0.87,
+    /** The real lens, and with it the tint: on the reference's opacity by the time the rows are. */
     tintFrom: 0.62,
-    tintTo: 0.9,
+    tintTo: 0.87,
     /** The round lens sits under the real one and leaves only once it covers it: no sharp backdrop leaks through. */
     transitOutFrom: 0.85,
     transitOutTo: 1,
     /** Fixed strength of the filter on the arriving copy, in px: never animated. */
     bend: 36,
-    blur: 1.6,
+    blur: 1.4,
     ink: 1.35,
+    /** Bending reads as refraction on a reference-sized panel and as scribble on a big one. */
+    bendMaxSide: 320,
   },
-  /** The lift's wider shadow, in px on screen, while the source is still source-sized. */
-  liftShadow: { y: 6, blur: 28, alpha: 0.16 },
   /** Below this the source's own glass and the morph hand over to each other. */
   sourceHandover: 0.06,
+  /** The lift's wider shadow, in px on screen, while the source is still source-sized. */
+  liftShadow: { y: 6, blur: 28, alpha: 0.16 },
+  /** The rim's width on screen, in px, at any scale. */
+  rimWidth: 1,
   /** The attached class's blob is this share of the button's short side, within these px. */
   blob: { share: 0.6, min: 12, max: 24 },
 } as const;
@@ -113,7 +114,6 @@ export const MORPH = {
 export type SpringValue = { stiffness: number; damping: number };
 const spring = (value: SpringValue): Transition => ({ type: 'spring', ...value });
 export const SNAP = spring(SPRINGS.snap);
-export const GLIDE = spring(SPRINGS.glide);
 export const PANEL = spring(SPRINGS.panel);
 
 /** Near-critically damped: fades and small moves that should not overshoot. */

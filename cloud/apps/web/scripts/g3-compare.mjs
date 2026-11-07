@@ -1,5 +1,6 @@
-// WP-G2 visual gate: our open at the reference's timecodes, directly above the reference frames.
-//   BASE=http://127.0.0.1:5231 node apps/web/scripts/g2-compare.mjs separate|attached
+// WP-G3 visual gate: our open directly above the reference frames, with the reference shifted 15 %:
+// the owner asked for a faster open, so a reference frame at t pairs with ours at 0.85 t.
+//   BASE=http://127.0.0.1:5231 OUT=.../G3/A node apps/web/scripts/g3-compare.mjs separate|attached
 import { execFileSync } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { clean, disarm, installClock, launch, open, OUT, record, REF_DIR, REF_FRAMES } from './g2-lib.mjs';
@@ -26,4 +27,4 @@ for (let run = 0; run < RUNS; run++) {
 }
 await browser.close();
 // The reference's phone is 920 px across: match its framing around the button.
-execFileSync('python3', [`${here}g2-board.py`, dir, `${OUT}/compare-${which}.png`, JSON.stringify({ viewport: [402, 874], crop: [130, 0, 402, 300], ref: REF_FRAMES, refDir: REF_DIR, refCrop: [460, 380, 1104, 380 + 710] })], { stdio: 'inherit' });
+execFileSync('python3', [`${here}g2-board.py`, dir, `${OUT}/compare-${which}.png`, JSON.stringify({ viewport: [402, 874], speed: 0.85, crop: [130, 0, 402, 300], ref: REF_FRAMES, refDir: REF_DIR, refCrop: [460, 380, 1104, 380 + 710] })], { stdio: 'inherit' });

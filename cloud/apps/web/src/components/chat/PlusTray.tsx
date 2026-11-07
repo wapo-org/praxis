@@ -12,8 +12,6 @@ export interface PlusTrayProps {
   onPickFiles: (accept?: string, capture?: boolean) => void;
 }
 
-/** --radius-2xl, the tray's rest corner. */
-const TRAY_RADIUS = 28;
 const MODES = ['auto', 'ask', 'plan', 'build'] as const;
 const TILES = [
   { name: 'Photos', Icon: Photo, accept: 'image/*' },
@@ -93,7 +91,6 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
   return (
     <GlassMorph
       source={plusButton}
-      radius={TRAY_RADIUS}
       material="thick"
       shellProps={{ className: styles.anchor }}
       surfaceRef={surface}

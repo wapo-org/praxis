@@ -82,7 +82,7 @@ test('the sidebar slides, and reversing mid-flight continues from where it is', 
   expect(lefts[lefts.length - 1]).toBeCloseTo(12, 0);
 });
 
-test('the highlight glides between rows, one pill, no per-row snap', async ({ page }) => {
+test('hover is instant and pill-shaped: nothing glides between rows', async ({ page }) => {
   // A fresh API has only the welcome chat; this needs two rows.
   if ((await page.locator('[data-sidebar-row]').count()) < 2) {
     await page.getByTestId('starter-chip-2').click();
@@ -90,19 +90,17 @@ test('the highlight glides between rows, one pill, no per-row snap', async ({ pa
     await page.waitForFunction(() => !document.querySelector('[aria-label="Stop generating"]'));
     await page.waitForTimeout(300);
   }
-  const rows = page.locator('[data-sidebar-row]');
-  await rows.first().hover();
-  await page.waitForTimeout(300);
-  const pill = rows.first().locator('xpath=ancestor::*[contains(@class, "list")][1]').locator('> span').nth(1);
-  const from = await pill.evaluate((el) => new DOMMatrixReadOnly(getComputedStyle(el).transform).m42);
-  const box = (await rows.nth(1).boundingBox())!;
-  const values = await sample(pill, async () => {
-    await page.mouse.move(box.x + 50, box.y + box.height / 2);
-    await page.waitForTimeout(420);
-  }, 'matrixY');
-  const to = values[values.length - 1]!;
-  expect(to).toBeGreaterThan(from + 20);
-  expect(inBetween(values, from, to)).toBeGreaterThanOrEqual(2);
+  const first = page.locator('[data-sidebar-row]:not([data-active="true"])').first();
+  await first.hover();
+  await expect.poll(() => first.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+  const radius = await first.evaluate((el) => parseFloat(getComputedStyle(el).borderTopLeftRadius));
+  expect(radius).toBeGreaterThanOrEqual((await first.boundingBox())!.height / 2);
+  // No pill element moves between rows: the row owns its own background, with no transition on it.
+  expect(await first.evaluate((el) => getComputedStyle(el).transitionProperty.includes('background') && getComputedStyle(el).transitionDuration !== '0s')).toBe(false);
+  await expect(page.locator('[data-glide]')).toHaveCount(0);
+  await page.getByTestId('sidebar-new-chat').hover();
+  await expect.poll(() => first.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+  await expect.poll(() => page.getByTestId('sidebar-new-chat').evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
 });
 
 test('the segmented thumb springs and can reverse from where it is', async ({ page }) => {

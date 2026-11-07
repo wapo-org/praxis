@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion';
 import { ChevronLeft } from '../icons';
 import { useGlassDropdownContext, type SubLevelInfo } from './context';
 import styles from './dropdown.module.css';
@@ -14,8 +13,7 @@ export function MorphHeader({
     <>
       {activeMorphLevel ? (
         <div className={styles.morphHeaderWrap}>
-          <motion.button
-            layoutId={`${ctx.menuId}-sub-header-${activeMorphLevel.id}`}
+          <button
             data-dropdown-morph-header
             type="button"
             role="menuitem"
@@ -38,7 +36,7 @@ export function MorphHeader({
               {activeMorphLevel.label}
             </span>
             <SubmenuChevron id={activeMorphLevel.id} expanded />
-          </motion.button>
+          </button>
           <Separator variant="hairline" className={styles.morphSeparator} />
         </div>
       ) : null}
