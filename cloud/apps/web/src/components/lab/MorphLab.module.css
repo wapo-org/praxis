@@ -25,6 +25,10 @@
   bottom: var(--space-3);
   left: var(--space-3);
 }
+.middle {
+  top: 28%;
+  left: var(--space-3);
+}
 .capsule {
   display: inline-flex;
   padding: 2px;

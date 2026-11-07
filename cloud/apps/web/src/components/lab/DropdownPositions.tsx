@@ -51,7 +51,7 @@ export function DropdownPositions({ compact = false }: { compact?: boolean }) {
                 <GlassDropdown.Trigger data-testid={`position-${row}-${align}`} style={compact ? { fontSize: 'var(--text-xs)', padding: '6px 4px' } : undefined}>
                   {row} {align}
                 </GlassDropdown.Trigger>
-                <GlassDropdown.Content minWidth={240} maxHeight={340}>
+                <GlassDropdown.Content minWidth={240} maxHeight={380}>
                   <GlassDropdown.ActionGrid>
                     <GlassDropdown.TileItem icon={<Scan size={16} />}>
                       Scan
@@ -81,6 +81,8 @@ export function DropdownPositions({ compact = false }: { compact?: boolean }) {
                       Recent Notes
                     </GlassDropdown.SubTrigger>
                     <GlassDropdown.SubContent>
+                      <GlassDropdown.Label>This week</GlassDropdown.Label>
+                      <GlassDropdown.Label>Earlier</GlassDropdown.Label>
                       {previews.map((text) => (
                           <GlassDropdown.Item
                             key={text}

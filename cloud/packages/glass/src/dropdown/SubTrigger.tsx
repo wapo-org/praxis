@@ -1,6 +1,5 @@
 import styles from './dropdown.module.css';
 import { SubmenuChevron } from './SubmenuChevron';
-import { SPRING } from '../motion';
 export interface SubTriggerProps extends Omit<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
   'value' | 'onAnimationStart' | 'onDrag' | 'onDragEnd' | 'onDragStart'
@@ -13,7 +12,6 @@ export interface SubTriggerProps extends Omit<
   children?: React.ReactNode;
 }
 
-import { motion } from 'framer-motion';
 import React from 'react';
 import {
   assignForwardedRef,
@@ -64,9 +62,8 @@ const SubTrigger = React.forwardRef<HTMLButtonElement, SubTriggerProps>(
     };
 
     return (
-      <motion.button
+      <button
         ref={setRef}
-        layoutId={`${ctx.menuId}-sub-header-${sub.subId}`}
         type="button"
         role="menuitem"
         data-dropdown-item-id={itemId}
@@ -101,18 +98,11 @@ const SubTrigger = React.forwardRef<HTMLButtonElement, SubTriggerProps>(
             openSubmenu();
           }
         }}
+        data-highlighted={isHighlighted || undefined}
         className={styles.item}
         style={style}
         {...rest}
       >
-        {isHighlighted && !disabled ? (
-          <motion.span
-            layoutId={`${panelHighlight?.layoutScopeId ?? 'menu'}-highlight`}
-            aria-hidden="true"
-            transition={SPRING}
-            className={styles.highlight}
-          />
-        ) : null}
 
         {inset ? <span aria-hidden="true" className={styles.slot} /> : null}
         {icon ? (
@@ -129,7 +119,7 @@ const SubTrigger = React.forwardRef<HTMLButtonElement, SubTriggerProps>(
         {value !== undefined && value !== null ? <span className={styles.meta}>{value}</span> : null}
 
         <SubmenuChevron id={sub.subId} expanded={false} />
-      </motion.button>
+      </button>
     );
   },
 );

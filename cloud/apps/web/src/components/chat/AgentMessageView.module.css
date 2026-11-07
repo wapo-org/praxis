@@ -30,7 +30,7 @@
 
 .usage {
   margin-left: var(--space-2);
-  color: var(--color-ink-3);
+  color: var(--color-ink-2);
   font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-mono);
 }
 

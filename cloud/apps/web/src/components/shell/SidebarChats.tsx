@@ -1,4 +1,4 @@
-import { GlassDropdown, GlassSurface, GlideHighlight, usePress } from '@praxis/glass';
+import { GlassDropdown, GlassSurface, usePress } from '@praxis/glass';
 import type { Chat } from '@praxis/protocol';
 import { motion } from 'framer-motion';
 import React from 'react';
@@ -37,11 +37,9 @@ export function SidebarChats({ onClose, onNavigate }: { onClose?: () => void; on
       </div>
 
       <nav className={styles.actions}>
-        <GlideHighlight />
         <motion.button
           type="button"
           className={styles.action}
-          data-glide=""
           data-testid="sidebar-new-chat"
           onClick={() => {
             store.startNewConversation();
@@ -52,7 +50,7 @@ export function SidebarChats({ onClose, onNavigate }: { onClose?: () => void; on
           <Edit size={18} />
           New chat
         </motion.button>
-        <button type="button" className={styles.action} data-glide="" aria-label="Search conversations"
+        <button type="button" className={styles.action} aria-label="Search conversations"
           onClick={() => { window.dispatchEvent(new Event('praxis:search')); onNavigate?.(); }}>
           <Search size={18} />Search
         </button>
@@ -63,8 +61,6 @@ export function SidebarChats({ onClose, onNavigate }: { onClose?: () => void; on
           <p className={styles.empty}>{query ? 'No chats match your search.' : 'No conversations yet.'}</p>
         ) : (
           <>
-            <GlideHighlight active='[data-sidebar-row][data-active="true"]' activeKey={`${store.activeChatId}|${groups.length}|${store.chats.length}`} className={styles.activePill} />
-            <GlideHighlight />
             {groups.map(({ group, chats }) => (
               <section key={group} aria-label={group} className={styles.group}>
                 <h2 className={styles.groupTitle}>{group}</h2>
@@ -78,11 +74,9 @@ export function SidebarChats({ onClose, onNavigate }: { onClose?: () => void; on
       </div>
 
       <footer className={styles.footer}>
-        <GlideHighlight />
         <motion.button
           type="button"
           className={styles.account}
-          data-glide=""
           data-testid="sidebar-account"
           onClick={() => {
             store.setActiveSheet('settings');
@@ -155,7 +149,6 @@ function ChatRow({
       className={styles.row}
       data-active={active}
       data-sidebar-row=""
-      data-glide=""
       onContextMenu={(event) => {
         event.preventDefault();
         openRowMenu(event.currentTarget);

@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { squirclePath } from './squircle';
 import { PAPER_DARK, PAPER_LIGHT, popIn, press, resolvePreset, sheet, SPRING } from './index';
 
 const here = new URL('.', import.meta.url).pathname;
@@ -56,6 +57,32 @@ describe('@praxis/glass design system', () => {
       expect(src, file).not.toMatch(/transition:[^;]*backdrop-filter/);
       if (!file.endsWith('displacement-map.ts')) expect(src, file).not.toMatch(/getContext\(/);
     }
+  });
+});
+
+describe('continuous corners', () => {
+  it('a squircle path spans the radius, closes, and stays inside the box', () => {
+    const path = squirclePath(200, 120, 42);
+    expect(path.startsWith('M')).toBe(true);
+    expect(path.endsWith('Z')).toBe(true);
+    const points = path.slice(1, -1).split('L').map((point) => point.split(' ').map(Number));
+    for (const [x, y] of points) {
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(200);
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y).toBeLessThanOrEqual(120);
+    }
+    // The corner's apex is cut by the measured amount: 22 % of the span.
+    const apex = Math.min(...points.map(([x, y]) => Math.hypot(x!, y!)));
+    expect(apex / Math.SQRT2 / 42).toBeCloseTo(0.2227, 1);
+    // Clamped on a small box.
+    expect(() => squirclePath(30, 20, 42)).not.toThrow();
+  });
+  it('all glass reads the corner and radius tokens', () => {
+    const css = readFileSync(join(here, 'glass.module.css'), 'utf8');
+    expect(css).toContain('corner-shape: var(--glass-corner)');
+    expect(css).toContain('border-radius: var(--glass-radius)');
+    expect(tokensCss).toContain('--glass-corner: superellipse(1.46)');
   });
 });
 

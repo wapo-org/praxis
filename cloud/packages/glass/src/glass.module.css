@@ -3,10 +3,15 @@
    Recipe values are tokens (apps/web/src/styles/tokens.css → --glass-*). The held
    rig (rig.ts) animates the shadows from these exact rest values. */
 
+:where(.glass) {
+  --glass-radius: var(--radius-menu);
+}
+
 .glass {
   position: relative;
   isolation: isolate;
-  border-radius: var(--glass-radius, var(--radius-xl));
+  border-radius: var(--glass-radius);
+  corner-shape: var(--glass-corner);
   box-shadow:
     var(--glass-contact) rgba(var(--glass-shadow-rgb), calc(var(--glass-contact-a) * var(--glass-shadow) * var(--glass-fade, 1))),
     var(--glass-lift) rgba(var(--glass-shadow-rgb), calc(var(--glass-lift-a) * var(--glass-shadow) * var(--glass-fade, 1)));
@@ -43,7 +48,15 @@
   inset: 0;
   z-index: -1;
   border-radius: inherit;
+  corner-shape: inherit;
   pointer-events: none;
+  /* Engines without corner-shape: the same curve as a path, built per size (squircle.ts). */
+  clip-path: var(--glass-squircle, none);
+}
+
+/* The morph animates a circle into the corner; the path only applies at rest. */
+[data-morphing='true'] > :is(.lens, .finish, .band, .spotClip) {
+  clip-path: none;
 }
 
 .lens,
@@ -123,6 +136,7 @@
 
 .capsule {
   --glass-radius: var(--radius-full);
+  --glass-corner: round;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {

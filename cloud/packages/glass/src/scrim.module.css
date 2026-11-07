@@ -56,6 +56,8 @@
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* The edge fade is the scroll indicator; a track would flash as rows arrive and clutter the glass. */
+  scrollbar-width: none;
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0,
@@ -82,4 +84,14 @@
   8% { --fade-top: var(--fade-size, 16px); }
   92% { --fade-bottom: var(--fade-size, 16px); }
   100% { --fade-top: var(--fade-size, 16px); --fade-bottom: 0px; }
+}
+
+.scroll[data-open] {
+  overflow: visible;
+}
+.scroll[data-open] > .viewport {
+  overflow: visible;
+  animation: none;
+  -webkit-mask-image: none;
+  mask-image: none;
 }

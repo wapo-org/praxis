@@ -250,6 +250,8 @@ test('submenu header rises in one sheet, expands and reverses; reduced motion ne
 }, info) => {
   await page.getByTestId('position-top-end').click();
   const menu = page.getByRole('menu');
+  // Geometry is only meaningful once the glass has landed: the morph leaves nothing inline at rest.
+  await expect.poll(() => menu.evaluate((el: HTMLElement) => el.style.transform)).toBe('');
   const old = await menu.boundingBox();
   const recent = page.getByRole('menuitem', { name: 'Recent Notes' });
   const row = await recent.boundingBox();

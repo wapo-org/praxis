@@ -71,8 +71,8 @@ test('action grid corners, transparent tiles, native geometry and Math Results s
     const menu = page.getByRole('menu');
     const grid = menu.locator('[data-slot="dropdown-action-grid"]');
     await expect(grid).toHaveCSS('overflow', 'hidden');
-    await expect(grid).toHaveCSS('border-top-left-radius', '16px');
-    await expect(grid).toHaveCSS('border-top-right-radius', '16px');
+    await expect(grid).toHaveCSS('border-top-left-radius', '42px');
+    await expect(grid).toHaveCSS('border-top-right-radius', '42px');
     await expect(grid).toHaveCSS('column-gap', '0px');
     for (const tile of await grid.getByRole('menuitem').all()) {
       await expect(tile).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -81,7 +81,7 @@ test('action grid corners, transparent tiles, native geometry and Math Results s
     const math = menu.getByRole('menuitem', { name: 'Math Results Suggest Results', exact: true });
     await expect(math).toHaveCSS('font-size', '14px');
     await expect(async () => expect((await menu.boundingBox())!.width).toBeCloseTo(240, 0)).toPass();
-    const move = menu.getByRole('menuitem', { name: 'Move Note' }); expect(Math.round((await move.boundingBox())!.height)).toBeGreaterThanOrEqual(36);
+    const move = menu.getByRole('menuitem', { name: 'Move Note' }); expect(Math.round((await move.boundingBox())!.height)).toBeGreaterThanOrEqual(40);
     await page.keyboard.press('Escape');
   }
 });
@@ -121,7 +121,7 @@ test('plain morph header, centered preview icons and staggered children respect 
   expect(frames.some(values => values[0]! > values.at(-1)! + .02)).toBeTruthy();
   const header = page.locator('[data-dropdown-morph-header]');
   await expect(header).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-  await expect(page.getByRole('separator')).toHaveCSS('margin-left', '12px');
+  await expect(page.getByRole('separator')).toHaveCSS('margin-left', '16px');
   const child = page.getByRole('menuitem').filter({ hasText: 'am i missing' });
   await expect(child).toHaveCSS('align-items', 'center');
   expect(await page.locator('[data-dropdown-panel="recent"] [data-slot="dropdown-separator"]').count()).toBe(0);

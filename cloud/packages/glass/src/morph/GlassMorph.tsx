@@ -10,7 +10,6 @@ import { subscribeTransit, transitMaps, warmTransit } from './transit';
 export interface GlassMorphProps extends Omit<GlassSurfaceProps, 'ref' | 'radius' | 'initial' | 'animate' | 'exit' | 'transition'> {
   /** The button this glass grows out of and returns to. */
   source: () => HTMLElement | null;
-  radius: number;
   /** False until the shell has its final position; the morph starts from the first true. */
   ready?: boolean;
   /** Ref and props of the positioned outer element. */
@@ -77,13 +76,14 @@ function assign<T>(ref: React.Ref<T> | undefined, value: T | null) {
  * it holds its own exit until the glass is back at the button, and a reopen during the
  * close reverses from wherever it is.
  */
-export function GlassMorph({ source, radius, ready = true, shellRef, shellProps, surfaceRef, material = 'thick', children, ...surface }: GlassMorphProps) {
+export function GlassMorph({ source, ready = true, shellRef, shellProps, surfaceRef, material = 'thick', children, ...surface }: GlassMorphProps) {
   const shell = React.useRef<HTMLDivElement | null>(null);
   const root = React.useRef<HTMLDivElement | null>(null);
   const body = React.useRef<HTMLDivElement | null>(null);
   const sharp = React.useRef<HTMLDivElement | null>(null);
   const transit = React.useRef<HTMLSpanElement | null>(null);
   const flash = React.useRef<HTMLSpanElement | null>(null);
+  const rim = React.useRef<HTMLSpanElement | null>(null);
   const [isPresent, safeToRemove] = usePresence();
   const reduced = useReducedMotion();
   const reducedRef = React.useRef(reduced);
@@ -113,13 +113,13 @@ export function GlassMorph({ source, radius, ready = true, shellRef, shellProps,
           lens: root.current.querySelector<HTMLElement>(':scope > [data-glass-lens]'),
           transit: transit.current,
           flash: flash.current,
+          rim: rim.current,
           blurredClass: styles.blurred!,
           bendFilter: bendIdRef.current,
           glyphClass: styles.glyph!,
         };
       },
       trigger: () => sourceRef.current(),
-      radius,
       reduced: () => reducedRef.current,
       onSize: (width, height) =>
         setSize((old) => (old && old.width === width && old.height === height ? old : { width, height })),
@@ -143,6 +143,12 @@ export function GlassMorph({ source, radius, ready = true, shellRef, shellProps,
     }
   }, [isPresent, ready, morph]);
 
+  // A new position (a flip, a re-anchor): the glass glides there rather than jumping.
+  const place = shellProps?.style ? `${shellProps.style.left}|${shellProps.style.top}` : '';
+  React.useLayoutEffect(() => {
+    if (opened.current) morph.relayout();
+  }, [place, morph]);
+
   const setShell = React.useCallback(
     (node: HTMLDivElement | null) => {
       shell.current = node;
@@ -161,7 +167,7 @@ export function GlassMorph({ source, radius, ready = true, shellRef, shellProps,
   const lens = tier === 'svg' && maps && size;
   return (
     <div ref={setShell} {...shellProps}>
-      <GlassSurface ref={setRoot} radius={radius} material={material} {...surface}>
+      <GlassSurface ref={setRoot} material={material} {...surface}>
         {lens ? <TransitFilter id={filterId} url={maps.displacementUrl} width={size.width} height={size.height} chroma={chroma} /> : null}
         {lens ? <BendFilter id={bendId} url={maps.displacementUrl} width={size.width} height={size.height} /> : null}
         <span
@@ -172,6 +178,7 @@ export function GlassMorph({ source, radius, ready = true, shellRef, shellProps,
           style={lens ? { backdropFilter: `url(#${filterId})`, WebkitBackdropFilter: `url(#${filterId})` } : undefined}
         />
         <span ref={flash} aria-hidden="true" className={styles.flash} />
+        <span ref={rim} aria-hidden="true" data-glass-rim="" className={styles.rim} />
         <div ref={body} data-morph-body="" className={styles.body}>
           <div ref={sharp} className={styles.sharp}>
             {children as React.ReactNode}

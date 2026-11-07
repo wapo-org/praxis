@@ -1,5 +1,3 @@
-import { motion } from 'framer-motion';
-import { SPRING } from '../motion';
 import { Check } from '../icons';
 import React from 'react';
 import { PanelHighlightContext, useGlassDropdownContext } from './context';
@@ -92,15 +90,6 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
         style={style}
         {...otherProps}
       >
-        {/* Fluid highlight pill */}
-        {isHighlighted && !disabled ? (
-          <motion.span
-            layoutId={`${panelHighlight?.layoutScopeId ?? 'menu'}-highlight`}
-            aria-hidden="true"
-            transition={SPRING}
-            className={styles.highlight}
-          />
-        ) : null}
 
         {/* Leading icon or checkmark slot */}
         {icon ? (

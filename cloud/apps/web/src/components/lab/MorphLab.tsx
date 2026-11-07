@@ -27,6 +27,16 @@ function Separate({ testId, align }: { testId: string; align: 'start' | 'end' })
   );
 }
 
+/** A button with text has its own glass but stays in place: only icon buttons morph. */
+function Labelled({ testId, align }: { testId: string; align: 'start' | 'end' }) {
+  return (
+    <GlassDropdown portal align={align}>
+      <GlassDropdown.Trigger data-testid={testId}>Export</GlassDropdown.Trigger>
+      <ReferenceMenu />
+    </GlassDropdown>
+  );
+}
+
 /** A button sharing glass with a neighbour: the capsule stays, and the menu grows from a blob. */
 function Attached({ testId, align }: { testId: string; align: 'start' | 'end' }) {
   return (
@@ -46,6 +56,42 @@ function Attached({ testId, align }: { testId: string; align: 'start' | 'end' })
   );
 }
 
+/** A long-label menu: the cap holds, labels truncate. */
+function Wide() {
+  return (
+    <GlassDropdown portal align="start">
+      <GlassDropdown.Trigger data-testid="wide-menu">Notes</GlassDropdown.Trigger>
+      <GlassDropdown.Content minWidth={420}>
+        {['am i missing something? the protestors are over the line and still moving forward', 'Using this repository, and plus find some for search and the next conversation', 'figure of around 40% refers to ethnic kazakhs and the population around them'].map((note) => (
+          <GlassDropdown.Item key={note} icon={<Copy size={16} />}>{note}</GlassDropdown.Item>
+        ))}
+      </GlassDropdown.Content>
+    </GlassDropdown>
+  );
+}
+
+function Nested({ testId, mode }: { testId: string; mode: 'morph' | 'cascade' }) {
+  const rows = ['Save as TXT', 'Save as PDF', 'Save as Markdown', 'Save as HTML'];
+  return (
+    <GlassDropdown portal align="start" submenuMode={mode} closeOnSelect={false}>
+      <GlassDropdown.Trigger data-testid={testId}>{mode === 'morph' ? 'In place' : 'Cascade'}</GlassDropdown.Trigger>
+      <GlassDropdown.Content minWidth={236}>
+        <GlassDropdown.Item icon={<Copy size={16} />}>Copy</GlassDropdown.Item>
+        <GlassDropdown.Sub id={`${testId}-sub`} label="Save as" icon={<Download size={16} />}>
+          <GlassDropdown.SubTrigger icon={<Download size={16} />}>Save as</GlassDropdown.SubTrigger>
+          <GlassDropdown.SubContent>
+            {rows.map((row) => (
+              <GlassDropdown.Item key={row}>{row}</GlassDropdown.Item>
+            ))}
+          </GlassDropdown.SubContent>
+        </GlassDropdown.Sub>
+        <GlassDropdown.Separator />
+        <GlassDropdown.Item icon={<Globe size={16} />}>Ask Siri</GlassDropdown.Item>
+      </GlassDropdown.Content>
+    </GlassDropdown>
+  );
+}
+
 /** The menu morph's test scene: both button classes in the corners, over dense text, as in the reference. */
 export function MorphLab() {
   const text = useMemo(
@@ -57,8 +103,14 @@ export function MorphLab() {
     <main className={styles.scene} data-testid="morph-lab">
       <p className={styles.text}>{text}</p>
       <div className={`${styles.corner} ${styles.topEnd}`}>
+        <Labelled testId="text-top" align="end" />
         <Attached testId="attached-top" align="end" />
         <Separate testId="separate-top" align="end" />
+      </div>
+      <div className={`${styles.corner} ${styles.middle}`}>
+        <Wide />
+        <Nested testId="nested-morph" mode="morph" />
+        <Nested testId="nested-cascade" mode="cascade" />
       </div>
       <div className={`${styles.corner} ${styles.bottomStart}`}>
         <Separate testId="separate-bottom" align="start" />

@@ -68,7 +68,7 @@ function SidebarBody({ onClose, onNavigate, devTools }: { onClose?: () => void; 
           transition: PANEL,
         };
   return (
-    <GlassSurface material="thick" radius={20} className={styles.surface}>
+    <GlassSurface material="thick" className={styles.surface}>
       <AnimatePresence initial={false}>
         {isSettingsSheet(sheet) ? (
           <motion.div key="settings" className={styles.pane} {...pane(1)}>

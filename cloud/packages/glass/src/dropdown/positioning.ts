@@ -79,7 +79,8 @@ export function usePositioning(
         width: result.width,
         maxHeight: result.maxHeight,
         // Scroll only when the menu is taller than the space; otherwise stay visible so the glass shadow is not clipped.
-        overflowY: menu.scrollHeight > result.maxHeight + 1 ? 'auto' : 'visible',
+        // A cascading menu's submenu lives outside the box and must not count, or clip.
+        overflowY: ctx.submenuMode !== 'cascade' && menu.scrollHeight > result.maxHeight + 1 ? 'auto' : 'visible',
         visibility: 'visible',
         transformOrigin: `${rect.left + rect.width / 2 - result.left}px ${result.side === 'top' ? 'bottom' : 'top'}`,
       });
@@ -98,6 +99,7 @@ export function usePositioning(
     };
   }, [
     ctx.portal,
+    ctx.submenuMode,
     ctx.open,
     ctx.side,
     ctx.align,

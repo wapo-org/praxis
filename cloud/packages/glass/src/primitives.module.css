@@ -66,15 +66,3 @@
 .dot[data-on='true'] {
   background: var(--color-ink);
 }
-
-/* The pill behind a list's rows (GlideHighlight). Rows stay above it. */
-.glide {
-  position: absolute;
-  top: 0;
-  left: var(--glide-inset, 0);
-  right: var(--glide-inset, 0);
-  z-index: 0;
-  border-radius: var(--radius-sm);
-  background: var(--glide-color, var(--color-hover));
-  pointer-events: none;
-}

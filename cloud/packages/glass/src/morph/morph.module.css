@@ -33,13 +33,27 @@
 
 /* The glass while it moves: more transparent than the menu it becomes. */
 .transit,
-.flash {
+.flash,
+.rim {
   position: absolute;
   inset: 0;
   z-index: -1;
   border-radius: inherit;
+  corner-shape: inherit;
   pointer-events: none;
+}
+.transit,
+.flash {
   opacity: 0;
+}
+
+/* The glass's one crisp line: through the whole morph, the lens handover and at rest, so it never pops. */
+.rim {
+  --morph-rim: 1px;
+  box-shadow:
+    inset 0 0 0 var(--morph-rim) var(--glass-morph-rim),
+    inset 0 0 0 calc(var(--morph-rim) * 2) var(--glass-morph-rim-light);
+  opacity: var(--glass-fade, 1);
 }
 
 .transit {

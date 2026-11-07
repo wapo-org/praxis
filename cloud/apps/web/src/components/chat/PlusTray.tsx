@@ -13,8 +13,6 @@ export interface PlusTrayProps {
   onPickFiles: (accept?: string, capture?: boolean) => void;
 }
 
-/** --radius-2xl, the tray's rest corner. */
-const TRAY_RADIUS = 28;
 
 export function PlusTray({ onPickFiles }: PlusTrayProps) {
   const open = usePraxisStore().plusTrayOpen;
@@ -81,7 +79,6 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
   return (
     <GlassMorph
       source={plusButton}
-      radius={TRAY_RADIUS}
       material="thick"
       shellProps={{ className: styles.anchor }}
       surfaceRef={surface}

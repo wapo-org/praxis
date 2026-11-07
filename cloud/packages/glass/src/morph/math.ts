@@ -19,10 +19,13 @@ export interface MorphGeometry {
   /** The menu's rest box, in the same coordinates. */
   final: Box;
   radius: number;
+  /** corner-shape superellipse parameter at rest (1 is a circle). */
+  corner: number;
 }
 
 export interface Shape extends Box {
   radius: number;
+  corner: number;
 }
 
 export const clamp = (value: number, low = 0, high = 1) => Math.min(high, Math.max(low, value));
@@ -38,38 +41,40 @@ function anchorFraction(sourceCenter: number, start: number, size: number) {
 }
 
 /**
- * The glass at progress `p`. It leaves the source's shape for a near-circle, grows
- * away from the button (which mirrors by itself for a menu opening up or left),
- * and squares up late. `settle` is the slow last 2-4 % the panel loses as it rests.
+ * The glass at shape progress `p` and content progress `c`. It leaves the source's shape for a near-circle,
+ * holds it while growing away from the button (which mirrors by itself for a menu opening up or left), and
+ * squares up late, into a superellipse. `p` passes 1 on landing, so the far edges overshoot and return.
  */
-export function shapeAt(p: number, c: number, settle: number, g: MorphGeometry): Shape {
+export function shapeAt(p: number, c: number, g: MorphGeometry): Shape {
   const { source: s, final: f } = g;
+  const { path } = MORPH;
   const rawW = lerp(s.width, f.width, p);
   const rawH = lerp(s.height, f.height, p);
-  const round = smoothstep(0, MORPH.path.roundIn, p) * (1 - smoothstep(MORPH.path.roundOutFrom, MORPH.path.roundOutTo, p));
+  const aspect = Math.max(f.width / f.height, f.height / f.width);
+  const pull = lerp(1, path.wideRound, smoothstep(path.wideFrom, path.wideTo, aspect));
+  const round = pull * smoothstep(0, path.roundIn, p) * (1 - smoothstep(path.roundOutFrom, path.roundOutTo, c));
   const circle = Math.sqrt(Math.max(0, rawW * rawH));
-  const rest = settle * smoothstep(MORPH.path.settleFrom, 1, p);
-  const width = lerp(rawW, circle, round) * (1 + MORPH.path.settleWidth * rest);
-  const height = lerp(rawH, circle, round) * (1 + MORPH.path.settleHeight * rest);
+  const width = lerp(rawW, circle, round);
+  const height = lerp(rawH, circle, round);
 
   const fx = anchorFraction(s.left + s.width / 2, f.left, f.width);
   const fy = anchorFraction(s.top + s.height / 2, f.top, f.height);
-  const anchorX = lerp(s.left + s.width / 2, f.left + fx * f.width, p);
-  const anchorY = lerp(s.top + s.height / 2, f.top + fy * f.height, p);
+  // The anchor never passes its place: the overshoot only moves the far edges, so the edge beside the button
+  // is at its rest position when it lands, and nothing snaps back to it late.
+  const toAnchor = Math.min(p, 1);
+  const anchorX = lerp(s.left + s.width / 2, f.left + fx * f.width, toAnchor);
+  const anchorY = lerp(s.top + s.height / 2, f.top + fy * f.height, toAnchor);
   // The anchor settles early, so the edge beside the button never swings past where it will rest.
-  const anchored = smoothstep(0, MORPH.path.anchorBy, p);
+  const anchored = smoothstep(0, path.anchorBy, p);
   const left = anchorX - lerp(0.5, fx, anchored) * width;
-  // It carries on a little past its place, away from the button, then comes back as the rows land.
-  const carry = MORPH.path.carry * f.height * smoothstep(MORPH.path.carryInFrom, MORPH.path.carryInTo, p) * (1 - smoothstep(MORPH.path.carryOutFrom, MORPH.path.carryOutTo, c));
-  const direction = Math.sign(f.top + f.height / 2 - (s.top + s.height / 2));
-  const top = anchorY - lerp(0.5, fy, anchored) * height + direction * carry;
+  const top = anchorY - lerp(0.5, fy, anchored) * height;
 
-  // Corner radius is part of the motion: near-circle, then squircle, then the rest radius.
+  // Corner radius is part of the motion: near-circle, then squircle, then the rest corner.
   const half = Math.min(width, height) / 2;
-  const circular = 1 - smoothstep(MORPH.path.squareFrom, MORPH.path.squareTo, c);
-  const moving = lerp(g.radius, half, circular);
-  const radius = Math.min(half, lerp(Math.min(g.sourceRadius, half), moving, smoothstep(0, MORPH.path.roundIn, p)));
-  return { left, top, width, height, radius };
+  const squared = smoothstep(path.squareFrom, path.squareTo, c);
+  const moving = lerp(half, Math.min(g.radius, half), squared);
+  const radius = Math.min(half, lerp(Math.min(g.sourceRadius, half), moving, smoothstep(0, path.roundIn, p)));
+  return { left, top, width, height, radius, corner: lerp(1, g.corner, squared) };
 }
 
 export interface ContentPose {

@@ -48,6 +48,8 @@ export interface ScrollBlurProps extends React.HTMLAttributes<HTMLDivElement> {
   maxHeight?: string | number;
   /** Fade size in px at a scrolled edge. */
   scrimHeight?: number;
+  /** Let children leave the box: no scroll, no clip, no mask (cascading submenus live outside it). */
+  open?: boolean;
   viewportRef?: React.Ref<HTMLDivElement>;
   onViewportScroll?: React.UIEventHandler<HTMLDivElement>;
 }
@@ -63,6 +65,7 @@ export function ScrollBlur({
   height,
   maxHeight,
   scrimHeight = 16,
+  open = false,
   viewportRef,
   onViewportScroll,
   className = '',
@@ -72,6 +75,7 @@ export function ScrollBlur({
   return (
     <div
       data-slot="scroll-blur"
+      data-open={open || undefined}
       className={`${styles.scroll} ${className}`.trim()}
       style={{ height: toCssSize(height), maxHeight: toCssSize(maxHeight), ...style }}
       {...rest}

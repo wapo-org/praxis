@@ -11,9 +11,6 @@ import {
   SubContext,
   useGlassDropdownContext,
 } from './context';
-/** --radius-lg, as the menu it came from. */
-const SUBMENU_RADIUS = 16;
-
 export interface SubContentProps
   extends
     Omit<
@@ -31,15 +28,13 @@ const SubContent = React.forwardRef<HTMLDivElement, SubContentProps>(
     const [highlightedId, setHighlightedId] = React.useState<string | null>(
       null,
     );
-    const scopeId = React.useId();
 
     const highlightCtx = React.useMemo<PanelHighlightContextValue>(
       () => ({
         highlightedId,
         setHighlightedId,
-        layoutScopeId: `sub-${scopeId}`,
       }),
-      [highlightedId, scopeId],
+      [highlightedId],
     );
 
     if (!sub || ctx.submenuMode !== 'cascade') return null;
@@ -51,7 +46,6 @@ const SubContent = React.forwardRef<HTMLDivElement, SubContentProps>(
             <PanelHighlightContext.Provider value={highlightCtx}>
               <GlassMorph
                 source={sub.getSubTriggerEl}
-                radius={SUBMENU_RADIUS}
                 material={ctx.materialControls.material ?? 'thick'}
                 stretch="edge"
                 className={styles.surface}

@@ -51,6 +51,13 @@
   --radius-xl: 20px;
   --radius-2xl: 28px;
   --radius-full: 9999px;
+  /* Glass corners, measured from IMG_7868 (the iOS menu): the curve spans 42 pt with a superellipse
+     exponent of 2.75, so corner-shape superellipse(1.46). Engines without corner-shape get the circle
+     with the same apex (32) plus the path in glass/squircle.ts. All glass comes through these. */
+  --glass-corner: superellipse(1.46);
+  --radius-menu: 42px; /* menus, popovers, tray */
+  --radius-panel: 36px; /* sidebar and other large cards */
+  --radius-composer: 44px;
 
   /* Icons: three sizes, one stroke */
   --icon-sm: 16px;
@@ -69,6 +76,10 @@
   --sheet-height: 720px;
   --settings-width: 720px;
   --menu-min-width: 224px;
+  --menu-max-width: 280px; /* the reference menu is 250 pt; long labels truncate */
+  --menu-pad: 10px; /* panel edge to row pill: --radius round equivalent = pad + row / 2 */
+  --menu-row: 40px;
+  --menu-row-inset: var(--space-4);
   --settings-height: 560px;
   --settings-nav-width: 200px;
   --row-model: 56px; /* two-line model row; MODEL_ROW_HEIGHT in ModelList.tsx */
@@ -87,6 +98,8 @@
   --color-ink-3: #8a877e;
   --color-hairline: rgba(21, 20, 15, 0.08);
   --color-hairline-strong: rgba(21, 20, 15, 0.14);
+  --color-divider: rgba(21, 20, 15, 0.055);
+  --divider-width: 0.5px;
   --color-hover: rgba(21, 20, 15, 0.045);
   --color-pressed: rgba(21, 20, 15, 0.08);
   --color-accent: #15140f;
@@ -112,12 +125,13 @@
 
   /* Glass material (packages/glass/src/glass.module.css, material.ts). The optics
      are in material.ts; these are the paint, per theme. Tuned on warm paper. */
-  --glass-regular-tint: rgba(252, 252, 250, 0.5);
+  --glass-regular-tint: rgba(252, 252, 250, 0.44);
   --glass-regular-blur: 20px;
-  --glass-thick-tint: rgba(252, 252, 250, 0.72);
-  --glass-menu-tint: rgba(252, 252, 250, 0.9); /* AA over any backdrop: dropdown.pw.ts */
+  --glass-thick-tint: rgba(252, 252, 250, 0.66);
+  --glass-menu-tint: rgba(252, 252, 250, 0.84); /* with the next line, AA over any backdrop: dropdown.pw.ts */
+  --glass-menu-danger: #a6302a;
   --glass-thick-blur: 32px;
-  --glass-clear-tint: rgba(255, 255, 255, 0.46);
+  --glass-clear-tint: rgba(255, 255, 255, 0.4);
   --glass-clear-blur: 12px;
   --glass-sheen-a: 0.21;
   --glass-inner: 0.4;
@@ -138,6 +152,8 @@
   --glass-spot: rgba(18, 18, 26, 0.04);
   /* The menu morph: thinner glass while it moves, a fixed blur on the arriving rows. */
   --glass-morph-tint: rgba(252, 252, 250, 0.46);
+  --glass-morph-rim: rgba(21, 20, 15, 0.2); /* one crisp line, every frame of the morph and at rest */
+  --glass-morph-rim-light: rgba(255, 255, 255, 0.85);
   --glass-morph-flash: rgba(255, 255, 255, 0.96);
   --glass-morph-blur: 7px;
   --glass-morph-backdrop: 6px;
@@ -164,6 +180,7 @@
   --color-ink-3: #8f8c84;
   --color-hairline: rgba(241, 239, 233, 0.08);
   --color-hairline-strong: rgba(241, 239, 233, 0.14);
+  --color-divider: rgba(241, 239, 233, 0.07);
   --color-hover: rgba(241, 239, 233, 0.05);
   --color-pressed: rgba(241, 239, 233, 0.09);
   --color-accent: #f1efe9;
@@ -177,10 +194,11 @@
   --shadow-2: 0 2px 12px rgba(0, 0, 0, 0.18), 0 10px 40px rgba(0, 0, 0, 0.26);
   --shadow-3: 0 4px 20px rgba(0, 0, 0, 0.2), 0 22px 72px rgba(0, 0, 0, 0.36);
 
-  --glass-regular-tint: rgba(26, 26, 24, 0.48);
-  --glass-thick-tint: rgba(24, 24, 22, 0.72);
-  --glass-menu-tint: rgba(24, 24, 22, 0.86);
-  --glass-clear-tint: rgba(40, 40, 37, 0.5);
+  --glass-regular-tint: rgba(26, 26, 24, 0.42);
+  --glass-thick-tint: rgba(24, 24, 22, 0.66);
+  --glass-menu-tint: rgba(24, 24, 22, 0.8);
+  --glass-menu-danger: #ff9d94;
+  --glass-clear-tint: rgba(40, 40, 37, 0.44);
   --glass-sheen-a: 0.07;
   --glass-inner: 0.5;
   --glass-rim: 0.32;
@@ -189,6 +207,8 @@
   --glass-shadow-rgb: 0, 0, 0;
   --glass-spot: rgba(255, 255, 255, 0.04);
   --glass-morph-tint: rgba(36, 36, 33, 0.34);
+  --glass-morph-rim: rgba(241, 239, 233, 0.2);
+  --glass-morph-rim-light: rgba(255, 255, 255, 0.06);
   --glass-morph-flash: rgba(74, 74, 70, 0.96);
   --glass-fallback: #1a1a18;
   --paper-gradient:

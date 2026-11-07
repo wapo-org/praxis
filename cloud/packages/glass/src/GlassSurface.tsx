@@ -5,6 +5,7 @@ import { LensFilter } from './LensFilter';
 import { MATERIAL_RAMP, glassTier, useBaseChroma, type GlassMaterial } from './material';
 import { TRANSITION } from './motion';
 import { createRig } from './rig';
+import { attachSquircle, hasCornerShape, ROUND_PER_CURVE_RADIUS } from './squircle';
 import { attachStretch, reducedMotion } from './stretch';
 import styles from './glass.module.css';
 
@@ -18,7 +19,7 @@ export interface GlassMaterialControls {
 
 export interface GlassSurfaceProps extends HTMLMotionProps<'div'>, GlassMaterialControls {
   shape?: GlassShape;
-  /** Corner radius in px for `card`; ignored for `capsule`. Prefer the token default. */
+  /** Corner radius in px for `card`; ignored for `capsule`. Prefer the tokens (--glass-radius). */
   radius?: number;
   /**
    * The elastic stretch (default on, from anywhere on the glass). `edge` only
@@ -61,7 +62,10 @@ function useLensMaps(rootRef: React.RefObject<HTMLElement | null>, material: Gla
       if (w < 8 || h < 8 || (w === lastW && h === lastH)) return;
       lastW = w;
       lastH = h;
-      const r = shape === 'capsule' ? Math.min(w, h) / 2 : (radius ?? Number.parseFloat(getComputedStyle(el).borderTopLeftRadius)) || 0;
+      // From the token, never the live radius: the morph is writing that one. A map's ring is a circle, so on a
+      // superellipse corner it takes the circle with the same apex.
+      const token = radius ?? Number.parseFloat(getComputedStyle(el).getPropertyValue('--glass-radius'));
+      const r = shape === 'capsule' ? Math.min(w, h) / 2 : (token * (hasCornerShape() ? ROUND_PER_CURVE_RADIUS : 1)) || 0;
       const next = generateMaps({ width: w, height: h, radius: r, bezel: MATERIAL_RAMP[material].bezel, material });
       if (!next) return;
       // An undecoded feImage is transparent, which displaces the whole backdrop: wait for it.
@@ -163,12 +167,14 @@ export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(
     const rig = createRig(el, material);
     const detachStretch = mode ? attachStretch(el, { material, mode, onHold: (held) => rig.hold(held) }) : undefined;
     const detachSpot = spotlight ? attachSpotlight(el) : undefined;
+    const detachSquircle = shape === 'capsule' ? undefined : attachSquircle(el);
     return () => {
+      detachSquircle?.();
       detachStretch?.();
       detachSpot?.();
       rig.destroy();
     };
-  }, [material, mode, spotlight]);
+  }, [material, mode, spotlight, shape]);
 
   const lensStyle: React.CSSProperties | undefined =
     tier === 'svg' && maps ? { backdropFilter: `url(#${filterId})`, WebkitBackdropFilter: `url(#${filterId})` } : undefined;

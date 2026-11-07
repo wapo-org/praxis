@@ -22,10 +22,8 @@ import { resolveMorphTrail } from './morph';
 import { useMenuReducedMotion } from './motion';
 import { usePositioning } from './positioning';
 import { usePressMotion } from './pressMotion';
-import { press, SPRING, TRANSITION } from '../motion';
+import { MORPH, press, TRANSITION } from '../motion';
 
-/** --radius-lg, the menu's rest corner. */
-const MENU_RADIUS = 16;
 export interface ContentProps
   extends
     Omit<
@@ -63,7 +61,6 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
     key: pathKey,
     id: null,
   });
-  const scopeId = React.useId();
 
   const highlightedId =
     highlightState.key === pathKey ? highlightState.id : null;
@@ -93,9 +90,8 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
     () => ({
       highlightedId,
       setHighlightedId,
-      layoutScopeId: `root-${scopeId}-${pathKey}`,
     }),
-    [highlightedId, setHighlightedId, scopeId, pathKey],
+    [highlightedId, setHighlightedId],
   );
 
   const glassMaterial = material ?? ctx.materialControls.material ?? 'thick';
@@ -161,28 +157,19 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                   style: {
                     position: ctx.portal ? 'fixed' : 'absolute',
                     zIndex: 80,
-                    minWidth: Math.min(
-                      minWidth,
-                      typeof window === 'undefined'
-                        ? minWidth
-                        : window.innerWidth - 16,
-                    ),
+                    // The cap wins over any caller's minWidth; long labels truncate.
+                    minWidth: `min(${minWidth}px, var(--menu-max-width), calc(100vw - var(--space-4)))`,
                     ...style,
                     ...position,
                   },
                 }}
                 material={glassMaterial}
-                radius={MENU_RADIUS}
                 stretch={stretchable ? 'edge' : false}
                 className={styles.surface}
                 style={{ overflow: ctx.submenuMode === 'cascade' ? 'visible' : 'hidden' }}
               >
-                  {/* Layout-spring height container (IMG_7769–IMG_7774 submenu morph) */}
-                  <motion.div
-                    layout={reduced ? false : 'size'}
-                    transition={SPRING}
-                    className={styles.sizer}
-                  >
+                  {/* The height is the engine's: GlassMorph glides the glass to the new size in transforms. */}
+                  <div className={styles.sizer}>
                     <AnimatePresence
                       mode="popLayout"
                       initial={false}
@@ -197,7 +184,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                             ? false
                             : {
                                 opacity: 0,
-                                y: ctx.morphDirection > 0 ? 12 : -12,
+                                y: ctx.morphDirection > 0 ? 10 : -10,
                                 scale: press.whileTap.scale,
                               }
                         }
@@ -211,12 +198,12 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                             ? { opacity: 0 }
                             : {
                                 opacity: 0,
-                                y: ctx.morphDirection > 0 ? -12 : 12,
+                                y: ctx.morphDirection > 0 ? -10 : 10,
                                 scale: press.whileTap.scale,
                                 transition: TRANSITION.fast,
                               }
                         }
-                        transition={reduced ? TRANSITION.none : SPRING}
+                        transition={reduced ? TRANSITION.none : { ...TRANSITION.base, opacity: { ...TRANSITION.base, delay: MORPH.panelFadeDelay } }}
                         className={styles.panel}
                       >
                         {/* Elevated Submenu Sticky Header (IMG_7773–IMG_7774: "Recent Notes ⌄") */}
@@ -226,7 +213,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                         {topPinnedNodes}
 
                         {/* Scrollable items with progressive blur edge scrims */}
-                        <ScrollBlur maxHeight={maxHeight} scrimHeight={16}>
+                        <ScrollBlur maxHeight={ctx.submenuMode === 'cascade' ? undefined : maxHeight} scrimHeight={16} open={ctx.submenuMode === 'cascade'}>
                           <DepthContext.Provider
                             value={morphState.trail.length}
                           >
@@ -248,7 +235,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                         </ScrollBlur>
                       </MorphPanel>
                     </AnimatePresence>
-                  </motion.div>
+                  </div>
               </GlassMorph>
             </PanelHighlightContext.Provider>
           </DepthContext.Provider>

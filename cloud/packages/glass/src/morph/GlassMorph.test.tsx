@@ -23,8 +23,8 @@ describe('which class a trigger is', () => {
     return surface;
   };
 
-  it('a button alone in its glass is separate: its glass becomes the menu', () => {
-    const surface = surfaceWith('<button id="only"></button>');
+  it('an icon button alone in its glass is separate: its glass becomes the menu', () => {
+    const surface = surfaceWith('<button id="only"><svg></svg></button>');
     const trigger = surface.querySelector<HTMLElement>('#only')!;
     rect(trigger, 2, 2, 36, 36);
     expect(ownGlass(trigger)).toBe(surface);
@@ -32,8 +32,23 @@ describe('which class a trigger is', () => {
     expect(readSource(trigger).box.width).toBe(40);
   });
 
+  it('a button with text is attached, even in its own glass: only icon buttons morph', () => {
+    const surface = surfaceWith('<button id="only"><svg></svg>Export</button>');
+    const trigger = surface.querySelector<HTMLElement>('#only')!;
+    rect(trigger, 2, 2, 36, 36);
+    expect(ownGlass(trigger)).toBeNull();
+    expect(readSource(trigger).kind).toBe('attached');
+  });
+
+  it('an accessible name is not text: an icon button with aria-label still morphs', () => {
+    const surface = surfaceWith('<button id="only" aria-label="Share"><svg></svg></button>');
+    const trigger = surface.querySelector<HTMLElement>('#only')!;
+    rect(trigger, 2, 2, 36, 36);
+    expect(readSource(trigger).kind).toBe('separate');
+  });
+
   it('a button sharing glass with a neighbour is attached, even though it sits in glass', () => {
-    const surface = surfaceWith('<button id="a"></button><button id="b"></button>');
+    const surface = surfaceWith('<button id="a"><svg></svg></button><button id="b"><svg></svg></button>');
     const trigger = surface.querySelector<HTMLElement>('#b')!;
     rect(trigger, 20, 2, 18, 36);
     expect(ownGlass(trigger)).toBeNull();
@@ -46,8 +61,8 @@ describe('which class a trigger is', () => {
     expect(source.radius).toBeCloseTo(source.box.width / 2);
   });
 
-  it('a lone button in a much bigger object is attached', () => {
-    const surface = surfaceWith('<button id="only"></button>');
+  it('a lone icon button in a much bigger object is attached', () => {
+    const surface = surfaceWith('<button id="only"><svg></svg></button>');
     rect(surface, 0, 0, 400, 400);
     const trigger = surface.querySelector<HTMLElement>('#only')!;
     rect(trigger, 2, 2, 36, 36);
@@ -87,7 +102,7 @@ describe('GlassMorph without layout', () => {
       root.render(
         <AnimatePresence onExitComplete={done}>
           {open ? (
-            <GlassMorph key="m" source={source} radius={16} shellProps={{ id: 'shell' }}>
+            <GlassMorph key="m" source={source} shellProps={{ id: 'shell' }}>
               <span>row</span>
             </GlassMorph>
           ) : null}
