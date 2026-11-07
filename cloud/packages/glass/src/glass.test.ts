@@ -70,6 +70,7 @@ describe('every GlassSurface stretches', () => {
       'Composer.tsx',
       'ConsentPopover.tsx',
       'GlassMorph.tsx',
+      'SearchPalette.tsx',
       'Sidebar.tsx',
       'Trigger.tsx',
       'primitives.tsx',

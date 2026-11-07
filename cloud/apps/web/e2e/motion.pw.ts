@@ -69,7 +69,7 @@ test('the sidebar slides, and reversing mid-flight continues from where it is', 
     const track = (window as unknown as { __track: Array<[number, number]> }).__track;
     return track[track.length - 1]![1] < -40;
   });
-  await page.keyboard.press('Control+K'); // reopen while it is still leaving
+  await page.getByTestId('nav-sidebar-button').click(); // reopen history while it is still leaving (Cmd-K now opens search)
   await page.waitForTimeout(1000);
   const track = await page.evaluate(() => (window as unknown as { __track: Array<[number, number]> }).__track);
   const lefts = track.map(([, left]) => left);

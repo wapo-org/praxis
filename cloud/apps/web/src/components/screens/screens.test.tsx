@@ -204,7 +204,7 @@ describe('remote connector import', () => {
 describe('history in the floating sidebar', () => {
   // Multi-select history was intentionally removed: history is the floating
   // sidebar (single select + per-row actions) on every screen size.
-  it('groups pinned chats first and filters by search', async () => {
+  it('groups pinned chats first and opens the dedicated search surface', async () => {
     store.chats = [chat('one', true), chat('two')];
     store.desktopSidebarOpen = true;
     await mount(<Sidebar />);
@@ -214,10 +214,11 @@ describe('history in the floating sidebar', () => {
     expect(document.querySelector('section[aria-label="Today"]')?.textContent).toContain(
       'Chat two',
     );
-    const search = document.querySelector<HTMLInputElement>('input[aria-label="Search conversations"]')!;
-    await fill(search, 'two');
-    expect(document.body.textContent).not.toContain('Chat one');
-    expect(document.body.textContent).toContain('Chat two');
+    const open = vi.fn();
+    window.addEventListener('praxis:search', open);
+    await click(document.querySelector<HTMLButtonElement>('button[aria-label="Search conversations"]')!);
+    expect(open).toHaveBeenCalledOnce();
+    window.removeEventListener('praxis:search', open);
   });
   it('shows a useful failure if opening a chat fails', async () => {
     store.chats = [chat('one')];

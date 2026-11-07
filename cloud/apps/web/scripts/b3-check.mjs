@@ -56,9 +56,9 @@ try {
   assert.equal(await page.getByRole('textbox', { name: 'Name', exact: true }).inputValue(), 'Restored provider');
   await page.goto(`${base}/settings/providers/missing`); await page.getByText('Provider not found.', { exact: true }).waitFor();
   await page.goto(`${base}${chatPath}`); await page.getByTestId('chat-top-bar').waitFor();
-  // WP-D1: with the desktop sidebar open, Meta-K focuses its search field instead of opening the Chats sheet.
+  // WP-G3C: Meta-K opens the floating search and focuses it, independently of history.
   await page.keyboard.press('Meta+k');
-  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Search conversations' && !!document.activeElement?.closest('[data-testid="app-sidebar"]'));
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Search conversations' && !!document.activeElement?.closest('[data-testid="search-palette"]'));
   assert.equal(await page.getByRole('dialog', { name: 'Chats', exact: true }).count(), 0);
   await page.keyboard.press('Escape'); await page.waitForURL(`**${chatPath}`);
   // Selecting a sidebar row must update the chat route.

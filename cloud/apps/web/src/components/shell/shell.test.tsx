@@ -90,18 +90,16 @@ describe('Sidebar', () => {
     expect(store.setActiveSheet).toHaveBeenCalledWith('settings');
   });
 
-  it('filters chats from the search field and selects a chat', async () => {
+  it('opens floating search on request and still selects history rows', async () => {
+    const open = vi.fn();
+    window.addEventListener('praxis:search', open);
     act(() => root.render(<Sidebar />));
-    const input = container.querySelector<HTMLInputElement>('[aria-label="Search conversations"]')!;
-    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
-    act(() => {
-      setValue.call(input, 'old');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    const titles = [...container.querySelectorAll('[data-sidebar-row-select]')].map((b) => b.textContent);
-    expect(titles).toEqual(['Chat old']);
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Search conversations"]')!.click());
+    expect(open).toHaveBeenCalledOnce();
+    expect(container.querySelector('input')).toBeNull();
     await act(async () => container.querySelector<HTMLButtonElement>('[data-sidebar-row-select]')!.click());
-    expect(store.selectChat).toHaveBeenCalledWith('old');
+    expect(store.selectChat).toHaveBeenCalledWith('pinned');
+    window.removeEventListener('praxis:search', open);
   });
 
   it('collapses and renders nothing when closed', () => {

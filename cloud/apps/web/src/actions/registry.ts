@@ -1,0 +1,49 @@
+import type { Chat, Model } from '@praxis/protocol';
+import type { PraxisStoreContextValue as Store } from '../state/types';
+import { Camera, Copy, Edit, Folder, Globe, Link, Photo, Pin, Settings, Sliders, Sparkles, Trash2 } from '../lib/icons';
+
+export const ATTACHMENTS = [
+  { name: 'Photos', Icon: Photo, accept: 'image/*', capture: undefined },
+  { name: 'Camera', Icon: Camera, accept: 'image/*', capture: true },
+  { name: 'Files', Icon: Folder, accept: '*/*', capture: undefined },
+  { name: 'Screenshot', Icon: Copy, accept: 'image/*', capture: undefined },
+] as const;
+export interface ActionOption { id: string; label: string; selected: boolean; model?: Model }
+interface Action {
+  label: string; Icon: typeof Edit; available: (s: Store) => boolean;
+  options?: (s: Store, models: readonly Model[]) => ActionOption[];
+  apply: (s: Store, id?: string, models?: readonly Model[]) => void | Promise<void>;
+}
+const selectedModel = (s: Store) => s.models.find(m => m.providerId === s.selectedProviderId && m.id === s.selectedModelId);
+export const ACTIONS = {
+  model: { label: 'Change model', Icon: Sparkles, available: () => true,
+    options: (s, models) => models.map(model => ({ id: `${model.providerId}/${model.id}`, label: model.displayName,
+      selected: model.providerId === s.selectedProviderId && model.id === s.selectedModelId, model })),
+    apply: (s, id, models = s.models) => { const m = models.find(m => `${m.providerId}/${m.id}` === id); if (m) { s.cacheModels([m]); s.setSelectedModel(m.providerId, m.id); } } },
+  effort: { label: 'Change reasoning level', Icon: Sliders, available: s => !!selectedModel(s)?.reasoningEfforts.length,
+    options: s => (selectedModel(s)?.reasoningEfforts ?? []).map(id => ({ id, label: id, selected: s.selectedEffort === id })),
+    apply: (s, id) => { if (id && selectedModel(s)?.reasoningEfforts.includes(id)) s.setSelectedEffort(id); } },
+  mode: { label: 'Change mode', Icon: Sliders, available: () => true,
+    options: s => (['auto', 'ask', 'plan', 'build'] as const).map(id => ({ id, label: id, selected: s.selectedMode === id })),
+    apply: (s, id) => { if (id === 'auto' || id === 'ask' || id === 'plan' || id === 'build') s.setSelectedMode(id); } },
+  newChat: { label: 'New chat', Icon: Edit, available: () => true, apply: s => s.startNewConversation() },
+  web: { label: 'Web search', Icon: Globe, available: s => !!selectedModel(s)?.capabilities.serverWebSearch, apply: s => s.setWebSearch(!s.webSearch) },
+  connectors: { label: 'Connectors', Icon: Link, available: () => true, apply: s => s.setActiveSheet('connectors') },
+  providers: { label: 'Model providers', Icon: Settings, available: () => true, apply: s => s.setActiveSheet('providers') },
+  pin: { label: 'Pin chat', Icon: Pin, available: s => !!s.activeChat, apply: s => s.activeChat ? s.togglePinChat(s.activeChat.id) : undefined },
+  delete: { label: 'Delete chat', Icon: Trash2, available: s => !!s.activeChat, apply: s => s.activeChat ? s.deleteChats([s.activeChat.id]) : undefined },
+} satisfies Record<string, Action>;
+export type ActionId = keyof typeof ACTIONS;
+export function actionOptions(id: ActionId, store: Store, models: readonly Model[] = store.models): ActionOption[] {
+  return (ACTIONS[id] as Action).options?.(store, models) ?? [];
+}
+export function applyOption(id: ActionId, store: Store, option: string, models?: readonly Model[]) {
+  return (ACTIONS[id] as Action).apply(store, option, models);
+}
+export function chatActions(store: Store, chat: Chat, rename: () => void) {
+  return [
+    { id: 'pin', label: chat.pinned ? 'Unpin' : 'Pin', Icon: ACTIONS.pin.Icon, apply: () => store.togglePinChat(chat.id) },
+    { id: 'rename', label: 'Rename', Icon: Edit, apply: rename },
+    { id: 'delete', label: ACTIONS.delete.label.replace(' chat', ''), Icon: ACTIONS.delete.Icon, apply: () => store.deleteChats([chat.id]) },
+  ];
+}

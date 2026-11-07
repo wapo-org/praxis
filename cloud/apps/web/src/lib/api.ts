@@ -26,6 +26,10 @@ export class PraxisApiClient extends FeatureApiClient {
     return this.request<Bootstrap>('/v1/bootstrap');
   }
 
+  async searchChats(q: string) {
+    return this.request<PageResult<{ chat: Chat; snippet: string }>>(`/v1/search?${new URLSearchParams({ q, limit: '50' })}`);
+  }
+
   // Chats & Messages
   async listChats(params?: {
     q?: string;

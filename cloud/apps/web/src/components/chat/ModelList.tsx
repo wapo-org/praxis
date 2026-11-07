@@ -1,9 +1,10 @@
 import { ScrollBlur } from '@praxis/glass';
 import type { Model } from '@praxis/protocol';
 import React from 'react';
-import { Check, ChevronLeft, Eye, Globe, Search, Star, Wrench, X, Zap } from '../../lib/icons';
+import { Check, ChevronLeft, Search, Star, X } from '../../lib/icons';
 import { useModelSearch } from '../../lib/useModelSearch';
 import { usePraxisStore } from '../../state/store';
+import { actionOptions, applyOption } from '../../actions/registry';
 import styles from './ModelList.module.css';
 
 /** Rows are fixed-height so the window is plain arithmetic; these mirror the CSS tokens. */
@@ -63,16 +64,8 @@ function firstRowAt(rows: ModelListRow[], offset: number) {
   return low;
 }
 
-const CAPABILITIES: Array<{ label: string; Icon: typeof Eye; has: (m: Model) => boolean }> = [
-  { label: 'Images', Icon: Eye, has: (m) => !!m.supportsImages || m.capabilities.vision },
-  { label: 'Tools', Icon: Wrench, has: (m) => m.capabilities.tools },
-  { label: 'Web search', Icon: Globe, has: (m) => m.capabilities.serverWebSearch },
-  { label: 'Reasoning', Icon: Zap, has: (m) => m.capabilities.reasoningEffort },
-];
-
 const ModelRow = React.memo(function ModelRow({
   model,
-  providerName,
   optionId,
   selected,
   active,
@@ -80,14 +73,12 @@ const ModelRow = React.memo(function ModelRow({
   onTogglePin,
 }: {
   model: Model;
-  providerName: string;
   optionId: string;
   selected: boolean;
   active: boolean;
   onSelect: (model: Model) => void;
   onTogglePin: (model: Model) => void;
 }) {
-  const capabilities = CAPABILITIES.filter((c) => c.has(model));
   return (
     <div className={styles.row} role="none">
       <button
@@ -103,18 +94,7 @@ const ModelRow = React.memo(function ModelRow({
       >
         <span className={styles.copy}>
           <span className={styles.name}>{model.displayName}</span>
-          <span className={styles.meta}>
-            <span className={styles.tagline}>{model.tagline || providerName}</span>
-            {capabilities.length ? (
-              <span className={styles.badges}>
-                {capabilities.map(({ label, Icon }) => (
-                  <span key={label} title={label} aria-label={label} role="img">
-                    <Icon size={16} />
-                  </span>
-                ))}
-              </span>
-            ) : null}
-          </span>
+
         </span>
         {selected ? (
           <span className={styles.check}>
@@ -142,7 +122,7 @@ export function ModelList({ onBack, autoFocus = true }: { onBack: () => void; au
   const search = useModelSearch(query, true, store.models);
   const searching = !!query.trim();
   const rows = React.useMemo(
-    () => buildModelRows(search.items, searching, !!search.cursor),
+    () => buildModelRows(actionOptions('model', store, search.items).flatMap(o => o.model ? [o.model] : []), searching, !!search.cursor),
     [search.items, searching, search.cursor],
   );
   const total = rows.length ? rows.at(-1)!.top + rows.at(-1)!.height : 0;
@@ -179,8 +159,7 @@ export function ModelList({ onBack, autoFocus = true }: { onBack: () => void; au
 
   const select = React.useCallback(
     (model: Model) => {
-      store.cacheModels([model]);
-      store.setSelectedModel(model.providerId, model.id);
+      applyOption('model', store, `${model.providerId}/${model.id}`, [model]);
       onBack();
     },
     [store.cacheModels, store.setSelectedModel, onBack],
@@ -313,9 +292,6 @@ export function ModelList({ onBack, autoFocus = true }: { onBack: () => void; au
                 ) : (
                   <ModelRow
                     model={row.model}
-                    providerName={
-                      store.providers.find((p) => p.id === row.model.providerId)?.name ?? row.model.providerId
-                    }
                     optionId={optionId(index)}
                     selected={
                       row.model.id === store.selectedModelId && row.model.providerId === store.selectedProviderId

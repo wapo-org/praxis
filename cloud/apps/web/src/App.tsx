@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { ChatScreen } from './components/chat/ChatScreen';
 import { ConsentPopover } from './components/screens/ConsentPopover';
 import { SettingsPage, type SettingsSheet } from './components/screens/SettingsPage';
+import { SearchPalette } from './components/search/SearchPalette';
 import { Sidebar } from './components/shell/Sidebar';
 import { parseRoute } from './lib/navigation';
 import { usePraxisStore } from './state/store';
@@ -21,6 +22,12 @@ export function App() {
   const navigate = useNavigate();
   const store = usePraxisStore();
   const page = usePreset(pageChange);
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  React.useEffect(() => {
+    const open = () => { store.setPlusTrayOpen(false); setSearchOpen(true); };
+    window.addEventListener('praxis:search', open);
+    return () => window.removeEventListener('praxis:search', open);
+  }, [store.setPlusTrayOpen]);
   const restore = React.useRef(store.restoreRoute);
   restore.current = store.restoreRoute;
   React.useEffect(() => {
@@ -38,13 +45,7 @@ export function App() {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        // History lives in the floating sidebar on every screen size.
-        store.setDesktopSidebarOpen(true);
-        requestAnimationFrame(() =>
-          document
-            .querySelector<HTMLInputElement>('[data-testid="app-sidebar"] [aria-label="Search conversations"]')
-            ?.focus(),
-        );
+        window.dispatchEvent(new Event('praxis:search'));
       }
       // The tray handles Escape itself (models → main → close); stay out
       // of the way when it already handled the key.
@@ -82,6 +83,7 @@ export function App() {
         </motion.div>
       </AnimatePresence>
       <ConsentPopover />
+      <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );
 }

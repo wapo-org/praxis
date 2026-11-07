@@ -247,3 +247,11 @@ export function usePreset(preset: MotionPreset) {
 export function usePress() {
   return useReducedMotion() ? {} : press;
 }
+
+/** Spotlight: anchored arrival, barely overshoots; row contents never animate. */
+export const searchArrival: MotionPreset = {
+  initial: { opacity: 0, scale: 1.025 },
+  animate: { opacity: 1, scale: 1 },
+  exit: { opacity: 0, transition: TRANSITION.fast },
+  transition: SNAP,
+};

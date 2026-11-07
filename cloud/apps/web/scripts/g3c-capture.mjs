@@ -1,0 +1,74 @@
+import { chromium, expect } from '@playwright/test';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import sharp from 'sharp';
+const BASE = process.env.BASE ?? 'http://127.0.0.1:5251';
+const OUT = `${homedir()}/.praxis-agent-state/cloud/design/G3/C`;
+await mkdir(OUT, { recursive: true });
+const browser = await chromium.launch();
+try {
+  for (const width of [1440, 402]) for (const theme of ['light', 'dark']) {
+    const height = width === 402 ? 874 : 900;
+    const context = await browser.newContext({ viewport: { width, height }, colorScheme: theme, recordVideo: { dir: OUT, size: { width, height } } });
+    await context.addInitScript(t => localStorage.setItem('praxis-theme', t), theme);
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE);
+    await page.getByRole('button', { name: /local dev user/i }).waitFor();
+    await page.getByRole('button', { name: /local dev user/i }).click();
+    await page.getByTestId('chat-screen').waitFor();
+    for (let i = 0; i < 9; i++) {
+      const chat = await (await page.request.post(`${BASE}/v1/chats`, { data: { type: 'chat.input', title: `Заметки ${i} — ${'Long conversation title '.repeat(5)}` } })).json();
+      const run = await (await page.request.post(`${BASE}/v1/runs`, { data: { type: 'run.start', chatId: chat.id, text: `${'Surrounding context '.repeat(20)}Привет путешествие ${i} ${'long matched snippet '.repeat(20)}`, script: 'text' } })).json();
+      await expect.poll(async () => (await (await page.request.get(`${BASE}/v1/runs/${run.id}`)).json()).status).toBe('completed');
+    }
+    const prefix = `${OUT}/${width}-${theme}`;
+    await page.keyboard.press('Meta+k');
+    const palette = page.getByTestId('search-palette');
+    await palette.waitFor();
+    const input = palette.getByRole('combobox');
+    await expect(input).toBeFocused();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${prefix}-open.png` });
+    await input.fill('Привет');
+    await expect(palette.getByRole('option').first()).toBeVisible();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${prefix}-results.png` });
+    await expect(palette.locator('strong').first()).toContainText('Привет');
+    const box = await palette.boundingBox();
+    if (box.x < 0 || box.x + box.width > width) throw new Error('Search overflows viewport');
+    await input.fill('reasoning');
+    await expect(palette.getByRole('option', { name: 'Change reasoning level' })).toBeVisible();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${prefix}-changed.png` });
+    await input.press('Enter');
+    await expect(palette.getByRole('option', { name: 'high', exact: true })).toBeVisible();
+    await input.press('ArrowDown');
+    await input.press('Enter');
+    await expect(palette).toHaveCount(0);
+    await page.keyboard.press('Meta+k');
+    await input.fill('Привет');
+    await expect(palette.getByRole('option').first()).toBeVisible();
+    await input.fill('');
+    await expect(palette.getByRole('option')).toHaveCount(0);
+    await page.waitForTimeout(350);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${prefix}-cleared.png` });
+    await input.fill('no such result xyz');
+    await expect(palette.getByRole('status')).toHaveText('No results.');
+    await input.press('Escape');
+    await expect(palette).toHaveCount(0);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${prefix}-closed.png` });
+    if (errors.length) throw new Error(errors.join('\n'));
+    await context.close();
+    console.log(`${width} ${theme}: keyboard, Cyrillic content, long text, many results, selection, clear, empty, close and width passed`);
+  }
+  const states = ['open', 'results', 'changed', 'cleared', 'closed'];
+  const tiles = await Promise.all(states.map(async (state, i) => ({ input: await sharp(`${OUT}/1440-light-${state}.png`).resize(480, 300).png().toBuffer(), left: i * 480, top: 0 })));
+  const ref1 = await sharp(`${homedir()}/.praxis-agent-state/cloud/design/search-ref/sheet1.png`).resize({ width: 1200 }).png().toBuffer();
+  const ref2 = await sharp(`${homedir()}/.praxis-agent-state/cloud/design/search-ref/sheet2.png`).resize({ width: 1200 }).png().toBuffer();
+  await sharp({ create: { width: 2400, height: 1100, channels: 4, background: '#eee' } }).composite([...tiles, { input: ref1, left: 0, top: 310 }, { input: ref2, left: 1200, top: 310 }]).png().toFile(`${OUT}/reference-comparison.png`);
+  await writeFile(`${OUT}/capture-notes.txt`, 'Top: ours open, first results, changed, cleared, closed. Bottom: supplied reference sheets. Videos are real time.\n');
+} finally { await browser.close(); }

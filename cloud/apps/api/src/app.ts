@@ -1,3 +1,4 @@
+import { searchChats } from './search.js';
 import {registerAccountDeletion} from './account-routes.js';
 import {AccountDeleteSchema} from '@praxis/protocol';
 import {randomUUID} from 'node:crypto';
@@ -66,6 +67,7 @@ export function createApp(options:AppOptions){
  app.get('/v1/bootstrap',async c=>{c.header('Cache-Control','private, no-store');return c.json(await service.bootstrap(c.get('userId')));});
  app.get('/v1/chats',async c=>{const query=PageQuerySchema.parse(c.req.query());let rows=await service.list<Chat>(c.get('userId'),'chat');if(query.q)rows=rows.filter(x=>x.title.toLowerCase().includes(query.q!.toLowerCase()));rows.sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.updatedAt.localeCompare(a.updatedAt)||a.id.localeCompare(b.id));return c.json(page(rows,query,`chats:${query.q??''}`));});
  app.post('/v1/chats',async c=>{const input=await body(c,ChatInputSchema);const now=service.now();const id=input.id??randomUUID();if(await service.adapters.store.get(c.get('userId'),'chat',id))throw new ApiError(409,'exists','Chat ID already exists');const chat=ChatSchema.parse({...input,type:'chat',id,createdAt:now,updatedAt:now});await service.write(c.get('userId'),'chat',id,chat);return c.json(chat,201);});
+ app.get('/v1/search',async c=>{const query=PageQuerySchema.parse(c.req.query());c.header('Cache-Control','private, no-store');return c.json(page(await searchChats(service,c.get('userId'),query.q??''),query,`search:${query.q??''}`));});
  app.get('/v1/chats/:id',async c=>c.json(await service.require<Chat>(c.get('userId'),'chat',c.req.param('id'))));
  app.patch('/v1/chats/:id',async c=>{const chat=await service.require<Chat>(c.get('userId'),'chat',c.req.param('id'));const input=await body(c,ChatPatchSchema);const result=ChatSchema.parse({...chat,...input,type:'chat',id:chat.id,updatedAt:service.now()});await service.write(c.get('userId'),'chat',chat.id,result);return c.json(result);});
  app.delete('/v1/chats/:id',async c=>{const user=c.get('userId'),id=c.req.param('id');const chat=await service.require<Chat>(user,'chat',id);if(chat.activeRunId)await service.cancel(user,chat.activeRunId);await service.remove(user,'chat',id);for(const m of await service.list<Message>(user,'message',id))await service.remove(user,'message',m.id);return c.json({type:'ok'});});

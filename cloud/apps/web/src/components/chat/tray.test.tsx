@@ -260,3 +260,38 @@ describe('buildModelRows', () => {
     expect(rows.map((r) => r.top)).toEqual([0, 32, 32 + MODEL_ROW_HEIGHT]);
   });
 });
+
+describe('shared search and dropdown actions', () => {
+  it('offers exactly the same live model and reasoning options and applies a keyboard choice', async () => {
+    const { SearchPalette } = await import('../search/SearchPalette');
+    const models = [model('a', true, 'Alpha'), model('b', false, 'Beta')];
+    vi.spyOn(apiClient, 'listModels').mockResolvedValue(page(models));
+    await openTray(models);
+    const efforts = [...document.querySelectorAll('[aria-label="Reasoning effort"] button')].map(n => n.textContent);
+    await openList();
+    const modelNames = options();
+    await act(async () => {
+      store.setPlusTrayOpen(false);
+      root.render(<PraxisStoreProvider><Probe /><SearchPalette open onClose={() => {}} /></PraxisStoreProvider>);
+    });
+    const fillSearch = async (value: string) => {
+      const input = query<HTMLInputElement>('[data-testid="search-palette"] input')!;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      return input;
+    };
+    let input = await fillSearch('Change model');
+    await press('Enter', input);
+    await flush();
+    expect([...document.querySelectorAll('[data-testid="search-palette"] [role="option"]')].map(n => n.textContent)).toEqual(modelNames);
+    await press('Escape', input);
+    input = await fillSearch('reasoning');
+    await press('Enter', input);
+    expect([...document.querySelectorAll('[data-testid="search-palette"] [role="option"]')].map(n => n.textContent)).toEqual(efforts);
+    await press('ArrowDown', input);
+    await press('Enter', input);
+    expect(store.selectedEffort).toBe('high');
+  });
+});

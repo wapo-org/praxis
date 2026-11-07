@@ -1,10 +1,11 @@
 import { GlassMorph, slideIn, slideUnder, usePreset } from '@praxis/glass';
 import { AnimatePresence, motion } from 'framer-motion';
 import React from 'react';
-import { Camera, ChevronRight, Copy, Folder, Globe, Link, Photo, Settings } from '../../lib/icons';
+import { ChevronRight, Globe, Link, Settings } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import { SegmentedControl, Switch } from '../ui/controls';
 import { ModelList } from './ModelList';
+import { ACTIONS, actionOptions, applyOption, ATTACHMENTS } from '../../actions/registry';
 import styles from './PlusTray.module.css';
 
 export { getUnpinnedModels } from './ModelList';
@@ -14,19 +15,6 @@ export interface PlusTrayProps {
 
 /** --radius-2xl, the tray's rest corner. */
 const TRAY_RADIUS = 28;
-const MODES = ['auto', 'ask', 'plan', 'build'] as const;
-const TILES = [
-  { name: 'Photos', Icon: Photo, accept: 'image/*' },
-  { name: 'Camera', Icon: Camera, accept: 'image/*', capture: true },
-  { name: 'Files', Icon: Folder, accept: '*/*' },
-  { name: 'Screenshot', Icon: Copy, accept: 'image/*' },
-];
-const EFFORT_DETAIL: Record<string, string> = {
-  low: 'Quick answers, minimal tool use',
-  medium: 'Balanced: a few tools, checked once',
-  high: 'Thorough: plans first, verifies after',
-  max: 'Exhaustive: plans, verifies, retries',
-};
 
 export function PlusTray({ onPickFiles }: PlusTrayProps) {
   const open = usePraxisStore().plusTrayOpen;
@@ -78,7 +66,7 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
   const model = store.models.find(
     (m) => m.providerId === store.selectedProviderId && m.id === store.selectedModelId,
   );
-  const efforts = model?.reasoningEfforts ?? [];
+  const efforts = actionOptions('effort', store).map(o => o.id);
   const searchSupported = !!model?.capabilities.serverWebSearch;
   const enabledConnectors = store.connectors.filter((c) => c.enabled);
   const backToMain = React.useCallback(() => {
@@ -115,8 +103,8 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
             <SegmentedControl
               label="Mode"
               value={store.selectedMode}
-              options={MODES}
-              onChange={store.setSelectedMode}
+              options={actionOptions('mode', store).map(o => o.id as typeof store.selectedMode)}
+              onChange={id => applyOption('mode', store, id)}
               testIdPrefix="tray-mode"
             />
             <button
@@ -130,7 +118,6 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
             >
               <span className={styles.modelCopy}>
                 <span className={styles.modelName}>{model?.displayName || 'Select model'}</span>
-                <span className={styles.modelTagline}>{model?.tagline || 'Choose a model for this chat'}</span>
               </span>
               <span className={styles.chevron}>
                 <ChevronRight size={18} />
@@ -142,15 +129,13 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                   label="Reasoning effort"
                   value={store.selectedEffort}
                   options={efforts}
-                  onChange={store.setSelectedEffort}
+                  onChange={id => applyOption('effort', store, id)}
                 />
-                <p className={styles.detail}>
-                  {EFFORT_DETAIL[store.selectedEffort] || 'Reasoning effort for this model.'}
-                </p>
+
               </div>
             ) : null}
             <div className={styles.tiles}>
-              {TILES.map(({ name, Icon, accept, capture }) => (
+              {ATTACHMENTS.map(({ name, Icon, accept, capture }) => (
                 <button
                   key={name}
                   type="button"
@@ -169,7 +154,7 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                   <Globe size={18} />
                 </span>
                 <span className={styles.rowCopy}>
-                  <span className={styles.rowTitle}>Web search</span>
+                  <span className={styles.rowTitle}>{ACTIONS.web.label}</span>
                   {!searchSupported ? (
                     <span className={styles.rowDetail}>Not supported by this model</span>
                   ) : null}
@@ -185,7 +170,7 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                 <span className={styles.rowIcon}>
                   <Link size={18} />
                 </span>
-                <span className={styles.rowCopy}>Connectors</span>
+                <span className={styles.rowCopy}>{ACTIONS.connectors.label}</span>
                 <span className={styles.rowValue}>{enabledConnectors.length || 'None'}</span>
                 <span className={styles.chevron}>
                   <ChevronRight size={16} />
@@ -211,7 +196,7 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                 <span className={styles.rowIcon}>
                   <Settings size={18} />
                 </span>
-                <span className={styles.rowCopy}>Model providers</span>
+                <span className={styles.rowCopy}>{ACTIONS.providers.label}</span>
                 <span className={styles.chevron}>
                   <ChevronRight size={16} />
                 </span>

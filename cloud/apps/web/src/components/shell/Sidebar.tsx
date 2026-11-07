@@ -97,7 +97,7 @@ function SidebarPanel({ onClose, devTools }: { onClose: () => void; devTools: bo
 
   React.useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    asideRef.current?.querySelector<HTMLInputElement>('input[aria-label="Search conversations"]')?.focus({ preventScroll: true });
+    asideRef.current?.querySelector<HTMLButtonElement>('[aria-label="Close sidebar"]')?.focus({ preventScroll: true });
     const onPointerDown = (event: PointerEvent) => {
       if (asideRef.current?.contains(event.target as Node)) return;
       // Menus portal to the body: a press inside one is not an outside press.
@@ -115,6 +115,7 @@ function SidebarPanel({ onClose, devTools }: { onClose: () => void; devTools: bo
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
+      if (document.querySelector('[data-testid="search-palette"]')) return;
       document
         .querySelector<HTMLElement>('[data-testid="nav-history-button"], [data-testid="nav-sidebar-button"]')
         ?.focus({ preventScroll: true });

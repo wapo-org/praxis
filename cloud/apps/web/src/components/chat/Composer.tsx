@@ -3,7 +3,7 @@ import { Photo, Paperclip, X } from '../../lib/icons';
 import { useModelSearch } from '../../lib/useModelSearch';
 import React from 'react';
 import type { Attachment } from '@praxis/protocol';
-import { DotMeter, GlassSurface } from '@praxis/glass';
+import { GlassSurface } from '@praxis/glass';
 import { usePraxisStore } from '../../state/store';
 import { PlusTray } from './PlusTray';
 import styles from './Composer.module.css';
@@ -186,9 +186,7 @@ export const Composer: React.FC = () => {
             >
               <span className={styles.modelCopy}>
                 <span className={styles.modelName}>{m.displayName}</span>
-                <span className={styles.modelDetail}>{m.tagline ?? m.providerId}</span>
               </span>
-              {typeof m.speed === 'number' ? <DotMeter value={m.speed} /> : null}
             </button>
           ))}
         </GlassSurface>

@@ -6,13 +6,14 @@ import { useAccount } from '../../lib/account';
 import { groupChats } from '../../lib/chatGroups';
 import { MoreHorizontal, PanelLeft, Pencil, Pin, Search, Settings, Edit, Trash2 } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
+import { chatActions } from '../../actions/registry';
 import styles from './Sidebar.module.css';
 
 /** The floating panel's chats view: new chat, search, history, and the account row. */
 export function SidebarChats({ onClose, onNavigate }: { onClose?: () => void; onNavigate?: () => void }) {
   const store = usePraxisStore();
   const account = useAccount();
-  const [query, setQuery] = React.useState('');
+  const query = '';
   const groups = groupChats(store.chats, query, new Date());
   const pressProps = usePress();
 
@@ -51,16 +52,10 @@ export function SidebarChats({ onClose, onNavigate }: { onClose?: () => void; on
           <Edit size={18} />
           New chat
         </motion.button>
-        <label className={styles.search} data-glide="">
-          <Search size={18} />
-          <input
-            type="search"
-            aria-label="Search conversations"
-            placeholder="Search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </label>
+        <button type="button" className={styles.action} data-glide="" aria-label="Search conversations"
+          onClick={() => { window.dispatchEvent(new Event('praxis:search')); onNavigate?.(); }}>
+          <Search size={18} />Search
+        </button>
       </nav>
 
       <div className={styles.list}>
@@ -194,29 +189,13 @@ function ChatRow({
             </button>
           </GlassDropdown.Trigger>
           <GlassDropdown.Content minWidth={180}>
-            <GlassDropdown.Item
-              icon={<Pin size={16} />}
-              onSelect={() => run(() => store.togglePinChat(chat.id))}
-            >
-              {chat.pinned ? 'Unpin' : 'Pin'}
-            </GlassDropdown.Item>
-            <GlassDropdown.Item
-              icon={<Pencil size={16} />}
-              onSelect={() => {
-                setTitle(chat.title);
-                setRenaming(true);
-              }}
-            >
-              Rename
-            </GlassDropdown.Item>
-            <GlassDropdown.Separator variant="section" />
-            <GlassDropdown.Item
-              tone="destructive"
-              icon={<Trash2 size={16} />}
-              onSelect={() => run(() => store.deleteChats([chat.id]))}
-            >
-              Delete
-            </GlassDropdown.Item>
+            {chatActions(store, chat, () => { setTitle(chat.title); setRenaming(true); }).map(action => (
+              <React.Fragment key={action.id}>
+                {action.id === 'delete' ? <GlassDropdown.Separator variant="section" /> : null}
+                <GlassDropdown.Item icon={<action.Icon size={16} />} tone={action.id === 'delete' ? 'destructive' : undefined}
+                  onSelect={() => run(async () => action.apply())}>{action.label}</GlassDropdown.Item>
+              </React.Fragment>
+            ))}
           </GlassDropdown.Content>
         </GlassDropdown>
       </span>
