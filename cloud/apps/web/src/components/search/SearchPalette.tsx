@@ -126,7 +126,7 @@ function Palette({ onClose }: { onClose: () => void }) {
     </motion.div>
   </>;
   return <div ref={surface} className={styles.position} data-testid="search-palette">
-    <GlassSurface material="thick" radius={20} className={styles.surface}
+    <GlassSurface material="thick" className={styles.surface}
       {...arrival}>
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={TRANSITION.fast}>{contents}</motion.div>
       {!reduced ? <motion.div aria-hidden="true" className={`${styles.bar} ${styles.blur}`} initial={{ opacity: 1 }} animate={{ opacity: 0 }} exit={{ opacity: 1 }} transition={TRANSITION.fast}>

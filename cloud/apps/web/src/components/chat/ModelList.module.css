@@ -96,7 +96,7 @@
   height: 100%;
   padding: 0 calc(var(--control-sm) + var(--space-2)) 0 var(--space-3);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   background: transparent;
   color: var(--color-ink);
   text-align: start;
@@ -161,7 +161,7 @@
   height: var(--control-sm);
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   background: transparent;
   color: var(--color-ink-3);
   cursor: pointer;
