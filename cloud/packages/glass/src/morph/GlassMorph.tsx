@@ -1,8 +1,7 @@
 import { usePresence } from 'framer-motion';
 import React from 'react';
 import { GlassSurface, type GlassSurfaceProps } from '../GlassSurface';
-import { LensFilter } from '../LensFilter';
-import { glassTier, useBaseChroma } from '../material';
+import { glassTier, lensScale, MATERIAL_RAMP, useBaseChroma, type BaseChroma } from '../material';
 import { MORPH, useReducedMotion } from '../motion';
 import { createMorph } from './engine';
 import styles from './morph.module.css';
@@ -19,6 +18,34 @@ export interface GlassMorphProps extends Omit<GlassSurfaceProps, 'ref' | 'radius
   shellProps?: React.HTMLAttributes<HTMLDivElement>;
   surfaceRef?: React.Ref<HTMLDivElement>;
 }
+
+/**
+ * The lens the glass wears while it moves: frost and bend from the round map, stretched to this box.
+ * No specular: the map's ring is an ellipse, and it would draw a bright line across a panel that has
+ * already squared up. The rim comes from the transit layer's own inset shadows, which follow the shape.
+ */
+const TransitFilter = React.memo(function TransitFilter({ id, url, width, height, chroma }: { id: string; url: string; width: number; height: number; chroma: BaseChroma | null }) {
+  const source = chroma ? 'balanced' : 'SourceGraphic';
+  return (
+    <svg aria-hidden="true" focusable="false" colorInterpolationFilters="sRGB" style={{ display: 'none' }}>
+      <defs>
+        <filter id={id}>
+          {chroma ? (
+            <feColorMatrix
+              in="SourceGraphic"
+              type="matrix"
+              values={`1 0 0 0 ${chroma.or.toFixed(6)} 0 1 0 0 ${chroma.og.toFixed(6)} 0 0 1 0 ${chroma.ob.toFixed(6)} 0 0 0 1 0`}
+              result="balanced"
+            />
+          ) : null}
+          <feGaussianBlur in={source} stdDeviation={MATERIAL_RAMP.regular.blur} result="frosted" />
+          <feImage href={url} x={0} y={0} width={width} height={height} preserveAspectRatio="none" result="map" />
+          <feDisplacementMap in="frosted" in2="map" scale={lensScale('regular', false)} xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </defs>
+    </svg>
+  );
+});
 
 /** The rim bending the arriving rows: fixed strength, one prebuilt map. */
 const BendFilter = React.memo(function BendFilter({ id, url, width, height }: { id: string; url: string; width: number; height: number }) {
@@ -135,7 +162,7 @@ export function GlassMorph({ source, radius, ready = true, shellRef, shellProps,
   return (
     <div ref={setShell} {...shellProps}>
       <GlassSurface ref={setRoot} radius={radius} material={material} {...surface}>
-        {lens ? <LensFilter id={filterId} material="regular" maps={{ ...maps, width: size.width, height: size.height }} chroma={chroma} /> : null}
+        {lens ? <TransitFilter id={filterId} url={maps.displacementUrl} width={size.width} height={size.height} chroma={chroma} /> : null}
         {lens ? <BendFilter id={bendId} url={maps.displacementUrl} width={size.width} height={size.height} /> : null}
         <span
           ref={transit}

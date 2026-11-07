@@ -131,10 +131,12 @@ export function createMorph(options: MorphOptions) {
     put(blurred, 'opacity', pose.blurred.toFixed(3));
     put(blurredRows, 'transform', `scale(${(pose.scale / sx).toFixed(4)}, ${(pose.scale / sy).toFixed(4)})`);
     put(lens, 'opacity', pose.tint.toFixed(3));
+    // A lens nobody can see yet should not cost a backdrop pass.
+    put(lens, 'visibility', pose.tint > 0 ? '' : 'hidden');
 
     const separate = source?.kind === 'separate';
     const appear = separate ? lift.x : smoothstep(0, MORPH.sourceHandover, p.x) * lift.x;
-    put(transit, 'opacity', (appear * (1 - smoothstep(0.82, 1, pose.tint))).toFixed(3));
+    put(transit, 'opacity', (appear * (1 - smoothstep(MORPH.content.transitOutFrom, MORPH.content.transitOutTo, pose.tint))).toFixed(3));
     // The attached blob has no source glass to take over from: it appears on the button.
     put(surface, '--glass-fade', appear.toFixed(3));
     const flashed = separate ? lift.x * (1 - smoothstep(0.02, 0.16, p.x)) : 0;
@@ -219,7 +221,10 @@ export function createMorph(options: MorphOptions) {
     body.style.willChange = '';
     sharp.style.opacity = '';
     sharp.style.willChange = '';
-    if (lens) lens.style.opacity = '';
+    if (lens) {
+      lens.style.opacity = '';
+      lens.style.visibility = '';
+    }
     if (transit) transit.style.opacity = '';
     if (flash) flash.style.opacity = '';
     written.clear();

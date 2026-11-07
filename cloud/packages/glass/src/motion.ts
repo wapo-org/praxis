@@ -94,10 +94,13 @@ export const MORPH = {
     blurOutTo: 0.93,
     tintFrom: 0.62,
     tintTo: 0.9,
+    /** The round lens sits under the real one and leaves only once it covers it: no sharp backdrop leaks through. */
+    transitOutFrom: 0.85,
+    transitOutTo: 1,
     /** Fixed strength of the filter on the arriving copy, in px: never animated. */
     bend: 36,
     blur: 1.6,
-    ink: 1.7,
+    ink: 1.35,
   },
   /** The lift's wider shadow, in px on screen, while the source is still source-sized. */
   liftShadow: { y: 6, blur: 28, alpha: 0.16 },

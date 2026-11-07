@@ -32,7 +32,7 @@ export function warmTransit() {
     const maps = generateMaps(SPEC);
     if (!maps) return;
     void Promise.all(
-      [maps.displacementUrl, maps.specularUrl, maps.frostMaskUrl].map((src) => {
+      [maps.displacementUrl].map((src) => {
         const image = new Image();
         image.src = src;
         return image.decode().catch(() => undefined);

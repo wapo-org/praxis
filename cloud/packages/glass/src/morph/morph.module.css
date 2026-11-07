@@ -43,6 +43,7 @@
 }
 
 .transit {
+  z-index: -2; /* under the real lens, which fades in over it */
   background-color: var(--glass-morph-tint);
   background-image: linear-gradient(160deg, rgba(255, 255, 255, var(--glass-sheen-a)) 0%, rgba(255, 255, 255, 0) 52%);
   box-shadow:

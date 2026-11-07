@@ -265,7 +265,7 @@ test.describe('the stretch', () => {
     await page.mouse.down();
     const rename = page.getByRole('menuitem', { name: 'Rename' });
     await rename.waitFor();
-    await page.waitForTimeout(400);
+    await landed(page.getByRole('menu'));
     const target = await center(rename);
     await page.mouse.move(target.x, target.y, { steps: 6 });
     await page.mouse.up();
