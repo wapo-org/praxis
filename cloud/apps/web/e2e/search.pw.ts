@@ -29,7 +29,7 @@ test('command options stay in one panel, support filtering and back, and close o
   const input = palette.getByRole('combobox');
   await input.fill('reasoning');
   await input.press('Enter');
-  await expect(palette.getByRole('option', { name: 'high', exact: true })).toBeVisible();
+  await expect(palette.getByRole('option', { name: 'High', exact: true })).toBeVisible();
   await input.fill('hi');
   await expect(palette.getByRole('option')).toHaveCount(1);
   await input.fill('');

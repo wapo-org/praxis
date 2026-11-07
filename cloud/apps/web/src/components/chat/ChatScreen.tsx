@@ -85,7 +85,7 @@ export function ChatScreen() {
 
   const liveRunId = hasLiveStreamingContent ? activeLiveRun?.run.id : undefined;
   const arrivalKeys = React.useMemo(() => {
-    const keys = activeMessages.map((m) => (m.role === 'user' ? `m:${m.id}` : `r:${m.runId ?? m.id}`));
+    const keys = activeMessages.map((m) => (m.role === 'user' ? `m:${m.clientTurnId ?? m.id}` : `r:${m.runId ?? m.id}`));
     if (liveRunId) keys.push(`r:${liveRunId}`);
     return keys;
   }, [activeMessages, liveRunId]);
@@ -114,7 +114,7 @@ export function ChatScreen() {
               if (msg.role === 'assistant' && hasLiveStreamingContent && msg.runId === activeLiveRun?.run.id)
                 return null;
               if (msg.role === 'user')
-                return <UserBubble key={msg.id} message={msg} attachmentsById={attachmentsById} />;
+                return <UserBubble key={msg.clientTurnId ?? msg.id} message={msg} attachmentsById={attachmentsById} />;
               const steps = extractMessageToolSteps(msg);
               const hasReasoning = msg.parts.some((p) => p.type === 'reasoning');
               const text = messageText(msg, '\n\n');

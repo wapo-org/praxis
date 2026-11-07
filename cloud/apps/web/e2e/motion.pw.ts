@@ -130,44 +130,76 @@ test('settings content swaps instantly with the panel staying put', async ({ pag
   expect((await panel.boundingBox())!.x).toBeCloseTo(rest.x, 1);
 });
 
-test('a sent message flies from the composer with overshoot; a loaded chat does not', async ({ page }) => {
+test('a sent message flies from the composer with overshoot and never renders two visible copies; a loaded chat does not', async ({ page }) => {
   const input = page.getByTestId('composer-input');
-  await input.fill(`Arrival probe ${Date.now()}`);
-  await page.evaluate(() => {
-    const w = window as unknown as { __flightTops: number[]; __flightWidths: number[]; __go: boolean };
-    w.__flightTops = [];
-    w.__flightWidths = [];
-    w.__go = true;
-    const tick = () => {
-      if (!w.__go) return;
-      const flight = document.querySelector<HTMLElement>('[data-testid="send-flight-bubble"]');
-      if (flight) {
-        const rect = flight.getBoundingClientRect();
-        w.__flightTops.push(rect.top);
-        w.__flightWidths.push(rect.width);
-      }
+
+  for (const msg of [`Alpha probe ${Date.now()}`, `Bravo probe ${Date.now()}`]) {
+    await input.fill(msg);
+    await page.evaluate((targetMsg) => {
+      const w = window as unknown as {
+        __flightTops: number[];
+        __flightWidths: number[];
+        __visibleCounts: number[];
+        __go: boolean;
+      };
+      w.__flightTops = [];
+      w.__flightWidths = [];
+      w.__visibleCounts = [];
+      w.__go = true;
+      const tick = () => {
+        if (!w.__go) return;
+        const flight = document.querySelector<HTMLElement>('[data-testid="send-flight-bubble"]');
+        if (flight) {
+          const rect = flight.getBoundingClientRect();
+          w.__flightTops.push(rect.top);
+          w.__flightWidths.push(rect.width);
+        }
+        let visibleCopies = 0;
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        let node: Node | null;
+        while ((node = walker.nextNode())) {
+          const el = node.parentElement;
+          if (!el || el.tagName === 'TEXTAREA') continue;
+          if ((node.nodeValue ?? '').trim() !== targetMsg) continue;
+          const r = el.getBoundingClientRect();
+          if (r.x <= 300 || r.y <= 60) continue;
+          let op = 1;
+          let vis = true;
+          for (let a: HTMLElement | null = el; a; a = a.parentElement) {
+            const s = getComputedStyle(a);
+            op *= Number(s.opacity);
+            if (s.visibility === 'hidden' || s.display === 'none') vis = false;
+          }
+          if (vis && op > 0.02) visibleCopies++;
+        }
+        w.__visibleCounts.push(visibleCopies);
+        requestAnimationFrame(tick);
+      };
       requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  });
-  await input.press('Enter');
-  await page.getByTestId('user-message-bubble').first().waitFor();
-  const opacity = page.getByTestId('user-message-bubble').first();
-  await expect(opacity).toHaveCSS('opacity', '1');
-  await page.waitForTimeout(900);
-  const { tops, widths } = await page.evaluate(() => {
-    const w = window as unknown as { __flightTops: number[]; __flightWidths: number[]; __go: boolean };
-    w.__go = false;
-    return { tops: w.__flightTops, widths: w.__flightWidths };
-  });
-  expect(tops.length).toBeGreaterThan(5);
-  expect(Math.max(...widths)).toBeGreaterThan(Math.min(...widths) + 40);
-  // Flight overlay unmounts cleanly and real bubble is visible.
-  await expect(page.getByTestId('send-flight-bubble')).toHaveCount(0);
-  await expect(page.locator('[data-user-bubble]').first()).toHaveCSS('opacity', '1');
+    }, msg);
+
+    await input.press('Enter');
+    await page.waitForTimeout(950);
+    const { tops, widths, visibleCounts } = await page.evaluate(() => {
+      const w = window as unknown as {
+        __flightTops: number[];
+        __flightWidths: number[];
+        __visibleCounts: number[];
+        __go: boolean;
+      };
+      w.__go = false;
+      return { tops: w.__flightTops, widths: w.__flightWidths, visibleCounts: w.__visibleCounts };
+    });
+    expect(tops.length).toBeGreaterThan(5);
+    expect(Math.max(...widths)).toBeGreaterThan(Math.min(...widths) + 40);
+    expect(visibleCounts.filter((c) => c > 1).length).toBe(0);
+    await expect(page.getByTestId('send-flight-bubble')).toHaveCount(0);
+    await expect(page.locator('[data-user-bubble]').last()).toHaveCSS('opacity', '1');
+    await expect(page.locator('[data-user-bubble]').last()).toHaveCSS('visibility', 'visible');
+    await page.waitForFunction(() => !document.querySelector('[aria-label="Stop generating"]'));
+  }
 
   const path = new URL(page.url()).pathname;
-  await page.waitForFunction(() => !document.querySelector('[aria-label="Stop generating"]'));
   // Reload: history appears with no entrance at all.
   await page.goto(path);
   await page.getByTestId('user-message-bubble').first().waitFor();

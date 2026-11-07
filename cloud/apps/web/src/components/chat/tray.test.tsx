@@ -89,7 +89,7 @@ describe('composer tray', () => {
     const tray = query('[data-testid="plus-tray"]')!;
     expect(tray.textContent).not.toContain('Allow Photos');
     expect(tray.textContent).not.toContain('Your browser grants');
-    const order = ['Auto', 'Build'].map((t) => t.toLowerCase());
+    const order = ['Auto', 'Build'];
     expect(tray.textContent!.indexOf(order[0]!)).toBeLessThan(tray.textContent!.indexOf('Photos'));
     expect(tray.textContent!.indexOf('Photos')).toBeLessThan(tray.textContent!.indexOf('Web search'));
     expect(tray.textContent!.indexOf('Web search')).toBeLessThan(tray.textContent!.indexOf('Connectors'));
@@ -262,12 +262,18 @@ describe('buildModelRows', () => {
 });
 
 describe('shared search and dropdown actions', () => {
-  it('offers exactly the same live model and reasoning options and applies a keyboard choice', async () => {
+  it('offers exactly the same live model, mode, and reasoning option display labels and applies a keyboard choice', async () => {
     const { SearchPalette } = await import('../search/SearchPalette');
-    const models = [model('a', true, 'Alpha'), model('b', false, 'Beta')];
+    const models = [
+      { ...model('a', true, 'Alpha'), reasoningEfforts: ['low', 'medium', 'high', 'max'] },
+      model('b', false, 'Beta'),
+    ];
     vi.spyOn(apiClient, 'listModels').mockResolvedValue(page(models));
     await openTray(models);
+    const modes = [...document.querySelectorAll('[aria-label="Mode"] button')].map(n => n.textContent);
     const efforts = [...document.querySelectorAll('[aria-label="Reasoning effort"] button')].map(n => n.textContent);
+    expect(modes).toEqual(['Auto', 'Ask', 'Plan', 'Build']);
+    expect(efforts).toEqual(['Low', 'Medium', 'High', 'Max']);
     await openList();
     const modelNames = options();
     await act(async () => {
@@ -287,11 +293,16 @@ describe('shared search and dropdown actions', () => {
     await flush();
     expect([...document.querySelectorAll('[data-testid="search-palette"] [role="option"]')].map(n => n.textContent)).toEqual(modelNames);
     await press('Escape', input);
+    input = await fillSearch('Change mode');
+    await press('ArrowDown', input);
+    await press('Enter', input);
+    expect([...document.querySelectorAll('[data-testid="search-palette"] [role="option"]')].map(n => n.textContent)).toEqual(modes);
+    await press('Escape', input);
     input = await fillSearch('reasoning');
     await press('Enter', input);
     expect([...document.querySelectorAll('[data-testid="search-palette"] [role="option"]')].map(n => n.textContent)).toEqual(efforts);
     await press('ArrowDown', input);
     await press('Enter', input);
-    expect(store.selectedEffort).toBe('high');
+    expect(store.selectedEffort).toBe('medium');
   });
 });

@@ -37,7 +37,14 @@ export function useRunState(state: PraxisState) {
       setMessagesByChat((prev) => {
         const existing = prev[snapshot.run.chatId] ?? [];
         const byId = new Map<string, Message>();
-        for (const m of existing) byId.set(m.id, m);
+        for (const m of existing) {
+          const committedMatch = snapshot.messages.find(
+            (cm) => cm.clientTurnId && cm.clientTurnId === m.clientTurnId && cm.role === m.role,
+          );
+          if (!committedMatch) {
+            byId.set(m.id, m);
+          }
+        }
         for (const m of snapshot.messages) byId.set(m.id, m);
         const merged = Array.from(byId.values()).sort((a, b) =>
           a.createdAt.localeCompare(b.createdAt),

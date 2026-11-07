@@ -64,7 +64,8 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
   const model = store.models.find(
     (m) => m.providerId === store.selectedProviderId && m.id === store.selectedModelId,
   );
-  const efforts = actionOptions('effort', store).map(o => o.id);
+  const modes = actionOptions('mode', store);
+  const efforts = actionOptions('effort', store);
   const searchSupported = !!model?.capabilities.serverWebSearch;
   const enabledConnectors = store.connectors.filter((c) => c.enabled);
   const backToMain = React.useCallback(() => {
@@ -100,7 +101,8 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
             <SegmentedControl
               label="Mode"
               value={store.selectedMode}
-              options={actionOptions('mode', store).map(o => o.id as typeof store.selectedMode)}
+              options={modes.map(o => o.id as typeof store.selectedMode)}
+              optionLabel={id => modes.find(o => o.id === id)?.label ?? id}
               onChange={id => applyOption('mode', store, id)}
               testIdPrefix="tray-mode"
             />
@@ -125,7 +127,8 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                 <SegmentedControl
                   label="Reasoning effort"
                   value={store.selectedEffort}
-                  options={efforts}
+                  options={efforts.map(o => o.id)}
+                  optionLabel={id => efforts.find(o => o.id === id)?.label ?? id}
                   onChange={id => applyOption('effort', store, id)}
                 />
 

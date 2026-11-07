@@ -43,7 +43,7 @@ try {
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${prefix}-changed.png` });
     await input.press('Enter');
-    await expect(palette.getByRole('option', { name: 'high', exact: true })).toBeVisible();
+    await expect(palette.getByRole('option', { name: 'High', exact: true })).toBeVisible();
     await input.press('ArrowDown');
     await input.press('Enter');
     await expect(palette).toHaveCount(0);

@@ -93,7 +93,7 @@ try {
   await page.goto(`${base}/c/${restoredChat.id}`); await page.getByTestId('nav-chat-title-pill').getByText('Route options', { exact: true }).waitFor();
   await page.getByTestId('composer-plus-button').click();
   assert.equal(await page.getByTestId('tray-mode-plan').getAttribute('aria-pressed'), 'true');
-  assert.equal(await page.getByRole('group', { name: 'Reasoning effort' }).getByRole('button', { name: 'high', exact: true }).getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.getByRole('group', { name: 'Reasoning effort' }).getByRole('button', { name: 'High', exact: true }).getAttribute('aria-pressed'), 'true');
   await context.close();
   const touch = await browser.newContext({ viewport: { width: 402, height: 874 }, colorScheme: 'dark', isMobile: true, hasTouch: true });
   const mobile = await touch.newPage(); await login(mobile, `wp-b3-touch-${Date.now()}`);

@@ -74,6 +74,8 @@ export function sendBubbleShapeAt(elapsedMs: number, fromBox: Box, toBox: Box): 
 interface ActiveSendFlight {
   id: number;
   text: string;
+  turnKey: string | null;
+  existingKeys: Set<string>;
   startTime: number;
   fromBox: Box;
   toBox: Box;
@@ -110,6 +112,25 @@ function measureNaturalBubbleBox(text: string, fromBox: Box): Box {
   };
 }
 
+function syncFlightTargetBox(flight: ActiveSendFlight) {
+  const el = flight.targetBubbleEl;
+  if (!el || !el.isConnected) return;
+  el.style.visibility = 'hidden';
+  el.style.opacity = '0';
+  el.dataset.sendInFlight = 'true';
+  const rect = el.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) return;
+  flight.toBox = {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+  flight.shellEl.style.width = `${rect.width}px`;
+  flight.shellEl.style.height = `${rect.height}px`;
+  flight.innerEl.style.width = `${rect.width}px`;
+}
+
 function writeFlightFrame(flight: ActiveSendFlight, elapsedMs: number) {
   const pose = sendBubbleShapeAt(elapsedMs, flight.fromBox, flight.toBox);
   const finalW = Math.max(1, flight.toBox.width);
@@ -136,6 +157,7 @@ function tickFlight({ timestamp }: { delta: number; timestamp: number }) {
     flight.finish();
     return;
   }
+  syncFlightTargetBox(flight);
   writeFlightFrame(flight, elapsed);
 }
 
@@ -155,6 +177,11 @@ export function launchSendFlight(inputEl: HTMLTextAreaElement | null, text: stri
   }
 
   activeFlight?.finish();
+
+  const existingKeys = new Set<string>();
+  for (const node of document.querySelectorAll<HTMLElement>('[data-message-key]')) {
+    if (node.dataset.messageKey) existingKeys.add(node.dataset.messageKey);
+  }
 
   const fromBox: Box = {
     left: inputRect.left - 12,
@@ -189,6 +216,8 @@ export function launchSendFlight(inputEl: HTMLTextAreaElement | null, text: stri
   const flight: ActiveSendFlight = {
     id,
     text: trimmed,
+    turnKey: null,
+    existingKeys,
     startTime,
     fromBox,
     toBox,
@@ -206,6 +235,7 @@ export function launchSendFlight(inputEl: HTMLTextAreaElement | null, text: stri
         delete flight.inputEl.dataset.flightLead;
       }
       if (flight.targetBubbleEl) {
+        flight.targetBubbleEl.style.visibility = '';
         flight.targetBubbleEl.style.opacity = '';
         delete flight.targetBubbleEl.dataset.sendInFlight;
         flight.targetBubbleEl = null;
@@ -224,32 +254,36 @@ export function cancelSendFlight() {
   activeFlight?.finish();
 }
 
-export function bindSendFlightTarget(bubbleEl: HTMLElement | null) {
+export function bindSendFlightTarget(
+  bubbleEl: HTMLElement | null,
+  turnKey?: string,
+  text?: string,
+) {
   const flight = activeFlight;
   if (!flight || !bubbleEl) return false;
-  const rect = bubbleEl.getBoundingClientRect();
-  if (rect.width < 1 || rect.height < 1) return false;
+
+  if (turnKey !== undefined && text !== undefined) {
+    const trimmed = text.trim();
+    const matches =
+      flight.turnKey === turnKey ||
+      (flight.turnKey === null && !flight.existingKeys.has(`m:${turnKey}`) && flight.text === trimmed);
+    if (!matches) return false;
+    flight.turnKey = turnKey;
+  }
 
   if (flight.targetBubbleEl && flight.targetBubbleEl !== bubbleEl) {
+    flight.targetBubbleEl.style.visibility = '';
     flight.targetBubbleEl.style.opacity = '';
     delete flight.targetBubbleEl.dataset.sendInFlight;
   }
 
   flight.targetBubbleEl = bubbleEl;
   flight.boundToTarget = true;
+  bubbleEl.style.visibility = 'hidden';
   bubbleEl.style.opacity = '0';
   bubbleEl.dataset.sendInFlight = 'true';
 
-  flight.toBox = {
-    left: rect.left,
-    top: rect.top,
-    width: rect.width,
-    height: rect.height,
-  };
-  flight.shellEl.style.width = `${rect.width}px`;
-  flight.shellEl.style.height = `${rect.height}px`;
-  flight.innerEl.style.width = `${rect.width}px`;
-
+  syncFlightTargetBox(flight);
   const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
   writeFlightFrame(flight, Math.max(0, now - flight.startTime));
   return true;
@@ -261,10 +295,10 @@ function currentY(el: HTMLElement): number {
 }
 
 /**
- * Messages that arrive while you watch rise in on the spring; a loaded history
- * does not. When the user sends a message, the sent user bubble flies from the
- * composer via `launchSendFlight` while existing list items glide up smoothly
- * using transform FLIP on the same spring.
+ * Assistant turns that arrive while you watch rise in on the spring; a loaded
+ * history does not. Sent user messages fly from the composer via `launchSendFlight`
+ * (with the real bubble hidden until landing and no entry fade), while existing
+ * list items glide up smoothly using transform FLIP on the same spring.
  */
 export function useMessageArrival(
   column: React.RefObject<HTMLElement | null>,
@@ -306,14 +340,17 @@ export function useMessageArrival(
 
     if (!col) return;
 
-    // If a send flight is active and its target user bubble just mounted (or shifted),
-    // bind or update its target box once in layout.
     if (activeFlight) {
-      const latestUserBubble = col.querySelector<HTMLElement>(
-        '[data-testid="user-message-bubble"]:last-of-type [data-user-bubble]',
-      );
-      if (latestUserBubble && (!activeFlight.boundToTarget || activeFlight.targetBubbleEl === latestUserBubble)) {
-        bindSendFlightTarget(latestUserBubble);
+      if (!activeFlight.targetBubbleEl || !activeFlight.targetBubbleEl.isConnected) {
+        const bubbles = col.querySelectorAll<HTMLElement>('[data-testid="user-message-bubble"] [data-user-bubble]');
+        const latestUserBubble = bubbles[bubbles.length - 1] ?? null;
+        if (latestUserBubble) {
+          bindSendFlightTarget(latestUserBubble);
+        }
+      } else {
+        syncFlightTargetBox(activeFlight);
+        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        writeFlightFrame(activeFlight, Math.max(0, now - activeFlight.startTime));
       }
     }
 
@@ -334,12 +371,10 @@ export function useMessageArrival(
     }
 
     for (const key of fresh) {
+      // User messages never have an entry fade: they stay hidden during send flight and swap in at landing.
+      if (key.startsWith('m:')) continue;
       const el = col.querySelector<HTMLElement>(`[data-message-key="${CSS.escape(key)}"]`);
       if (!el) continue;
-      const bubble = el.querySelector<HTMLElement>('[data-user-bubble]');
-      if (bubble && bubble.dataset.sendInFlight === 'true') {
-        continue;
-      }
       animate(el, { opacity: [listItem.initial.opacity ?? 0, 1], y: [listItem.initial.y ?? 0, 0] }, { ...SPRING });
     }
   }, [chatId, column, keys]);

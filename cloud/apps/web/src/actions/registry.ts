@@ -15,16 +15,17 @@ interface Action {
   apply: (s: Store, id?: string, models?: readonly Model[]) => void | Promise<void>;
 }
 const selectedModel = (s: Store) => s.models.find(m => m.providerId === s.selectedProviderId && m.id === s.selectedModelId);
+const displayLabel = (id: string) => id.slice(0, 1).toUpperCase() + id.slice(1);
 export const ACTIONS = {
   model: { label: 'Change model', Icon: Sparkles, available: () => true,
     options: (s, models) => models.map(model => ({ id: `${model.providerId}/${model.id}`, label: model.displayName,
       selected: model.providerId === s.selectedProviderId && model.id === s.selectedModelId, model })),
     apply: (s, id, models = s.models) => { const m = models.find(m => `${m.providerId}/${m.id}` === id); if (m) { s.cacheModels([m]); s.setSelectedModel(m.providerId, m.id); } } },
   effort: { label: 'Change reasoning level', Icon: Sliders, available: s => !!selectedModel(s)?.reasoningEfforts.length,
-    options: s => (selectedModel(s)?.reasoningEfforts ?? []).map(id => ({ id, label: id, selected: s.selectedEffort === id })),
+    options: s => (selectedModel(s)?.reasoningEfforts ?? []).map(id => ({ id, label: displayLabel(id), selected: s.selectedEffort === id })),
     apply: (s, id) => { if (id && selectedModel(s)?.reasoningEfforts.includes(id)) s.setSelectedEffort(id); } },
   mode: { label: 'Change mode', Icon: Sliders, available: () => true,
-    options: s => (['auto', 'ask', 'plan', 'build'] as const).map(id => ({ id, label: id, selected: s.selectedMode === id })),
+    options: s => (['auto', 'ask', 'plan', 'build'] as const).map(id => ({ id, label: displayLabel(id), selected: s.selectedMode === id })),
     apply: (s, id) => { if (id === 'auto' || id === 'ask' || id === 'plan' || id === 'build') s.setSelectedMode(id); } },
   newChat: { label: 'New chat', Icon: Edit, available: () => true, apply: s => s.startNewConversation() },
   web: { label: 'Web search', Icon: Globe, available: s => !!selectedModel(s)?.capabilities.serverWebSearch, apply: s => s.setWebSearch(!s.webSearch) },

@@ -25,7 +25,6 @@
   background: transparent;
   color: var(--color-ink-2);
   font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
-  text-transform: capitalize;
   white-space: nowrap;
   cursor: pointer;
   transition: color var(--duration-fast) var(--ease-standard);

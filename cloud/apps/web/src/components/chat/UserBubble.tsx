@@ -1,5 +1,6 @@
 import type { Attachment, Message } from '@praxis/protocol';
 import React from 'react';
+import { bindSendFlightTarget } from './chatMotion';
 import { MessageAttachment } from './MessageAttachment';
 import styles from './UserBubble.module.css';
 
@@ -15,12 +16,20 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
   const mediaParts = message.parts.filter((p) => p.type === 'image' || p.type === 'document');
 
   const combinedText = textParts.map((p) => (p.type === 'text' ? (p.text ?? '') : '')).join('\n');
+  const turnKey = message.clientTurnId ?? message.id;
+
+  const bubbleRef = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      if (el) bindSendFlightTarget(el, turnKey, combinedText);
+    },
+    [turnKey, combinedText],
+  );
 
   if (!combinedText && mediaParts.length === 0) return null;
 
   return (
     <>
-      <div data-testid="user-message-bubble" data-message-key={`m:${message.id}`} className={styles.turn}>
+      <div data-testid="user-message-bubble" data-message-key={`m:${turnKey}`} className={styles.turn}>
         {mediaParts.length > 0 ? (
           <div className={styles.media} data-with-text={!!combinedText}>
             {mediaParts.map((part, index) => (
@@ -34,7 +43,7 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
           </div>
         ) : null}
         {combinedText ? (
-          <div data-user-bubble="" className={styles.bubble}>
+          <div ref={bubbleRef} data-user-bubble="" className={styles.bubble}>
             {combinedText}
           </div>
         ) : null}
