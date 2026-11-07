@@ -30,7 +30,7 @@ for (let cursor = ''; ; ) {
   cursor = pageOf.nextCursor;
 }
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({ headless: !process.env.HEADED, args: process.env.HEADED ? ['--enable-gpu-rasterization', '--ignore-gpu-blocklist'] : [] });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await page.addInitScript(() => {
   window.__longTasks = [];
@@ -145,7 +145,11 @@ async function stretch(dragSelector, transformSelector, x, y) {
     }
     mid = await read(transformSelector);
     await page.mouse.up();
-    await page.waitForTimeout(900);
+    // The spring clears its individual scale at rest; a fixed delay races this under load.
+    await page.waitForFunction((sel) => {
+      const el = document.querySelector(sel);
+      return !el || getComputedStyle(el.closest('[data-glass-surface]') ?? el).scale === 'none';
+    }, transformSelector, { timeout: 5000 });
   }
   return { mid, rest: await read(transformSelector) };
 }
