@@ -17,6 +17,9 @@ test('the measured dark sidebar keeps glass in both themes and matches the refer
     expect(box.width).toBe(214);
     expect(box.y).toBe(18);
     expect(box.height).toBe(858);
+    const searchIcon = await page.getByRole('button', { name: 'Search conversations' }).locator('svg').boundingBox();
+    expect(searchIcon!.x).toBe(29);
+    expect(searchIcon!.width).toBe(16);
     await expect(page.getByTestId('sidebar-new-chat')).toHaveCSS(
       'background-color',
       'rgb(255, 255, 255)',

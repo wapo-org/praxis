@@ -39,7 +39,7 @@ it('labels questions by title, then description, then a humanised key', () => {
   const html = renderToStaticMarkup(
     <ElicitationCards
       pendingElicitations={[
-        { id: 'e', schema: { properties: fields } } as NonNullable<
+        { id: 'e', message: 'Project details', schema: { properties: fields } } as NonNullable<
           AgentActivityViewProps['pendingElicitations']
         >[number],
       ]}
