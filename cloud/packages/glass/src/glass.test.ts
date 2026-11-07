@@ -81,8 +81,29 @@ describe('continuous corners', () => {
   it('all glass reads the corner and radius tokens', () => {
     const css = readFileSync(join(here, 'glass.module.css'), 'utf8');
     expect(css).toContain('corner-shape: var(--glass-corner)');
-    expect(css).toContain('border-radius: var(--glass-radius)');
+    expect(css).toContain('border-radius: var(--glass-radius-round, var(--glass-radius))');
     expect(tokensCss).toContain('--glass-corner: superellipse(1.46)');
+  });
+});
+
+describe('the more transparent glass keeps AA over paper', () => {
+  const lin = (v: number) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4);
+  const lum = ([r, g, b]: number[]) => 0.2126 * lin(r!) + 0.7152 * lin(g!) + 0.0722 * lin(b!);
+  const hex = (value: string) => [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16));
+  const contrast = (a: number[], b: number[]) => {
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x) as [number, number];
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  it.each([["[data-theme='light']", PAPER_LIGHT], ["[data-theme='dark']", PAPER_DARK]] as const)('%s', (selector, paper) => {
+    const theme = block(selector);
+    const page = hex(paper.paper);
+    for (const name of ['regular', 'thick', 'menu', 'clear']) {
+      const hit = new RegExp(`--glass-${name}-tint: rgba\\(([\\d., ]+)\\)`).exec(theme)!;
+      const [r, g, b, a] = hit[1]!.split(',').map(Number) as [number, number, number, number];
+      const over = [r, g, b].map((v, i) => v * a + page[i]! * (1 - a));
+      expect(contrast(hex(paper.ink), over), name).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(hex(paper.ink2), over), name).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });
 

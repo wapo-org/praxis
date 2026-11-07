@@ -99,7 +99,7 @@
   --color-hairline: rgba(21, 20, 15, 0.08);
   --color-hairline-strong: rgba(21, 20, 15, 0.14);
   --color-divider: rgba(21, 20, 15, 0.055);
-  --divider-width: 0.5px;
+  --divider-scale: 0.5; /* half a hairline, at any pixel density */
   --color-hover: rgba(21, 20, 15, 0.045);
   --color-pressed: rgba(21, 20, 15, 0.08);
   --color-accent: #15140f;

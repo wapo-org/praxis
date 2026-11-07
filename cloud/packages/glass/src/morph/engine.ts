@@ -130,7 +130,7 @@ export function createMorph(options: MorphOptions) {
       source: source.box,
       sourceRadius: source.radius,
       final,
-      radius: Number.parseFloat(style.getPropertyValue('--glass-radius')) || 0,
+      radius: Number.parseFloat(style.getPropertyValue('--glass-radius-round') || style.getPropertyValue('--glass-radius')) || 0,
       corner: corner ? Number(corner[1]) : 1,
     };
     options.onSize?.(final.width, final.height);

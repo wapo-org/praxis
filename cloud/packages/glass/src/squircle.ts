@@ -4,9 +4,7 @@
  * when the size changes: nothing per frame. The exponent is measured from the iOS menu (IMG_7868).
  */
 export const CORNER_EXPONENT = 2.75;
-/** The token radius on an engine without corner-shape is the circle with the same apex; the curve spans this much more. */
-export const CURVE_PER_ROUND_RADIUS = 42 / 32;
-/** ... and the circle a map should use on a corner-shape engine, where the token is the curve's span. */
+/** The token is the curve's span. The circle with the same apex is this much smaller: maps and the no-corner-shape paint use it. */
 export const ROUND_PER_CURVE_RADIUS = 32 / 42;
 
 const CORNER_STEPS = 12;
@@ -46,12 +44,14 @@ export function attachSquircle(el: HTMLElement): () => void {
     const key = `${w}x${h}r${radius}`;
     if (key === last) return;
     last = key;
-    el.style.setProperty('--glass-squircle', `path("${squirclePath(w, h, radius * CURVE_PER_ROUND_RADIUS)}")`);
+    el.style.setProperty('--glass-radius-round', `${(radius * ROUND_PER_CURVE_RADIUS).toFixed(2)}px`);
+    el.style.setProperty('--glass-squircle', `path("${squirclePath(w, h, radius)}")`);
   };
   const observer = new ResizeObserver(build);
   observer.observe(el);
   return () => {
     observer.disconnect();
     el.style.removeProperty('--glass-squircle');
+    el.style.removeProperty('--glass-radius-round');
   };
 }

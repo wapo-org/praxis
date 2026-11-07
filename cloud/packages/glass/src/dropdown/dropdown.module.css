@@ -167,9 +167,10 @@
 }
 .separator,
 .separatorSection {
-  height: var(--divider-width);
+  height: 1px;
   margin: var(--space-1) var(--menu-row-inset);
   background: var(--color-divider);
+  transform: scaleY(var(--divider-scale));
 }
 .separatorSection {
   margin-block: var(--space-2);
@@ -301,8 +302,9 @@
 .actionRule {
   position: absolute;
   inset: auto var(--space-4) 0;
-  height: var(--divider-width);
+  height: 1px;
   background: var(--color-divider);
+  transform: scaleY(var(--divider-scale));
 }
 .tile {
   position: relative;

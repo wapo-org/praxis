@@ -10,7 +10,8 @@
 .glass {
   position: relative;
   isolation: isolate;
-  border-radius: var(--glass-radius);
+  /* Without corner-shape, the circle with the same apex (squircle.ts), under the path on the layers. */
+  border-radius: var(--glass-radius-round, var(--glass-radius));
   corner-shape: var(--glass-corner);
   box-shadow:
     var(--glass-contact) rgba(var(--glass-shadow-rgb), calc(var(--glass-contact-a) * var(--glass-shadow) * var(--glass-fade, 1))),
