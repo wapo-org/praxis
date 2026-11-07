@@ -19,10 +19,14 @@ export function MarkdownContent({
       {blocks.map((block, idx) => {
         switch (block.type) {
           case 'heading':
-            return (
-              <div key={idx} className={styles.heading} data-level={block.level ?? 3}>
-                {renderInlineTokens(block.content ?? '')}
-              </div>
+            return React.createElement(
+              `h${block.level ?? 3}`,
+              {
+                key: idx,
+                className: styles.heading,
+                'data-level': block.level ?? 3,
+              },
+              renderInlineTokens(block.content ?? ''),
             );
 
           case 'code':
@@ -51,7 +55,9 @@ export function MarkdownContent({
                   <thead>
                     <tr>
                       {(block.headers ?? []).map((h, hIdx) => (
-                        <th key={hIdx}>{renderInlineTokens(h)}</th>
+                        <th key={hIdx} data-align={block.alignments?.[hIdx]}>
+                          {renderInlineTokens(h)}
+                        </th>
                       ))}
                     </tr>
                   </thead>
@@ -59,7 +65,9 @@ export function MarkdownContent({
                     {(block.rows ?? []).map((row, rIdx) => (
                       <tr key={rIdx}>
                         {row.map((cell, cIdx) => (
-                          <td key={cIdx}>{renderInlineTokens(cell)}</td>
+                          <td key={cIdx} data-align={block.alignments?.[cIdx]}>
+                            {renderInlineTokens(cell)}
+                          </td>
                         ))}
                       </tr>
                     ))}
@@ -78,10 +86,16 @@ export function MarkdownContent({
           case 'list': {
             const ListTag = block.ordered ? 'ol' : 'ul';
             return (
-              <ListTag key={idx} className={styles.list}>
+              <ListTag
+                key={idx}
+                className={styles.list}
+                start={block.ordered ? block.start : undefined}
+              >
                 {(block.items ?? []).map((item, itemIdx) => (
                   <li key={itemIdx} data-task={item.checked !== undefined}>
-                    {item.checked !== undefined ? <input type="checkbox" checked={item.checked} readOnly /> : null}
+                    {item.checked !== undefined ? (
+                      <input type="checkbox" checked={item.checked} readOnly />
+                    ) : null}
                     {renderInlineTokens(item.text)}
                   </li>
                 ))}

@@ -1,4 +1,5 @@
 import React from 'react';
+import styles from './AccountGate.module.css';
 import { AccountContext } from '../../lib/account';
 import { apiClient } from '../../lib/api';
 import { clearReplica, loadReplica, setReplicaIdentity, wipeReplicaStorage } from '../../lib/idb';
@@ -102,7 +103,7 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
     setNotice('Account deleted');
     setUser(null);
   }
-  if (checking) return <main className="account-screen">Checking session…</main>;
+  if (checking) return <main className={styles.screen}>Checking session…</main>;
   if (user)
     return (
       <AccountContext.Provider
@@ -120,19 +121,22 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
       </AccountContext.Provider>
     );
   return (
-    <main className="account-screen">
+    <main className={styles.screen}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           void signIn(false);
         }}
       >
-        <h1>Account</h1>
+        <h1>Praxis</h1>
         <p>Sign in to your Praxis server</p>
-        <label>
-          Server
-          <input readOnly value={apiClient.getBaseUrl() || window.location.origin} />
-        </label>
+        <details>
+          <summary>Advanced</summary>
+          <label>
+            Server
+            <input readOnly value={apiClient.getBaseUrl() || window.location.origin} />
+          </label>
+        </details>
         <label>
           Email
           <input

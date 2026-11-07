@@ -6,6 +6,8 @@ export interface ParsedBlock {
   headers?: string[];
   rows?: string[][];
   ordered?: boolean;
+  start?: number;
+  alignments?: Array<'left' | 'center' | 'right'>;
   items?: Array<{ checked?: boolean; text: string }>;
 }
 
@@ -69,9 +71,16 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
         rowStr
           .trim()
           .replace(/^\|/, '')
-          .replace(/\|$/, '')
-          .split('|')
-          .map((cell) => cell.trim());
+          .replace(/(?<!\\)\|$/, '')
+          .split(/(?<!\\)\|/)
+          .map((cell) => cell.trim().replace(/\\\|/g, '|'));
+      const alignments = parseRow(lines[i + 1]!).map((cell) =>
+        cell.endsWith(':')
+          ? cell.startsWith(':')
+            ? ('center' as const)
+            : ('right' as const)
+          : ('left' as const),
+      );
 
       const headers = parseRow(line);
       i += 2; // skip header and separator
@@ -80,7 +89,12 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
         rows.push(parseRow(lines[i]!));
         i++;
       }
-      blocks.push({ type: 'table', headers, rows });
+      blocks.push({
+        type: 'table',
+        headers,
+        rows: rows.map((row) => headers.map((_, idx) => row[idx] ?? '')),
+        alignments,
+      });
       continue;
     }
 
@@ -123,7 +137,12 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
         items.push({ text: raw });
         i++;
       }
-      blocks.push({ type: 'list', ordered: true, items });
+      blocks.push({
+        type: 'list',
+        ordered: true,
+        start: Number(line.trim().match(/^\d+/)?.[0] ?? 1),
+        items,
+      });
       continue;
     }
 

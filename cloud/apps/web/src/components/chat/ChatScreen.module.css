@@ -14,7 +14,8 @@
   flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: calc(var(--topbar-height) + var(--space-6)) var(--space-6) calc(var(--space-16) * 2 + var(--space-8));
+  padding: calc(var(--topbar-height) + var(--space-6)) var(--space-6)
+    calc(var(--space-16) * 2 + var(--space-8));
   scrollbar-gutter: stable both-edges;
 }
 
@@ -47,13 +48,9 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  margin-bottom: var(--space-6);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid color-mix(in srgb, var(--color-danger) 32%, transparent);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-danger) 6%, var(--color-paper));
-  color: var(--color-danger);
-  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  padding: var(--space-3) 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-md) var(--font-sans);
 }
 
 .error button {

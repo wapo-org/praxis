@@ -1,6 +1,7 @@
 import React from 'react';
+import { warmTransit } from './morph/transit';
 import { animate, motion, motionValue, type HTMLMotionProps } from 'framer-motion';
-import { generateMaps, type GeneratedMaps } from './displacement-map';
+import { generateMapsAsync, type GeneratedMaps } from './displacement-map';
 import { LensFilter } from './LensFilter';
 import { MATERIAL_RAMP, glassTier, useBaseChroma, type GlassMaterial } from './material';
 import { TRANSITION } from './motion';
@@ -47,15 +48,17 @@ const RESIZE_DEBOUNCE_MS = 120;
 
 /** Built at rest size and reused; never rebuilt during a gesture (transforms do not resize). */
 function useLensMaps(rootRef: React.RefObject<HTMLElement | null>, material: GlassMaterial, shape: GlassShape, radius?: number) {
+  React.useEffect(() => { warmTransit(); }, []);
   const [maps, setMaps] = React.useState<GeneratedMaps | null>(null);
   React.useEffect(() => {
     const el = rootRef.current;
     if (!el || glassTier() !== 'svg' || typeof ResizeObserver === 'undefined') return;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let generation = 0;
     let lastW = 0;
     let lastH = 0;
-    const build = () => {
+    const build = async () => {
       if (disposed) return;
       const w = el.offsetWidth;
       const h = el.offsetHeight;
@@ -66,7 +69,8 @@ function useLensMaps(rootRef: React.RefObject<HTMLElement | null>, material: Gla
       // superellipse corner it takes the circle with the same apex.
       const token = radius ?? Number.parseFloat(getComputedStyle(el).getPropertyValue('--glass-radius'));
       const r = shape === 'capsule' ? Math.min(w, h) / 2 : token * ROUND_PER_CURVE_RADIUS || 0;
-      const next = generateMaps({ width: w, height: h, radius: r, bezel: MATERIAL_RAMP[material].bezel, material });
+      const version = ++generation;
+      const next = await generateMapsAsync({ width: w, height: h, radius: r, bezel: MATERIAL_RAMP[material].bezel, material });
       if (!next) return;
       // An undecoded feImage is transparent, which displaces the whole backdrop: wait for it.
       void Promise.all(
@@ -76,7 +80,7 @@ function useLensMaps(rootRef: React.RefObject<HTMLElement | null>, material: Gla
           return img.decode().catch(() => undefined);
         }),
       ).then(() => {
-        if (!disposed) setMaps(next);
+        if (!disposed && generation === version) setMaps(next);
       });
     };
     let first = true;

@@ -1,0 +1,25 @@
+.card {
+  padding: var(--space-5);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-lg);
+}
+.card h2 {
+  margin: 0 0 var(--space-4);
+  font: var(--weight-medium) var(--text-xl) / var(--leading-xl) var(--font-display);
+}
+.viewport {
+  position: relative;
+  height: var(--popover-max-height);
+  overflow: hidden;
+}
+.rows {
+  height: 100%;
+  overflow: auto;
+  padding: var(--space-8) var(--space-4);
+}
+.rows p {
+  margin: 0;
+  padding: var(--space-3) 0;
+  color: var(--color-ink-2);
+  border-bottom: 1px solid var(--color-hairline);
+}

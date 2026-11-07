@@ -1,10 +1,18 @@
+import styles from './App.module.css';
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChatScreen } from './components/chat/ChatScreen';
 import { ConsentPopover } from './components/screens/ConsentPopover';
-import { SettingsPage, type SettingsSheet } from './components/screens/SettingsPage';
+import type { SettingsSheet } from './components/screens/SettingsPage';
+const SettingsPage = React.lazy(() =>
+  import('./components/screens/SettingsPage').then((m) => ({
+    default: m.SettingsPage,
+  })),
+);
 import { SearchPalette } from './components/search/SearchPalette';
-import { Sidebar } from './components/shell/Sidebar';
+const Sidebar = React.lazy(() =>
+  import('./components/shell/Sidebar').then((m) => ({ default: m.Sidebar })),
+);
 import { parseRoute } from './lib/navigation';
 import { usePraxisStore } from './state/store';
 const GlassLabPage = import.meta.env.DEV
@@ -64,7 +72,7 @@ export function App() {
     );
   if (!parseRoute(pathname).valid)
     return (
-      <main className="account-screen">
+      <main className={styles.notFound}>
         <div>
           <h1>Page not found</h1>
           <button onClick={() => navigate('/')}>New chat</button>
@@ -76,9 +84,17 @@ export function App() {
   const settingsSheet: SettingsSheet | null = sheet && sheet !== 'history' ? sheet : null;
   return (
     <div data-testid="praxis-app-root" className="praxis-app-root">
-      <Sidebar devTools={!!lab} />
+      <React.Suspense fallback={null}>
+        <Sidebar devTools={!!lab} />
+      </React.Suspense>
       <div className="praxis-page">
-        {settingsSheet ? <SettingsPage sheet={settingsSheet} onOpenGlassLab={lab} /> : <ChatScreen />}
+        {settingsSheet ? (
+          <React.Suspense fallback={null}>
+            <SettingsPage sheet={settingsSheet} onOpenGlassLab={lab} />
+          </React.Suspense>
+        ) : (
+          <ChatScreen />
+        )}
       </div>
       <ConsentPopover />
       <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />

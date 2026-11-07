@@ -159,13 +159,16 @@ describe('@praxis/web core chat & lab components', () => {
     expect(html).toContain('What are we working on?');
   });
 
-  it('renders GlassLabPage with Apple Notes 35-frame reference demo and 500-model virtual picker', () => {
+  it('renders GlassLabPage with real material, motion and virtual picker fixtures', () => {
     const html = renderToStaticMarkup(
       
         <GlassLabPage onNavigateBack={() => {}} />
       ,
     );
     expect(html).toContain('Liquid Glass');
-    expect(html).toContain('Recent Notes');
+    expect(html).toContain('Menu motion');
+    expect(html).toContain('500 models');
+    expect(html).toContain('Progressive blur');
+    expect(html).not.toContain('Apple Notes');
   });
 });

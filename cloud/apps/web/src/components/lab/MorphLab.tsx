@@ -40,13 +40,23 @@ function Labelled({ testId, align }: { testId: string; align: 'start' | 'end' })
 /** A button sharing glass with a neighbour: the capsule stays, and the menu grows from a blob. */
 function Attached({ testId, align }: { testId: string; align: 'start' | 'end' }) {
   return (
-    <GlassSurface material="regular" shape="capsule" className={styles.capsule} data-testid={`${testId}-capsule`}>
+    <GlassSurface
+      material="regular"
+      shape="capsule"
+      className={styles.capsule}
+      data-testid={`${testId}-capsule`}
+    >
       <button type="button" className={styles.capsuleButton} aria-label="Share">
         <Share size={18} />
       </button>
       <GlassDropdown portal align={align}>
         <GlassDropdown.Trigger asChild>
-          <button type="button" className={styles.capsuleButton} aria-label="More" data-testid={testId}>
+          <button
+            type="button"
+            className={styles.capsuleButton}
+            aria-label="More"
+            data-testid={testId}
+          >
             <MoreHorizontal size={18} />
           </button>
         </GlassDropdown.Trigger>
@@ -62,8 +72,14 @@ function Wide() {
     <GlassDropdown portal align="start">
       <GlassDropdown.Trigger data-testid="wide-menu">Notes</GlassDropdown.Trigger>
       <GlassDropdown.Content minWidth={420}>
-        {['am i missing something? the protestors are over the line and still moving forward', 'Using this repository, and plus find some for search and the next conversation', 'figure of around 40% refers to ethnic kazakhs and the population around them'].map((note) => (
-          <GlassDropdown.Item key={note} icon={<Copy size={16} />}>{note}</GlassDropdown.Item>
+        {[
+          'Review the project plan and summarize the next steps for the entire team',
+          'Compare the latest release checklist against the previous milestone',
+          'Collect research notes and prepare a concise weekly progress summary',
+        ].map((note) => (
+          <GlassDropdown.Item key={note} icon={<Copy size={16} />}>
+            {note}
+          </GlassDropdown.Item>
         ))}
       </GlassDropdown.Content>
     </GlassDropdown>
@@ -74,7 +90,9 @@ function Nested({ testId, mode }: { testId: string; mode: 'morph' | 'cascade' })
   const rows = ['Save as TXT', 'Save as PDF', 'Save as Markdown', 'Save as HTML'];
   return (
     <GlassDropdown portal align="start" submenuMode={mode} closeOnSelect={false}>
-      <GlassDropdown.Trigger data-testid={testId}>{mode === 'morph' ? 'In place' : 'Cascade'}</GlassDropdown.Trigger>
+      <GlassDropdown.Trigger data-testid={testId}>
+        {mode === 'morph' ? 'In place' : 'Cascade'}
+      </GlassDropdown.Trigger>
       <GlassDropdown.Content minWidth={236}>
         <GlassDropdown.Item icon={<Copy size={16} />}>Copy</GlassDropdown.Item>
         <GlassDropdown.Sub id={`${testId}-sub`} label="Save as" icon={<Download size={16} />}>
@@ -96,7 +114,11 @@ function Nested({ testId, mode }: { testId: string; mode: 'morph' | 'cascade' })
 export function MorphLab() {
   const text = useMemo(
     () =>
-      Array.from({ length: 60 }, (_, i) => `{"offset":${i * 1420},"duration":${2000 + i * 37},"text":"The menu grows out of the button, over dense text."},`).join('\n'),
+      Array.from(
+        { length: 60 },
+        (_, i) =>
+          `{"offset":${i * 1420},"duration":${2000 + i * 37},"text":"The menu grows out of the button, over dense text."},`,
+      ).join('\n'),
     [],
   );
   return (

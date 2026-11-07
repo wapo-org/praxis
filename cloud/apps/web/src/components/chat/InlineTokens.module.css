@@ -1,0 +1,32 @@
+.token {
+  display: inline;
+  max-width: 100%;
+  padding: 1px var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-fill-1);
+  color: var(--color-ink);
+  font: inherit;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  vertical-align: baseline;
+}
+button.token {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+}
+a.token {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: transparent;
+}
+.token span {
+  background: transparent;
+  padding: 0;
+  font: inherit;
+}
+.token:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}

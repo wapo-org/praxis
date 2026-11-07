@@ -16,9 +16,15 @@ export function ApprovalCards({
             : '';
 
         return (
-          <div key={approval.id} data-testid={`approval-card-${approval.id}`} className={styles.card}>
+          <div
+            key={approval.id}
+            data-testid={`approval-card-${approval.id}`}
+            className={styles.card}
+          >
             <div className={styles.cardTitle}>
-              <span>Approval required: {approval.title || approval.toolName}</span>
+              <span>
+                Approval required: {(approval.title || approval.toolName).replace(/_/g, ' ')}
+              </span>
               {approval.source?.serverName ? (
                 <span className={styles.cardSource}>{approval.source.serverName}</span>
               ) : null}
@@ -26,7 +32,9 @@ export function ApprovalCards({
 
             {approval.reason ? <div className={styles.cardReason}>{approval.reason}</div> : null}
 
-            {formattedApprovalArgs ? <pre className={styles.cardArgs}>{formattedApprovalArgs}</pre> : null}
+            {formattedApprovalArgs ? (
+              <pre className={styles.cardArgs}>{formattedApprovalArgs}</pre>
+            ) : null}
 
             <div className={styles.cardActions}>
               <button

@@ -108,7 +108,12 @@ button {
   animation: praxis-breathe var(--duration-ambient) var(--ease-ambient) infinite;
 }
 .praxis-shimmer-text {
-  background: linear-gradient(90deg, var(--color-ink-2) 0%, var(--color-ink) 50%, var(--color-ink-2) 100%);
+  background: linear-gradient(
+    90deg,
+    var(--color-ink-2) 0%,
+    var(--color-ink) 50%,
+    var(--color-ink-2) 100%
+  );
   background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -126,13 +131,13 @@ button {
 }
 
 /* ---- Legacy surfaces awaiting D2/D3 redesign. Token-only; no new rules here. ---- */
-.account-screen { min-height: 100dvh; display: grid; place-items: center; padding: var(--space-6); background: var(--color-paper); }
-.account-screen form { width: min(100%, 380px); display: grid; gap: var(--space-4); }
-.account-screen h1 { margin: 0; font: var(--weight-semibold) var(--text-2xl) / var(--leading-2xl) var(--font-display); letter-spacing: var(--tracking-display); }
-.account-screen label { display: grid; gap: var(--space-2); color: var(--color-ink-2); }
-.account-screen input, .account-screen button { height: var(--control-lg); padding: 0 var(--space-4); border-radius: var(--radius-md); border: 1px solid var(--color-hairline-strong); background: var(--color-surface); color: var(--color-ink); width: 100%; }
-.account-screen button { border: 0; background: var(--color-accent); color: var(--color-on-accent); font-weight: var(--weight-semibold); cursor: pointer; }
-.account-error { position: fixed; top: var(--space-16); z-index: 99; background: var(--color-surface); color: var(--color-danger); }
+.account-error {
+  position: fixed;
+  top: var(--space-16);
+  z-index: 99;
+  background: var(--color-surface);
+  color: var(--color-danger);
+}
 
 /* Touch screens only: iOS zooms into a focused field below 16 px, whatever the type scale says. */
 @media (hover: none) and (pointer: coarse) {

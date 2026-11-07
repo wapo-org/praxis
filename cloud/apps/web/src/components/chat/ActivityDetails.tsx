@@ -1,3 +1,4 @@
+import { toolRowCopy } from './toolRowCopy';
 import { Check, Clock, X } from '../../lib/icons';
 
 import styles from './Activity.module.css';
@@ -33,14 +34,17 @@ export function ActivityDetails({
 
       {visionActivities.map((v) => (
         <div key={v.id} className={styles.vision}>
-          <div>Image reader ({v.modelId ?? 'vision'}): {v.phase}</div>
+          <div>
+            Image reader ({v.modelId ?? 'vision'}): {v.phase}
+          </div>
           {v.answer ? <div>{v.answer}</div> : null}
         </div>
       ))}
 
       {compactions.map((c) => (
         <div key={c.id} className={styles.compaction}>
-          <strong>Context compaction ({c.phase}):</strong> {c.summary ?? 'Summarizing earlier conversation turns...'}
+          <strong>Context compaction ({c.phase}):</strong>{' '}
+          {c.summary ?? 'Summarizing earlier conversation turns...'}
         </div>
       ))}
 
@@ -54,16 +58,20 @@ export function ActivityDetails({
           step.argumentsJson ||
           (step.activity.arguments ? JSON.stringify(step.activity.arguments, null, 2) : '{}');
         const outputText = step.completion?.preview || step.completion?.summary || '';
-        const stepSummary = step.running
-          ? step.statusText || step.activity.presentation?.runningTitle
-          : step.activity.presentation?.finishedTitle || step.completion?.summary;
+        const { title, summary: stepSummary } = toolRowCopy(step);
 
         const iconTone = isError ? 'error' : isDone ? 'done' : 'running';
         return (
-          <div key={step.callId} data-testid={`tool-step-${step.callId}`} className={styles.toolStep}>
+          <div
+            key={step.callId}
+            data-testid={`tool-step-${step.callId}`}
+            className={styles.toolStep}
+          >
             <button
               type="button"
               data-testid={`tool-step-header-${step.callId}`}
+              aria-expanded={isStepOpen}
+              aria-controls={`tool-detail-${step.callId}`}
               onClick={() => toggleStepDetail(step.callId)}
               className={styles.toolStepHeader}
             >
@@ -77,39 +85,43 @@ export function ActivityDetails({
                     <Check size={16} />
                   )}
                 </span>
-                <span className={styles.toolStepName}>{step.activity.name}</span>
-                {stepSummary ? (
-                  <span className={styles.toolStepSummary}>— {stepSummary}</span>
-                ) : null}
+                <span className={styles.toolStepName}>{title}</span>
+                {stepSummary ? <span className={styles.toolStepSummary}>{stepSummary}</span> : null}
               </span>
               <span className={styles.toolStepToggle}>{isStepOpen ? 'Hide' : 'Details'}</span>
             </button>
 
             {isStepOpen && (
-              <div data-testid={`tool-step-detail-${step.callId}`} className={styles.toolStepDetail}>
+              <div
+                id={`tool-detail-${step.callId}`}
+                data-testid={`tool-step-detail-${step.callId}`}
+                className={styles.toolStepDetail}
+              >
                 <div className={styles.toolStepDetailHead}>
                   <span className={styles.toolStepDetailLabel}>Input</span>
                   <button
                     type="button"
                     className={styles.toolStepCopy}
-                    onClick={() => copyText(step.callId, `${formattedArgs}\n\n${outputText}`.trim())}
+                    onClick={() =>
+                      copyText(step.callId, `${formattedArgs}\n\n${outputText}`.trim())
+                    }
                   >
                     {copiedStepId === step.callId ? 'Copied' : 'Copy'}
                   </button>
                 </div>
-                <pre style={{ margin: 0, maxHeight: 160, overflowY: 'auto' }}>{formattedArgs}</pre>
+                <pre className={styles.detailPre}>{formattedArgs}</pre>
 
                 {step.progressLines.length > 0 && (
                   <div>
                     <div className={styles.toolStepDetailLabel}>Progress</div>
-                    <pre style={{ margin: 0 }}>{step.progressLines.join('\n')}</pre>
+                    <pre className={styles.detailPre}>{step.progressLines.join('\n')}</pre>
                   </div>
                 )}
 
                 {outputText && (
                   <div>
                     <div className={styles.toolStepDetailLabel}>{isError ? 'Error' : 'Output'}</div>
-                    <pre style={{ margin: 0, maxHeight: 200, overflowY: 'auto' }}>{outputText}</pre>
+                    <pre className={styles.detailPre}>{outputText}</pre>
                   </div>
                 )}
               </div>

@@ -1,9 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { PraxisStoreProvider } from './state/store';
 import { AccountGate } from './components/screens/AccountGate';
 import { BrowserRouter, useNavigate } from 'react-router-dom';
-import { App } from './App';
+const AuthenticatedApp = React.lazy(() => import('./AuthenticatedApp'));
 import './styles/tokens.css';
 import './styles/theme.css';
 
@@ -15,7 +14,13 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
 
 function RoutedApp() {
   const navigate = useNavigate();
-  return <AccountGate><PraxisStoreProvider onNavigate={navigate}><App /></PraxisStoreProvider></AccountGate>;
+  return (
+    <AccountGate>
+      <React.Suspense fallback={null}>
+        <AuthenticatedApp onNavigate={navigate} />
+      </React.Suspense>
+    </AccountGate>
+  );
 }
 
 const rootEl = document.getElementById('root');

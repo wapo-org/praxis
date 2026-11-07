@@ -4,6 +4,8 @@ test.beforeEach(async ({ page }) => {
   const auth = await page.request.post('/v1/auth/dev', { data: { type: 'auth.dev', userId: 'dropdown-check' } });
   expect(auth.ok()).toBeTruthy();
   await page.goto('/lab/glass?dropdown');
+  await page.getByTestId('position-top-start').waitFor();
+  await page.evaluate(() => document.fonts.ready);
 });
 
 test('measures, flips, shifts and sizes at nine viewport anchors', async ({
@@ -55,7 +57,7 @@ test('focus, disabled skipping, navigation, typeahead, selection, Escape and Tab
   await page.keyboard.press('Home');
   await page.keyboard.press('PageDown');
   await expect(
-    page.getByRole('menuitem', { name: 'Recent Notes' }),
+    page.getByRole('menuitem', { name: 'Recent chats' }),
   ).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(
@@ -253,11 +255,11 @@ test('submenu header rises in one sheet, expands and reverses; reduced motion ne
   // Geometry is only meaningful once the glass has landed: the morph leaves nothing inline at rest.
   await expect.poll(() => menu.evaluate((el: HTMLElement) => el.style.transform)).toBe('');
   const old = await menu.boundingBox();
-  const recent = page.getByRole('menuitem', { name: 'Recent Notes' });
+  const recent = page.getByRole('menuitem', { name: 'Recent chats' });
   const row = await recent.boundingBox();
   await recent.click();
   await expect(page.getByRole('menuitem')).toHaveCount(6);
-  const header = page.getByRole('menuitem', { name: 'Recent Notes' });
+  const header = page.getByRole('menuitem', { name: 'Recent chats' });
   await expect(async () =>
     expect((await header.boundingBox())!.y).toBeLessThan(row!.y),
   ).toPass();
@@ -314,11 +316,11 @@ test('native mouse drag selects exactly once and suppressed release click cannot
   await expect(page.getByRole('menu')).toHaveCount(0);
 });
 
-test('reference replica captures stay on-screen inside the lab card', async ({
+test('menu motion captures stay on-screen inside the lab card', async ({
   page,
 }, info) => {
   await page.goto('/lab/glass');
-  const trigger = page.getByTestId('apple-notes-menu-trigger');
+  const trigger = page.getByTestId('motion-preview-trigger');
   await trigger.scrollIntoViewIfNeeded();
   await trigger.click();
   const id = await trigger.getAttribute('aria-controls');
@@ -328,12 +330,12 @@ test('reference replica captures stay on-screen inside the lab card', async ({
   await page.screenshot({
     path: shot(info, `IMG_7752-replica-${info.project.name}.png`),
   });
-  await page.getByTestId('recent-notes-subtrigger').click();
+  await page.getByTestId('recent-chats-subtrigger').click();
   await expect(
-    page.getByRole('menuitem', { name: 'Recent Notes', exact: true }),
+    page.getByRole('menuitem', { name: 'Recent chats', exact: true }),
   ).toHaveCount(1);
   await expect(
-    page.getByRole('menuitem', { name: 'Recent Notes', exact: true }),
+    page.getByRole('menuitem', { name: 'Recent chats', exact: true }),
   ).toHaveAttribute('aria-expanded', 'true');
   await page.screenshot({
     path: shot(info, `IMG_7774-replica-${info.project.name}.png`),

@@ -4,7 +4,7 @@
 }
 
 .heading {
-  margin-top: var(--space-2);
+  margin: var(--space-2) 0 0;
   color: var(--color-ink);
   font-family: var(--font-display);
   font-weight: var(--weight-semibold);
@@ -61,7 +61,7 @@
   padding: var(--space-3) var(--space-4);
   overflow-x: auto;
   color: var(--color-ink);
-  font: var(--weight-regular) var(--text-sm) / 20px var(--font-mono);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-md) var(--font-mono);
 }
 
 .table {
@@ -129,4 +129,15 @@
     background: var(--color-hover);
     color: var(--color-ink);
   }
+}
+
+.table [data-align='right'] {
+  text-align: right;
+}
+.table [data-align='center'] {
+  text-align: center;
+}
+.codeHeader button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }

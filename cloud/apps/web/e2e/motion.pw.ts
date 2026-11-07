@@ -57,8 +57,15 @@ test('the sidebar slides, and reversing mid-flight continues from where it is', 
   await aside.evaluate((el) => {
     const w = window as unknown as { __track: Array<[number, number]> };
     w.__track = [];
+    let reversed = false;
     const tick = (now: number) => {
-      w.__track.push([now, el.getBoundingClientRect().left]);
+      const left = el.getBoundingClientRect().left;
+      w.__track.push([now, left]);
+      // Reverse in the measured frame: a protocol round trip can outlast the exit under load.
+      if (!reversed && left < -40) {
+        const reopen = document.querySelector<HTMLButtonElement>('[data-testid="nav-sidebar-button"]');
+        if (reopen) { reversed = true; reopen.click(); }
+      }
       if (w.__track.length < 2000) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -66,9 +73,8 @@ test('the sidebar slides, and reversing mid-flight continues from where it is', 
   await page.getByTestId('sidebar-toggle').click();
   await page.waitForFunction(() => {
     const track = (window as unknown as { __track: Array<[number, number]> }).__track;
-    return track[track.length - 1]![1] < -40;
+    return track.some(([, left]) => left < -40);
   });
-  await page.getByTestId('nav-sidebar-button').click(); // reopen history while it is still leaving (Cmd-K now opens search)
   await page.waitForTimeout(1000);
   const track = await page.evaluate(() => (window as unknown as { __track: Array<[number, number]> }).__track);
   const lefts = track.map(([, left]) => left);

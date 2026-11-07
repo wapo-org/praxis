@@ -63,7 +63,8 @@ export function ChatScreen() {
     (status === 'running' ||
       status === 'awaitingApproval' ||
       status === 'awaitingElicitation' ||
-      status === 'failed');
+      status === 'failed' ||
+      status === 'cancelled');
   const isEmpty = activeMessages.length === 0 && !hasLiveStreamingContent;
   const lastUserMessage = React.useMemo(
     () => [...activeMessages].reverse().find((m) => m.role === 'user'),
@@ -85,7 +86,9 @@ export function ChatScreen() {
 
   const liveRunId = hasLiveStreamingContent ? activeLiveRun?.run.id : undefined;
   const arrivalKeys = React.useMemo(() => {
-    const keys = activeMessages.map((m) => (m.role === 'user' ? `m:${m.clientTurnId ?? m.id}` : `r:${m.runId ?? m.id}`));
+    const keys = activeMessages.map((m) =>
+      m.role === 'user' ? `m:${m.clientTurnId ?? m.id}` : `r:${m.runId ?? m.id}`,
+    );
     if (liveRunId) keys.push(`r:${liveRunId}`);
     return keys;
   }, [activeMessages, liveRunId]);
@@ -96,11 +99,24 @@ export function ChatScreen() {
       <ProgressiveBlurScrim edge="top" height={48} />
       <ChatHeader />
 
-      <div ref={scrollRef} data-testid="chat-scroll-viewport" onScroll={handleScroll} className={styles.viewport}>
-        <motion.div ref={columnRef} data-chat-column="" className={styles.column} data-empty={isEmpty} initial={false} animate={{ x: shift }} transition={PANEL}>
-          {error ? (
+      <div
+        ref={scrollRef}
+        data-testid="chat-scroll-viewport"
+        onScroll={handleScroll}
+        className={styles.viewport}
+      >
+        <motion.div
+          ref={columnRef}
+          data-chat-column=""
+          className={styles.column}
+          data-empty={isEmpty}
+          initial={false}
+          animate={{ x: shift }}
+          transition={PANEL}
+        >
+          {error && !activeLiveRun?.run.error ? (
             <div role="alert" data-testid="chat-error-banner" className={styles.error}>
-              <span>{error}</span>
+              <span>Couldn't finish: {error}</span>
               <button type="button" onClick={clearErrorBanner}>
                 Dismiss
               </button>
@@ -111,10 +127,20 @@ export function ChatScreen() {
             <EmptyState onPick={(prompt, script) => void sendMessage(prompt, { script })} />
           ) : (
             activeMessages.map((msg, index) => {
-              if (msg.role === 'assistant' && hasLiveStreamingContent && msg.runId === activeLiveRun?.run.id)
+              if (
+                msg.role === 'assistant' &&
+                hasLiveStreamingContent &&
+                msg.runId === activeLiveRun?.run.id
+              )
                 return null;
               if (msg.role === 'user')
-                return <UserBubble key={msg.clientTurnId ?? msg.id} message={msg} attachmentsById={attachmentsById} />;
+                return (
+                  <UserBubble
+                    key={msg.clientTurnId ?? msg.id}
+                    message={msg}
+                    attachmentsById={attachmentsById}
+                  />
+                );
               const steps = extractMessageToolSteps(msg);
               const hasReasoning = msg.parts.some((p) => p.type === 'reasoning');
               const text = messageText(msg, '\n\n');
@@ -127,7 +153,12 @@ export function ChatScreen() {
                 }
               }
               return (
-                <div key={msg.id} data-testid="assistant-turn" data-message-key={`r:${msg.runId ?? msg.id}`} className={styles.assistantTurn}>
+                <div
+                  key={msg.id}
+                  data-testid="assistant-turn"
+                  data-message-key={`r:${msg.runId ?? msg.id}`}
+                  className={styles.assistantTurn}
+                >
                   {steps.length > 0 || hasReasoning ? (
                     <MessageActivity
                       message={msg}
@@ -152,7 +183,11 @@ export function ChatScreen() {
           )}
 
           {hasLiveStreamingContent && activeLiveRun ? (
-            <div data-testid="live-run-streaming-turn" data-message-key={`r:${activeLiveRun.run.id}`} className={styles.assistantTurn}>
+            <div
+              data-testid="live-run-streaming-turn"
+              data-message-key={`r:${activeLiveRun.run.id}`}
+              className={styles.assistantTurn}
+            >
               <AgentActivityView
                 startedAt={activeLiveRun.run.createdAt}
                 finishedAt={activeLiveRun.run.updatedAt}
@@ -171,6 +206,7 @@ export function ChatScreen() {
                   void resolveElicitation(rId, eId, action, content)
                 }
               />
+              {activeLiveRun.run.error ? <p role="alert" data-testid="chat-error-banner" className={styles.error}>Couldn't finish: {activeLiveRun.run.error}</p> : null}
               {activeLiveRun.textBlocks.length > 0 ? (
                 <AgentMessageView
                   text={activeLiveRun.textBlocks.map((b) => b.text).join('\n\n')}

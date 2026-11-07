@@ -5,6 +5,7 @@ test.beforeEach(async ({ page }) => {
   expect((await page.request.post('/v1/auth/dev', { data: { type: 'auth.dev', userId: 'morph-check' } })).ok()).toBeTruthy();
   await page.goto('/lab/glass?morph');
   await page.getByTestId('morph-lab').waitFor();
+  await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(400);
 });
 
@@ -227,7 +228,9 @@ test.describe('the tray', () => {
       const w = window as unknown as { __bottoms: Array<[number, number]>; __on: boolean };
       w.__bottoms = [];
       w.__on = true;
-      const start = performance.now();
+      // Measure from the actual press, excluding automation/actionability latency.
+      let start = performance.now();
+      document.querySelector('[data-testid="composer-plus-button"]')!.addEventListener('pointerdown', () => { start = performance.now(); }, { once: true });
       const tick = () => {
         if (!w.__on) return;
         const box = document.querySelector('[data-testid="plus-tray"]')?.getBoundingClientRect();
@@ -263,7 +266,7 @@ test.describe('the limits', () => {
     await landed(menu);
     expect((await menu.boundingBox())!.width).toBeLessThanOrEqual(280.5);
     const row = menu.getByRole('menuitem').first();
-    const clipped = await row.locator('span').filter({ hasText: 'am i missing' }).last().evaluate((el) => el.scrollWidth > el.clientWidth);
+    const clipped = await row.locator('span').filter({ hasText: 'Review the project plan' }).last().evaluate((el) => el.scrollWidth > el.clientWidth);
     expect(clipped).toBe(true);
   });
 

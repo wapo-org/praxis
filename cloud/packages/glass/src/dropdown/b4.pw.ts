@@ -3,6 +3,8 @@ test.use({ hasTouch: true });
 test.beforeEach(async ({ page }) => {
   expect((await page.request.post('/v1/auth/dev', { data: { type: 'auth.dev', userId: 'b4-check' } })).ok()).toBeTruthy();
   await page.goto('/lab/glass?dropdown');
+  await page.getByTestId('position-top-start').waitFor();
+  await page.evaluate(() => document.fonts.ready);
 });
 /** Geometry is only meaningful once the glass has landed: the morph leaves nothing inline at rest. */
 async function landed(menu: Locator) {
@@ -40,10 +42,10 @@ test('touch pans and pointercancel preserve the model picker and scrolling subme
   await expect(modelMenu).toHaveCount(0);
   await page.getByTestId('position-middle-end').evaluate(el => { for (let node = el.parentElement; node; node = node.parentElement) node.scrollTop = 0; });
   await page.getByTestId('position-middle-end').click();
-  await page.getByRole('menuitem', { name: 'Recent Notes', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Recent chats', exact: true }).click();
   const menu = page.getByRole('menu');
   await syntheticPan(page, menu);
-  await expect(page.getByRole('menuitem', { name: 'Recent Notes', exact: true })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('menuitem', { name: 'Recent chats', exact: true })).toHaveAttribute('aria-expanded', 'true');
 });
 test('real Chromium touch pan scrolls models without selecting or dismissing', async ({ page, context, browserName }) => {
   test.skip(browserName !== 'chromium', 'CDP native touch input is Chromium-only; WebKit pointer-cancel path is checked separately.');
@@ -92,13 +94,13 @@ test('Esc and ArrowLeft restore the popped SubTrigger; tiles navigate horizontal
   await page.keyboard.press('ArrowRight'); await expect(page.getByRole('menuitem', { name: 'Pin Note', exact: true })).toBeFocused();
   await page.keyboard.press('ArrowLeft'); await expect(page.getByRole('menuitem', { name: 'Scan', exact: true })).toBeFocused();
   for (const key of ['Escape', 'ArrowLeft']) {
-    const recent = page.getByRole('menuitem', { name: 'Recent Notes', exact: true });
+    const recent = page.getByRole('menuitem', { name: 'Recent chats', exact: true });
     await recent.focus(); await page.keyboard.press('ArrowRight');
-    const child = page.getByRole('menuitem').filter({ hasText: 'am i missing' });
+    const child = page.getByRole('menuitem').filter({ hasText: 'Design review' });
     await child.focus(); await page.keyboard.press(key);
     await expect(page.getByRole('menu')).toBeVisible();
-    await expect(page.getByRole('menuitem', { name: 'Recent Notes', exact: true })).toBeFocused();
-    await expect(page.getByRole('menuitem', { name: 'Recent Notes', exact: true })).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByRole('menuitem', { name: 'Recent chats', exact: true })).toBeFocused();
+    await expect(page.getByRole('menuitem', { name: 'Recent chats', exact: true })).toHaveAttribute('aria-expanded', 'false');
   }
   await page.keyboard.press('Tab');
   await expect(page.getByTestId('position-top-center')).toBeFocused();
@@ -116,20 +118,20 @@ test('plain morph header, centered preview icons and staggered children respect 
       }
       return frames;
     }),
-    page.getByRole('menuitem', { name: 'Recent Notes', exact: true }).click(),
+    page.getByRole('menuitem', { name: 'Recent chats', exact: true }).click(),
   ]);
   expect(frames.some(values => values[0]! > values.at(-1)! + .02)).toBeTruthy();
   const header = page.locator('[data-dropdown-morph-header]');
   await expect(header).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(page.getByRole('separator')).toHaveCSS('margin-left', '16px');
-  const child = page.getByRole('menuitem').filter({ hasText: 'am i missing' });
+  const child = page.getByRole('menuitem').filter({ hasText: 'Design review' });
   await expect(child).toHaveCSS('align-items', 'center');
   expect(await page.locator('[data-dropdown-panel="recent"] [data-slot="dropdown-separator"]').count()).toBe(0);
   const identity = await header.evaluate(el => ({ row: el.getAttribute('data-framer-name'), independent: el.querySelector('[data-submenu-chevron]')?.getAttribute('data-projection-id') }));
   expect(identity.independent).toBeNull();
   await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.getByTestId('position-top-start').click(); await page.getByRole('menuitem', { name: 'Recent Notes', exact: true }).click();
+  await page.getByTestId('position-top-start').click(); await page.getByRole('menuitem', { name: 'Recent chats', exact: true }).click();
   await expect(page.locator('[data-dropdown-panel="recent"] [data-dropdown-child]').last()).toHaveCSS('opacity', '1');
 });
 test('a mouse drag past the edge stretches the glass and cancellation springs it back without dismissal', async ({ page }) => {
@@ -148,14 +150,14 @@ test('a mouse drag past the edge stretches the glass and cancellation springs it
   await expect(menu).toBeVisible();
   await expect(async () => expect(Math.abs((await surface.boundingBox())!.height - rest.height)).toBeLessThan(1)).toPass();
 });
-test('full lab fits 402 px, keeps position triggers in their own section and replica in viewport', async ({ page }) => {
+test('full lab fits 402 px, keeps position triggers in their own section and menu in viewport', async ({ page }) => {
   await page.goto('/lab/glass');
-  const main = page.locator('.glass-lab-main'); const box = await main.boundingBox();
+  const main = page.locator('.glass-lab-main'); await expect(main).toBeVisible(); await page.evaluate(() => document.fonts.ready); const box = await main.boundingBox();
   expect(box!.x).toBeGreaterThanOrEqual(0); expect(box!.width).toBeLessThanOrEqual(402);
   expect(await page.getByTestId('glass-lab-page').evaluate(el => el.scrollWidth)).toBeLessThanOrEqual(402);
   const positions = page.getByRole('region', { name: 'Dropdown positioning lab' });
   const before = await positions.boundingBox(); const header = await page.locator('.glass-lab-header').boundingBox();
   expect(before!.y).toBeGreaterThan(header!.y + header!.height);
-  const trigger = page.getByTestId('apple-notes-menu-trigger'); await trigger.scrollIntoViewIfNeeded(); await trigger.click();
+  const trigger = page.getByTestId('motion-preview-trigger'); await trigger.scrollIntoViewIfNeeded(); await trigger.click();
   await expect(page.getByRole('menu')).toBeInViewport({ ratio: 1 });
 });

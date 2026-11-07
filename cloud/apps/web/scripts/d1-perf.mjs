@@ -122,6 +122,8 @@ await page.keyboard.press('Escape');
 await page.keyboard.press('Escape');
 await page.unroute('**/v1/models?**');
 
+const scaled = value => value !== '' && value !== 'none' && value.split(' ').some(axis => Math.abs(Number(axis) - 1) > 0.001);
+
 // 4. Liquid Glass stretch: press-drag each glass surface; no long tasks, the
 // transform appears mid-drag and springs back to none on release.
 await window_('stretch');
@@ -130,15 +132,15 @@ async function stretch(dragSelector, transformSelector, x, y) {
     page.evaluate((s) => {
       const el = document.querySelector(s);
       if (!el) return '';
-      return (el?.closest?.('[data-glass-surface]') ?? el).style.scale;
+      return getComputedStyle(el?.closest?.('[data-glass-surface]') ?? el).scale;
     }, sel);
   let mid = '';
-  for (let attempt = 0; attempt < 3 && !mid.startsWith('translate'); attempt++) {
+  for (let attempt = 0; attempt < 3 && !scaled(mid); attempt++) {
     const box = await page.locator(dragSelector).boundingBox();
     await page.mouse.move(box.x + (x ?? box.width / 2), box.y + (y ?? box.height / 2));
     await page.mouse.down();
     for (let i = 1; i <= 24; i++) {
-      await page.mouse.move(box.x + box.width / 2 + i * 3, box.y + box.height / 2 + i * 1.5);
+      await page.mouse.move(box.x + box.width / 2 + (box.width / 2 + 96) * i / 24, box.y + box.height / 2 + i * 1.5);
       await page.waitForTimeout(16);
     }
     mid = await read(transformSelector);
@@ -157,14 +159,15 @@ stretchResults.topbar = await stretch('[data-testid="nav-settings-button"]', '[d
 await row.hover();
 await row.getByRole('button', { name: /^Actions for/ }).click();
 await page.getByRole('menu').waitFor();
+await page.waitForFunction(() => document.querySelector('[role="menu"]')?.style.transform === '');
 stretchResults.menu = await stretch('[role="menu"]', '[role="menu"] [data-glass-surface]', 40, 30);
 await page.keyboard.press('Escape').catch(() => {});
 await page.getByRole('menu').waitFor({ state: 'detached' }).catch(() => {});
 const stretchTasks = await taken();
 const { menu, ...rest } = stretchResults;
-const menuStretchedOk = menu.mid.startsWith('translate');
+const menuStretchedOk = scaled(menu.mid);
 const stretchOk = menuStretchedOk && Object.values(rest).every(
-  (r) => r.mid.startsWith('translate') && r.rest === 'none',
+  (r) => scaled(r.mid) && r.rest === 'none',
 );
 
 // 5. Idle: count script callbacks per frame for 2 s (rAF loops would show up as scripting time).

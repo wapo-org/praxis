@@ -1,4 +1,5 @@
 import React from 'react';
+import styles from './InlineTokens.module.css';
 import { FileText } from '../../lib/icons';
 import { safeLink } from '../../lib/links';
 
@@ -49,25 +50,9 @@ export function renderInlineTokens(
                 detail: url,
               })
             }
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '1px 8px',
-              margin: '0 2px',
-              borderRadius: 7,
-              background: 'var(--paper-fill-1)',
-              border: '0.5px solid var(--paper-hairline)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--text-sm)',
-              lineHeight: '20px',
-              color: 'var(--paper-ink)',
-              cursor: 'pointer',
-              verticalAlign: 'baseline',
-              whiteSpace: 'nowrap',
-            }}
+            className={styles.token}
           >
-            <span aria-hidden="true" style={{ fontSize: 'var(--text-xs)', color: 'var(--paper-accent)' }}>
+            <span aria-hidden="true" className={styles.token}>
               <FileText size={16} />
             </span>
             <span>{label}</span>
@@ -81,25 +66,10 @@ export function renderInlineTokens(
             target="_blank"
             rel="noreferrer"
             data-testid="inline-link-chip"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '1px 9px',
-              margin: '0 2px',
-              borderRadius: 999,
-              background: 'var(--paper-fill-1)',
-              border: '0.5px solid var(--paper-hairline)',
-              fontSize: 'var(--text-md)',
-              lineHeight: '20px',
-              color: 'var(--paper-ink)',
-              textDecoration: 'none',
-              verticalAlign: 'baseline',
-              whiteSpace: 'nowrap',
-            }}
+            className={styles.token}
           >
-            <span style={{ fontWeight: 500 }}>{label}</span>
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--paper-ink-3)' }}>{domain} ↗</span>
+            <span className={styles.token}>{label}</span>
+            <span className={styles.token}>{domain} ↗</span>
           </a>,
         );
       } else {
@@ -122,26 +92,10 @@ export function renderInlineTokens(
                 : `Symbol / code snippet: ${codeContent}`,
             })
           }
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: '2px 7px',
-            margin: '0 1.5px',
-            borderRadius: 6,
-            background: 'var(--paper-fill-1)',
-            border: '0.5px solid var(--paper-hairline)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-md)',
-            lineHeight: '20px',
-            color: 'var(--paper-ink)',
-            cursor: 'pointer',
-            verticalAlign: 'baseline',
-            whiteSpace: 'nowrap',
-          }}
+          className={styles.token}
         >
           {isFileRef && (
-            <span aria-hidden="true" style={{ fontSize: 'var(--text-xs)', color: 'var(--paper-accent)' }}>
+            <span aria-hidden="true" className={styles.token}>
               <FileText size={16} />
             </span>
           )}
@@ -149,11 +103,7 @@ export function renderInlineTokens(
         </button>,
       );
     } else if (match[5] !== undefined) {
-      nodes.push(
-        <strong key={`bold-${keyIdx++}`} style={{ fontWeight: 600 }}>
-          {match[5]}
-        </strong>,
-      );
+      nodes.push(<strong key={`bold-${keyIdx++}`}>{match[5]}</strong>);
     } else if (match[6] !== undefined) {
       nodes.push(<em key={`em-${keyIdx++}`}>{match[6]}</em>);
     } else if (match[7] !== undefined) {

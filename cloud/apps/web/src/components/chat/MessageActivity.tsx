@@ -3,6 +3,7 @@ import React from 'react';
 import { apiClient } from '../../lib/api';
 import { snapshotProgress } from '../../lib/toolProgress';
 import type { ActiveToolStep } from '../../state/store';
+import styles from './Activity.module.css';
 import { AgentActivityView } from './AgentActivityView';
 import { maxIsoTimestamp } from './useActivityClock';
 
@@ -57,21 +58,28 @@ export function MessageActivity({
     undefined;
 
   return (
-    <AgentActivityView
-      runId={run?.id ?? message.runId}
-      startedAt={startedAt}
-      finishedAt={finishedAt}
-      promptStartedAt={promptStartedAt}
-      isRunning={false}
-      runStatus={run?.status}
-      toolSteps={liveSteps ?? recoveredSteps ?? steps}
-      reasoningBlocks={message.parts
-        .filter((p) => p.type === 'reasoning')
-        .map((p, i) => ({
-          id: `${message.id}-${i}`,
-          text: p.text ?? '',
-          finished: true,
-        }))}
-    />
+    <>
+      <AgentActivityView
+        runId={run?.id ?? message.runId}
+        startedAt={startedAt}
+        finishedAt={finishedAt}
+        promptStartedAt={promptStartedAt}
+        isRunning={false}
+        runStatus={run?.status}
+        toolSteps={liveSteps ?? recoveredSteps ?? steps}
+        reasoningBlocks={message.parts
+          .filter((p) => p.type === 'reasoning')
+          .map((p, i) => ({
+            id: `${message.id}-${i}`,
+            text: p.text ?? '',
+            finished: true,
+          }))}
+      />
+      {run?.error ? (
+        <p role="status" className={styles.outcome}>
+          Couldn't finish: {run.error}
+        </p>
+      ) : null}
+    </>
   );
 }

@@ -142,11 +142,11 @@ export function renderSpecular(
 }
 
 /** The progressive-frost rim mask: alpha rises from the core to the rim on the inscribed ellipse. */
-function frostMask(canvas: HTMLCanvasElement, mw: number, mh: number): string | null {
+function paintFrostMask(canvas: HTMLCanvasElement, mw: number, mh: number): boolean {
   canvas.width = mw;
   canvas.height = mh;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
+  if (!ctx) return false;
   ctx.translate(mw / 2, mh / 2);
   ctx.scale(mw / 2, mh / 2);
   const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
@@ -156,7 +156,11 @@ function frostMask(canvas: HTMLCanvasElement, mw: number, mh: number): string | 
   gradient.addColorStop(1, 'rgba(255,255,255,1)');
   ctx.fillStyle = gradient;
   ctx.fillRect(-1, -1, 2, 2);
-  return canvas.toDataURL('image/png');
+  return true;
+}
+
+function frostMask(canvas: HTMLCanvasElement, mw: number, mh: number): string | null {
+  return paintFrostMask(canvas, mw, mh) ? canvas.toDataURL('image/png') : null;
 }
 
 /**
@@ -212,4 +216,51 @@ export function generateMaps(spec: MapSpec): GeneratedMaps | null {
   if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value as string);
   cache.set(key, maps);
   return maps;
+}
+
+
+/** Browser PNG encoding is asynchronous: cold menu opens must not block on toDataURL. */
+function encodePNG(canvas: HTMLCanvasElement): Promise<string | null> {
+  return new Promise(resolve => canvas.toBlob(blob => {
+    if (!blob) { resolve(null); return; }
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  }, 'image/png'));
+}
+const pendingMaps = new Map<string, Promise<GeneratedMaps | null>>();
+export function generateMapsAsync(spec: MapSpec): Promise<GeneratedMaps | null> {
+  const key = mapKey(spec);
+  const hit = cache.get(key);
+  if (hit) return Promise.resolve(hit);
+  const pending = pendingMaps.get(key);
+  if (pending) return pending;
+  const build = async () => {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const eff = Math.min(dpr, Math.sqrt((spec.pixelBudget ?? PIXEL_BUDGET) / (spec.width * spec.height)));
+    const mw = Math.max(2, Math.round(spec.width * eff)), mh = Math.max(2, Math.round(spec.height * eff));
+    const canvas = document.createElement('canvas');
+    canvas.width = mw; canvas.height = mh;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    const image = ctx.createImageData(mw, mh);
+    renderDisplacement(image.data, mw, mh, spec.radius * eff, spec.bezel * eff, PROFILES[spec.material]);
+    ctx.putImageData(image, 0, 0);
+    const displacementUrl = await encodePNG(canvas);
+    image.data.fill(0);
+    renderSpecular(image.data, mw, mh, spec.radius * eff, 2, (-60 * Math.PI) / 180, eff);
+    ctx.putImageData(image, 0, 0);
+    const specularUrl = await encodePNG(canvas);
+    if (!paintFrostMask(canvas, Math.min(mw, MASK_SIZE), Math.min(mh, MASK_SIZE))) return null;
+    const frostMaskUrl = await encodePNG(canvas);
+    if (!displacementUrl || !specularUrl || !frostMaskUrl) return null;
+    const maps = { width: spec.width, height: spec.height, displacementUrl, specularUrl, frostMaskUrl };
+    if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value as string);
+    cache.set(key, maps);
+    return maps;
+  };
+  const task = build().finally(() => pendingMaps.delete(key));
+  pendingMaps.set(key, task);
+  return task;
 }

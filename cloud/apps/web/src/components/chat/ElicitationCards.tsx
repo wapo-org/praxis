@@ -21,7 +21,12 @@ export function ElicitationCards({
         const schemaProps =
           (elicitation.schema?.properties as Record<
             string,
-            { type?: string; title?: string; description?: string; default?: unknown }
+            {
+              type?: string;
+              title?: string;
+              description?: string;
+              default?: unknown;
+            }
           >) ?? {};
         const propKeys = Object.keys(schemaProps);
         const currentForm = elicitationValues[elicitation.id] ?? {};
@@ -34,7 +39,11 @@ export function ElicitationCards({
         };
 
         return (
-          <div key={elicitation.id} data-testid={`elicitation-card-${elicitation.id}`} className={styles.card}>
+          <div
+            key={elicitation.id}
+            data-testid={`elicitation-card-${elicitation.id}`}
+            className={styles.card}
+          >
             <div className={styles.cardTitle}>
               <span>{elicitation.message || 'Additional details requested'}</span>
             </div>
@@ -49,7 +58,7 @@ export function ElicitationCards({
                 Open external authorization ({elicitation.url}) ↗
               </a>
             ) : propKeys.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div className={styles.cardFields}>
                 {propKeys.map((key) => {
                   const spec = schemaProps[key] ?? {};
                   const val =
