@@ -1,10 +1,10 @@
-import { GlassDropdown, GlassSurface, usePress } from '@praxis/glass';
+import { GlassDropdown, usePress } from '@praxis/glass';
 import type { Chat } from '@praxis/protocol';
 import { motion } from 'framer-motion';
 import React from 'react';
 import { useAccount } from '../../lib/account';
 import { groupChats } from '../../lib/chatGroups';
-import { MoreHorizontal, PanelLeft, Pencil, Pin, Search, Settings, Edit, Trash2 } from '../../lib/icons';
+import { MoreHorizontal, PanelLeft, Pin, Search, Settings, Edit } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import { chatActions } from '../../actions/registry';
 import styles from './Sidebar.module.css';
@@ -20,7 +20,6 @@ export function SidebarChats({ onClose, onNavigate }: { onClose?: () => void; on
   return (
     <>
       <div className={styles.header}>
-        <span className={styles.brand}>Praxis</span>
         <motion.button
           type="button"
           className={styles.iconButton}
@@ -48,12 +47,21 @@ export function SidebarChats({ onClose, onNavigate }: { onClose?: () => void; on
           {...pressProps}
         >
           <Edit size={18} />
-          New chat
+          <span className={styles.rowTitle}>New chat</span>
         </motion.button>
-        <button type="button" className={styles.action} aria-label="Search conversations"
-          onClick={() => { window.dispatchEvent(new Event('praxis:search')); onNavigate?.(); }}>
-          <Search size={18} />Search
-        </button>
+        <motion.button
+          type="button"
+          className={styles.action}
+          aria-label="Search conversations"
+          onClick={() => {
+            window.dispatchEvent(new Event('praxis:search'));
+            onNavigate?.();
+          }}
+          {...pressProps}
+        >
+          <Search size={18} />
+          <span className={styles.rowTitle}>Search</span>
+        </motion.button>
       </nav>
 
       <div className={styles.list}>

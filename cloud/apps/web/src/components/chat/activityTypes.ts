@@ -3,6 +3,7 @@ import type { ActiveElicitation, ActiveToolStep } from '../../state/types';
 export interface AgentActivityViewProps {
   startedAt?: string;
   finishedAt?: string;
+  promptStartedAt?: string;
   runId?: string;
   isRunning?: boolean;
   reasoningBlocks?: Array<{ id: string; text: string; finished: boolean }>;

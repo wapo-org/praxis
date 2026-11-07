@@ -8,7 +8,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  padding: var(--space-2) var(--space-6) var(--space-8);
+  padding: var(--space-6) var(--space-6) var(--space-8);
+}
+[data-nested='true'] .body {
+  padding-top: var(--space-3);
 }
 .section {
   display: flex;
@@ -400,8 +403,12 @@
 }
 @media (max-width: 1023px) {
   .body {
+    padding-top: calc(var(--control-md) + var(--float-margin) + var(--space-4));
     padding-inline: var(--space-4);
     padding-bottom: max(var(--space-8), env(safe-area-inset-bottom));
+  }
+  [data-nested='true'] .body {
+    padding-top: var(--space-3);
   }
   /* 44 px controls on touch; 16 px text stops iOS zooming into focused fields. */
   .button {

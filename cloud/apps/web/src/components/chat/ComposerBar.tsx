@@ -1,13 +1,13 @@
 import { SNAP, usePress } from '@praxis/glass';
 import { motion } from 'framer-motion';
 import React from 'react';
-import { ArrowUp, Camera, Mic, Plus, Square } from '../../lib/icons';
+import { ArrowUp, Mic, Plus, Square } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import styles from './ComposerBar.module.css';
 
 const MAX_INPUT_HEIGHT = 200;
 
-/** + / textarea / camera / mic / send-or-stop, per the iOS composer. */
+/** + / textarea / mic-or-send-or-stop, per the iOS composer. */
 export function ComposerBar({
   inputRef,
   text,
@@ -15,7 +15,6 @@ export function ComposerBar({
   onKeyDown,
   recording,
   transcribing,
-  onCamera,
   onToggleVoice,
   onSend,
   attachmentCount,
@@ -26,7 +25,6 @@ export function ComposerBar({
   onKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement>;
   recording: boolean;
   transcribing: boolean;
-  onCamera: () => void;
   onToggleVoice: () => void;
   onSend: () => void;
   attachmentCount: number;
@@ -36,7 +34,9 @@ export function ComposerBar({
   const pressProps = usePress();
   const isRunning =
     activeLiveRun && ['running', 'awaitingApproval', 'awaitingElicitation'].includes(activeLiveRun.run.status);
+  const hasInput = text.length > 0 || attachmentCount > 0;
   const canSend = !!text.trim() || attachmentCount > 0;
+  const showMic = !isRunning && (!hasInput || recording || transcribing);
 
   // Auto-grow: measure once per text change, never per frame.
   React.useLayoutEffect(() => {
@@ -50,7 +50,7 @@ export function ComposerBar({
     <div className={styles.bar}>
       <motion.button
         type="button"
-        className={styles.round}
+        className={`${styles.round} ${styles.secondary}`}
         aria-label="Open attachments and controls"
         aria-expanded={plusTrayOpen}
         data-testid="composer-plus-button"
@@ -82,52 +82,52 @@ export function ComposerBar({
         onKeyDown={onKeyDown}
       />
 
-      <motion.button
-        type="button"
-        className={`composer-camera ${styles.round}`}
-        aria-label="Camera"
-        onClick={onCamera}
-        {...pressProps}
-      >
-        <Camera size={18} />
-      </motion.button>
-      <motion.button
-        type="button"
-        className={styles.round}
-        aria-label={recording ? 'Stop voice recording' : 'Voice input'}
-        data-testid="composer-voice-button"
-        data-recording={recording || undefined}
-        onClick={onToggleVoice}
-        {...pressProps}
-      >
-        <Mic size={18} />
-      </motion.button>
-
-      {isRunning ? (
-        <motion.button
-          type="button"
-          className={styles.round}
-          aria-label="Stop generating"
-          data-testid="composer-stop-button"
-          onClick={() => void cancelActiveRun()}
-          {...pressProps}
-        >
-          <Square size={16} fill="currentColor" />
-        </motion.button>
-      ) : (
-        <motion.button
-          type="button"
-          className={styles.round}
-          aria-label="Send message"
-          data-testid="composer-send-button"
-          hidden={!canSend}
-          disabled={!canSend}
-          onClick={onSend}
-          {...pressProps}
-        >
-          <ArrowUp size={20} />
-        </motion.button>
-      )}
+      <div className={styles.trailingSlot}>
+        {isRunning ? (
+          <motion.button
+            type="button"
+            className={`${styles.round} ${styles.primary} ${styles.slotButton}`}
+            aria-label="Stop generating"
+            data-testid="composer-stop-button"
+            onClick={() => void cancelActiveRun()}
+            {...pressProps}
+          >
+            <Square size={16} fill="currentColor" />
+          </motion.button>
+        ) : (
+          <>
+            <motion.button
+              type="button"
+              className={`${styles.round} ${styles.secondary} ${styles.slotButton}`}
+              aria-label={recording ? 'Stop voice recording' : 'Voice input'}
+              aria-hidden={!showMic || undefined}
+              tabIndex={showMic ? 0 : -1}
+              disabled={!showMic}
+              data-testid="composer-voice-button"
+              data-recording={recording || undefined}
+              data-hidden={!showMic ? 'true' : undefined}
+              onClick={onToggleVoice}
+              {...pressProps}
+            >
+              <Mic size={18} />
+            </motion.button>
+            <motion.button
+              type="button"
+              className={`${styles.round} ${styles.primary} ${styles.slotButton}`}
+              aria-label="Send message"
+              aria-hidden={showMic || undefined}
+              tabIndex={showMic ? -1 : 0}
+              disabled={showMic || !canSend}
+              data-testid="composer-send-button"
+              data-hidden={showMic ? 'true' : undefined}
+              onClick={onSend}
+              {...pressProps}
+            >
+              <ArrowUp size={20} />
+            </motion.button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

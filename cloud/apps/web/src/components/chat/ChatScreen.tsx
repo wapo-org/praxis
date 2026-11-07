@@ -8,7 +8,7 @@ import { AgentActivityView } from './AgentActivityView';
 import { AgentMessageView } from './AgentMessageView';
 import { useContentShift } from '../shell/useContentShift';
 import { ChatHeader } from './ChatHeader';
-import { useMessageArrival } from './chatMotion';
+import { cancelSendFlight, useMessageArrival } from './chatMotion';
 import { Composer } from './Composer';
 import { EmptyState } from './EmptyState';
 import { extractMessageToolSteps } from './messageTools';
@@ -65,11 +65,24 @@ export function ChatScreen() {
       status === 'awaitingElicitation' ||
       status === 'failed');
   const isEmpty = activeMessages.length === 0 && !hasLiveStreamingContent;
-  const lastUserText = () => {
-    const last = [...activeMessages].reverse().find((m) => m.role === 'user');
-    return last ? messageText(last, '\n') : '';
-  };
+  const lastUserMessage = React.useMemo(
+    () => [...activeMessages].reverse().find((m) => m.role === 'user'),
+    [activeMessages],
+  );
+  const lastUserText = () => (lastUserMessage ? messageText(lastUserMessage, '\n') : '');
   const error = errorBanner || activeLiveRun?.run.error;
+  React.useEffect(() => {
+    if (error) cancelSendFlight();
+  }, [error]);
+  const prevChatIdRef = React.useRef<string | undefined>(activeChat?.id);
+  React.useEffect(() => {
+    if (prevChatIdRef.current && activeChat?.id && prevChatIdRef.current !== activeChat.id) {
+      cancelSendFlight();
+    }
+    prevChatIdRef.current = activeChat?.id;
+  }, [activeChat?.id]);
+  React.useEffect(() => () => cancelSendFlight(), []);
+
   const liveRunId = hasLiveStreamingContent ? activeLiveRun?.run.id : undefined;
   const arrivalKeys = React.useMemo(() => {
     const keys = activeMessages.map((m) => (m.role === 'user' ? `m:${m.id}` : `r:${m.runId ?? m.id}`));
@@ -97,7 +110,7 @@ export function ChatScreen() {
           {isEmpty ? (
             <EmptyState onPick={(prompt, script) => void sendMessage(prompt, { script })} />
           ) : (
-            activeMessages.map((msg) => {
+            activeMessages.map((msg, index) => {
               if (msg.role === 'assistant' && hasLiveStreamingContent && msg.runId === activeLiveRun?.run.id)
                 return null;
               if (msg.role === 'user')
@@ -106,10 +119,23 @@ export function ChatScreen() {
               const hasReasoning = msg.parts.some((p) => p.type === 'reasoning');
               const text = messageText(msg, '\n\n');
               const live = activeLiveRun?.run.id === msg.runId ? activeLiveRun : undefined;
+              let promptStartedAt: string | undefined;
+              for (let i = index - 1; i >= 0; i--) {
+                if (activeMessages[i]?.role === 'user') {
+                  promptStartedAt = activeMessages[i]?.createdAt;
+                  break;
+                }
+              }
               return (
                 <div key={msg.id} data-testid="assistant-turn" data-message-key={`r:${msg.runId ?? msg.id}`} className={styles.assistantTurn}>
                   {steps.length > 0 || hasReasoning ? (
-                    <MessageActivity message={msg} steps={steps} liveRun={live?.run} liveSteps={live?.toolSteps} />
+                    <MessageActivity
+                      message={msg}
+                      steps={steps}
+                      liveRun={live?.run}
+                      liveSteps={live?.toolSteps}
+                      promptStartedAt={promptStartedAt}
+                    />
                   ) : null}
                   {text ? (
                     <AgentMessageView
@@ -130,6 +156,7 @@ export function ChatScreen() {
               <AgentActivityView
                 startedAt={activeLiveRun.run.createdAt}
                 finishedAt={activeLiveRun.run.updatedAt}
+                promptStartedAt={lastUserMessage?.createdAt}
                 runId={activeLiveRun.run.id}
                 isRunning={status === 'running'}
                 runStatus={status}

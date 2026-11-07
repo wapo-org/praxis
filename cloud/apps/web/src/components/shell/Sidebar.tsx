@@ -1,4 +1,4 @@
-import { GlassSurface, PANEL, sidebarSlide, usePreset, useReducedMotion } from '@praxis/glass';
+import { GlassSurface, sidebarSlide, usePreset } from '@praxis/glass';
 import { AnimatePresence, motion } from 'framer-motion';
 import React from 'react';
 import { createPortal } from 'react-dom';
@@ -55,31 +55,16 @@ function Docked({ onClose, devTools }: { onClose: () => void; devTools: boolean 
 
 function SidebarBody({ onClose, onNavigate, devTools }: { onClose?: () => void; onNavigate?: () => void; devTools: boolean }) {
   const store = usePraxisStore();
-  const reduced = useReducedMotion();
   const sheet = store.activeSheet;
-  // Chats sit to the left of Settings: a push forward, a push back.
-  const pane = (side: 1 | -1) =>
-    reduced
-      ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: PANEL }
-      : {
-          initial: { opacity: 0, x: 44 * side },
-          animate: { opacity: 1, x: 0 },
-          exit: { opacity: 0, x: 44 * side },
-          transition: PANEL,
-        };
   return (
     <GlassSurface material="thick" className={styles.surface}>
-      <AnimatePresence initial={false}>
+      <div className={styles.pane}>
         {isSettingsSheet(sheet) ? (
-          <motion.div key="settings" className={styles.pane} {...pane(1)}>
-            <SidebarSettings sheet={sheet} onNavigate={onNavigate} devTools={devTools} />
-          </motion.div>
+          <SidebarSettings sheet={sheet} onClose={onClose} onNavigate={onNavigate} devTools={devTools} />
         ) : (
-          <motion.div key="chats" className={styles.pane} {...pane(-1)}>
-            <SidebarChats onClose={onClose} onNavigate={onNavigate} />
-          </motion.div>
+          <SidebarChats onClose={onClose} onNavigate={onNavigate} />
         )}
-      </AnimatePresence>
+      </div>
     </GlassSurface>
   );
 }

@@ -7,12 +7,20 @@ try {
   await page.goto(BASE); await page.getByRole('button', { name: 'Continue as local dev user' }).click();
   await page.getByTestId('chat-top-bar').waitFor();
   const controls = await page.evaluate(() => {
-    const ink = document.createElement('span'); ink.style.background = 'var(--paper-ink)'; document.body.append(ink);
-    const expected = getComputedStyle(ink).backgroundColor;
-    const fills = ['.composer-camera', '[data-testid="composer-voice-button"]'].map(selector => getComputedStyle(document.querySelector(selector)).backgroundColor);
-    ink.remove(); return { expected, fills, history: !!document.querySelector('[data-testid="nav-history-button"] .lucide-history') };
+    const probe = document.createElement('span');
+    probe.style.background = 'color-mix(in srgb, var(--color-ink) 10%, transparent)';
+    document.body.append(probe);
+    const expected = getComputedStyle(probe).backgroundColor;
+    const fills = ['[data-testid="composer-plus-button"]', '[data-testid="composer-voice-button"]'].map(
+      selector => getComputedStyle(document.querySelector(selector)).backgroundColor,
+    );
+    const cameraCount = document.querySelectorAll('.composer-camera').length;
+    probe.remove();
+    return { expected, fills, cameraCount, history: !!document.querySelector('[data-testid="nav-history-button"] .lucide-history') };
   });
-  assert.equal(controls.history, true); assert.deepEqual(controls.fills, [controls.expected, controls.expected]);
+  assert.equal(controls.history, true);
+  assert.equal(controls.cameraCount, 0);
+  assert.deepEqual(controls.fills, [controls.expected, controls.expected]);
   // Cold / must persist bootstrap before any chat mutation.
   await page.waitForFunction(async () => {
     const { loadReplica } = await import('/src/lib/idb.ts');

@@ -1,5 +1,3 @@
-import { pageChange, usePreset } from '@praxis/glass';
-import { AnimatePresence, motion } from 'framer-motion';
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChatScreen } from './components/chat/ChatScreen';
@@ -21,7 +19,6 @@ export function App() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const store = usePraxisStore();
-  const page = usePreset(pageChange);
   const [searchOpen, setSearchOpen] = React.useState(false);
   React.useEffect(() => {
     const open = () => {
@@ -80,12 +77,9 @@ export function App() {
   return (
     <div data-testid="praxis-app-root" className="praxis-app-root">
       <Sidebar devTools={!!lab} />
-      {/* The two pages overlap while one replaces the other. */}
-      <AnimatePresence initial={false}>
-        <motion.div key={settingsSheet ? 'settings' : 'chat'} className="praxis-page" {...page}>
-          {settingsSheet ? <SettingsPage sheet={settingsSheet} onOpenGlassLab={lab} /> : <ChatScreen />}
-        </motion.div>
-      </AnimatePresence>
+      <div className="praxis-page">
+        {settingsSheet ? <SettingsPage sheet={settingsSheet} onOpenGlassLab={lab} /> : <ChatScreen />}
+      </div>
       <ConsentPopover />
       <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>

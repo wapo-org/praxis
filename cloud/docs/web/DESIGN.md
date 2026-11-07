@@ -78,7 +78,7 @@ Hold any glass and pull: it grows toward the pointer in any direction, and the f
 
 ## No modals
 No centered dialogs and no dimmed backdrops, on any screen size. `SettingsModal`, `SheetDialog`, `SheetsRoot`, `SettingsSheet`, `HistorySheet`, `ConsentSheet` and `DeleteAccountSheet` are deleted.
-- Settings takes over the floating nav: the same panel changes from chats to the settings sections with a push, its back row returns to chats, and the content is a routed page (`SettingsPage`) in the remaining space. There is no second rail and no Done button. Narrow screens follow the same model.
+- Settings takes over the floating nav: the same panel changes from chats to the settings sections as an instant cut (no crossfade or slide), its back row returns to chats, and the content is a routed page (`SettingsPage`) in the remaining space with no redundant page header. There is no second rail and no Done button. Narrow screens follow the same model.
 - History is the floating sidebar: docked on desktop, a floating panel on narrow screens.
 - The AI data-consent step is a small anchored popover (`ConsentPopover`) above the composer: no scrim, no focus trap, no background inertness; Escape and outside clicks do nothing, and the send path still blocks until answered.
 - Account deletion is an inline two-step confirm (`AccountSettings` → `DeleteAccountConfirm`).
@@ -87,8 +87,14 @@ No centered dialogs and no dimmed backdrops, on any screen size. `SettingsModal`
 ## Motion (`packages/glass/src/motion.ts`, the only TS source)
 - **Springs with carried velocity for everything spatial.** A retargeted framer spring keeps its velocity, so any animation reverses from where it is. CSS curves (`--duration-*`) are for colour fades and ambient loops only.
 - The family (`SPRINGS`): `SPRING` {520, 38} default; `snap` {760, 46} press, switch, segmented thumb, chevrons; `panel` {340, 32} sidebar, panel content, pages; `follow`, `lens`, `shadow`, `shadowAlpha` for the stretch and the held rig. `TRANSITION.*` are near-critically damped versions for fades.
+- **Instant screen and sidebar view cuts (WP-G3B):** switching between top-level screens (`ChatScreen` ↔ `SettingsPage`), between settings sub-pages, and between sidebar views (`SidebarChats` ↔ `SidebarSettings`) is an immediate swap with zero slide or crossfade. Only explicit sidebar collapse/expand uses `sidebarSlide`.
 - Hover has no motion: rows own an instant pill background (see Corners and rows).
-- Disclosure and arrivals: `chat/chatMotion.ts`. A height change happens once in layout and what follows glides there with transforms (FLIP). A new message rises in; a loaded history does not.
+- **iMessage send animation and list FLIP (`chat/chatMotion.ts`, WP-G3B):**
+  - Sending a message launches a single transform-driven shared bubble (`sendBubbleShapeAt` / `launchSendFlight`) from the composer input rect to the final user bubble slot while the composer input immediately clears to its placeholder without animating.
+  - Trajectory (calibrated to 60 fps iOS reference `design/send-ref/sheet1.png` & `sheet2.png`, 0–820 ms): materialises over the input field by ~40 ms; left edge pulls right rapidly while right edge stays anchored (40–200 ms); rises to final Y (40–320 ms) while inner text is counter-scaled so glyphs stay 1:1 and left-aligned; overshoots ~4–7 CSS px above the final slot (360–480 ms); drifts gently back down into rest by 820 ms with no second bounce.
+  - Preceding messages in the column glide up smoothly via transform FLIP on `SPRING` as room is made.
+  - Respects `prefers-reduced-motion: reduce` (skips flight and places the message in its slot immediately).
+- Disclosure and arrivals: `chat/chatMotion.ts`. A height change happens once in layout and what follows glides there with transforms (FLIP) while preserving scroll anchor. A new assistant message rises in; a loaded history does not.
 - Only `transform` and `opacity` animate, plus the lens scale for the held rig.
 - `STAGGER` is 30 ms between rows.
 - Presets:
@@ -96,7 +102,7 @@ No centered dialogs and no dimmed backdrops, on any screen size. `SettingsModal`
   - `sheet`: y 16, scale 0.99, plus fade.
   - `fade`: scrims.
   - `listItem`: opacity plus y 10.
-  - `sidebarSlide`: fully off the leading edge and back, never a fade. `pageChange`: a small settle between pages.
+  - `sidebarSlide`: fully off the leading edge and back, never a fade.
   - `press`: `whileTap` scale 0.97.
   - `slideIn` / `slideUnder`: push navigation inside the tray. The next page enters from x 24; the page under it recedes to x -24.
 - Hooks:
@@ -162,8 +168,8 @@ Close is the same path in reverse and faster. A menu opening up or left mirrors 
 - **Sidebar** (`shell/Sidebar`, floating in every state):
   - Fixed, inset `--float-margin` from the left/top/bottom edges; `--radius-panel`; glass `thick`. Not docked: no layout space is reserved, so content passes behind its glass.
   - Desktop: full-height sheet (260 px wide). Narrow (<1024 px): the same content as a floating panel (≤320 px wide, ≤480 px tall), portaled to the document root; Escape or an outside click closes it and returns focus to the History button; choosing a chat, New chat or Account also closes it.
-  - Wordmark in serif 19 with a collapse button.
-  - "New chat" and an inline "Search" (⌘K focuses it) as 36 px ghost rows.
+  - Compact top bar with the collapse button on the right (no `Praxis` wordmark in chats; in settings, a compact `Back` control on the left and the collapse button on the right, with no `Settings` title header).
+  - "New chat" and "Search" (⌘K opens the floating Spotlight search) as 36 px ghost rows inset 12 px (`--space-3`, `--glide-inset: var(--space-3)`) with 8 px (`--space-2`) internal horizontal padding, 18 px icons, 8 px (`--space-2`) icon-to-label gap, and regular 14/20 weight aligned with the chat rows below.
   - Chats grouped by date (`lib/chatGroups.ts`) as 36 px single-line rows; the hover "…" (28 px) opens a glass menu (right-click works too).
   - The account/settings row sits at the bottom.
 - **Top bar** (`chat/ChatHeader`):
@@ -180,15 +186,17 @@ Close is the same path in reverse and faster. A menu opening up or left mirrors 
   - User bubble: `--color-bubble`, radius 20, 14/20, max 78% wide.
   - Turn rhythm: 32 px before a user turn, 16 px after it, and 20 px from an activity row to its answer.
   - Actions under the answer: 28 px ghost icon buttons (16 px icons, ink-3).
-- **Activity** (iOS `AgentActivity.swift` parity, no badges):
-  - One plain disclosure row: 16 px chevron on the left, then muted 12 px medium text. No pill, background, border, dot or shadow.
-  - "Currently working…" (shimmer, with the running step as a muted second line), "Waiting for tool approval (N)", "Waiting for your input", "Worked for Ns", "Stopped after Ns", "(N failed)".
+- **Activity** (ported from `t3code` `TurnFoldTimelineRow` / `orchestrationTiming.ts` + iOS `AgentActivity.swift` parity, no badges):
+  - One plain disclosure row: 14 px chevron on the left, then muted 12 px medium `tabular-nums` text. No pill, background, border, dot or shadow.
+  - Exact elapsed-time formatting (`formatDuration`): sub-second as `ms` (`min 1ms`, never `Worked for 0s`), `<10s` with one decimal (`1.2s`, `3s`), `<60s` as integer seconds (`14s`), and `>=60s` as `Xh Ym Zs`.
+  - "Currently working…" (shimmer + live `WorkingTimer`, with the running step as a muted second line), "Waiting for tool approval (N)", "Waiting for your input", "Worked for <duration>", "Stopped after <duration>", "(N failed)".
+  - Preserves scroll anchor on toggle (`data-scroll-anchor-ignore`) while FLIP-gliding following siblings; auto-opens fold when a running turn is cancelled/interrupted.
   - Level 2: one line per call (icon, mono name, muted summary). Level 3: input/progress/output in a hairline mono detail. Approvals and questions always show under the header, even folded.
 - **Approvals and questions** (`ApprovalCards`, `ElicitationCards`): compact `--radius-lg` cards on `--color-surface` with a hairline border; 36 px action buttons; mono args in `--color-fill-1`.
 - **Composer** (`chat/Composer`, `chat/ComposerBar`):
   - A glass `regular` pill (`--radius-composer`, padding 8) floating from the bottom.
-  - Controls: + / auto-growing textarea (14/20 on desktop, 16 on touch, max 200 px; measured once per change) / camera / mic / send-or-stop.
-  - Every control is a 36 px accent circle, as on iOS.
+  - Controls: `+` / auto-growing textarea (14/20 on desktop, 16 on touch, max 200 px; measured once per change) / trailing 36 px slot (`mic` when empty, swapping in place with scale/opacity to `send` as soon as the user types or attaches a file, or `stop` while a run is active). There is no separate camera button in the bar (photo/camera/files remain in `PlusTray`).
+  - Secondary controls (`+`, `mic`) use a semi-transparent ink fill (`color-mix(in srgb, var(--color-ink) 10%, transparent)`); primary action (`send`, `stop`) remains solid `--color-accent`.
   - The plus menu is a compact popover (360 × 480 px at most), anchored to the pill.
 
 ## Performance budget (WP-G1, measured 2026-11-05)

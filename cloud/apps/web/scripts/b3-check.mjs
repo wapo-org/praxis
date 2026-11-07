@@ -33,18 +33,18 @@ try {
   const sidebarBounds = await page.getByTestId('app-sidebar').boundingBox();
   assert(sidebarBounds.x < 20 && sidebarBounds.y < 20); // floating: detached from the edges
   await page.getByTestId('nav-settings-button').click(); await page.waitForURL('**/settings');
-  // Settings is a routed page now: no dialog chrome, content in the main area.
+  // Settings is a routed page now: no dialog chrome, no redundant page h1, content in the main area.
   const settings = page.getByTestId('settings-page'); await settings.waitFor();
   assert.equal(await page.getByRole('dialog', { name: 'Settings', exact: true }).count(), 0);
   const bounds = await settings.boundingBox(); assert(bounds.height <= 900); // full-bleed; content sits in the column beside the floating nav
-  const heading = await settings.getByRole('heading', { level: 1 }).first().boundingBox(); assert(heading.width <= 720 && heading.x > sidebarBounds.x + sidebarBounds.width);
+  const heading = await settings.getByRole('heading').first().boundingBox(); assert(heading.width <= 720 && heading.x > sidebarBounds.x + sidebarBounds.width);
   await page.getByRole('button', { name: 'Models & providers', exact: true }).click(); await page.waitForURL('**/settings/providers');
   await page.getByRole('button', { name: 'Add provider', exact: true }).click(); await page.waitForURL('**/settings/providers/new');
-  await page.reload(); await page.getByRole('heading', { name: 'Add provider', exact: true }).waitFor();
+  await page.reload(); await page.getByRole('heading', { name: 'Connection', exact: true }).waitFor();
   assert.equal(await page.getByRole('switch').count(), 12);
-  await page.goBack(); await page.getByRole('heading', { name: 'Models & providers', exact: true }).waitFor();
-  await page.goForward(); await page.getByRole('heading', { name: 'Add provider', exact: true }).waitFor();
-  // The editor shows Save, not Done; go back to the list, then Done returns to the chat.
+  await page.goBack(); await page.getByRole('button', { name: 'Add provider', exact: true }).waitFor();
+  await page.goForward(); await page.getByRole('heading', { name: 'Connection', exact: true }).waitFor();
+  // The editor shows Save, not Done; go back to the list, then Close settings returns to the chat.
   await page.goBack(); await page.waitForURL('**/settings/providers');
   await page.getByRole('button', { name: 'Close settings', exact: true }).click(); await page.waitForURL('**/');
   const saved = await page.evaluate(async () => {

@@ -3,7 +3,12 @@ import { motion } from 'framer-motion';
 import React from 'react';
 import { ChevronRight } from '../../lib/icons';
 import { glideFollowing } from './chatMotion';
-import { stoppedLabel, useActivityClock } from './useActivityClock';
+import {
+  resolveTurnStartIso,
+  stoppedLabel,
+  useActivityClock,
+  WorkingTimer,
+} from './useActivityClock';
 
 import styles from './Activity.module.css';
 import { ActivityDetails } from './ActivityDetails';
@@ -14,17 +19,18 @@ import { ElicitationCards } from './ElicitationCards';
 export type { AgentActivityViewProps } from './activityTypes';
 
 /**
- * iOS parity (PraxisChat AgentActivity.swift, spec §9): one plain line,
- * folded by default. A small chevron on the left, then muted 13 px medium
- * text — "Currently working…" (shimmer) while running, "Worked for Ns"
- * when done, "Stopped after Ns" when the run was cancelled or failed.
- * No pill, background, border, dot or shadow. Approvals and questions
- * always show under the header, even folded.
+ * Turn fold / work disclosure row (ported from t3code TurnFoldTimelineRow &
+ * WorkingTimelineRow + Praxis iOS AgentActivity.swift): one plain line,
+ * folded by default. Chevron + muted 13 px medium tabular-nums label —
+ * "Currently working…" (shimmer + live timer) while running, "Worked for <duration>"
+ * when done, "Stopped after <duration>" when cancelled or failed.
+ * Approvals and questions always show under the header, even folded.
  */
 export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: string }> = ({
   runId,
   startedAt,
   finishedAt,
+  promptStartedAt,
   isRunning = false,
   runStatus,
   reasoningBlocks = [],
@@ -43,18 +49,48 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
     Record<string, Record<string, unknown>>
   >({});
 
-  // The height change happens once in layout; what follows glides there (FLIP).
+  // Match t3code: an interrupted/cancelled run opens its fold; a newer run closes the previous run's.
+  const observedRunRef = React.useRef<{ runId?: string; status?: string }>({
+    runId,
+    status: isRunning ? 'running' : runStatus,
+  });
+  React.useEffect(() => {
+    const prev = observedRunRef.current;
+    const currentStatus = isRunning ? 'running' : runStatus;
+    if (prev.runId !== undefined && runId !== undefined) {
+      if (prev.runId === runId) {
+        if (prev.status === 'running' && (currentStatus === 'cancelled' || currentStatus === 'interrupted')) {
+          setExpanded(true);
+        }
+      } else {
+        setExpanded(false);
+      }
+    }
+    observedRunRef.current = { runId, status: currentStatus };
+  }, [runId, isRunning, runStatus]);
+
+  // Preserve the disclosure header's scroll anchor when toggling, while FLIP-gliding following siblings.
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const height = React.useRef(0);
+  const anchorTopRef = React.useRef<number | null>(null);
   React.useLayoutEffect(() => {
     const el = rootRef.current;
     if (!el) return;
+    if (anchorTopRef.current !== null) {
+      const viewport = el.closest<HTMLElement>('[data-testid="chat-scroll-viewport"]');
+      if (viewport) {
+        const deltaTop = el.getBoundingClientRect().top - anchorTopRef.current;
+        if (Math.abs(deltaTop) > 1) viewport.scrollTop += deltaTop;
+      }
+      anchorTopRef.current = null;
+    }
     const next = el.offsetHeight;
     if (height.current) glideFollowing(el, next - height.current);
     height.current = next;
   }, [expanded, openStepIds]);
 
-  const worked = useActivityClock(isRunning, startedAt, finishedAt);
+  const effectiveStart = resolveTurnStartIso(startedAt, finishedAt, promptStartedAt);
+  const worked = useActivityClock(isRunning, startedAt, finishedAt, promptStartedAt);
   const hasActivity =
     toolSteps.length > 0 ||
     reasoningBlocks.length > 0 ||
@@ -71,6 +107,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
   const totalToolsCount = toolSteps.length;
   const hasApproval = pendingApprovals.length > 0;
   const hasElicitation = pendingElicitations.length > 0;
+  const activelyWorking = !hasApproval && !hasElicitation && (isRunning || runningToolsCount > 0);
   const stopped =
     !isRunning && (runStatus === 'cancelled' || runStatus === 'failed' || runStatus === 'refused');
 
@@ -80,11 +117,12 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
     label = `Waiting for tool approval (${pendingApprovals.length})`;
   } else if (hasElicitation) {
     label = 'Waiting for your input';
-  } else if (isRunning || runningToolsCount > 0) {
+  } else if (activelyWorking) {
     label = 'Currently working…';
     const currentStep = toolSteps.find((s) => s.running) ?? toolSteps[toolSteps.length - 1];
     if (currentStep) {
-      subLine = currentStep.statusText ||
+      subLine =
+        currentStep.statusText ||
         currentStep.activity.presentation?.runningTitle ||
         currentStep.activity.name;
       if (totalToolsCount > 1) subLine = `${subLine} · ${totalToolsCount} steps`;
@@ -92,8 +130,8 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
       subLine = 'Thinking…';
     }
   } else if (stopped) {
-    label = stoppedLabel(startedAt, finishedAt);
-  } else if (totalToolsCount > 0) {
+    label = stoppedLabel(startedAt, finishedAt, promptStartedAt);
+  } else if (totalToolsCount > 0 || startedAt || finishedAt) {
     const failedCount = toolSteps.filter(
       (s) => s.completion?.status === 'failed' || s.completion?.status === 'denied',
     ).length;
@@ -102,7 +140,13 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
     label = 'Thought process';
   }
 
+  const toggleExpanded = () => {
+    if (rootRef.current) anchorTopRef.current = rootRef.current.getBoundingClientRect().top;
+    setExpanded((v) => !v);
+  };
+
   const toggleStepDetail = (callId: string) => {
+    if (rootRef.current) anchorTopRef.current = rootRef.current.getBoundingClientRect().top;
     setOpenStepIds((prev) => ({ ...prev, [callId]: !prev[callId] }));
   };
 
@@ -118,21 +162,29 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
 
   return (
     <div ref={rootRef} data-testid="agent-activity-view" className={styles.root}>
-      {/* Level 1: plain disclosure header, like iOS. */}
+      {/* Level 1: t3code turn-fold disclosure header. */}
       <button
         type="button"
         data-testid="agent-activity-toggle"
+        data-scroll-anchor-ignore=""
         aria-expanded={expanded}
         aria-label={expanded ? 'Hide agent activity' : 'Show agent activity'}
-        onClick={() => setExpanded((v) => !v)}
+        onClick={toggleExpanded}
         className={styles.header}
       >
-        <motion.span className={styles.chevron} aria-hidden="true" initial={false} animate={{ rotate: expanded ? 90 : 0 }} transition={SNAP}>
+        <motion.span
+          className={styles.chevron}
+          aria-hidden="true"
+          initial={false}
+          animate={{ rotate: expanded ? 90 : 0 }}
+          transition={SNAP}
+        >
           <ChevronRight size={16} />
         </motion.span>
-        <span className={`${styles.label} ${label === 'Currently working…' ? 'praxis-shimmer-text' : ''}`}>
+        <span className={`${styles.label} ${activelyWorking ? 'praxis-shimmer-text' : ''}`}>
           {label}
         </span>
+        {activelyWorking && effectiveStart ? <WorkingTimer startedAt={effectiveStart} /> : null}
         {subLine ? <span className={styles.detail}>{subLine}</span> : null}
       </button>
 

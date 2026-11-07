@@ -22,6 +22,10 @@
   color: var(--color-ink-3);
 }
 
+.input[data-flight-lead='true']::placeholder {
+  opacity: 0;
+}
+
 .round {
   display: inline-flex;
   align-items: center;
@@ -32,13 +36,47 @@
   padding: 0;
   border: 0;
   border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.secondary {
+  background: color-mix(in srgb, var(--color-ink) 10%, transparent);
+  color: var(--color-ink);
+}
+
+.primary {
   background: var(--color-accent);
   color: var(--color-on-accent);
-  cursor: pointer;
+}
+
+.trailingSlot {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--control-md);
+  height: var(--control-md);
+}
+
+.slotButton {
+  position: absolute;
+  inset: 0;
+}
+
+.slotButton[data-hidden='true'] {
+  opacity: 0;
+  transform: scale(0.8);
+  pointer-events: none;
 }
 
 .round:disabled {
   cursor: default;
+}
+
+.primary:disabled:not([data-hidden='true']) {
+  opacity: 0.45;
 }
 
 .round[data-recording='true'] {
@@ -56,7 +94,10 @@
 }
 
 @media (hover: hover) {
-  .round:hover:not(:disabled) {
+  .secondary:hover:not(:disabled):not([data-recording='true']) {
+    background: color-mix(in srgb, var(--color-ink) 16%, transparent);
+  }
+  .primary:hover:not(:disabled) {
     background: color-mix(in srgb, var(--color-accent) 86%, var(--color-paper));
   }
 }

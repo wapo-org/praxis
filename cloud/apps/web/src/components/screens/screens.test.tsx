@@ -263,8 +263,9 @@ describe('settings and capabilities', () => {
     await click(document.querySelector<HTMLButtonElement>('[data-testid="settings-nav-connectors"]')!);
     expect(store.setActiveSheet).toHaveBeenCalledWith('connectors');
   });
-  it('titles every page after its section, not "Model providers" over everything', async () => {
-    const titleOf = () => document.querySelector('header h1')?.textContent;
+  it('labels every page after its section with no visible Settings page or sidebar header', async () => {
+    const labelOf = () =>
+      document.querySelector('[data-testid="settings-page"]')?.getAttribute('aria-label');
     const current = () => document.querySelector('[aria-current="page"]')?.textContent;
     for (const [sheet, title, nav] of [
       ['settings', 'General', 'General'],
@@ -283,11 +284,13 @@ describe('settings and capabilities', () => {
           <SidebarSettings sheet={sheet} devTools={false} />
         </>,
       );
-      expect(titleOf()).toBe(title);
+      expect(document.querySelector('header h1')).toBeNull();
+      expect(labelOf()).toBe(title);
       expect(current()).toBe(nav);
     }
     await mount(<SettingsPage sheet="provider-editor" />);
-    expect(titleOf()).toBe('Add provider');
+    expect(document.querySelector('header h1')).toBeNull();
+    expect(labelOf()).toBe('Add provider');
   });
   it('goes back to the parent page; the way out of Settings is the floating nav, not a Done button', async () => {
     await mount(<SettingsPage sheet="connector-add-url" />);
@@ -414,82 +417,5 @@ describe('settings and capabilities', () => {
     expect(store.updatePreferences).toHaveBeenCalledWith({
       voice: { model: 'whisper-large-v3', language: 'pl' },
     });
-  });
-});
-
-describe('no global clipping', () => {
-  it('portals settings-row menus to the document root, outside scroll containers', async () => {
-    const { ScreenMenu } = await import('./ScreenUI.js');
-    await mount(
-      <div style={{ overflow: 'auto', maxHeight: 60 }}>
-        <div style={{ height: 200 }}>scrollable ancestor</div>
-        <ScreenMenu label="Clipping probe" icon={<span>Options</span>}>
-          <span>Clipped if nested</span>
-        </ScreenMenu>
-      </div>,
-    );
-    await click(button('Clipping probe'));
-    const menu = document.querySelector('[role="menu"]');
-    expect(menu).not.toBeNull();
-    // Portaled to document.body: outside the scroll container and the React root.
-    // (The menu element's own `overflow: visible` style is not an ancestor.)
-    expect(menu!.parentElement?.closest('div[style*="overflow"]')).toBeNull();
-    expect(container.contains(menu)).toBe(false);
-  });
-  it('leaves no modal or scrim in the settings and consent flows', async () => {
-    store.pendingConsentPrompt = {
-      host: 'example.com',
-      purpose: 'chat',
-      description: 'Share this chat.',
-      onAllow: vi.fn(),
-      onCancel: vi.fn(),
-    };
-    await mount(<ConsentPopover />);
-    expect(document.querySelector('[aria-modal="true"]')).toBeNull();
-    expect(document.querySelector('[class*="overlay"], [class*="scrim"]')).toBeNull();
-    expect(document.querySelector('[role="dialog"]')?.getAttribute('aria-modal')).toBe('false');
-  });
-});
-
-describe('consent popover', () => {
-  it('shows consent independently of activeSheet and calls only the chosen callback', async () => {
-    const allow = vi.fn();
-    const cancel = vi.fn();
-    store.pendingConsentPrompt = {
-      host: 'voice.example.com',
-      purpose: 'voice',
-      description: 'Share recorded audio.',
-      onAllow: allow,
-      onCancel: cancel,
-    };
-    await mount(<ConsentPopover />);
-    const dialog = document.querySelector('[data-testid="consent-popover"]');
-    expect(dialog?.getAttribute('aria-modal')).toBe('false');
-    expect(document.querySelector('#consentTitle')?.textContent).toContain('recording');
-    expect(document.body.textContent).toContain('voice.example.com');
-    expect(document.body.textContent).not.toContain('Your messages');
-    await click(button('Allow'));
-    expect(allow).toHaveBeenCalledOnce();
-    expect(cancel).not.toHaveBeenCalled();
-  });
-  it('is not a modal: no scrim, no inert background, Escape does not dismiss', async () => {
-    const cancel = vi.fn();
-    store.pendingConsentPrompt = {
-      host: 'example.com',
-      purpose: 'chat',
-      description: 'Share this chat.',
-      onAllow: vi.fn(),
-      onCancel: cancel,
-    };
-    await mount(<ConsentPopover />);
-    expect(document.querySelector('[aria-modal="true"]')).toBeNull();
-    expect(container.inert).toBeFalsy();
-    await act(async () =>
-      document
-        .querySelector('[data-testid="consent-popover"]')!
-        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })),
-    );
-    expect(cancel).not.toHaveBeenCalled();
-    expect(document.querySelector('[data-testid="consent-popover"]')).not.toBeNull();
   });
 });

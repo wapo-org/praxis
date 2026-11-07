@@ -33,7 +33,11 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
             ))}
           </div>
         ) : null}
-        {combinedText ? <div className={styles.bubble}>{combinedText}</div> : null}
+        {combinedText ? (
+          <div data-user-bubble="" className={styles.bubble}>
+            {combinedText}
+          </div>
+        ) : null}
       </div>
 
       {lightboxUrl ? (

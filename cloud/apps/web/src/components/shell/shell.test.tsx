@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { groupChats } from '../../lib/chatGroups';
 import type { PraxisStoreContextValue } from '../../state/store';
 import { ChatHeader } from '../chat/ChatHeader';
+import { ComposerBar } from '../chat/ComposerBar';
 import { Sidebar } from './Sidebar';
 
 let store: PraxisStoreContextValue;
@@ -47,17 +48,23 @@ beforeEach(() => {
     chats,
     activeChatId: 'today',
     activeChat: chats[0],
+    activeSheet: null,
     desktopSidebarOpen: true,
+    plusTrayOpen: false,
+    inlineModelSearchActive: false,
+    activeLiveRun: null,
     models: [],
     selectedModelId: null,
     selectedProviderId: null,
     setDesktopSidebarOpen: vi.fn(),
+    setPlusTrayOpen: vi.fn(),
     startNewConversation: vi.fn(),
     setActiveSheet: vi.fn(),
     selectChat: vi.fn(async () => {}),
     renameChat: vi.fn(async () => {}),
     togglePinChat: vi.fn(async () => {}),
     deleteChats: vi.fn(async () => {}),
+    cancelActiveRun: vi.fn(async () => {}),
   } as unknown as PraxisStoreContextValue;
 });
 afterEach(() => {
@@ -79,8 +86,10 @@ describe('chat grouping', () => {
 });
 
 describe('Sidebar', () => {
-  it('renders new chat, search, date groups and the account entry', () => {
+  it('renders new chat, search, date groups and the account entry without a Praxis wordmark', () => {
     act(() => root.render(<Sidebar />));
+    const header = container.querySelector('[data-testid="sidebar-toggle"]')?.parentElement;
+    expect(header?.textContent).toBe('');
     const sections = [...container.querySelectorAll('section')].map((s) => s.getAttribute('aria-label'));
     expect(sections).toEqual(['Pinned', 'Today', 'Yesterday', 'Older']);
     expect(container.querySelector('[aria-current="page"]')?.textContent).toBe('Chat today');
@@ -88,6 +97,17 @@ describe('Sidebar', () => {
     expect(store.startNewConversation).toHaveBeenCalled();
     act(() => container.querySelector<HTMLButtonElement>('[data-testid="sidebar-account"]')!.click());
     expect(store.setActiveSheet).toHaveBeenCalledWith('settings');
+  });
+
+  it('swaps immediately into settings sections without a Settings title header and keeps back + collapse controls', () => {
+    store = { ...store, activeSheet: 'settings' };
+    act(() => root.render(<Sidebar />));
+    const back = container.querySelector<HTMLButtonElement>('[data-testid="settings-back"]');
+    const toggle = container.querySelector<HTMLButtonElement>('[data-testid="sidebar-toggle"]');
+    expect(back).not.toBeNull();
+    expect(back?.textContent).toBe('Back');
+    expect(toggle).not.toBeNull();
+    expect(container.querySelector('[data-testid="sidebar-new-chat"]')).toBeNull();
   });
 
   it('opens floating search on request and still selects history rows', async () => {
@@ -109,6 +129,53 @@ describe('Sidebar', () => {
     store = { ...store, desktopSidebarOpen: false };
     act(() => root.render(<Sidebar key="closed" />));
     expect(container.querySelector('[data-testid="app-sidebar"]')).toBeNull();
+  });
+});
+
+describe('ComposerBar', () => {
+  it('has no camera button, uses translucent secondary controls, and swaps mic to send when typing', () => {
+    const inputRef = React.createRef<HTMLTextAreaElement>();
+    act(() =>
+      root.render(
+        <ComposerBar
+          inputRef={inputRef}
+          text=""
+          onTextChange={() => {}}
+          onKeyDown={() => {}}
+          recording={false}
+          transcribing={false}
+          onToggleVoice={() => {}}
+          onSend={() => {}}
+          attachmentCount={0}
+        />,
+      ),
+    );
+    expect(container.querySelector('.composer-camera')).toBeNull();
+    expect(container.querySelector('[aria-label="Camera"]')).toBeNull();
+
+    const voice = container.querySelector<HTMLButtonElement>('[data-testid="composer-voice-button"]')!;
+    const send = container.querySelector<HTMLButtonElement>('[data-testid="composer-send-button"]')!;
+    expect(voice.getAttribute('data-hidden')).toBeNull();
+    expect(send.getAttribute('data-hidden')).toBe('true');
+
+    act(() =>
+      root.render(
+        <ComposerBar
+          inputRef={inputRef}
+          text="Hello"
+          onTextChange={() => {}}
+          onKeyDown={() => {}}
+          recording={false}
+          transcribing={false}
+          onToggleVoice={() => {}}
+          onSend={() => {}}
+          attachmentCount={0}
+        />,
+      ),
+    );
+    expect(voice.getAttribute('data-hidden')).toBe('true');
+    expect(send.getAttribute('data-hidden')).toBeNull();
+    expect(send.disabled).toBe(false);
   });
 });
 

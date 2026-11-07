@@ -1,4 +1,5 @@
 import { ComposerBar } from './ComposerBar';
+import { cancelSendFlight, launchSendFlight } from './chatMotion';
 import { Photo, Paperclip, X } from '../../lib/icons';
 import { useModelSearch } from '../../lib/useModelSearch';
 import React from 'react';
@@ -13,12 +14,10 @@ export const Composer: React.FC = () => {
     setPlusTrayOpen,
     inlineModelSearchActive,
     setInlineModelSearchActive,
-    models,
     selectedProviderId,
     selectedModelId,
     setSelectedModel,
     cacheModels,
-    activeLiveRun,
     sendMessage,
     uploadFiles,
     transcribeAudioBlob,
@@ -80,10 +79,17 @@ export const Composer: React.FC = () => {
     }
 
     const attachmentIds = queuedAttachments.map((a) => a.id);
+    if (trimmed) {
+      launchSendFlight(textareaRef.current, trimmed);
+    }
     setText('');
     setQueuedAttachments([]);
     setPlusTrayOpen(false);
-    await sendMessage(trimmed || 'Attached files', { attachmentIds });
+    try {
+      await sendMessage(trimmed || 'Attached files', { attachmentIds });
+    } catch {
+      cancelSendFlight();
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -221,7 +227,6 @@ export const Composer: React.FC = () => {
           onKeyDown={handleKeyDown}
           recording={recording}
           transcribing={transcribing}
-          onCamera={() => handlePickFiles('image/*', true)}
           onToggleVoice={() => void handleToggleVoice()}
           onSend={() => void handleSend()}
           attachmentCount={queuedAttachments.length}

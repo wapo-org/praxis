@@ -29,7 +29,6 @@ async function sample(locator: Locator, act: () => Promise<unknown>, read = 'lef
     return w.__v;
   });
 }
-const biggestStep = (values: number[]) => values.slice(1).reduce((max, v, i) => Math.max(max, Math.abs(v - values[i]!)), 0);
 const inBetween = (values: number[], a: number, b: number) => values.filter((v) => v > Math.min(a, b) + 0.5 && v < Math.max(a, b) - 0.5).length;
 
 test.beforeEach(async ({ page }) => signIn(page));
@@ -120,32 +119,53 @@ test('the segmented thumb springs and can reverse from where it is', async ({ pa
   expect(values[values.length - 1]).toBeCloseTo(0, 0);
 });
 
-test('settings content swaps with the panel staying put', async ({ page }) => {
+test('settings content swaps instantly with the panel staying put', async ({ page }) => {
   const panel = page.locator('[data-testid="app-sidebar"] [data-glass-surface]').first();
   const rest = (await panel.boundingBox())!;
   await page.getByTestId('sidebar-account').click();
-  await page.waitForTimeout(40);
-  // Mid-transition both views exist, overlapping inside the same glass.
+  // Instant cut: settings nav is immediately visible and chats view is immediately gone.
   await expect(page.getByTestId('settings-nav-general')).toBeVisible();
+  await expect(page.getByTestId('sidebar-new-chat')).toHaveCount(0);
   expect((await panel.boundingBox())!.width).toBeCloseTo(rest.width, 1);
-  await expect(page.getByTestId('sidebar-new-chat')).toHaveCount(0, { timeout: 2000 });
+  expect((await panel.boundingBox())!.x).toBeCloseTo(rest.x, 1);
 });
 
-test('a sent message rises in; a loaded chat does not', async ({ page }) => {
+test('a sent message flies from the composer with overshoot; a loaded chat does not', async ({ page }) => {
   const input = page.getByTestId('composer-input');
   await input.fill(`Arrival probe ${Date.now()}`);
   await page.evaluate(() => {
-    const w = window as unknown as { __arrived: number[] };
-    w.__arrived = [];
-    new MutationObserver(() => {
-      const bubble = document.querySelector<HTMLElement>('[data-testid="user-message-bubble"]:last-of-type');
-      if (bubble) w.__arrived.push(Number(getComputedStyle(bubble).opacity));
-    }).observe(document.body, { subtree: true, childList: true });
+    const w = window as unknown as { __flightTops: number[]; __flightWidths: number[]; __go: boolean };
+    w.__flightTops = [];
+    w.__flightWidths = [];
+    w.__go = true;
+    const tick = () => {
+      if (!w.__go) return;
+      const flight = document.querySelector<HTMLElement>('[data-testid="send-flight-bubble"]');
+      if (flight) {
+        const rect = flight.getBoundingClientRect();
+        w.__flightTops.push(rect.top);
+        w.__flightWidths.push(rect.width);
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   });
   await input.press('Enter');
   await page.getByTestId('user-message-bubble').first().waitFor();
   const opacity = page.getByTestId('user-message-bubble').first();
   await expect(opacity).toHaveCSS('opacity', '1');
+  await page.waitForTimeout(900);
+  const { tops, widths } = await page.evaluate(() => {
+    const w = window as unknown as { __flightTops: number[]; __flightWidths: number[]; __go: boolean };
+    w.__go = false;
+    return { tops: w.__flightTops, widths: w.__flightWidths };
+  });
+  expect(tops.length).toBeGreaterThan(5);
+  expect(Math.max(...widths)).toBeGreaterThan(Math.min(...widths) + 40);
+  // Flight overlay unmounts cleanly and real bubble is visible.
+  await expect(page.getByTestId('send-flight-bubble')).toHaveCount(0);
+  await expect(page.locator('[data-user-bubble]').first()).toHaveCSS('opacity', '1');
+
   const path = new URL(page.url()).pathname;
   await page.waitForFunction(() => !document.querySelector('[aria-label="Stop generating"]'));
   // Reload: history appears with no entrance at all.

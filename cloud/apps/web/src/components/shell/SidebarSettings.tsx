@@ -1,19 +1,29 @@
 import { usePress } from '@praxis/glass';
 import { motion } from 'framer-motion';
-import { ChevronLeft } from '../../lib/icons';
+import { ChevronLeft, PanelLeft } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import { SETTINGS_NAV, settingsPage, type SettingsSheet } from '../screens/settingsNav';
 import styles from './Sidebar.module.css';
 
 /** The same floating panel, taken over by Settings: sections and a way back to chats. */
-export function SidebarSettings({ sheet, onNavigate, devTools }: { sheet: SettingsSheet; onNavigate?: () => void; devTools: boolean }) {
+export function SidebarSettings({
+  sheet,
+  onClose,
+  onNavigate,
+  devTools,
+}: {
+  sheet: SettingsSheet;
+  onClose?: () => void;
+  onNavigate?: () => void;
+  devTools: boolean;
+}) {
   const store = usePraxisStore();
   const pressProps = usePress();
   const current = settingsPage(sheet).section;
   const items = SETTINGS_NAV.filter((item) => !item.devOnly || devTools);
   return (
     <>
-      <div className={styles.header} data-settings="true">
+      <div className={styles.header}>
         <motion.button
           type="button"
           className={styles.back}
@@ -22,8 +32,21 @@ export function SidebarSettings({ sheet, onNavigate, devTools }: { sheet: Settin
           onClick={() => store.setActiveSheet(null)}
           {...pressProps}
         >
-          <ChevronLeft size={20} />
-          <span className={styles.brand}>Settings</span>
+          <ChevronLeft size={18} />
+          <span className={styles.rowTitle}>Back</span>
+        </motion.button>
+        <motion.button
+          type="button"
+          className={styles.iconButton}
+          aria-label="Close sidebar"
+          data-testid="sidebar-toggle"
+          onClick={() => {
+            store.setDesktopSidebarOpen(false);
+            onClose?.();
+          }}
+          {...pressProps}
+        >
+          <PanelLeft size={18} />
         </motion.button>
       </div>
       <nav className={styles.list} aria-label="Settings sections">

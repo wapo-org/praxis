@@ -352,8 +352,8 @@ test.describe('settings takes over the floating nav', () => {
     await expect(page.getByRole('button', { name: 'Done' })).toHaveCount(0);
     expect((await panel.boundingBox())!.height).toBe(rest.height);
     // Content sits in the remaining space, beside the panel.
-    const title = (await page.getByRole('heading', { level: 1 }).first().boundingBox())!;
-    expect(title.x).toBeGreaterThan(rest.x + rest.width);
+    const content = (await page.getByRole('group', { name: 'Appearance' }).boundingBox())!;
+    expect(content.x).toBeGreaterThan(rest.x + rest.width);
     await page.getByTestId('settings-nav-connectors').click();
     await expect(page).toHaveURL(/connectors/);
     await page.getByTestId('settings-back').click();
@@ -371,7 +371,7 @@ test.describe('settings takes over the floating nav', () => {
     // The root keeps the panel open on the sections; a section closes it on its page.
     await page.getByTestId('settings-nav-skills').click();
     await expect(page).toHaveURL(/skills/);
-    await expect(page.getByRole('heading', { name: 'Skills', level: 1 })).toBeVisible();
+    await expect(page.getByTestId('settings-page')).toHaveAttribute('aria-label', 'Skills');
     await expect(page.getByRole('button', { name: 'Done' })).toHaveCount(0);
     await expect(page.getByTestId('settings-nav-skills')).toHaveCount(0, { timeout: 3000 });
     await page.getByTestId('nav-sidebar-button').click();

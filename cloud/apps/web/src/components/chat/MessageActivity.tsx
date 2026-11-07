@@ -4,16 +4,20 @@ import { apiClient } from '../../lib/api';
 import { snapshotProgress } from '../../lib/toolProgress';
 import type { ActiveToolStep } from '../../state/store';
 import { AgentActivityView } from './AgentActivityView';
+import { maxIsoTimestamp } from './useActivityClock';
+
 export function MessageActivity({
   message,
   steps,
   liveRun,
   liveSteps,
+  promptStartedAt,
 }: {
   message: Message;
   steps: ActiveToolStep[];
   liveRun?: Run;
   liveSteps?: ActiveToolStep[];
+  promptStartedAt?: string;
 }) {
   const [run, setRun] = React.useState<Run | undefined>(liveRun);
   const [recoveredSteps, setRecoveredSteps] = React.useState<ActiveToolStep[] | undefined>();
@@ -46,10 +50,18 @@ export function MessageActivity({
       active = false;
     };
   }, [message.runId, liveRun]);
+
+  const startedAt = run?.createdAt ?? message.createdAt;
+  const finishedAt =
+    maxIsoTimestamp(run?.updatedAt, maxIsoTimestamp(message.updatedAt, message.createdAt)) ??
+    undefined;
+
   return (
     <AgentActivityView
-      startedAt={run?.createdAt}
-      finishedAt={run?.updatedAt}
+      runId={run?.id ?? message.runId}
+      startedAt={startedAt}
+      finishedAt={finishedAt}
+      promptStartedAt={promptStartedAt}
       isRunning={false}
       runStatus={run?.status}
       toolSteps={liveSteps ?? recoveredSteps ?? steps}
