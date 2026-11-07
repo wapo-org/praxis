@@ -30,3 +30,8 @@ a.token {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
+
+/* Keep a link's label and its source distinct when both are inline. */
+a.token span + span {
+  margin-inline-start: var(--space-1);
+}
