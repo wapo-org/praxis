@@ -1,9 +1,20 @@
+import { AccentControl } from './AccentControl';
 import { Eye, FlaskConical, Mic, Plus } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store.js';
 import { SegmentedControl } from '../ui/controls';
 import { AccountSettings } from './AccountSettings';
 import styles from './Screen.module.css';
-import { Card, hostLabel, NavRow, ScreenBody, ScreenButton, Section, TaskError, Toggle, useScreenTask } from './ScreenUI.js';
+import {
+  Card,
+  hostLabel,
+  NavRow,
+  ScreenBody,
+  ScreenButton,
+  Section,
+  TaskError,
+  Toggle,
+  useScreenTask,
+} from './ScreenUI.js';
 
 const THEMES = ['light', 'dark', 'system'] as const;
 const capitalized = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
@@ -20,6 +31,7 @@ export function GeneralSection() {
           optionLabel={capitalized}
           onChange={store.setThemeMode}
         />
+        <AccentControl />
       </Section>
       <Section title="Input">
         <Card>
@@ -48,7 +60,9 @@ export function ModelsSection() {
                 title={provider.name}
                 detail={`${hostLabel(provider.baseUrl)} · ${provider.maskedKey || 'No API key'}`}
                 value={
-                  <span className={`${styles.badge} ${provider.maskedKey ? styles.badgeSuccess : ''}`}>
+                  <span
+                    className={`${styles.badge} ${provider.maskedKey ? styles.badgeSuccess : ''}`}
+                  >
                     {provider.id === 'scripted'
                       ? 'Demo'
                       : provider.maskedKey
@@ -113,8 +127,8 @@ export function ConsentsSection() {
   return (
     <ScreenBody>
       <p className={styles.intro}>
-        Praxis asks before it first sends data to a service. Withdraw permission
-        here to be asked again before sending.
+        Praxis asks before it first sends data to a service. Withdraw permission here to be asked
+        again before sending.
       </p>
       <TaskError error={task.error} />
       <Section title="Data consents">
@@ -124,9 +138,7 @@ export function ConsentsSection() {
               <Toggle
                 key={consent.host}
                 label={consent.host}
-                detail={
-                  consent.allowed ? 'Allowed to receive data' : 'Permission withdrawn'
-                }
+                detail={consent.allowed ? 'Allowed to receive data' : 'Permission withdrawn'}
                 checked={consent.allowed}
                 disabled={task.busy}
                 onChange={(allowed) => {

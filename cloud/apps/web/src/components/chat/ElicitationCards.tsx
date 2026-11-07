@@ -61,6 +61,13 @@ export function ElicitationCards({
               <div className={styles.cardFields}>
                 {propKeys.map((key) => {
                   const spec = schemaProps[key] ?? {};
+                  const fieldLabel =
+                    spec.title?.trim() ||
+                    spec.description?.trim() ||
+                    key
+                      .replace(/[_-]+/g, ' ')
+                      .replace(/([a-z])([A-Z])/g, '$1 $2')
+                      .replace(/^./, (c) => c.toUpperCase());
                   const val =
                     currentForm[key] !== undefined
                       ? String(currentForm[key])
@@ -69,8 +76,8 @@ export function ElicitationCards({
                         : '';
                   return (
                     <label key={key} className={styles.cardField}>
-                      <span className={styles.cardFieldName}>{spec.title || key}</span>
-                      {spec.description ? (
+                      <span className={styles.cardFieldName}>{fieldLabel}</span>
+                      {spec.title && spec.description ? (
                         <span className={styles.cardFieldHint}>{spec.description}</span>
                       ) : null}
                       <input
@@ -78,7 +85,7 @@ export function ElicitationCards({
                         data-testid={`elicitation-input-${key}`}
                         className={styles.cardInput}
                         value={val}
-                        placeholder={`Enter ${spec.title || key}...`}
+                        placeholder={`Enter ${fieldLabel}...`}
                         onChange={(e) =>
                           setFieldValue(
                             key,

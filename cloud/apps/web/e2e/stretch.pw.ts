@@ -324,9 +324,9 @@ test.describe('the floating sidebar height', () => {
       await chatsOf(count)(page);
       await page.waitForTimeout(400);
       const box = (await sidebar(page).boundingBox())!;
-      const margin = 12;
-      expect(box.height).toBe(900 - 2 * margin);
-      expect(box.y).toBe(margin);
+      const margin = 24; // measured design bottom inset
+      expect(box.height).toBe(900 - 18 - margin);
+      expect(box.y).toBe(18);
       const account = (await page.getByTestId('sidebar-account').boundingBox())!;
       expect(account.y + account.height).toBeLessThanOrEqual(900 - margin);
       await expect(page.locator('[data-sidebar-row]')).toHaveCount(count);

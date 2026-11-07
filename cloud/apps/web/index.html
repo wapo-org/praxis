@@ -24,6 +24,8 @@
     <script>
       performance.mark('praxis:boot-start');
       try {
+        const savedAccent = localStorage.getItem('praxis-accent');
+        document.documentElement.dataset.accent = ['neutral', 'blue', 'violet', 'rose', 'amber', 'green'].includes(savedAccent) ? savedAccent : 'neutral';
         const savedTheme = localStorage.getItem('praxis-theme') || 'system';
         const resolved =
           savedTheme === 'system'

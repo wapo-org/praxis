@@ -1,9 +1,10 @@
 import { usePress } from '@praxis/glass';
 import { motion } from 'framer-motion';
-import { ChevronLeft, PanelLeft } from '../../lib/icons';
+import { ChevronLeft } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import { SETTINGS_NAV, settingsPage, type SettingsSheet } from '../screens/settingsNav';
 import styles from './Sidebar.module.css';
+import { SidebarHeader } from './SidebarHeader';
 
 /** The same floating panel, taken over by Settings: sections and a way back to chats. */
 export function SidebarSettings({
@@ -23,32 +24,17 @@ export function SidebarSettings({
   const items = SETTINGS_NAV.filter((item) => !item.devOnly || devTools);
   return (
     <>
-      <div className={styles.header}>
-        <motion.button
-          type="button"
-          className={styles.back}
-          aria-label="Close settings"
-          data-testid="settings-back"
-          onClick={() => store.setActiveSheet(null)}
-          {...pressProps}
-        >
-          <ChevronLeft size={18} />
-          <span className={styles.rowTitle}>Back</span>
-        </motion.button>
-        <motion.button
-          type="button"
-          className={styles.iconButton}
-          aria-label="Close sidebar"
-          data-testid="sidebar-toggle"
-          onClick={() => {
-            store.setDesktopSidebarOpen(false);
-            onClose?.();
-          }}
-          {...pressProps}
-        >
-          <PanelLeft size={18} />
-        </motion.button>
-      </div>
+      <SidebarHeader
+        label="Back"
+        Icon={ChevronLeft}
+        testId="settings-back"
+        actionLabel="Close settings"
+        onAction={() => store.setActiveSheet(null)}
+        onClose={() => {
+          store.setDesktopSidebarOpen(false);
+          onClose?.();
+        }}
+      />
       <nav className={styles.list} aria-label="Settings sections">
         {items.map(({ sheet: target, title, Icon }) => (
           <motion.button

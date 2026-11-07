@@ -306,7 +306,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  color: var(--color-ink);
+  color: var(--color-accent);
   font: var(--weight-semibold) var(--text-sm) / var(--leading-sm) var(--font-sans);
 }
 
@@ -326,4 +326,8 @@
   background: var(--color-hover);
 }
 
-.outcome { margin: 0; color: var(--color-ink-2); font: var(--weight-regular) var(--text-sm) / var(--leading-md) var(--font-sans); }
+.outcome {
+  margin: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-md) var(--font-sans);
+}

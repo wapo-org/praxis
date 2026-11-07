@@ -15,6 +15,19 @@ export function ApprovalCards({
               : JSON.stringify(approval.arguments, null, 2)
             : '';
 
+        let hasArguments = Boolean(formattedApprovalArgs.trim());
+        try {
+          const value: unknown = JSON.parse(formattedApprovalArgs);
+          if (
+            value &&
+            typeof value === 'object' &&
+            !Array.isArray(value) &&
+            Object.keys(value).length === 0
+          )
+            hasArguments = false;
+        } catch {
+          /* Plain text and partially streamed arguments remain reviewable. */
+        }
         return (
           <div
             key={approval.id}
@@ -32,9 +45,7 @@ export function ApprovalCards({
 
             {approval.reason ? <div className={styles.cardReason}>{approval.reason}</div> : null}
 
-            {formattedApprovalArgs ? (
-              <pre className={styles.cardArgs}>{formattedApprovalArgs}</pre>
-            ) : null}
+            {hasArguments ? <pre className={styles.cardArgs}>{formattedApprovalArgs}</pre> : null}
 
             <div className={styles.cardActions}>
               <button

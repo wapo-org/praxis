@@ -89,7 +89,7 @@ describe('Sidebar', () => {
   it('renders new chat, search, date groups and the account entry without a Praxis wordmark', () => {
     act(() => root.render(<Sidebar />));
     const header = container.querySelector('[data-testid="sidebar-toggle"]')?.parentElement;
-    expect(header?.textContent).toBe('');
+    expect(header?.textContent).toBe('New chat');
     const sections = [...container.querySelectorAll('section')].map((s) => s.getAttribute('aria-label'));
     expect(sections).toEqual(['Pinned', 'Today', 'Yesterday', 'Older']);
     expect(container.querySelector('[aria-current="page"]')?.textContent).toBe('Chat today');

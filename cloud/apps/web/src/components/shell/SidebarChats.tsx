@@ -4,13 +4,20 @@ import { motion } from 'framer-motion';
 import React from 'react';
 import { useAccount } from '../../lib/account';
 import { groupChats } from '../../lib/chatGroups';
-import { MoreHorizontal, PanelLeft, Pin, Search, Settings, Edit } from '../../lib/icons';
+import { MoreHorizontal, Pin, Search, Settings, Edit } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import { chatActions } from '../../actions/registry';
 import styles from './Sidebar.module.css';
+import { SidebarHeader } from './SidebarHeader';
 
 /** The floating panel's chats view: new chat, search, history, and the account row. */
-export function SidebarChats({ onClose, onNavigate }: { onClose?: () => void; onNavigate?: () => void }) {
+export function SidebarChats({
+  onClose,
+  onNavigate,
+}: {
+  onClose?: () => void;
+  onNavigate?: () => void;
+}) {
   const store = usePraxisStore();
   const account = useAccount();
   const query = '';
@@ -19,36 +26,20 @@ export function SidebarChats({ onClose, onNavigate }: { onClose?: () => void; on
 
   return (
     <>
-      <div className={styles.header}>
-        <motion.button
-          type="button"
-          className={styles.iconButton}
-          aria-label="Close sidebar"
-          data-testid="sidebar-toggle"
-          onClick={() => {
-            store.setDesktopSidebarOpen(false);
-            onClose?.();
-          }}
-          {...pressProps}
-        >
-          <PanelLeft size={18} />
-        </motion.button>
-      </div>
-
+      <SidebarHeader
+        label="New chat"
+        Icon={Edit}
+        testId="sidebar-new-chat"
+        onAction={() => {
+          store.startNewConversation();
+          onNavigate?.();
+        }}
+        onClose={() => {
+          store.setDesktopSidebarOpen(false);
+          onClose?.();
+        }}
+      />
       <nav className={styles.actions}>
-        <motion.button
-          type="button"
-          className={styles.action}
-          data-testid="sidebar-new-chat"
-          onClick={() => {
-            store.startNewConversation();
-            onNavigate?.();
-          }}
-          {...pressProps}
-        >
-          <Edit size={18} />
-          <span className={styles.rowTitle}>New chat</span>
-        </motion.button>
         <motion.button
           type="button"
           className={styles.action}
@@ -59,21 +50,28 @@ export function SidebarChats({ onClose, onNavigate }: { onClose?: () => void; on
           }}
           {...pressProps}
         >
-          <Search size={18} />
+          <Search size={16} />
           <span className={styles.rowTitle}>Search</span>
         </motion.button>
       </nav>
 
       <div className={styles.list}>
         {groups.length === 0 ? (
-          <p className={styles.empty}>{query ? 'No chats match your search.' : 'No conversations yet.'}</p>
+          <p className={styles.empty}>
+            {query ? 'No chats match your search.' : 'No conversations yet.'}
+          </p>
         ) : (
           <>
             {groups.map(({ group, chats }) => (
               <section key={group} aria-label={group} className={styles.group}>
                 <h2 className={styles.groupTitle}>{group}</h2>
                 {chats.map((chat) => (
-                  <ChatRow key={chat.id} chat={chat} active={store.activeChatId === chat.id} onNavigate={onNavigate} />
+                  <ChatRow
+                    key={chat.id}
+                    chat={chat}
+                    active={store.activeChatId === chat.id}
+                    onNavigate={onNavigate}
+                  />
                 ))}
               </section>
             ))}
@@ -99,7 +97,7 @@ export function SidebarChats({ onClose, onNavigate }: { onClose?: () => void; on
             <span className={styles.accountName}>{account?.userId ?? 'Praxis'}</span>
             <span className={styles.accountDetail}>Settings</span>
           </span>
-          <Settings size={18} />
+          <Settings size={16} />
         </motion.button>
       </footer>
     </>
@@ -180,21 +178,37 @@ function ChatRow({
         }}
       >
         <span className={styles.rowTitle}>{chat.title || 'New chat'}</span>
-        {chat.pinned ? <Pin size={16} aria-label="Pinned" className={styles.rowPin} /> : null}
       </button>
+      {chat.pinned ? (
+        <span className={styles.rowPin}>
+          <Pin size={16} aria-label="Pinned" />
+        </span>
+      ) : null}
       <span className={styles.rowMenuWrap}>
         <GlassDropdown portal align="start">
           <GlassDropdown.Trigger asChild>
-            <button type="button" className={styles.rowMenu} aria-label={`Actions for ${chat.title}`}>
+            <button
+              type="button"
+              className={styles.rowMenu}
+              aria-label={`Actions for ${chat.title}`}
+            >
               <MoreHorizontal size={16} />
             </button>
           </GlassDropdown.Trigger>
           <GlassDropdown.Content minWidth={180}>
-            {chatActions(store, chat, () => { setTitle(chat.title); setRenaming(true); }).map(action => (
+            {chatActions(store, chat, () => {
+              setTitle(chat.title);
+              setRenaming(true);
+            }).map((action) => (
               <React.Fragment key={action.id}>
                 {action.id === 'delete' ? <GlassDropdown.Separator variant="section" /> : null}
-                <GlassDropdown.Item icon={<action.Icon size={16} />} tone={action.id === 'delete' ? 'destructive' : undefined}
-                  onSelect={() => run(async () => action.apply())}>{action.label}</GlassDropdown.Item>
+                <GlassDropdown.Item
+                  icon={<action.Icon size={16} />}
+                  tone={action.id === 'delete' ? 'destructive' : undefined}
+                  onSelect={() => run(async () => action.apply())}
+                >
+                  {action.label}
+                </GlassDropdown.Item>
               </React.Fragment>
             ))}
           </GlassDropdown.Content>
