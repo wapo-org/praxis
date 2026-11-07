@@ -215,6 +215,47 @@ test.describe('every frame is one piece of glass', () => {
   });
 });
 
+test.describe('the tray', () => {
+  test('its near edge never comes back late: no stick to the bottom at the end', async ({ page }) => {
+    await page.goto('/');
+    const dev = page.getByRole('button', { name: /local dev user/i });
+    await Promise.race([dev.waitFor(), page.getByTestId('chat-top-bar').waitFor()]);
+    if (await dev.isVisible().catch(() => false)) await dev.click();
+    await page.getByTestId('chat-top-bar').waitFor();
+    await page.waitForTimeout(400);
+    await page.evaluate(() => {
+      const w = window as unknown as { __bottoms: Array<[number, number]>; __on: boolean };
+      w.__bottoms = [];
+      w.__on = true;
+      const start = performance.now();
+      const tick = () => {
+        if (!w.__on) return;
+        const box = document.querySelector('[data-testid="plus-tray"]')?.getBoundingClientRect();
+        if (box) w.__bottoms.push([performance.now() - start, box.bottom]);
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await page.getByTestId('composer-plus-button').click();
+    const tray = page.getByTestId('plus-tray');
+    await tray.waitFor();
+    await landed(tray.locator('xpath=..'));
+    const track = await page.evaluate(() => {
+      const w = window as unknown as { __bottoms: Array<[number, number]>; __on: boolean };
+      w.__on = false;
+      return w.__bottoms;
+    });
+    const rest = (await tray.boundingBox())!;
+    const bottoms = track.map(([, bottom]) => bottom);
+    // It starts on the button below and only ever moves up to its anchor; it never passes it and returns.
+    for (let i = 1; i < bottoms.length; i++) expect(bottoms[i]!, `frame ${i}`).toBeLessThanOrEqual(bottoms[i - 1]! + 0.5);
+    expect(Math.min(...bottoms)).toBeGreaterThanOrEqual(rest.y + rest.height - 0.5);
+    // At its anchor by the time the fast phase ends, not at the end of the settle.
+    const there = track.find(([, bottom]) => bottom <= rest.y + rest.height + 2)!;
+    expect(there[0]).toBeLessThan(track[track.length - 1]![0] * 0.7);
+  });
+});
+
 test.describe('the limits', () => {
   test('a menu never passes the width cap, whatever its minWidth or labels; long labels truncate', async ({ page }) => {
     await page.getByTestId('wide-menu').click();
@@ -247,6 +288,7 @@ test.describe('the limits', () => {
     const line = menu.getByRole('separator');
     const box = (await line.boundingBox())!;
     expect(box.height).toBeLessThanOrEqual(1);
+    expect(box.height).toBeGreaterThan(0);
     const alpha = await line.evaluate((el) => Number(/rgba\([^)]*,\s*([\d.]+)\)/.exec(getComputedStyle(el).backgroundColor)?.[1] ?? 1));
     expect(alpha).toBeLessThan(0.08);
   });

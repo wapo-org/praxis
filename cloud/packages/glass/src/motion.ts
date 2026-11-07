@@ -58,7 +58,8 @@ export const MORPH = {
   },
   close: {
     shape: { stiffness: 3000, damping: 110 },
-    content: { stiffness: 6400, damping: 160 },
+    /** Not faster than the shape: `c` drives the circle, so a quicker one would pop the panel round on the first frames. */
+    content: { stiffness: 2500, damping: 100 },
     lift: { stiffness: 6400, damping: 160 },
   },
   /** The open panel gliding to a new size: a submenu, a filtered list. Same family, a touch of the same bounce. */

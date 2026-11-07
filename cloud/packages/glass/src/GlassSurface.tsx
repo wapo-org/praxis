@@ -5,7 +5,7 @@ import { LensFilter } from './LensFilter';
 import { MATERIAL_RAMP, glassTier, useBaseChroma, type GlassMaterial } from './material';
 import { TRANSITION } from './motion';
 import { createRig } from './rig';
-import { attachSquircle, hasCornerShape, ROUND_PER_CURVE_RADIUS } from './squircle';
+import { attachSquircle, ROUND_PER_CURVE_RADIUS } from './squircle';
 import { attachStretch, reducedMotion } from './stretch';
 import styles from './glass.module.css';
 
@@ -65,7 +65,7 @@ function useLensMaps(rootRef: React.RefObject<HTMLElement | null>, material: Gla
       // From the token, never the live radius: the morph is writing that one. A map's ring is a circle, so on a
       // superellipse corner it takes the circle with the same apex.
       const token = radius ?? Number.parseFloat(getComputedStyle(el).getPropertyValue('--glass-radius'));
-      const r = shape === 'capsule' ? Math.min(w, h) / 2 : (token * (hasCornerShape() ? ROUND_PER_CURVE_RADIUS : 1)) || 0;
+      const r = shape === 'capsule' ? Math.min(w, h) / 2 : token * ROUND_PER_CURVE_RADIUS || 0;
       const next = generateMaps({ width: w, height: h, radius: r, bezel: MATERIAL_RAMP[material].bezel, material });
       if (!next) return;
       // An undecoded feImage is transparent, which displaces the whole backdrop: wait for it.

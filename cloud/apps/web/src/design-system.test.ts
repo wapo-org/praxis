@@ -12,6 +12,14 @@ const sources = [...files(join(__dirname)), ...files(join(__dirname, '../../../p
 );
 
 describe('design system guard rails', () => {
+  it('small labels are ink-2: ink-3 at 11 px does not hold AA on paper', () => {
+    for (const file of sources.filter((name) => name.endsWith('.css'))) {
+      for (const rule of readFileSync(file, 'utf8').match(/\{[^{}]*\}/g) ?? []) {
+        expect(rule.includes('var(--text-xs)') && rule.includes('var(--color-ink-3)'), `${file}: ${rule}`).toBe(false);
+      }
+    }
+  });
+
   it('has no ad-hoc durations, easings or springs outside tokens.css and motion.ts', () => {
     for (const file of sources) {
       const src = readFileSync(file, 'utf8').replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, '');

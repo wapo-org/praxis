@@ -26,7 +26,7 @@ The target is a calm desktop chat app with the iOS identity: warm paper neutrals
 | Faces | `--font-sans` Inter (all UI and body), `--font-display` Source Serif 4 (greeting, headings, wordmark), `--font-mono` IBM Plex Mono (code only) |
 | Weights | 400 / 500 / 600 only. `--tracking-tight` for titles, `--tracking-display` for serif |
 | Controls | `--control-sm` 28 (row actions, chips in dense UI), `--control-md` 36 (default), `--control-lg` 44 (touch, account row) |
-| Radii | `--radius-sm` 8 (rows, small buttons), `md` 12 (cards, code), `lg` 16 (menus, tiles), `xl` 20 (bubbles), `2xl` 28 (composer, tray), `full` |
+| Radii | `--radius-sm` 8 (small buttons), `md` 12 (cards, code), `lg` 16 (tiles), `xl` 20 (bubbles), `2xl` 28, `full` (row hover and selection). Glass: `--radius-menu` 42, `--radius-panel` 36, `--radius-composer` 44 |
 | Icons | `--icon-sm/md/lg` 16/18/20 with `--icon-stroke` 1.75 (`ICON_STROKE` in TS) |
 | Layout | `--sidebar-width` 260, `--column-width` 720, `--topbar-height` 56, `--float-margin` 12, `--popover-width` 360, `--popover-max-height` 480 |
 | Colour | `--color-paper` canvas, `--color-sidebar`, `--color-surface` card, `--color-fill-1/2`, `--color-bubble` (user bubble), `--color-ink`, `--color-ink-2` secondary, `--color-ink-3` tertiary, `--color-hairline` (and `-strong`), `--color-hover`, `--color-pressed`, `--color-accent` (black in light, paper in dark) with `--color-on-accent`, `--color-danger`, `--color-success`, `--color-focus`, `--color-scrim` |
@@ -51,10 +51,10 @@ Legacy `--paper-*` names alias to `--color-*` so the D3 screens (chat activity, 
 
 | Recipe | Use | Optics (`material.ts`): refraction / core blur | Light tint | Dark tint |
 |---|---|---|---|---|
-| `regular` | composer pill, navbar title and clusters | 1.0 / 3 | paper 50% | `rgba(26,26,24,.48)` |
-| `thick` | sidebar, popovers, tray | 1.25 / 9 | paper 72% | `rgba(24,24,22,.72)` |
-| `thick` + `--glass-menu-tint` | menus (AA for danger text over black) | 1.25 / 9 | paper 90% | `rgba(24,24,22,.86)` |
-| `clear` | small floating chips (jump to latest) | 0.875 / 3 | white 46% | `rgba(40,40,37,.5)` |
+| `regular` | composer pill, navbar title and clusters | 1.0 / 3 | paper 44% | `rgba(26,26,24,.42)` |
+| `thick` | sidebar, popovers, tray | 1.25 / 9 | paper 66% | `rgba(24,24,22,.66)` |
+| `thick` + `--glass-menu-tint` | menus (AA with `--glass-menu-danger` over any backdrop) | 1.25 / 9 | paper 84% | `rgba(24,24,22,.8)` |
+| `clear` | small floating chips (jump to latest) | 0.875 / 3 | white 40% | `rgba(40,40,37,.44)` |
 
 **Cost.** Chromium re-uploads `feImage` textures whenever the lens redraws, so map size is the cost, not the filter nodes. `PIXEL_BUDGET` (60k map pixels per surface) is what holds 120 Hz; the source's 1.1M dropped scrolling to 60 Hz. Maps build at rest size, off the frame, after decoding (an undecoded `feImage` displaces the whole backdrop), debounced on real resize, in a bounded cache (48). Never rebuilt in a gesture: transforms do not resize. Idle: no JS at all.
 
@@ -86,8 +86,8 @@ No centered dialogs and no dimmed backdrops, on any screen size. `SettingsModal`
 
 ## Motion (`packages/glass/src/motion.ts`, the only TS source)
 - **Springs with carried velocity for everything spatial.** A retargeted framer spring keeps its velocity, so any animation reverses from where it is. CSS curves (`--duration-*`) are for colour fades and ambient loops only.
-- The family (`SPRINGS`): `SPRING` {520, 38} default; `snap` {760, 46} press, switch, segmented thumb, chevrons; `glide` {460, 36} the highlight between rows; `panel` {340, 32} sidebar, panel content, pages; `follow`, `lens`, `shadow`, `shadowAlpha` for the stretch and the held rig. `TRANSITION.*` are near-critically damped versions for fades.
-- `GlideHighlight`: one pill per list that glides between hovered rows; another tracks the current row. Layout is read once per row change.
+- The family (`SPRINGS`): `SPRING` {520, 38} default; `snap` {760, 46} press, switch, segmented thumb, chevrons; `panel` {340, 32} sidebar, panel content, pages; `follow`, `lens`, `shadow`, `shadowAlpha` for the stretch and the held rig. `TRANSITION.*` are near-critically damped versions for fades.
+- Hover has no motion: rows own an instant pill background (see Corners and rows).
 - Disclosure and arrivals: `chat/chatMotion.ts`. A height change happens once in layout and what follows glides there with transforms (FLIP). A new message rises in; a loaded history does not.
 - Only `transform` and `opacity` animate, plus the lens scale for the held rig.
 - `STAGGER` is 30 ms between rows.
@@ -106,41 +106,52 @@ No centered dialogs and no dimmed backdrops, on any screen size. `SettingsModal`
   - The global reduced-motion rule collapses all CSS animation.
 
 ## Menu morph (`packages/glass/src/morph`, numbers in `MORPH`, `motion.ts`)
-Every menu grows out of its button as one piece of glass that changes shape, measured frame by frame from the iOS recording (`design/menu-morph-ref`). It is not a finished menu being scaled, and it is not a fade. `<GlassMorph source radius>` is the only implementation; both button classes use the same parameters.
+Every menu grows out of its button as one piece of glass that changes shape, measured frame by frame from the iOS recording (`design/menu-morph-ref`), then 15 % faster with a small bounce at the owner's request. It is not a finished menu being scaled, and it is not a fade. `<GlassMorph source>` is the only implementation; both classes use the same parameters.
 
-**Two classes, decided at open from the DOM (`morph/source.ts`):**
-- **Separate:** the trigger is the only control in its own glass and fills at least half of it. That glass becomes the menu: it lifts and whitens, hands over by `--glass-fade`, and nothing is left behind while the menu is open. It returns on close, and so does the glyph.
-- **Attached:** anything else. The parent and the button do not change or move, apart from ordinary press feedback. The menu grows from a small blob on the button with the same timing, path and content.
+**Two classes, decided at open from the DOM (`morph/source.ts`).** A trigger morphs only if it has its own glass AND contains only an icon.
+- **Separate:** the icon-only trigger is the only control in its own glass and fills at least half of it. That glass becomes the menu: it lifts and whitens, hands over by `--glass-fade`, and nothing is left behind while the menu is open. It returns on close, and so does the glyph.
+- **Attached:** anything else, including a button with text in its own glass. The parent and the button do not change or move, apart from ordinary press feedback. The menu grows from a small blob at the button with the same timing, path and content.
 
 | Trigger | Class | Why |
 |---|---|---|
 | Chat row "…" (`SidebarChats`) | attached | inside the sidebar glass, in a row |
 | Composer + (`PlusTray`) | attached | inside the composer pill |
-| `ScreenMenu plain`, the provider preset (`ProviderEditor`) | attached | a row control on a page, no glass of its own |
-| `ScreenMenu` not plain (no caller today) | separate | the default `Trigger` has its own capsule |
+| `ScreenMenu`, the provider preset (`ProviderEditor`) | attached | has text, and no glass of its own |
 | Cascade `SubTrigger` | attached | a menu row |
-| `GlassDropdown.Trigger` default (Lab: `DropdownPositions`, `AppleNotesReplica`, `VirtualModelPicker`) | separate | its own capsule |
+| `GlassDropdown.Trigger` with text (Lab: `DropdownPositions`, `AppleNotesReplica`, `VirtualModelPicker`) | attached | has text |
+| `GlassDropdown.Trigger` with only an icon (`MorphLab`) | separate | own glass, only an icon |
 | Lab `asChild` in a shared capsule (`MorphLab`) | attached | shares glass with a neighbour |
 
-Not menu triggers, so no morph: the in-place `morph` submenu (the same glass changes content), `ConsentPopover` (opened by the send path, no button; keeps `popIn`), the narrow sidebar panel (a slide), and the header's Settings, New chat and title buttons (they navigate). **In production today every menu trigger is attached;** the separate class is reachable only through the default `Trigger`, which the Lab uses.
+Not menu triggers, so no morph: `ConsentPopover` (opened by the send path, no button; keeps `popIn`), the narrow sidebar panel (a slide), and the header's Settings, New chat and title buttons (they navigate). **In production today every menu trigger is attached;** the separate class is reachable only through an icon-only default `Trigger`, which the Lab uses.
 
 **The motion, from the press:**
 | ms | Shape | Content |
 |---|---|---|
-| 0-110 | Source lifts near-opaque with a wider shadow | Glyph leaves |
-| 140-230 | Near-circle, growing away from the button; the far edge stays near it | Copy arrives blurred and oversized, cut and bent by the rim |
-| 230-320 | Full width, carried about 11 % of its height past its place, squaring up | Sharp rows take over; tint arrives |
-| 320-640 | Bleeds off the last 2.5 %, no bounce | Rows contract into place |
+| 0-94 | Source lifts near-opaque with a wider shadow | Glyph leaves |
+| 120-200 | Near-circle, growing away from the button; the edge beside it only ever moves toward its place | Copy arrives blurred and oversized, cut by the rim |
+| 200-246 | Squares up, radius still larger than final; far edges overshoot about 3.5 % | Sharp rows take over, at full ink by 246 |
+| 246-272 | Far edges return; on the final tint | Rows contract into place |
 
-Close is the same path in reverse and faster. A menu opening up or left mirrors by itself, because the path runs from the source's box to the final box.
+Close is the same path in reverse and faster. A menu opening up or left mirrors by itself, because the path runs from the source's box to the final box. A rim layer draws one crisp line, a constant 1 px on screen at any scale, through every frame and at rest, so the lens handover never loses the outline.
 
-**Why this technique.** The glass stays its rest size in layout: `transform` on the shell takes it from the source's box to the menu's, `border-radius` is written against that scale, and the content layer is counter-scaled. Layout never runs, and the real lens, rim, sheen and shadow all follow the shape. A clip-revealed fixed panel would have needed a separate rim and shadow, and it would not read as one piece of glass.
-- **Refraction:** one prebuilt round map (`transit.ts`, built at idle when the first glass mounts), stretched to each menu by its `feImage` rect. The rest lens's map would only bend four arcs of a circle. It hands over to the real lens by opacity as it lands, which is also how the glass gains its tint. No map or filter value changes per frame.
-- **Blur:** a static inert copy of the rows under a fixed filter (bend, blur, ink), crossfaded with the live rows and removed when it is gone. The blur radius never animates. Frost tier: a fixed CSS blur, no bend, same motion.
+**Nested menus.** Submenus use the same engine. In-place: the panel glides to its new size in transforms (`MORPH.resize`), rows held at scale 1 and clipped by the glass, and the incoming rows wait `panelFadeDelay` so text never stacks. Cascade: grows from its row, beside the menu; the parent's scroll viewport is opened up so nothing clips it. Framer's shared-layout projection is gone from menus: it read layout mid-frame and scaled the rows.
+
+**Why this technique.** The glass stays its rest size in layout: `transform` on the shell takes it from the source's box to the menu's, `border-radius` is written against that scale, and the content layer is counter-scaled. Layout never runs, and the real lens, sheen and shadow all follow the shape. A clip-revealed fixed panel would have needed a separate rim and shadow, and it would not read as one piece of glass.
+- **Refraction:** one prebuilt round map (`transit.ts`, built at idle when the first glass mounts), stretched to each menu by its `feImage` rect. It sits under the real lens, which fades in over it as the glass gains its tint. No map or filter value changes per frame. It has no specular: the map's ring is an ellipse, and would draw a bright line across a squared-up panel.
+- **Blur:** a static inert copy of the rows under a fixed filter (bend, blur, ink), crossfaded with the live rows and removed when it is gone. The blur radius never animates. A panel over `bendMaxSide` skips the bend, which would only scribble its rows. Frost tier: a fixed CSS blur, no bend, same motion.
+- **Timeline:** starts at the press, not when the menu finished mounting, so a slow mount cannot read as lag.
 - **Interruption:** the springs' position and velocity are the whole state (`stepSpring`), so any retarget reverses from where it is. Re-tap, Escape, outside click and fast toggling all use that.
 - **Pointer:** until the glass has landed the shell takes no pointer, so the button under it keeps re-taps and a quick release selects nothing. A release outside the rest box still dismisses.
-- **Stretch:** nothing stays inline at rest. The morph owns the shell's transform and the stretch owns the root's `scale` and `translate`, so they compose, including during the settle. `morph/registry.ts` gives the stretch the rest box while the glass moves.
+- **Stretch:** nothing stays inline at rest. The morph owns the shell's transform and the stretch owns the root's `scale` and `translate`, so they compose. `morph/registry.ts` gives the stretch the rest box while the glass moves.
 - **Reduced motion:** a plain short fade through `--glass-fade`; no scale, no shape change, no copy.
+
+## Corners and rows
+- **Squircle:** all glass cards and menus use `corner-shape: var(--glass-corner)`, `superellipse(1.46)` (exponent 2.75), measured from `IMG_7868`. Capsules stay round. No cost per frame. An engine without `corner-shape` gets the same curve as a clip path on the glass's layers, rebuilt only on resize, over the circle with the same apex (`squircle.ts`).
+- **Radii:** `--radius-menu` 42 (the span of the measured curve, which has the apex of a 32 px circle), `--radius-panel` 36, `--radius-composer` 44. `--glass-radius` defaults to the menu's. Maps use the round equivalent.
+- **Rows:** `--menu-row` 40, `--menu-pad` 10, `--menu-row-inset` 16; hover and selection are full pills, in menus and sidebar rows, and instant: nothing glides between rows. Drag-select still scrubs.
+- **Width:** `--menu-max-width` 280 for every menu, whatever its `minWidth`. Long labels truncate.
+- **Dividers:** `--color-divider` at `--divider-scale` of a pixel, inset by the row inset.
+- **Labels:** 11 px text is ink-2, never ink-3 (a test holds this); ink-3 on paper does not meet AA at that size.
 
 ## Performance budget (WP-G2, measured 2026-11-07)
 `node apps/web/scripts/g2-perf.mjs`: `COLD=n` for fresh-session first opens, `UNCAPPED=1` for headroom, `NO_LAB=1` against a production build. The Lab exists only in dev. Results are in `~/.praxis-agent-state/cloud/design/G2/perf-*.json`. `g2-trace.mjs` prints a morph's numbers per frame, and `g2-compare.mjs` and `g2-capture.mjs` build the boards, strips and videos. The screencast's own timestamps lag by hundreds of ms, so each captured frame carries its true time as a barcode.
@@ -149,7 +160,7 @@ Close is the same path in reverse and faster. A menu opening up or left mirrors 
 - **Layout.** The chat layer is full-bleed (`ChatScreen` transparent over `--paper-gradient`), so scrolling messages pass behind the floating sidebar, top bar and composer; the gradient gives the blur something real to sample at any width. The message column stays centred in the full width, max 720 px. The settings page clears the floating sidebar on desktop (`data-sidebar` padding).
 - **Breakpoint:** desktop ≥ 1024 px; the narrow layout is designed at 402 px. Breakpoint visibility is CSS only (`.narrow` / `.desktop`).
 - **Sidebar** (`shell/Sidebar`, floating in every state):
-  - Fixed, inset `--float-margin` from the left/top/bottom edges; radius 20; glass `thick`. Not docked: no layout space is reserved, so content passes behind its glass.
+  - Fixed, inset `--float-margin` from the left/top/bottom edges; `--radius-panel`; glass `thick`. Not docked: no layout space is reserved, so content passes behind its glass.
   - Desktop: full-height sheet (260 px wide). Narrow (<1024 px): the same content as a floating panel (≤320 px wide, ≤480 px tall), portaled to the document root; Escape or an outside click closes it and returns focus to the History button; choosing a chat, New chat or Account also closes it.
   - Wordmark in serif 19 with a collapse button.
   - "New chat" and an inline "Search" (⌘K focuses it) as 36 px ghost rows.
@@ -175,7 +186,7 @@ Close is the same path in reverse and faster. A menu opening up or left mirrors 
   - Level 2: one line per call (icon, mono name, muted summary). Level 3: input/progress/output in a hairline mono detail. Approvals and questions always show under the header, even folded.
 - **Approvals and questions** (`ApprovalCards`, `ElicitationCards`): compact `--radius-lg` cards on `--color-surface` with a hairline border; 36 px action buttons; mono args in `--color-fill-1`.
 - **Composer** (`chat/Composer`, `chat/ComposerBar`):
-  - A glass `regular` pill (radius 28, padding 8) floating from the bottom.
+  - A glass `regular` pill (`--radius-composer`, padding 8) floating from the bottom.
   - Controls: + / auto-growing textarea (14/20 on desktop, 16 on touch, max 200 px; measured once per change) / camera / mic / send-or-stop.
   - Every control is a 36 px accent circle, as on iOS.
   - The plus menu is a compact popover (360 × 480 px at most), anchored to the pill.
