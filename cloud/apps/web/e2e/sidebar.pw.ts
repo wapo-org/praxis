@@ -47,7 +47,7 @@ test('the sidebar is the owner\'s opaque slab, identical in both themes, with th
     // The source paints the gloss twice: its literal gradient, then sbBg = grad(base).
     const gloss =
       'linear-gradient(rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.12) 2%, rgba(255, 255, 255, 0.06) 5%, rgba(255, 255, 255, 0.02) 9%, rgba(0, 0, 0, 0) 14%, rgba(0, 0, 0, 0.12) 100%)';
-    expect(layer.image).toBe(`${gloss}, ${gloss}`);
+    expect(layer.image).toBe(`${gloss}, ${gloss}, none`); // then the base colour layer
     expect(layer.color).toBe('rgb(22, 24, 27)');
     expect(layer.border).toBe('1px solid rgb(61, 65, 71)');
     expect(layer.shadow).toBe('rgba(255, 255, 255, 0.3) 0px 1px 2px 0px inset');
@@ -122,10 +122,7 @@ test('the six sidebar palettes and the button colours apply live, persist, and a
     await expect(page.getByTestId('settings-back')).toHaveCSS('background-color', fill);
     await expect(page.getByTestId('settings-back')).toHaveCSS('color', ink);
   }
-  await page.getByTestId('button-color-custom').evaluate((input: HTMLInputElement) => {
-    input.value = '#123abc';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  });
+  await page.getByTestId('button-color-custom').fill('#123abc');
   await expect(page.getByTestId('settings-back')).toHaveCSS('background-color', 'rgb(18, 58, 188)');
   await expect(buttons.getByRole('radio', { checked: true })).toHaveCount(0);
   const midnight = palettes.getByRole('radio', { name: 'Midnight', exact: true });
