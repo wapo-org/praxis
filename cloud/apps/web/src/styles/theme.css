@@ -147,14 +147,3 @@ button {
     font-size: var(--text-input-touch) !important;
   }
 }
-
-/* Accent is cross-cutting; keep portaled menu selections on the root palette. */
-:is(
-    [role='option'][aria-selected='true'],
-    [role='menuitem'],
-    [role='menuitemradio'],
-    [role='menuitemcheckbox']
-  )
-  .lucide-check {
-  color: var(--color-accent);
-}

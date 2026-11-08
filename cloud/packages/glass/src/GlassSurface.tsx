@@ -6,7 +6,7 @@ import { LensFilter } from './LensFilter';
 import { MATERIAL_RAMP, glassTier, useBaseChroma, type GlassMaterial } from './material';
 import { TRANSITION } from './motion';
 import { createRig } from './rig';
-import { attachSquircle, ROUND_PER_CURVE_RADIUS } from './squircle';
+import { attachSquircle, mapCorner } from './squircle';
 import { attachStretch, reducedMotion } from './stretch';
 import styles from './glass.module.css';
 
@@ -29,6 +29,11 @@ export interface GlassSurfaceProps extends HTMLMotionProps<'div'>, GlassMaterial
   stretch?: boolean | 'edge';
   /** Pointer-tracked focus glow (default on). Off for touch and reduced motion regardless. */
   spotlight?: boolean;
+  /**
+   * `false` makes an opaque surface with the same shape, stretch and shadow but no lens and no backdrop:
+   * one solid layer painted from --glass-solid-bg, --glass-solid-border and --glass-solid-shadow.
+   */
+  lens?: boolean;
 }
 
 type MotionFrame = HTMLMotionProps<'div'>['animate'];
@@ -47,12 +52,12 @@ function routeFade<T extends MotionFrame | HTMLMotionProps<'div'>['exit'] | HTML
 const RESIZE_DEBOUNCE_MS = 120;
 
 /** Built at rest size and reused; never rebuilt during a gesture (transforms do not resize). */
-function useLensMaps(rootRef: React.RefObject<HTMLElement | null>, material: GlassMaterial, shape: GlassShape, radius?: number) {
+function useLensMaps(rootRef: React.RefObject<HTMLElement | null>, material: GlassMaterial, shape: GlassShape, radius: number | undefined, enabled: boolean) {
   React.useEffect(() => { warmTransit(); }, []);
   const [maps, setMaps] = React.useState<GeneratedMaps | null>(null);
   React.useEffect(() => {
     const el = rootRef.current;
-    if (!el || glassTier() !== 'svg' || typeof ResizeObserver === 'undefined') return;
+    if (!enabled || !el || glassTier() !== 'svg' || typeof ResizeObserver === 'undefined') return;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let generation = 0;
@@ -65,12 +70,12 @@ function useLensMaps(rootRef: React.RefObject<HTMLElement | null>, material: Gla
       if (w < 8 || h < 8 || (w === lastW && h === lastH)) return;
       lastW = w;
       lastH = h;
-      // From the token, never the live radius: the morph is writing that one. A map's ring is a circle, so on a
-      // superellipse corner it takes the circle with the same apex.
-      const token = radius ?? Number.parseFloat(getComputedStyle(el).getPropertyValue('--glass-radius'));
-      const r = shape === 'capsule' ? Math.min(w, h) / 2 : token * ROUND_PER_CURVE_RADIUS || 0;
+      // From the tokens, never the live radius: the morph is writing that one. The ring is the painted corner
+      // itself: the radius after CSS clamps it to the box (a 44 px composer on a 52 px pill paints 26 px), on
+      // the corner's own superellipse. A circle there sits inside the squircle's apex and draws a second rim.
+      const { span, exponent } = mapCorner(el, w, h, shape, radius);
       const version = ++generation;
-      const next = await generateMapsAsync({ width: w, height: h, radius: r, bezel: MATERIAL_RAMP[material].bezel, material });
+      const next = await generateMapsAsync({ width: w, height: h, radius: span, exponent, bezel: MATERIAL_RAMP[material].bezel, material });
       if (!next) return;
       // An undecoded feImage is transparent, which displaces the whole backdrop: wait for it.
       void Promise.all(
@@ -100,8 +105,8 @@ function useLensMaps(rootRef: React.RefObject<HTMLElement | null>, material: Gla
       clearTimeout(timer);
       observer.disconnect();
     };
-  }, [rootRef, material, shape, radius]);
-  return maps;
+  }, [rootRef, material, shape, radius, enabled]);
+  return enabled ? maps : null;
 }
 
 /** The radial glow at the cursor. Transform-only, so tracking repaints nothing. */
@@ -147,7 +152,7 @@ function attachSpotlight(el: HTMLElement) {
  * root and framer-motion's own transform composes with it. No re-render per frame.
  */
 export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(function GlassSurface(
-  { material = 'regular', shape = 'card', radius, stretch = true, spotlight = true, className = '', style, initial, animate: animateProp, exit, children, ...rest },
+  { material = 'regular', shape = 'card', radius, stretch = true, spotlight = true, lens = true, className = '', style, initial, animate: animateProp, exit, children, ...rest },
   forwardedRef,
 ) {
   const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -159,8 +164,8 @@ export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(
     },
     [forwardedRef],
   );
-  const tier = glassTier();
-  const maps = useLensMaps(rootRef, material, shape, shape === 'capsule' ? undefined : radius);
+  const tier = lens ? glassTier() : 'solid';
+  const maps = useLensMaps(rootRef, material, shape, shape === 'capsule' ? undefined : radius, lens);
   const chroma = useBaseChroma();
   const filterId = `glass-lens-${React.useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const mode = stretch === 'edge' ? 'edge' : stretch ? 'press' : null;
@@ -208,7 +213,11 @@ export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(
           <span aria-hidden="true" className={`${styles.band} ${styles.bandRim}`} style={{ '--band-blur': `${rim}px` } as React.CSSProperties} />
         </>
       ) : null}
-      <span aria-hidden="true" data-glass-lens="" className={tier === 'svg' ? styles.lens : styles.finish} style={lensStyle} />
+      {tier === 'solid' ? (
+        <span aria-hidden="true" data-glass-solid="" className={styles.solid} />
+      ) : (
+        <span aria-hidden="true" data-glass-lens="" className={tier === 'svg' ? styles.lens : styles.finish} style={lensStyle} />
+      )}
       {spotlight ? (
         <span aria-hidden="true" data-glass-spot-clip="" className={styles.spotClip}>
           <span data-glass-spot="" className={styles.spot} />

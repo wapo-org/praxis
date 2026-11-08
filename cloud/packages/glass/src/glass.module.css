@@ -43,6 +43,7 @@
 
 .lens,
 .finish,
+.solid,
 .band,
 .spotClip {
   position: absolute;
@@ -57,7 +58,7 @@
 
 /* The morph animates a circle into the corner; the path returns the moment the corner has squared, while it
    still moves (scaled with the glass by at most the overshoot), so it never swaps in at rest. */
-[data-morph-round='true'] > :is(.lens, .finish, .band, .spotClip) {
+[data-morph-round='true'] > :is(.lens, .finish, .solid, .band, .spotClip) {
   clip-path: none;
 }
 
@@ -74,6 +75,15 @@
     inset 0 -1px 0 0 rgba(255, 255, 255, calc(0.22 * var(--glass-rim))),
     inset 0 0 0 1px rgba(255, 255, 255, calc(0.16 * var(--glass-border))),
     inset 0 0 0 1px rgba(15, 15, 20, calc(0.07 * var(--glass-border)));
+}
+
+/* Opaque surfaces (lens={false}): one solid layer, so the border and the inset light follow the same
+   corner as the fill, and the held rig (which writes the root's shadow) never touches them. */
+.solid {
+  box-sizing: border-box;
+  background: var(--glass-solid-bg, var(--glass-fallback));
+  border: var(--glass-solid-border, 0 solid transparent);
+  box-shadow: var(--glass-solid-shadow, none);
 }
 
 /* Chromium before its maps have decoded, and any engine that loses the filter. */

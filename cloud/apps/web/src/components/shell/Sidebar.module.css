@@ -1,5 +1,7 @@
-/* Floating liquid-glass sidebar: detached from every edge, content passes
-   behind the glass (the chat layer is full-bleed). See DESIGN.md. */
+/* The floating sidebar, ported literally from the owner's sidebar-design.html (<aside> + PAL/grad/BP).
+   An opaque skeuomorphic slab: the palette's gloss gradient (twice, as the source paints it), its border, an inset top highlight, a 29 px
+   squircle. Same in light and dark app themes; only the sidebar palette (--sb-*) changes it. Every
+   metric below is the source's; only the width is 232 px (the source's box is 214 px). See DESIGN.md. */
 
 .docked {
   position: fixed;
@@ -20,210 +22,176 @@
 }
 
 .surface {
+  /* GlassSurface lens={false}: one solid layer under the content, the source's background/border/shadow. */
   --glass-radius: var(--sidebar-radius);
-  --glass-thick-tint: var(--sidebar-tint);
-  --glass-fallback: var(--sidebar-surface);
-  --glass-sheen-a: 0;
-  --glass-inner: 0;
-  --color-fill-2: var(--sidebar-selected);
-  --color-surface: var(--sidebar-surface);
-  --color-paper: var(--sidebar-surface);
-  --color-danger: var(--sidebar-danger);
-  --color-ink: var(--sidebar-ink);
-  --color-ink-2: var(--sidebar-muted);
-  --color-ink-3: var(--sidebar-muted);
-  --color-hover: var(--sidebar-hover);
-  --color-pressed: var(--sidebar-selected);
-  --color-hairline: var(--sidebar-rule);
-  --color-hairline-strong: var(--sidebar-rule);
-  --color-focus: color-mix(in srgb, var(--color-accent) 60%, white);
-  border: 1px solid var(--sidebar-rule);
+  --glass-corner: squircle; /* the source's corner-shape, not the app's superellipse(1.46) */
+  --glass-solid-bg: var(--sb-gloss), var(--sb-bg); /* the source's background, gloss twice */
+  --glass-solid-border: 1px solid var(--sb-border);
+  --glass-solid-shadow: inset 0 1px 2px rgb(255 255 255 / 30%);
+  /* Shared parts inside (rename field, menus' triggers) read the app tokens: point them at the palette. */
+  --color-ink: var(--sb-ink);
+  --color-ink-2: var(--sb-mute);
+  --color-ink-3: var(--sb-mute);
+  --color-hover: var(--sb-hl);
+  --color-pressed: var(--sb-hl);
+  --color-fill-2: var(--sb-hl);
+  --color-surface: var(--sb-base);
+  --color-paper: var(--sb-base);
+  --color-hairline: var(--sb-line);
+  --color-hairline-strong: var(--sb-border);
+  --color-focus: color-mix(in srgb, var(--sb-ink) 55%, transparent);
   height: 100%;
   overflow: hidden;
+  color: var(--sb-ink);
 }
 
+/* Inside the 1 px border, with the source's padding: 12px 8px 0. */
 .pane {
   position: absolute;
-  inset: 0;
+  inset: 1px;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background-image: var(--sidebar-gradient), var(--sidebar-gradient);
+  padding: 12px 8px 0;
 }
 
 .header {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-3) var(--sidebar-gap);
+  gap: 8px;
+  padding: 0 4px;
   flex-shrink: 0;
 }
+
+/* New chat and Back share this pill. The colour is the Button colour setting (BP). */
 .primaryPill {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  justify-content: flex-start;
+  gap: 8px;
   flex: 1;
   min-width: 0;
-  height: var(--sidebar-control);
-  padding: 0 var(--sidebar-inset);
+  height: 34px;
+  padding: 0 14px;
   border: 0;
-  border-radius: var(--radius-full);
-  background: var(--sidebar-primary);
-  color: var(--sidebar-on-primary);
-  font: var(--weight-medium) var(--sidebar-text) / var(--sidebar-leading) var(--font-sans);
+  border-radius: 999px;
+  background: var(--nb-fill);
+  box-shadow: inset 0 0 0 1px var(--nb-border);
+  color: var(--nb-ink);
+  font: 500 13px / 16px var(--font-sans);
   text-align: left;
   cursor: pointer;
 }
-.primaryPill svg {
-  flex-shrink: 0;
-}
+
 .iconButton {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: var(--sidebar-control);
-  height: var(--sidebar-control);
+  width: 34px;
+  height: 34px;
+  padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--sidebar-muted);
+  border-radius: 10px;
+  corner-shape: squircle;
+  background: none;
+  color: var(--sb-mute);
   cursor: pointer;
 }
 
+.primaryPill svg,
+.iconButton svg {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.9;
+}
+
 .actions {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  --glide-inset: var(--space-3);
-  padding: 0 var(--space-2);
+  margin-top: 10px;
   flex-shrink: 0;
 }
 
+/* Search, and the Settings sections: the source's icon row. */
 .action,
-.search,
 .navRow {
-  position: relative;
-  z-index: 1;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 10px;
   width: 100%;
-  height: var(--sidebar-row);
-  padding: 0 var(--sidebar-inset);
+  padding: 8px;
   border: 0;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--color-ink);
-  font: var(--weight-regular) var(--sidebar-text) / var(--sidebar-leading) var(--font-sans);
+  border-radius: 10px;
+  background: none;
+  color: var(--sb-ink);
+  font: 400 13px / 16px var(--font-sans);
   text-align: left;
   cursor: pointer;
 }
 
 .action svg,
-.search svg,
 .navRow svg {
-  color: var(--color-ink-2);
   flex-shrink: 0;
-}
-
-.search {
-  cursor: text;
-}
-
-.search input {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--color-ink);
-  font: inherit;
-}
-
-.search input::placeholder {
-  color: var(--color-ink-2);
-  font-weight: var(--weight-regular);
-}
-
-.search input::-webkit-search-cancel-button {
-  display: none;
-}
-
-.list {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  /* The pills sit inside the padding box, where the rows are. */
-  --glide-inset: var(--space-3);
-  padding: 0 var(--space-2) var(--space-4);
-  touch-action: pan-y;
-}
-
-.navRow + .navRow {
-  margin-top: 2px;
+  width: 16px;
+  height: 16px;
 }
 
 .navRow[aria-current='page'] {
-  background: var(--color-pressed);
-  font-weight: var(--weight-medium);
+  background: var(--sb-active);
 }
 
-.back {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  height: var(--sidebar-row);
-  margin-inline-end: auto;
-  padding: 0 var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-ink-2);
-  font: var(--weight-regular) var(--sidebar-text) / var(--sidebar-leading) var(--font-sans);
-  cursor: pointer;
+.list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-width: none;
 }
 
-.back svg {
-  color: var(--color-ink-2);
-  flex-shrink: 0;
+nav.list {
+  gap: 2px;
+  margin-top: 10px;
 }
 
-.group + .group {
-  margin-top: var(--space-4);
+.group {
+  display: flex;
+  flex-direction: column;
 }
 
+/* The source's caption is its own block (33 px), then the rows with a 2 px gap between them only. */
 .groupTitle {
   margin: 0;
-  padding: var(--space-4) var(--space-2) var(--sidebar-section-bottom);
-  color: var(--color-ink-2);
-  font: var(--weight-medium) var(--sidebar-caption) / var(--sidebar-leading-caption)
-    var(--font-sans);
+  padding: 16px 8px 6px;
+  color: var(--sb-mute);
+  font: 400 10px / 11px var(--font-sans);
+}
+
+.row + .row {
+  margin-top: 2px;
 }
 
 .empty {
   margin: 0;
-  padding: var(--space-2);
-  color: var(--color-ink-3);
-  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  padding: 16px 8px;
+  color: var(--sb-mute);
+  font: 400 12px / 16px var(--font-sans);
 }
 
 .row {
   position: relative;
-  z-index: 1;
   display: flex;
   align-items: center;
-  border-radius: var(--radius-full);
+  border-radius: 999px;
 }
 
 .row[data-active='true'] {
-  background: var(--color-pressed);
+  background: var(--sb-active);
 }
 
 .rowSelect {
@@ -231,14 +199,12 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  height: var(--sidebar-row);
-  padding: 0 var(--sidebar-inset);
+  padding: 8px 14px;
   border: 0;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--color-ink);
-  font: var(--weight-regular) var(--sidebar-text) / var(--sidebar-leading) var(--font-sans);
+  border-radius: 999px;
+  background: none;
+  color: var(--sb-ink);
+  font: 400 13px / 15px var(--font-sans);
   text-align: left;
   cursor: pointer;
 }
@@ -251,10 +217,17 @@
   white-space: nowrap;
 }
 
+/* The pin and the actions button share the trailing slot. */
+.row:has(.rowPin) .rowSelect,
+.row:hover .rowSelect,
+.row:focus-within .rowSelect {
+  padding-inline-end: calc(4px + var(--control-sm));
+}
+
 .rowPin {
   position: absolute;
   top: 50%;
-  right: var(--space-1);
+  right: 4px;
   width: var(--control-sm);
   height: var(--control-sm);
   display: flex;
@@ -262,11 +235,9 @@
   justify-content: center;
   transform: translateY(-50%);
   pointer-events: none;
-  color: var(--sidebar-muted);
+  color: var(--sb-mute);
 }
-.rowSelect {
-  padding-inline-end: calc(var(--sidebar-inset) + var(--control-sm));
-}
+
 .row:hover .rowPin,
 .row:focus-within .rowPin,
 .row:has(.rowMenu[data-state='open']) .rowPin {
@@ -276,7 +247,7 @@
 .rowMenuWrap {
   position: absolute;
   top: 50%;
-  right: var(--space-1);
+  right: 4px;
   display: flex;
   transform: translateY(-50%);
 }
@@ -288,9 +259,9 @@
   width: var(--control-sm);
   height: var(--control-sm);
   border: 0;
-  border-radius: var(--radius-full);
+  border-radius: 999px;
   background: transparent;
-  color: var(--color-ink-2);
+  color: var(--sb-mute);
   cursor: pointer;
   opacity: 0;
   visibility: hidden;
@@ -303,68 +274,62 @@
   visibility: visible;
 }
 
-
 .rowError {
   position: absolute;
   top: 100%;
   margin: 0;
-  padding: 0 var(--space-2);
-  color: var(--color-danger);
-  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+  padding: 0 14px;
+  color: var(--sb-ink);
+  font: 400 11px / 14px var(--font-sans);
 }
 
 .rename {
-  padding: var(--space-1) 0;
+  padding: 1px 0;
 }
 
 .rename input {
   width: 100%;
-  height: var(--control-sm);
-  padding: 0 var(--space-2);
-  border: 1px solid var(--color-hairline-strong);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-ink);
-  font: var(--weight-regular) var(--sidebar-text) / var(--sidebar-leading) var(--font-sans);
+  height: 29px;
+  padding: 0 13px;
+  border: 1px solid var(--sb-border);
+  border-radius: 999px;
+  background: var(--sb-hl);
+  color: var(--sb-ink);
+  font: 400 13px / 15px var(--font-sans);
   outline: none;
 }
 
 .footer {
-  position: relative;
   flex-shrink: 0;
-  margin: 0 var(--space-2);
-  padding: var(--space-3) var(--sidebar-footer-pad) var(--sidebar-inset);
-  border-top: 1px solid var(--sidebar-rule);
+  border-top: 1px solid var(--sb-line);
+  padding: 12px 6px 14px;
 }
 
 .account {
-  position: relative;
-  z-index: 1;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 10px;
   width: 100%;
-  min-height: var(--control-sm);
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-ink-2);
+  border-radius: 10px;
+  background: none;
+  color: var(--sb-mute);
   text-align: left;
   cursor: pointer;
 }
 
 .avatar {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: var(--control-sm);
-  height: var(--control-sm);
-  border-radius: var(--radius-full);
-  background: var(--color-fill-2);
-  color: var(--color-ink);
-  font: var(--weight-semibold) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--sb-hl);
+  color: var(--sb-ink);
+  font: 600 11px / 1 var(--font-sans);
 }
 
 .accountCopy {
@@ -372,77 +337,51 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+  line-height: 1.25;
 }
 
 .accountName {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--color-ink);
-  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  color: var(--sb-ink);
+  font: 400 12px / 1.25 var(--font-sans);
 }
 
 .accountDetail {
-  color: var(--color-ink-2);
-  font: var(--weight-regular) var(--sidebar-caption) / var(--sidebar-leading-caption)
-    var(--font-sans);
+  color: var(--sb-mute);
+  font: 400 10px / 1.25 var(--font-sans);
+}
+
+.account svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--sb-mute);
 }
 
 @media (hover: hover) {
-  /* Hover is instant and pill-shaped: no animation, nothing glides between rows. */
+  /* Hover is instant (style-hover in the source): no animation, nothing glides between rows. */
+  .primaryPill:hover {
+    filter: brightness(0.96);
+  }
   .iconButton:hover,
-  .back:hover,
   .action:hover,
-  .search:hover,
   .navRow:not([aria-current='page']):hover,
   .row:not([data-active='true']):hover {
-    background: var(--color-hover);
-    color: var(--color-ink);
+    background: var(--sb-hl);
   }
   .rowMenu:hover {
-    background: var(--color-pressed);
-    color: var(--color-ink);
+    background: var(--sb-hl);
+    color: var(--sb-ink);
   }
 }
 
-:is(
-  .primaryPill,
-  .iconButton,
-  .action,
-  .rowSelect,
-  .rowMenu,
-  .account,
-  .navRow,
-  .back
-):focus-visible,
-.search:focus-within {
+:is(.primaryPill, .iconButton, .action, .rowSelect, .rowMenu, .account, .navRow):focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: -2px;
 }
 
-.primaryPill svg,
-.iconButton svg {
-  width: var(--sidebar-glyph-small);
-  height: var(--sidebar-glyph-small);
+.primaryPill:focus-visible {
+  outline-offset: 2px;
 }
-.action {
-  padding: 0 var(--space-2);
-  height: var(--space-8);
-  gap: var(--sidebar-gap);
-}
-.account {
-  gap: var(--sidebar-gap);
-}
-.accountName {
-  line-height: var(--sidebar-leading);
-}
-.accountDetail {
-  line-height: var(--sidebar-leading-detail);
-}
-.row + .row {
-  margin-top: 2px;
-}
-
-.primaryPill:focus-visible { outline-offset: 2px; }
-
-.action svg { color: var(--sidebar-ink); }

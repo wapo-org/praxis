@@ -24,8 +24,47 @@
     <script>
       performance.mark('praxis:boot-start');
       try {
-        const savedAccent = localStorage.getItem('praxis-accent');
-        document.documentElement.dataset.accent = ['neutral', 'blue', 'violet', 'rose', 'amber', 'green'].includes(savedAccent) ? savedAccent : 'neutral';
+        // Sidebar palette and New-chat colour (src/lib/sidebarPalette.ts, kept in step by its test).
+        const root = document.documentElement;
+        const pal = {
+          graphite: ['#16181b', '#3d4147', 1],
+          midnight: ['#101c33', '#2f4570', 1],
+          forest: ['#12261d', '#2f5a45', 1],
+          plum: ['#261530', '#5a3a6b', 1],
+          sand: ['#e9e4d8', '#cfc8b6', 0],
+          paper: ['#fbfbf9', '#d9d9e0', 0],
+        };
+        let palId = 'graphite';
+        let nb = '#ffffff';
+        try {
+          const savedPal = localStorage.getItem('praxis-sidebar-palette');
+          if (Object.prototype.hasOwnProperty.call(pal, savedPal)) palId = savedPal;
+          const savedNb = localStorage.getItem('praxis-button-color');
+          if (/^#[0-9a-f]{6}$/i.test(savedNb || '')) nb = savedNb.toLowerCase();
+        } catch {}
+        const [base, border, dark] = pal[palId];
+        const lumOf = (hex) => {
+          const n = parseInt(hex.slice(1), 16);
+          const c = [n >> 16, (n >> 8) & 255, n & 255].map((v) => ((v /= 255) <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+          return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+        };
+        const lum = lumOf(nb);
+        const ink = (lum + 0.05) / (lumOf('#10242d') + 0.05) >= 1.05 / (lum + 0.05) ? '#10242d' : '#ffffff';
+        const vars = {
+          '--sb-bg': 'linear-gradient(to bottom,rgb(255 255 255/20%) 0%,rgb(255 255 255/12%) 2%,rgb(255 255 255/6%) 5%,rgb(255 255 255/2%) 9%,transparent 14%,rgb(0 0 0/12%) 100%),' + base,
+          '--sb-base': base,
+          '--sb-border': border,
+          '--sb-ink': dark ? '#f2f1ed' : '#1c1c1c',
+          '--sb-mute': dark ? '#b5b4b0' : '#454440',
+          '--sb-hl': dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+          '--sb-line': dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+          '--nb-fill': nb,
+          '--nb-ink': nb === '#ffffff' ? '#1c1c1c' : ink,
+          '--nb-border': nb === '#ffffff' ? 'transparent' : 'color-mix(in srgb,' + nb + ',#000 18%)',
+        };
+        root.dataset.sidebarPalette = palId;
+        root.dataset.buttonColor = nb;
+        for (const name in vars) root.style.setProperty(name, vars[name]);
         const savedTheme = localStorage.getItem('praxis-theme') || 'system';
         const resolved =
           savedTheme === 'system'

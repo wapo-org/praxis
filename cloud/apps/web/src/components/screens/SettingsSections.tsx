@@ -1,4 +1,4 @@
-import { AccentControl } from './AccentControl';
+import { SidebarLookControl } from './SidebarLookControl';
 import { Eye, FlaskConical, Mic, Plus } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store.js';
 import { SegmentedControl } from '../ui/controls';
@@ -31,7 +31,7 @@ export function GeneralSection() {
           optionLabel={capitalized}
           onChange={store.setThemeMode}
         />
-        <AccentControl />
+        <SidebarLookControl />
       </Section>
       <Section title="Input">
         <Card>

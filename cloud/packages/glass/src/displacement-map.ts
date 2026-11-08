@@ -40,7 +40,10 @@ const PROFILES: Record<GlassMaterial, readonly number[]> = {
 export interface MapSpec {
   width: number;
   height: number;
+  /** The corner's span after CSS clamping (min of the radius and half of each side), in element px. */
   radius: number;
+  /** The corner's superellipse exponent: 2 is a circle; a squircle card is 2^K for `superellipse(K)`. */
+  exponent?: number;
   bezel: number;
   material: GlassMaterial;
   /** Map pixel budget before the render downsamples. See PIXEL_BUDGET. */
@@ -67,6 +70,24 @@ function forRing(mw: number, mh: number, band: number, visit: (x: number, y: num
   }
 }
 
+/**
+ * Distance and outward normal of a corner offset (l, d) under the corner's own superellipse norm, so the
+ * ring follows the painted edge exactly. At n = 2 this is the circle kube draws, bit for bit.
+ */
+function ringPoint(l: number, d: number, n: number): { dist: number; nx: number; ny: number } {
+  if (n === 2) {
+    const dist = Math.sqrt(l * l + d * d);
+    return { dist, nx: l / dist, ny: d / dist };
+  }
+  const al = Math.abs(l);
+  const ad = Math.abs(d);
+  const dist = (al ** n + ad ** n) ** (1 / n);
+  const gx = Math.sign(l) * al ** (n - 1);
+  const gy = Math.sign(d) * ad ** (n - 1);
+  const g = Math.hypot(gx, gy);
+  return { dist, nx: gx / g, ny: gy / g };
+}
+
 /** Kube's Qt ring renderer: exact radial direction per pixel, baked depth curve, 1 px fade. */
 export function renderDisplacement(
   target: Uint8ClampedArray,
@@ -75,12 +96,12 @@ export function renderDisplacement(
   radius: number,
   bezel: number,
   profile: readonly number[],
+  exponent = 2,
 ): void {
   new Uint32Array(target.buffer, target.byteOffset, target.length / 4).fill(0xff008080);
   const r = Math.min(radius, Math.min(mw, mh) / 2);
   const m = Math.max(1, Math.min(bezel, r));
   const inner2 = (r - m) * (r - m);
-  const border2 = r * r;
   const outer2 = (r + 1) * (r + 1);
   const spanX = mw - 2 * r;
   const spanY = mh - 2 * r;
@@ -88,16 +109,20 @@ export function renderDisplacement(
   forRing(mw, mh, Math.max(m, r), (t, e) => {
     const d = e < r ? e - r : e >= mh - r ? e - r - spanY : 0;
     const l = t < r ? t - r : t >= mw - r ? t - r - spanX : 0;
-    const s = l * l + d * d;
-    if (s > outer2 || s < inner2 || s === 0) return;
-    const dist = Math.sqrt(s);
-    const fade = s < border2 ? 1 : 1 - (dist - r);
+    if (l === 0 && d === 0) return;
+    if (exponent === 2) {
+      const s = l * l + d * d;
+      if (s > outer2 || s < inner2) return;
+    }
+    const { dist, nx, ny } = ringPoint(l, d, exponent);
+    if (exponent !== 2 && (dist > r + 1 || dist < r - m)) return;
+    const fade = dist < r ? 1 : 1 - (dist - r);
     const depth = r - dist;
     const c = profile[((depth / m) * n) | 0] ?? 0;
     const k = c * 127 * fade;
     const i = (e * mw + t) * 4;
-    target[i] = Math.round(128 - (l / dist) * k);
-    target[i + 1] = Math.round(128 - (d / dist) * k);
+    target[i] = Math.round(128 - nx * k);
+    target[i + 1] = Math.round(128 - ny * k);
   });
 }
 
@@ -110,12 +135,12 @@ export function renderSpecular(
   rimWidth: number,
   lightAngle: number,
   dpr: number,
+  exponent = 2,
 ): void {
   const u = Math.min(radius, Math.min(mw, mh) / 2);
   const rim = Math.max(2, rimWidth) * dpr;
   const lightX = Math.cos(lightAngle);
   const lightY = Math.sin(lightAngle);
-  const border2 = u * u;
   const outer2 = (u + dpr) * (u + dpr);
   const inner = Math.max(0, u - rim);
   const inner2 = inner * inner;
@@ -124,13 +149,17 @@ export function renderSpecular(
   forRing(mw, mh, Math.max(rim, u), (t, e) => {
     const dy = e < u ? e - u : e >= mh - u ? e - u - spanY : 0;
     const dx = t < u ? t - u : t >= mw - u ? t - u - spanX : 0;
-    const b = dx * dx + dy * dy;
-    if (b > outer2 || b < inner2 || b === 0) return;
-    const dist = Math.sqrt(b);
+    if (dx === 0 && dy === 0) return;
+    if (exponent === 2) {
+      const b = dx * dx + dy * dy;
+      if (b > outer2 || b < inner2) return;
+    }
+    const { dist, nx, ny } = ringPoint(dx, dy, exponent);
+    if (exponent !== 2 && (dist > u + dpr || dist < inner)) return;
     const depth = u - dist;
-    const fade = b < border2 ? 1 : 1 - (dist - u) / dpr;
+    const fade = dist < u ? 1 : 1 - (dist - u) / dpr;
     const arc = Math.sqrt(Math.max(0, 1 - (1 - depth / dpr) ** 2));
-    const s = Math.abs((dx / dist) * lightX + (-dy / dist) * lightY) * arc;
+    const s = Math.abs(nx * lightX + -ny * lightY) * arc;
     const c = 255 * s;
     const i = (e * mw + t) * 4;
     const cc = Math.round(Math.min(255, c));
@@ -179,7 +208,7 @@ const CACHE_LIMIT = 48;
 const cache = new Map<string, GeneratedMaps>();
 
 export function mapKey(spec: MapSpec): string {
-  return `${Math.round(spec.width)}x${Math.round(spec.height)}r${Math.round(spec.radius)}b${Math.round(spec.bezel * 2)}${spec.material}`;
+  return `${Math.round(spec.width)}x${Math.round(spec.height)}r${Math.round(spec.radius * 4) / 4}n${(spec.exponent ?? 2).toFixed(2)}b${Math.round(spec.bezel * 2)}${spec.material}`;
 }
 
 export function mapCacheSize(): number {
@@ -203,11 +232,11 @@ export function generateMaps(spec: MapSpec): GeneratedMaps | null {
   if (!ctx) return null;
   const image = ctx.createImageData(mw, mh);
   const radius = spec.radius * eff;
-  renderDisplacement(image.data, mw, mh, radius, spec.bezel * eff, PROFILES[spec.material]);
+  renderDisplacement(image.data, mw, mh, radius, spec.bezel * eff, PROFILES[spec.material], spec.exponent);
   ctx.putImageData(image, 0, 0);
   const displacementUrl = canvas.toDataURL('image/png');
   image.data.fill(0);
-  renderSpecular(image.data, mw, mh, radius, 2, (-60 * Math.PI) / 180, eff);
+  renderSpecular(image.data, mw, mh, radius, 2, (-60 * Math.PI) / 180, eff, spec.exponent);
   ctx.putImageData(image, 0, 0);
   const specularUrl = canvas.toDataURL('image/png');
   const frostMaskUrl = frostMask(canvas, Math.min(mw, MASK_SIZE), Math.min(mh, MASK_SIZE));
@@ -245,11 +274,11 @@ export function generateMapsAsync(spec: MapSpec): Promise<GeneratedMaps | null> 
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
     const image = ctx.createImageData(mw, mh);
-    renderDisplacement(image.data, mw, mh, spec.radius * eff, spec.bezel * eff, PROFILES[spec.material]);
+    renderDisplacement(image.data, mw, mh, spec.radius * eff, spec.bezel * eff, PROFILES[spec.material], spec.exponent);
     ctx.putImageData(image, 0, 0);
     const displacementUrl = await encodePNG(canvas);
     image.data.fill(0);
-    renderSpecular(image.data, mw, mh, spec.radius * eff, 2, (-60 * Math.PI) / 180, eff);
+    renderSpecular(image.data, mw, mh, spec.radius * eff, 2, (-60 * Math.PI) / 180, eff, spec.exponent);
     ctx.putImageData(image, 0, 0);
     const specularUrl = await encodePNG(canvas);
     if (!paintFrostMask(canvas, Math.min(mw, MASK_SIZE), Math.min(mh, MASK_SIZE))) return null;

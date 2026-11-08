@@ -16,7 +16,7 @@ button.token {
   font-size: var(--text-md);
 }
 a.token {
-  color: var(--color-accent);
+  color: var(--color-ink);
   text-decoration: underline;
   text-underline-offset: 2px;
   background: transparent;

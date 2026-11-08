@@ -1,0 +1,74 @@
+/* Modelled on the palette panel in sidebar-design.html: 28 px round swatches, the chosen one ringed. */
+.look {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.field {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.field legend {
+  margin-bottom: var(--space-2);
+  padding: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.swatch {
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid var(--color-hairline-strong);
+  border-radius: 50%;
+  background: var(--swatch);
+  cursor: pointer;
+}
+
+.swatch[aria-checked='true'] {
+  border-color: var(--color-ink);
+}
+
+.swatch:focus-visible,
+.custom:focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.custom input {
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+
+.custom[data-selected='true'] input {
+  border: 2px solid var(--color-ink);
+}

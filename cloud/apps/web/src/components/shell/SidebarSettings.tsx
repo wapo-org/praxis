@@ -49,7 +49,7 @@ export function SidebarSettings({
             }}
             {...pressProps}
           >
-            <Icon size={18} />
+            <Icon size={16} />
             <span className={styles.rowTitle}>{title}</span>
           </motion.button>
         ))}
