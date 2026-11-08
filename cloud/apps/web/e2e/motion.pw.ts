@@ -218,7 +218,9 @@ test('opening the activity disclosure glides what follows, by transform', async 
   await toggle.waitFor();
   await page.waitForFunction(() => !document.querySelector('[aria-label="Stop generating"]'));
   await page.waitForTimeout(300);
-  const follower = toggle.locator('xpath=ancestor::*[@data-testid="assistant-turn"][1]/following-sibling::*[1]');
+  // Tool iterations and their answer now share one visible turn. Measure the
+  // answer that follows the disclosure, preserving the same FLIP assertions.
+  const follower = toggle.locator('xpath=ancestor::*[@data-testid="assistant-turn"][1]').getByTestId('agent-message-view');
   const values = await sample(follower, async () => {
     await toggle.click();
     await page.waitForTimeout(500);
