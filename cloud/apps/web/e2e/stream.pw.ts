@@ -1,0 +1,70 @@
+import {test,expect} from '@playwright/test';
+const expected='Hello **world** 👩🏽‍💻 é 中文 שלום.';
+test.beforeEach(async({page})=>{
+  await page.goto('/lab/stream');
+  const signIn=page.getByRole('button',{name:'Continue as local dev user'});
+  await signIn.waitFor(); await signIn.click();
+  await page.getByRole('heading',{name:'Stream simulator'}).waitFor();
+});
+for(const chunk of ['char','token','word','sentence','2kb','whole']) for(const speed of ['2tps','40tps','1500tps','burstStall','jitter','instant']) {
+  test(`${chunk} at ${speed}: exact, monotonic text`,async({page})=>{
+    test.setTimeout(60000);
+    await page.getByLabel('sample',{exact:true}).selectOption('short');
+    await page.getByLabel('reasoningShape',{exact:true}).selectOption('none');
+    await page.getByLabel('chunkSize',{exact:true}).selectOption(chunk);
+    await page.getByLabel('speed',{exact:true}).selectOption(speed);
+    await page.getByLabel('splitMode',{exact:true}).selectOption('none');
+    await page.evaluate(()=>{
+      const values:string[]=[]; (window as any).reveals=values;
+      new MutationObserver(()=>{const text=Array.from(document.querySelectorAll('[data-revealed]')).map(n=>n.getAttribute('data-revealed')).join('');if(text) values.push(text);}).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['data-revealed']});
+    });
+    await page.getByRole('button',{name:'Start stream',exact:true}).click();
+    await expect(page.getByTestId('stream-status')).toHaveText('completed');
+    await expect(page.getByTestId('stream-final')).toHaveText(expected);
+    await expect(page.getByTestId('agent-message-view')).toHaveAttribute('data-revealed',expected);
+    const values=await page.evaluate(()=>(window as any).reveals as string[]);
+    for(let i=1;i<values.length;i++) expect(values[i]!.startsWith(values[i-1]!), JSON.stringify([values[i-1],values[i]])).toBe(true);
+  });
+}
+for(const shape of ['titles','summary','raw','redacted','none']) test(`reasoning ${shape} expands and finishes`,async({page})=>{
+  await page.getByLabel('sample',{exact:true}).selectOption('short');
+  await page.getByLabel('reasoningShape',{exact:true}).selectOption(shape);
+  await page.getByLabel('speed',{exact:true}).selectOption('1500tps');
+  await page.getByRole('button',{name:'Start stream',exact:true}).click();
+  await expect(page.getByTestId('stream-status')).toHaveText('completed');
+  if(shape==='none') {await expect(page.getByTestId('reasoning-view')).toHaveCount(0);return;}
+  const view=page.getByTestId('reasoning-view');await expect(view).toHaveAttribute('data-live','false');
+  const button=view.getByRole('button');await expect(button).toHaveAttribute('aria-expanded','false');await button.click();await expect(button).toHaveAttribute('aria-expanded','true');
+  await expect(button).toContainText('Reasoned for');
+  expect(await view.innerText()).not.toContain('**');
+});
+
+test('split-surrogate torture, empty deltas and late reasoning survive reload',async({page})=>{
+  await page.getByLabel('sample',{exact:true}).selectOption('short');
+  await page.getByLabel('reasoningShape',{exact:true}).selectOption('none');
+  await page.getByLabel('speed',{exact:true}).selectOption('2tps');
+  await page.getByLabel('splitMode',{exact:true}).selectOption('torture');
+  await page.getByLabel('edgeCase',{exact:true}).selectOption('emptyDeltas');
+  await page.getByRole('button',{name:'Start stream',exact:true}).click();
+  await expect(page.getByTestId('agent-message-view')).toBeVisible();
+  await page.reload();await page.getByRole('heading',{name:'Stream simulator'}).waitFor();
+  await expect(page.getByTestId('stream-status')).toHaveText('completed');
+  await expect(page.getByTestId('stream-final')).toHaveText(expected);
+});
+test('user stop terminates the local stream',async({page})=>{
+  await page.getByLabel('speed',{exact:true}).selectOption('2tps');
+  await page.getByRole('button',{name:'Start stream',exact:true}).click();
+  await page.getByTestId('reasoning-view').waitFor();
+  await page.getByRole('button',{name:'Stop stream',exact:true}).click();
+  await expect(page.getByTestId('stream-status')).toHaveText('cancelled');
+});
+
+for (const edge of ['emptyDeltas','duplicateFinal','reasoningAfterText','midStreamError']) test(`edge ${edge}`,async({page})=>{
+  await page.getByLabel('sample',{exact:true}).selectOption('short');
+  await page.getByLabel('speed',{exact:true}).selectOption('instant');
+  await page.getByLabel('reasoningShape',{exact:true}).selectOption('summary');
+  await page.getByLabel('edgeCase',{exact:true}).selectOption(edge);
+  await page.getByRole('button',{name:'Start stream',exact:true}).click();
+  await expect(page.getByTestId('stream-status')).toHaveText(edge==='midStreamError'?'failed':'completed');
+  if(edge!=='midStreamError') await expect(page.getByTestId('stream-final')).toHaveText(expected);
+});

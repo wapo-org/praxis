@@ -47,7 +47,7 @@ export interface LiveRunState {
   run: Run;
   lastEventId: number;
   textBlocks: Array<{ id: string; text: string; finished: boolean }>;
-  reasoningBlocks: Array<{ id: string; text: string; finished: boolean }>;
+  reasoningBlocks: import('../components/chat/ReasoningView').ReasoningBlock[];
   toolSteps: ActiveToolStep[];
   pendingApprovals: Approval[];
   pendingElicitations: ActiveElicitation[];

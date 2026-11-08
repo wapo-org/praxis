@@ -14,10 +14,10 @@ export function useRunState(state: PraxisState) {
         lastEventId: snapshot.lastEventId,
         textBlocks: snapshot.blocks
           .filter((b) => b.type === 'text')
-          .map((b) => ({ id: b.id, text: b.text, finished: b.finished })),
+          .map((b) => ({ ...b })),
         reasoningBlocks: snapshot.blocks
           .filter((b) => b.type === 'reasoning')
-          .map((b) => ({ id: b.id, text: b.text, finished: b.finished })),
+          .map((b) => ({ ...b })),
         toolSteps: snapshot.tools.map((t) => ({
           callId: t.activity.id,
           activity: t.activity,
@@ -147,30 +147,20 @@ export function useRunState(state: PraxisState) {
           break;
         }
         case 'reasoning.delta': {
-          const idx = next.reasoningBlocks.findIndex((b) => b.id === event.blockId);
-          if (idx >= 0) {
-            const prevBlock = next.reasoningBlocks[idx]!;
-            next.reasoningBlocks[idx] = {
-              ...prevBlock,
-              text: prevBlock.text + event.text,
-            };
-          } else {
-            next.reasoningBlocks.push({
-              id: event.blockId,
-              text: event.text,
-              finished: false,
-            });
-          }
+          const idx = next.reasoningBlocks.findIndex(b => b.id === event.blockId);
+          const old = next.reasoningBlocks[idx];
+          const block = { ...old, id: event.blockId, text: (old?.text ?? '') + event.text,
+            finished: false, shape: event.shape ?? old?.shape, redacted: event.redacted ?? old?.redacted,
+            startedAt: old?.startedAt ?? envelope.createdAt,
+            afterToolCallId: old?.afterToolCallId ?? next.toolSteps.at(-1)?.callId };
+          if (idx < 0) next.reasoningBlocks.push(block); else next.reasoningBlocks[idx] = block;
           break;
         }
         case 'reasoning.finished': {
-          const idx = next.reasoningBlocks.findIndex((b) => b.id === event.blockId);
-          if (idx >= 0) {
-            next.reasoningBlocks[idx] = {
-              ...next.reasoningBlocks[idx]!,
-              finished: true,
-            };
-          }
+          const idx = next.reasoningBlocks.findIndex(b => b.id === event.blockId);
+          const old = next.reasoningBlocks[idx];
+          if (old) next.reasoningBlocks[idx] = { ...old, finished: true, shape: event.shape ?? old.shape,
+            finishedAt: envelope.createdAt, durationMs: Math.max(0, Date.parse(envelope.createdAt) - Date.parse(old.startedAt ?? envelope.createdAt)) };
           break;
         }
         case 'tool.started':

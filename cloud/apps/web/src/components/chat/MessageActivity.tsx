@@ -70,7 +70,8 @@ export function MessageActivity({
         reasoningBlocks={message.parts
           .filter((p) => p.type === 'reasoning')
           .map((p, i) => ({
-            id: `${message.id}-${i}`,
+            id: p.blockId ?? `${message.id}-${i}`,
+            ...p,
             text: p.text ?? '',
             finished: true,
           }))}

@@ -11,6 +11,7 @@ import {
 } from './useActivityClock';
 
 import styles from './Activity.module.css';
+import { ReasoningView } from './ReasoningView';
 import { ActivityDetails } from './ActivityDetails';
 import type { AgentActivityViewProps } from './activityTypes';
 import { ApprovalCards } from './ApprovalCards';
@@ -162,6 +163,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
 
   return (
     <div ref={rootRef} data-testid="agent-activity-view" className={styles.root}>
+      {reasoningBlocks.filter(b => !b.afterToolCallId).map(block => <ReasoningView key={block.id} block={block} />)}
       {/* Level 1: t3code turn-fold disclosure header. */}
       <button
         type="button"
@@ -192,7 +194,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
       {expanded && (
         <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
           <ActivityDetails
-            reasoningBlocks={reasoningBlocks}
+            reasoningBlocks={reasoningBlocks.filter(b => b.afterToolCallId)}
             visionActivities={visionActivities}
             compactions={compactions}
             toolSteps={toolSteps}

@@ -1,3 +1,4 @@
+import { ReasoningView } from './ReasoningView';
 import { toolRowCopy } from './toolRowCopy';
 import { Check, Clock, X } from '../../lib/icons';
 
@@ -23,15 +24,6 @@ export function ActivityDetails({
 }) {
   return (
     <div data-testid="agent-activity-steps" className={styles.steps}>
-      {reasoningBlocks.map((block) => (
-        <div key={block.id} data-testid="agent-reasoning-block" className={styles.reasoning}>
-          <div className={styles.reasoningCaption}>
-            Reasoning{block.finished ? '' : ' · streaming'}
-          </div>
-          <div>{block.text}</div>
-        </div>
-      ))}
-
       {visionActivities.map((v) => (
         <div key={v.id} className={styles.vision}>
           <div>
@@ -126,6 +118,7 @@ export function ActivityDetails({
                 )}
               </div>
             )}
+            {reasoningBlocks.filter(b => b.afterToolCallId === step.callId).map(block => <ReasoningView key={block.id} block={block} />)}
           </div>
         );
       })}

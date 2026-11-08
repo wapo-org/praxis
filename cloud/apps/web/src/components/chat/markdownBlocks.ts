@@ -160,6 +160,9 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
       paraLines.push(lines[i]!);
       i++;
     }
+    // Incomplete headings/fences can match a paragraph boundary without matching
+    // a full block. Always consume input, including every streaming prefix.
+    if (!paraLines.length) { paraLines.push(line); i++; }
     blocks.push({ type: 'paragraph', content: paraLines.join('\n') });
   }
 

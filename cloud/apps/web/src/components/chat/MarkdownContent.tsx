@@ -14,9 +14,12 @@ export function MarkdownContent({
   copiedCodeIdx: number | null;
   handleCopyCode: (index: number, text: string) => void;
 }) {
-  return (
-    <>
-      {blocks.map((block, idx) => {
+  return <>{blocks.map((block, idx) => <MemoBlock key={idx} block={block} idx={idx} renderInlineTokens={renderInlineTokens} copiedCodeIdx={copiedCodeIdx} handleCopyCode={handleCopyCode}/>)}</>;
+}
+const MemoBlock = React.memo(function Block({block,idx,renderInlineTokens,copiedCodeIdx,handleCopyCode}: {
+  block: ParsedBlock; idx:number; renderInlineTokens:(value:string)=>React.ReactNode;
+  copiedCodeIdx:number|null; handleCopyCode:(index:number,text:string)=>void;
+}) {
         switch (block.type) {
           case 'heading':
             return React.createElement(
@@ -114,7 +117,4 @@ export function MarkdownContent({
               </p>
             );
         }
-      })}
-    </>
-  );
-}
+}, (a,b) => JSON.stringify(a.block) === JSON.stringify(b.block) && (a.copiedCodeIdx === a.idx) === (b.copiedCodeIdx === b.idx));

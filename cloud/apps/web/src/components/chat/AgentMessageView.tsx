@@ -11,6 +11,8 @@ export interface AgentMessageViewProps {
 
 import { renderInlineTokens as inlineTokens } from './InlineTokens';
 import { parseMarkdownBlocks } from './markdownBlocks';
+import { stableStreamingMarkdown } from './streamingMarkdown';
+import { usePacedText } from './usePacedText';
 import { MarkdownContent } from './MarkdownContent';
 import styles from './AgentMessageView.module.css';
 export const AgentMessageView: React.FC<AgentMessageViewProps> = ({
@@ -27,7 +29,8 @@ export const AgentMessageView: React.FC<AgentMessageViewProps> = ({
     detail?: string;
   } | null>(null);
 
-  const blocks = React.useMemo(() => parseMarkdownBlocks(text), [text]);
+  const revealed = usePacedText(text, isStreaming);
+  const blocks = React.useMemo(() => parseMarkdownBlocks(isStreaming ? stableStreamingMarkdown(revealed) : revealed), [revealed, isStreaming]);
 
   const renderInlineTokens = (value: string) => inlineTokens(value, setInspectedChip);
 
@@ -48,7 +51,7 @@ export const AgentMessageView: React.FC<AgentMessageViewProps> = ({
   };
 
   return (
-    <div data-testid="agent-message-view" className={styles.message}>
+    <div data-testid="agent-message-view" className={styles.message} data-revealed={revealed}>
       <MarkdownContent
         blocks={blocks}
         renderInlineTokens={renderInlineTokens}

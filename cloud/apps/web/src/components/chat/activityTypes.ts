@@ -6,7 +6,7 @@ export interface AgentActivityViewProps {
   promptStartedAt?: string;
   runId?: string;
   isRunning?: boolean;
-  reasoningBlocks?: Array<{ id: string; text: string; finished: boolean }>;
+  reasoningBlocks?: import('./ReasoningView').ReasoningBlock[];
   toolSteps: ActiveToolStep[];
   pendingApprovals?: Approval[];
   pendingElicitations?: ActiveElicitation[];
