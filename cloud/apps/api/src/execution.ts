@@ -4,7 +4,7 @@ import {
 } from '@praxis/agent';
 import {
   JsonValueSchema, RunEventPayloadSchema, type JsonObject,
-  type Chat, type ConversationSetup, type JsonValue, type Message, type MessagePart, type Model, type Run, type StartRun,
+  type Chat, type ConversationSetup, type JsonValue, type Message, type MessagePart, type Model, type Run, type StartRun, type StreamSimOptions,
 } from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from './contracts.js';
 import {buildSystemPrompt, skillCatalogSection, turnNotes, type CatalogSkill} from './conversation.js';
@@ -158,14 +158,14 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   async function resolveProvider(userId: string, chat: Chat, request: RunRequest): Promise<{provider: ModelProvider; script?: Script; model?: Model}> {
     if (request.script) {
       if (!service.local) throw new ApiError(400, 'local_only', 'Scripted runs are local only');
-      return {provider: scriptedProvider(request.script), script: request.script};
+      return {provider: scriptedProvider(request.script, request.streamSim), script: request.script};
     }
     // Local dev keeps M1 behaviour: a chat without a provider runs the scripted provider.
     const providerId = request.providerId ?? chat.providerId ?? (service.local ? 'scripted' : undefined);
     if (!providerId) throw new ApiError(400, 'provider_required', 'Choose a model provider for this chat');
     if (providerId === 'scripted') {
       if (!service.local) throw new ApiError(400, 'local_only', 'Scripted runs are local only');
-      return {provider: scriptedProvider('text'), script: 'text'};
+      return {provider: scriptedProvider('text', request.streamSim), script: 'text'};
     }
     if (!service.providers) throw new ApiError(503, 'providers_unavailable', 'Providers are not configured');
     await service.providers.requireConsent(userId, providerId);
@@ -340,14 +340,30 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   return driver;
 }
 
-function scriptedProvider(script: Script): ModelProvider {
-  const base = createScriptedProvider(script);
-  if (script !== 'long') return base;
+function scriptedProvider(script: Script, simOptions?: StreamSimOptions): ModelProvider {
+  const base = createScriptedProvider(script, simOptions);
+  if (script !== 'long' && script !== 'streamSim') return base;
   return {
     ...base,
     async *stream(request, signal) {
+      let chars = 0, stalled = false, count = 0;
+      const start = Date.now();
       for await (const event of base.stream(request, signal)) {
-        if (event.type === 'text') await new Promise(resolve => setTimeout(resolve, 12));
+        if (signal.aborted) throw signal.reason ?? new Error('Aborted');
+        if (script === 'streamSim' && event.type === 'blockEnd' && event.redacted) await new Promise(resolve => setTimeout(resolve,350));
+        if (event.type === 'text' || event.type === 'reasoning') {
+          chars += event.text.length;
+          const speed = simOptions?.speed ?? '40tps';
+          const rate = speed === '2tps' ? 2 : speed === '1500tps' ? 1500 : 40;
+          const wait = script === 'long' ? 12 : speed === 'instant' ? 0 :
+            speed === 'burstStall' ? (!stalled && chars > 24 ? (stalled = true, 3000) : 0) :
+            speed === 'jitter' ? (++count % 5) * 18 : Math.max(0, start + chars / (rate * 4) * 1000 - Date.now());
+          if (wait) await new Promise<void>((resolve, reject) => {
+            const abort = () => { clearTimeout(timer); reject(signal.reason ?? new Error('Aborted')); };
+            const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, wait);
+            signal.addEventListener('abort', abort, {once:true});
+          });
+        }
         yield event;
       }
     },

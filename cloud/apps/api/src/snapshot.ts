@@ -3,9 +3,58 @@ export function initialSnapshot(run:Run):RunSnapshot{return RunSnapshotSchema.pa
 export function foldSnapshot(state:RunSnapshot,event:RunEventPayload,id:number,run:Run):RunSnapshot{
  const s=structuredClone(state);s.run=run;s.lastEventId=Math.max(s.lastEventId,id);
  switch(event.type){
- case 'text.delta':case 'reasoning.delta':{
-  let b=s.blocks.find(b=>b.id===event.blockId);if(!b){b={type:event.type==='text.delta'?'text':'reasoning',id:event.blockId,text:'',finished:false};s.blocks.push(b);}b.text+=event.text;break;}
- case 'text.finished':case 'reasoning.finished':{const b=s.blocks.find(b=>b.id===event.blockId);if(b)b.finished=true;break;}
+ case 'text.delta':{
+  let b=s.blocks.find(b=>b.id===event.blockId);
+  if(!b){
+   const lastTool=s.tools.at(-1)?.activity.id;
+   b={type:'text',id:event.blockId,text:'',finished:false,...(lastTool?{afterToolCallId:lastTool}:{})};
+   s.blocks.push(b);
+  }
+  b.text+=event.text;
+  if(event.annotations?.length)b.annotations=[...(b.annotations??[]),...event.annotations];
+  break;
+ }
+ case 'reasoning.delta':{
+  let b=s.blocks.find(b=>b.id===event.blockId);
+  if(!b){
+   const lastTool=s.tools.at(-1)?.activity.id;
+   b={
+    type:'reasoning',id:event.blockId,text:'',finished:false,
+    startedAt:event.startedAt??run.updatedAt,
+    ...(event.shape?{shape:event.shape}:{}),
+    ...(event.redacted?{redacted:true}:{}),
+    ...(lastTool?{afterToolCallId:lastTool}:{}),
+   };
+   s.blocks.push(b);
+  }
+  b.text+=event.text;
+  if(event.shape)b.shape=event.shape;
+  if(event.redacted)b.redacted=true;
+  break;
+ }
+ case 'text.finished':{
+  const b=s.blocks.find(b=>b.id===event.blockId);
+  if(b){
+   b.finished=true;
+   if(event.annotations?.length)b.annotations=[...(b.annotations??[]),...event.annotations];
+  }
+  break;
+ }
+ case 'reasoning.finished':{
+  const b=s.blocks.find(b=>b.id===event.blockId);
+  if(b){
+   b.finished=true;
+   if(event.shape)b.shape=event.shape;
+   if(event.redacted)b.redacted=true;
+   b.finishedAt=event.finishedAt??run.updatedAt;
+   if(event.durationMs!==undefined)b.durationMs=event.durationMs;
+   else if(b.startedAt&&b.finishedAt){
+    const elapsed=Date.parse(b.finishedAt)-Date.parse(b.startedAt);
+    if(Number.isFinite(elapsed)&&elapsed>=0)b.durationMs=elapsed;
+   }
+  }
+  break;
+ }
  case 'tool.started':case 'tool.ready':{let t=s.tools.find(t=>t.activity.id===event.activity.id);if(!t){t={type:'tool.state',activity:event.activity,argumentsJson:'',running:false,progress:[]};s.tools.push(t);}else t.activity=event.activity;break;}
  case 'tool.arguments.delta':{const t=s.tools.find(t=>t.activity.id===event.callId);if(t)t.argumentsJson+=event.json;break;}
  case 'tool.running':{const t=s.tools.find(t=>t.activity.id===event.callId);if(t)t.running=true;break;}

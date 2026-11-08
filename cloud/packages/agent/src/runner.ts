@@ -237,26 +237,43 @@ export class AgentRunner {
       try {
         response=await this.controlled(cp,async signal=>{
           let completed:ProviderResponse|undefined;
+          const reasoningMeta = new Map<string,{blockId:string;startedAt:string;finishedAt?:string;durationMs?:number}>();
+          const closed = new Set<string>();
           for await(const raw of this.options.provider.stream(req,signal)) {
             await this.checkCancel(cp);if(signal.aborted)throw new Cancelled();
             const e=ProviderEventSchema.parse(raw);
             bytes+=canonical(e).length;if(bytes>16_000_000)throw new Error('Provider response exceeds buffer limit');
-            if(e.type==='completed'){completed=ProviderResponseSchema.parse(e.response);continue;}
+            if(e.type==='completed'){if(!completed)completed=ProviderResponseSchema.parse(e.response);continue;}
             const blockId=`${cp.run.id}.${cp.iteration}.${attempt}.${e.index}`;
-            if(e.type==='text'||e.type==='reasoning') {
-              if(!blocks.includes(blockId))blocks.push(blockId);if(e.type==='reasoning')reasoningBlocks.add(blockId);
-              await this.emit(cp,{type:e.type==='text'?'text.delta':'reasoning.delta',blockId,text:e.text});
+            if(e.type==='text') {
+              if(!blocks.includes(blockId))blocks.push(blockId);
+              await this.emit(cp,{type:'text.delta',blockId,text:e.text,...(e.annotations?.length?{annotations:e.annotations}:{})});
+            }else if(e.type==='reasoning') {
+              if(!blocks.includes(blockId))blocks.push(blockId);reasoningBlocks.add(blockId);
+              if(!reasoningMeta.has(blockId))reasoningMeta.set(blockId,{blockId,startedAt:new Date().toISOString()});
+              await this.emit(cp,{type:'reasoning.delta',blockId,text:e.text,...(e.shape?{shape:e.shape}:{}),...(e.redacted?{redacted:true}:{})});
             }else if(e.type==='tool') {
+              if(e.server)continue;
               calls.set(e.index,{id:e.id,name:e.name});callIds.push(e.id);
               const spec=cp.setup.tools.find(t=>t.name===e.name);
               await this.emit(cp,{type:'tool.started',activity:this.activity(e.id,e.name,spec)});
             }else if(e.type==='arguments') {
               const call=calls.get(e.index);if(call)await this.emit(cp,{type:'tool.arguments.delta',callId:call.id,json:e.json});
             }else if(e.type==='blockEnd') {
-              if(blocks.includes(blockId))await this.emit(cp,{type:reasoningBlocks.has(blockId)?'reasoning.finished':'text.finished',blockId});
+              if(blocks.includes(blockId)&&!closed.has(blockId)){
+                closed.add(blockId);
+                const meta=reasoningMeta.get(blockId);if(meta){meta.finishedAt=new Date().toISOString();meta.durationMs=Math.max(0,Date.parse(meta.finishedAt)-Date.parse(meta.startedAt));}
+                if(reasoningBlocks.has(blockId)) {
+                  await this.emit(cp,{type:'reasoning.finished',blockId,...(e.shape?{shape:e.shape}:{}),...(e.redacted?{redacted:true}:{})});
+                }else {
+                  await this.emit(cp,{type:'text.finished',blockId});
+                }
+              }
             }
           }
           if(!completed)throw new ProviderFailure('Provider stream ended without a completed response','retryable');
+          const meta=[...reasoningMeta.values()];let reasoningIndex=0;
+          completed.parts=completed.parts.map(p=>p.type==='reasoning'?{...p,...meta[reasoningIndex++]}:p);
           return completed;
         },this.options.streamTimeoutMs??120000);
         if(response.stop==='maxTokens'&&response.parts.some(p=>p.type==='toolCall')&&!expanded&&req.maxTokens<(cp.modelMaxTokens??Infinity)) {
