@@ -12,10 +12,14 @@ import styles from './SearchPalette.module.css';
 
 type SearchRow = { id: string; label: string; snippet: string; Icon: typeof Search; selected: boolean; apply: () => void | Promise<void> };
 type Hit = Awaited<ReturnType<typeof apiClient.searchChats>>['items'][number];
+/** Words too common to emphasise: natural-language (semantic) queries would bold every "a" and "for". */
+const QUIET = new Set('a an and are as at be by can do does for from how i in is it me my of on or so that the this to was what when where which who why will with you your'.split(' '));
+/** Emphasises the query's meaningful words where a word starts with them ("pack" in "Packing"). */
 export function Highlight({ text, query }: { text: string; query: string }) {
-  const words = query.trim().split(/\s+/u).filter(Boolean).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const words = query.trim().split(/\s+/u).filter(w => w && !QUIET.has(w.toLocaleLowerCase()))
+    .sort((a, b) => b.length - a.length).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   if (!words.length) return <>{text}</>;
-  const pattern = new RegExp(`(${words.join('|')})`, 'giu');
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}])(${words.join('|')})`, 'giu');
   return <>{text.split(pattern).map((part, i) => i % 2 ? <strong key={i}>{part}</strong> : part)}</>;
 }
 export function SearchPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
