@@ -239,6 +239,7 @@ export class AgentRunner {
           let completed:ProviderResponse|undefined;
           const reasoningMeta = new Map<string,{blockId:string;startedAt:string;finishedAt?:string;durationMs?:number}>();
           const closed = new Set<string>();
+          const textIds:string[]=[];
           for await(const raw of this.options.provider.stream(req,signal)) {
             await this.checkCancel(cp);if(signal.aborted)throw new Cancelled();
             const e=ProviderEventSchema.parse(raw);
@@ -246,6 +247,7 @@ export class AgentRunner {
             if(e.type==='completed'){if(!completed)completed=ProviderResponseSchema.parse(e.response);continue;}
             const blockId=`${cp.run.id}.${cp.iteration}.${attempt}.${e.index}`;
             if(e.type==='text') {
+              if(!textIds.includes(blockId))textIds.push(blockId);
               if(!blocks.includes(blockId))blocks.push(blockId);
               await this.emit(cp,{type:'text.delta',blockId,text:e.text,...(e.annotations?.length?{annotations:e.annotations}:{})});
             }else if(e.type==='reasoning') {
@@ -272,8 +274,8 @@ export class AgentRunner {
             }
           }
           if(!completed)throw new ProviderFailure('Provider stream ended without a completed response','retryable');
-          const meta=[...reasoningMeta.values()];let reasoningIndex=0;
-          completed.parts=completed.parts.map(p=>p.type==='reasoning'?{...p,...meta[reasoningIndex++]}:p);
+          const meta=[...reasoningMeta.values()];let reasoningIndex=0,textIndex=0;
+          completed.parts=completed.parts.map(p=>p.type==='reasoning'?{...p,...meta[reasoningIndex++]}:p.type==='text'?{...p,blockId:textIds[textIndex++]}:p);
           return completed;
         },this.options.streamTimeoutMs??120000);
         if(response.stop==='maxTokens'&&response.parts.some(p=>p.type==='toolCall')&&!expanded&&req.maxTokens<(cp.modelMaxTokens??Infinity)) {
