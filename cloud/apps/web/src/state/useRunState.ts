@@ -285,6 +285,8 @@ export function useRunState(state: PraxisState) {
           next.usage = event.usage;
           break;
         case 'run.finished':
+          next.textBlocks=next.textBlocks.map(b=>({...b,finished:true}));
+          next.reasoningBlocks=next.reasoningBlocks.map(b=>({...b,finished:true,finishedAt:b.finishedAt ?? envelope.createdAt}));
           next.run.status =
             event.outcome === 'failed'
               ? 'failed'

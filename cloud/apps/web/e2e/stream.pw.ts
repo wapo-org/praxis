@@ -14,14 +14,17 @@ for(const chunk of ['char','token','word','sentence','2kb','whole']) for(const s
     await page.getByLabel('chunkSize',{exact:true}).selectOption(chunk);
     await page.getByLabel('speed',{exact:true}).selectOption(speed);
     await page.getByLabel('splitMode',{exact:true}).selectOption('none');
-    await page.evaluate(()=>{
+    await page.evaluate(expected=>{
+      (window as any).h2Lag={};
       const values:string[]=[]; (window as any).reveals=values;
-      new MutationObserver(()=>{const text=Array.from(document.querySelectorAll('[data-revealed]')).map(n=>n.getAttribute('data-revealed')).join('');if(text) values.push(text);}).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['data-revealed']});
-    });
+      new MutationObserver(()=>{const text=Array.from(document.querySelectorAll('[data-revealed]')).map(n=>n.getAttribute('data-revealed')).join('');if(text) values.push(text);const lag=(window as any).h2Lag;if(document.querySelector('[data-testid=stream-status]')?.textContent==='completed')lag.completedAt??=performance.now();if(text===expected)lag.revealedAt??=performance.now();}).observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['data-revealed']});
+    },expected);
     await page.getByRole('button',{name:'Start stream',exact:true}).click();
     await expect(page.getByTestId('stream-status')).toHaveText('completed');
     await expect(page.getByTestId('stream-final')).toHaveText(expected);
     await expect(page.getByTestId('agent-message-view')).toHaveAttribute('data-revealed',expected);
+    const lag=await page.evaluate(()=>(window as any).h2Lag);
+    expect(lag.revealedAt-lag.completedAt).toBeLessThanOrEqual(300);
     const values=await page.evaluate(()=>(window as any).reveals as string[]);
     for(let i=1;i<values.length;i++) expect(values[i]!.startsWith(values[i-1]!), JSON.stringify([values[i-1],values[i]])).toBe(true);
   });
@@ -57,6 +60,7 @@ test('user stop terminates the local stream',async({page})=>{
   await page.getByTestId('reasoning-view').waitFor();
   await page.getByRole('button',{name:'Stop stream',exact:true}).click();
   await expect(page.getByTestId('stream-status')).toHaveText('cancelled');
+  await expect(page.getByTestId('reasoning-view')).toHaveAttribute('data-live','false');
 });
 
 for (const edge of ['emptyDeltas','duplicateFinal','reasoningAfterText','midStreamError']) test(`edge ${edge}`,async({page})=>{
@@ -67,4 +71,28 @@ for (const edge of ['emptyDeltas','duplicateFinal','reasoningAfterText','midStre
   await page.getByRole('button',{name:'Start stream',exact:true}).click();
   await expect(page.getByTestId('stream-status')).toHaveText(edge==='midStreamError'?'failed':'completed');
   if(edge!=='midStreamError') await expect(page.getByTestId('stream-final')).toHaveText(expected);
+});
+test('120Hz headed frame budget at 1500 tokens/s',async({page},info)=>{
+  test.skip(process.env.PW_H2_PERF !== '1','Run explicitly headed on a 120Hz display: PW_H2_PERF=1 --headed');
+  await page.getByLabel('sample',{exact:true}).selectOption('torture');
+  await page.getByLabel('reasoningShape',{exact:true}).selectOption('none');
+  await page.getByLabel('speed',{exact:true}).selectOption('1500tps');
+  await page.getByLabel('splitMode',{exact:true}).selectOption('torture');
+  await page.evaluate(()=>{(window as any).h2Frames=[];(window as any).h2Recording=true;let last=performance.now();function tick(now:number){if(!(window as any).h2Recording)return;(window as any).h2Frames.push(now-last);last=now;requestAnimationFrame(tick);}requestAnimationFrame(tick);});
+  await page.getByRole('button',{name:'Start stream',exact:true}).click();
+  await expect(page.getByTestId('stream-status')).toHaveText('completed');
+  const frames=await page.evaluate(()=>{(window as any).h2Recording=false;return (window as any).h2Frames as number[];});
+  frames.sort((a,b)=>a-b);const p95=frames[Math.floor(frames.length*.95)]!;
+  await info.attach('frame-budget.json',{body:JSON.stringify({p95FrameMs:p95,samples:frames.length,budgetMs:10.2}),contentType:'application/json'});
+  expect(frames.length).toBeGreaterThan(20);expect(p95).toBeLessThanOrEqual(10.2);
+});
+
+test('ten-second burst stall resumes without dropping text',async({page})=>{
+  await page.getByLabel('sample',{exact:true}).selectOption('short');
+  await page.getByLabel('reasoningShape',{exact:true}).selectOption('none');
+  await page.getByLabel('speed',{exact:true}).selectOption('burstStall');
+  await page.getByLabel('stallDuration',{exact:true}).selectOption('10s');
+  await page.getByRole('button',{name:'Start stream',exact:true}).click();
+  await expect(page.getByTestId('stream-status')).toHaveText('completed',{timeout:15000});
+  await expect(page.getByTestId('stream-final')).toHaveText(expected);
 });

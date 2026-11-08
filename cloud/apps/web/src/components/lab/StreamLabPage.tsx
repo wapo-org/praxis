@@ -33,7 +33,11 @@ export function StreamLabPage() {
           });
         }
         if (event.type === 'text.finished' || event.type === 'reasoning.finished') setBlocks(old => old.map(b => b.id === event.blockId ? {...b, finished:true, finishedAt:createdAt, durationMs:Math.max(0, Date.parse(createdAt)-Date.parse(b.startedAt ?? createdAt))} : b));
-        if (event.type === 'run.finished') void apiClient.getRunSnapshot(id).then(recover);
+        if (event.type === 'run.finished') {
+          setStatus(event.outcome === 'cancelled' ? 'cancelled' : event.outcome === 'failed' ? 'failed' : 'completed');
+          setBlocks(old => old.map(b => ({...b,finished:true,finishedAt:b.finishedAt ?? createdAt})));
+          if(event.message)setError(event.message);
+        }
       },
       onComplete: () => { void apiClient.getRunSnapshot(id).then(recover); },
     });

@@ -23,8 +23,6 @@ const GlassLabPage = import.meta.env.DEV
     )
   : null;
 
-const StreamLabPage = import.meta.env.DEV ? React.lazy(() => import('./components/lab/StreamLabPage').then(m => ({default:m.StreamLabPage}))) : null;
-
 export function App() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -66,7 +64,6 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [store]);
   const lab = import.meta.env.DEV ? () => navigate('/lab') : undefined;
-  if (import.meta.env.DEV && StreamLabPage && pathname === '/lab/stream') return <React.Suspense fallback={null}><StreamLabPage /></React.Suspense>;
   if (import.meta.env.DEV && GlassLabPage && (pathname === '/lab' || pathname === '/lab/glass'))
     return (
       <React.Suspense fallback={<p>Loading lab…</p>}>
