@@ -14,6 +14,7 @@ import { Composer } from './Composer';
 import { EmptyState } from './EmptyState';
 import { extractMessageToolSteps } from './messageTools';
 import { MessageActivity } from './MessageActivity';
+import {messageTurns} from './messageTurns';
 import { UserBubble } from './UserBubble';
 import styles from './ChatScreen.module.css';
 
@@ -37,6 +38,7 @@ export function ChatScreen() {
     resolveElicitation,
   } = usePraxisStore();
 
+  const visibleMessages=React.useMemo(()=>messageTurns(activeMessages),[activeMessages]);
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const shift = useContentShift();
   const columnRef = React.useRef<HTMLDivElement | null>(null);
@@ -52,8 +54,8 @@ export function ChatScreen() {
       status === 'cancelled');
   const isEmpty = activeMessages.length === 0 && !hasLiveStreamingContent;
   const lastUserMessage = React.useMemo(
-    () => [...activeMessages].reverse().find((m) => m.role === 'user'),
-    [activeMessages],
+    () => [...visibleMessages].reverse().find((m) => m.role === 'user'),
+    [visibleMessages],
   );
   const lastUserText = () => (lastUserMessage ? messageText(lastUserMessage, '\n') : '');
   const error = errorBanner || activeLiveRun?.run.error;
@@ -71,12 +73,12 @@ export function ChatScreen() {
 
   const liveRunId = hasLiveStreamingContent ? activeLiveRun?.run.id : undefined;
   const arrivalKeys = React.useMemo(() => {
-    const keys = activeMessages.map((m) =>
+    const keys = visibleMessages.map((m) =>
       m.role === 'user' ? `m:${m.clientTurnId ?? m.id}` : `r:${m.runId ?? m.id}`,
     );
     if (liveRunId) keys.push(`r:${liveRunId}`);
     return keys;
-  }, [activeMessages, liveRunId]);
+  }, [visibleMessages, liveRunId]);
   useMessageArrival(columnRef, activeChat?.id, arrivalKeys);
 
   return (
@@ -111,7 +113,7 @@ export function ChatScreen() {
           {isEmpty ? (
             <EmptyState onPick={(prompt, script) => void sendMessage(prompt, { script })} />
           ) : (
-            activeMessages.map((msg, index) => {
+            visibleMessages.map((msg, index) => {
               if (
                 msg.role === 'assistant' &&
                 hasLiveStreamingContent &&
@@ -132,8 +134,8 @@ export function ChatScreen() {
               const live = activeLiveRun?.run.id === msg.runId ? activeLiveRun : undefined;
               let promptStartedAt: string | undefined;
               for (let i = index - 1; i >= 0; i--) {
-                if (activeMessages[i]?.role === 'user') {
-                  promptStartedAt = activeMessages[i]?.createdAt;
+                if (visibleMessages[i]?.role === 'user') {
+                  promptStartedAt = visibleMessages[i]?.createdAt;
                   break;
                 }
               }

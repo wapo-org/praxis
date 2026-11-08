@@ -104,6 +104,14 @@ function normalizeCitation(raw:JsonObject):StreamAnnotation|undefined {
   };
 }
 
+function normalizeImage(raw:JsonObject):StreamAnnotation|undefined {
+  const source=object(raw.source),url=string(object(raw.image_url).url)||string(raw.image_url)||string(raw.url)||string(source.url);
+  const data=string(raw.result)||string(raw.data)||string(source.data);
+  if(!url&&!data)return;
+  const format=string(raw.output_format)||'png';
+  return {type:'image',mediaType:string(raw.media_type)||string(source.media_type)||`image/${format==='jpg'?'jpeg':format}`,...(url?{url}:{}),...(data?{data}:{})};
+}
+
 export async function* decodeAnthropic(frames:AsyncIterable<SSEFrame>):AsyncGenerator<ProviderEvent> {
   const blocks=new Map<number,JsonObject>(),args=new Map<number,string>(),closed=new Set<number>();
   const annotationsByBlock=new Map<number,StreamAnnotation[]>();
@@ -122,6 +130,8 @@ export async function* decodeAnthropic(frames:AsyncIterable<SSEFrame>):AsyncGene
       else if(block.type==='thinking'){
         const t=string(block.thinking);
         yield {type:'reasoning',index,text:t,shape:classifyReasoningShape(t,'raw')};
+      }else if(block.type==='image'){
+        const image=normalizeImage(block);if(image){annotationsByBlock.set(index,[image]);yield {type:'text',index,text:'',annotations:[image]};}
       }else if(block.type==='redacted_thinking'){
         yield {type:'reasoning',index,text:'',shape:'redacted',redacted:true};
       }
@@ -185,6 +195,8 @@ export async function* decodeAnthropic(frames:AsyncIterable<SSEFrame>):AsyncGene
     if(b.type==='text'){
       const anns=annotationsByBlock.get(index);
       parts.push({type:'text',text:string(b.text),...(anns?.length?{annotations:anns}:{})});
+    }else if(b.type==='image'){
+      const image=normalizeImage(b);if(image)parts.push({type:'image',...(image.url?{url:image.url}:{}),...(image.data?{data:image.data}:{}),mediaType:image.mediaType});
     }else if(b.type==='thinking'){
       const t=string(b.thinking),shape=classifyReasoningShape(t,'raw');
       parts.push({type:'reasoning',text:t,shape,...(string(b.signature)?{signature:string(b.signature)}:{})});
@@ -412,7 +424,7 @@ export async function* decodeOpenAIChat(frames:AsyncIterable<SSEFrame>):AsyncGen
     // 6. Refusals
     if(typeof delta.refusal==='string'&&delta.refusal) {
       refusal+=delta.refusal;
-      yield* pushText('',[{type:'refusal',text:delta.refusal}]);
+      yield* pushText(delta.refusal,[{type:'refusal',text:delta.refusal}]);
     }
 
     // 7. Tool calls
@@ -471,6 +483,7 @@ export async function* decodeOpenAIChat(frames:AsyncIterable<SSEFrame>):AsyncGen
   parts.push(...calls.map(s=>({type:'toolCall' as const,callId:s.id,name:s.name,arguments:s.args||'{}'})));
   const raw:JsonObject={role:'assistant',content:text||null};
   if(reasoning)raw[reasoningField]=reasoning;
+  if(refusal)raw.refusal=refusal;
   if(rawReasoningDetails.length)raw.reasoning_details=rawReasoningDetails;
   if(calls.length)raw.tool_calls=calls.map(s=>({id:s.id,type:'function',function:{name:s.name,arguments:s.args||'{}'}}));
   yield {type:'completed',response:{parts,stop:refusal?'refusal':stop(reason,!!calls.length),usage:u,raw:{type:'provider.payload',flavor:'openAIChat',data:raw}}};
@@ -494,6 +507,7 @@ export async function* decodeOpenAIResponses(frames:AsyncIterable<SSEFrame>):Asy
     }else if(type==='response.output_item.done'){
       if(response)continue;
       const item=structuredClone(object(e.item));items.set(output,item);doneItems.set(output,item);
+      if(item.type==='image_generation_call'){const image=normalizeImage(item);if(image)yield {type:'text',index:blockIndex(`image.${output}`),text:'',annotations:[image]};}
       if(item.type==='reasoning'&&!emittedReasoningOutputs.has(output)) {
         const summaries=array(item.summary).map(s=>string(object(s).text)).filter(Boolean);
         if(!summaries.length&&string(item.encrypted_content)) {
@@ -508,6 +522,10 @@ export async function* decodeOpenAIResponses(frames:AsyncIterable<SSEFrame>):Asy
       if(response)continue;
       const t=string(e.delta);
       if(t)yield {type:'text',index:blockIndex(`text.${output}.${content}`),text:t};
+    }else if(type==='response.refusal.delta'){
+      const text=string(e.delta);if(text)yield {type:'text',index:blockIndex(`text.${output}.${content}`),text,annotations:[{type:'refusal',text}]};
+    }else if(type==='response.refusal.done'){
+      const index=blockIndex(`text.${output}.${content}`);if(!closed.has(index)){closed.add(index);yield {type:'blockEnd',index};}
     }else if(type==='response.output_text.annotation.added') {
       if(response)continue;
       const cit=normalizeCitation(object(e.annotation));
@@ -568,8 +586,10 @@ export async function* decodeOpenAIResponses(frames:AsyncIterable<SSEFrame>):Asy
           for(const rawAnn of array(p.annotations)){const cit=normalizeCitation(object(rawAnn));if(cit&&!anns.some(a=>a.url===cit.url&&a.title===cit.title))anns.push(cit);}
           parts.push({type:'text',text:string(p.text),...(anns.length?{annotations:anns}:{})});
         }
-        if(p.type==='refusal')refused=true;
+        if(p.type==='refusal'){refused=true;const text=string(p.refusal);parts.push({type:'text',text,annotations:[{type:'refusal',text}]});}
       }
+    }else if(b.type==='image_generation_call'){
+      const image=normalizeImage(b);if(image)parts.push({type:'image',mediaType:image.mediaType,...(image.data?{data:image.data}:{}),...(image.url?{url:image.url}:{})});
     }else if(b.type==='reasoning'){
       const summaryTexts=array(b.summary).map(s=>string(object(s).text)).filter(Boolean);
       const rawTexts=array(b.content).map(s=>string(object(s).text)).filter(Boolean);

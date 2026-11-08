@@ -45,6 +45,7 @@ export class AgentRunner {
   private async emit(cp:AgentCheckpoint,event:RunEventPayload) {
     const id=await this.options.ports.emit(cp.userId,cp.run.id,RunEventPayloadSchema.parse(event));
     if(typeof id==='number')cp.run.lastEventId=id;
+    if(event.type==='tool.started')cp.lastToolCallId=event.activity.id;
   }
   private message(cp:AgentCheckpoint,role:Message['role'],parts:MessagePart[]):Message {
     const now=this.now();return {type:'message',id:this.id(),chatId:cp.chat.id,runId:cp.run.id,...(cp.run.clientTurnId?{clientTurnId:cp.run.clientTurnId}:{}),role,parts,createdAt:now,updatedAt:now};
@@ -237,7 +238,7 @@ export class AgentRunner {
       try {
         response=await this.controlled(cp,async signal=>{
           let completed:ProviderResponse|undefined;
-          const reasoningMeta = new Map<string,{blockId:string;startedAt:string;finishedAt?:string;durationMs?:number}>();
+          const reasoningMeta = new Map<string,{blockId:string;startedAt:string;finishedAt?:string;durationMs?:number;afterToolCallId?:string}>();
           const closed = new Set<string>();
           const textIds:string[]=[];
           for await(const raw of this.options.provider.stream(req,signal)) {
@@ -252,7 +253,7 @@ export class AgentRunner {
               await this.emit(cp,{type:'text.delta',blockId,text:e.text,...(e.annotations?.length?{annotations:e.annotations}:{})});
             }else if(e.type==='reasoning') {
               if(!blocks.includes(blockId))blocks.push(blockId);reasoningBlocks.add(blockId);
-              if(!reasoningMeta.has(blockId))reasoningMeta.set(blockId,{blockId,startedAt:new Date().toISOString()});
+              if(!reasoningMeta.has(blockId))reasoningMeta.set(blockId,{blockId,startedAt:this.now(),afterToolCallId:cp.lastToolCallId??Object.keys(cp.calls).at(-1)});
               await this.emit(cp,{type:'reasoning.delta',blockId,text:e.text,...(e.shape?{shape:e.shape}:{}),...(e.redacted?{redacted:true}:{})});
             }else if(e.type==='tool') {
               if(e.server)continue;
@@ -264,7 +265,7 @@ export class AgentRunner {
             }else if(e.type==='blockEnd') {
               if(blocks.includes(blockId)&&!closed.has(blockId)){
                 closed.add(blockId);
-                const meta=reasoningMeta.get(blockId);if(meta){meta.finishedAt=new Date().toISOString();meta.durationMs=Math.max(0,Date.parse(meta.finishedAt)-Date.parse(meta.startedAt));}
+                const meta=reasoningMeta.get(blockId);if(meta){meta.finishedAt=this.now();meta.durationMs=Math.max(0,Date.parse(meta.finishedAt)-Date.parse(meta.startedAt));}
                 if(reasoningBlocks.has(blockId)) {
                   await this.emit(cp,{type:'reasoning.finished',blockId,...(e.shape?{shape:e.shape}:{}),...(e.redacted?{redacted:true}:{})});
                 }else {

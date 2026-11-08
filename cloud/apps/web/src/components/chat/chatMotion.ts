@@ -84,6 +84,7 @@ interface ActiveSendFlight {
   innerEl: HTMLDivElement;
   inputEl: HTMLTextAreaElement | null;
   targetBubbleEl: HTMLElement | null;
+  targets: Set<HTMLElement>;
   finish: () => void;
 }
 
@@ -227,6 +228,7 @@ export function launchSendFlight(inputEl: HTMLTextAreaElement | null, text: stri
     innerEl,
     inputEl,
     targetBubbleEl: null,
+    targets:new Set<HTMLElement>(),
     finish() {
       if (activeFlight?.id === id) {
         activeFlight = null;
@@ -235,13 +237,13 @@ export function launchSendFlight(inputEl: HTMLTextAreaElement | null, text: stri
       if (flight.inputEl?.dataset.flightLead) {
         delete flight.inputEl.dataset.flightLead;
       }
-      if (flight.targetBubbleEl) {
-        flight.targetBubbleEl.style.visibility = '';
-        flight.targetBubbleEl.style.opacity = '';
-        delete flight.targetBubbleEl.dataset.sendInFlight;
-        flight.targetBubbleEl = null;
-      }
       flight.shellEl.remove();
+      for(const target of flight.targets) {
+        // A retiring optimistic node may still be painted during a keyed handoff.
+        // Restore all targets together, only after the flight itself is removed.
+        target.style.visibility='';target.style.opacity='';delete target.dataset.sendInFlight;
+      }
+      flight.targets.clear();flight.targetBubbleEl=null;
     },
   };
 
@@ -278,12 +280,9 @@ export function bindSendFlightTarget(
     flight.turnKey = turnKey;
   }
 
-  if (flight.targetBubbleEl && flight.targetBubbleEl !== bubbleEl) {
-    flight.targetBubbleEl.style.visibility = '';
-    flight.targetBubbleEl.style.opacity = '';
-    delete flight.targetBubbleEl.dataset.sendInFlight;
-  }
-
+  // Never reveal the retiring target while the flight is still visible. React
+  // can keep the optimistic and committed nodes connected for one frame.
+  flight.targets.add(bubbleEl);
   flight.targetBubbleEl = bubbleEl;
   flight.boundToTarget = true;
   bubbleEl.style.visibility = 'hidden';

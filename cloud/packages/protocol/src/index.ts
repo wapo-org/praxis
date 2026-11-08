@@ -65,7 +65,7 @@ export const MessagePartSchema = z.object({
   url:z.string().optional(), data:z.string().optional(), signature:z.string().optional(),
   callId:IdSchema.optional(),name:z.string().optional(),arguments:z.string().optional(),
   content:z.array(JsonObjectSchema).optional(),isError:z.boolean().optional(),outputRef:IdSchema.optional(),
-  blockId:IdSchema.optional(),shape:ReasoningShapeSchema.optional(),redacted:z.boolean().optional(),
+  afterToolCallId:IdSchema.optional(),blockId:IdSchema.optional(),shape:ReasoningShapeSchema.optional(),redacted:z.boolean().optional(),
   startedAt:TimestampSchema.optional(),finishedAt:TimestampSchema.optional(),durationMs:z.number().nonnegative().optional(),
   annotations:z.array(StreamAnnotationSchema).optional(),
 });

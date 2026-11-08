@@ -97,3 +97,22 @@ test('ten-second burst stall resumes without dropping text',async({page})=>{
   await expect(page.getByTestId('stream-status')).toHaveText('completed',{timeout:15000});
   await expect(page.getByTestId('stream-final')).toHaveText(expected);
 });
+test('tool iterations retain one work group and reasoning order after reload',async({page})=>{
+  const id=await page.evaluate(async()=>{
+    // @ts-expect-error Vite source import.
+    const {apiClient}=await import('/src/lib/api.ts');
+    const chat=await apiClient.createChat({title:'H2 reasoning between tools'});
+    await apiClient.startRun({chatId:chat.id,text:'Interleaved reasoning',script:'reasoningInterleaved'});return chat.id;
+  });
+  await page.goto(`/c/${id}`);await page.getByTestId('turn-copy-button').last().waitFor();
+  for(const reload of [false,true]){
+    if(reload){await page.reload();await page.getByTestId('turn-copy-button').last().waitFor();}
+    await expect(page.getByTestId('agent-activity-view')).toHaveCount(1);
+    await page.getByTestId('agent-activity-toggle').click();
+    await expect(page.locator('[data-testid^=tool-step-header-]')).toHaveCount(1);
+    await expect(page.getByTestId('reasoning-view')).toHaveCount(2);
+    const order=await page.getByTestId('agent-activity-view').evaluate(el=>Array.from(el.querySelectorAll('[data-testid="reasoning-view"],[data-testid^="tool-step-header-"]')).map(node=>(node as HTMLElement).dataset.testid));
+    expect(order).toEqual(['reasoning-view',expect.stringMatching(/^tool-step-header-/),'reasoning-view']);
+    if(process.env.H2_CAPTURE_DIR){for(const button of await page.getByTestId('reasoning-view').getByRole('button').all())await button.click();await page.screenshot({path:`${process.env.H2_CAPTURE_DIR}/reasoning-tool-order-${test.info().project.name}-${reload?'restored':'initial'}.png`,animations:'disabled'});}
+  }
+});

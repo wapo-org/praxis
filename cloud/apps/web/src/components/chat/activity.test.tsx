@@ -203,6 +203,16 @@ describe('iMessage send animation trajectory (chatMotion)', () => {
     expect(p820.width).toBeCloseTo(toBox.width, 1);
   });
 
+  it('keeps retiring optimistic targets hidden until the keyed handoff flight ends',()=>{
+    const input=document.createElement('textarea');input.getBoundingClientRect=()=>new DOMRect(64,800,270,36);document.body.appendChild(input);
+    const old=document.createElement('div'),next=document.createElement('div');
+    for(const bubble of [old,next]){bubble.getBoundingClientRect=()=>new DOMRect(280,520,64,36);document.body.appendChild(bubble);}
+    launchSendFlight(input,'Same message');bindSendFlightTarget(old);bindSendFlightTarget(next);
+    expect(old.style.visibility).toBe('hidden');expect(next.style.visibility).toBe('hidden');
+    cancelSendFlight();expect(old.style.visibility).toBe('');expect(next.style.visibility).toBe('');
+    input.remove();old.remove();next.remove();
+  });
+
   it('cleans up previous flight on rapid consecutive sends so no bubble stays hidden', () => {
     const input = document.createElement('textarea');
     input.getBoundingClientRect = () => new DOMRect(64, 800, 270, 36);

@@ -74,6 +74,7 @@ export const CheckpointSchema = z.object({
   effort:z.string().optional(),supportedEfforts:z.array(z.string()).optional(),webSearch:z.boolean().default(false),
   capabilities:CapabilitiesSchema,policy:PolicySchema,
   hiddenTools:ConversationSetupSchema.shape.tools.default([]),
+  lastToolCallId:IdSchema.optional(),
   phase:z.enum(['model','tools','terminal']),iteration:z.number().int().nonnegative(),
   pending:z.array(PendingCallSchema),
   /** `started` is persisted before a tool executes; a replay that finds it without a result knows the call was interrupted. */

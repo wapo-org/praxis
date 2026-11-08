@@ -302,3 +302,22 @@ describe('OpenAI Responses stream normalisation', () => {
     });
   });
 });
+
+describe('refusal and image annotations are not dropped',()=>{
+  it('keeps Chat refusal text in the same delta and final-part model',async()=>{
+    const events=await collect(decodeOpenAIChat(parseSSE(bytes(sse({choices:[{delta:{refusal:'Cannot '}}]},{choices:[{delta:{refusal:'comply.'},finish_reason:'stop'}]},'[DONE]')))));
+    expect(events.filter(e=>e.type==='text').map(e=>e.text).join('')).toBe('Cannot comply.');
+    expect(finalResponse(events)).toMatchObject({stop:'refusal',parts:[{type:'text',text:'Cannot comply.',annotations:[{type:'refusal',text:'Cannot '},{type:'refusal',text:'comply.'}]}]});
+  });
+  it('keeps Responses refusal deltas and image generation snapshots',async()=>{
+    const output=[{type:'message',content:[{type:'refusal',refusal:'Cannot comply.'}]},{type:'image_generation_call',result:'aW1hZ2U=',output_format:'png'}];
+    const events=await collect(decodeOpenAIResponses(parseSSE(bytes(sse({type:'response.output_item.added',output_index:0,item:output[0]},{type:'response.refusal.delta',output_index:0,content_index:0,delta:'Cannot comply.'},{type:'response.refusal.done',output_index:0,content_index:0},{type:'response.output_item.done',output_index:1,item:output[1]},{type:'response.completed',response:{output}})))));
+    expect(events.some(e=>e.type==='text'&&e.annotations?.some(a=>a.type==='image'&&a.data==='aW1hZ2U='))).toBe(true);
+    expect(finalResponse(events)).toMatchObject({stop:'refusal',parts:[{type:'text',text:'Cannot comply.',annotations:[{type:'refusal',text:'Cannot comply.'}]},{type:'image',data:'aW1hZ2U=',mediaType:'image/png'}]});
+  });
+  it('keeps an Anthropic-compatible image block in live annotations and final parts',async()=>{
+    const events=await collect(decodeAnthropic(parseSSE(bytes(sse({type:'message_start',message:{usage:{}}},{type:'content_block_start',index:0,content_block:{type:'image',source:{type:'base64',data:'aW1hZ2U=',media_type:'image/png'}}},{type:'content_block_stop',index:0},{type:'message_stop'})))));
+    expect(events.some(e=>e.type==='text'&&e.annotations?.[0]?.type==='image')).toBe(true);
+    expect(finalResponse(events).parts).toEqual([{type:'image',data:'aW1hZ2U=',mediaType:'image/png'}]);
+  });
+});
