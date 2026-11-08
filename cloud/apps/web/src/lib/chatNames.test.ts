@@ -34,3 +34,10 @@ it('never reuses a name one of the chats already has: retries, then numbers it',
   for (let k = 0; k < 400; k++) titles.push(uniqueChatName(titles));
   expect(new Set(titles.map(t => t.toLowerCase())).size).toBe(400);
 });
+
+it('compares names ignoring case and spaces, tolerating chats without a title', async () => {
+  const { nameTaken, uniqueChatName } = await import('./chatNames');
+  expect(nameTaken(['  amber FOX '], 'Amber Fox')).toBe(true);
+  expect(nameTaken([undefined, null, 'Amber Foxes'], 'Amber Fox')).toBe(false);
+  expect(uniqueChatName([undefined, null], () => 0)).toBe('Quiet Harbor');
+});

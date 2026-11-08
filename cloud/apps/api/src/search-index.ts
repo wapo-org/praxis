@@ -99,6 +99,22 @@ export function chunk(text: string, size = CHUNK_CHARS): string[] {
   return out;
 }
 
+/**
+ * Content hashes, memoised: every search recomputes every chat's items (the reconcile), and hashing ~30k
+ * texts each time was most of a search over 2,000 chats. Bounded; cleared when full.
+ */
+const hashes = new Map<string, string>();
+const MAX_HASHES = 200_000;
+function textHash(text: string) {
+  let hash = hashes.get(text);
+  if (hash === undefined) {
+    if (hashes.size >= MAX_HASHES) hashes.clear();
+    hash = createHash('sha1').update(text).digest('base64url').slice(0, 16);
+    hashes.set(text, hash);
+  }
+  return hash;
+}
+
 export interface ChatDoc {
   chat: Chat;
   /** Each message's flattened text, in order. */
@@ -129,8 +145,8 @@ export function phrases(text: string, size = PHRASE_WORDS, stride = PHRASE_STRID
 }
 
 /** Phrases from every message (user and assistant alike), round-robin from each opening, up to the cap. */
-function chatPhrases(texts: string[]): string[] {
-  const lists = texts.map(text => phrases(chunk(text)[0] ?? ''));
+function chatPhrases(openings: string[]): string[] {
+  const lists = openings.map(text => phrases(text));
   const out: string[] = [];
   for (let i = 0; out.length < MAX_PHRASES_PER_CHAT && lists.some(list => i < list.length); i++)
     for (const list of lists) if (i < list.length && out.length < MAX_PHRASES_PER_CHAT) out.push(list[i]!);
@@ -142,13 +158,26 @@ function chatPhrases(texts: string[]): string[] {
  * assistant), and phrase windows of each message's opening.
  */
 export function chatItems(doc: ChatDoc): { id: string; chatId: string; text: string }[] {
+  // Unchanged chats (nearly all of them, on every search) reuse their items.
+  const cached = itemCache.get(doc.chat.id);
+  if (cached && cached.title === doc.chat.title && cached.texts.length === doc.texts.length && cached.texts.every((t, i) => t === doc.texts[i])) return cached.items;
+  const items = buildChatItems(doc);
+  if (itemCache.size >= MAX_CACHED_CHATS) itemCache.clear();
+  itemCache.set(doc.chat.id, { title: doc.chat.title, texts: doc.texts, items });
+  return items;
+}
+const itemCache = new Map<string, { title: string; texts: string[]; items: { id: string; chatId: string; text: string }[] }>();
+const MAX_CACHED_CHATS = 50_000;
+
+function buildChatItems(doc: ChatDoc): { id: string; chatId: string; text: string }[] {
+  const chunks = doc.texts.map(t => chunk(t));
   const texts = [
-    ...[doc.chat.title, ...doc.texts.flatMap(t => chunk(t))].filter(t => t.trim()).slice(0, 1 + MAX_CHUNKS_PER_CHAT),
-    ...chatPhrases(doc.texts),
+    ...[doc.chat.title, ...chunks.flat()].filter(t => t.trim()).slice(0, 1 + MAX_CHUNKS_PER_CHAT),
+    ...chatPhrases(chunks.map(c => c[0] ?? '')),
   ];
   const seen = new Set<string>();
   return texts.flatMap(text => {
-    const id = `${doc.chat.id}:${createHash('sha1').update(text).digest('base64url').slice(0, 16)}`;
+    const id = `${doc.chat.id}:${textHash(text)}`;
     if (seen.has(id)) return [];
     seen.add(id);
     return [{ id, chatId: doc.chat.id, text }];

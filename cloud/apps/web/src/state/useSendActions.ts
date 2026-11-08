@@ -1,7 +1,7 @@
 import type { Message } from '@praxis/protocol';
 import React from 'react';
 import { apiClient } from '../lib/api';
-import { uniqueChatName } from '../lib/chatNames';
+import { nameTaken, uniqueChatName } from '../lib/chatNames';
 
 import type { useChatActions } from './useChatActions';
 import type { PraxisState } from './usePraxisState';
@@ -51,7 +51,7 @@ export function useSendActions(
       if (!targetChatId) {
         // The draft name was unique when drawn; chats synced since may have taken it.
         const titles = chats.map(c => c.title);
-        const title = titles.some(t => t.trim().toLocaleLowerCase() === state.draftTitle.trim().toLocaleLowerCase()) ? uniqueChatName(titles) : state.draftTitle;
+        const title = !state.draftTitle || nameTaken(titles, state.draftTitle) ? uniqueChatName(titles) : state.draftTitle;
         const created = await createNewChat(title);
         state.setDraftTitle(uniqueChatName([...titles, title]));
         targetChatId = created.id;

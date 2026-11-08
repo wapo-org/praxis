@@ -17,9 +17,18 @@ export const NAME_ATTEMPTS = 24;
  * A random name none of `taken` (the user's chat titles) already uses, ignoring case and outer spaces. After
  * NAME_ATTEMPTS collisions (a user with most of the 256 pairs) it numbers the last pick: "Quiet Harbor 2".
  */
-export function uniqueChatName(taken: Iterable<string>, random: () => number = Math.random): string {
+const key = (title: string | null | undefined) => (title ?? '').trim().toLocaleLowerCase();
+
+/** Whether one of `titles` already is `name` (ignoring case and outer spaces). */
+export function nameTaken(titles: Iterable<string | null | undefined>, name: string): boolean {
+  const wanted = key(name);
+  for (const title of titles) if (key(title) === wanted) return true;
+  return false;
+}
+
+export function uniqueChatName(taken: Iterable<string | null | undefined>, random: () => number = Math.random): string {
   const used = new Set<string>();
-  for (const title of taken) used.add(title.trim().toLocaleLowerCase());
+  for (const title of taken) used.add(key(title));
   let name = randomChatName(random);
   for (let i = 1; i < NAME_ATTEMPTS && used.has(name.toLocaleLowerCase()); i++) name = randomChatName(random);
   if (!used.has(name.toLocaleLowerCase())) return name;

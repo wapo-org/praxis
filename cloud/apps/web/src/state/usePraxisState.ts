@@ -9,7 +9,7 @@ import type {
   Skill,
 } from '@praxis/protocol';
 import React from 'react';
-import { uniqueChatName } from '../lib/chatNames';
+import { nameTaken, uniqueChatName } from '../lib/chatNames';
 import {
   apiClient,
   type Consent,
@@ -90,8 +90,7 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   const [draftTitle, setDraftTitle] = React.useState(() => uniqueChatName((initialCache?.chats ?? []).map(c => c.title)));
   // Chats arriving after the draft was named (bootstrap, another device) may already use its name.
   React.useEffect(() => {
-    const draft = draftTitle.trim().toLocaleLowerCase();
-    if (chats.some(c => c.title.trim().toLocaleLowerCase() === draft)) setDraftTitle(uniqueChatName(chats.map(c => c.title)));
+    if (nameTaken(chats.map(c => c.title), draftTitle)) setDraftTitle(uniqueChatName(chats.map(c => c.title)));
   }, [chats]);
   const [messagesByChat, setMessagesByChat] = React.useState<Record<string, Message[]>>(
     () => initialCache?.messagesByChat ?? {},

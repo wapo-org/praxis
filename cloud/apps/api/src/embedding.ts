@@ -29,9 +29,18 @@ function normalize(v: Float32Array): Float32Array {
 }
 
 export function cosine(a: Float32Array, b: Float32Array): number {
-  let s = 0;
-  for (let i = 0; i < a.length; i++) s += a[i]! * b[i]!;
-  return s;
+  // Unrolled by four: the memory index runs this over every vector (~30k at 2,000 chats) per search.
+  let s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+  const n = a.length - (a.length % 4);
+  let i = 0;
+  for (; i < n; i += 4) {
+    s0 += a[i]! * b[i]!;
+    s1 += a[i + 1]! * b[i + 1]!;
+    s2 += a[i + 2]! * b[i + 2]!;
+    s3 += a[i + 3]! * b[i + 3]!;
+  }
+  for (; i < a.length; i++) s0 += a[i]! * b[i]!;
+  return s0 + s1 + s2 + s3;
 }
 
 const STOP = new Set(
