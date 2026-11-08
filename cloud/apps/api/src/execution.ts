@@ -356,7 +356,7 @@ function scriptedProvider(script: Script, simOptions?: StreamSimOptions): ModelP
           const speed = simOptions?.speed ?? '40tps';
           const rate = speed === '2tps' ? 2 : speed === '1500tps' ? 1500 : 40;
           const wait = script === 'long' ? 12 : speed === 'instant' ? 0 :
-            speed === 'burstStall' ? (!stalled && chars > 24 ? (stalled = true, 3000) : 0) :
+            speed === 'burstStall' ? (!stalled && chars > 24 ? (stalled = true, simOptions?.stallDuration === '10s' ? 10000 : 3000) : 0) :
             speed === 'jitter' ? (++count % 5) * 18 : Math.max(0, start + chars / (rate * 4) * 1000 - Date.now());
           if (wait) await new Promise<void>((resolve, reject) => {
             const abort = () => { clearTimeout(timer); reject(signal.reason ?? new Error('Aborted')); };

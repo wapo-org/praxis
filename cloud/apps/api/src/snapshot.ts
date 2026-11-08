@@ -67,7 +67,7 @@ export function foldSnapshot(state:RunSnapshot,event:RunEventPayload,id:number,r
  case 'messages.committed':for(const m of event.messages)if(!s.messages.some(x=>x.id===m.id))s.messages.push(m);break;
  case 'usage':s.usage=event.usage;break;
  case 'attempt.discarded':s.blocks=s.blocks.filter(b=>!event.blockIds.includes(b.id));s.tools=s.tools.filter(t=>!event.toolCallIds.includes(t.activity.id));break;
- case 'run.finished':s.pendingApprovals=[];s.pendingElicitations=[];for(const t of s.tools)t.running=false;break;
+ case 'run.finished':for(const b of s.blocks){b.finished=true;if(b.type==='reasoning'&&!b.finishedAt){b.finishedAt=run.updatedAt;if(b.startedAt)b.durationMs=Math.max(0,Date.parse(run.updatedAt)-Date.parse(b.startedAt));}}s.pendingApprovals=[];s.pendingElicitations=[];for(const t of s.tools)t.running=false;break;
  }
  return s;
 }

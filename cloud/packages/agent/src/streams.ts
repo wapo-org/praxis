@@ -119,7 +119,7 @@ export async function* decodeAnthropic(frames:AsyncIterable<SSEFrame>):AsyncGene
       if(block.type==='tool_use')yield {type:'tool',index,id:string(block.id),name:string(block.name)};
       else if(block.type==='server_tool_use')yield {type:'tool',index,id:string(block.id),name:string(block.name),server:true};
       else if(block.type==='text'&&string(block.text))yield {type:'text',index,text:string(block.text)};
-      else if(block.type==='thinking'&&string(block.thinking)){
+      else if(block.type==='thinking'){
         const t=string(block.thinking);
         yield {type:'reasoning',index,text:t,shape:classifyReasoningShape(t,'raw')};
       }else if(block.type==='redacted_thinking'){
@@ -168,7 +168,7 @@ export async function* decodeAnthropic(frames:AsyncIterable<SSEFrame>):AsyncGene
       u={...u,...(typeof updated.output_tokens==='number'?{outputTokens:updated.output_tokens}:{}),...(typeof updated.input_tokens==='number'?{inputTokens:updated.input_tokens}:{})};
     }else if(type==='message_stop'){
       if(done)continue;
-      done=true;
+      done=true;break;
     }
   }
   if(!done)throw new ProviderFailure('Anthropic stream ended before message_stop','retryable');
@@ -490,6 +490,7 @@ export async function* decodeOpenAIResponses(frames:AsyncIterable<SSEFrame>):Asy
       if(response)continue;
       const item=structuredClone(object(e.item));items.set(output,item);
       if(item.type==='function_call')yield {type:'tool',index:blockIndex(`tool.${output}`),id:string(item.call_id)||string(item.id),name:string(item.name)};
+      if(item.type==='reasoning')yield {type:'reasoning',index:blockIndex(`reasoning.${output}.0`),text:'',shape:'none'};
     }else if(type==='response.output_item.done'){
       if(response)continue;
       const item=structuredClone(object(e.item));items.set(output,item);doneItems.set(output,item);
@@ -543,7 +544,7 @@ export async function* decodeOpenAIResponses(frames:AsyncIterable<SSEFrame>):Asy
         yield {type:'blockEnd',index:idx,...(isR&&acc?{shape:acc.shape}:{})};
       }
     }else if(type==='response.completed'||type==='response.incomplete'){
-      if(!response)response=object(e.response);
+      if(!response)response=object(e.response);break;
     }else if(type==='response.failed') {
       const error=object(object(e.response).error);throw classifyProviderError(string(error.message)||'Response failed',/server|rate|timeout/.test(string(error.code))?500:400);
     }

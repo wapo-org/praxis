@@ -128,13 +128,15 @@ describe('Anthropic stream normalisation', () => {
       shape: 'redacted',
       redacted: true,
     });
-    expect(reasoningEvents[1]).toMatchObject({
+    expect(reasoningEvents[1]).toMatchObject({type:'reasoning',index:1,text:'',shape:'raw'});
+    expect(reasoningEvents[2]).toMatchObject({
       type: 'reasoning',
       index: 1,
       shape: 'summary',
     });
 
     expect(res.parts).toHaveLength(3);
+    expect(events.find(e => e.type === 'reasoning')).toMatchObject({type:'reasoning',text:''});
     expect(res.parts[0]).toMatchObject({
       type: 'reasoning',
       text: '',
@@ -285,6 +287,7 @@ describe('OpenAI Responses stream normalisation', () => {
     const res = finalResponse(events);
 
     expect(events.some((e) => e.type === 'reasoning' && e.shape === 'redacted' && e.redacted === true)).toBe(true);
+    expect(events.find(e => e.type === 'reasoning')).toMatchObject({type:'reasoning',text:''});
     expect(res.parts[0]).toMatchObject({
       type: 'reasoning',
       text: '',

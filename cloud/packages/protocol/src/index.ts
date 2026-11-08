@@ -93,6 +93,7 @@ export const RunSchema = z.object({type:z.literal('run'),id:IdSchema,chatId:IdSc
 export type Run = z.infer<typeof RunSchema>;
 export const StreamSimOptionsSchema = z.object({
   sample: z.enum(['short', 'torture']).default('torture'),
+  stallDuration: z.enum(['3s', '10s']).default('3s'),
   chunkSize: z.enum(['char', 'token', 'word', 'sentence', '2kb', 'whole']).default('token'),
   speed: z.enum(['2tps', '40tps', '1500tps', 'burstStall', 'jitter', 'instant']).default('40tps'),
   splitMode: z.enum(['none', 'markdown', 'encoding', 'torture']).default('none'),
