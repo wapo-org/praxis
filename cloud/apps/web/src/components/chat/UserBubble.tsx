@@ -1,6 +1,6 @@
 import type { Attachment, Message } from '@praxis/protocol';
 import React from 'react';
-import { bindSendFlightTarget } from './chatMotion';
+import { bindSendFlightTarget, isSendFlightTarget } from './chatMotion';
 import { MessageAttachment } from './MessageAttachment';
 import styles from './UserBubble.module.css';
 
@@ -43,7 +43,7 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
           </div>
         ) : null}
         {combinedText ? (
-          <div ref={bubbleRef} data-user-bubble="" className={styles.bubble}>
+          <div ref={bubbleRef} data-user-bubble="" className={styles.bubble} style={isSendFlightTarget(turnKey,combinedText)?{visibility:'hidden',opacity:0}:undefined}>
             {combinedText}
           </div>
         ) : null}

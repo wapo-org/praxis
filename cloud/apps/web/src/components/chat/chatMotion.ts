@@ -255,6 +255,12 @@ export function cancelSendFlight() {
   activeFlight?.finish();
 }
 
+/** React owns the initial hidden state too: a ref-only binding can leave one painted frame. */
+export function isSendFlightTarget(turnKey:string,text:string):boolean {
+  const flight=activeFlight;
+  return !!flight&&(flight.turnKey===turnKey||(flight.turnKey===null&&!flight.existingKeys.has(`m:${turnKey}`)&&flight.text===text.trim()));
+}
+
 export function bindSendFlightTarget(
   bubbleEl: HTMLElement | null,
   turnKey?: string,
@@ -317,13 +323,6 @@ export function useMessageArrival(
     const previous = seen.current;
     const sameChat = !!previous && (previous.chatId === chatId || (!previous.chatId && !!chatId && previous.keys.size === 0));
     const fresh = sameChat ? keys.filter((key) => !previous.keys.has(key)) : [];
-
-    if (col && fresh.some((k) => k.startsWith('m:'))) {
-      const viewport = col.closest<HTMLElement>('[data-testid="chat-scroll-viewport"]');
-      if (viewport) {
-        viewport.scrollTop = viewport.scrollHeight;
-      }
-    }
 
     const nextTops = new Map<string, number>();
     if (col) {

@@ -3,6 +3,7 @@ import { StreamSimOptionsSchema, type StreamSimOptions, type RunBlock, type RunS
 import { apiClient } from '../../lib/api';
 import { subscribeRunEvents } from '../../lib/sse';
 import { ReasoningView } from '../chat/ReasoningView';
+import {useStreamAnchor} from '../chat/useStreamAnchor';
 import { AgentMessageView } from '../chat/AgentMessageView';
 /** Uses the real local runner, SSE log and snapshot recovery. Never selects a network provider. */
 export function StreamLabPage() {
@@ -13,7 +14,8 @@ export function StreamLabPage() {
   const unsub = React.useRef<(() => void) | undefined>(undefined);
   const runId = React.useRef('');
   const viewport = React.useRef<HTMLDivElement>(null);
-  const pinned = React.useRef(true);
+  const content=React.useRef<HTMLDivElement>(null);
+  const {onScroll}=useStreamAnchor(viewport,content,'stream-lab');
   const recover = (s: RunSnapshot) => { setBlocks(s.blocks); setStatus(s.run.status); };
   const follow = (id: string, after = 0) => {
     runId.current = id;
@@ -47,7 +49,6 @@ export function StreamLabPage() {
     if (id) void apiClient.getRunSnapshot(id).then(s => { recover(s); if (!['completed','failed','cancelled'].includes(s.run.status)) follow(id,s.lastEventId); });
     return () => unsub.current?.();
   }, []);
-  React.useLayoutEffect(() => { if (pinned.current && viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight; }, [blocks]);
   const start = async () => {
     unsub.current?.(); setBlocks([]); setError(''); setStatus('running');
     const chat = await apiClient.createChat({title:'Stream simulator'});
@@ -66,8 +67,8 @@ export function StreamLabPage() {
       <button onClick={() => window.location.reload()}>Reload and resume</button>
     </div>
     <p role="status" data-testid="stream-status">{status}</p>{error && <p role="alert">{error}</p>}
-    <div ref={viewport} data-testid="stream-viewport" style={{height:'65vh',overflow:'auto',overflowAnchor:'none'}} onScroll={() => {const el=viewport.current!; pinned.current=el.scrollHeight-el.scrollTop-el.clientHeight<40;}}>
-      {blocks.map(b => b.type === 'reasoning' ? <ReasoningView key={b.id} block={b}/> : <AgentMessageView key={b.id} text={b.text} animateArrival revealSegments={[{id:b.id,text:b.text}]} isStreaming={!b.finished && status === 'running'}/>)}
+    <div ref={viewport} data-testid="stream-viewport" style={{height:'65vh',overflow:'auto',overflowAnchor:'none'}} onScroll={onScroll}>
+      <div ref={content}>{blocks.map(b => b.type === 'reasoning' ? <ReasoningView key={b.id} block={b}/> : <AgentMessageView key={b.id} text={b.text} animateArrival revealSegments={[{id:b.id,text:b.text}]} isStreaming={!b.finished && status === 'running'}/>)}</div>
     </div>
     <output hidden data-testid="stream-final">{blocks.filter(b => b.type==='text').map(b=>b.text).join('')}</output>
   </main>;

@@ -1,0 +1,39 @@
+/*
+ * Adapted from T3 Code WorkLog, TimelineWorkEntryRow, TimelineToolActivityIcon,
+ * TimelineWorkGroupRows and MessagesTimeline (T3 Tools Inc.).
+ * MIT License — Copyright (c) 2026 T3 Tools Inc.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+.row { width:100%; min-width:0; border-radius:var(--radius-md); padding:0 calc(var(--space-1) / 2); }
+.button { display:block; width:100%; border:0; padding:0; color:var(--color-ink-2); background:none; text-align:left; cursor:pointer; border-radius:var(--radius-md); }
+.line { display:flex; align-items:center; min-height:var(--space-6); min-width:0; gap:calc(var(--space-3) / 2); font:var(--weight-regular) var(--text-md)/1.625 var(--font-sans); user-select:none; }
+.main { display:flex; align-items:baseline; flex:1; min-width:0; gap:calc(var(--space-3) / 2); }
+.slot { position:relative; width:var(--space-6); flex-shrink:0; line-height:0; }
+.icon { display:inline-flex; align-items:center; justify-content:center; width:var(--space-6); height:var(--space-6); vertical-align:calc(0.5cap - var(--space-3)); color:var(--color-ink-2); }
+.icon[data-tone=error],.failure { color:var(--color-danger); }
+.icon[data-tone=warning],.warning { color:var(--paper-warn); }
+.label { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.preview { margin-inline-start:calc(var(--space-1) / 2); }
+.mono { font-family:var(--font-mono); font-size:var(--text-sm); }
+.answer { margin-inline-start:var(--space-2); color:var(--color-ink); }
+.chevron { display:flex; flex-shrink:0; opacity:.7; color:var(--color-ink-2); transition:transform var(--duration-base) var(--ease-standard); }
+.details { margin-inline-start:calc(var(--space-6) + var(--space-1)); padding:var(--space-1) calc(var(--space-1) / 2); max-height:calc(var(--space-16) * 4); overflow:auto; }
+.pre { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--color-ink-2); font:var(--weight-regular) var(--text-sm)/1.625 var(--font-mono); }
+.copy { border:0; padding:var(--space-1) 0; color:var(--color-ink-2); background:none; font:inherit; cursor:pointer; }
+.button:hover { color:var(--color-ink); }
+.button:focus-visible,.copy:focus-visible { outline:2px solid var(--color-focus); outline-offset:2px; }
+.status { display:block; margin-inline-start:calc(var(--space-6) + var(--space-1)); font:var(--weight-medium) var(--text-md)/1.625 var(--font-sans); }

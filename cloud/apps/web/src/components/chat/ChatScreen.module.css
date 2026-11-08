@@ -149,3 +149,8 @@
     padding: 0 var(--space-4) var(--space-4);
   }
 }
+
+/* Fixed overlay: fading never changes the message column's layout. */
+.jump { opacity:1; visibility:visible; transition:opacity var(--duration-fast) var(--ease-standard), visibility var(--duration-fast) step-start; }
+.jump[data-visible='false'] { opacity:0; visibility:hidden; transition-timing-function:var(--ease-standard),step-end; }
+.jump[data-visible='false'] > * { pointer-events:none; }

@@ -1,6 +1,27 @@
+/*
+ * Adapted from T3 Code WorkLog, TimelineWorkEntryRow, TimelineToolActivityIcon,
+ * TimelineWorkGroupRows and MessagesTimeline (T3 Tools Inc.).
+ * MIT License — Copyright (c) 2026 T3 Tools Inc.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 import { ReasoningView } from './ReasoningView';
-import { toolRowCopy } from './toolRowCopy';
-import { Check, Clock, X } from '../../lib/icons';
+import {workEntry} from './WorkEntry.logic';
+import {WorkEntryIcon,WorkLogLine,workLogStyles as log} from './WorkLog';
+import { ChevronRight } from '../../lib/icons';
 
 import styles from './Activity.module.css';
 import type { AgentActivityViewProps } from './activityTypes';
@@ -42,22 +63,14 @@ export function ActivityDetails({
 
       {toolSteps.map((step) => {
         const isStepOpen = Boolean(openStepIds[step.callId]);
-        const isError =
-          step.completion?.status === 'failed' || step.completion?.status === 'denied';
-        const isDone = Boolean(step.completion) && !step.running;
 
-        const formattedArgs =
-          step.argumentsJson ||
-          (step.activity.arguments ? JSON.stringify(step.activity.arguments, null, 2) : '{}');
-        const outputText = step.completion?.preview || step.completion?.summary || '';
-        const { title, summary: stepSummary } = toolRowCopy(step);
+        const entry=workEntry(step);
 
-        const iconTone = isError ? 'error' : isDone ? 'done' : 'running';
         return (
           <div
             key={step.callId}
             data-testid={`tool-step-${step.callId}`}
-            className={styles.toolStep}
+            className={log.row}
           >
             <button
               type="button"
@@ -65,59 +78,20 @@ export function ActivityDetails({
               aria-expanded={isStepOpen}
               aria-controls={`tool-detail-${step.callId}`}
               onClick={() => toggleStepDetail(step.callId)}
-              className={styles.toolStepHeader}
+              className={log.button}
             >
-              <span className={styles.toolStepMain}>
-                <span className={styles.toolStepIcon} data-tone={iconTone} aria-hidden="true">
-                  {step.running ? (
-                    <Clock size={16} />
-                  ) : isError ? (
-                    <X size={16} />
-                  ) : (
-                    <Check size={16} />
-                  )}
-                </span>
-                <span className={styles.toolStepName}>{title}</span>
-                {stepSummary ? <span className={styles.toolStepSummary}>{stepSummary}</span> : null}
-              </span>
-              <span className={styles.toolStepToggle}>{isStepOpen ? 'Hide' : 'Details'}</span>
+              <WorkLogLine icon={<WorkEntryIcon kind={entry.icon} failed={entry.failed} warning={entry.warning}/>} trailing={<span className={log.chevron} style={{transform:isStepOpen?'rotate(90deg)':undefined}} aria-hidden="true"><ChevronRight size={16}/></span>}>
+                <span className={step.running?'praxis-shimmer-text':undefined}>{entry.title}</span>
+                {entry.preview?<>{' '}<span className={`${log.preview} ${entry.mono?log.mono:''}`}>{entry.quoted?'“':''}{entry.preview}{entry.quoted?'”':''}</span></>:null}
+                {entry.answer?<span className={log.answer}>{' '}→ {entry.answer}</span>:null}
+              </WorkLogLine>
             </button>
 
-            {isStepOpen && (
-              <div
-                id={`tool-detail-${step.callId}`}
-                data-testid={`tool-step-detail-${step.callId}`}
-                className={styles.toolStepDetail}
-              >
-                <div className={styles.toolStepDetailHead}>
-                  <span className={styles.toolStepDetailLabel}>Input</span>
-                  <button
-                    type="button"
-                    className={styles.toolStepCopy}
-                    onClick={() =>
-                      copyText(step.callId, `${formattedArgs}\n\n${outputText}`.trim())
-                    }
-                  >
-                    {copiedStepId === step.callId ? 'Copied' : 'Copy'}
-                  </button>
-                </div>
-                <pre className={styles.detailPre}>{formattedArgs}</pre>
-
-                {step.progressLines.length > 0 && (
-                  <div>
-                    <div className={styles.toolStepDetailLabel}>Progress</div>
-                    <pre className={styles.detailPre}>{step.progressLines.join('\n')}</pre>
-                  </div>
-                )}
-
-                {outputText && (
-                  <div>
-                    <div className={styles.toolStepDetailLabel}>{isError ? 'Error' : 'Output'}</div>
-                    <pre className={styles.detailPre}>{outputText}</pre>
-                  </div>
-                )}
-              </div>
-            )}
+            {entry.failed||entry.warning?<span className={`${log.status} ${entry.warning?log.warning:log.failure}`}>{entry.warning?'Tool call denied':step.completion?.summary||'Tool call failed'}</span>:null}
+            {isStepOpen && <div id={`tool-detail-${step.callId}`} data-testid={`tool-step-detail-${step.callId}`} className={log.details}>
+              <pre className={log.pre}>{entry.body||'No additional output.'}</pre>
+              <button type="button" className={log.copy} onClick={()=>copyText(step.callId,entry.body)}>{copiedStepId===step.callId?'Copied':'Copy output'}</button>
+            </div>}
             {reasoningBlocks.filter(b => b.afterToolCallId === step.callId).map(block => <ReasoningView key={block.id} block={block} />)}
           </div>
         );

@@ -1,10 +1,12 @@
 .message {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: 0;
   color: var(--color-ink);
-  font: var(--weight-regular) var(--text-lg) / var(--leading-lg) var(--font-sans);
-  letter-spacing: -0.005em;
+  font: var(--weight-regular) var(--response-size, var(--text-lg)) / var(--response-leading, var(--leading-lg)) var(--response-font, var(--font-sans));
+  max-inline-size: min(100%, 70ch);
+  width:100%;
+  letter-spacing: normal;
 }
 
 .actions {

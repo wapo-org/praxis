@@ -1,3 +1,23 @@
+/*
+ * Adapted from T3 Code WorkLog, TimelineWorkEntryRow, TimelineToolActivityIcon,
+ * TimelineWorkGroupRows and MessagesTimeline (T3 Tools Inc.).
+ * MIT License — Copyright (c) 2026 T3 Tools Inc.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 import { SNAP, SPRING } from '@praxis/glass';
 import { motion } from 'framer-motion';
 import React from 'react';
@@ -23,7 +43,7 @@ export type { AgentActivityViewProps } from './activityTypes';
  * Turn fold / work disclosure row (ported from t3code TurnFoldTimelineRow &
  * WorkingTimelineRow + Praxis iOS AgentActivity.swift): one plain line,
  * folded by default. Chevron + muted 13 px medium tabular-nums label —
- * "Currently working…" (shimmer + live timer) while running, "Worked for <duration>"
+ * "Working…" (shimmer + live timer) while running, "Worked for <duration>"
  * when done, "Stopped after <duration>" when cancelled or failed.
  * Approvals and questions always show under the header, even folded.
  */
@@ -119,7 +139,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
   } else if (hasElicitation) {
     label = 'Waiting for your input';
   } else if (activelyWorking) {
-    label = 'Currently working…';
+    label = 'Working…';
     const currentStep = toolSteps.find((s) => s.running) ?? toolSteps[toolSteps.length - 1];
     if (currentStep) {
       subLine =
@@ -133,10 +153,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
   } else if (stopped) {
     label = stoppedLabel(startedAt, finishedAt, promptStartedAt);
   } else if (totalToolsCount > 0 || startedAt || finishedAt) {
-    const failedCount = toolSteps.filter(
-      (s) => s.completion?.status === 'failed' || s.completion?.status === 'denied',
-    ).length;
-    if (failedCount > 0) label = `${worked} (${failedCount} failed)`;
+    label = worked;
   } else if (reasoningBlocks.length > 0) {
     label = 'Thought process';
   }
@@ -165,7 +182,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
     <div ref={rootRef} data-testid="agent-activity-view" className={styles.root}>
       {reasoningBlocks.filter(b => !b.afterToolCallId).map(block => <ReasoningView key={block.id} block={block} />)}
       {/* Level 1: t3code turn-fold disclosure header. */}
-      <button
+      <div className={styles.groupBar}><button
         type="button"
         data-testid="agent-activity-toggle"
         data-scroll-anchor-ignore=""
@@ -174,6 +191,11 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
         onClick={toggleExpanded}
         className={styles.header}
       >
+        <span className={`${styles.label} ${activelyWorking ? 'praxis-shimmer-text' : ''}`}>
+          {label}
+        </span>
+        {activelyWorking && effectiveStart ? <WorkingTimer startedAt={effectiveStart} /> : null}
+        {subLine ? <span className={styles.detail}>{subLine}</span> : null}
         <motion.span
           className={styles.chevron}
           aria-hidden="true"
@@ -183,12 +205,8 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
         >
           <ChevronRight size={16} />
         </motion.span>
-        <span className={`${styles.label} ${activelyWorking ? 'praxis-shimmer-text' : ''}`}>
-          {label}
-        </span>
-        {activelyWorking && effectiveStart ? <WorkingTimer startedAt={effectiveStart} /> : null}
-        {subLine ? <span className={styles.detail}>{subLine}</span> : null}
-      </button>
+
+      </button></div>
 
       {/* Level 2: one line per call; level 3: details inside the line. */}
       {expanded && (

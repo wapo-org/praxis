@@ -1,10 +1,11 @@
 import React from 'react';
 import type { Message } from '@praxis/protocol';
-import { GlassChip, PANEL, popIn, ProgressiveBlurScrim, SPRING } from '@praxis/glass';
-import { AnimatePresence, motion } from 'framer-motion';
+import { GlassChip, PANEL, ProgressiveBlurScrim } from '@praxis/glass';
+import { motion } from 'framer-motion';
 import { ArrowDown } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import { AgentActivityView } from './AgentActivityView';
+import {useStreamAnchor} from './useStreamAnchor';
 import { AgentMessageView } from './AgentMessageView';
 import { useContentShift } from '../shell/useContentShift';
 import { ChatHeader } from './ChatHeader';
@@ -39,23 +40,7 @@ export function ChatScreen() {
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const shift = useContentShift();
   const columnRef = React.useRef<HTMLDivElement | null>(null);
-  const [showJumpToLatest, setShowJumpToLatest] = React.useState(false);
-
-  const handleScroll = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const next = el.scrollHeight - el.scrollTop - el.clientHeight > 160;
-    setShowJumpToLatest((prev) => (prev === next ? prev : next));
-  };
-
-  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = 'smooth') => {
-    const el = scrollRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior });
-  }, []);
-
-  React.useEffect(() => {
-    scrollToBottom('auto');
-  }, [activeChat?.id, scrollToBottom]);
+  const {onScroll:handleScroll,jumpToLatest:scrollToBottom,showJump:showJumpToLatest}=useStreamAnchor(scrollRef,columnRef,activeChat?.id);
 
   const status = activeLiveRun?.run.status;
   const hasLiveStreamingContent =
@@ -225,26 +210,10 @@ export function ChatScreen() {
 
       <ProgressiveBlurScrim edge="bottom" height={64} />
 
-      <div className={styles.jump}>
-        <AnimatePresence initial={false}>
-          {showJumpToLatest ? (
-            // `--glass-fade` rather than opacity: opacity here would blank the lens inside.
-            <motion.div
-              initial={{ scale: popIn.initial.scale, y: 8, '--glass-fade': 0 } as never}
-              animate={{ scale: 1, y: 0, '--glass-fade': 1 } as never}
-              exit={{ scale: popIn.exit.scale, y: 8, '--glass-fade': 0 } as never}
-              transition={SPRING}
-            >
-              <GlassChip
-                data-testid="jump-to-latest-button"
-                icon={<ArrowDown size={16} />}
-                onClick={() => scrollToBottom('smooth')}
-              >
-                Jump to latest
-              </GlassChip>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
+      <div className={styles.jump} data-visible={showJumpToLatest} aria-hidden={!showJumpToLatest} inert={!showJumpToLatest}>
+        <GlassChip data-testid="jump-to-latest-button" icon={<ArrowDown size={16}/>} onClick={()=>scrollToBottom('smooth')}>
+          Jump to latest
+        </GlassChip>
       </div>
 
       <motion.div className={styles.dock} initial={false} animate={{ x: shift }} transition={PANEL}>

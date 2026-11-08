@@ -35,3 +35,5 @@ a.token {
 a.token span + span {
   margin-inline-start: var(--space-1);
 }
+
+a.token span + span { font:var(--weight-regular) var(--text-sm)/var(--leading-sm) var(--font-sans); color:var(--color-ink-2); text-decoration:none; }

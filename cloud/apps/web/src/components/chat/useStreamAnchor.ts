@@ -1,17 +1,52 @@
 import React from 'react';
-/** Follow rendered height changes, including paced reveal and reasoning folds, only while pinned. */
-export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,content:React.RefObject<HTMLElement|null>) {
-  const pinned=React.useRef(true);
-  const onScroll=React.useCallback(()=>{
-    const el=viewport.current;
-    if(el)pinned.current=el.scrollHeight-el.scrollTop-el.clientHeight<40;
-  },[viewport]);
+const BOTTOM_EDGE=4;
+const JUMP_THRESHOLD=160;
+export function scrollMetrics(el:Pick<HTMLElement,'scrollHeight'|'clientHeight'|'scrollTop'>) {
+  const overflow=Math.max(0,el.scrollHeight-el.clientHeight);
+  const distance=Math.max(0,overflow-Math.max(0,el.scrollTop));
+  return {overflow,distance,showJump:overflow>BOTTOM_EDGE&&distance>JUMP_THRESHOLD};
+}
+/** One source of truth for scroll following and its disclosure, including rendered (not transport) growth. */
+export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,content:React.RefObject<HTMLElement|null>,identity?:string) {
+  const pinned=React.useRef(true),jumping=React.useRef(false),lastTop=React.useRef(0);
+  const [state,setState]=React.useState({identity,show:false});
+  const measure=React.useCallback((fromScroll=false)=>{
+    const el=viewport.current;if(!el)return;
+    let metrics=scrollMetrics(el);
+    if(metrics.distance<=BOTTOM_EDGE||metrics.overflow<=BOTTOM_EDGE){pinned.current=true;jumping.current=false;}
+    else if(fromScroll&&!jumping.current&&el.scrollTop<lastTop.current-1)pinned.current=false;
+    // Height growth can itself dispatch scroll (including browser anchoring).
+    // It must not be mistaken for a user leaving the live edge.
+    if(pinned.current&&metrics.distance>BOTTOM_EDGE&&!jumping.current){el.scrollTop=el.scrollHeight;metrics=scrollMetrics(el);}
+    lastTop.current=el.scrollTop;
+    const show=metrics.showJump&&!jumping.current;
+    setState(old=>old.identity===identity&&old.show===show?old:{identity,show});
+  },[identity,viewport]);
+  const onScroll=React.useCallback(()=>measure(true),[measure]);
+  const jumpToLatest=React.useCallback((behavior:ScrollBehavior='smooth')=>{
+    const el=viewport.current;if(!el)return;
+    pinned.current=true;jumping.current=true;
+    setState({identity,show:false});
+    el.scrollTo({top:el.scrollHeight,behavior});
+    measure();
+  },[identity,measure,viewport]);
   React.useLayoutEffect(()=>{
-    const el=viewport.current,body=content.current;
-    if(!el||!body||typeof ResizeObserver==='undefined')return;
-    const observer=new ResizeObserver(()=>{if(pinned.current)el.scrollTop=el.scrollHeight;});
-    observer.observe(body);
-    return ()=>observer.disconnect();
-  },[viewport,content]);
-  return onScroll;
+    pinned.current=true;jumping.current=false;
+    const el=viewport.current;if(el)el.scrollTop=el.scrollHeight;
+    measure();
+  },[identity,measure,viewport]);
+  React.useLayoutEffect(()=>{
+    const el=viewport.current,body=content.current;if(!el||!body)return;
+    const resized=()=>{
+      if(pinned.current)el.scrollTop=el.scrollHeight;
+      measure();
+    };
+    const interrupt=()=>{jumping.current=false;pinned.current=scrollMetrics(el).distance<=BOTTOM_EDGE;measure();};
+    const observer=typeof ResizeObserver!=='undefined'?new ResizeObserver(resized):undefined;
+    observer?.observe(el);observer?.observe(body);
+    el.addEventListener('wheel',interrupt,{passive:true});el.addEventListener('touchstart',interrupt,{passive:true});el.addEventListener('keydown',interrupt);
+    window.addEventListener('resize',resized);
+    return ()=>{observer?.disconnect();el.removeEventListener('wheel',interrupt);el.removeEventListener('touchstart',interrupt);el.removeEventListener('keydown',interrupt);window.removeEventListener('resize',resized);};
+  },[content,measure,viewport]);
+  return {onScroll,jumpToLatest,showJump:state.identity===identity&&state.show};
 }

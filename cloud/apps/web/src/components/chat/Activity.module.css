@@ -1,12 +1,33 @@
+/*
+ * Adapted from T3 Code WorkLog, TimelineWorkEntryRow, TimelineToolActivityIcon,
+ * TimelineWorkGroupRows and MessagesTimeline (T3 Tools Inc.).
+ * MIT License — Copyright (c) 2026 T3 Tools Inc.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 /* Agent activity: plain text rows per t3code TurnFoldTimelineRow & iOS AgentActivity.swift.
-   One line per call, 13px medium tabular-nums; cards are compact surface rows. */
+   One 24px line per call, 14px relaxed text and a 28px detail indent. */
 
 .root {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--space-1);
-  margin-bottom: var(--space-3);
+  gap: 0;
+  margin-bottom: var(--space-2);
+
   width: 100%;
 }
 
@@ -15,13 +36,13 @@
   align-items: center;
   gap: var(--space-1);
   max-width: 100%;
-  min-height: var(--control-sm);
-  padding: var(--space-1) 0;
+  min-height: var(--space-6);
+  padding: 0 var(--space-1);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-ink-2);
-  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  font: var(--weight-regular) var(--text-md) / 1.625 var(--font-sans);
   font-variant-numeric: tabular-nums;
   text-align: left;
   user-select: none;
@@ -64,7 +85,7 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  padding: var(--space-1) 0 var(--space-2);
+  padding: 0 0 var(--space-1);
 }
 
 .reasoning {
@@ -331,3 +352,5 @@
   color: var(--color-ink-2);
   font: var(--weight-regular) var(--text-sm) / var(--leading-md) var(--font-sans);
 }
+
+.groupBar { width:100%; padding:var(--space-1) calc(var(--space-1) / 2) var(--space-2) 0; border-bottom:1px solid color-mix(in srgb,var(--color-hairline) 60%,transparent); }
