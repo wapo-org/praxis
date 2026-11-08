@@ -137,26 +137,32 @@ export function setButtonColor(color: string) {
   window.dispatchEvent(new Event(EVENT));
 }
 
+/** Another tab changed the look: apply it here whether or not Settings is open. */
+function applyFromStorage(event: StorageEvent) {
+  if (event.key !== PALETTE_KEY && event.key !== BUTTON_KEY && event.key !== null) return;
+  let palette: string | null = null;
+  let button: string | null = null;
+  try {
+    palette = localStorage.getItem(PALETTE_KEY);
+    button = localStorage.getItem(BUTTON_KEY);
+  } catch {
+    return; /* Keep what is applied. */
+  }
+  applySidebarLook(palette, button);
+  window.dispatchEvent(new Event(EVENT));
+}
+
+let syncing = false;
+/** Called once at startup (main.tsx): keeps every tab's sidebar in step with the saved look. */
+export function syncSidebarLook() {
+  if (syncing || typeof window === 'undefined') return;
+  syncing = true;
+  window.addEventListener('storage', applyFromStorage);
+}
+
 function subscribe(notify: () => void) {
-  const storage = (event: StorageEvent) => {
-    if (event.key !== PALETTE_KEY && event.key !== BUTTON_KEY && event.key !== null) return;
-    let palette: string | null = null;
-    let button: string | null = null;
-    try {
-      palette = localStorage.getItem(PALETTE_KEY);
-      button = localStorage.getItem(BUTTON_KEY);
-    } catch {
-      /* Keep what is applied. */
-    }
-    applySidebarLook(palette, button);
-    notify();
-  };
   window.addEventListener(EVENT, notify);
-  window.addEventListener('storage', storage);
-  return () => {
-    window.removeEventListener(EVENT, notify);
-    window.removeEventListener('storage', storage);
-  };
+  return () => window.removeEventListener(EVENT, notify);
 }
 
 export const useSidebarPalette = () => useSyncExternalStore(subscribe, readPalette, () => DEFAULT_PALETTE);

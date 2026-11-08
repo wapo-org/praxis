@@ -70,7 +70,10 @@ for (const [size, viewport] of Object.entries(SIZES)) {
     }
     if (size === 'desk') {
       const page = await context.newPage();
-      await page.addInitScript((t) => localStorage.setItem('praxis-theme', t), theme);
+      await page.addInitScript((t) => {
+        localStorage.setItem('praxis-theme', t);
+        localStorage.setItem('praxis-sidebar-palette', 'graphite');
+      }, theme);
       await page.goto(BASE + '/c/' + selected.id);
       await page.getByTestId('sidebar-new-chat').waitFor();
       await page.evaluate(() => document.fonts.ready);

@@ -5,6 +5,9 @@ import { BrowserRouter, useNavigate } from 'react-router-dom';
 const AuthenticatedApp = React.lazy(() => import('./AuthenticatedApp'));
 import './styles/tokens.css';
 import './styles/theme.css';
+import { syncSidebarLook } from './lib/sidebarPalette';
+
+syncSidebarLook();
 
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {

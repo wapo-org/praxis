@@ -12,6 +12,7 @@ import {
   readPalette,
   setButtonColor,
   setSidebarPalette,
+  syncSidebarLook,
 } from './sidebarPalette';
 
 const hex = (value: string) => value.slice(1).match(/../g)!.map((v) => parseInt(v, 16));
@@ -172,4 +173,13 @@ it('still applies the current session choice when persistence is blocked', () =>
   setSidebarPalette('sand');
   expect(readPalette()).toBe('sand');
   expect(document.documentElement.style.getPropertyValue('--sb-ink')).toBe('#1c1c1c');
+});
+
+it('applies a look saved in another tab even when no Settings control is mounted', () => {
+  syncSidebarLook();
+  localStorage.setItem('praxis-sidebar-palette', 'plum');
+  localStorage.setItem('praxis-button-color', '#f4846b');
+  window.dispatchEvent(new StorageEvent('storage', { key: 'praxis-button-color' }));
+  expect(readPalette()).toBe('plum');
+  expect(document.documentElement.style.getPropertyValue('--nb-fill')).toBe('#f4846b');
 });
