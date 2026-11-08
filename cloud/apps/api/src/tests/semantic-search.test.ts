@@ -1,11 +1,12 @@
+import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ChatSchema, MessageSchema } from '@praxis/protocol';
 import { createApp } from '../app.js';
 import { createMemoryAdapters } from '../adapters/memory.js';
 import { convexHarness } from '../adapters/testing/convex-harness.js';
-import { EMBEDDING_DIMENSIONS, hashEmbedder, terms, type Embedder } from '../embedding.js';
-import { SearchIndexer, chunk, convexVectorIndex, memoryVectorIndex, type VectorIndex } from '../search-index.js';
-import { loadChatDocs } from '../search.js';
+import { EMBEDDING_DIMENSIONS, hashEmbedder, loadMiniLmEmbedder, terms, type Embedder } from '../embedding.js';
+import { MAX_PHRASES_PER_CHAT, SearchIndexer, chatItems, chunk, convexVectorIndex, memoryVectorIndex, phrases, type VectorIndex } from '../search-index.js';
+import { SEMANTIC_LIMIT, loadChatDocs } from '../search.js';
 import { ApiService } from '../service.js';
 
 /**
@@ -110,11 +111,11 @@ for (const [mode, makeIndex] of modes)
       expect((await w.search('vacation luggage'))[0]!.chat.id).toBe(trip);
       await w.settle();
       const backfilled = w.fixture.embedded();
-      // A new message embeds only its own chunk (plus the query).
+      // A new message embeds only its own chunk and phrase windows (plus the query).
       const before = w.fixture.embedded();
       await w.service.put('local-user', 'message', 'late', MessageSchema.parse({ type: 'message', id: 'late', chatId: trip, sequence: 9, role: 'user', parts: [{ type: 'text', text: 'Add a calendar for the journey' }], createdAt: w.service.now(), updatedAt: w.service.now() }));
       await w.settle();
-      expect(w.fixture.embedded() - before).toBe(1);
+      expect(w.fixture.embedded() - before).toBe(1 + phrases('Add a calendar for the journey').length);
       expect(backfilled).toBeGreaterThan(5);
       // Searching again embeds nothing but the query.
       const again = w.fixture.embedded();
@@ -130,6 +131,33 @@ for (const [mode, makeIndex] of modes)
   });
 
 describe('semantic search: parts', () => {
+  it('indexes the title, user and assistant text, and capped phrase windows of each message', () => {
+    expect(phrases('Plan to run a half marathon in 12 weeks')).toEqual(['Plan to run a', 'run a half marathon', 'half marathon in 12', 'in 12 weeks']);
+    expect(phrases('Packing for Lisbon')).toEqual([]);
+    const now = new Date().toISOString();
+    const chat = ChatSchema.parse({ type: 'chat', id: 'c', mode: 'ask', title: 'Brave Compass', createdAt: now, updatedAt: now });
+    const texts = (items: { text: string }[]) => items.map(i => i.text);
+    const items = texts(chatItems({ chat, texts: ['Any tips?', 'Scripted response: train three days a week and taper before the race'] }));
+    expect(items).toContain('Brave Compass');
+    expect(items).toContain('Any tips?');
+    expect(items).toContain('Scripted response: train three days a week and taper before the race');
+    expect(items).toContain('days a week and');
+    // Many long messages: phrases come from every message's opening in turn, never past the cap.
+    const long = Array.from({ length: 40 }, (_, i) => `Message ${i} ${'word '.repeat(30)}`);
+    const capped = chatItems({ chat, texts: long }).filter(i => i.text.split(' ').length === 4);
+    expect(capped.length).toBeLessThanOrEqual(MAX_PHRASES_PER_CHAT);
+    expect(capped.some(i => i.text.startsWith('Message 39'))).toBe(true);
+  });
+
+  it('shows at most SEMANTIC_LIMIT semantic-only chats, but every lexical match', async () => {
+    const w = await world(memoryVectorIndex());
+    w.attach();
+    for (let i = 0; i < 12; i++) await w.add('local-user', `Note ${i}`, [`Lisbon suitcase number ${i}`]);
+    await w.settle();
+    expect((await w.search('vacation luggage')).length).toBe(SEMANTIC_LIMIT);
+    expect((await w.search('suitcase')).length).toBe(12);
+  });
+
   it('chunks long messages at sentence boundaries within the size', () => {
     const text = Array.from({ length: 30 }, (_, i) => `Sentence number ${i} is here.`).join(' ');
     const parts = chunk(text, 120);
@@ -178,5 +206,74 @@ describe('semantic search: parts', () => {
     const p95 = times[Math.floor(times.length * 0.95)]!;
     console.info(`search p95 over 2000 chats / 8000 vectors: ${p95.toFixed(1)} ms`);
     expect(p95).toBeLessThan(150);
+  }, 60_000);
+});
+
+/**
+ * WP-H3b recall fixture with the real model: the orchestrator's probe. Six chats with random names (no shared
+ * word with the queries), each a user message and the dev:local scripted reply. Skipped when MiniLM is not in
+ * the local cache: tests never download it.
+ */
+const MINILM_CACHE = `${process.env.HOME ?? '.'}/.cache/praxis-embeddings`;
+const minilmCached = existsSync(`${MINILM_CACHE}/Xenova/all-MiniLM-L6-v2/onnx/model_quantized.onnx`);
+describe.skipIf(!minilmCached)('semantic search: real MiniLM recall (WP-H3b probe)', () => {
+  it('finds each chat by meaning, ranks it first, and returns nothing for noise', async () => {
+    const embedder = (await loadMiniLmEmbedder(MINILM_CACHE))!;
+    expect(embedder.id).toBe('minilm-l6-v2-q8');
+    const service = new ApiService(createMemoryAdapters(), true);
+    service.search = new SearchIndexer({ embedder, vectors: memoryVectorIndex(), load: (u, c) => loadChatDocs(service, u, c), defer: () => {}, debounceMs: 60_000 });
+    const { app } = createApp({ service });
+    const now = Date.parse(service.now());
+    const chats: [string, string][] = [
+      ['Quiet Harbor', 'Packing list for 3 days in Lisbon'],
+      ['Amber Fox', 'Match a date like 2026-11-07 with a regular expression'],
+      ['Silver Lantern', 'Help me track my monthly expenses and spending'],
+      ['Lazy Orchard', 'A quick chickpea curry recipe for tonight'],
+      ['Brave Compass', 'My Python script crashes with KeyError when reading JSON'],
+      ['Hidden Meadow', 'Plan to run a half marathon in 12 weeks'],
+    ];
+    for (const [i, [title, text]] of chats.entries()) {
+      const at = new Date(now + i).toISOString();
+      await service.put('local-user', 'chat', `c${i}`, ChatSchema.parse({ type: 'chat', id: `c${i}`, mode: 'ask', title, createdAt: at, updatedAt: at }));
+      for (const [m, t] of [text, `Scripted response: ${text}`].entries())
+        await service.put('local-user', 'message', `c${i}-${m}`, MessageSchema.parse({ type: 'message', id: `c${i}-${m}`, chatId: `c${i}`, sequence: m + 1, role: m ? 'assistant' : 'user', parts: [{ type: 'text', text: t }], createdAt: at, updatedAt: at }));
+    }
+    const search = async (q: string) =>
+      ((await (await app.request(`/v1/search?q=${encodeURIComponent(q)}`, { headers: { Authorization: 'Bearer dev-local' } })).json()).items as { chat: { title: string }; snippet: string }[]);
+    const cases: [string, string][] = [
+      ['packing for a trip', 'Quiet Harbor'],
+      ['date regex', 'Amber Fox'],
+      ['budget', 'Silver Lantern'],
+      ['dinner ideas', 'Lazy Orchard'],
+      ['debug code error', 'Brave Compass'],
+      ['fitness training', 'Hidden Meadow'],
+    ];
+    for (const [query, title] of cases) {
+      const hits = await search(query);
+      expect(hits[0]?.chat.title, query).toBe(title);
+      expect(hits.length, query).toBeLessThanOrEqual(SEMANTIC_LIMIT);
+    }
+    expect((await search('fitness training'))[0]!.snippet).toContain('half marathon');
+    // A random name means nothing: a query close to a title alone does not surface the chat.
+    expect(await search('zebra quantum')).toEqual([]);
+    expect(await search('learn guitar')).toEqual([]);
+  }, 60_000);
+
+  it('finds a chat by the assistant reply alone', async () => {
+    const embedder = (await loadMiniLmEmbedder(MINILM_CACHE))!;
+    const service = new ApiService(createMemoryAdapters(), true);
+    service.search = new SearchIndexer({ embedder, vectors: memoryVectorIndex(), load: (u, c) => loadChatDocs(service, u, c), defer: () => {}, debounceMs: 60_000 });
+    const { searchChats } = await import('../search.js');
+    const now = service.now();
+    for (const [id, title, user, reply] of [
+      ['a', 'Gentle Atlas', 'Any ideas?', 'Roast the vegetables, then simmer them with coconut milk and spices for a curry.'],
+      ['b', 'Rapid Kettle', 'Thoughts?', 'Rebase your branch onto main and force-push it after resolving the conflicts.'],
+    ] as const) {
+      await service.put('u', 'chat', id, ChatSchema.parse({ type: 'chat', id, mode: 'ask', title, createdAt: now, updatedAt: now }));
+      for (const [m, text] of [user, reply].entries())
+        await service.put('u', 'message', `${id}${m}`, MessageSchema.parse({ type: 'message', id: `${id}${m}`, chatId: id, sequence: m + 1, role: m ? 'assistant' : 'user', parts: [{ type: 'text', text }], createdAt: now, updatedAt: now }));
+    }
+    expect((await searchChats(service, 'u', 'dinner recipe'))[0]?.chat.title).toBe('Gentle Atlas');
+    expect((await searchChats(service, 'u', 'git merge conflict'))[0]?.chat.title).toBe('Rapid Kettle');
   }, 60_000);
 });

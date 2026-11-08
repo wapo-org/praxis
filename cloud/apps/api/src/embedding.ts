@@ -73,6 +73,12 @@ export const hashEmbedder: Embedder = {
   },
 };
 
+/**
+ * MiniLM's floor for a semantic-only match, calibrated on phrase windows (search-index `phrases`): the WP-H3b
+ * probe's real matches score 0.30 to 0.76, unrelated queries ("zebra quantum", "learn guitar") at most 0.20.
+ */
+export const MINILM_THRESHOLD = 0.27;
+
 type FeatureExtractor = (texts: string[], options: { pooling: 'mean'; normalize: boolean }) => Promise<{ data: Float32Array; dims: number[] }>;
 
 /** all-MiniLM-L6-v2 through transformers.js; resolves to null when the package or the weights are unavailable. */
@@ -87,7 +93,7 @@ export async function loadMiniLmEmbedder(cacheDir = `${process.env.HOME ?? '.'}/
     const extract = await mod.pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { dtype: 'q8' });
     return {
       id: 'minilm-l6-v2-q8',
-      threshold: 0.3,
+      threshold: MINILM_THRESHOLD,
       async embed(texts) {
         const out: Float32Array[] = [];
         for (let i = 0; i < texts.length; i += 32) {
@@ -131,7 +137,7 @@ export function lazyMiniLmEmbedder(cacheDir?: string): Embedder {
   let loaded: Promise<Embedder | null> | undefined;
   return {
     id: 'minilm-l6-v2-q8',
-    threshold: 0.3,
+    threshold: MINILM_THRESHOLD,
     async embed(texts) {
       const model = await (loaded ??= loadMiniLmEmbedder(cacheDir));
       if (!model) throw new Error('MiniLM is not available in this deployment');

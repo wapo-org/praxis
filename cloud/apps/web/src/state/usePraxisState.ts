@@ -9,7 +9,7 @@ import type {
   Skill,
 } from '@praxis/protocol';
 import React from 'react';
-import { randomChatName } from '../lib/chatNames';
+import { uniqueChatName } from '../lib/chatNames';
 import {
   apiClient,
   type Consent,
@@ -87,7 +87,12 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   const [chats, setChats] = React.useState<Chat[]>(() => initialCache?.chats ?? []);
   const [activeChatId, setActiveChatId] = React.useState<string | null>(null);
   /** The name the next new chat gets (design v2): shown while it is a draft, sent when the first message creates it. */
-  const [draftTitle, setDraftTitle] = React.useState(() => randomChatName());
+  const [draftTitle, setDraftTitle] = React.useState(() => uniqueChatName((initialCache?.chats ?? []).map(c => c.title)));
+  // Chats arriving after the draft was named (bootstrap, another device) may already use its name.
+  React.useEffect(() => {
+    const draft = draftTitle.trim().toLocaleLowerCase();
+    if (chats.some(c => c.title.trim().toLocaleLowerCase() === draft)) setDraftTitle(uniqueChatName(chats.map(c => c.title)));
+  }, [chats]);
   const [messagesByChat, setMessagesByChat] = React.useState<Record<string, Message[]>>(
     () => initialCache?.messagesByChat ?? {},
   );
@@ -137,7 +142,7 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     onNavigate?.(pathForSheet(sheet, activeChatId, providerIdRef.current));
   };
   const startNewConversation = () => {
-    setDraftTitle(randomChatName());
+    setDraftTitle(uniqueChatName(chats.map(c => c.title)));
     setActiveChatId(null);
     setActiveSheetState(null);
     setPlusTrayOpen(false);

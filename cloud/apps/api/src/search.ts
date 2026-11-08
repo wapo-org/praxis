@@ -6,8 +6,15 @@ import type { ApiService } from './service.js';
 /** How long a search may spend embedding not-yet-indexed text before it answers (the rest continues after). */
 export const RECONCILE_BUDGET_MS = 60;
 const SNIPPET = 160;
-/** How far below the best vector hit a semantic-only match may score. */
-export const SEMANTIC_BAND = 0.12;
+/** Semantic-only matches shown at most (lexical matches are not capped here). */
+export const SEMANTIC_LIMIT = 8;
+/** A semantic-only match must reach this share of the best match's score (a relative cut-off). */
+export const RELATIVE_CUTOFF = 0.5;
+/**
+ * Title hits count for less: new chats get random two-word names ("Brave Compass") that mean nothing, and a
+ * short title meets unrelated short queries ("zebra quantum") as closely as real content does.
+ */
+export const TITLE_WEIGHT = 0.8;
 
 /** Every chat with its messages' text, in message order. */
 export async function loadChatDocs(service: ApiService, userId: string, chatId?: string): Promise<ChatDoc[]> {
@@ -62,13 +69,18 @@ export async function searchChats(service: ApiService, userId: string, query: st
       console.error(JSON.stringify({ type: 'search_vector_error', error: error instanceof Error ? error.message.slice(0, 200) : 'unknown' }));
     }
   }
+  const titles = new Map(docs.map(({ chat }) => [chat.id, chat.title]));
+  // Each chat's best hit, a title hit weighted down.
   const best = new Map<string, VectorHit>();
-  for (const hit of hits) if (!best.has(hit.chatId)) best.set(hit.chatId, hit);
+  for (const hit of hits) {
+    const score = hit.text === titles.get(hit.chatId) ? hit.score * TITLE_WEIGHT : hit.score;
+    if (score > (best.get(hit.chatId)?.score ?? -Infinity)) best.set(hit.chatId, { ...hit, score });
+  }
   const queryTerms = new Set(terms(raw));
-  // Semantic-only hits must clear the embedder's threshold and sit near the best hit, so a vague query
-  // returns the few close chats, not every loosely related one.
-  const top = hits[0]?.score ?? 0;
-  const threshold = Math.max(indexer?.embedder.threshold ?? 1, top - SEMANTIC_BAND);
+  // Semantic-only hits must clear the embedder's calibrated floor and a share of the best hit, so a precise
+  // query returns its few close chats, a vague one a short ranked list, and noise nothing.
+  const top = Math.max(0, ...[...best.values()].map(hit => hit.score));
+  const threshold = Math.max(indexer?.embedder.threshold ?? 1, top * RELATIVE_CUTOFF);
   const ranked = docs.flatMap(({ chat, texts }) => {
     const all = (text: string) => words.every(w => text.toLocaleLowerCase().includes(w));
     const matched = texts.find(text => all(`${chat.title} ${text}`));
@@ -85,11 +97,22 @@ export async function searchChats(service: ApiService, userId: string, query: st
     else {
       const lexical = texts.find(text => words.some(w => text.toLocaleLowerCase().includes(w)));
       const chunk = hit && hit.text !== chat.title ? hit.text : undefined;
-      snippet = chunk ? `${chunk.slice(0, SNIPPET)}${chunk.length > SNIPPET ? '…' : ''}` : lexical ? window(lexical, words) : window(texts[0] ?? '', words);
+      // A phrase hit shows the message around it, not the bare four words.
+      const around = chunk ? texts.find(text => text.includes(chunk)) : undefined;
+      snippet = around ? excerpt(around, around.indexOf(chunk!)) : chunk ? excerpt(chunk, 0) : lexical ? window(lexical, words) : window(texts[0] ?? '', words);
     }
-    return [{ chat, snippet, score }];
+    return [{ chat, snippet, score, exact }];
   });
+  let semanticOnly = 0;
   return ranked
     .sort((a, b) => b.score - a.score || b.chat.updatedAt.localeCompare(a.chat.updatedAt) || a.chat.id.localeCompare(b.chat.id))
+    .filter(({ exact }) => exact || ++semanticOnly <= SEMANTIC_LIMIT)
     .map(({ chat, snippet }) => ({ chat, snippet }));
+}
+
+/** SNIPPET characters of `text` from a little before `at`, with ellipses where it is cut. */
+function excerpt(text: string, at: number) {
+  const start = at > 40 ? text.lastIndexOf(' ', at - 40) + 1 : 0;
+  const end = start + SNIPPET;
+  return `${start ? '…' : ''}${text.slice(start, end)}${text.length > end ? '…' : ''}`;
 }

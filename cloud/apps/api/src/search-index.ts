@@ -105,9 +105,47 @@ export interface ChatDoc {
   texts: string[];
 }
 
-/** The items a chat should have in the index: its title and its message chunks, content-addressed. */
+/** Words per phrase window and the step between windows (they overlap by half). */
+export const PHRASE_WORDS = 4;
+export const PHRASE_STRIDE = 2;
+/** Embedding cost cap per chat for phrase windows, taken from each message's opening in turn. */
+export const MAX_PHRASES_PER_CHAT = 48;
+
+/**
+ * Overlapping short windows of a text. A sentence model scores a short query far better against a short phrase
+ * than against the whole sentence around it ("debug code error" meets "script crashes with KeyError" at 0.40,
+ * the full message at 0.26), so phrases lift recall without lowering the bar for noise. Texts no longer than a
+ * window have none: their chunk already is the phrase.
+ */
+export function phrases(text: string, size = PHRASE_WORDS, stride = PHRASE_STRIDE): string[] {
+  const words = text.split(/\s+/u).filter(Boolean);
+  if (words.length <= size) return [];
+  const out: string[] = [];
+  for (let i = 0; ; i += stride) {
+    out.push(words.slice(i, i + size).join(' '));
+    if (i + size >= words.length) break;
+  }
+  return out;
+}
+
+/** Phrases from every message (user and assistant alike), round-robin from each opening, up to the cap. */
+function chatPhrases(texts: string[]): string[] {
+  const lists = texts.map(text => phrases(chunk(text)[0] ?? ''));
+  const out: string[] = [];
+  for (let i = 0; out.length < MAX_PHRASES_PER_CHAT && lists.some(list => i < list.length); i++)
+    for (const list of lists) if (i < list.length && out.length < MAX_PHRASES_PER_CHAT) out.push(list[i]!);
+  return out;
+}
+
+/**
+ * The items a chat should have in the index, content-addressed: its title, every message's chunks (user and
+ * assistant), and phrase windows of each message's opening.
+ */
 export function chatItems(doc: ChatDoc): { id: string; chatId: string; text: string }[] {
-  const texts = [doc.chat.title, ...doc.texts.flatMap(t => chunk(t))].filter(t => t.trim()).slice(0, 1 + MAX_CHUNKS_PER_CHAT);
+  const texts = [
+    ...[doc.chat.title, ...doc.texts.flatMap(t => chunk(t))].filter(t => t.trim()).slice(0, 1 + MAX_CHUNKS_PER_CHAT),
+    ...chatPhrases(doc.texts),
+  ];
   const seen = new Set<string>();
   return texts.flatMap(text => {
     const id = `${doc.chat.id}:${createHash('sha1').update(text).digest('base64url').slice(0, 16)}`;
