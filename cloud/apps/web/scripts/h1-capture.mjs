@@ -10,7 +10,7 @@ try {
     await page.addInitScript(theme => {localStorage.setItem('praxis-theme',theme);},theme);
     await page.goto('http://127.0.0.1:5241');
     await page.getByRole('button',{name:'Continue as local dev user'}).waitFor();
-    if (mode === 'register') await page.getByRole('button',{name:'Create an account',exact:true}).click();
+    if (mode === 'register') await page.getByRole('link',{name:'Create one',exact:true}).click();
     const name = `${dir}/${mode}-${theme}-${width}`;
     const button = page.getByRole('button',{name:mode === 'login' ? 'Sign in' : 'Create account',exact:true});
     await page.screenshot({path:`${name}-rest.png`,fullPage:true});

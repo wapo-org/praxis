@@ -5,56 +5,283 @@
   padding: var(--space-6);
   background: var(--paper-gradient);
   color: var(--color-ink);
+  font-family: var(--font-sans);
+  overflow-y: auto;
 }
-.screen form {
-  width: min(100%, var(--popover-width));
+
+/* One centred 360 px column; at phone widths it takes the width minus the page padding. */
+.form {
+  width: min(100%, 360px);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: 20px;
+  padding-block: 8px;
 }
-.screen h1 {
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.header h1 {
   margin: 0;
   font: var(--weight-medium) var(--text-2xl) / var(--leading-2xl) var(--font-display);
   letter-spacing: var(--tracking-display);
 }
-.screen p {
+.header p {
   margin: 0;
   color: var(--color-ink-2);
+  font-size: var(--text-md);
+  line-height: var(--leading-md);
 }
-.screen label {
+
+.fields {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
+  gap: 14px;
 }
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field label,
+.labelRow label {
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-ink);
+}
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* Inputs keep the pill family of the buttons. */
 .screen input {
   width: 100%;
-  min-height: var(--control-lg);
-  padding: var(--space-2) var(--space-3);
+  height: var(--control-lg);
+  padding: 0 16px;
   border: 1px solid var(--color-hairline-strong);
   border-radius: 999px;
   color: var(--color-ink);
-  background: var(--color-paper);
+  background: var(--color-surface);
   font: inherit;
+  font-size: var(--text-md);
+  transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard);
 }
-.screen summary {
-  cursor: pointer;
+.screen input:hover:not(:focus) {
+  border-color: var(--color-focus);
+}
+.screen input[readonly] {
   color: var(--color-ink-2);
-  font-size: var(--text-sm);
-  margin-bottom: var(--space-2);
+  background: transparent;
 }
 .screen :focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
-.screen [role='alert'] {
-  color: var(--color-danger);
-}
-.screen button:disabled {
-  opacity: 0.5;
-  cursor: wait;
+.screen input:focus-visible {
+  border-color: var(--color-focus);
 }
 
-.screen button { min-height: 42px; width: 100%; font-family: var(--font-body); }
-.screen { overflow-y: auto; }
-.screen form { padding-block: 24px; }
+.notice,
+.error {
+  margin: -6px 0 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+.notice {
+  color: var(--color-ink-2);
+}
+.error {
+  color: var(--color-danger);
+}
+
+.primaryGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.oauthGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Every action keeps the Radix classic pill; hierarchy comes from colour only. */
+.screen .action {
+  width: 100%;
+  height: var(--control-lg);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  gap: 10px;
+  cursor: pointer;
+}
+/* Primary: classic high contrast in our ink (near-black in light, near-white in dark). */
+.screen .primary {
+  --accent-12: var(--color-ink);
+  --gray-1: var(--color-paper);
+}
+/* OAuth: classic in a light neutral, label in ink. */
+.screen .oauth {
+  --accent-9: #fdfdfc;
+  --accent-10: #f3f2ee;
+  --accent-a4: rgba(21, 20, 15, 0.06);
+  --accent-contrast: var(--color-ink);
+}
+:global(.dark) .screen .oauth {
+  --accent-9: #2f2f34;
+  --accent-10: #38383e;
+  --accent-a4: rgba(241, 239, 233, 0.08);
+}
+.oauth svg {
+  flex: none;
+}
+/* Dev: compact, below a hairline, clearly not a real option. */
+.screen .devButton {
+  width: auto;
+  height: 32px;
+  padding-inline: 16px;
+  font-size: var(--text-sm);
+}
+
+/* Disabled keeps each button's own colour (Radix would wash it to near-invisible grey). */
+.screen .action[data-disabled] {
+  cursor: default;
+  outline: none;
+}
+.screen .primary[data-disabled] {
+  color: var(--color-paper);
+  background-color: var(--color-ink);
+  background-image: linear-gradient(to bottom, transparent 50%, var(--gray-a4)), linear-gradient(to bottom, transparent 50%, var(--color-ink) 80%);
+  box-shadow: var(--base-button-classic-box-shadow-top), inset 0 0 0 1px var(--color-ink), var(--base-button-classic-box-shadow-bottom);
+}
+.screen .oauth[data-disabled],
+.screen .devButton[data-disabled] {
+  color: var(--accent-contrast);
+  background-color: var(--accent-9);
+  background-image: linear-gradient(to bottom, transparent 50%, var(--gray-a4)), linear-gradient(to bottom, transparent 50%, var(--accent-9) 80%);
+  box-shadow: var(--base-button-classic-box-shadow-top), inset 0 0 0 1px var(--accent-9), var(--base-button-classic-box-shadow-bottom);
+}
+.screen .action[data-disabled]::after {
+  background-color: inherit;
+}
+/* Waiting on another button: dimmed but legible. The pressed one stays full strength with its spinner. */
+.screen .action[data-disabled]:not([data-pending]) {
+  opacity: 0.6;
+}
+.screen .action[data-pending] {
+  cursor: progress;
+}
+
+.link {
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  text-decoration: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.link:hover {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.link[aria-disabled='true'] {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.secondaryLink {
+  font-size: var(--text-sm);
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--color-ink-3);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-hairline-strong);
+}
+
+.footer {
+  margin: 0;
+  text-align: center;
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+.footer .link {
+  color: var(--color-ink);
+  font-weight: var(--weight-medium);
+}
+
+.advanced {
+  margin-top: -8px;
+  text-align: center;
+  color: var(--color-ink-2);
+  font-size: var(--text-xs);
+}
+.advanced summary {
+  display: inline-block;
+  cursor: pointer;
+  list-style: none;
+}
+.advanced summary::-webkit-details-marker {
+  display: none;
+}
+.advanced[open] summary {
+  margin-bottom: var(--space-2);
+}
+.advanced .field {
+  text-align: left;
+}
+
+.dev {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: 16px;
+  border-top: 1px dashed var(--color-hairline-strong);
+}
+.devLabel {
+  color: var(--color-ink-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Clerk mounts its bot check here; while it is empty it must not add a gap to the column. */
+.captcha:empty {
+  margin-top: -20px;
+}
+
+/* In-flight button: the label keeps its space, the spinner sits centred over it. */
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  visibility: hidden;
+}
+.spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

@@ -1,9 +1,8 @@
 import React from 'react';
-import { Button, Theme } from '@radix-ui/themes';
-import '@radix-ui/themes/styles.css';
 const ClerkRoot = React.lazy(() => import('../../auth/ClerkBridge').then(m => ({ default: m.ClerkRoot })));
 import { fakeClerk, type AuthClient, type AuthStep } from '../../auth/client';
 import styles from './AccountGate.module.css';
+import { AccountGateForm, type AuthMode, type AuthPending } from './AccountGateForm';
 import { AccountContext } from '../../lib/account';
 import { apiClient } from '../../lib/api';
 import { clearReplica, loadReplica, setReplicaIdentity, wipeReplicaStorage } from '../../lib/idb';
@@ -18,7 +17,7 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
 }
 function Gate({ children, auth, ready = true, signedIn = false }: { children: React.ReactNode; auth?: AuthClient; ready?: boolean; signedIn?: boolean }) {
   const fake = React.useMemo(() => fakeClerk(), []);
-  const [mode, setMode] = React.useState<'login' | 'register' | 'reset' | 'email'>('login');
+  const [mode, setMode] = React.useState<AuthMode>('login');
   const [step, setStep] = React.useState<AuthStep | null>(null);
   const [code, setCode] = React.useState('');
   const [user, setUser] = React.useState<string | null>(null);
@@ -26,6 +25,7 @@ function Gate({ children, auth, ready = true, signedIn = false }: { children: Re
   const [local, setLocal] = React.useState(false);
   const [error, setError] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  const [pending, setPending] = React.useState<AuthPending>(null);
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [notice, setNotice] = React.useState('');
@@ -68,6 +68,7 @@ function Gate({ children, auth, ready = true, signedIn = false }: { children: Re
   }, [ready, signedIn]);
   async function signIn(dev: boolean) {
     setBusy(true);
+    setPending(dev ? 'dev' : 'submit');
     setError('');
     setNotice('');
     try {
@@ -88,6 +89,7 @@ function Gate({ children, auth, ready = true, signedIn = false }: { children: Re
       setError(e instanceof Error ? e.message : 'Sign in failed');
     } finally {
       setBusy(false);
+      setPending(null);
     }
   }
   async function signOut() {
@@ -146,63 +148,29 @@ function Gate({ children, auth, ready = true, signedIn = false }: { children: Re
       </AccountContext.Provider>
     );
   return (
-    <Theme appearance={document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'} radius="full" accentColor="gray">
-    <main className={styles.screen}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void signIn(false);
-        }}
-      >
-        <h1>Praxis</h1>
-        <p>{mode === 'register' ? 'Create your Praxis account' : mode === 'reset' ? 'Reset your password' : 'Sign in to your Praxis server'}</p>
-        <details>
-          <summary>Advanced</summary>
-          <label>
-            Server
-            <input readOnly value={apiClient.getBaseUrl() || window.location.origin} />
-          </label>
-        </details>
-        <label>
-          Email
-          <input
-            type="email"
-            autoComplete="username"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </label>
-        {mode !== 'email' && <label>
-          {mode === 'reset' ? 'New password' : 'Password'}
-          <input
-            type="password"
-            autoComplete={mode === 'register' || mode === 'reset' ? 'new-password' : 'current-password'}
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>}
-        {step === 'code' && <label>Email code<input autoComplete="one-time-code" inputMode="numeric" required value={code} onChange={e => setCode(e.target.value)} /></label>}
-        {notice && (
-          <p role="status" data-testid="account-notice">
-            {notice}
-          </p>
-        )}
-        {error && <p role="alert">{error}</p>}
-        <Button variant="classic" radius="full" disabled={busy} loading={busy}>{step ? 'Verify and continue' : mode === 'register' ? 'Create account' : mode === 'reset' ? 'Reset password' : 'Sign in'}</Button>
-        <div id="clerk-captcha" />
-        {(['google', 'apple'] as const).map(provider => <Button key={provider} variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => { setBusy(true); void (auth ?? fake).oauth(provider).catch(e => setError(e.message)).finally(() => setBusy(false)); }}>Continue with {provider === 'google' ? 'Google' : 'Apple'}</Button>)}
-        <Button variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setStep(null); setNotice(''); setError(''); }}>{mode === 'register' ? 'Already have an account? Sign in' : mode === 'login' ? 'Create an account' : 'Back to sign in'}</Button>
-        <Button variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => { setMode('reset'); setStep(null); }}>Forgot password?</Button>
-        <Button variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => { setMode('email'); setStep(null); }}>Sign in with an email code</Button>
-        {import.meta.env.DEV && local && (
-          <Button variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => void signIn(true)}>
-            Continue as local dev user
-          </Button>
-        )}
-      </form>
-    </main>
-    </Theme>
+    <AccountGateForm
+      mode={mode}
+      step={step}
+      email={email}
+      password={password}
+      code={code}
+      notice={notice}
+      error={error}
+      pending={pending}
+      server={apiClient.getBaseUrl() || window.location.origin}
+      showDev={import.meta.env.DEV && local}
+      onEmail={setEmail}
+      onPassword={setPassword}
+      onCode={setCode}
+      onMode={(next) => { setMode(next); setStep(null); setCode(''); setNotice(''); setError(''); }}
+      onSubmit={() => void signIn(false)}
+      onDev={() => void signIn(true)}
+      onOAuth={(provider) => {
+        setBusy(true);
+        setPending(provider);
+        setError('');
+        void (auth ?? fake).oauth(provider).catch((e) => setError(e.message)).finally(() => { setBusy(false); setPending(null); });
+      }}
+    />
   );
 }
