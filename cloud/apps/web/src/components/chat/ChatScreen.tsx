@@ -171,6 +171,8 @@ export function ChatScreen() {
                   {text ? (
                     <AgentMessageView
                       text={text}
+                      animateArrival={!!live}
+                      revealSegments={msg.parts.filter(p=>p.type==='text').map((p,i)=>({id:p.blockId??`${msg.id}.${i}`,text:p.text??''}))}
                       onRetry={() => {
                         const retry = lastUserText();
                         if (retry) void sendMessage(retry);
@@ -210,6 +212,8 @@ export function ChatScreen() {
               {activeLiveRun.textBlocks.length > 0 ? (
                 <AgentMessageView
                   text={activeLiveRun.textBlocks.map((b) => b.text).join('\n\n')}
+                  animateArrival
+                  revealSegments={activeLiveRun.textBlocks}
                   isStreaming={status === 'running'}
                   usage={activeLiveRun.usage}
                 />

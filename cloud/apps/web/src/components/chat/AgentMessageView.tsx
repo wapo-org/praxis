@@ -5,6 +5,8 @@ import { Check, Copy, Retry } from '../../lib/icons';
 export interface AgentMessageViewProps {
   text: string;
   isStreaming?: boolean;
+  animateArrival?:boolean;
+  revealSegments?:import('./usePacedText').RevealSegment[];
   usage?: Usage;
   onRetry?: () => void;
 }
@@ -18,6 +20,8 @@ import styles from './AgentMessageView.module.css';
 export const AgentMessageView: React.FC<AgentMessageViewProps> = ({
   text,
   isStreaming = false,
+  animateArrival=false,
+  revealSegments,
   usage,
   onRetry,
 }) => {
@@ -29,8 +33,8 @@ export const AgentMessageView: React.FC<AgentMessageViewProps> = ({
     detail?: string;
   } | null>(null);
 
-  const revealed = usePacedText(text, isStreaming);
-  const blocks = React.useMemo(() => parseMarkdownBlocks(isStreaming ? stableStreamingMarkdown(revealed) : revealed), [revealed, isStreaming]);
+  const revealed = usePacedText(text, isStreaming,{animateArrival,segments:revealSegments});
+  const blocks = React.useMemo(() => parseMarkdownBlocks(isStreaming || revealed !== text ? stableStreamingMarkdown(revealed) : revealed), [revealed, isStreaming,text]);
 
   const renderInlineTokens = (value: string) => inlineTokens(value, setInspectedChip);
 
@@ -83,7 +87,7 @@ export const AgentMessageView: React.FC<AgentMessageViewProps> = ({
         </div>
       ) : null}
 
-      {!isStreaming && text.trim().length > 0 ? (
+      {!isStreaming && revealed === text && text.trim().length > 0 ? (
         <div className={styles.actions}>
           <button
             type="button"

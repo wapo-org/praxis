@@ -3,6 +3,7 @@ import type { RunBlock } from '@praxis/protocol';
 import { ChevronDown } from '../../lib/icons';
 import { useActivityClock } from './useActivityClock';
 import { renderInlineTokens } from './InlineTokens';
+import {stableStreamingMarkdown} from './streamingMarkdown';
 import {usePacedText} from './usePacedText';
 import styles from './ReasoningView.module.css';
 const choices = new Map<string,boolean>();
@@ -11,7 +12,8 @@ export function ReasoningView({ block }: { block: ReasoningBlock }) {
   const [choice, setChoice] = React.useState<boolean | null>(() => choices.get(block.id) ?? null);
   const live = !block.finished;
   const open = choice ?? live;
-  const text = usePacedText(block.text,live);
+  const revealed = usePacedText(block.text,live);
+  const text = (live || revealed !== block.text) && block.shape !== 'titles' ? stableStreamingMarkdown(revealed) : revealed;
   const clock = useActivityClock(live, block.startedAt, block.finishedAt);
   const duration = block.durationMs === undefined ? clock.replace('Worked for ', '') : `${Math.round(block.durationMs / 100) / 10}s`;
   const label = live ? 'Reasoning…' : `Reasoned for ${duration === 'Worked' ? '0s' : duration}`;
