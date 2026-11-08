@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button, Theme } from '@radix-ui/themes';
 import '@radix-ui/themes/styles.css';
-import { ClerkRoot } from '../../auth/ClerkBridge';
+const ClerkRoot = React.lazy(() => import('../../auth/ClerkBridge').then(m => ({ default: m.ClerkRoot })));
 import { fakeClerk, type AuthClient, type AuthStep } from '../../auth/client';
 import styles from './AccountGate.module.css';
 import { AccountContext } from '../../lib/account';
@@ -13,7 +13,7 @@ export function canUseLocalDev(isDev: boolean, mode: string) {
 }
 
 export function AccountGate({ children }: { children: React.ReactNode }) {
-  if (import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) return <ClerkRoot>{(auth, ready, signedIn) => <Gate auth={auth} ready={ready} signedIn={signedIn}>{children}</Gate>}</ClerkRoot>;
+  if (import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) return <React.Suspense fallback={<main className={styles.screen}>Loading sign in…</main>}><ClerkRoot>{(auth, ready, signedIn) => <Gate auth={auth} ready={ready} signedIn={signedIn}>{children}</Gate>}</ClerkRoot></React.Suspense>;
   return <Gate>{children}</Gate>;
 }
 function Gate({ children, auth, ready = true, signedIn = false }: { children: React.ReactNode; auth?: AuthClient; ready?: boolean; signedIn?: boolean }) {
@@ -36,6 +36,7 @@ function Gate({ children, auth, ready = true, signedIn = false }: { children: Re
   };
   React.useEffect(() => {
     let active = true;
+    apiClient.tokenProvider = auth ? () => auth.token() : undefined;
     apiClient.onUnauthorized = () => {
       setUser(null);
       apiClient.setBearerToken('');
@@ -47,7 +48,7 @@ function Gate({ children, auth, ready = true, signedIn = false }: { children: Re
         if (active) setLocal(canUseLocalDev(import.meta.env.DEV, h.mode));
       })
       .catch(() => {});
-    if (auth && (!ready || !signedIn)) { setChecking(false); return; }
+    if (auth && (!ready || !signedIn)) { setUser(null); setChecking(false); return () => { active = false; apiClient.onUnauthorized = undefined; apiClient.tokenProvider = undefined; }; }
     void (auth ? auth.token().then(token => { apiClient.setBearerToken(token ?? ''); }) : Promise.resolve()).then(() => apiClient
       .request<{ user: { id: string } }>('/v1/auth/session'))
       .then((s) => {
@@ -62,6 +63,7 @@ function Gate({ children, auth, ready = true, signedIn = false }: { children: Re
     return () => {
       active = false;
       apiClient.onUnauthorized = undefined;
+      apiClient.tokenProvider = undefined;
     };
   }, [ready, signedIn]);
   async function signIn(dev: boolean) {
@@ -76,7 +78,8 @@ function Gate({ children, auth, ready = true, signedIn = false }: { children: Re
         if (!driver) throw Error('Clerk is not configured on this server');
         const next = step ? await driver.verify(code, password) : await driver.start(mode, email, password);
         if (next !== 'complete') { setStep(next); setNotice(auth ? 'Check your email for a verification code' : 'Local test code: 123456'); return; }
-        if (!auth) session = await import('../../lib/dev-auth').then(m => m.devAuth());
+        if (import.meta.env.DEV && !auth) session = await import('../../lib/dev-auth').then(m => m.devAuth());
+        else if (!auth) throw Error('Clerk is not configured');
         else { apiClient.setBearerToken(await driver.token() ?? ''); session = await apiClient.request('/v1/auth/session'); session.bearerToken = apiClient.getBearerToken(); }
       }
       apiClient.setBearerToken(session.bearerToken ?? '');
@@ -190,7 +193,7 @@ function Gate({ children, auth, ready = true, signedIn = false }: { children: Re
         <Button variant="classic" radius="full" disabled={busy} loading={busy}>{step ? 'Verify and continue' : mode === 'register' ? 'Create account' : mode === 'reset' ? 'Reset password' : 'Sign in'}</Button>
         <div id="clerk-captcha" />
         {(['google', 'apple'] as const).map(provider => <Button key={provider} variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => { setBusy(true); void (auth ?? fake).oauth(provider).catch(e => setError(e.message)).finally(() => setBusy(false)); }}>Continue with {provider === 'google' ? 'Google' : 'Apple'}</Button>)}
-        <Button variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => { setMode(mode === 'register' ? 'login' : 'register'); setStep(null); setNotice(''); setError(''); }}>{mode === 'register' ? 'Already have an account? Sign in' : 'Create an account'}</Button>
+        <Button variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setStep(null); setNotice(''); setError(''); }}>{mode === 'register' ? 'Already have an account? Sign in' : mode === 'login' ? 'Create an account' : 'Back to sign in'}</Button>
         <Button variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => { setMode('reset'); setStep(null); }}>Forgot password?</Button>
         <Button variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => { setMode('email'); setStep(null); }}>Sign in with an email code</Button>
         {import.meta.env.DEV && local && (

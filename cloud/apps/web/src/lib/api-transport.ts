@@ -49,6 +49,11 @@ export interface ApiClientConfig {
 
 export class ApiTransport {
   onUnauthorized?: () => void;
+  tokenProvider?: () => Promise<string | null>;
+  async freshToken(): Promise<string> {
+    if (this.tokenProvider) this.bearerToken = await this.tokenProvider() ?? '';
+    return this.bearerToken;
+  }
   private baseUrl: string;
   private bearerToken: string;
 
@@ -106,6 +111,7 @@ export class ApiTransport {
     path: string,
     init?: RequestInit & { headers?: Record<string, string> },
   ): Promise<T> {
+    await this.freshToken();
     const headers: Record<string, string> = {
       ...(init?.body && typeof init.body === 'string'
         ? { 'Content-Type': 'application/json' }

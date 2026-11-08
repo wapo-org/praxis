@@ -17,7 +17,7 @@ export function subscribeUserEvents(
     let attempt = 0;
     while (!stopped) {
       try {
-        const token = client.getBearerToken();
+        const token = await client.freshToken();
         const res = await fetch(`${client.getBaseUrl()}/v1/events?after=${cursor}`, {
           credentials: 'include',
           headers: { Accept: 'text/event-stream', 'Last-Event-ID': String(cursor), ...(token ? { Authorization: `Bearer ${token}` } : {}) },

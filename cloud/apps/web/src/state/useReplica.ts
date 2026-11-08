@@ -1,7 +1,7 @@
 import {useAccountSync} from '../sync/useAccountSync';
 import React from 'react';
 import { apiClient } from '../lib/api';
-import { saveReplica, type LocalReplicaSnapshot } from '../lib/idb';
+import { readReplicaSync, saveReplica, type LocalReplicaSnapshot } from '../lib/idb';
 
 import type { PraxisState } from './usePraxisState';
 import type { useRunState } from './useRunState';
@@ -14,7 +14,7 @@ export function useReplica(
   }: ReturnType<typeof useRunStreams> &
     Pick<ReturnType<typeof useRunState>, 'applySnapshotToLiveRun'>,
 ) {
-  useAccountSync(state);
+  useAccountSync(state, {attachRunStream, applySnapshotToLiveRun});
   const {
     replicaKey,
     setHydrated,
@@ -51,6 +51,7 @@ export function useReplica(
   const persistState = React.useCallback(
     (nextPartial?: Partial<LocalReplicaSnapshot>) => {
       const snap: LocalReplicaSnapshot = {
+        bootstrap: readReplicaSync()?.bootstrap,
         chats,
         messagesByChat,
         providers,
@@ -79,6 +80,8 @@ export function useReplica(
       syncCursor,
     ],
   );
+
+  React.useEffect(() => { persistState(); }, [persistState]);
 
   const refreshAll = React.useCallback(async () => {
     setSyncing(true);

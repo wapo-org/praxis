@@ -1,12 +1,14 @@
 import React from 'react';
-import { ChatSchema, MessageSchema, SyncResponseSchema } from '@praxis/protocol';
+import { ChatSchema, MessageSchema, RunSchema, SyncResponseSchema } from '@praxis/protocol';
 import { apiClient } from '../lib/api';
 import { applySidebarLook, useSidebarPalette, useButtonColor } from '../lib/sidebarPalette';
 import { enqueue, flushEdits, pendingEdits } from './outbox';
 import type { PraxisState } from '../state/usePraxisState';
 
 /** Account preferences use one durable row per field: unrelated concurrent edits never overwrite each other. */
-export function useAccountSync(state: PraxisState) {
+export function useAccountSync(state: PraxisState, streams: { attachRunStream: (run: import('@praxis/protocol').Run, after?: number) => void; applySnapshotToLiveRun: (snapshot: import('@praxis/protocol').RunSnapshot) => void }) {
+  const streamHandlers = React.useRef(streams); streamHandlers.current = streams;
+  const following = React.useRef(new Set<string>());
   const latest = React.useRef(state); latest.current = state;
   const palette = useSidebarPalette(); const button = useButtonColor();
   const values = { theme: state.themeMode, palette, button, model: state.selectedModelId, provider: state.selectedProviderId, effort: state.selectedEffort };
@@ -23,10 +25,10 @@ export function useAccountSync(state: PraxisState) {
     void flushEdits();
   }, [values.theme, palette, button, values.model, values.provider, values.effort]);
   React.useEffect(() => {
-    if (!state.replicaKey.current) return;
+    if (!state.replicaKey.current || !state.hydrated) return;
     let stopped = false;
     const controller = new AbortController();
-    let cursor = '0'; // Replay durable settings and repair all entities, not just retained user-channel events.
+    let cursor = state.syncCursor; // Bootstrap is an authoritative snapshot; resume after its revision.
     const apply = (raw: unknown) => {
       const page = SyncResponseSchema.parse(raw);
       const s = latest.current;
@@ -37,6 +39,17 @@ export function useAccountSync(state: PraxisState) {
           if (pending.some(e => e.path === `/v1/chats/${encodeURIComponent(id)}`)) continue;
           if (entity.deleted) { s.setChats(prev => prev.filter(c => c.id !== id)); s.setMessagesByChat(prev => { const next = { ...prev }; delete next[id]; return next; }); }
           else { const chat = ChatSchema.parse(entity.value); s.setChats(prev => [...prev.filter(c => c.id !== id), chat].sort((a,b) => Number(b.pinned)-Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt))); }
+        }
+        if (kind === 'run' && !entity.deleted) {
+          const run = RunSchema.parse(entity.value);
+          if (!['completed', 'cancelled', 'failed'].includes(run.status) && !s.activeRunUnsubMapRef.current.has(run.id) && !following.current.has(run.id) && !(run.clientTurnId && s.localTurnIdsRef.current.has(run.clientTurnId))) {
+            following.current.add(run.id);
+            void apiClient.getRunSnapshot(run.id).then(snapshot => {
+              if (stopped || latest.current.activeRunUnsubMapRef.current.has(run.id)) return;
+              streamHandlers.current.applySnapshotToLiveRun(snapshot);
+              if (!['completed','cancelled','failed'].includes(snapshot.run.status)) streamHandlers.current.attachRunStream(snapshot.run, snapshot.lastEventId);
+            }).catch(() => {}).finally(() => following.current.delete(run.id));
+          }
         }
         if (kind === 'message') {
           if (entity.deleted) s.setMessagesByChat(prev => Object.fromEntries(Object.entries(prev).map(([chat, messages]) => [chat, messages.filter(m => m.id !== id)])));
@@ -65,7 +78,7 @@ export function useAccountSync(state: PraxisState) {
       while (!stopped) {
         try {
           await flushEdits();
-          const token = apiClient.getBearerToken();
+          const token = await apiClient.freshToken();
           const response = await fetch(`${apiClient.getBaseUrl()}/v1/sync/events?cursor=${cursor}`, { credentials: 'include', headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: controller.signal });
           if (response.status === 401) { apiClient.onUnauthorized?.(); return; }
           if (!response.ok || !response.body) throw Error('Sync unavailable');
@@ -86,7 +99,10 @@ export function useAccountSync(state: PraxisState) {
     }
     const online = () => { void flushEdits(); };
     window.addEventListener('online', online);
-    void loop();
+    void apiClient.request<{items: {field: string; value: string}[]}>('/v1/sync/settings').then(settings => {
+      if (stopped) return;
+      apply({ type: 'sync.response', strategy: 'cursor', root: '', cursor, nextCursor: null, nodes: [], entities: settings.items.map(setting => ({ type: 'sync.entity', key: `accountSetting:${setting.field}`, value: setting, hash: '', deleted: false, updatedAt: new Date().toISOString() })) });
+    }).catch(() => {}).finally(() => { if (!stopped) void loop(); });
     return () => { stopped = true; controller.abort(); window.removeEventListener('online', online); };
-  }, []);
+  }, [state.hydrated]);
 }

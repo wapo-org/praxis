@@ -24,7 +24,10 @@ export function realClerk(env: Record<string, string | undefined>, origins: stri
       const email = user.emailAddresses.find(e => e.id === user.primaryEmailAddressId);
       return { id, email: email?.emailAddress ?? '', verified: email?.verification?.status === 'verified', name: user.fullName ?? user.username ?? email?.emailAddress ?? 'Praxis user' };
     },
-    async deleteUser(id) { await client.users.deleteUser(id); },
+    async deleteUser(id) {
+      try { await client.users.deleteUser(id); }
+      catch (error) { if (!(typeof error === 'object' && error && 'status' in error && error.status === 404)) throw error; }
+    },
   };
 }
 export function clerkAuth(backend: ClerkBackend, rpc: ConvexRPC, ownership?: { activate(id: string): Promise<void>; isActive(id: string): Promise<boolean> }) {
@@ -37,7 +40,9 @@ export function clerkAuth(backend: ClerkBackend, rpc: ConvexRPC, ownership?: { a
     const where = [{ field: 'providerId', value: 'clerk' }, { field: 'accountId', value: jwt.sub }];
     let binding = await rpc.query('auth:read', { operation: 'findOne', input: { model: 'account', where } }) as { userId: string } | null;
     if (!binding) {
-      const profile = await backend.user(jwt.sub);
+      let profile: ClerkIdentity;
+      try { profile = await backend.user(jwt.sub); }
+      catch (error) { if (typeof error === 'object' && error && 'status' in error && error.status === 404) return null; throw error; }
       if (!profile.verified || !profile.email) return null;
       binding = await rpc.mutation('authClerk:resolve', { identity: profile }) as { userId: string };
     }

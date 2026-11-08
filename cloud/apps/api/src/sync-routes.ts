@@ -60,6 +60,7 @@ export async function pullChanges(service: ApiService, userId: string, after: nu
 
 export function registerSyncRoutes(app: Hono<any>, service: ApiService) {
   const Setting = z.object({ field: z.enum(['theme', 'palette', 'button', 'model', 'provider', 'effort']), value: z.string().max(200) });
+  app.get('/v1/sync/settings', async c => c.json({ items: (await service.adapters.store.list(c.get('userId'), 'accountSetting')).map(row => row.value) }));
   app.patch('/v1/sync/settings', async c => {
     const input = Setting.parse(await c.req.json());
     const row = await service.adapters.store.put(c.get('userId'), 'accountSetting', input.field, input);

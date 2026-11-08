@@ -77,3 +77,18 @@ describe('merkle sync over the API (flagged experiment)', () => {
     }
   });
 });
+
+describe('account setting conflict rules', () => {
+  it('keeps independent fields and gives the last committed write to the same field', async () => {
+    const f = setup();
+    const patch = (field: string, value: string) => f.req('/v1/sync/settings', {field,value}, 'PATCH');
+    await patch('theme', 'dark');
+    await patch('palette', 'forest');
+    await patch('theme', 'light');
+    const delta = await (await f.req('/v1/sync/pull?cursor=0')).json();
+    const settings = delta.entities.filter((e: {key:string}) => e.key.startsWith('accountSetting:'));
+    expect(settings.map((e: {value: unknown}) => e.value)).toEqual(expect.arrayContaining([{field:'theme',value:'light'},{field:'palette',value:'forest'}]));
+    expect(settings).toHaveLength(2);
+    expect((await patch('secret', 'not allowed')).status).toBe(400);
+  });
+});
