@@ -1,3 +1,5 @@
+import {streamSSE} from 'hono/streaming';
+import {z} from 'zod';
 import {createHash} from 'node:crypto';
 import type {Hono} from 'hono';
 import {SyncRequestSchema, type JsonValue} from '@praxis/protocol';
@@ -6,7 +8,7 @@ import type {StoredRecord} from './contracts.js';
 import {ApiError, type ApiService} from './service.js';
 
 /** Kinds a client replica holds. Secrets, checkpoints, idempotency rows and other server state never sync. */
-export const SYNC_KINDS = new Set(['chat', 'message', 'provider', 'model', 'connector', 'skill', 'registry', 'consent', 'preferences', 'attachment', 'run']);
+export const SYNC_KINDS = new Set(['chat', 'message', 'provider', 'model', 'connector', 'skill', 'registry', 'consent', 'preferences', 'attachment', 'run', 'accountSetting']);
 
 export {canonicalJSON};
 export const entityHash = (value: unknown) => createHash('sha256').update(canonicalJSON(value), 'utf8').digest('hex');
@@ -57,6 +59,27 @@ export async function pullChanges(service: ApiService, userId: string, after: nu
 }
 
 export function registerSyncRoutes(app: Hono<any>, service: ApiService) {
+  const Setting = z.object({ field: z.enum(['theme', 'palette', 'button', 'model', 'provider', 'effort']), value: z.string().max(200) });
+  app.patch('/v1/sync/settings', async c => {
+    const input = Setting.parse(await c.req.json());
+    const row = await service.adapters.store.put(c.get('userId'), 'accountSetting', input.field, input);
+    return c.json(row.value);
+  });
+  // Finite streams suit serverless hosts. Reopening resumes the durable revision cursor, including after sleep.
+  app.get('/v1/sync/events', async c => {
+    let cursor = parseCursor(c.req.query('cursor'));
+    const userId = c.get('userId');
+    c.header('Cache-Control', 'no-store');
+    return streamSSE(c, async stream => {
+      const deadline = Date.now() + 25000;
+      while (!stream.aborted && Date.now() < deadline) {
+        const page = await pullChanges(service, userId, cursor, 500);
+        await stream.writeSSE({ event: 'sync', id: page.cursor, data: JSON.stringify(page) });
+        cursor = Number(page.cursor);
+        if (!page.nextCursor) await stream.sleep(750);
+      }
+    });
+  });
   app.get('/v1/sync/root', async c => {
     const latest = await service.adapters.store.head(c.get('userId'));
     const strategy = syncStrategy(service);

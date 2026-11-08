@@ -1,3 +1,4 @@
+import {clerkAuth, realClerk} from './auth-clerk.js';
 import { createHash } from 'node:crypto';
 import { betterAuth } from 'better-auth';
 import { bearer } from 'better-auth/plugins';
@@ -29,26 +30,11 @@ export interface AuthOptions {
   ownership?: {activate(userId:string):Promise<void>;isActive(userId:string):Promise<boolean>};
 }
 
-const AuthEnvSchema = z.object({
-  CONVEX_URL: z.url(),
-  PRAXIS_CONVEX_SERVER_TOKEN: z.string().min(32),
-  BETTER_AUTH_SECRET: z.string().min(32),
-  PRAXIS_API_URL: z.url(),
-  PRAXIS_WEB_ORIGINS: z.string().min(1),
-  PRAXIS_COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).optional(),
-});
-
-/** Production Better Auth on Convex. Throws (fails closed) when configuration is incomplete. */
-export function createAuth(env: Record<string, string | undefined>, cache?: KV, ownership?:AuthOptions['ownership']): PraxisAuth {
-  const e = AuthEnvSchema.parse(env);
-  const rpc = createConvexRPC({ url: e.CONVEX_URL, serverToken: e.PRAXIS_CONVEX_SERVER_TOKEN });
-  return authFromRPC(rpc, {
-    baseURL: e.PRAXIS_API_URL,
-    secret: e.BETTER_AUTH_SECRET,
-    trustedOrigins: parseOrigins(e.PRAXIS_WEB_ORIGINS),
-    cookieSameSite: e.PRAXIS_COOKIE_SAMESITE,
-    cache, ownership,
-  });
+/** Production uses Clerk only. Legacy adapter below remains for migration conformance tests. */
+export function createAuth(env: Record<string, string | undefined>, _cache?: KV, ownership?:AuthOptions['ownership']) {
+  const origins = parseOrigins(z.string().min(1).parse(env.PRAXIS_WEB_ORIGINS));
+  const rpc = createConvexRPC({ url: z.url().parse(env.CONVEX_URL), serverToken: z.string().min(32).parse(env.PRAXIS_CONVEX_SERVER_TOKEN) });
+  return clerkAuth(realClerk(env, origins), rpc, ownership);
 }
 
 export function parseOrigins(value: string): string[] {

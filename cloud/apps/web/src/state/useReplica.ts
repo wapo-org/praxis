@@ -1,3 +1,4 @@
+import {useAccountSync} from '../sync/useAccountSync';
 import React from 'react';
 import { apiClient } from '../lib/api';
 import { saveReplica, type LocalReplicaSnapshot } from '../lib/idb';
@@ -13,6 +14,7 @@ export function useReplica(
   }: ReturnType<typeof useRunStreams> &
     Pick<ReturnType<typeof useRunState>, 'applySnapshotToLiveRun'>,
 ) {
+  useAccountSync(state);
   const {
     replicaKey,
     setHydrated,

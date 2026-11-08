@@ -1,3 +1,5 @@
+import {enqueue} from '../sync/outbox';
+import {readReplicaSync} from './idb';
 import type {
   Attachment,
   Bootstrap,
@@ -54,6 +56,12 @@ export class PraxisApiClient extends FeatureApiClient {
     effort?: string;
     disabledConnectorIds?: string[];
   }): Promise<Chat> {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      const now = new Date().toISOString();
+      const chat: Chat = { type: 'chat', id: input.id ?? crypto.randomUUID(), title: input.title, pinned: input.pinned ?? false, mode: input.mode ?? 'build', connectorIds: [], disabledConnectorIds: input.disabledConnectorIds ?? [], createdAt: now, updatedAt: now, providerId: input.providerId, modelId: input.modelId, effort: input.effort };
+      enqueue({ path: '/v1/chats', method: 'POST', body: JSON.stringify({ ...input, type: 'chat.input', id: chat.id }) });
+      return chat;
+    }
     return this.request<Chat>('/v1/chats', {
       method: 'POST',
       body: JSON.stringify({
@@ -82,6 +90,12 @@ export class PraxisApiClient extends FeatureApiClient {
       disabledConnectorIds?: string[];
     },
   ): Promise<Chat> {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      const chat = readReplicaSync()?.chats.find(c => c.id === chatId);
+      if (!chat) throw Error('Chat is not cached for offline editing');
+      enqueue({ path: `/v1/chats/${encodeURIComponent(chatId)}`, method: 'PATCH', body: JSON.stringify({ type: 'chat.patch', ...patch }) });
+      return { ...chat, ...patch };
+    }
     return this.request<Chat>(`/v1/chats/${encodeURIComponent(chatId)}`, {
       method: 'PATCH',
       body: JSON.stringify({ type: 'chat.patch', ...patch }),
@@ -89,6 +103,10 @@ export class PraxisApiClient extends FeatureApiClient {
   }
 
   async deleteChat(chatId: string): Promise<{ type: 'ok' }> {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      enqueue({ path: `/v1/chats/${encodeURIComponent(chatId)}`, method: 'DELETE' });
+      return { type: 'ok' };
+    }
     return this.request<{ type: 'ok' }>(`/v1/chats/${encodeURIComponent(chatId)}`, {
       method: 'DELETE',
     });

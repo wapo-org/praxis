@@ -1,4 +1,8 @@
 import React from 'react';
+import { Button, Theme } from '@radix-ui/themes';
+import '@radix-ui/themes/styles.css';
+import { ClerkRoot } from '../../auth/ClerkBridge';
+import { fakeClerk, type AuthClient, type AuthStep } from '../../auth/client';
 import styles from './AccountGate.module.css';
 import { AccountContext } from '../../lib/account';
 import { apiClient } from '../../lib/api';
@@ -9,6 +13,14 @@ export function canUseLocalDev(isDev: boolean, mode: string) {
 }
 
 export function AccountGate({ children }: { children: React.ReactNode }) {
+  if (import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) return <ClerkRoot>{(auth, ready, signedIn) => <Gate auth={auth} ready={ready} signedIn={signedIn}>{children}</Gate>}</ClerkRoot>;
+  return <Gate>{children}</Gate>;
+}
+function Gate({ children, auth, ready = true, signedIn = false }: { children: React.ReactNode; auth?: AuthClient; ready?: boolean; signedIn?: boolean }) {
+  const fake = React.useMemo(() => fakeClerk(), []);
+  const [mode, setMode] = React.useState<'login' | 'register' | 'reset' | 'email'>('login');
+  const [step, setStep] = React.useState<AuthStep | null>(null);
+  const [code, setCode] = React.useState('');
   const [user, setUser] = React.useState<string | null>(null);
   const [checking, setChecking] = React.useState(true);
   const [local, setLocal] = React.useState(false);
@@ -35,8 +47,9 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
         if (active) setLocal(canUseLocalDev(import.meta.env.DEV, h.mode));
       })
       .catch(() => {});
-    void apiClient
-      .request<{ user: { id: string } }>('/v1/auth/session')
+    if (auth && (!ready || !signedIn)) { setChecking(false); return; }
+    void (auth ? auth.token().then(token => { apiClient.setBearerToken(token ?? ''); }) : Promise.resolve()).then(() => apiClient
+      .request<{ user: { id: string } }>('/v1/auth/session'))
       .then((s) => {
         if (active) return accept(s.user.id);
       })
@@ -50,22 +63,22 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
       active = false;
       apiClient.onUnauthorized = undefined;
     };
-  }, []);
+  }, [ready, signedIn]);
   async function signIn(dev: boolean) {
     setBusy(true);
     setError('');
     setNotice('');
     try {
-      const session =
-        import.meta.env.DEV && dev
-          ? await import('../../lib/dev-auth').then((m) => m.devAuth())
-          : await apiClient.request<{
-              user: { id: string };
-              bearerToken?: string;
-            }>('/v1/auth/sign-in', {
-              method: 'POST',
-              body: JSON.stringify({ type: 'auth.input', email, password }),
-            });
+      let session: { user: { id: string }; bearerToken?: string };
+      if (dev && import.meta.env.DEV) session = await import('../../lib/dev-auth').then(m => m.devAuth());
+      else {
+        const driver = auth ?? (import.meta.env.DEV && local ? fake : null);
+        if (!driver) throw Error('Clerk is not configured on this server');
+        const next = step ? await driver.verify(code, password) : await driver.start(mode, email, password);
+        if (next !== 'complete') { setStep(next); setNotice(auth ? 'Check your email for a verification code' : 'Local test code: 123456'); return; }
+        if (!auth) session = await import('../../lib/dev-auth').then(m => m.devAuth());
+        else { apiClient.setBearerToken(await driver.token() ?? ''); session = await apiClient.request('/v1/auth/session'); session.bearerToken = apiClient.getBearerToken(); }
+      }
       apiClient.setBearerToken(session.bearerToken ?? '');
       await accept(session.user.id);
     } catch (e) {
@@ -78,7 +91,8 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
     setBusy(true);
     setError('');
     try {
-      await apiClient.request('/v1/auth/sign-out', { method: 'POST' });
+      if (auth) await auth.signOut();
+      else await apiClient.request('/v1/auth/sign-out', { method: 'POST' });
       apiClient.setBearerToken('');
       setUser(null);
       await clearReplica();
@@ -99,11 +113,19 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
     // The server has revoked every session; forget the credential and this device's copy of the data.
     apiClient.setBearerToken('');
     await wipeReplicaStorage();
+    if (auth) await auth.signOut();
     setPassword('');
     setNotice('Account deleted');
     setUser(null);
   }
-  if (checking) return <main className={styles.screen}>Checking session…</main>;
+  React.useEffect(() => {
+    if (!auth || !signedIn) return;
+    const refresh = () => { void auth.token().then(token => apiClient.setBearerToken(token ?? '')); };
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener('focus', refresh);
+    return () => { clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [auth, signedIn]);
+  if (checking || !ready) return <main className={styles.screen}>Checking session…</main>;
   if (user)
     return (
       <AccountContext.Provider
@@ -121,6 +143,7 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
       </AccountContext.Provider>
     );
   return (
+    <Theme appearance={document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'} radius="full" accentColor="gray">
     <main className={styles.screen}>
       <form
         onSubmit={(e) => {
@@ -129,7 +152,7 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
         }}
       >
         <h1>Praxis</h1>
-        <p>Sign in to your Praxis server</p>
+        <p>{mode === 'register' ? 'Create your Praxis account' : mode === 'reset' ? 'Reset your password' : 'Sign in to your Praxis server'}</p>
         <details>
           <summary>Advanced</summary>
           <label>
@@ -147,29 +170,36 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
             onChange={(e) => setEmail(e.target.value)}
           />
         </label>
-        <label>
-          Password
+        {mode !== 'email' && <label>
+          {mode === 'reset' ? 'New password' : 'Password'}
           <input
             type="password"
-            autoComplete="current-password"
+            autoComplete={mode === 'register' || mode === 'reset' ? 'new-password' : 'current-password'}
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-        </label>
+        </label>}
+        {step === 'code' && <label>Email code<input autoComplete="one-time-code" inputMode="numeric" required value={code} onChange={e => setCode(e.target.value)} /></label>}
         {notice && (
           <p role="status" data-testid="account-notice">
             {notice}
           </p>
         )}
         {error && <p role="alert">{error}</p>}
-        <button disabled={busy}>Sign in</button>
+        <Button variant="classic" radius="full" disabled={busy} loading={busy}>{step ? 'Verify and continue' : mode === 'register' ? 'Create account' : mode === 'reset' ? 'Reset password' : 'Sign in'}</Button>
+        <div id="clerk-captcha" />
+        {(['google', 'apple'] as const).map(provider => <Button key={provider} variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => { setBusy(true); void (auth ?? fake).oauth(provider).catch(e => setError(e.message)).finally(() => setBusy(false)); }}>Continue with {provider === 'google' ? 'Google' : 'Apple'}</Button>)}
+        <Button variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => { setMode(mode === 'register' ? 'login' : 'register'); setStep(null); setNotice(''); setError(''); }}>{mode === 'register' ? 'Already have an account? Sign in' : 'Create an account'}</Button>
+        <Button variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => { setMode('reset'); setStep(null); }}>Forgot password?</Button>
+        <Button variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => { setMode('email'); setStep(null); }}>Sign in with an email code</Button>
         {import.meta.env.DEV && local && (
-          <button type="button" disabled={busy} onClick={() => void signIn(true)}>
+          <Button variant="classic" radius="full" color="gray" type="button" disabled={busy} onClick={() => void signIn(true)}>
             Continue as local dev user
-          </button>
+          </Button>
         )}
       </form>
     </main>
+    </Theme>
   );
 }

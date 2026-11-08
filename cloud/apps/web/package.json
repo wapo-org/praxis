@@ -11,8 +11,10 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@clerk/clerk-react": "^5.61.11",
     "@praxis/glass": "*",
     "@praxis/protocol": "*",
+    "@radix-ui/themes": "^3.3.0",
     "framer-motion": "^12.4.7",
     "lucide-react": "^0.475.0",
     "react": "^19.0.0",
