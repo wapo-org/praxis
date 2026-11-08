@@ -28,3 +28,13 @@ it('isolates queues between accounts and never resurrects a remotely deleted cha
   await setReplicaIdentity('https://api.test', 'two');
   await flushEdits(); expect(send).toHaveBeenCalledTimes(1); expect(pendingEdits()).toEqual([]);
 });
+it('queues a network failure even when navigator reports online and retains the attempted create id', async () => {
+  await setReplicaIdentity('https://api.test', 'one');
+  const send = vi.spyOn(apiClient, 'request').mockRejectedValue(new TypeError('Failed to fetch'));
+  const chat = await apiClient.createChat({title:'Offline creation'});
+  const attempted = JSON.parse(send.mock.calls[0]![1]!.body as string);
+  const queued = JSON.parse(pendingEdits()[0]!.body!);
+  expect(chat.id).toBe(attempted.id);
+  expect(queued.id).toBe(attempted.id);
+  expect(queued.title).toBe('Offline creation');
+});

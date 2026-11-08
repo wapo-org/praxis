@@ -48,7 +48,7 @@ function Gate({ children, auth, ready = true, signedIn = false }: { children: Re
         if (active) setLocal(canUseLocalDev(import.meta.env.DEV, h.mode));
       })
       .catch(() => {});
-    if (auth && (!ready || !signedIn)) { setUser(null); setChecking(false); return () => { active = false; apiClient.onUnauthorized = undefined; apiClient.tokenProvider = undefined; }; }
+    if (auth && (!ready || !signedIn)) { apiClient.setBearerToken(''); void clearReplica(); setUser(null); setChecking(false); return () => { active = false; apiClient.onUnauthorized = undefined; apiClient.tokenProvider = undefined; }; }
     void (auth ? auth.token().then(token => { apiClient.setBearerToken(token ?? ''); }) : Promise.resolve()).then(() => apiClient
       .request<{ user: { id: string } }>('/v1/auth/session'))
       .then((s) => {

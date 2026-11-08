@@ -24,3 +24,10 @@ export async function flushEdits() {
     }
   } finally { flushing = false; }
 }
+
+/** Navigator.onLine is only a hint; a broken network can still report true. */
+export async function offlineFallback<T>(send: () => Promise<T>, offline: () => T): Promise<T> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false && getReplicaIdentity()) return offline();
+  try { return await send(); }
+  catch (error) { if (error instanceof TypeError && getReplicaIdentity()) return offline(); throw error; }
+}

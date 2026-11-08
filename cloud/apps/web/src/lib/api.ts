@@ -1,4 +1,4 @@
-import {enqueue} from '../sync/outbox';
+import {enqueue, offlineFallback} from '../sync/outbox';
 import {readReplicaSync} from './idb';
 import type {
   Attachment,
@@ -56,13 +56,14 @@ export class PraxisApiClient extends FeatureApiClient {
     effort?: string;
     disabledConnectorIds?: string[];
   }): Promise<Chat> {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const id = input.id ?? crypto.randomUUID();
+    const offline = (): Chat => {
       const now = new Date().toISOString();
-      const chat: Chat = { type: 'chat', id: input.id ?? crypto.randomUUID(), title: input.title, pinned: input.pinned ?? false, mode: input.mode ?? 'build', connectorIds: [], disabledConnectorIds: input.disabledConnectorIds ?? [], createdAt: now, updatedAt: now, providerId: input.providerId, modelId: input.modelId, effort: input.effort };
+      const chat: Chat = { type: 'chat', id, title: input.title, pinned: input.pinned ?? false, mode: input.mode ?? 'build', connectorIds: [], disabledConnectorIds: input.disabledConnectorIds ?? [], createdAt: now, updatedAt: now, providerId: input.providerId, modelId: input.modelId, effort: input.effort };
       enqueue({ path: '/v1/chats', method: 'POST', body: JSON.stringify({ ...input, type: 'chat.input', id: chat.id }) });
       return chat;
-    }
-    return this.request<Chat>('/v1/chats', {
+    };
+    return offlineFallback(() => this.request<Chat>('/v1/chats', {
       method: 'POST',
       body: JSON.stringify({
         type: 'chat.input',
@@ -73,9 +74,9 @@ export class PraxisApiClient extends FeatureApiClient {
         modelId: input.modelId,
         effort: input.effort,
         disabledConnectorIds: input.disabledConnectorIds ?? [],
-        ...(input.id ? { id: input.id } : {}),
+        id,
       }),
-    });
+    }), offline);
   }
 
   async patchChat(
@@ -90,26 +91,26 @@ export class PraxisApiClient extends FeatureApiClient {
       disabledConnectorIds?: string[];
     },
   ): Promise<Chat> {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const offline = (): Chat => {
       const chat = readReplicaSync()?.chats.find(c => c.id === chatId);
       if (!chat) throw Error('Chat is not cached for offline editing');
       enqueue({ path: `/v1/chats/${encodeURIComponent(chatId)}`, method: 'PATCH', body: JSON.stringify({ type: 'chat.patch', ...patch }) });
       return { ...chat, ...patch };
-    }
-    return this.request<Chat>(`/v1/chats/${encodeURIComponent(chatId)}`, {
+    };
+    return offlineFallback(() => this.request<Chat>(`/v1/chats/${encodeURIComponent(chatId)}`, {
       method: 'PATCH',
       body: JSON.stringify({ type: 'chat.patch', ...patch }),
-    });
+    }), offline);
   }
 
   async deleteChat(chatId: string): Promise<{ type: 'ok' }> {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const offline = (): {type: 'ok'} => {
       enqueue({ path: `/v1/chats/${encodeURIComponent(chatId)}`, method: 'DELETE' });
       return { type: 'ok' };
-    }
-    return this.request<{ type: 'ok' }>(`/v1/chats/${encodeURIComponent(chatId)}`, {
+    };
+    return offlineFallback(() => this.request<{ type: 'ok' }>(`/v1/chats/${encodeURIComponent(chatId)}`, {
       method: 'DELETE',
-    });
+    }), offline);
   }
 
   async truncateChat(chatId: string, messageId?: string): Promise<{ type: 'ok' } | Chat> {
