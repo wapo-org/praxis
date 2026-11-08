@@ -46,8 +46,10 @@ It never falls back to memory adapters or dev auth.
 | `PRAXIS_API_URL` | yes | Public https origin of the API, no path (e.g. `https://api.example.com`). Used for OAuth callbacks, upload URLs and the QStash callback. |
 | `PRAXIS_WEB_ORIGINS` | yes | Comma-separated https origins of the web app (CORS, CSRF and auth trusted origins). |
 | `PRAXIS_ENCRYPTION_KEYS` | yes | AES-256-GCM keyring for provider keys, MCP tokens and the voice key: comma-separated base64 32-byte keys, **current first**, then previous ones. Generate a key with `openssl rand -base64 32`. A single legacy `PRAXIS_ENCRYPTION_KEY` is still accepted. See Key rotation. |
-| `BETTER_AUTH_SECRET` | yes | Session signing secret, ≥ 32 chars: `openssl rand -base64 48`. |
-| `PRAXIS_COOKIE_SAMESITE` | no | `lax` (default), `strict` or `none`. Use `none` when the web app and API are on different sites. |
+| `CLERK_PUBLISHABLE_KEY` | yes | Clerk instance publishable key. |
+| `CLERK_SECRET_KEY` | yes | Server-only Clerk key for identity lookup and account deletion. |
+| `CLERK_JWT_KEY` | yes | Clerk instance PEM public key for networkless JWT verification. |
+| `VITE_CLERK_PUBLISHABLE_KEY` | web build | Same instance publishable key; enables the custom Clerk sign-in/register flow. |
 | `CONVEX_URL` | yes | Convex dashboard → deployment → Settings → URL (`https://<name>.convex.cloud`). |
 | `PRAXIS_CONVEX_SERVER_TOKEN` | yes | API-to-Convex credential, ≥ 32 chars: `openssl rand -base64 48`. Set the **same value** in the Convex deployment env (below). |
 | `UPSTASH_REDIS_REST_URL` | yes | Upstash console → Redis database → REST API → URL. |
@@ -103,7 +105,7 @@ Create a second project with Root Directory `cloud/apps/web` (see `cloud/docs/we
 | Native app return after connector OAuth (handled by the app, nothing to register server-side) | `praxis-app://oauth/callback?state=…` |
 | Web return after connector OAuth | an origin listed in `PRAXIS_WEB_ORIGINS` |
 | QStash continuation (no registration; it must be publicly reachable) | `PRAXIS_API_URL/internal/continue` |
-| Better Auth (email/session routes) | `PRAXIS_API_URL/v1/auth/*` |
+| Clerk OAuth callback | Web origin + `/auth/callback`; enable Google and Apple in Clerk. |
 
 ## Security notes
 
@@ -137,8 +139,8 @@ Live Convex and Upstash contract tests run when their env vars are set: `CONVEX_
 
 ## Account deletion protocol (additive)
 
-`DELETE /v1/account` accepts `{ "type": "account.delete", "password": "…" }` (password optional only for a session created less than five minutes ago). Authentication and the normal origin/CSRF checks apply. Success returns `{ "type": "account.deleted" }`, clears the local cookie, and invalidates all credentials. Repeating erasure is harmless; replaying revoked credentials returns 401. Missing confirmation returns 403. Deletion attempts have a dedicated five/hour limit in addition to the normal authenticated limit; both still apply after deletion begins. Rate-limit counters are a single self-expiring key per limit under a SHA-256 key name, are never owner-indexed, and are not erased: they expire within their window (at most one hour).
+Production uses Clerk JWT bearer sessions. `DELETE /v1/account` requires a first-factor authentication less than five minutes old (`fva`); sign out and sign in again if necessary. The Clerk user is deleted through the backend interface before the Praxis purge. Local development/legacy test adapters: `DELETE /v1/account` accepts `{ "type": "account.delete", "password": "…" }` (password optional only for a session created less than five minutes ago). Authentication and the normal origin/CSRF checks apply. Success returns `{ "type": "account.deleted" }`, clears the local cookie, and invalidates all credentials. Repeating erasure is harmless; replaying revoked credentials returns 401. Missing confirmation returns 403. Deletion attempts have a dedicated five/hour limit in addition to the normal authenticated limit; both still apply after deletion begins. Rate-limit counters are a single self-expiring key per limit under a SHA-256 key name, are never owner-indexed, and are not erased: they expire within their window (at most one hour).
 
 The production eraser locks account activation, marks the account as deleting, freezes owner Redis writes, purges indexed Redis data (streams, caches, OAuth state and leases), then hard-deletes every owner-scoped Convex table and uploaded blobs in bounded batches. The caller’s session and credential survive until the final atomic auth deletion, so interrupted deletion can retry. Redis ownership indexes are registered atomically with writes as a sorted set scored by key expiry, pruned on every owner write so it stays bounded; the purge removes keys in chunks and drops them from the index as it goes, so a retry resumes. Activation verifies that the Convex account remains active. The global blob sweep stores its cursor on the user row, so a retried request continues it. Generic Convex writes are fenced once deletion begins. Blob ownership tags also permit deleting interrupted, unbound uploads. New data tables must be included in `convex/account.ts`; new owner KV writes must carry `ownerId` (feature contexts do so automatically).
 
-No hosted deletion, provider call, deployment, or credential access was performed by the implementation worker. Local synthetic auth tests exercise sign-up/in/out and deletion against the real Better Auth implementation with in-memory Convex/Redis test adapters; they do not create hosted accounts.
+No hosted deletion, provider call, deployment, or credential access was performed by the implementation worker. Local tests use a fake Clerk interface and locally signed JWTs, plus legacy Better Auth migration/conformance fixtures. No hosted account is created. See `docs/WP-H1-AUTH-SYNC.md` for migration, conflict rules and the native client requirements.
