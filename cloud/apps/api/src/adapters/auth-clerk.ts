@@ -47,15 +47,16 @@ export function clerkAuth(backend: ClerkBackend, rpc: ConvexRPC, ownership?: { a
       binding = await rpc.mutation('authClerk:resolve', { identity: profile }) as { userId: string };
     }
     const user = await rpc.query('auth:read', { operation: 'findOne', input: { model: 'user', where: [{ field: 'id', value: binding.userId }] } }) as { id: string; name: string; email: string; deleting?: boolean } | null;
-    if (!user || user.deleting) return null;
-    if (ownership && !await ownership.isActive(user.id)) await ownership.activate(user.id);
-    return { user: { type: 'user', id: user.id, name: user.name, email: user.email } as User, expiresAt: new Date(jwt.exp * 1000).toISOString(), jwt };
+    const deletionRetry = request.method === 'DELETE' && new URL(request.url).pathname === '/v1/account';
+    if (!user || (user.deleting && !deletionRetry)) return null;
+    if (!user.deleting && ownership && !await ownership.isActive(user.id)) await ownership.activate(user.id);
+    return { user: { type: 'user', id: user.id, name: user.name, email: user.email } as User, expiresAt: new Date(jwt.exp * 1000).toISOString(), jwt, deleting: !!user.deleting };
   }
   return {
     async resolveSession(request: Request) { const s = await identity(request); return s && { user: s.user, expiresAt: s.expiresAt }; },
     async confirmDeletion(request: Request) {
       const s = await identity(request);
-      return s && Date.now() - s.jwt.authTime >= 0 && Date.now() - s.jwt.authTime < 300000 ? { userId: s.user.id, sessionId: s.jwt.sid } : null;
+      return s && (s.deleting || (Date.now() - s.jwt.authTime >= 0 && Date.now() - s.jwt.authTime < 300000)) ? { userId: s.user.id, sessionId: s.jwt.sid } : null;
     },
     async deleteExternal(userId: string) {
       const binding = await rpc.query('auth:read', { operation: 'findOne', input: { model: 'account', where: [{ field: 'providerId', value: 'clerk' }, { field: 'userId', value: userId }] } }) as { accountId: string } | null;

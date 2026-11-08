@@ -25,8 +25,12 @@ production no longer accepts Better Auth credentials or needs BETTER_AUTH_SECRET
 
 Account deletion requires a Clerk first-factor authentication less than five
 minutes old (`fva`, not JWT `iat`). Sign out and back in before deletion. The
-backend deleteUser interface is called before the existing durable Praxis purge;
-a failed provider deletion prevents the purge, preserving retryability.
+backend deleteUser interface is called after owned data is purged, retaining the
+Clerk binding until the final auth batch. A failed provider deletion can be
+retried by signing in again; deleting accounts permit only deletion retries.
+If Clerk deletion succeeds but the final database request is interrupted, retry
+with the still-valid JWT. Recovery after that JWT expires needs operator cleanup
+of the retained deleting record (no automatic cross-service transaction).
 
 ## Sync rules
 

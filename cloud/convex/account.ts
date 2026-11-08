@@ -31,6 +31,7 @@ export const purge = mutation({
     serverToken: v.string(),
     userId: v.string(),
     keepSessionId: v.optional(v.string()),
+    retainClerk: v.optional(v.boolean()),
     blobCursor: v.optional(v.string()),
     blobsDone: v.optional(v.boolean()),
   },
@@ -93,7 +94,7 @@ export const purge = mutation({
       for (const row of rows)
         if (
           !(row.model === 'session' && row.id === a.keepSessionId) &&
-          !(row.model === 'account' && row.data.providerId === 'credential')
+          !(row.model === 'account' && (row.data.providerId === 'credential' || (a.retainClerk && row.data.providerId === 'clerk')))
         )
           owned.set(row._id, row);
     }
@@ -117,6 +118,8 @@ export const purge = mutation({
       for (const row of [...owned.values()].slice(0, 100)) await ctx.db.delete(row._id);
       return { done: false, blobsDone: true };
     }
+    // Finish the distributed Clerk deletion only after all owned data is gone, keeping its binding retryable.
+    if (a.retainClerk) return { done: false, ready: true, blobsDone: true };
     const retained = await ctx.db
       .query('authDocuments')
       .withIndex('model_user', (q) => q.eq('model', 'session').eq('data.userId', a.userId))
