@@ -238,6 +238,8 @@ describe.skipIf(!minilmCached)('semantic search: real MiniLM recall (WP-H3b prob
       for (const [m, t] of [text, `Scripted response: ${text}`].entries())
         await service.put('local-user', 'message', `c${i}-${m}`, MessageSchema.parse({ type: 'message', id: `c${i}-${m}`, chatId: `c${i}`, sequence: m + 1, role: m ? 'assistant' : 'user', parts: [{ type: 'text', text: t }], createdAt: at, updatedAt: at }));
     }
+    // Recall, not backfill timing: index fully first (under load the 60 ms search-time budget may not cover it).
+    await service.search.sync('local-user', await loadChatDocs(service, 'local-user'));
     const search = async (q: string) =>
       ((await (await app.request(`/v1/search?q=${encodeURIComponent(q)}`, { headers: { Authorization: 'Bearer dev-local' } })).json()).items as { chat: { title: string }; snippet: string }[]);
     const cases: [string, string][] = [
@@ -273,6 +275,7 @@ describe.skipIf(!minilmCached)('semantic search: real MiniLM recall (WP-H3b prob
       for (const [m, text] of [user, reply].entries())
         await service.put('u', 'message', `${id}${m}`, MessageSchema.parse({ type: 'message', id: `${id}${m}`, chatId: id, sequence: m + 1, role: m ? 'assistant' : 'user', parts: [{ type: 'text', text }], createdAt: now, updatedAt: now }));
     }
+    await service.search.sync('u', await loadChatDocs(service, 'u'));
     expect((await searchChats(service, 'u', 'dinner recipe'))[0]?.chat.title).toBe('Gentle Atlas');
     expect((await searchChats(service, 'u', 'git merge conflict'))[0]?.chat.title).toBe('Rapid Kettle');
   }, 60_000);
