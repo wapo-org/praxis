@@ -1,17 +1,18 @@
 import { useSyncExternalStore } from 'react';
 
 /**
- * The owner's sidebar palettes and New-chat button colours, ported from sidebar-design.html (`PAL`, `BP`,
- * `grad()`, `renderVals()`). Both persist and are applied before first paint by the inline script in
- * index.html, which must stay in step with `applySidebarLook` (sidebarPalette.test.ts runs it).
+ * The owner's sidebar palettes and New-chat button colours, ported from Chat Screen.dc.html (design v2:
+ * `PAL`, `ACC`, `BP`, `grad()`, `renderVals()`). Both persist and are applied before first paint by the inline
+ * script in index.html, which must stay in step with `applySidebarLook` (sidebarPalette.test.ts runs it).
+ * `acc` is v2's `ACC`: the colour of each palette's border reflection.
  */
 export const SIDEBAR_PALETTES = [
-  { id: 'graphite', name: 'Graphite', base: '#16181b', border: '#3d4147', dark: true },
-  { id: 'midnight', name: 'Midnight', base: '#101c33', border: '#2f4570', dark: true },
-  { id: 'forest', name: 'Forest', base: '#12261d', border: '#2f5a45', dark: true },
-  { id: 'plum', name: 'Plum', base: '#261530', border: '#5a3a6b', dark: true },
-  { id: 'sand', name: 'Sand', base: '#e9e4d8', border: '#cfc8b6', dark: false },
-  { id: 'paper', name: 'Paper', base: '#fbfbf9', border: '#d9d9e0', dark: false },
+  { id: 'graphite', name: 'Graphite', base: '#16181b', border: '#3d4147', acc: '#8ea0b3', dark: true },
+  { id: 'midnight', name: 'Midnight', base: '#101c33', border: '#2f4570', acc: '#4b7fd6', dark: true },
+  { id: 'forest', name: 'Forest', base: '#12261d', border: '#2f5a45', acc: '#44a877', dark: true },
+  { id: 'plum', name: 'Plum', base: '#261530', border: '#5a3a6b', acc: '#a866d4', dark: true },
+  { id: 'sand', name: 'Sand', base: '#e9e4d8', border: '#cfc8b6', acc: '#d9c79a', dark: false },
+  { id: 'paper', name: 'Paper', base: '#fbfbf9', border: '#d9d9e0', acc: '#d6d6e0', dark: false },
 ] as const;
 export type SidebarPaletteId = (typeof SIDEBAR_PALETTES)[number]['id'];
 export const DEFAULT_PALETTE: SidebarPaletteId = 'graphite';
@@ -37,20 +38,43 @@ export const isPaletteId = (value: unknown): value is SidebarPaletteId =>
   SIDEBAR_PALETTES.some((p) => p.id === value);
 export const isHex = (value: unknown): value is string => typeof value === 'string' && HEX.test(value);
 
-/** `grad(base)` from the source, verbatim. */
+/**
+ * v2's `grad(base)`, verbatim: the top sheen over the base, which is solid to 45 % and then fades to 40 % of
+ * itself at the bottom, so the sidebar turns translucent toward the bottom (the aside blurs what is behind).
+ */
 export const sidebarGradient = (base: string) =>
-  'linear-gradient(to bottom,rgb(255 255 255/20%) 0%,rgb(255 255 255/12%) 2%,rgb(255 255 255/6%) 5%,rgb(255 255 255/2%) 9%,transparent 14%,rgb(0 0 0/12%) 100%),' +
-  base;
+  'linear-gradient(to bottom,rgb(255 255 255/20%) 0%,rgb(255 255 255/12%) 2%,rgb(255 255 255/6%) 5%,rgb(255 255 255/2%) 9%,transparent 14%,transparent 100%),linear-gradient(to bottom,' +
+  base +
+  ' 0%,' +
+  base +
+  ' 45%,color-mix(in srgb,' +
+  base +
+  ' 40%,transparent) 100%)';
+
+/** v2's reflection defaults (`borderAngle`, `glowStrength`). */
+export const RING_ANGLE = 45;
+export const RING_STRENGTH = 100;
+
+/** v2's `ringBg`: a conic "border reflection" in the palette's `ACC`, hot at the angle, dark opposite. */
+export function ringBackground(acc: string, angle = RING_ANGLE, strength = RING_STRENGTH) {
+  const base = 'color-mix(in srgb,' + acc + ' 10%,#000)';
+  const hot = 'color-mix(in srgb,' + acc + ' ' + strength + '%,' + base + ')';
+  const mid = 'color-mix(in srgb,' + acc + ' ' + Math.round(strength * 0.4) + '%,' + base + ')';
+  return (
+    'conic-gradient(from ' + angle + 'deg at 50% 50%,' + hot + ' 0deg,' + mid + ' 35deg,' + base + ' 110deg,' +
+    base + ' 250deg,' + mid + ' 325deg,' + hot + ' 360deg)'
+  );
+}
 
 /**
- * The derived values from `renderVals()`. One deviation: the light mute is #454440, not #5c5b57. The aside
- * paints the gloss twice (its literal gradient, then `sbBg`, which is grad(base) again), so the lower list
- * and the footer sit under ~22 % black, where #5c5b57 is 3.2:1 on Sand; #454440 is the nearest AA value.
+ * The derived values from `renderVals()`. One deviation, carried from v1: the light mute is #454440, not
+ * #5c5b57 (#5c5b57 is 3.2:1 on Sand under the aside's literal gloss, which still darkens the bottom by 12 %).
  */
 export function paletteVars(id: SidebarPaletteId) {
   const p = SIDEBAR_PALETTES.find((x) => x.id === id)!;
   return {
     '--sb-bg': sidebarGradient(p.base),
+    '--sb-ring': ringBackground(p.acc),
     '--sb-base': p.base,
     '--sb-border': p.border,
     '--sb-ink': p.dark ? '#f2f1ed' : '#1c1c1c',

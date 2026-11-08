@@ -1,6 +1,7 @@
 import type { Message } from '@praxis/protocol';
 import React from 'react';
 import { apiClient } from '../lib/api';
+import { randomChatName } from '../lib/chatNames';
 
 import type { useChatActions } from './useChatActions';
 import type { PraxisState } from './usePraxisState';
@@ -48,7 +49,8 @@ export function useSendActions(
       setErrorBanner(null);
       let targetChatId = activeChatId;
       if (!targetChatId) {
-        const created = await createNewChat('New chat');
+        const created = await createNewChat(state.draftTitle);
+        state.setDraftTitle(randomChatName());
         targetChatId = created.id;
       }
 
@@ -149,6 +151,7 @@ export function useSendActions(
     [
       activeChatId,
       createNewChat,
+      state.draftTitle,
       chats,
       attachmentsById,
       selectedProviderId,

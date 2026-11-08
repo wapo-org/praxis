@@ -23,16 +23,16 @@ export function ChatHeader() {
       <div className={styles.side}>
         <AnimatePresence initial={false}>
           {narrow ? (
-            <Cluster key="history" {...pop}>
+            <Cluster key="history" solo {...pop}>
               {/* History is the floating sidebar panel on narrow screens. */}
               <BarButton label="History" testId="nav-history-button" onClick={() => store.setDesktopSidebarOpen(true)}>
-                <History size={18} />
+                <History size={16} />
               </BarButton>
             </Cluster>
           ) : !store.desktopSidebarOpen ? (
-            <Cluster key="sidebar" {...pop}>
+            <Cluster key="sidebar" solo {...pop}>
               <BarButton label="Open sidebar" testId="nav-sidebar-button" onClick={() => store.setDesktopSidebarOpen(true)}>
-                <PanelLeft size={18} />
+                <PanelLeft size={16} />
               </BarButton>
             </Cluster>
           ) : null}
@@ -40,7 +40,7 @@ export function ChatHeader() {
       </div>
 
       <motion.div className={styles.center} initial={false} animate={{ x: shift }} transition={PANEL}>
-        <GlassSurface material="regular" shape="capsule" className={styles.titlePill}>
+        <GlassSurface material="regular" className={styles.titlePill}>
           <motion.button
             type="button"
             className={styles.title}
@@ -49,7 +49,7 @@ export function ChatHeader() {
             aria-label="Chat and model settings"
             {...pressProps}
           >
-            <span className={styles.titleText}>{displayTitle(store.activeChat?.title || 'New chat')}</span>
+            <span className={styles.titleText}>{displayTitle(store.activeChat ? store.activeChat.title || 'New chat' : store.draftTitle)}</span>
             <span className={styles.model}>{model?.displayName || 'Select model'}</span>
           </motion.button>
         </GlassSurface>
@@ -59,16 +59,16 @@ export function ChatHeader() {
         {narrow ? (
           <Cluster>
             <BarButton label="New chat" testId="nav-new-chat-button" onClick={() => store.startNewConversation()}>
-              <Edit size={18} />
+              <Edit size={16} />
             </BarButton>
           </Cluster>
         ) : (
           <Cluster>
             <BarButton label="New chat" testId="nav-new-chat-desktop" onClick={() => store.startNewConversation()}>
-              <Edit size={18} />
+              <Edit size={16} />
             </BarButton>
             <BarButton label="Settings" testId="nav-settings-button" onClick={() => store.setActiveSheet('settings')}>
-              <Settings size={18} />
+              <Settings size={16} />
             </BarButton>
           </Cluster>
         )}
@@ -77,9 +77,9 @@ export function ChatHeader() {
   );
 }
 
-function Cluster({ children, ...motionProps }: { children: React.ReactNode } & GlassSurfaceProps) {
+function Cluster({ children, solo = false, ...motionProps }: { children: React.ReactNode; solo?: boolean } & GlassSurfaceProps) {
   return (
-    <GlassSurface material="regular" shape="capsule" className={styles.cluster} {...motionProps}>
+    <GlassSurface material="regular" className={solo ? styles.solo : styles.cluster} {...motionProps}>
       {children}
     </GlassSurface>
   );

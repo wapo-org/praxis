@@ -27,12 +27,12 @@
         // Sidebar palette and New-chat colour (src/lib/sidebarPalette.ts, kept in step by its test).
         const root = document.documentElement;
         const pal = {
-          graphite: ['#16181b', '#3d4147', 1],
-          midnight: ['#101c33', '#2f4570', 1],
-          forest: ['#12261d', '#2f5a45', 1],
-          plum: ['#261530', '#5a3a6b', 1],
-          sand: ['#e9e4d8', '#cfc8b6', 0],
-          paper: ['#fbfbf9', '#d9d9e0', 0],
+          graphite: ['#16181b', '#3d4147', 1, '#8ea0b3'],
+          midnight: ['#101c33', '#2f4570', 1, '#4b7fd6'],
+          forest: ['#12261d', '#2f5a45', 1, '#44a877'],
+          plum: ['#261530', '#5a3a6b', 1, '#a866d4'],
+          sand: ['#e9e4d8', '#cfc8b6', 0, '#d9c79a'],
+          paper: ['#fbfbf9', '#d9d9e0', 0, '#d6d6e0'],
         };
         let palId = 'graphite';
         let nb = '#ffffff';
@@ -42,7 +42,10 @@
           const savedNb = localStorage.getItem('praxis-button-color');
           if (/^#[0-9a-f]{6}$/i.test(savedNb || '')) nb = savedNb.toLowerCase();
         } catch {}
-        const [base, border, dark] = pal[palId];
+        const [base, border, dark, acc] = pal[palId];
+        const rb = 'color-mix(in srgb,' + acc + ' 10%,#000)';
+        const hot = 'color-mix(in srgb,' + acc + ' 100%,' + rb + ')';
+        const mid = 'color-mix(in srgb,' + acc + ' 40%,' + rb + ')';
         const lumOf = (hex) => {
           const n = parseInt(hex.slice(1), 16);
           const c = [n >> 16, (n >> 8) & 255, n & 255].map((v) => ((v /= 255) <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
@@ -51,7 +54,8 @@
         const lum = lumOf(nb);
         const ink = (lum + 0.05) / (lumOf('#10242d') + 0.05) >= 1.05 / (lum + 0.05) ? '#10242d' : '#ffffff';
         const vars = {
-          '--sb-bg': 'linear-gradient(to bottom,rgb(255 255 255/20%) 0%,rgb(255 255 255/12%) 2%,rgb(255 255 255/6%) 5%,rgb(255 255 255/2%) 9%,transparent 14%,rgb(0 0 0/12%) 100%),' + base,
+          '--sb-bg': 'linear-gradient(to bottom,rgb(255 255 255/20%) 0%,rgb(255 255 255/12%) 2%,rgb(255 255 255/6%) 5%,rgb(255 255 255/2%) 9%,transparent 14%,transparent 100%),linear-gradient(to bottom,' + base + ' 0%,' + base + ' 45%,color-mix(in srgb,' + base + ' 40%,transparent) 100%)',
+          '--sb-ring': 'conic-gradient(from 45deg at 50% 50%,' + hot + ' 0deg,' + mid + ' 35deg,' + rb + ' 110deg,' + rb + ' 250deg,' + mid + ' 325deg,' + hot + ' 360deg)',
           '--sb-base': base,
           '--sb-border': border,
           '--sb-ink': dark ? '#f2f1ed' : '#1c1c1c',

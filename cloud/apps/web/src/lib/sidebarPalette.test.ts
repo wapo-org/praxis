@@ -40,7 +40,7 @@ const runBootstrap = () =>
     { matchMedia: () => ({ matches: false }) },
     { mark: () => {} },
   );
-const VARS = ['--sb-bg', '--sb-base', '--sb-border', '--sb-ink', '--sb-mute', '--sb-hl', '--sb-line', '--nb-fill', '--nb-ink', '--nb-border'];
+const VARS = ['--sb-bg', '--sb-ring', '--sb-base', '--sb-border', '--sb-ink', '--sb-mute', '--sb-hl', '--sb-line', '--nb-fill', '--nb-ink', '--nb-border'];
 const snapshot = () => {
   const root = document.documentElement;
   return {
@@ -85,17 +85,27 @@ it('ports PAL, BP and grad() from the owner source exactly', () => {
     ['Coral', '#f4846b'],
     ['Lime', '#b6e36b'],
   ]);
-  // The owner's file, where present (it is outside the repo): grad() must be the same string.
+  // The owner's v2 file, where present (it is outside the repo): grad() and ringBg must be the same strings.
   let source = '';
   try {
-    source = readFileSync(`${process.env.HOME}/.praxis-agent-state/cloud/design/G4-ref/sidebar-design-source.html`, 'utf8');
+    source = readFileSync(`${process.env.HOME}/.praxis-agent-state/cloud/design/G6-ref/zip/Chat Screen.dc.html`, 'utf8');
   } catch {
     /* Not on this machine. */
   }
-  const grad = /grad\(base\) \{ return '([^']+)' \+ base; \}/.exec(source)?.[1];
-  if (grad) expect(paletteVars('plum')['--sb-bg']).toBe(grad + '#261530');
+  const grad = /grad\(base\) \{ (return [^}]+;) \}/.exec(source)?.[1];
+  if (grad) expect(paletteVars('plum')['--sb-bg']).toBe(new Function('base', grad)('#261530'));
+  const acc = /const ACC = (\[[^\]]+\]);/.exec(source)?.[1];
+  if (acc) expect(SIDEBAR_PALETTES.map((p) => p.acc)).toEqual(JSON.parse(acc.replace(/'/g, '"')));
+  const ring = /(const base = 'color-mix[\s\S]*?const ringBg = [^;]+;)/.exec(source)?.[1];
+  if (ring)
+    for (const p of SIDEBAR_PALETTES)
+      expect(paletteVars(p.id)['--sb-ring']).toBe(new Function('acc', 'ang', 'st', `${ring} return ringBg;`)(p.acc, 45, 100));
+  expect(SIDEBAR_PALETTES.map((p) => p.acc)).toEqual(['#8ea0b3', '#4b7fd6', '#44a877', '#a866d4', '#d9c79a', '#d6d6e0']);
   expect(paletteVars('graphite')['--sb-bg']).toBe(
-    'linear-gradient(to bottom,rgb(255 255 255/20%) 0%,rgb(255 255 255/12%) 2%,rgb(255 255 255/6%) 5%,rgb(255 255 255/2%) 9%,transparent 14%,rgb(0 0 0/12%) 100%),#16181b',
+    'linear-gradient(to bottom,rgb(255 255 255/20%) 0%,rgb(255 255 255/12%) 2%,rgb(255 255 255/6%) 5%,rgb(255 255 255/2%) 9%,transparent 14%,transparent 100%),linear-gradient(to bottom,#16181b 0%,#16181b 45%,color-mix(in srgb,#16181b 40%,transparent) 100%)',
+  );
+  expect(paletteVars('graphite')['--sb-ring']).toBe(
+    'conic-gradient(from 45deg at 50% 50%,color-mix(in srgb,#8ea0b3 100%,color-mix(in srgb,#8ea0b3 10%,#000)) 0deg,color-mix(in srgb,#8ea0b3 40%,color-mix(in srgb,#8ea0b3 10%,#000)) 35deg,color-mix(in srgb,#8ea0b3 10%,#000) 110deg,color-mix(in srgb,#8ea0b3 10%,#000) 250deg,color-mix(in srgb,#8ea0b3 40%,color-mix(in srgb,#8ea0b3 10%,#000)) 325deg,color-mix(in srgb,#8ea0b3 100%,color-mix(in srgb,#8ea0b3 10%,#000)) 360deg)',
   );
 });
 
@@ -108,29 +118,41 @@ it('derives button ink from the source inks and its border from color-mix', () =
     expect(buttonVars(color)['--nb-ink']).toBe(name === 'Gray' || luminance(color) > 0.35 ? '#10242d' : '#ffffff');
 });
 
-it('keeps every sidebar text colour AA on all six palettes, anywhere on the doubled gloss', () => {
-  // grad() as a function of height: white stops 20/12/6/2 % at 0/2/5/9 %, clear at 14 %, then black to 12 %.
-  const gloss = (y: number) => {
-    if (y >= 0.14) return { white: 0, black: (0.12 * (y - 0.14)) / 0.86 };
+it('keeps sidebar text AA where v2 keeps it readable, and pins the fade where it does not', () => {
+  // The aside's literal gloss: white stops 20/12/6/2 % at 0/2/5/9 %, clear at 14 %, then black to 12 %.
+  // sbBg = grad(base): the same white sheen (no black), over the base, solid to 45 % and 40 % at the bottom.
+  const white = (y: number) => {
+    if (y >= 0.14) return 0;
     const stops = [[0, 0.2], [0.02, 0.12], [0.05, 0.06], [0.09, 0.02], [0.14, 0]] as const;
     const i = stops.findIndex(([at]) => at > y);
     const [y0, a0] = stops[i - 1]!;
     const [y1, a1] = stops[i]!;
-    return { white: a0 + ((a1 - a0) * (y - y0)) / (y1 - y0), black: 0 };
+    return a0 + ((a1 - a0) * (y - y0)) / (y1 - y0);
   };
+  const black = (y: number) => (y < 0.14 ? 0 : (0.12 * (y - 0.14)) / 0.86);
+  const alpha = (y: number) => (y <= 0.45 ? 1 : 1 - (0.6 * (y - 0.45)) / 0.55);
+  // What shows through the bottom: the main area's mBg, its lightest and darkest stops in each theme.
+  const backdrops = { light: [hex('#f4f3ef'), hex('#f9f8f5')], dark: [hex('#151517'), hex('#26262a')] };
   for (const p of SIDEBAR_PALETTES) {
     const vars = paletteVars(p.id);
     const hl = rgba(vars['--sb-hl']);
-    // Text starts below the New chat pill (~9 % of the height) and ends at the footer's last line (~98 %).
-    for (let y = 0.09; y <= 0.98; y += 0.01) {
-      const { white, black } = gloss(y);
-      // The aside paints the gloss twice over the base.
-      let bg = hex(p.base);
-      for (let layer = 0; layer < 2; layer++) bg = over([0, 0, 0], black, over([255, 255, 255], white, bg));
-      for (const surface of [bg, over(hl.rgb, hl.a, bg), over([255, 255, 255], 0.12, bg)])
-        expect(contrast(hex(vars['--sb-ink']), surface), `${p.name} ink at ${y.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(hex(vars['--sb-mute']), bg), `${p.name} mute at ${y.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
-    }
+    for (const [theme, list] of Object.entries(backdrops))
+      for (const backdrop of list) {
+        // Same polarity (a dark palette in the dark app, a light one in the light app): AA top to bottom.
+        // Opposite polarity: AA down to 60 % of the height; below, the owner's fade (DESIGN.md) is pinned so it cannot get worse.
+        const same = p.dark === (theme === 'dark');
+        // Text starts below the New chat pill (~9 % of the height) and ends at the footer's last line (~98 %).
+        for (let y = 0.09; y <= 0.98; y += 0.01) {
+          let bg = over(hex(p.base), alpha(y), backdrop);
+          bg = over([255, 255, 255], white(y), bg);
+          bg = over([0, 0, 0], black(y), over([255, 255, 255], white(y), bg));
+          const at = `${p.name} in the ${theme} app at ${y.toFixed(2)}`;
+          const [ink, mute] = same || y <= 0.6 ? [4.5, 4.5] : [2.4, 1.5];
+          for (const surface of [bg, over(hl.rgb, hl.a, bg), over([255, 255, 255], 0.12, bg)])
+            expect(contrast(hex(vars['--sb-ink']), surface), `ink, ${at}`).toBeGreaterThanOrEqual(ink);
+          expect(contrast(hex(vars['--sb-mute']), bg), `mute, ${at}`).toBeGreaterThanOrEqual(mute);
+        }
+      }
   }
   for (const { color } of BUTTON_COLORS) {
     const vars = buttonVars(color);

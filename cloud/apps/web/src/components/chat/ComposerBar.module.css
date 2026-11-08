@@ -1,21 +1,22 @@
+/* Design v2's composer row: 32 px round buttons (mBtn in a 1 px mLine, mIcon), 10 px apart, 13 px type. */
 .bar {
   display: flex;
   align-items: flex-end;
-  gap: var(--space-2);
+  gap: 10px;
 }
 
 .input {
   flex: 1;
   min-width: 0;
-  min-height: var(--control-md);
+  min-height: 32px;
   max-height: 200px;
-  padding: 7px var(--space-1);
+  padding: 7px 0;
   border: 0;
   outline: 0;
   resize: none;
   background: transparent;
   color: var(--color-ink);
-  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
+  font: var(--weight-regular) 13px / 18px var(--font-sans);
 }
 
 .input::placeholder {
@@ -31,8 +32,8 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: var(--control-md);
-  height: var(--control-md);
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-full);
@@ -44,8 +45,9 @@
 }
 
 .secondary {
-  background: color-mix(in srgb, var(--color-ink) 10%, transparent);
-  color: var(--color-ink);
+  background: var(--color-btn);
+  box-shadow: inset 0 0 0 1px var(--color-line);
+  color: var(--color-icon);
 }
 
 .primary {
@@ -56,8 +58,8 @@
 .trailingSlot {
   position: relative;
   flex-shrink: 0;
-  width: var(--control-md);
-  height: var(--control-md);
+  width: 32px;
+  height: 32px;
 }
 
 .slotButton {
@@ -95,7 +97,7 @@
 
 @media (hover: hover) {
   .secondary:hover:not(:disabled):not([data-recording='true']) {
-    background: color-mix(in srgb, var(--color-ink) 16%, transparent);
+    background: color-mix(in srgb, var(--color-btn), var(--color-ink) 6%);
   }
   .primary:hover:not(:disabled) {
     background: color-mix(in srgb, var(--color-accent) 86%, var(--color-paper));

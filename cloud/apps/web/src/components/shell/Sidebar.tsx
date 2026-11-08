@@ -10,8 +10,8 @@ import { useIsNarrow } from './useIsNarrow';
 import styles from './Sidebar.module.css';
 
 /**
- * The floating sidebar: the owner's opaque, skeuomorphic slab (sidebar-design.html), with the glass's
- * stretch and shadow but no lens. The floating navigation (docked at ≥1024 px; on narrow screens the
+ * The floating sidebar: the owner's skeuomorphic slab (design v2, Chat Screen.dc.html), fading translucent
+ * toward the bottom over a backdrop blur, with a conic border reflection; the glass's stretch and shadow but no lens. The floating navigation (docked at ≥1024 px; on narrow screens the
  * same panel floats over the page). One surface for the whole app: chats normally,
  * the settings sections while Settings is open, so opening Settings changes this
  * panel's content rather than adding a second rail. It sits over the full-bleed
@@ -59,6 +59,7 @@ function SidebarBody({ onClose, onNavigate, devTools }: { onClose?: () => void; 
   const sheet = store.activeSheet;
   return (
     <GlassSurface material="thick" lens={false} spotlight={false} className={styles.surface}>
+      <span aria-hidden="true" className={styles.ring} data-sidebar-ring="" />
       <div className={styles.pane}>
         {isSettingsSheet(sheet) ? (
           <SidebarSettings sheet={sheet} onClose={onClose} onNavigate={onNavigate} devTools={devTools} />

@@ -7,17 +7,24 @@ test.beforeEach(async ({ page }) => {
   await page.getByTestId('sidebar-new-chat').waitFor();
   await page.evaluate(() => document.fonts.ready);
 });
+// Name, base, the reflection colour (v2's ACC), ink.
 const PALETTES = [
-  ['Graphite', 'rgb(22, 24, 27)', 'rgb(61, 65, 71)', 'rgb(242, 241, 237)'],
-  ['Midnight', 'rgb(16, 28, 51)', 'rgb(47, 69, 112)', 'rgb(242, 241, 237)'],
-  ['Forest', 'rgb(18, 38, 29)', 'rgb(47, 90, 69)', 'rgb(242, 241, 237)'],
-  ['Plum', 'rgb(38, 21, 48)', 'rgb(90, 58, 107)', 'rgb(242, 241, 237)'],
-  ['Sand', 'rgb(233, 228, 216)', 'rgb(207, 200, 182)', 'rgb(28, 28, 28)'],
-  ['Paper', 'rgb(251, 251, 249)', 'rgb(217, 217, 224)', 'rgb(28, 28, 28)'],
+  ['Graphite', 'rgb(22, 24, 27)', [142, 160, 179], 'rgb(242, 241, 237)'],
+  ['Midnight', 'rgb(16, 28, 51)', [75, 127, 214], 'rgb(242, 241, 237)'],
+  ['Forest', 'rgb(18, 38, 29)', [68, 168, 119], 'rgb(242, 241, 237)'],
+  ['Plum', 'rgb(38, 21, 48)', [168, 102, 212], 'rgb(242, 241, 237)'],
+  ['Sand', 'rgb(233, 228, 216)', [217, 199, 154], 'rgb(28, 28, 28)'],
+  ['Paper', 'rgb(251, 251, 249)', [214, 214, 224], 'rgb(28, 28, 28)'],
 ] as const;
 const solid = (page: import('@playwright/test').Page) =>
   page.locator('[data-testid="app-sidebar"] [data-glass-solid]').first();
-test('the sidebar is the owner\'s opaque slab, identical in both themes, with the source metrics', async ({
+const ring = (page: import('@playwright/test').Page) => page.locator('[data-testid="app-sidebar"] [data-sidebar-ring]');
+/** The ring's stops as 0–255 RGB: hot (the reflection colour), mid, base (10 % of it over black). */
+const ringStops = (image: string) =>
+  [...image.matchAll(/color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)\)/g)].map((m) => [m[1], m[2], m[3]].map((v) => Math.round(Number(v) * 255)));
+/** The fading base layer: solid to 45 %, then 40 % of the base at the bottom. */
+const fade = (base: string) => new RegExp(`linear-gradient\\(${base.replace(/[()]/g, '\\$&')} 0%, ${base.replace(/[()]/g, '\\$&')} 45%, color\\(srgb [\\d.]+ [\\d.]+ [\\d.]+ / 0\\.4\\) 100%\\)$`);
+test('the sidebar is the owner\'s v2 slab, identical in both themes, with the source metrics', async ({
   page,
 }) => {
   const looks: unknown[] = [];
@@ -29,7 +36,7 @@ test('the sidebar is the owner\'s opaque slab, identical in both themes, with th
     expect(box.x).toBe(12);
     expect(box.y).toBe(18);
     expect(box.height).toBe(858);
-    // No lens, no backdrop: one solid layer with grad(base), the palette border and the inset highlight.
+    // No lens: one layer with the aside's gloss over grad(base), a transparent border, the inset highlight and a 14 px backdrop blur.
     expect(await sidebar.locator('[data-glass-surface]').first().getAttribute('data-glass-surface')).toBe('solid');
     await expect(sidebar.locator('[data-glass-lens], filter')).toHaveCount(0);
     const layer = await solid(page).evaluate((el) => {
@@ -41,19 +48,33 @@ test('the sidebar is the owner\'s opaque slab, identical in both themes, with th
         shadow: s.boxShadow,
         radius: s.borderTopLeftRadius,
         corner: s.getPropertyValue('corner-shape'),
-        backdrop: s.backdropFilter,
+        clip: s.backgroundClip,
+        backdrop: s.backdropFilter || s.getPropertyValue('-webkit-backdrop-filter'),
       };
     });
-    // The source paints the gloss twice: its literal gradient, then sbBg = grad(base).
-    const gloss =
-      'linear-gradient(rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.12) 2%, rgba(255, 255, 255, 0.06) 5%, rgba(255, 255, 255, 0.02) 9%, rgba(0, 0, 0, 0) 14%, rgba(0, 0, 0, 0.12) 100%)';
-    expect(layer.image).toBe(`${gloss}, ${gloss}, none`); // then the base colour layer
-    expect(layer.color).toBe('rgb(22, 24, 27)');
-    expect(layer.border).toBe('1px solid rgb(61, 65, 71)');
+    // v2: the aside's literal gloss, then sbBg = grad(base): the same sheen (clear at the bottom) over the fading base.
+    const sheen = (bottom: string) =>
+      `linear-gradient(rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.12) 2%, rgba(255, 255, 255, 0.06) 5%, rgba(255, 255, 255, 0.02) 9%, rgba(0, 0, 0, 0) 14%, ${bottom} 100%)`;
+    expect(layer.image.startsWith(`${sheen('rgba(0, 0, 0, 0.12)')}, ${sheen('rgba(0, 0, 0, 0)')}, `)).toBe(true);
+    expect(layer.image).toMatch(fade('rgb(22, 24, 27)'));
+    expect(layer.color).toBe('rgba(0, 0, 0, 0)');
+    expect(layer.clip.split(', ').every((c) => c === 'padding-box')).toBe(true);
+    expect(layer.border).toBe('1px solid rgba(0, 0, 0, 0)');
     expect(layer.shadow).toBe('rgba(255, 255, 255, 0.3) 0px 1px 2px 0px inset');
     expect(layer.radius).toBe('29px');
-    expect(layer.backdrop).toBe('none');
-    looks.push(layer);
+    expect(layer.corner, 'v2 drops the squircle').not.toContain('squircle');
+    expect(layer.backdrop).toBe('blur(14px)');
+    // The border reflection: a 1 px conic ring over the whole box, from 45°, hot in the palette's colour.
+    const reflection = await ring(page).evaluate((el) => {
+      const s = getComputedStyle(el);
+      const box = el.getBoundingClientRect();
+      return { image: s.backgroundImage, padding: s.paddingTop, radius: s.borderTopLeftRadius, events: s.pointerEvents, mask: s.maskComposite || s.getPropertyValue('-webkit-mask-composite'), box: [box.x, box.y, box.width, box.height] };
+    });
+    expect(reflection.image.startsWith('conic-gradient(from 45deg')).toBe(true);
+    expect(ringStops(reflection.image)[0]).toEqual([142, 160, 179]);
+    expect(reflection).toMatchObject({ padding: '1px', radius: '29px', events: 'none', box: [12, 18, 232, 858] });
+    expect(reflection.mask).toMatch(/exclude|xor/);
+    looks.push({ layer, reflection });
     const pill = page.getByTestId('sidebar-new-chat');
     await expect(pill).toHaveCSS('background-color', 'rgb(255, 255, 255)');
     await expect(pill).toHaveCSS('color', 'rgb(28, 28, 28)');
@@ -98,12 +119,12 @@ test('the six sidebar palettes and the button colours apply live, persist, and a
   const palettes = look.getByRole('radiogroup', { name: 'Sidebar palette' });
   for (const theme of ['Light', 'Dark']) {
     await page.getByRole('button', { name: theme, exact: true }).click();
-    for (const [name, base, border, ink] of PALETTES) {
+    for (const [name, base, acc, ink] of PALETTES) {
       const radio = palettes.getByRole('radio', { name, exact: true });
       await radio.click();
       await expect(radio).toHaveAttribute('aria-checked', 'true');
-      await expect(solid(page)).toHaveCSS('background-color', base);
-      await expect(solid(page)).toHaveCSS('border-top-color', border);
+      await expect(solid(page)).toHaveCSS('background-image', fade(base));
+      expect(ringStops(await ring(page).evaluate((el) => getComputedStyle(el).backgroundImage))[0]).toEqual(acc);
       await expect(page.locator('[data-testid="app-sidebar"] [aria-current="page"]').first()).toHaveCSS('color', ink);
     }
   }
@@ -130,7 +151,7 @@ test('the six sidebar palettes and the button colours apply live, persist, and a
   await midnight.focus();
   await page.keyboard.press('ArrowRight');
   await expect(palettes.getByRole('radio', { name: 'Forest', exact: true })).toBeFocused();
-  await expect(solid(page)).toHaveCSS('border-top-color', 'rgb(47, 90, 69)');
+  await expect(solid(page)).toHaveCSS('background-image', fade('rgb(18, 38, 29)'));
   await page.addInitScript(() => {
     const w = window as unknown as { firstLook?: string };
     new MutationObserver(() => {

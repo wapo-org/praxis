@@ -1,7 +1,8 @@
-/* The floating sidebar, ported literally from the owner's sidebar-design.html (<aside> + PAL/grad/BP).
-   An opaque skeuomorphic slab: the palette's gloss gradient (twice, as the source paints it), its border, an inset top highlight, a 29 px
-   squircle. Same in light and dark app themes; only the sidebar palette (--sb-*) changes it. Every
-   metric below is the source's; only the width is 232 px (the source's box is 214 px). See DESIGN.md. */
+/* The floating sidebar, ported literally from the owner's design v2 (Chat Screen.dc.html: <aside>, PAL, ACC,
+   grad, ringBg). A skeuomorphic slab whose fill is solid to 45 % and fades to 40 % at the bottom over a 14 px
+   backdrop blur; the border is transparent (the fill is clipped to the padding box) and a 1 px conic ring in the
+   palette's reflection colour sits on it; an inset top highlight; a plain 29 px radius (v2 drops the squircle).
+   Every metric below is the source's; only the width is 232 px (the source's box is 196 px). See DESIGN.md. */
 
 .docked {
   position: fixed;
@@ -24,10 +25,12 @@
 .surface {
   /* GlassSurface lens={false}: one solid layer under the content, the source's background/border/shadow. */
   --glass-radius: var(--sidebar-radius);
-  --glass-corner: squircle; /* the source's corner-shape, not the app's superellipse(1.46) */
-  --glass-solid-bg: var(--sb-gloss), var(--sb-bg); /* the source's background, gloss twice */
-  --glass-solid-border: 1px solid var(--sb-border);
+  --glass-corner: round; /* v2's aside is border-radius: 29px with no corner-shape */
+  --glass-solid-bg: var(--sb-gloss), var(--sb-bg); /* the aside's literal gloss over sbBg */
+  --glass-solid-border: 1px solid transparent;
+  --glass-solid-clip: padding-box;
   --glass-solid-shadow: inset 0 1px 2px rgb(255 255 255 / 30%);
+  --glass-solid-backdrop: blur(var(--sidebar-blur));
   /* Shared parts inside (rename field, menus' triggers) read the app tokens: point them at the palette. */
   --color-ink: var(--sb-ink);
   --color-ink-2: var(--sb-mute);
@@ -43,6 +46,26 @@
   height: 100%;
   overflow: hidden;
   color: var(--sb-ink);
+}
+
+/* v2's border reflection: the ring background, masked to the 1 px border, over the fill and under nothing. */
+.ring {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  padding: 1px;
+  border-radius: var(--sidebar-radius);
+  background: var(--sb-ring);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 /* Inside the 1 px border, with the source's padding: 12px 8px 0. */
@@ -148,6 +171,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  padding-bottom: 12px; /* v2: the last row clears the footer line when scrolled to the end */
   overflow-y: auto;
   overscroll-behavior: contain;
   touch-action: pan-y;
@@ -162,6 +186,7 @@ nav.list {
 .group {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
 /* The source's caption is its own block (33 px), then the rows with a 2 px gap between them only. */

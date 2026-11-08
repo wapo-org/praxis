@@ -27,7 +27,11 @@ try {
   const chatPath = new URL(page.url()).pathname;
   await page.getByTestId('assistant-turn').first().waitFor();
   await page.reload(); await page.getByTestId('chat-top-bar').waitFor();
-  await page.getByTestId('nav-chat-title-pill').getByText('Desktop keyboard check', { exact: true }).waitFor();
+  // Design v2: the chat keeps its random two-word name; the first message no longer titles it.
+  const named = page.getByTestId('nav-chat-title-pill').getByText(/^[A-Z][a-z]+ [A-Z][a-z]+$/).first();
+  await named.waitFor();
+  const chatName = await named.textContent();
+  assert.equal(await page.getByTestId('nav-chat-title-pill').getByText('Desktop keyboard check').count(), 0);
   const chatBounds = await page.getByTestId('composer-dock').boundingBox();
   assert(chatBounds.width <= 720); // 720 px column; the sidebar floats over the full-bleed layer
   const sidebarBounds = await page.getByTestId('app-sidebar').boundingBox();
@@ -63,7 +67,7 @@ try {
   await page.keyboard.press('Escape'); await page.waitForURL(`**${chatPath}`);
   // Selecting a sidebar row must update the chat route.
   await page.getByTestId('sidebar-new-chat').click(); await page.waitForURL(`${base}/`);
-  await page.locator('[data-testid="app-sidebar"] [data-sidebar-row-select]').filter({ hasText: 'Desktop keyboard check' }).click();
+  await page.locator('[data-testid="app-sidebar"] [data-sidebar-row-select]').filter({ hasText: chatName }).click();
   await page.waitForURL(`**${chatPath}`);
   // Server-only results and cursor loading, beyond bootstrap's first model page.
   const template = await page.evaluate(async () => { const { apiClient } = await import('/src/lib/api.ts'); return (await apiClient.bootstrap()).models[0]; });

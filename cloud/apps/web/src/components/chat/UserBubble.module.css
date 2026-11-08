@@ -21,13 +21,15 @@
   margin-bottom: var(--space-2);
 }
 
+/* Design v2: mBubble inside a 1 px mLine, 18 px corners, 8/14 px padding, 13 px type. */
 .bubble {
   max-width: 78%;
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-xl);
+  padding: var(--bubble-pad-y) var(--bubble-pad-x);
+  border: 1px solid var(--color-line);
+  border-radius: var(--bubble-radius);
   background: var(--color-bubble);
   color: var(--color-ink);
-  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
+  font: var(--bubble-font);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

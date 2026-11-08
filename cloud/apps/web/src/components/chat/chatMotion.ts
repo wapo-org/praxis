@@ -25,7 +25,7 @@ const reduced = () =>
 const MAX_ARRIVALS = 3;
 
 export const SEND_FLIGHT_DURATION_MS = 820;
-const BUBBLE_RADIUS = 20;
+const BUBBLE_RADIUS = 18; /* --bubble-radius */
 
 export interface SendBubblePose extends Box {
   radius: number;
@@ -94,8 +94,8 @@ function measureNaturalBubbleBox(text: string, fromBox: Box): Box {
   const probe = document.createElement('div');
   probe.style.cssText =
     'position:fixed;left:-9999px;top:0;visibility:hidden;pointer-events:none;' +
-    'max-width:min(78vw,560px);padding:var(--space-2) var(--space-4);' +
-    'border-radius:var(--radius-xl);font:var(--weight-regular) var(--text-md)/var(--leading-md) var(--font-sans);' +
+    'max-width:min(78vw,560px);padding:var(--bubble-pad-y) var(--bubble-pad-x);border:1px solid transparent;' +
+    'border-radius:var(--bubble-radius);font:var(--bubble-font);' +
     'white-space:pre-wrap;overflow-wrap:anywhere;box-sizing:border-box;';
   probe.textContent = text;
   document.body.appendChild(probe);
@@ -198,12 +198,13 @@ export function launchSendFlight(inputEl: HTMLTextAreaElement | null, text: stri
     `position:fixed;left:0;top:0;z-index:25;pointer-events:none;overflow:hidden;` +
     `width:${toBox.width}px;height:${toBox.height}px;transform-origin:0 0;` +
     `background:color-mix(in srgb, var(--color-bubble) calc(var(--send-fill-opacity, 1) * 100%), transparent);` +
+    `box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--color-line) calc(var(--send-fill-opacity, 1) * 100%), transparent);` +
     `color:var(--color-ink);box-sizing:border-box;will-change:transform;`;
 
   const innerEl = document.createElement('div');
   innerEl.style.cssText =
-    `width:${toBox.width}px;padding:var(--space-2) var(--space-4);transform-origin:0 0;` +
-    `font:var(--weight-regular) var(--text-md)/var(--leading-md) var(--font-sans);` +
+    `width:${toBox.width}px;padding:calc(var(--bubble-pad-y) + 1px) calc(var(--bubble-pad-x) + 1px);transform-origin:0 0;` +
+    `font:var(--bubble-font);` +
     `white-space:pre-wrap;overflow-wrap:anywhere;box-sizing:border-box;will-change:transform;`;
   innerEl.textContent = trimmed;
   shellEl.appendChild(innerEl);

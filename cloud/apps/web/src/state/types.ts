@@ -112,6 +112,8 @@ export interface PraxisStoreContextValue {
   setActiveSheet: (sheet: ActiveSheet) => void;
   restoreRoute: (chatId: string | null, sheet: ActiveSheet, providerId?: string | null) => void;
   startNewConversation: () => void;
+  /** The random two-word name the next new chat gets (design v2). */
+  draftTitle: string;
   editingProviderId: string | null;
   setEditingProviderId: (id: string | null) => void;
   desktopSidebarOpen: boolean;

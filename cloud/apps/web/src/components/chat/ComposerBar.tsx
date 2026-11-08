@@ -58,7 +58,7 @@ export function ComposerBar({
         {...pressProps}
       >
         <motion.span className={styles.plusIcon} initial={false} animate={{ rotate: plusTrayOpen ? 45 : 0 }} transition={SNAP}>
-          <Plus size={20} />
+          <Plus size={16} />
         </motion.span>
       </motion.button>
 
@@ -109,7 +109,7 @@ export function ComposerBar({
               onClick={onToggleVoice}
               {...pressProps}
             >
-              <Mic size={18} />
+              <Mic size={16} />
             </motion.button>
             <motion.button
               type="button"
@@ -123,7 +123,7 @@ export function ComposerBar({
               onClick={onSend}
               {...pressProps}
             >
-              <ArrowUp size={20} />
+              <ArrowUp size={18} />
             </motion.button>
           </>
         )}

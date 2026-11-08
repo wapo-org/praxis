@@ -24,7 +24,7 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--color-ink-3);
+  color: var(--color-icon); /* design v2's mIcon */
   cursor: pointer;
 }
 

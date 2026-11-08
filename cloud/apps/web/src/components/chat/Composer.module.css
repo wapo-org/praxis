@@ -9,11 +9,21 @@
   pointer-events: auto;
 }
 
-.pill {
+/* Design v2's composer pill: mPill (the glass's tint) in a 1 px mLine, 6 px padding. */
+.pill.pill {
+  --glass-tint: var(--color-pill);
+  --glass-corner: round;
+  /* v2 draws these pills flat: our glass keeps its lens, blur and stretch, but none of its own light. */
+  --glass-sheen-a: 0;
+  --glass-rim: 0;
+  --glass-inner: 0;
+  --glass-border: 0;
+  --glass-shadow: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-2);
+  padding: 6px;
+  border: 1px solid var(--color-line);
 }
 
 .alert {

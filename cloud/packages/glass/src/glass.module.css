@@ -82,8 +82,12 @@
 .solid {
   box-sizing: border-box;
   background: var(--glass-solid-bg, var(--glass-fallback));
+  background-clip: var(--glass-solid-clip, border-box);
   border: var(--glass-solid-border, 0 solid transparent);
   box-shadow: var(--glass-solid-shadow, none);
+  /* A solid fill that turns translucent (the sidebar's bottom) blurs what is behind it. */
+  -webkit-backdrop-filter: var(--glass-solid-backdrop, none);
+  backdrop-filter: var(--glass-solid-backdrop, none);
 }
 
 /* Chromium before its maps have decoded, and any engine that loses the filter. */
