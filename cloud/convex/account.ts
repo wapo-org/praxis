@@ -44,6 +44,7 @@ export const purge = mutation({
       'toolState',
       'toolSkillFiles',
       'files',
+      'embeddings',
     ] as const;
     const indexes = {
       records: 'owner_kind_id',
@@ -52,6 +53,7 @@ export const purge = mutation({
       toolState: 'owner_kind_id',
       toolSkillFiles: 'owner_skill',
       files: 'owner_status',
+      embeddings: 'owner',
     } as const;
     for (const table of tables) {
       const rows = await (ctx.db.query(table) as any)

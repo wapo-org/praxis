@@ -8,6 +8,8 @@ import {createRateLimiter, createUpstashAdapters} from './adapters/upstash.js';
 import {createConvexToolsStorage} from './features/tools/convex-storage.js';
 import {featureModules} from './modules.js';
 import {createPraxisApp, jsonLog} from './server.js';
+import {productionEmbedder} from './embedding.js';
+import {convexVectorIndex} from './search-index.js';
 
 /** Every variable production needs. Missing or malformed values stop startup with one message listing them all. */
 export const PRODUCTION_ENV = [
@@ -80,6 +82,8 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
   const accountRPC=createConvexRPC({url:env.CONVEX_URL,serverToken:env.PRAXIS_CONVEX_SERVER_TOKEN});
   const auth = createAuth(rawEnv, upstash.kv,{isActive:upstash.ownership.isActive,activate:userId=>upstash.ownership.activate(userId,async()=>!!await accountRPC.query('account:active',{userId}))});
   const egress = createSafeFetch();
+  // Semantic search: off unless an embedder is configured (PRAXIS_EMBEDDER / PRAXIS_OPENAI_EMBEDDINGS_KEY).
+  const embedder = productionEmbedder(rawEnv);
   const callbackUrl = `${origin}${CONTINUATION_PATH}`;
   return createPraxisApp({
     adapters: {store, kv: upstash.kv, events: upstash.events},
@@ -97,6 +101,7 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
     continuation: {path: CONTINUATION_PATH, verify: createQStashVerifier({currentSigningKey: env.QSTASH_CURRENT_SIGNING_KEY, nextSigningKey: env.QSTASH_NEXT_SIGNING_KEY, callbackUrl})},
     ...(env.PRAXIS_RUN_BUDGET_MS ? {budgetMs: Number(env.PRAXIS_RUN_BUDGET_MS)} : {}),
     ...(hooks.defer ? {defer: hooks.defer} : {}),
+    ...(embedder ? {search: {embedder, vectors: convexVectorIndex(accountRPC)}} : {}),
     log: jsonLog,
     modules: service => featureModules(service, {
       storage,

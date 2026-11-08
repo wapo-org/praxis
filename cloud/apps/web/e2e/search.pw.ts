@@ -70,3 +70,40 @@ test('debounces, ignores stale network results, emphasizes Unicode, and clears r
   await input.fill('');
   await expect(palette.getByRole('option')).toHaveCount(0);
 });
+test('the last option keeps the panel inset below it, at rest and scrolled to the end', async ({ page }) => {
+  await page.route('**/v1/search?**', route => route.fulfill({ json: { type: 'page', nextCursor: null,
+    items: Array.from({ length: 24 }, (_, i) => ({ chat: { id: `pad-${i}`, title: `Padding ${i}` }, snippet: `Context ${i}` })) } }));
+  for (const query of ['Padding', 'Padding 1']) {
+    await page.keyboard.press('Control+k');
+    const palette = page.getByTestId('search-palette');
+    await palette.getByRole('combobox').fill(query);
+    const last = palette.getByRole('option').last();
+    await expect(last).toBeVisible();
+    await page.waitForTimeout(500); // the reveal spring
+    const listbox = palette.getByRole('listbox');
+    await listbox.evaluate(el => { el.scrollTop = el.scrollHeight; });
+    const gap = await listbox.evaluate(el => {
+      const surface = el.closest('.praxis-glass-surface')!.getBoundingClientRect();
+      const options = el.querySelectorAll('[role="option"]');
+      return surface.bottom - options[options.length - 1]!.getBoundingClientRect().bottom;
+    });
+    // 8 px: the same inset the bar has from the panel's top (one row's worth less would sit on the edge).
+    expect(gap).toBeGreaterThanOrEqual(7.5);
+    expect(gap).toBeLessThanOrEqual(9.5);
+    await page.keyboard.press('Escape');
+    await expect(palette).toHaveCount(0);
+  }
+});
+test('search is semantic: chats are found by meaning through the local API', async ({ page }) => {
+  for (const [title, text] of [['Trip packing list', 'Packing list for 3 days in Lisbon'], ['Regex help', 'Match a date like 2026-11-07']] as const) {
+    const chat = await (await page.request.post('/v1/chats', { data: { type: 'chat.input', title } })).json();
+    await page.request.post('/v1/runs', { data: { type: 'run.start', chatId: chat.id, text } });
+  }
+  await page.keyboard.press('Control+k');
+  const palette = page.getByTestId('search-palette');
+  const input = palette.getByRole('combobox');
+  for (const [query, title] of [['how to pack for a trip', 'Trip packing list'], ['date regex', 'Regex help']] as const) {
+    await input.fill(query);
+    await expect(palette.getByRole('option').first()).toContainText(title, { timeout: 10000 });
+  }
+});

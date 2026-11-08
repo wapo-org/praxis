@@ -4,6 +4,7 @@ import type { AdapterBundle } from './contracts.js';
 import type {ApiProviders} from './providers.js';
 import {foldSnapshot,initialSnapshot} from './snapshot.js';
 import {attachmentParts,makeTitle,wantsTitle,type AttachmentRow} from './attachments.js';
+import type {SearchIndexer} from './search-index.js';
 const attachmentRow=(id:string,v:JsonObject):AttachmentRow=>({id,name:String(v.name??'file'),mediaType:String(v.mediaType??'application/octet-stream'),size:Number(v.size??0),hiddenFromCode:v.hiddenFromCode===true});
 export class ApiError extends Error{constructor(public status:number,public code:string,message:string){super(message);}}
 export type RunDecision={type:'approval.decision';approvalId:string;decision:'allowOnce'|'allowAlways'|'deny'}|{type:'elicitation.response';elicitationId:string;action:'accept'|'decline'|'cancel';content?:JsonObject};
@@ -26,12 +27,16 @@ export class ApiService{
  now(){return new Date().toISOString();}
  async require<T>(userId:string,kind:string,id:string):Promise<T>{const r=await this.adapters.store.get(userId,kind,id);if(!r||r.deleted)throw new ApiError(404,'not_found',`${kind} not found`);return r.value as T;}
  async list<T>(userId:string,kind:string,parentId?:string):Promise<T[]>{return (await this.adapters.store.list(userId,kind,parentId===undefined?undefined:{parentId})).filter(x=>!x.deleted).map(r=>r.value as T);}
- async put(userId:string,kind:string,id:string,value:unknown){const json=JSON.parse(JSON.stringify(value)) as JsonObject;const parentId=kind!=='chat'&&typeof json.chatId==='string'?json.chatId:undefined;await this.adapters.store.put(userId,kind,id,json,parentId===undefined?undefined:{parentId});await this.adapters.kv.del(`bootstrap:${userId}`);}
+ async put(userId:string,kind:string,id:string,value:unknown){const json=JSON.parse(JSON.stringify(value)) as JsonObject;const parentId=kind!=='chat'&&typeof json.chatId==='string'?json.chatId:undefined;await this.adapters.store.put(userId,kind,id,json,parentId===undefined?undefined:{parentId});await this.adapters.kv.del(`bootstrap:${userId}`);this.indexed(userId,kind,id,parentId);}
+ /** Semantic search index (search-index.ts); absent = lexical search only. */
+ search?:SearchIndexer;
+ /** A chat or message changed: its chat is reindexed once the writes settle. */
+ private indexed(userId:string,kind:string,id:string,parentId?:string){if(!this.search)return;if(kind==='chat')this.search.touch(userId,id);else if(kind==='message'&&parentId)this.search.touch(userId,parentId);}
  async changed(userId:string,entity:string,id:string,operation:'upsert'|'delete',value?:unknown){
   await this.adapters.events.append(userId,'user',{type:'user.change',createdAt:this.now(),entity,entityId:id,operation,...(value===undefined?{}:{value:JSON.parse(JSON.stringify(value))})});
  }
  async write(userId:string,kind:string,id:string,value:unknown,entity=kind){await this.put(userId,kind,id,value);await this.changed(userId,entity,id,'upsert',value);}
- async remove(userId:string,kind:string,id:string){await this.require(userId,kind,id);await this.adapters.store.delete(userId,kind,id);await this.adapters.kv.del(`bootstrap:${userId}`);await this.changed(userId,kind,id,'delete');}
+ async remove(userId:string,kind:string,id:string){const prior=await this.require<{chatId?:unknown}>(userId,kind,id);await this.adapters.store.delete(userId,kind,id);await this.adapters.kv.del(`bootstrap:${userId}`);await this.changed(userId,kind,id,'delete');this.indexed(userId,kind,id,typeof prior.chatId==='string'?prior.chatId:undefined);}
  async exclusive<T>(key:string,fn:()=>Promise<T>):Promise<T>{const prior=this.locks.get(key)??Promise.resolve();const next=prior.catch(()=>{}).then(fn);this.locks.set(key,next);try{return await next;}finally{if(this.locks.get(key)===next)this.locks.delete(key);}}
  async seed(userId:string){
   if(!this.local)return;
