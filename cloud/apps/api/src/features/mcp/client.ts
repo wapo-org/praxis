@@ -20,6 +20,7 @@ export async function withClient<T>(ctx: FeatureContext, value: Connector, optio
   // Auth discovery/registration is explicit. Never open a browser or register clients during an agent call.
   const network = guardedFetch(ctx, options, new URL(value.url).origin, headers);
   const endpoint=new URL(value.url);
+  if(value.id==='builtin-exa'&&token)endpoint.searchParams.set('tools','web_search_exa,web_fetch_exa,web_search_advanced_exa,agent_run');
   if(value.id==='builtin-browserbase'&&token)endpoint.searchParams.set('browserbaseApiKey',token);
   const transport = value.transport === 'sse'
     ? new SSEClientTransport(endpoint, { fetch: network })

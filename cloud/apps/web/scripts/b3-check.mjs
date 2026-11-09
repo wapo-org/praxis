@@ -86,6 +86,10 @@ try {
   assert.equal(await page.getByTestId('tray-model-picker-trigger').getAttribute('aria-expanded'), 'false', 'Esc leaves the list and keeps the tray open');
   await page.keyboard.press('Escape'); await page.getByTestId('plus-tray').waitFor({ state: 'detached' });
   await page.getByTestId('sidebar-new-chat').click();
+  await page.getByTestId('composer-plus-button').click();
+  await page.getByTestId('tray-mode-auto').click();
+  await page.keyboard.press('Escape');
+  await page.getByTestId('plus-tray').waitFor({state:'detached'});
   await page.getByTestId('starter-chip-2').click();
   await page.getByRole('button', { name: 'Allow Once', exact: true }).waitFor();
   assert.equal(await page.getByTestId('assistant-turn').count(), 0, 'Pending run must have a single live activity disclosure');
