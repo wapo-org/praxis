@@ -69,6 +69,15 @@ export async function discoverTools(
   return (await discoverCatalog(ctx, value, options)).tools;
 }
 
+/** Disabled built-ins retain their discovered catalog; starter schemas are only for unconfigured accounts. */
+export async function settingsTools(ctx:FeatureContext,value:Connector,options:McpOptions={}):Promise<Tool[]> {
+  const starter=builtinCatalog(value);
+  if(!starter||value.enabled)return discoverTools(ctx,value,options);
+  const cached=await ctx.kv.get<{url:string;transport:string;tools:Tool[]}>(catalogKey(ctx,value.id));
+  if(cached?.url===value.url&&cached.transport===value.transport)return cached.tools;
+  return value.authStatus==='connected'?discoverTools(ctx,value,options):starter;
+}
+
 /** Tools plus whether the server offers resources (from its initialize capabilities); cached briefly per connector. */
 export async function discoverCatalog(
   ctx: FeatureContext,

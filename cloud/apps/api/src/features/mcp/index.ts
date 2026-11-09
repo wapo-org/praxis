@@ -5,7 +5,7 @@ import type { Context } from 'hono';
 import { z } from 'zod';
 import { ConnectorInputSchema, ConnectorPatchSchema, ConnectorSchema, ConsentSchema, JsonObjectSchema, MCPPromptSchema, MCPResourceSchema } from '@praxis/protocol';
 import type { FeatureContext } from '../../contracts.js';
-import { catalogKey, discoverTools, toolSpec } from './tools.js';
+import { catalogKey, discoverTools, settingsTools, toolSpec } from './tools.js';
 import { withClient } from './client.js';
 import { clientMetadata, finishOAuth, startOAuth } from './oauth.js';
 import { connector, HeadersSchema, McpError, now, opaqueId, page, remoteUrl, grantConsent, requireConsent, saveConnector, secretKind, writeSecret, type McpOptions } from './shared.js';
@@ -100,12 +100,12 @@ export function createMcpRoutes(context: (req: Request) => Promise<FeatureContex
     await ctx.store.delete(ctx.userId, 'connector', id); await ctx.kv.del(`bootstrap:${ctx.userId}`); await ctx.store.delete(ctx.userId, secretKind, id); await ctx.kv.del(catalogKey(ctx, id)); return c.json({ type: 'ok' });
   });
   app.get('/connectors/:id/tools', async c => {
-    const ctx = await authenticated(c.req.raw); const value = await connector(ctx, c.req.param('id')); const tools = builtinCatalog(value) && !value.enabled ? builtinCatalog(value)! : await discoverTools(ctx, value, options);
+    const ctx = await authenticated(c.req.raw); const value = await connector(ctx, c.req.param('id')); const tools = await settingsTools(ctx,value,options);
     return c.json(page(tools.map(tool => ({ type: 'tool.spec', ...toolSpec(value, tool), originalName:tool.name })), c.req.query(), JSON.stringify([ctx.userId, value.id, 'tools'])));
   });
   app.patch('/connectors/:id/tools/:name', async c => {
     const ctx = await authenticated(c.req.raw); const value = await connector(ctx, c.req.param('id')); const { enabled } = await body(c, z.object({ type: z.literal('connector.tool'), enabled: z.boolean() }).strict());
-    const tools = builtinCatalog(value) && !value.enabled ? builtinCatalog(value)! : await discoverTools(ctx, value, options); const name = z.string().min(1).max(500).parse(c.req.param('name'));
+    const tools = await settingsTools(ctx,value,options); const name = z.string().min(1).max(500).parse(c.req.param('name'));
     const tool = tools.find(tool => tool.name === name || toolSpec(value, tool).name === name);
     if (!tool) throw new McpError(404, 'not_found', 'MCP tool not found');
     return c.json(await saveConnector(ctx, { ...value, disabledTools: enabled ? value.disabledTools.filter(n => n !== tool.name) : [...new Set([...value.disabledTools, tool.name])] }));

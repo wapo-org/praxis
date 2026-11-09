@@ -53,3 +53,9 @@ it('reports E2B as needing credentials until a key is configured',async()=>{
  const value=ConnectorSchema.parse((await ctx.store.get('u','connector','builtin-e2b'))!.value);
  expect(await probeConnector(ctx,{...value,enabled:true})).toMatchObject({status:'needs_auth'});
 });
+it('keeps discovered optional tools available in Settings after disabling a builtin',async()=>{
+ const {settingsTools}=await import('./tools.js');const ctx:FeatureContext={...createLocalAdapters(),userId:'u',local:true,fetch,egress:fetch};await ensureBuiltins(ctx.store,'u');
+ const value=ConnectorSchema.parse((await ctx.store.get('u','connector','builtin-firecrawl'))!.value);
+ await ctx.kv.set(catalogKey(ctx,value.id),{url:value.url,transport:value.transport,tools:[{name:'firecrawl_monitor_create',inputSchema:{type:'object'}}]});
+ expect((await settingsTools(ctx,value)).map(t=>t.name)).toContain('firecrawl_monitor_create');
+});
