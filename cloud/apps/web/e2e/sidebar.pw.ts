@@ -215,7 +215,7 @@ test('argument-free approvals have no empty box and questions use a human label'
   page,
 }) => {
   const chat = await (
-    await page.request.post('/v1/chats', { data: { type: 'chat.input', title: 'Card labels' } })
+    await page.request.post('/v1/chats', { data: { type: 'chat.input', mode:'auto', title: 'Card labels' } })
   ).json();
   await page.goto('/c/' + chat.id);
   await page.request.post('/v1/runs', {

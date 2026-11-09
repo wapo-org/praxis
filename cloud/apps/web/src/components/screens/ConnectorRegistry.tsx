@@ -1,3 +1,4 @@
+import {connectorIssue} from './connectorCopy';
 import type { Connector } from '@praxis/protocol';
 import React from 'react';
 import { apiClient } from '../../lib/api';
@@ -94,12 +95,12 @@ export function ConnectorRegistry() {
             ? ({
                 connected: 'Connected',
                 unreachable: 'Unreachable',
-                needs_auth: 'Needs auth',
-                needs_reauth: 'Needs reauth',
+                needs_auth: 'Sign in to connect',
+                needs_reauth: 'Sign in again',
                 error: 'Error',
-              }[added.status] ?? added.status)
+              }[added.status] ?? 'Status unknown')
             : 'Status unknown'}
-          {added.error ? ` · ${added.error}` : ''}
+          {added.error ? ` · ${connectorIssue(added.error)}` : ''}
         </p>
       ) : null}
       <Section title="MCP registry">
