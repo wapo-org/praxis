@@ -107,3 +107,76 @@ test('search is semantic: chats are found by meaning through the local API', asy
     await expect(palette.getByRole('option').first()).toContainText(title, { timeout: 10000 });
   }
 });
+test('with no input the panel is just the bar: no extra inset below it (WP-I1)', async ({ page }) => {
+  await page.keyboard.press('Control+k');
+  const palette = page.getByTestId('search-palette');
+  const input = palette.getByRole('combobox');
+  await expect(input).toBeFocused();
+  await page.waitForTimeout(400);
+  const measure = () => palette.evaluate((el) => {
+    const surface = el.querySelector('.praxis-glass-surface')!.getBoundingClientRect();
+    const field = el.querySelector('input')!.getBoundingClientRect();
+    return { top: field.top - surface.top, bottom: surface.bottom - field.bottom };
+  });
+  const empty = await measure();
+  // The field sits in the middle of the bar: the same inset above and below it.
+  expect(Math.abs(empty.top - empty.bottom)).toBeLessThanOrEqual(0.5);
+  // And after typing and clearing, it returns to exactly that.
+  await input.fill('Change model');
+  await expect(palette.getByRole('option').first()).toBeVisible();
+  await input.fill('');
+  await page.waitForTimeout(500);
+  const cleared = await measure();
+  expect(Math.abs(cleared.bottom - empty.bottom)).toBeLessThanOrEqual(0.5);
+});
+test('choosing a chat closes the panel at once, even while its messages are still loading (WP-I1)', async ({ page }) => {
+  await page.route('**/v1/search?**', (route) => route.fulfill({ json: { type: 'page', nextCursor: null,
+    items: [{ chat: { id: 'welcome', title: 'Welcome to Praxis Cloud' }, snippet: 'Welcome' }] } }));
+  let release!: () => void;
+  const slow = new Promise<void>((r) => { release = r; });
+  await page.route('**/v1/chats/welcome/messages**', async (route) => { await slow; await route.continue(); });
+  await page.keyboard.press('Control+k');
+  const palette = page.getByTestId('search-palette');
+  await palette.getByRole('combobox').fill('Welcome');
+  const option = palette.getByRole('option', { name: /Welcome to Praxis Cloud/ });
+  await option.waitFor();
+  const closedIn = await option.evaluate(async (el: HTMLElement) => {
+    const start = performance.now();
+    el.click();
+    return new Promise<number>((resolve) => {
+      const check = () => {
+        const p = document.querySelector('[data-testid="search-palette"]');
+        if (!p || p.getAttribute('data-state') === 'closing') resolve(performance.now() - start);
+        else requestAnimationFrame(check);
+      };
+      check();
+    });
+  });
+  expect(closedIn).toBeLessThan(50); // closing starts on the click, not after the fetch
+  await expect(palette).toHaveCount(0, { timeout: 1000 }); // and is gone with the usual close
+  await expect(page).toHaveURL(/\/c\/welcome$/);
+  release();
+});
+test('the panel has the dropdowns\' material and subtle rim, light and dark (WP-I1)', async ({ page }) => {
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
+    await page.keyboard.press('Control+k');
+    const palette = page.getByTestId('search-palette');
+    const rim = palette.locator('[data-search-rim]');
+    const look = await rim.evaluate((el) => {
+      const probe = document.createElement('span');
+      probe.style.boxShadow = 'inset 0 0 0 1px var(--glass-morph-rim), inset 0 0 0 2px var(--glass-morph-rim-light)';
+      document.body.append(probe);
+      const expected = getComputedStyle(probe).boxShadow;
+      probe.remove();
+      const surface = el.closest<HTMLElement>('.praxis-glass-surface')!;
+      return { shadow: getComputedStyle(el).boxShadow, expected, radius: getComputedStyle(el).borderTopLeftRadius, surfaceRadius: getComputedStyle(surface).borderTopLeftRadius,
+        tint: getComputedStyle(surface).getPropertyValue('--glass-tint').trim(), menuTint: getComputedStyle(document.documentElement).getPropertyValue('--glass-menu-tint').trim() };
+    });
+    expect(look.shadow).toBe(look.expected);
+    expect(look.radius).toBe(look.surfaceRadius);
+    expect(look.tint).toBe(look.menuTint);
+    await page.keyboard.press('Escape');
+    await expect(palette).toHaveCount(0);
+  }
+});

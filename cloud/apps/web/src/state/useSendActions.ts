@@ -1,5 +1,6 @@
 import type { Message } from '@praxis/protocol';
 import React from 'react';
+import { toWireMode } from '../lib/modes';
 import { apiClient } from '../lib/api';
 import { nameTaken, uniqueChatName } from '../lib/chatNames';
 
@@ -110,7 +111,7 @@ export function useSendActions(
           text,
           providerId: selectedProviderId,
           modelId: selectedModelId,
-          mode: selectedMode,
+          mode: toWireMode(selectedMode),
           effort: selectedEffort,
           webSearch:
             webSearch &&

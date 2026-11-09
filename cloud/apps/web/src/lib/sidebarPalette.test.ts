@@ -1,19 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import {
-  BUTTON_COLORS,
-  SIDEBAR_PALETTES,
-  applySidebarLook,
-  buttonVars,
-  luminance,
-  paletteVars,
-  readButton,
-  readPalette,
-  setButtonColor,
-  setSidebarPalette,
-  syncSidebarLook,
-} from './sidebarPalette';
+import { SIDEBAR_PALETTES, applySidebarLook, paletteVars, readPalette, setSidebarPalette, syncSidebarLook } from './sidebarPalette';
 
 const hex = (value: string) => value.slice(1).match(/../g)!.map((v) => parseInt(v, 16));
 const rgba = (value: string) => {
@@ -45,7 +33,6 @@ const snapshot = () => {
   const root = document.documentElement;
   return {
     palette: root.dataset.sidebarPalette,
-    button: root.dataset.buttonColor,
     vars: Object.fromEntries(VARS.map((name) => [name, root.style.getPropertyValue(name)])),
   };
 };
@@ -64,10 +51,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
   document.documentElement.removeAttribute('style');
   delete document.documentElement.dataset.sidebarPalette;
-  delete document.documentElement.dataset.buttonColor;
 });
 
-it('ports PAL, BP and grad() from the owner source exactly', () => {
+it('ports PAL and grad() from the owner source exactly', () => {
   expect(SIDEBAR_PALETTES.map((p) => [p.name, p.base, p.border, p.dark])).toEqual([
     ['Graphite', '#16181b', '#3d4147', true],
     ['Midnight', '#101c33', '#2f4570', true],
@@ -75,15 +61,6 @@ it('ports PAL, BP and grad() from the owner source exactly', () => {
     ['Plum', '#261530', '#5a3a6b', true],
     ['Sand', '#e9e4d8', '#cfc8b6', false],
     ['Paper', '#fbfbf9', '#d9d9e0', false],
-  ]);
-  expect(BUTTON_COLORS.map((c) => [c.name, c.color])).toEqual([
-    ['White', '#ffffff'],
-    ['Cyan', '#79e0f8'],
-    ['Navy', '#1d4056'],
-    ['Gray', '#8d8d99'],
-    ['Graphite', '#2b2e33'],
-    ['Coral', '#f4846b'],
-    ['Lime', '#b6e36b'],
   ]);
   // The owner's v2 file, where present (it is outside the repo): grad() and ringBg must be the same strings.
   let source = '';
@@ -109,15 +86,6 @@ it('ports PAL, BP and grad() from the owner source exactly', () => {
   );
 });
 
-it('derives button ink from the source inks and its border from color-mix', () => {
-  expect(buttonVars('#79e0f8')).toEqual({ '--nb-fill': '#79e0f8', '--nb-ink': '#10242d', '--nb-border': 'color-mix(in srgb,#79e0f8,#000 18%)' });
-  expect(buttonVars('#1d4056')['--nb-ink']).toBe('#ffffff');
-  expect(buttonVars('#ffffff')).toEqual({ '--nb-fill': '#ffffff', '--nb-ink': '#1c1c1c', '--nb-border': 'transparent' });
-  // The source's 0.35 switch everywhere except Gray, where its white ink is not AA.
-  for (const { name, color } of BUTTON_COLORS.slice(1))
-    expect(buttonVars(color)['--nb-ink']).toBe(name === 'Gray' || luminance(color) > 0.35 ? '#10242d' : '#ffffff');
-});
-
 it('keeps sidebar text AA where v2 keeps it readable, and pins the fade where it does not', () => {
   // The aside's literal gloss: white stops 20/12/6/2 % at 0/2/5/9 %, clear at 14 %, then black to 12 %.
   // sbBg = grad(base): the same white sheen (no black), over the base, solid to 45 % and 40 % at the bottom.
@@ -131,8 +99,12 @@ it('keeps sidebar text AA where v2 keeps it readable, and pins the fade where it
   };
   const black = (y: number) => (y < 0.14 ? 0 : (0.12 * (y - 0.14)) / 0.86);
   const alpha = (y: number) => (y <= 0.45 ? 1 : 1 - (0.6 * (y - 0.45)) / 0.55);
-  // What shows through the bottom: the main area's mBg, its lightest and darkest stops in each theme.
-  const backdrops = { light: [hex('#f4f3ef'), hex('#f9f8f5')], dark: [hex('#151517'), hex('#26262a')] };
+  // What shows through the bottom: the main area's paper (tokens.css --paper-gradient), plain and under its
+  // strongest tint, in each theme.
+  const backdrops = {
+    light: [hex('#fbfbf9'), over([214, 196, 164], 0.22, hex('#fbfbf9'))],
+    dark: [hex('#0b0b0a'), over([120, 104, 78], 0.16, hex('#0b0b0a'))],
+  };
   for (const p of SIDEBAR_PALETTES) {
     const vars = paletteVars(p.id);
     const hl = rgba(vars['--sb-hl']);
@@ -147,44 +119,47 @@ it('keeps sidebar text AA where v2 keeps it readable, and pins the fade where it
           bg = over([255, 255, 255], white(y), bg);
           bg = over([0, 0, 0], black(y), over([255, 255, 255], white(y), bg));
           const at = `${p.name} in the ${theme} app at ${y.toFixed(2)}`;
-          const [ink, mute] = same || y <= 0.6 ? [4.5, 4.5] : [2.4, 1.5];
+          // The pins were set over v2's mBg; the main area is back on its own paper (WP-I1), whose dark is deeper.
+          const [ink, mute] = same || y <= 0.6 ? [4.5, 4.5] : [2.2, 1.4];
           for (const surface of [bg, over(hl.rgb, hl.a, bg), over([255, 255, 255], 0.12, bg)])
             expect(contrast(hex(vars['--sb-ink']), surface), `ink, ${at}`).toBeGreaterThanOrEqual(ink);
           expect(contrast(hex(vars['--sb-mute']), bg), `mute, ${at}`).toBeGreaterThanOrEqual(mute);
         }
       }
   }
-  for (const { color } of BUTTON_COLORS) {
-    const vars = buttonVars(color);
-    expect(contrast(hex(vars['--nb-ink']), hex(color)), color).toBeGreaterThanOrEqual(4.5);
+});
+
+it('persists the palette and the pre-paint bootstrap applies exactly what the module applies', () => {
+  for (const p of SIDEBAR_PALETTES) {
+    applySidebarLook(p.id);
+    const expected = snapshot();
+    document.documentElement.removeAttribute('style');
+    localStorage.setItem('praxis-sidebar-palette', p.id);
+    runBootstrap();
+    expect(snapshot()).toEqual(expected);
   }
-});
-
-it('persists both settings and the pre-paint bootstrap applies exactly what the module applies', () => {
-  for (const p of SIDEBAR_PALETTES)
-    for (const color of ['#ffffff', '#f4846b', '#123abc']) {
-      applySidebarLook(p.id, color);
-      const expected = snapshot();
-      document.documentElement.removeAttribute('style');
-      localStorage.setItem('praxis-sidebar-palette', p.id);
-      localStorage.setItem('praxis-button-color', color);
-      runBootstrap();
-      expect(snapshot()).toEqual(expected);
-    }
   setSidebarPalette('forest');
-  setButtonColor('#B6E36B');
   expect(readPalette()).toBe('forest');
-  expect(readButton()).toBe('#b6e36b');
   expect(localStorage.getItem('praxis-sidebar-palette')).toBe('forest');
-  expect(localStorage.getItem('praxis-button-color')).toBe('#b6e36b');
 });
 
-it('falls back to Graphite and White for missing or invalid saved values', () => {
+it('never applies a button colour: the New chat pill stays the stylesheet white, old saved values are ignored and cleared', () => {
+  localStorage.setItem('praxis-button-color', '#f4846b');
+  runBootstrap();
+  applySidebarLook('plum');
+  for (const name of ['--nb-fill', '--nb-ink', '--nb-border']) expect(snapshot().vars[name]).toBe('');
+  expect(document.documentElement.dataset.buttonColor).toBeUndefined();
+  syncSidebarLook();
+  expect(localStorage.getItem('praxis-button-color')).toBeNull();
+  const css = readFileSync('apps/web/src/styles/tokens.css', 'utf8');
+  expect(css).toContain('--nb-fill: #ffffff;');
+  expect(css).toContain('--nb-ink: #1c1c1c;');
+});
+
+it('falls back to Graphite for a missing or invalid saved palette', () => {
   localStorage.setItem('praxis-sidebar-palette', 'neon');
-  localStorage.setItem('praxis-button-color', 'red');
   runBootstrap();
   expect(snapshot().palette).toBe('graphite');
-  expect(snapshot().button).toBe('#ffffff');
   expect(snapshot().vars['--sb-base']).toBe('#16181b');
 });
 
@@ -200,8 +175,11 @@ it('still applies the current session choice when persistence is blocked', () =>
 it('applies a look saved in another tab even when no Settings control is mounted', () => {
   syncSidebarLook();
   localStorage.setItem('praxis-sidebar-palette', 'plum');
+  window.dispatchEvent(new StorageEvent('storage', { key: 'praxis-sidebar-palette' }));
+  expect(readPalette()).toBe('plum');
+  expect(document.documentElement.style.getPropertyValue('--sb-base')).toBe('#261530');
+  // The removed button colour's key changes nothing.
   localStorage.setItem('praxis-button-color', '#f4846b');
   window.dispatchEvent(new StorageEvent('storage', { key: 'praxis-button-color' }));
-  expect(readPalette()).toBe('plum');
-  expect(document.documentElement.style.getPropertyValue('--nb-fill')).toBe('#f4846b');
+  expect(document.documentElement.style.getPropertyValue('--nb-fill')).toBe('');
 });

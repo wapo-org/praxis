@@ -45,35 +45,7 @@
     0 0 0 4px var(--color-ink);
 }
 
-.swatch:focus-visible,
-.custom:focus-within {
+.swatch:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
-}
-
-.custom {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 4px;
-  color: var(--color-ink-2);
-  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
-  cursor: pointer;
-  border-radius: 8px;
-}
-
-.custom input {
-  width: 32px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--color-hairline-strong);
-  border-radius: 8px;
-  background: none;
-  cursor: pointer;
-}
-
-.custom[data-selected='true'] input {
-  box-shadow:
-    0 0 0 2px var(--color-paper),
-    0 0 0 4px var(--color-ink);
 }

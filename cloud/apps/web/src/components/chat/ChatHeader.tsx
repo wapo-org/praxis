@@ -23,16 +23,16 @@ export function ChatHeader() {
       <div className={styles.side}>
         <AnimatePresence initial={false}>
           {narrow ? (
-            <Cluster key="history" solo {...pop}>
+            <Cluster key="history" {...pop}>
               {/* History is the floating sidebar panel on narrow screens. */}
               <BarButton label="History" testId="nav-history-button" onClick={() => store.setDesktopSidebarOpen(true)}>
-                <History size={16} />
+                <History size={18} />
               </BarButton>
             </Cluster>
           ) : !store.desktopSidebarOpen ? (
-            <Cluster key="sidebar" solo {...pop}>
+            <Cluster key="sidebar" {...pop}>
               <BarButton label="Open sidebar" testId="nav-sidebar-button" onClick={() => store.setDesktopSidebarOpen(true)}>
-                <PanelLeft size={16} />
+                <PanelLeft size={18} />
               </BarButton>
             </Cluster>
           ) : null}
@@ -40,7 +40,7 @@ export function ChatHeader() {
       </div>
 
       <motion.div className={styles.center} initial={false} animate={{ x: shift }} transition={PANEL}>
-        <GlassSurface material="regular" className={styles.titlePill}>
+        <GlassSurface material="regular" shape="capsule" className={styles.titlePill}>
           <motion.button
             type="button"
             className={styles.title}
@@ -59,16 +59,16 @@ export function ChatHeader() {
         {narrow ? (
           <Cluster>
             <BarButton label="New chat" testId="nav-new-chat-button" onClick={() => store.startNewConversation()}>
-              <Edit size={16} />
+              <Edit size={18} />
             </BarButton>
           </Cluster>
         ) : (
           <Cluster>
             <BarButton label="New chat" testId="nav-new-chat-desktop" onClick={() => store.startNewConversation()}>
-              <Edit size={16} />
+              <Edit size={18} />
             </BarButton>
             <BarButton label="Settings" testId="nav-settings-button" onClick={() => store.setActiveSheet('settings')}>
-              <Settings size={16} />
+              <Settings size={18} />
             </BarButton>
           </Cluster>
         )}
@@ -77,9 +77,9 @@ export function ChatHeader() {
   );
 }
 
-function Cluster({ children, solo = false, ...motionProps }: { children: React.ReactNode; solo?: boolean } & GlassSurfaceProps) {
+function Cluster({ children, ...motionProps }: { children: React.ReactNode } & GlassSurfaceProps) {
   return (
-    <GlassSurface material="regular" className={solo ? styles.solo : styles.cluster} {...motionProps}>
+    <GlassSurface material="regular" shape="capsule" className={styles.cluster} {...motionProps}>
       {children}
     </GlassSurface>
   );

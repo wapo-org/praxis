@@ -92,3 +92,18 @@ describe('account setting conflict rules', () => {
     expect((await patch('secret', 'not allowed')).status).toBe(400);
   });
 });
+
+describe('the retired button-colour setting (WP-I1)', () => {
+  it('accepts it from older clients without storing it, and never serves a row stored before the removal', async () => {
+    const f = setup();
+    const patch = (field: string, value: string) => f.req('/v1/sync/settings', {field,value}, 'PATCH');
+    expect((await patch('button', '#b6e36b')).status).toBe(200);
+    const delta = await (await f.req('/v1/sync/pull?cursor=0')).json();
+    expect(delta.entities.some((e: {key: string}) => e.key === 'accountSetting:button')).toBe(false);
+    await f.service.adapters.store.put('local-user', 'accountSetting', 'button', {field: 'button', value: '#123abc'});
+    expect((await f.service.adapters.store.list('local-user', 'accountSetting')).some(row => (row.value as {field: string}).field === 'button')).toBe(true);
+    await patch('palette', 'plum');
+    const items = (await (await f.req('/v1/sync/settings')).json()).items as {field: string}[];
+    expect(items.map(i => i.field)).toEqual(['palette']);
+  });
+});

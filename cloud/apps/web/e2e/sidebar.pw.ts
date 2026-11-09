@@ -88,6 +88,7 @@ test('the sidebar is the owner\'s v2 slab, identical in both themes, with the so
     expect(pillBox.y).toBe(18 + 1 + 12);
     const search = page.getByRole('button', { name: 'Search conversations' });
     await expect(search).toHaveCSS('height', '32px');
+    await expect(search).toHaveCSS('border-radius', '999px'); // WP-I1: a full pill, like the rows and New chat
     expect((await search.boundingBox())!.y).toBe(pillBox.y + 34 + 10);
     await expect(search.locator('svg')).toHaveCSS('color', 'rgb(242, 241, 237)');
     await expect(sidebar.locator('h2').first()).toHaveCSS('font-size', '10px');
@@ -111,7 +112,7 @@ test('settings Back is the same pill in the same position as New chat', async ({
   await back.click();
   await expect(page.getByTestId('sidebar-new-chat')).toBeVisible();
 });
-test('the six sidebar palettes and the button colours apply live, persist, and are there before first paint', async ({
+test('the six sidebar palettes apply live, persist, and are there before first paint; there is no button colour', async ({
   page,
 }) => {
   await page.goto('/settings/general');
@@ -126,44 +127,35 @@ test('the six sidebar palettes and the button colours apply live, persist, and a
       await expect(solid(page)).toHaveCSS('background-image', fade(base));
       expect(ringStops(await ring(page).evaluate((el) => getComputedStyle(el).backgroundImage))[0]).toEqual(acc);
       await expect(page.locator('[data-testid="app-sidebar"] [aria-current="page"]').first()).toHaveCSS('color', ink);
+      // WP-I1: Back (and New chat) is always the white pill, whatever the palette.
+      await expect(page.getByTestId('settings-back')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+      await expect(page.getByTestId('settings-back')).toHaveCSS('color', 'rgb(28, 28, 28)');
     }
   }
-  const buttons = look.getByRole('radiogroup', { name: 'Button color' });
-  for (const [name, fill, ink] of [
-    ['White', 'rgb(255, 255, 255)', 'rgb(28, 28, 28)'],
-    ['Cyan', 'rgb(121, 224, 248)', 'rgb(16, 36, 45)'],
-    ['Navy', 'rgb(29, 64, 86)', 'rgb(255, 255, 255)'],
-    ['Gray', 'rgb(141, 141, 153)', 'rgb(16, 36, 45)'],
-    ['Graphite', 'rgb(43, 46, 51)', 'rgb(255, 255, 255)'],
-    ['Coral', 'rgb(244, 132, 107)', 'rgb(16, 36, 45)'],
-    ['Lime', 'rgb(182, 227, 107)', 'rgb(16, 36, 45)'],
-  ] as const) {
-    await buttons.getByRole('radio', { name, exact: true }).click();
-    // In Settings the shared pill is Back.
-    await expect(page.getByTestId('settings-back')).toHaveCSS('background-color', fill);
-    await expect(page.getByTestId('settings-back')).toHaveCSS('color', ink);
-  }
-  await page.getByTestId('button-color-custom').fill('#123abc');
-  await expect(page.getByTestId('settings-back')).toHaveCSS('background-color', 'rgb(18, 58, 188)');
-  await expect(buttons.getByRole('radio', { checked: true })).toHaveCount(0);
+  // The button-colour option is gone from Settings.
+  await expect(look.getByRole('radiogroup', { name: 'Button color' })).toHaveCount(0);
+  await expect(page.getByTestId('button-color-custom')).toHaveCount(0);
+  await expect(look.getByText('Button color')).toHaveCount(0);
   const midnight = palettes.getByRole('radio', { name: 'Midnight', exact: true });
   await midnight.click();
   await midnight.focus();
   await page.keyboard.press('ArrowRight');
   await expect(palettes.getByRole('radio', { name: 'Forest', exact: true })).toBeFocused();
   await expect(solid(page)).toHaveCSS('background-image', fade('rgb(18, 38, 29)'));
+  // A colour stored by the old option is ignored before first paint and after, and cleared.
+  await page.evaluate(() => localStorage.setItem('praxis-button-color', '#123abc'));
   await page.addInitScript(() => {
     const w = window as unknown as { firstLook?: string };
     new MutationObserver(() => {
       if (!w.firstLook && document.querySelector('button'))
-        w.firstLook = `${document.documentElement.dataset.sidebarPalette} ${getComputedStyle(document.documentElement).getPropertyValue('--nb-fill')}`;
+        w.firstLook = `${document.documentElement.dataset.sidebarPalette} ${getComputedStyle(document.documentElement).getPropertyValue('--nb-fill').trim()}`;
     }).observe(document, { childList: true, subtree: true });
   });
   await page.reload();
   await expect(palettes.getByRole('radio', { name: 'Forest', exact: true })).toHaveAttribute('aria-checked', 'true');
-  expect(await page.evaluate(() => (window as unknown as { firstLook: string }).firstLook)).toBe('forest #123abc');
-  await expect(page.getByTestId('settings-back')).toHaveCSS('background-color', 'rgb(18, 58, 188)');
-  await buttons.getByRole('radio', { name: 'White', exact: true }).click();
+  expect(await page.evaluate(() => (window as unknown as { firstLook: string }).firstLook)).toBe('forest #ffffff');
+  await expect(page.getByTestId('settings-back')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  expect(await page.evaluate(() => localStorage.getItem('praxis-button-color'))).toBeNull();
   await palettes.getByRole('radio', { name: 'Graphite', exact: true }).click();
 });
 test('the generic accent is gone: app controls keep their own ink, not a sidebar palette', async ({ page }) => {

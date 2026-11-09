@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  BUTTON_COLORS,
-  SIDEBAR_PALETTES,
-  setButtonColor,
-  setSidebarPalette,
-  useButtonColor,
-  useSidebarPalette,
-} from '../../lib/sidebarPalette';
+import { SIDEBAR_PALETTES, setSidebarPalette, useSidebarPalette } from '../../lib/sidebarPalette';
 import styles from './SidebarLookControl.module.css';
 
 /** Arrow keys, Home and End move the choice, like a native radio group. */
@@ -26,10 +19,7 @@ function radioKeys<T>(choices: readonly T[], index: number, pick: (value: T) => 
 /** The owner's palette panel (sidebar-design.html, press P), as Settings rows. Changes apply live. */
 export function SidebarLookControl() {
   const palette = useSidebarPalette();
-  const button = useButtonColor();
-  const preset = BUTTON_COLORS.some((choice) => choice.color === button);
   const paletteIndex = SIDEBAR_PALETTES.findIndex((p) => p.id === palette);
-  const buttonIndex = BUTTON_COLORS.findIndex((choice) => choice.color === button);
   return (
     <div className={styles.look} data-testid="sidebar-look">
       <fieldset className={styles.field}>
@@ -51,39 +41,6 @@ export function SidebarLookControl() {
               onKeyDown={radioKeys(SIDEBAR_PALETTES, index, (next) => setSidebarPalette(next.id))}
             />
           ))}
-        </div>
-      </fieldset>
-      <fieldset className={styles.field}>
-        <legend>Button color</legend>
-        <div className={styles.swatches}>
-          <div role="radiogroup" aria-label="Button color" className={styles.swatches}>
-            {BUTTON_COLORS.map((choice, index) => (
-              <button
-                key={choice.color}
-                type="button"
-                role="radio"
-                aria-label={choice.name}
-                title={choice.name}
-                aria-checked={button === choice.color}
-                tabIndex={button === choice.color || (buttonIndex < 0 && index === 0) ? 0 : -1}
-                data-button-choice={choice.name.toLowerCase()}
-                className={styles.swatch}
-                style={{ '--swatch': choice.color } as React.CSSProperties}
-                onClick={() => setButtonColor(choice.color)}
-                onKeyDown={radioKeys(BUTTON_COLORS, index, (next) => setButtonColor(next.color))}
-              />
-            ))}
-          </div>
-          <label className={styles.custom} data-selected={!preset}>
-            Custom
-            <input
-              type="color"
-              aria-label="Custom button color"
-              data-testid="button-color-custom"
-              value={button}
-              onChange={(event) => setButtonColor(event.currentTarget.value)}
-            />
-          </label>
         </div>
       </fieldset>
     </div>

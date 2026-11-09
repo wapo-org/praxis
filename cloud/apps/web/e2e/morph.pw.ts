@@ -201,18 +201,21 @@ test.describe('every frame is one piece of glass', () => {
     }
   });
 
-  test('it holds a circle through the fast phase, squares up late, and overshoots on landing', async ({ page }) => {
+  test('it holds a circle through the fast phase, then squares up as it lands, without passing its rest size', async ({ page }) => {
     await startSampling(page, 'separate-top');
     await page.getByTestId('separate-top').click();
     const menu = page.getByRole('menu');
     await landed(menu);
     const samples = (await stopSampling(page)).filter((s) => s.menu);
     const rest = samples[samples.length - 1]!.menu!;
-    const big = samples.filter((s) => s.menu!.w > rest.w * 0.75 && s.radius > Math.min(s.menu!.w, s.menu!.h) * 0.45);
+    // WP-I1: the squaring runs on the shape's own clock, so it is square when it is full size: the circle holds
+    // through the first half of the growth, not to 75 % (a late squaring was a second move after landing).
+    const big = samples.filter((s) => s.menu!.w > rest.w * 0.3 && s.radius > Math.min(s.menu!.w, s.menu!.h) * 0.45);
     expect(big.length).toBeGreaterThan(1);
     for (const s of big) expect(s.menu!.w / s.menu!.h).toBeLessThan(1.12);
-    expect(Math.max(...samples.map((s) => s.menu!.w))).toBeGreaterThan(rest.w + 2);
-    expect(Math.max(...samples.map((s) => s.menu!.w))).toBeLessThan(rest.w * 1.07);
+    // WP-I1: no overshoot. Going past the rest size and coming back read as a jump after it had landed.
+    expect(Math.max(...samples.map((s) => s.menu!.w))).toBeLessThanOrEqual(rest.w + 0.5);
+    expect(Math.max(...samples.map((s) => s.menu!.h))).toBeLessThanOrEqual(rest.h + 0.5);
   });
 });
 
@@ -530,5 +533,92 @@ test.describe('prefers-reduced-motion', () => {
       expect(sample.radius).toBeCloseTo(42, 0);
     }
     expect(await surface.evaluate((el: HTMLElement) => el.style.getPropertyValue('--glass-fade'))).toBe('');
+  });
+});
+
+/**
+ * WP-I1: the + tray "shifted diagonally at the end": the glass looked landed, then squared up and returned from
+ * its overshoot, and the rows rode it. Every frame from the end of the fast phase (the glass first at 90 % of its
+ * rest size): no edge moves back away from its rest position, and once the rows are in place they stay put.
+ */
+test.describe('no move at the end', () => {
+  async function track(page: Page, glassSelector: string, rowSelector: string, open: () => Promise<void>) {
+    await page.evaluate(({ glassSelector, rowSelector }) => {
+      const w = window as unknown as { __end: { glass: number[]; row: number[] | null }[]; __endOn: boolean };
+      w.__end = [];
+      w.__endOn = true;
+      const box = (el: Element | null) => { if (!el) return null; const r = el.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; };
+      // Read after each paint (as the nested spec does): a rAF can see a new layout before the ResizeObserver
+      // covers it, a frame nobody sees.
+      const channel = new MessageChannel();
+      channel.port1.onmessage = () => {
+        const glass = box(document.querySelector(glassSelector));
+        if (glass) w.__end.push({ glass, row: box(document.querySelector(rowSelector)) });
+      };
+      const tick = () => {
+        if (!w.__endOn) return;
+        channel.port2.postMessage(0);
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }, { glassSelector, rowSelector });
+    await open();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __end: unknown[] }).__end.length), { timeout: 5000 }).toBeGreaterThan(0);
+    await page.waitForTimeout(900); // the whole settle, and then some
+    const frames = await page.evaluate(() => {
+      const w = window as unknown as { __end: { glass: number[]; row: number[] | null }[]; __endOn: boolean };
+      w.__endOn = false;
+      return w.__end;
+    });
+    const rest = frames[frames.length - 1]!;
+    const size = (g: number[]) => [g[2]! - g[0]!, g[3]! - g[1]!];
+    const [rw = 0, rh = 0] = size(rest.glass);
+    const fast = frames.findIndex((f) => size(f.glass)[0]! >= rw * 0.9 && size(f.glass)[1]! >= rh * 0.9);
+    expect(fast, 'reaches its size').toBeGreaterThanOrEqual(0);
+    const closest = [Infinity, Infinity, Infinity, Infinity];
+    let rowsLanded = false;
+    for (const [i, f] of frames.slice(fast).entries()) {
+      for (let e = 0; e < 4; e++) {
+        const off = Math.abs(f.glass[e]! - rest.glass[e]!);
+        expect(off - closest[e]!, `edge ${'LTRB'[e]} moves back out at frame ${fast + i}`).toBeLessThanOrEqual(0.5);
+        closest[e] = Math.min(closest[e]!, off);
+      }
+      if (f.row && rest.row) {
+        const off = Math.max(...f.row.map((v, k) => Math.abs(v - rest.row![k]!)));
+        if (off < 0.5) rowsLanded = true;
+        if (rowsLanded) expect(off, `rows move after landing, frame ${fast + i}`).toBeLessThanOrEqual(0.5);
+      }
+    }
+    expect(rowsLanded).toBe(true);
+  }
+
+  for (const id of ['separate-top', 'attached-bottom', 'text-top', 'wide-menu', 'nested-morph']) {
+    test(`${id}: the glass never moves back and the rows stay put once landed`, async ({ page }) => {
+      await track(page, '[role="menu"] [data-glass-surface]', '[role="menu"] [role="menuitem"]', () => page.getByTestId(id).click());
+    });
+  }
+
+  test('the + tray and its model list: the same, in the app', async ({ page }) => {
+    await page.goto('/');
+    const dev = page.getByRole('button', { name: /local dev user/i });
+    await Promise.race([dev.waitFor(), page.getByTestId('chat-top-bar').waitFor()]);
+    if (await dev.isVisible().catch(() => false)) await dev.click();
+    await page.getByTestId('chat-top-bar').waitFor();
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(400);
+    await track(page, '[data-testid="plus-tray"]', '[data-testid="plus-tray"] [role="group"]', () => page.getByTestId('composer-plus-button').click());
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('plus-tray')).toHaveCount(0);
+    // The model menu is the tray's own model list: the glass glides to its size (the morph's resize).
+    await page.getByTestId('composer-plus-button').click();
+    await expect.poll(() => page.getByTestId('plus-tray').evaluate((el) => (el.parentElement as HTMLElement).style.transform), { timeout: 10000 }).toBe('');
+    await track(page, '[data-testid="plus-tray"]', '[data-testid="plus-tray"] [role="listbox"]', () => page.getByTestId('tray-model-picker-trigger').click());
+  });
+
+  test('a nested submenu in place: the glide to the new size never comes back', async ({ page }) => {
+    await page.getByTestId('nested-morph').click();
+    await landed(page.getByRole('menu'));
+    await track(page, '[role="menu"] [data-glass-surface]', '[role="menu"] [role="menuitem"]', () =>
+      page.getByRole('menu').getByRole('menuitem', { name: 'Save as', exact: true }).click());
   });
 });

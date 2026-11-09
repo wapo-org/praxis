@@ -89,7 +89,7 @@ describe('composer tray', () => {
     const tray = query('[data-testid="plus-tray"]')!;
     expect(tray.textContent).not.toContain('Allow Photos');
     expect(tray.textContent).not.toContain('Your browser grants');
-    const order = ['Auto', 'Build'];
+    const order = ['Auto', 'Execute'];
     expect(tray.textContent!.indexOf(order[0]!)).toBeLessThan(tray.textContent!.indexOf('Photos'));
     expect(tray.textContent!.indexOf('Photos')).toBeLessThan(tray.textContent!.indexOf('Web search'));
     expect(tray.textContent!.indexOf('Web search')).toBeLessThan(tray.textContent!.indexOf('Connectors'));
@@ -272,7 +272,7 @@ describe('shared search and dropdown actions', () => {
     await openTray(models);
     const modes = [...document.querySelectorAll('[aria-label="Mode"] button')].map(n => n.textContent);
     const efforts = [...document.querySelectorAll('[aria-label="Reasoning effort"] button')].map(n => n.textContent);
-    expect(modes).toEqual(['Auto', 'Ask', 'Plan', 'Build']);
+    expect(modes).toEqual(['Auto', 'Ask', 'Execute']); // WP-I1: Plan is gone, Build is Execute
     expect(efforts).toEqual(['Low', 'Medium', 'High', 'Max']);
     await openList();
     const modelNames = options();

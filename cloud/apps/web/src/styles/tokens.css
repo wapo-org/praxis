@@ -85,33 +85,22 @@
   --row-model: 56px; /* two-line model row; MODEL_ROW_HEIGHT in ModelList.tsx */
   --column-width: 720px;
   --topbar-height: 56px;
-  /* The user bubble (design v2): 18 px corners, 8/14 px padding inside a 1 px line, 13 px type.
-     chatMotion.ts builds the send flight from the same values. */
-  --bubble-radius: 18px;
-  --bubble-pad-y: 8px;
-  --bubble-pad-x: 14px;
-  --bubble-font: var(--weight-regular) 13px / 18px var(--font-sans);
 
-  /* Colour: warm paper neutrals, black primary controls. The main area follows design v2's light set `M`
-     (Chat Screen.dc.html: mBg, mInk, mMute, mIcon, mBubble, mBtn, mLine, mPill, mHover). */
-  --color-paper: #f9f8f5; /* mBg's middle stop */
+  /* Colour: warm paper neutrals, black primary controls */
+  --color-paper: #fbfbf9;
   --color-sidebar: #f6f5f1;
   --color-surface: #ffffff;
   --color-fill-1: #f4f2ec;
   --color-fill-2: #e9e6df;
-  --color-bubble: #ebeae6; /* mBubble */
-  --color-btn: #efeeea; /* mBtn: the composer's round buttons */
-  --color-line: #d9d9e0; /* mLine: the 1 px line on pills, the bubble and the composer */
-  --color-pill: rgba(255, 255, 255, 0.7); /* mPill: header pills and the composer */
-  --color-icon: #444; /* mIcon */
-  --color-ink: #1c1c1c; /* mInk */
-  --color-ink-2: #6b6b68; /* mMute */
-  --color-ink-3: #8a8a86; /* the source's placeholder */
+  --color-bubble: #ecebe5;
+  --color-ink: #15140f;
+  --color-ink-2: #6e6b62;
+  --color-ink-3: #8a877e;
   --color-hairline: rgba(21, 20, 15, 0.08);
   --color-hairline-strong: rgba(21, 20, 15, 0.14);
   --color-divider: rgba(21, 20, 15, 0.055);
   --divider-scale: 0.5; /* half a hairline, at any pixel density */
-  --color-hover: rgba(0, 0, 0, 0.05); /* mHover */
+  --color-hover: rgba(21, 20, 15, 0.045);
   --color-pressed: rgba(21, 20, 15, 0.08);
   --color-accent: #15140f;
   --color-on-accent: #fbfbf9;
@@ -169,31 +158,30 @@
   --glass-morph-blur: 7px;
   --glass-morph-backdrop: 6px;
   --glass-fallback: #fbfbf9;
-  /* The main area: design v2's mBg. */
-  --paper-gradient: radial-gradient(ellipse at 30% 10%, #f6f4ef 0%, #f9f8f5 60%, #f4f3ef 100%);
+  /* Subtle paper depth so floating glass blurs something real (see DESIGN.md). */
+  --paper-gradient:
+    radial-gradient(70% 55% at 8% 12%, rgba(214, 196, 164, 0.22), transparent 70%),
+    radial-gradient(55% 60% at 96% 90%, rgba(176, 186, 170, 0.2), transparent 70%),
+    radial-gradient(45% 40% at 62% 42%, rgba(226, 214, 200, 0.14), transparent 75%),
+    var(--color-paper);
 
   color-scheme: light;
 }
 
 [data-theme='dark'] {
-  /* Design v2's dark set `M`: #26262a → #1a1a1d → #151517. */
-  --color-paper: #1a1a1d; /* mBg's middle stop */
-  --color-sidebar: #151517;
-  --color-surface: #222226;
-  --color-fill-1: #222226;
-  --color-fill-2: #2d2d31;
-  --color-bubble: #2d2d31; /* mBubble */
-  --color-btn: #2d2d31; /* mBtn */
-  --color-line: #3a3a40; /* mLine */
-  --color-pill: rgba(255, 255, 255, 0.07); /* mPill */
-  --color-icon: #c9c9c5; /* mIcon */
-  --color-ink: #ececea; /* mInk */
-  --color-ink-2: #9a9a96; /* mMute */
-  --color-ink-3: #8a8a86;
+  --color-paper: #0b0b0a;
+  --color-sidebar: #111110;
+  --color-surface: #151513;
+  --color-fill-1: #151513;
+  --color-fill-2: #2a2926;
+  --color-bubble: #232220;
+  --color-ink: #f1efe9;
+  --color-ink-2: #a8a49a;
+  --color-ink-3: #8f8c84;
   --color-hairline: rgba(241, 239, 233, 0.08);
   --color-hairline-strong: rgba(241, 239, 233, 0.14);
   --color-divider: rgba(241, 239, 233, 0.07);
-  --color-hover: rgba(255, 255, 255, 0.08); /* mHover */
+  --color-hover: rgba(241, 239, 233, 0.05);
   --color-pressed: rgba(241, 239, 233, 0.09);
   --color-accent: #f1efe9;
   --color-on-accent: #0b0b0a;
@@ -222,8 +210,12 @@
   --glass-morph-rim: rgba(241, 239, 233, 0.2);
   --glass-morph-rim-light: rgba(255, 255, 255, 0.06);
   --glass-morph-flash: rgba(74, 74, 70, 0.96);
-  --glass-fallback: #222226;
-  --paper-gradient: radial-gradient(ellipse at 30% 10%, #26262a 0%, #1a1a1d 60%, #151517 100%);
+  --glass-fallback: #1a1a18;
+  --paper-gradient:
+    radial-gradient(70% 55% at 8% 12%, rgba(120, 104, 78, 0.16), transparent 70%),
+    radial-gradient(55% 60% at 96% 90%, rgba(78, 92, 84, 0.15), transparent 70%),
+    radial-gradient(45% 40% at 62% 42%, rgba(90, 80, 70, 0.08), transparent 75%),
+    var(--color-paper);
 
   color-scheme: dark;
 }

@@ -1,5 +1,6 @@
 import type { Chat, Model } from '@praxis/protocol';
 import type { PraxisStoreContextValue as Store } from '../state/types';
+import { isMode, MODE_LABELS, MODES } from '../lib/modes';
 import { Camera, Copy, Edit, Folder, Globe, Link, Photo, Pin, Settings, Sliders, Sparkles, Trash2 } from '../lib/icons';
 
 export const ATTACHMENTS = [
@@ -25,8 +26,9 @@ export const ACTIONS = {
     options: s => (selectedModel(s)?.reasoningEfforts ?? []).map(id => ({ id, label: displayLabel(id), selected: s.selectedEffort === id })),
     apply: (s, id) => { if (id && selectedModel(s)?.reasoningEfforts.includes(id)) s.setSelectedEffort(id); } },
   mode: { label: 'Change mode', Icon: Sliders, available: () => true,
-    options: s => (['auto', 'ask', 'plan', 'build'] as const).map(id => ({ id, label: displayLabel(id), selected: s.selectedMode === id })),
-    apply: (s, id) => { if (id === 'auto' || id === 'ask' || id === 'plan' || id === 'build') s.setSelectedMode(id); } },
+    // Auto, Ask, Execute (WP-I1). Execute is what Build was; Plan is gone (lib/modes.ts has the wire mapping).
+    options: s => MODES.map(id => ({ id, label: MODE_LABELS[id], selected: s.selectedMode === id })),
+    apply: (s, id) => { if (isMode(id)) s.setSelectedMode(id); } },
   newChat: { label: 'New chat', Icon: Edit, available: () => true, apply: s => s.startNewConversation() },
   web: { label: 'Web search', Icon: Globe, available: s => !!selectedModel(s)?.capabilities.serverWebSearch, apply: s => s.setWebSearch(!s.webSearch) },
   connectors: { label: 'Connectors', Icon: Link, available: () => true, apply: s => s.setActiveSheet('connectors') },

@@ -92,7 +92,9 @@ function Palette({ onClose }: { onClose: () => void }) {
     ...commands.map(key => ({ id: key, label: ACTIONS[key].label, snippet: '', Icon: ACTIONS[key].Icon, selected: false,
       apply: () => { if ('options' in ACTIONS[key]) { setLevel(key); setQuery(''); setHits([]); } else void run(() => applyOption(key, store, '')); } })),
     ...(query.trim() ? hits : []).map(hit => ({ id: `chat-${hit.chat.id}`, label: hit.chat.title || 'New chat', snippet: hit.snippet,
-      Icon: MessageCircle, selected: false, apply: () => run(() => { store.setActiveSheet(null); return store.selectChat(hit.chat.id); }) })),
+      // Close now, like any dismiss: the switch is instant and the messages load behind it (selectChat reports
+      // its own errors). Awaiting it held the palette open for the whole message fetch.
+      Icon: MessageCircle, selected: false, apply: () => { onClose(); store.setActiveSheet(null); void store.selectChat(hit.chat.id); } })),
   ];
   if (level === 'model' && modelSearch.cursor) rows.push({ id: 'load-more', label: 'Load more models', snippet: '',
     Icon: Search, selected: false, apply: modelSearch.loadMore });
@@ -143,6 +145,8 @@ function Palette({ onClose }: { onClose: () => void }) {
     inert={!present} style={present ? undefined : { pointerEvents: 'none' }}>
     <GlassSurface material="thick" className={styles.surface}
       {...arrival}>
+      {/* The dropdowns' one crisp line (morph.module.css .rim): the same subtle border in both themes. */}
+      <span aria-hidden="true" data-search-rim="" className={styles.rim} />
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: LEAVE_CONTENT }} transition={TRANSITION.fast}>{contents}</motion.div>
       {!reduced ? <motion.div aria-hidden="true" className={`${styles.bar} ${styles.blur}`} initial={{ opacity: 1 }} animate={{ opacity: 0 }} exit={{ opacity: 0, transition: LEAVE_CONTENT }} transition={TRANSITION.fast}>
         <Search size={20} /><span>{query || (level ? ACTIONS[level].label : 'Search chats and actions')}</span>

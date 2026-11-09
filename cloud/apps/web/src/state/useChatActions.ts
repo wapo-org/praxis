@@ -1,5 +1,6 @@
 import type { Chat } from '@praxis/protocol';
 import React from 'react';
+import { fromWireMode, toWireMode } from '../lib/modes';
 import { apiClient } from '../lib/api';
 
 import type { PraxisState } from './usePraxisState';
@@ -39,7 +40,7 @@ export function useChatActions(
         setSelectedModelId(chat.modelId);
       }
       if (chat?.effort) setSelectedEffort(chat.effort);
-      if (chat?.mode) setSelectedMode(chat.mode);
+      if (chat?.mode) setSelectedMode(fromWireMode(chat.mode));
 
       requestAnimationFrame(() => {
         if (typeof performance !== 'undefined') {
@@ -72,7 +73,7 @@ export function useChatActions(
     async (title = 'New chat'): Promise<Chat> => {
       const created = await apiClient.createChat({
         title,
-        mode: selectedMode,
+        mode: toWireMode(selectedMode),
         providerId: selectedProviderId,
         modelId: selectedModelId,
         effort: selectedEffort,

@@ -97,7 +97,7 @@
 .destructive,
 .secondary {
   height: var(--control-md);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full); /* every Settings button is a pill (WP-I1) */
   font: var(--weight-semibold) var(--text-md) / var(--leading-md) var(--font-sans);
   cursor: pointer;
 }

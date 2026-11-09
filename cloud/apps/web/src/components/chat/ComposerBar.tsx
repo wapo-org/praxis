@@ -58,7 +58,7 @@ export function ComposerBar({
         {...pressProps}
       >
         <motion.span className={styles.plusIcon} initial={false} animate={{ rotate: plusTrayOpen ? 45 : 0 }} transition={SNAP}>
-          <Plus size={16} />
+          <Plus size={20} />
         </motion.span>
       </motion.button>
 
@@ -75,7 +75,7 @@ export function ComposerBar({
               ? 'Listening… tap mic to finish'
               : transcribing
                 ? 'Transcribing voice…'
-                : 'Plan, ask, build…'
+                : 'Ask or execute…'
         }
         value={text}
         onChange={(e) => onTextChange(e.target.value)}
@@ -109,7 +109,7 @@ export function ComposerBar({
               onClick={onToggleVoice}
               {...pressProps}
             >
-              <Mic size={16} />
+              <Mic size={18} />
             </motion.button>
             <motion.button
               type="button"
@@ -123,7 +123,7 @@ export function ComposerBar({
               onClick={onSend}
               {...pressProps}
             >
-              <ArrowUp size={18} />
+              <ArrowUp size={20} />
             </motion.button>
           </>
         )}

@@ -92,6 +92,9 @@ export function createMorph(options: MorphOptions) {
   let glyph: HTMLElement | null = null;
   let sourceFaded = false;
   let observer: ResizeObserver | null = null;
+  /** Layout centres, in the shell's own px, of the rows and their blurred copy: where they rest. */
+  let bodyCentre: { x: number; y: number } | null = null;
+  let copyCentre: { x: number; y: number } | null = null;
   const written = new Map<HTMLElement, Map<string, string>>();
 
   /** Skip a write that would change nothing: each one invalidates style. */
@@ -103,6 +106,31 @@ export function createMorph(options: MorphOptions) {
     props.set(name, value);
     if (name.startsWith('--')) el.style.setProperty(name, value);
     else (el.style as unknown as Record<string, string>)[name] = value;
+  };
+
+  /** An element's layout centre in the shell's px (offsets ignore transforms), or null outside the shell. */
+  const centreIn = (el: HTMLElement | null) => {
+    if (!el || !layers) return null;
+    let x = el.offsetWidth / 2;
+    let y = el.offsetHeight / 2;
+    let node: HTMLElement | null = el;
+    while (node && node !== layers.shell) {
+      x += node.offsetLeft;
+      y += node.offsetTop;
+      node = node.offsetParent as HTMLElement | null;
+    }
+    return node === layers.shell ? { x, y } : null;
+  };
+
+  /**
+   * The counter-transform that holds a layer's centre where its rest layout puts it, by `weight` (0: it rides
+   * the glass's pose; 1: it stays put whatever the glass is doing), in the shell's px before the shell's scale.
+   */
+  const pinShift = (centre: { x: number; y: number } | null, sx: number, sy: number, weight: number) => {
+    if (!centre || weight <= 0) return { x: 0, y: 0 };
+    const dx = tx + (sx - 1) * (centre.x - origin.x);
+    const dy = ty + (sy - 1) * (centre.y - origin.y);
+    return { x: (-dx / sx) * weight, y: (-dy / sy) * weight };
   };
 
   const measureFinal = (): Box | null => {
@@ -141,6 +169,8 @@ export function createMorph(options: MorphOptions) {
       radius: restRadius(Number.parseFloat(style.getPropertyValue('--glass-radius')) || 0),
       corner: corner ? Number(corner[1]) : 1,
     };
+    bodyCentre = centreIn(layers!.body);
+    copyCentre = null;
     options.onSize?.(final.width, final.height);
     return true;
   };
@@ -167,10 +197,17 @@ export function createMorph(options: MorphOptions) {
     }
     // One crisp line at any scale, in every frame: the rim is what says this is a piece of glass.
     put(rim, '--morph-rim', `${(MORPH.rimWidth / Math.min(sx, sy)).toFixed(2)}px`);
-    put(body, 'transform', `scale(${(pose.scale / sx).toFixed(4)}, ${(pose.scale / sy).toFixed(4)})`);
+    // The rows ride the glass while they arrive; as they land they are pinned to their rest layout, so whatever
+    // the glass still does it never carries them (WP-I1: the tray's rows drifted with its last squaring).
+    const pin = smoothstep(MORPH.open.pinFrom, 1, c.x);
+    const scale = `scale(${(pose.scale / sx).toFixed(4)}, ${(pose.scale / sy).toFixed(4)})`;
+    const held = pinShift(bodyCentre, sx, sy, pin);
+    put(body, 'transform', `translate(${held.x.toFixed(2)}px, ${held.y.toFixed(2)}px) ${scale}`);
     put(sharp, 'opacity', pose.sharp.toFixed(3));
     put(blurred, 'opacity', pose.blurred.toFixed(3));
-    put(blurredRows, 'transform', `scale(${(pose.scale / sx).toFixed(4)}, ${(pose.scale / sy).toFixed(4)})`);
+    if (blurredRows && !copyCentre) copyCentre = centreIn(blurredRows);
+    const heldCopy = pinShift(copyCentre, sx, sy, pin);
+    put(blurredRows, 'transform', `translate(${heldCopy.x.toFixed(2)}px, ${heldCopy.y.toFixed(2)}px) ${scale}`);
     put(lens, 'opacity', pose.tint.toFixed(3));
     // A lens nobody can see yet should not cost a backdrop pass.
     put(lens, 'visibility', pose.tint > 0 ? '' : 'hidden');
@@ -228,6 +265,7 @@ export function createMorph(options: MorphOptions) {
     if (blurredRows) written.delete(blurredRows);
     blurred = null;
     blurredRows = null;
+    copyCentre = null;
   };
 
   const addGlyph = () => {

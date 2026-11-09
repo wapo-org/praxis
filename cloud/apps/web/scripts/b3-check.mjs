@@ -96,7 +96,10 @@ try {
   });
   await page.goto(`${base}/c/${restoredChat.id}`); await page.getByTestId('nav-chat-title-pill').getByText('Route options', { exact: true }).waitFor();
   await page.getByTestId('composer-plus-button').click();
-  assert.equal(await page.getByTestId('tray-mode-plan').getAttribute('aria-pressed'), 'true');
+  // A chat stored in the retired Plan mode opens in Auto (WP-I1); there is no Plan or Build button.
+  assert.equal(await page.getByTestId('tray-mode-auto').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.getByTestId('tray-mode-plan').count(), 0);
+  assert.equal(await page.getByTestId('tray-mode-build').count(), 0);
   assert.equal(await page.getByRole('group', { name: 'Reasoning effort' }).getByRole('button', { name: 'High', exact: true }).getAttribute('aria-pressed'), 'true');
   await context.close();
   const touch = await browser.newContext({ viewport: { width: 402, height: 874 }, colorScheme: 'dark', isMobile: true, hasTouch: true });

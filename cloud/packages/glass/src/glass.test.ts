@@ -23,7 +23,7 @@ function files(dir: string): string[] {
 }
 
 describe('@praxis/glass design system', () => {
-  it('keeps tokens.css on the web palette (iOS Paper + design v2 main area) in light and dark', () => {
+  it('keeps tokens.css on the iOS Paper palette in light and dark', () => {
     const light = block("[data-theme='light']");
     const dark = block("[data-theme='dark']");
     for (const [key, cssVar] of Object.entries(KEYS)) {

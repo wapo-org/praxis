@@ -44,32 +44,16 @@ it('matches the native light/dark palette and monochrome primary action aliases'
   const native = [...swift.matchAll(/static let (\w+) = c\(0x([\dA-F]+), 0x([\dA-F]+)\)/g)];
   expect(native.length).toBe(13);
   // Web token names for the native colours; hairline/pressed/tile are translucent or aliased on web (DESIGN.md).
-  // The owner's design v2 (Chat Screen.dc.html, `M`) replaced the main area's page, ink and mute in both themes
-  // and the dark surfaces; the rest stays on the native palette.
   const web: Record<string, string> = {
     canvas: '--color-paper', card: '--color-surface', ink: '--color-ink', secondaryInk: '--color-ink-2',
     mutedInk: '--color-ink-3', fill1: '--color-fill-1', fill2: '--color-fill-2',
     success: '--color-success', destructive: '--color-danger',
   };
-  const v2 = new Set(['canvas', 'ink', 'secondaryInk', 'mutedInk']);
-  const v2Dark = new Set([...v2, 'card', 'fill1', 'fill2']);
   for (const [, name, l, d] of native) {
     const token = web[name!];
     if (!token) continue;
-    if (!v2.has(name!)) expect(light).toContain(`${token}: #${l!.toLowerCase()};`);
-    if (!v2Dark.has(name!)) expect(dark).toContain(`${token}: #${d!.toLowerCase()};`);
-  }
-  for (const [token, l, d] of [
-    ['--color-paper', '#f9f8f5', '#1a1a1d'],
-    ['--color-ink', '#1c1c1c', '#ececea'],
-    ['--color-ink-2', '#6b6b68', '#9a9a96'],
-    ['--color-bubble', '#ebeae6', '#2d2d31'],
-    ['--color-btn', '#efeeea', '#2d2d31'],
-    ['--color-line', '#d9d9e0', '#3a3a40'],
-    ['--color-icon', '#444', '#c9c9c5'],
-  ]) {
-    expect(light).toContain(`${token}: ${l};`);
-    expect(dark).toContain(`${token}: ${d};`);
+    expect(light).toContain(`${token}: #${l!.toLowerCase()};`);
+    expect(dark).toContain(`${token}: #${d!.toLowerCase()};`);
   }
   expect(light).toContain('--color-accent: #15140f;');
   expect(dark).toContain('--color-accent: #f1efe9;');

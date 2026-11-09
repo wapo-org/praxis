@@ -1,7 +1,7 @@
 import React from 'react';
 import { ChatSchema, MessageSchema, RunSchema, SyncResponseSchema } from '@praxis/protocol';
 import { apiClient } from '../lib/api';
-import { applySidebarLook, useSidebarPalette, useButtonColor } from '../lib/sidebarPalette';
+import { applySidebarLook, useSidebarPalette } from '../lib/sidebarPalette';
 import { enqueue, flushEdits, pendingEdits } from './outbox';
 import type { PraxisState } from '../state/usePraxisState';
 
@@ -10,8 +10,8 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
   const streamHandlers = React.useRef(streams); streamHandlers.current = streams;
   const following = React.useRef(new Set<string>());
   const latest = React.useRef(state); latest.current = state;
-  const palette = useSidebarPalette(); const button = useButtonColor();
-  const values = { theme: state.themeMode, palette, button, model: state.selectedModelId, provider: state.selectedProviderId, effort: state.selectedEffort };
+  const palette = useSidebarPalette();
+  const values = { theme: state.themeMode, palette, model: state.selectedModelId, provider: state.selectedProviderId, effort: state.selectedEffort };
   const caughtUp = React.useRef(false);
   const previous = React.useRef(values);
   const remote = React.useRef<Record<string, string>>({});
@@ -23,7 +23,7 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
     }
     previous.current = values;
     void flushEdits();
-  }, [values.theme, palette, button, values.model, values.provider, values.effort]);
+  }, [values.theme, palette, values.model, values.provider, values.effort]);
   React.useEffect(() => {
     if (!state.replicaKey.current || !state.hydrated) return;
     let stopped = false;
@@ -60,10 +60,10 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
           if (pending.some(e => e.path === '/v1/sync/settings' && JSON.parse(e.body!).field === field)) continue;
           remote.current[field] = value;
           if (field === 'theme' && ['light','dark','system'].includes(value)) s.setThemeMode(value as 'light'|'dark'|'system');
-          if (field === 'palette' || field === 'button') {
-            const root = document.documentElement;
-            applySidebarLook(field === 'palette' ? value : root.dataset.sidebarPalette, field === 'button' ? value : root.dataset.buttonColor);
-            localStorage.setItem(field === 'palette' ? 'praxis-sidebar-palette' : 'praxis-button-color', value);
+          // A synced 'button' row is the removed button-colour option (WP-I1): ignored.
+          if (field === 'palette') {
+            applySidebarLook(value);
+            localStorage.setItem('praxis-sidebar-palette', value);
             window.dispatchEvent(new Event('praxis:sidebar-look'));
           }
           if (field === 'model') s.setSelectedModelId(value);

@@ -6,6 +6,8 @@ export const JsonObjectSchema = z.record(z.string(), JsonValueSchema);
 export type JsonObject = z.infer<typeof JsonObjectSchema>;
 export const IdSchema = z.string().min(1).max(200);
 export const TimestampSchema = z.iso.datetime({ offset: false }); // ISO-8601 UTC, e.g. 2026-10-29T14:00:00.000Z
+// The web shows Auto, Ask and Execute (apps/web/src/lib/modes.ts): Execute is sent as build, and a stored plan reads
+// as Auto. plan and build stay valid here for older clients and stored chats.
 export const ModeSchema = z.enum(['ask', 'plan', 'build', 'auto']);
 export type Mode = z.infer<typeof ModeSchema>;
 export const ProviderFlavorSchema = z.enum(['anthropicMessages', 'openAIChat', 'openAIResponses']);

@@ -147,10 +147,11 @@ export interface PraxisStoreContextValue {
   setWebSearch: (value: boolean) => void;
   cacheModels: (items: Model[]) => void;
   selectedEffort: string;
-  selectedMode: 'ask' | 'plan' | 'build' | 'auto';
+  /** Auto, Ask or Execute (lib/modes.ts maps them to the wire's auto/ask/build). */
+  selectedMode: import('../lib/modes').Mode;
   setSelectedModel: (providerId: string, modelId: string) => void;
   setSelectedEffort: (effort: string) => void;
-  setSelectedMode: (mode: 'ask' | 'plan' | 'build' | 'auto') => void;
+  setSelectedMode: (mode: import('../lib/modes').Mode) => void;
 
   // Live Run State per Chat
   liveRunsByChat: Record<string, LiveRunState>;

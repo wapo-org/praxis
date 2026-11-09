@@ -1,5 +1,6 @@
 import {useAccountSync} from '../sync/useAccountSync';
 import React from 'react';
+import { fromWireMode } from '../lib/modes';
 import { apiClient } from '../lib/api';
 import { readReplicaSync, saveReplica, type LocalReplicaSnapshot } from '../lib/idb';
 
@@ -174,7 +175,7 @@ export function useReplica(
     if (routeChat?.modelId) setSelectedModelId(routeChat.modelId);
   }, [activeChatId, routeChat?.providerId, routeChat?.modelId]);
   React.useEffect(() => {
-    if (routeChat?.mode) setSelectedMode(routeChat.mode);
+    if (routeChat?.mode) setSelectedMode(fromWireMode(routeChat.mode)); // a stored plan reads as Auto
   }, [activeChatId, routeChat?.mode]);
   React.useEffect(() => {
     if (routeChat?.effort) setSelectedEffort(routeChat.effort);

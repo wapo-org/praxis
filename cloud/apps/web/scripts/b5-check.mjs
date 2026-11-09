@@ -8,7 +8,7 @@ try {
   await page.getByTestId('chat-top-bar').waitFor();
   const controls = await page.evaluate(() => {
     const probe = document.createElement('span');
-    probe.style.background = 'var(--color-btn)'; // design v2's mBtn
+    probe.style.background = 'color-mix(in srgb, var(--color-ink) 10%, transparent)';
     document.body.append(probe);
     const expected = getComputedStyle(probe).backgroundColor;
     const fills = ['[data-testid="composer-plus-button"]', '[data-testid="composer-voice-button"]'].map(

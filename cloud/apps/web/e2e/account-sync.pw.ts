@@ -35,7 +35,8 @@ test('two devices converge chats, offline edits, settings, live messages and sto
     await action(two, 'patchChat', chat.id, { title: `${title} offline` });
     await b.setOffline(false);
     await expect.poll(async () => (await chats(one)).find((c: any) => c.id === chat.id)?.title, { timeout: 15000 }).toBe(`${title} offline`);
-    // Change each durable setting field on A, then observe B's applied account state.
+    // Change each durable setting field on A, then observe B's applied account state. 'button' is the removed
+    // button-colour option (WP-I1): an older client may still send it; it is accepted and ignored everywhere.
     for (const [field, value] of Object.entries({ theme: 'dark', palette: 'forest', button: '#b6e36b', model: 'sync-model', provider: 'sync-provider', effort: 'high' })) {
       await one.evaluate(async ({field, value}) => {
         // @ts-expect-error Vite source module.
@@ -45,7 +46,14 @@ test('two devices converge chats, offline edits, settings, live messages and sto
     }
     await expect.poll(() => two.locator('html').getAttribute('data-theme')).toBe('dark');
     await expect.poll(() => two.locator('html').getAttribute('data-sidebar-palette')).toBe('forest');
-    await expect.poll(() => two.locator('html').getAttribute('data-button-color')).toBe('#b6e36b');
+    expect(await two.locator('html').getAttribute('data-button-color')).toBeNull();
+    expect(await two.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--nb-fill').trim())).toBe('#ffffff');
+    const served = await two.evaluate(async () => {
+      // @ts-expect-error Vite source module.
+      const { apiClient } = await import('/src/lib/api.ts');
+      return (await apiClient.request('/v1/sync/settings')).items.map((item: { field: string }) => item.field);
+    });
+    expect(served).not.toContain('button');
     await two.goto(`/c/${chat.id}`); await one.goto(`/c/${chat.id}`);
     await openApi(one);
     await openApi(two);

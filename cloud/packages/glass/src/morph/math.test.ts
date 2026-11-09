@@ -137,18 +137,32 @@ describe('the morph timing, 15 % faster than the reference', () => {
     expect(rowsDone).toBeGreaterThan(0);
     expect(rowsDone).toBeLessThan(shape95);
     expect(shape95).toBeLessThan(0.26);
-    expect(peak).toBeGreaterThan(1.015); // the overshoot is kept
+    // WP-I1: it lands once. Nothing goes past its rest size and comes back after it looks landed.
+    expect(peak).toBeLessThanOrEqual(1.0005);
   });
 
-  it('the overshoot is small and visible: the aim, plus almost no ringing', () => {
-    const state: SpringState = { x: 0, v: 0 };
+  it('lands once: the shape and its squaring settle together, with no overshoot to return from (WP-I1)', () => {
+    const p: SpringState = { x: 0, v: 0 };
+    const f: SpringState = { x: 0, v: 0 };
     let peak = 0;
-    for (let i = 0; i < 2000; i++) {
-      stepSpring(state, 1 + MORPH.open.overshoot, MORPH.open.shape, MAX_SUBSTEP);
-      peak = Math.max(peak, state.x);
+    let landed = 0;
+    let away = 0;
+    for (let t = 0; t < 0.8; t += MAX_SUBSTEP) {
+      stepSpring(p, 1 + MORPH.open.overshoot, MORPH.open.shape, MAX_SUBSTEP);
+      stepSpring(f, 1, MORPH.open.form, MAX_SUBSTEP);
+      peak = Math.max(peak, p.x);
+      const shape = shapeAt(p.x, f.x, below);
+      // The furthest any edge is from its rest position.
+      const off = Math.max(Math.abs(shape.left - below.final.left), Math.abs(shape.top - below.final.top),
+        Math.abs(shape.left + shape.width - below.final.left - below.final.width), Math.abs(shape.top + shape.height - below.final.top - below.final.height));
+      // Once every edge is within 0.5 px of rest, none ever leaves that band again: no second move.
+      if (!landed && off < 0.5) landed = t;
+      if (landed) away = Math.max(away, off);
     }
-    expect(peak).toBeGreaterThan(1.02);
-    expect(peak).toBeLessThan(1.06);
+    expect(MORPH.open.overshoot).toBe(0);
+    expect(peak).toBeLessThanOrEqual(1.0005);
+    expect(landed).toBeGreaterThan(0);
+    expect(away).toBeLessThanOrEqual(0.5);
   });
 
   it('reverses from where it is, with its velocity, and closes faster than it opens', () => {

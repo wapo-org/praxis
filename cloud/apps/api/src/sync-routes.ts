@@ -59,12 +59,19 @@ export async function pullChanges(service: ApiService, userId: string, after: nu
 }
 
 export function registerSyncRoutes(app: Hono<any>, service: ApiService) {
+  // 'button' was the removed button-colour option (WP-I1): older clients may still send it, so it is accepted
+  // and dropped, and rows stored before the removal are never served.
   const Setting = z.object({ field: z.enum(['theme', 'palette', 'button', 'model', 'provider', 'effort']), value: z.string().max(200) });
-  app.get('/v1/sync/settings', async c => c.json({ items: (await service.adapters.store.list(c.get('userId'), 'accountSetting')).map(row => row.value) }));
+  const RETIRED = new Set(['button']);
+  app.get('/v1/sync/settings', async c => {
+    const rows = await service.adapters.store.list(c.get('userId'), 'accountSetting');
+    const items = rows.map(row => row.value as { field: string; value: string }).filter(value => !RETIRED.has(value.field));
+    return c.json({ items });
+  });
   app.patch('/v1/sync/settings', async c => {
     const input = Setting.parse(await c.req.json());
-    const row = await service.adapters.store.put(c.get('userId'), 'accountSetting', input.field, input);
-    return c.json(row.value);
+    const stored = RETIRED.has(input.field) ? input : (await service.adapters.store.put(c.get('userId'), 'accountSetting', input.field, input)).value;
+    return c.json(stored as typeof input);
   });
   // Finite streams suit serverless hosts. Reopening resumes the durable revision cursor, including after sleep.
   app.get('/v1/sync/events', async c => {

@@ -42,21 +42,25 @@ export const SPRINGS = {
  */
 export const MORPH = {
   open: {
-    /** Nearly critical on the way out; the visible bounce is the target below, not ringing. */
-    shape: { stiffness: 2025, damping: 76 },
+    /** Critically damped: the glass lands once and stays (WP-I1). A late overshoot or squaring read as a second
+     *  move after the menu had visibly arrived: the "diagonal shift at the end" the owner saw on the tray. */
+    shape: { stiffness: 2900, damping: 108 },
     /** The rows: arrive blurred and oversized, and are sharp, inked and in place before the shape reaches 95 %. */
-    content: { stiffness: 3000, damping: 110 },
-    /** The shape's own clock: holds a circle, then squares up. The squaring is what brings it to 95 % of its size. */
-    form: { stiffness: 400, damping: 40 },
+    content: { stiffness: 6000, damping: 155 },
+    /** The shape's own clock (circle, then squaring), on the shape's own spring: it is square when it is full size,
+     *  so nothing reshapes after it lands. */
+    form: { stiffness: 2900, damping: 108 },
     /** The source lifts before the glass starts growing. */
     lift: { stiffness: 3200, damping: 113 },
     /** Seconds from the press before the glass starts to grow. */
     shapeDelay: 0.094,
     contentDelay: 0.094,
-    /** The shape aims this far past its rest size ... */
-    overshoot: 0.035,
-    /** ... until the form clock reaches this progress, then it comes back. */
+    /** No aim past the rest size: any return from past it happens after the menu looks landed. */
+    overshoot: 0,
     landAt: 0.82,
+    /** The rows ride the glass while they arrive, and are pinned to their rest layout as they land (progress of
+     *  `c`), so a glass still finishing its last fraction of a pixel never carries them. */
+    pinFrom: 0.55,
   },
   close: {
     shape: { stiffness: 3000, damping: 110 },
@@ -65,8 +69,9 @@ export const MORPH = {
     form: { stiffness: 2500, damping: 100 },
     lift: { stiffness: 6400, damping: 160 },
   },
-  /** The open panel gliding to a new size: a submenu, a filtered list. Same family, a touch of the same bounce. */
-  resize: { stiffness: 900, damping: 50 },
+  /** The open panel gliding to a new size: a submenu, a filtered list, the tray's model list. Critically damped
+   *  (WP-I1): it arrives once, with no return from past its new size. */
+  resize: { stiffness: 900, damping: 60 },
   /** In-place submenus: the outgoing rows are mostly gone before the incoming ones show, so text never stacks. */
   panelFadeDelay: 0.05,
   /** Under prefers-reduced-motion: a plain short fade, no shape change. */

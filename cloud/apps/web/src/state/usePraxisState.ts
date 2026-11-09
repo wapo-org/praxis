@@ -9,6 +9,7 @@ import type {
   Skill,
 } from '@praxis/protocol';
 import React from 'react';
+import { DEFAULT_MODE, type Mode } from '../lib/modes';
 import { nameTaken, uniqueChatName } from '../lib/chatNames';
 import {
   apiClient,
@@ -128,9 +129,7 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     [],
   );
   const [selectedEffort, setSelectedEffort] = React.useState<string>('medium');
-  const [selectedMode, setSelectedMode] = React.useState<'ask' | 'plan' | 'build' | 'auto'>(
-    'build',
-  );
+  const [selectedMode, setSelectedMode] = React.useState<Mode>(DEFAULT_MODE);
 
   const [liveRunsByChat, setLiveRunsByChat] = React.useState<Record<string, LiveRunState>>({});
   const [pendingConsentPrompt, setPendingConsentPrompt] =
