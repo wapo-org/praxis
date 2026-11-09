@@ -48,7 +48,7 @@ export function ConnectorsScreen() {
                 ? ({
                     connected: 'Connected',
                     unreachable: 'Unreachable',
-                    needs_auth: 'Sign in to connect',
+                    needs_auth: ['builtin-e2b','builtin-browserbase'].includes(connector.id) ? 'Add an API key to connect' : 'Sign in to connect',
                     needs_reauth: 'Sign in again',
                     error: 'Error',
                   }[connector.status] ?? 'Status unknown')
@@ -110,9 +110,9 @@ export function ConnectorsScreen() {
                           <RefreshCw size={16} />
                           Refresh tools
                         </ScreenButton>
-                        {connector.id === 'builtin-firecrawl' || connector.status === 'needs_auth' ||
+                        {connector.id === 'builtin-firecrawl' || (!['builtin-e2b','builtin-browserbase'].includes(connector.id) && (connector.status === 'needs_auth' ||
                         connector.status === 'needs_reauth' ||
-                        connector.authStatus === 'required' ? (
+                        connector.authStatus === 'required')) ? (
                           <ScreenButton disabled={task.busy} onClick={() => signIn(connector.id)}>
                             <ExternalLink size={16} />
                             Sign in

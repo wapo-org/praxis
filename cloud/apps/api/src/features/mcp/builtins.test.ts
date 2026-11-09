@@ -48,3 +48,8 @@ it('keeps a compact connector brief when every tool is disabled',async()=>{
  const value=ConnectorSchema.parse((await ctx.store.get('u','connector','builtin-exa'))!.value);
  expect(connectorToolNotes([],[{...value,enabled:true}]).join('\n')).toContain('Enabled tools: none');
 });
+it('reports E2B as needing credentials until a key is configured',async()=>{
+ const {probeConnector}=await import('./health.js');const ctx:FeatureContext={...createLocalAdapters(),userId:'u',local:true,fetch,egress:fetch};await ensureBuiltins(ctx.store,'u');
+ const value=ConnectorSchema.parse((await ctx.store.get('u','connector','builtin-e2b'))!.value);
+ expect(await probeConnector(ctx,{...value,enabled:true})).toMatchObject({status:'needs_auth'});
+});

@@ -46,6 +46,7 @@ export async function probeConnector(ctx: FeatureContext, value: Connector, opti
   await ctx.kv.del(catalogKey(ctx, value.id));
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
+    if(value.id==='builtin-e2b' && !await readSecret<string>(ctx,value.id,'token'))throw new McpError(409,'authorization_required','Add your E2B API key in connector settings');
     const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new McpError(502, 'probe_timeout', `${value.name} did not answer in time`)), timeoutMs); });
     const tools = await Promise.race([discoverTools(ctx, value, options), timeout]);
     return await record(ctx, value, 'connected', undefined, tools.length);
