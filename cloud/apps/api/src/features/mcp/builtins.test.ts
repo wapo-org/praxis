@@ -43,3 +43,8 @@ it('stores builtin keys encrypted and never echoes them through connector APIs',
  const response=await app.request('/v1/connectors/builtin-e2b',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({type:'connector.patch',token:'fixture-private-key'})});
  expect(response.ok).toBe(true);expect(await response.text()).not.toContain('fixture-private-key');expect(JSON.stringify(await ctx.store.get('u','mcpSecret','builtin-e2b'))).not.toContain('fixture-private-key');
 });
+it('keeps a compact connector brief when every tool is disabled',async()=>{
+ const ctx:FeatureContext={...createLocalAdapters(),userId:'u',local:true,fetch,egress:fetch};await ensureBuiltins(ctx.store,'u');
+ const value=ConnectorSchema.parse((await ctx.store.get('u','connector','builtin-exa'))!.value);
+ expect(connectorToolNotes([],[{...value,enabled:true}]).join('\n')).toContain('Enabled tools: none');
+});

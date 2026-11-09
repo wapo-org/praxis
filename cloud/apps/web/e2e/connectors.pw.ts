@@ -3,13 +3,14 @@ test('builtins are disabled on first server bootstrap; tool switches persist whi
  await page.goto('/');await page.getByRole('button',{name:'Continue as local dev user'}).waitFor();await page.getByRole('button',{name:'Continue as local dev user'}).click();await page.getByTestId('chat-top-bar').waitFor();
  const initial=await page.evaluate(async()=>{const source='/src/lib/api.ts';const {apiClient}=await import(source) as typeof import('../src/lib/api');return (await apiClient.bootstrap()).connectors.filter(c=>c.id.startsWith('builtin-'));});
  expect(initial.map(c=>c.name).sort()).toEqual(['Browserbase','E2B','Exa','Firecrawl']);expect(initial.every(c=>!c.enabled)).toBe(true);
+ await page.evaluate(async()=>{const source='/src/lib/api.ts';const {apiClient}=await import(source);await apiClient.toggleConnectorTool('builtin-exa','web_search_exa',true);});
  await page.goto('/settings/connectors');await page.getByRole('button',{name:/Exa.*mcp.exa.ai/}).click();
- const search=page.getByRole('switch',{name:'web_search_exa'});await expect(search).toBeChecked();await search.uncheck();
- await page.reload();await page.getByRole('button',{name:/Exa.*mcp.exa.ai/}).click();await expect(search).not.toBeChecked();await search.check();
+ const search=page.getByRole('switch',{name:'web_search_exa'});await expect(search).toBeChecked();await search.click();await expect(search).not.toBeChecked();
+ await page.reload();await page.getByRole('button',{name:/Exa.*mcp.exa.ai/}).click();await expect(search).not.toBeChecked();await search.click();await expect(search).toBeChecked();
 });
 test('cold draft tray always shows the same connector rows across five openings',async({page})=>{
  for(let i=0;i<5;i++){
   await page.goto('/');const login=page.getByRole('button',{name:'Continue as local dev user'});if(await login.isVisible())await login.click();await page.getByTestId('chat-top-bar').waitFor();
-  await page.getByTestId('composer-plus-button').click();await expect(page.getByText('Connectors',{exact:true})).toBeVisible();await page.keyboard.press('Escape');
+  await page.getByTestId('composer-plus-button').click();await expect(page.getByTestId('plus-tray').getByRole('button',{name:/Connectors/})).toBeVisible();await page.keyboard.press('Escape');
  }
 });

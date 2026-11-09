@@ -2,7 +2,7 @@ import {cropImage, cropImageReaderTool} from './features/tools/image-crop.js';
 import {connectorToolNotes} from './features/tools/tool-notes.js';
 import {Hono} from 'hono';
 import {createImageReaderTool, type AgentTool, type ModelProvider} from '@praxis/agent';
-import {PreferencesSchema, type Chat, type MessagePart, type Model} from '@praxis/protocol';
+import {ConnectorSchema,PreferencesSchema, type Chat, type MessagePart, type Model} from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from './contracts.js';
 import {connectorTurnNotes, createMcpGateway, createMcpRoutes, getMcpTools, type McpOptions} from './features/mcp/index.js';
 import {createLocalToolsStorage, createToolsRoutes, type ToolsStorage} from './features/tools/index.js';
@@ -36,7 +36,7 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
         skills: ctx => listSkillsForCatalog(ctx),
         turnNotes: (ctx, chat, previous) => connectorTurnNotes(ctx, chat, previous),
         media: (ctx, part, caps) => rehydrateAttachment(ctx, storage, part, caps),
-        toolNotes: async (ctx, chat) => connectorToolNotes(await getMcpTools(ctx, {chatId: chat.id, disabledConnectorIds: chat.disabledConnectorIds}, mcp)),
+        toolNotes: async (ctx, chat) => connectorToolNotes(await getMcpTools(ctx, {chatId: chat.id, disabledConnectorIds: chat.disabledConnectorIds}, mcp),(await ctx.store.list(ctx.userId,'connector')).filter(r=>!r.deleted).map(r=>ConnectorSchema.parse(r.value)).filter(c=>c.enabled&&!chat.disabledConnectorIds.includes(c.id))),
         async tools(ctx, {chat, attachmentIds}) {
           const connectors = await getMcpTools(ctx, {chatId: chat.id, disabledConnectorIds: chat.disabledConnectorIds}, mcp);
           const skills = skillTools(ctx, storage);
