@@ -20,6 +20,7 @@ try {
   await chat.getByTestId('assistant-turn').first().waitFor();
   await page.waitForFunction(() => !document.querySelector('[data-testid=composer-stop-button]'));
   const chatId = new URL(page.url()).pathname.split('/').pop();
+  await fetch(`${API}/v1/chats/${chatId}`,{method:'PATCH',headers:auth,body:JSON.stringify({type:'chat.patch',mode:'auto'})});
   // 1. Approval started elsewhere: the card appears live and is answerable here.
   const approval = await start(chatId, 'Remote approval run', 'approval');
   await chat.getByText('Remote approval run').first().waitFor();

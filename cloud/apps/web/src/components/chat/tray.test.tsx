@@ -134,6 +134,10 @@ describe('composer tray', () => {
     );
     await act(async () => store.refreshAll());
     expect(store.connectors).toHaveLength(1);
+    await openTray();
+    expect(query<HTMLInputElement>('input[aria-label="Docs"]')).not.toBeNull();
+    await act(async()=>store.setPlusTrayOpen(false));
+    await flush();
     await act(async () => store.selectChat('c1'));
     await flush();
     await openTray();

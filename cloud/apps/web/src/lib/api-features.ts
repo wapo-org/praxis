@@ -47,9 +47,9 @@ export class FeatureApiClient extends ExtendedFeatureApiClient {
     });
   }
 
-  async listConnectorTools(connectorId: string): Promise<PageResult<ToolSpec>> {
+  async listConnectorTools(connectorId: string, cursor?: string): Promise<PageResult<ToolSpec>> {
     return await this.request<PageResult<ToolSpec>>(
-      `/v1/connectors/${encodeURIComponent(connectorId)}/tools`,
+      `/v1/connectors/${encodeURIComponent(connectorId)}/tools${cursor?`?cursor=${encodeURIComponent(cursor)}`:''}`,
     );
   }
 

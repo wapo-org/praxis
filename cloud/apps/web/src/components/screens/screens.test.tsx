@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import {CapabilitiesSchema} from '@praxis/protocol';
 import type { Chat, Connector, Model, Provider, Skill } from '@praxis/protocol';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -324,6 +325,20 @@ describe('settings and capabilities', () => {
     expect(store.refreshModelsForProvider).not.toHaveBeenCalled();
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('Invalid credentials');
     expect(store.setActiveSheet).not.toHaveBeenCalled();
+  });
+  it('autofills detected capabilities even if the live probe fails, and permits overrides',async()=>{
+    store.providers=[{...provider,defaultModel:'m'}];store.editingProviderId=provider.id;
+    const model={type:'model' as const,id:'m',providerId:provider.id,displayName:'M',capabilities:CapabilitiesSchema.parse({vision:true,reasoningEffort:true}),reasoningEfforts:['low'],pinned:false,favorite:false};
+    vi.spyOn(apiClient,'setConsent').mockResolvedValue({type:'consent',host:'example.com',allowed:true,updatedAt:now});
+    vi.spyOn(apiClient,'testProvider').mockResolvedValueOnce({type:'provider.test.result',ok:true,models:[model]}).mockResolvedValueOnce({type:'provider.test.result',ok:false,models:[model],error:{code:'provider_error',message:'Unsupported parameter'}});
+    await mount(<ProviderEditor/>);
+    await click([...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find(n=>n.closest('label')?.textContent?.includes('Allow test messages'))!);
+    await click(button('Test connection'));
+    const vision=[...document.querySelectorAll<HTMLElement>('[role="switch"]')].find(n=>n.closest('label')?.textContent?.includes('Images (vision)'))!;
+    expect((vision as HTMLInputElement).checked).toBe(true);
+    expect(container.textContent).toContain('Unsupported parameter');
+    await click(vision);await click(button('Save provider'));
+    expect(store.saveProvider).toHaveBeenLastCalledWith(expect.objectContaining({capabilities:expect.objectContaining({vision:false,reasoningEffort:true})}));
   });
   it('persists edited endpoint capabilities and offers an iOS preset picker', async () => {
     store.providers = [provider];

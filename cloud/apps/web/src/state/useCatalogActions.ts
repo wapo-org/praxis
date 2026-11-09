@@ -134,9 +134,16 @@ export function useCatalogActions(state: PraxisState) {
   }, []);
 
   const loadConnectorTools = React.useCallback(async (connectorId: string) => {
-    const page = await apiClient.listConnectorTools(connectorId);
-    setConnectorTools((prev) => ({ ...prev, [connectorId]: page.items }));
-    return page.items;
+    const items: import('@praxis/protocol').ToolSpec[]=[];
+    let cursor:string|undefined;const seen=new Set<string>();
+    do {
+      const page=await apiClient.listConnectorTools(connectorId,cursor);items.push(...page.items);
+      cursor=page.nextCursor??undefined;
+      if(cursor&&seen.has(cursor))throw new Error('Connector tool pages did not advance.');
+      if(cursor)seen.add(cursor);
+    } while(cursor);
+    setConnectorTools((prev) => ({ ...prev, [connectorId]: items }));
+    return items;
   }, []);
 
   const setConnectorToolEnabled = React.useCallback(

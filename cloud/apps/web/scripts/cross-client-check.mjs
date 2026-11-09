@@ -31,7 +31,7 @@ try {
   const suffix = Date.now();
   const chat = await api('/v1/chats', {
     method: 'POST',
-    body: JSON.stringify({ type: 'chat.input', title: `RC1 ${suffix}` }),
+    body: JSON.stringify({ type: 'chat.input', mode:'auto', title: `RC1 ${suffix}` }),
   });
   const [a, b] = [await open(), await open()];
   for (const page of [a, b]) {
