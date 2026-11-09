@@ -328,7 +328,7 @@ function ElicitationCard({
                         data-testid={`elicitation-input-${field.key}`}
                         className={styles.input}
                         value={value === undefined || value === null ? '' : String(value)}
-                        placeholder={field.kind === 'text' ? field.label : '0'}
+                        placeholder={field.kind === 'text' ? field.label : undefined}
                         aria-required={field.required || undefined}
                         aria-invalid={problem ? true : undefined}
                         aria-describedby={described}

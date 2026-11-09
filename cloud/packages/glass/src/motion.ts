@@ -225,9 +225,20 @@ const REDUCED: MotionPreset = {
   transition: TRANSITION.fast,
 };
 
-/** Collapse any preset to an opacity-only fade under prefers-reduced-motion. */
+/**
+ * Collapse any preset to an opacity-only fade under prefers-reduced-motion. Each state keeps the preset's own
+ * opacity: an inverted preset (slideUnder rests visible and `animate` hides it) must not turn into a 0 → 1 fade,
+ * which left the + tray's main view at opacity 0 for reduced-motion users (WP-I1).
+ */
 export function resolvePreset(preset: MotionPreset, reduced: boolean): MotionPreset {
-  return reduced ? REDUCED : preset;
+  if (!reduced) return preset;
+  const keep = (frame: MotionFrame, fallback: number) => ({ opacity: typeof frame.opacity === 'number' ? frame.opacity : fallback });
+  return {
+    initial: keep(preset.initial, REDUCED.initial.opacity as number),
+    animate: keep(preset.animate, REDUCED.animate.opacity as number),
+    exit: { ...keep(preset.exit, REDUCED.exit.opacity as number), transition: TRANSITION.fast },
+    transition: TRANSITION.fast,
+  };
 }
 
 const query = '(prefers-reduced-motion: reduce)';

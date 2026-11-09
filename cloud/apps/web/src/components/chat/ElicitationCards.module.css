@@ -46,13 +46,13 @@
 }
 
 .label {
-  margin-inline: var(--space-3);
+  margin-inline: var(--space-4); /* in line with the text inside the pill */
   color: var(--color-ink-2);
   font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
 }
 
 .fieldHint {
-  margin: -2px var(--space-3) 0;
+  margin: -2px var(--space-4) 0;
   color: var(--color-ink-2);
   font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
 }
@@ -72,6 +72,17 @@
   transition:
     border-color var(--duration-fast) var(--ease-standard),
     background-color var(--duration-fast) var(--ease-standard);
+}
+
+/* Numbers are typed: no native spinner inside the pill. */
+.input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.input[type='number']::-webkit-inner-spin-button,
+.input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
 }
 
 .input::placeholder {
@@ -98,7 +109,7 @@
 }
 
 .fieldError {
-  margin-inline: var(--space-3);
+  margin-inline: var(--space-4);
   color: var(--color-danger);
   font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
 }

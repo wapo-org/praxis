@@ -108,7 +108,10 @@ test.describe('menus', () => {
         w.__corner = [];
         const tick = () => {
           const surface = document.querySelector<HTMLElement>('[role="menu"] [data-glass-surface]');
-          if (surface) w.__corner.push({ r: parseFloat(getComputedStyle(surface).borderTopLeftRadius), morphing: surface.dataset.morphing === 'true', round: surface.dataset.morphRound === 'true' });
+          // The corner on screen: the morph writes it against the glass's scale (radius / sx), so read it back at that
+          // scale. Since WP-I1 the corner squares while the glass is still growing, not after it has landed.
+          const scale = surface ? surface.getBoundingClientRect().width / surface.offsetWidth : 1;
+          if (surface) w.__corner.push({ r: parseFloat(getComputedStyle(surface).borderTopLeftRadius) * scale, morphing: surface.dataset.morphing === 'true', round: surface.dataset.morphRound === 'true' });
           if (w.__corner.length < 400) requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
@@ -154,6 +157,7 @@ test.describe('menus', () => {
     const shape95 = track.find((f) => f.w >= 0.95 && f.h >= 0.95)!.t;
     const rowsDone = track.find((f) => f.sharp > 0.995 && f.blur < 0.005 && Math.abs(f.rows - 1) < 0.005)!.t;
     expect(rowsDone).toBeLessThanOrEqual(shape95);
-    expect(Math.max(...track.map((f) => f.w))).toBeGreaterThan(1.01); // the overshoot is kept
+    // WP-I1: it lands once. No overshoot to come back from after it has visibly arrived.
+    expect(Math.max(...track.map((f) => f.w))).toBeLessThanOrEqual(1.005);
   });
 });

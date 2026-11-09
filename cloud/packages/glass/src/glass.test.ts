@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { squirclePath } from './squircle';
-import { PAPER_DARK, PAPER_LIGHT, popIn, press, resolvePreset, sheet, SPRING } from './index';
+import { PAPER_DARK, PAPER_LIGHT, popIn, press, resolvePreset, sheet, slideUnder, SPRING } from './index';
 
 const here = new URL('.', import.meta.url).pathname;
 const tokensCss = readFileSync(join(here, '../../../apps/web/src/styles/tokens.css'), 'utf8');
@@ -48,6 +48,10 @@ describe('@praxis/glass design system', () => {
     expect(press.whileTap.scale).toBe(0.97);
     expect(resolvePreset(popIn, true).initial).toEqual({ opacity: 0 });
     expect(resolvePreset(popIn, false)).toBe(popIn);
+    expect(resolvePreset(popIn, true).animate).toEqual({ opacity: 1 });
+    // An inverted preset keeps its own direction: slideUnder rests visible (WP-I1: the reduced-motion tray was empty).
+    expect(resolvePreset(slideUnder, true).initial).toEqual({ opacity: 1 });
+    expect(resolvePreset(slideUnder, true).animate).toEqual({ opacity: 0 });
   });
 
   it('has no WebGL, DOM capture, rAF loop or animated blur; canvas only builds the lens maps', () => {

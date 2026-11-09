@@ -29,8 +29,9 @@ try {
   // 2. Elicitation started elsewhere: answered from the web.
   const elicitation = await start(chatId, 'Remote elicitation run', 'elicitation');
   await page.getByTestId('elicitation-submit').waitFor();
-  const input = page.getByTestId('elicitation-input-response');
-  if (await input.count()) await input.first().fill('From web');
+  // The card validates required fields (WP-I1): answer every text field it shows before submitting.
+  const input = page.locator('[data-testid^="elicitation-card-"] input[data-testid^="elicitation-input-"]');
+  for (let i = 0; i < await input.count(); i++) await input.nth(i).fill('From web');
   await page.getByTestId('elicitation-submit').click();
   assert.equal(await settle(elicitation.id), 'completed');
   // 3. Tool rows and streamed text from a remote run.
