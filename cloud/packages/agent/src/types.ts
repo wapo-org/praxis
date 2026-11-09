@@ -115,6 +115,8 @@ export interface AgentPorts {
 export interface AgentRunnerOptions {
   provider:ModelProvider;tools?:AgentTool[];ports:AgentPorts;
   maxResultCharacters?:number;toolTimeoutMs?:number;streamTimeoutMs?:number;
+  /** Current server-authored connector advertisements; replaces the frozen connector section. */
+  toolNotes?:string[];
   contextWindow?:number;compactAt?:number;
   shouldYield?:()=>boolean;
 }

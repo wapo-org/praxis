@@ -24,3 +24,5 @@ Alexandria is Firecrawl's catalogue of typed third-party data tools, not a crawl
 Discovery metadata fills all capability switches even when a later live probe fails; successful probe observations then replace tools/vision/reasoning detection. The user can override switches before saving. Provider error messages remain visible with credentials redacted. Real OpenRouter reproduction is pending the owner's key; no claim is made that the exact reported failure has been reproduced.
 
 The model refresh endpoint sliced the list to 100 and then returned no continuation cursor. Bootstrap also sliced to 50. Both now return the complete catalog. Existing model picker search and virtualization remain in place.
+
+Connector toggles also apply to existing chats: outgoing MCP definitions are filtered against the live catalog, newly enabled MCP tools join the next run's frozen setup, and each execution slice refreshes the server-authored connector brief. Existing frozen tool schemas/descriptions stay stable for tools already in the conversation.

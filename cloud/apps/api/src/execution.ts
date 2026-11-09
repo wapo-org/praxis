@@ -209,6 +209,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     const runner = new AgentRunner({
       provider,
       tools,
+      toolNotes: await options.features?.toolNotes?.(ctx(userId),chat),
       ports: script ? {...slicePorts(fence), summarize: localSummary} : slicePorts(fence),
       shouldYield: () => clock() - started > budgetMs,
       ...(script === 'compaction' ? {contextWindow: 1024} : model?.contextWindow ? {contextWindow: model.contextWindow} : {}),

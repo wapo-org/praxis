@@ -2,8 +2,8 @@ import type {ConversationSetup, Message, MessagePart, Mode, ToolSpec} from '@pra
 
 /**
  * Port of AgentCore `SystemPrompt`, AgentSkills `SkillCatalog` and AgentRuntime `TurnNotes`.
- * The system prompt is frozen per conversation (no dates or names); mode/effort and later skill
- * additions reach the model as `note` parts on the new user message, never as history edits.
+ * Base instructions are frozen per conversation (no dates or names); current connector advertisements
+ * refresh in the request. Mode/effort and later skill additions use new user notes, never history edits.
  */
 export interface CatalogSkill {name: string; description: string}
 

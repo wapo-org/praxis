@@ -67,7 +67,9 @@ export class AgentRunner {
     const i=RunInputSchema.parse(input);
     if(i.run.chatId!==i.chat.id||i.messages.some(m=>m.chatId!==i.chat.id))throw new Error('Chat scope mismatch');
     if(terminal(i.run))throw new Error('Cannot start a terminal run');
-    const setup=i.chat.setup??i.setup??{type:'conversation.setup' as const,system:'You are Praxis, a helpful assistant.',tools:[...this.tools.values()].filter(t=>!t.hidden).map(t=>t.spec),skillCatalog:'',connectorIds:i.chat.connectorIds,createdAt:this.now()};
+    let setup=i.chat.setup??i.setup??{type:'conversation.setup' as const,system:'You are Praxis, a helpful assistant.',tools:[...this.tools.values()].filter(t=>!t.hidden).map(t=>t.spec),skillCatalog:'',connectorIds:i.chat.connectorIds,createdAt:this.now()};
+    const added=[...this.tools.values()].filter(t=>t.spec.source.type==='mcp'&&!t.hidden&&!t.unavailableReason&&!setup.tools.some(s=>s.name===t.spec.name));
+    if(added.length)setup={...setup,tools:[...setup.tools,...added.map(t=>t.spec)]};
     const cp=CheckpointSchema.parse({
       version:1,userId:i.userId,run:{...i.run,status:'running'},chat:{...i.chat,setup},setup,
       messages:i.messages,modelId:i.modelId??i.chat.modelId??'scripted',effort:i.effort??i.chat.effort,
@@ -184,8 +186,13 @@ export class AgentRunner {
       if(tail[0]?.role==='user')tail[0].parts.unshift(preface);else tail.unshift(this.message(cp,'user',[preface]));
       messages=tail;
     }
-    return {model:cp.modelId,system:cp.setup.system+(cp.setup.skillCatalog?`\n\n${cp.setup.skillCatalog}`:''),messages,
-      tools:cp.capabilities.tools?cp.setup.tools:[],capabilities:cp.capabilities,
+    let system=cp.setup.system;
+    if(this.options.toolNotes!==undefined) {
+      system=system.replace(/\n\nConnected tools:\n[\s\S]*?(?=\n\n|$)/,'');
+      if(this.options.toolNotes.length)system+='\n\nConnected tools:\n'+this.options.toolNotes.map(n=>'- '+n).join('\n');
+    }
+    return {model:cp.modelId,system:system+(cp.setup.skillCatalog?`\n\n${cp.setup.skillCatalog}`:''),messages,
+      tools:cp.capabilities.tools?cp.setup.tools.filter(spec=>spec.source.type!=='mcp'||(this.tools.has(spec.name)&&!this.tools.get(spec.name)!.unavailableReason)):[],capabilities:cp.capabilities,
       maxTokens:Math.min(cp.maxTokens,cp.modelMaxTokens??Infinity),effort:cp.effort,supportedEfforts:cp.supportedEfforts,
       webSearch:cp.webSearch&&cp.capabilities.serverWebSearch};
   }

@@ -69,9 +69,24 @@ describe('scripted durable loop',()=>{
     const before=structuredClone(i.messages);const cp=await createScriptedRunner(h.ports).run(i);expect(cp.messages.slice(0,2)).toEqual(before);expect(JSON.stringify(cp.messages[2])).toContain('interrupted');
   });
   it('keeps frozen setup after live tool descriptions drift',async()=>{
-    const h=harness(),i=input(),tools=scriptedTools();i.chat.setup={type:'conversation.setup',system:'Frozen',tools:[{...tools[0]!.spec,description:'Frozen tool'}],skillCatalog:'Frozen skills',connectorIds:[],createdAt:time};
+    const h=harness(),i=input(),tools=scriptedTools().slice(0,1);i.chat.setup={type:'conversation.setup',system:'Frozen',tools:[{...tools[0]!.spec,description:'Frozen tool'}],skillCatalog:'Frozen skills',connectorIds:[],createdAt:time};
     const requests:ProviderRequest[]=[];const base=createScriptedProvider('tools');const provider={...base,stream:(req:ProviderRequest,s:AbortSignal)=>{requests.push(structuredClone(req));return base.stream(req,s);}};
     const cp=await new AgentRunner({ports:h.ports,tools,provider}).run(i);expect(cp.setup).toEqual(i.chat.setup);expect(requests[0]?.tools[0]?.description).toBe('Frozen tool');expect(requests[0]?.system).toContain('Frozen skills');
+  });
+  it('does not offer disabled connector tools retained in a frozen setup',async()=>{
+    const h=harness(),i=input(),tools=scriptedTools().slice(0,1);
+    const disabled:ToolSpec={...tools[0]!.spec,name:'mcp_disabled',source:{type:'mcp',serverId:'off'}};
+    i.chat.setup={type:'conversation.setup',system:'Frozen',tools:[tools[0]!.spec,disabled],skillCatalog:'',connectorIds:[],createdAt:time};
+    const requests:ProviderRequest[]=[];const base=createScriptedProvider();
+    await new AgentRunner({ports:h.ports,tools,provider:{...base,stream:(req,signal)=>{requests.push(req);return base.stream(req,signal);}}}).run(i);
+    expect(requests[0]!.tools.map(t=>t.name)).toEqual([tools[0]!.spec.name]);
+  });
+  it('adds newly enabled connector tools and replaces stale connector advertisements on a later turn',async()=>{
+    const h=harness(),i=input(),tools=scriptedTools();const enabled={...tools[0]!,spec:{...tools[0]!.spec,name:'mcp_enabled',source:{type:'mcp' as const,serverId:'new'}}};
+    i.chat.setup={type:'conversation.setup',system:'Frozen\n\nConnected tools:\n- Disabled old connector\n\nInstructions remain.',tools:[tools[0]!.spec],skillCatalog:'',connectorIds:[],createdAt:time};
+    const requests:ProviderRequest[]=[];const base=createScriptedProvider();
+    await new AgentRunner({ports:h.ports,tools:[...tools,enabled],toolNotes:['Current connector tools'],provider:{...base,stream:(req,signal)=>{requests.push(req);return base.stream(req,signal);}}}).run(i);
+    expect(requests[0]!.tools.some(t=>t.name==='mcp_enabled')).toBe(true);expect(requests[0]!.system).toContain('Current connector tools');expect(requests[0]!.system).not.toContain('Disabled old connector');expect(requests[0]!.system).toContain('Instructions remain.');
   });
   it('compaction transforms requests without rewriting messages',async()=>{
     const h=harness(),i=input();i.messages.unshift({...i.messages[0]!,id:'old',parts:[{type:'text',text:'history '.repeat(2000)}]});const before=structuredClone(i.messages);
