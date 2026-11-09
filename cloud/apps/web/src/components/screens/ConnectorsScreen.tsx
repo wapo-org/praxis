@@ -2,7 +2,7 @@ import React from 'react';
 import { apiClient } from '../../lib/api.js';
 import { ExternalLink, FileJson, Grid2X2, Link, RefreshCw, Trash2 } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store.js';
-import { Card, hostLabel, NavRow, requireHttpUrl, ScreenBody, ScreenButton, Section, TaskError, Toggle, useScreenTask } from './ScreenUI.js';
+import { Card, Field, hostLabel, NavRow, requireHttpUrl, ScreenBody, ScreenButton, Section, TaskError, Toggle, useScreenTask } from './ScreenUI.js';
 import styles from './Screen.module.css';
 
 export { ConnectorAddURL, ConnectorPasteConfig, parseConnectorConfig } from './ConnectorForms';
@@ -11,6 +11,7 @@ export { ConnectorRegistry } from './ConnectorRegistry';
 export function ConnectorsScreen() {
   const store = usePraxisStore();
   const task = useScreenTask();
+  const [keys,setKeys]=React.useState<Record<string,string>>({});
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
   React.useEffect(() => {
     const refresh = () => {
@@ -47,11 +48,11 @@ export function ConnectorsScreen() {
                 ? ({
                     connected: 'Connected',
                     unreachable: 'Unreachable',
-                    needs_auth: 'Needs auth',
-                    needs_reauth: 'Needs reauth',
+                    needs_auth: 'Sign in to connect',
+                    needs_reauth: 'Sign in again',
                     error: 'Error',
                   }[connector.status] ?? 'Status unknown')
-                : 'Status unknown';
+                : connector.enabled ? 'Ready to connect' : 'Disabled';
               return (
                 <div className={styles.listItem} key={connector.id}>
                   <button
@@ -94,7 +95,8 @@ export function ConnectorsScreen() {
                           void task.run(() => store.updateConnector(connector.id, { enabled }));
                         }}
                       />
-                      {connector.error ? <p className={styles.error}>{connector.error}</p> : null}
+                      {connector.error || connector.statusCode ? <p className={styles.error}>{connectorIssue(connector.error ?? connector.statusCode!)}</p> : null}
+                      {connector.id.startsWith('builtin-') ? <Field label={`${connector.name} API key`} hint={connector.id==='builtin-exa'||connector.id==='builtin-firecrawl'?'Optional. Leave blank for keyless access.':'Stored securely. Leave blank to keep the saved key.'}><input type="password" autoComplete="new-password" value={keys[connector.id]??''} onChange={e=>setKeys(prev=>({...prev,[connector.id]:e.target.value}))}/><ScreenButton disabled={task.busy||!keys[connector.id]} onClick={()=>{void task.run(async()=>{await store.updateConnector(connector.id,{token:keys[connector.id]});setKeys(prev=>({...prev,[connector.id]:''}));});}}>Save key</ScreenButton></Field> : null}
                       <div className={styles.actions}>
                         <ScreenButton
                           disabled={task.busy}
@@ -108,7 +110,7 @@ export function ConnectorsScreen() {
                           <RefreshCw size={16} />
                           Refresh tools
                         </ScreenButton>
-                        {connector.status === 'needs_auth' ||
+                        {connector.id === 'builtin-firecrawl' || connector.status === 'needs_auth' ||
                         connector.status === 'needs_reauth' ||
                         connector.authStatus === 'required' ? (
                           <ScreenButton disabled={task.busy} onClick={() => signIn(connector.id)}>
@@ -122,10 +124,10 @@ export function ConnectorsScreen() {
                           tools.map((tool) => (
                             <Toggle
                               key={tool.name}
-                              label={tool.name}
+                              label={tool.originalName ?? tool.name}
                               detail={tool.description}
-                              checked={!connector.disabledTools.includes(tool.name)}
-                              disabled={task.busy || !connector.enabled}
+                              checked={!connector.disabledTools.includes(tool.originalName ?? tool.name)}
+                              disabled={task.busy}
                               onChange={(enabled) => {
                                 void task.run(() =>
                                   store.setConnectorToolEnabled(connector.id, tool.name, enabled),
@@ -191,4 +193,9 @@ export function ConnectorsScreen() {
       </p>
     </ScreenBody>
   );
+}
+
+export function connectorIssue(code:string):string {
+ const messages:Record<string,string>={needs_reauth:'Your sign-in has expired. Sign in again to reconnect.',authorization_required:'Sign in or add an API key to connect.',consent_required:'Allow data sharing in Data consents or when the chat asks.',mcp_unreachable:'This service cannot be reached. Try again shortly.',probe_timeout:'The service took too long to respond. Try again.',mcp_failed:'The service could not complete the request. Refresh tools to try again.',internal_error:'The connection could not be checked. Try again.',invalid_url:'Check the connector address.',unsafe_url:'This connector address is not supported.',connector_disabled:'Enable this connector to use its tools.',invalid_return_url:'This app address is not allowed for sign-in.',encryption_unconfigured:'Secure key storage is unavailable. Contact your administrator.'};
+ return messages[code] ?? 'This connector needs attention. Refresh tools or sign in again.';
 }

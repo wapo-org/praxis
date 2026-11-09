@@ -224,6 +224,7 @@ export interface PraxisStoreContextValue {
   updateConnector: (
     connectorId: string,
     patch: {
+      token?: string;
       enabled?: boolean;
       trusted?: boolean;
       name?: string;

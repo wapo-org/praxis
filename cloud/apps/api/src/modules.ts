@@ -70,7 +70,7 @@ export function withGateway(chat: Chat, connectors: FeatureTool[]): FeatureTool[
 export function localModules(baseUrl: string): (service: ApiService) => FeatureModule[] {
   return service => featureModules(service, {
     storage: createLocalToolsStorage(baseUrl),
-    mcp: {publicOrigin: baseUrl, webReturnOrigins: ['http://localhost:5173', 'http://127.0.0.1:5173']},
+    mcp: {publicOrigin: baseUrl, webReturnOrigins: [...(process.env.PRAXIS_ALLOWED_ORIGINS??'').split(',').map(s=>s.trim()).filter(Boolean),'http://localhost:5173', 'http://127.0.0.1:5173']},
   });
 }
 

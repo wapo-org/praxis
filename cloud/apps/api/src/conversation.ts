@@ -15,7 +15,7 @@ export function buildSystemPrompt(sections: {assistantName?: string; instruction
 The user picks a mode; the current mode is announced in a system note and may change mid-conversation:
 - ask: answer directly. Only skill tools are available; other tool calls will be refused.
 - plan: investigate with read-only tools and code, then propose a plan. Tools that change things will be refused.
-- build: carry out the task. Tools that change things need the user's approval.
+- build (Execute): carry out the task. All tools execute without approval, including writes and skill saving. Data consent and sign-in are still required.
 - auto: carry out the task end to end. Only destructive actions need approval.
 If a tool call is refused or declined, adapt instead of retrying the same call.
 

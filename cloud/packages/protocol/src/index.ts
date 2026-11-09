@@ -57,7 +57,7 @@ export type Model = z.infer<typeof ModelSchema>;
 export const ModelPreferenceSchema = z.object({type:z.literal('model.preference'), providerId:IdSchema, modelId:IdSchema, pinned:z.boolean().optional(),favorite:z.boolean().optional()});
 export const ToolSourceSchema = z.object({type:z.enum(['builtin','skill','javascript','mcp','server']),serverId:IdSchema.optional(),serverName:z.string().optional()});
 export const ToolPresentationSchema = z.object({type:z.literal('tool.presentation').default('tool.presentation'),category:z.enum(['integration','command','webSearch','webFetch','readFile','edit','skill','other']),runningTitle:z.string(),finishedTitle:z.string()});
-export const ToolSpecSchema = z.object({type:z.literal('tool.spec'),name:z.string(),description:z.string(),inputSchema:JsonObjectSchema,source:ToolSourceSchema,traits:z.array(z.enum(['readOnly','destructive','idempotent','openWorld','sandboxed']))});
+export const ToolSpecSchema = z.object({originalName:z.string().optional(),type:z.literal('tool.spec'),name:z.string(),description:z.string(),inputSchema:JsonObjectSchema,source:ToolSourceSchema,traits:z.array(z.enum(['readOnly','destructive','idempotent','openWorld','sandboxed']))});
 export type ToolSpec = z.infer<typeof ToolSpecSchema>;
 /**
  * Attachment size limits, shared by the API and the composer (which states them at attach time).

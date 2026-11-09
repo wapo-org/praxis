@@ -16,12 +16,14 @@ export async function withClient<T>(ctx: FeatureContext, value: Connector, optio
   // Refreshes OAuth tokens shortly before expiry; after a 401 the retry below forces one refresh.
   const oauth: OAuthTokens | undefined = token ? undefined : await ensureFreshTokens(ctx, value, options, retried);
   if (!token && !oauth && await readSecret(ctx, value.id, 'tokens')) return requireReauth(ctx, value);
-  const headers = { ...extra, ...(token || oauth?.access_token ? { Authorization: `Bearer ${token || oauth?.access_token}` } : {}) };
+  const headers = { ...extra, ...(value.id==='builtin-exa'&&token?{'x-api-key':token}:{}), ...(token || oauth?.access_token ? { Authorization: `Bearer ${token || oauth?.access_token}` } : {}) };
   // Auth discovery/registration is explicit. Never open a browser or register clients during an agent call.
   const network = guardedFetch(ctx, options, new URL(value.url).origin, headers);
+  const endpoint=new URL(value.url);
+  if(value.id==='builtin-browserbase'&&token)endpoint.searchParams.set('browserbaseApiKey',token);
   const transport = value.transport === 'sse'
-    ? new SSEClientTransport(new URL(value.url), { fetch: network })
-    : new StreamableHTTPClientTransport(new URL(value.url), { fetch: network, reconnectionOptions: { maxRetries: 0, maxReconnectionDelay: 0, initialReconnectionDelay: 0, reconnectionDelayGrowFactor: 1 } });
+    ? new SSEClientTransport(endpoint, { fetch: network })
+    : new StreamableHTTPClientTransport(endpoint, { fetch: network, reconnectionOptions: { maxRetries: 0, maxReconnectionDelay: 0, initialReconnectionDelay: 0, reconnectionDelayGrowFactor: 1 } });
   const client = new Client({ name: 'Praxis', version: '1.0.0' }, { capabilities: { elicitation: { form: {}, url: {} } } });
   client.setRequestHandler(ElicitRequestSchema, async request => {
     if ('url' in request.params) {

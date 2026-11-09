@@ -39,6 +39,7 @@ export async function connector(ctx: FeatureContext, id: string): Promise<Connec
 export async function saveConnector(ctx: FeatureContext, value: Connector) {
   const next = ConnectorSchema.parse({ ...value, updatedAt: now() });
   await ctx.store.put(ctx.userId, 'connector', next.id, next as JsonObject);
+  await ctx.kv.del(`bootstrap:${ctx.userId}`);
   return next;
 }
 /** Existing authStatus=required is the public needs-reauth state; error carries the machine reason. */
@@ -62,12 +63,22 @@ export async function writeSecret(ctx: FeatureContext, id: string, slot: string,
 /** Consent key for a remote URL: host plus any non-default port, the same key provider and tool consent use. */
 export const consentHost = (url: string) => new URL(url).host.toLowerCase();
 
-export async function requireConsent(ctx: FeatureContext, value: Connector) {
+export async function grantConsent(ctx: FeatureContext, url: string) {
+  const host=consentHost(url);
+  await ctx.store.put(ctx.userId,'consent',host,{type:'consent',host,allowed:true,updatedAt:now()});
+  await ctx.kv.del(`bootstrap:${ctx.userId}`);
+}
+
+export async function requireConsent(ctx: FeatureContext, value: Connector, run?: Parameters<import('../../contracts.js').FeatureTool['execute']>[1]) {
   const url = new URL(value.url);
   const host = consentHost(value.url), legacy = url.hostname.toLowerCase();
   const exact = await ctx.store.get(ctx.userId, 'consent', host);
   // Records saved before WP-W3 were keyed by hostname only; they still count, unless a host:port record decides.
   const consent = exact && !exact.deleted ? exact : host === legacy ? undefined : await ctx.store.get(ctx.userId, 'consent', legacy);
+  if ((!consent || consent.deleted || consent.value.allowed !== true) && run?.elicit) {
+    const reply=await run.elicit({message:`Allow ${host}`,schema:{type:'object',properties:{allow:{type:'boolean',title:`Allow sending data to ${host}`,default:true}},required:['allow']}});
+    if(reply.action==='accept' && reply.content?.allow===true) {await grantConsent(ctx,value.url);return;}
+  }
   if (!consent || consent.deleted || consent.value.allowed !== true) throw new McpError(403, 'consent_required', `AI data consent is required for ${host}`);
 }
 const blocked = new BlockList();
@@ -106,7 +117,8 @@ export function returnTarget(raw: string | undefined, options: McpOptions): stri
   const url = new URL(raw);
   if (url.username || url.password || url.hash || url.search) throw new McpError(400, 'invalid_return_url', 'OAuth return URL is not allowed');
   const native = url.protocol === 'praxis-app:' && url.hostname === 'oauth' && url.pathname === '/callback' && !url.port;
-  const web = url.protocol === 'https:' && (options.webReturnOrigins ?? []).includes(url.origin);
+  const loopback=['localhost','127.0.0.1','[::1]'].includes(url.hostname);
+  const web = (url.protocol === 'https:' || (process.env.NODE_ENV !== 'production' && !process.env.VERCEL && url.protocol === 'http:' && loopback)) && (options.webReturnOrigins ?? []).includes(url.origin);
   if (!native && !web) throw new McpError(400, 'invalid_return_url', 'OAuth return URL is not allowed');
   return url.href;
 }

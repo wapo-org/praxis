@@ -176,22 +176,21 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                   <ChevronRight size={16} />
                 </span>
               </button>
-              {store.activeChat
-                ? enabledConnectors.map((connector) => (
+              {enabledConnectors.map((connector) => (
                     <label key={connector.id} className={`${styles.row} ${styles.indent}`}>
                       <span className={styles.rowCopy}>
                         <span className={styles.rowTitle}>{connector.name}</span>
                       </span>
                       <Switch
                         label={connector.name}
-                        checked={!store.activeChat!.disabledConnectorIds.includes(connector.id)}
+                        checked={!store.activeChat?.disabledConnectorIds.includes(connector.id)}
+                        disabled={!store.activeChat}
                         onChange={(checked) =>
                           void store.toggleChatConnector(store.activeChat!.id, connector.id, checked)
                         }
                       />
                     </label>
-                  ))
-                : null}
+                  ))}
               <button type="button" className={styles.row} onClick={() => openSheet('providers')}>
                 <span className={styles.rowIcon}>
                   <Settings size={18} />

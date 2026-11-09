@@ -1,3 +1,4 @@
+import {builtinCatalog,runE2B} from './builtins.js';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -74,6 +75,7 @@ export async function discoverCatalog(
   value: Connector,
   options: McpOptions = {},
 ): Promise<{ tools: Tool[]; resources: boolean }> {
+  if(value.id==='builtin-e2b')return {tools:builtinCatalog(value)!,resources:false};
   const key = catalogKey(ctx, value.id);
   const cached = await ctx.kv.get<{ url: string; transport: string; tools: Tool[]; resources?: boolean }>(key);
   if (cached?.url === value.url && cached.transport === value.transport) {
@@ -124,7 +126,7 @@ export async function checkExecution(
       'Connector security settings changed; start a new conversation',
     );
   }
-  await requireConsent(ctx, live);
+  await requireConsent(ctx, live, run);
   if (run.mode === 'plan' && (!live.trusted || !readOnly)) {
     throw new McpError(403, 'plan_read_only', 'Plan mode requires a trusted read-only MCP tool');
   }
@@ -157,7 +159,7 @@ export async function getMcpTools(
     if (skipWithoutContact(value)) continue;
     try {
       const { tools: definitions, resources } = await discoverCatalog(ctx, value, mcp);
-      if (resources) tools.push(...resourceTools(ctx, value, options, mcp));
+      // Resource management stays in Settings; internal discovery helpers are not model tools.
       for (const definition of definitions) {
         if (value.disabledTools.includes(definition.name) || RESOURCE_TOOL_NAMES.includes(definition.name)) continue;
         tools.push({
@@ -175,6 +177,7 @@ export async function getMcpTools(
               options.disabledConnectorIds,
               definition.annotations?.readOnlyHint === true,
             );
+            if(live.id==='builtin-e2b')return runE2B(ctx,live,argumentsObject);
             return withClient(
               ctx,
               live,

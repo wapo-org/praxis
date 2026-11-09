@@ -43,7 +43,10 @@ export function createHTTPProvider(config:HTTPProviderConfig,fetcher:typeof fetc
     try{response=await fetcher(url,{...init,redirect:'error'});}catch(error){if(init.signal?.aborted)throw error;throw new ProviderFailure('Provider network request failed','retryable');}
     if(!response.ok) {
       const text=await readBounded(response,64_000),json=(()=>{try{return object(JSON.parse(text));}catch{return {};}})(),error=object(json.error);
-      const message=redact(string(error.message)||string(json.message)||text||`Provider HTTP ${response.status}`);
+      const raw=string(object(error.metadata).raw);
+      const upstream=(()=>{try{const parsed=object(JSON.parse(raw));return string(object(parsed.error).message)||string(parsed.message)||raw;}catch{return raw;}})();
+      const summary=string(error.message)||string(json.message);
+      const message=redact([summary,upstream].filter(Boolean).join(': ')||text||`Provider HTTP ${response.status}`);
       const retry=response.headers.get('retry-after');const delay=retry?Math.max(0,Number.isFinite(Number(retry))?Number(retry)*1000:Date.parse(retry)-Date.now()):undefined;
       throw classifyProviderError(message,response.status,delay&&Number.isFinite(delay)?delay:undefined);
     }

@@ -1,3 +1,4 @@
+import {ensureBuiltins} from './features/mcp/builtins.js';
 import { randomUUID } from 'node:crypto';
 import { ChatSchema,PROTOCOL_VERSION,RunSchema,type Bootstrap,type Chat,type JsonObject,type Message,type Run,type RunEventPayload,type RunSnapshot,type StartRun } from '@praxis/protocol';
 import type { AdapterBundle } from './contracts.js';
@@ -39,6 +40,7 @@ export class ApiService{
  async remove(userId:string,kind:string,id:string){const prior=await this.require<{chatId?:unknown}>(userId,kind,id);await this.adapters.store.delete(userId,kind,id);await this.adapters.kv.del(`bootstrap:${userId}`);await this.changed(userId,kind,id,'delete');this.indexed(userId,kind,id,typeof prior.chatId==='string'?prior.chatId:undefined);}
  async exclusive<T>(key:string,fn:()=>Promise<T>):Promise<T>{const prior=this.locks.get(key)??Promise.resolve();const next=prior.catch(()=>{}).then(fn);this.locks.set(key,next);try{return await next;}finally{if(this.locks.get(key)===next)this.locks.delete(key);}}
  async seed(userId:string){
+  await ensureBuiltins(this.adapters.store,userId);
   if(!this.local)return;
   await this.exclusive(`seed:${userId}`,async()=>{
    if(await this.adapters.store.get(userId,'seed','v1'))return;
@@ -52,9 +54,10 @@ export class ApiService{
  }
  async bootstrap(userId:string):Promise<Bootstrap>{
   const cached=await this.adapters.kv.get<Bootstrap>(`bootstrap:${userId}`);if(cached)return cached;
+  await ensureBuiltins(this.adapters.store,userId);
   const [chats,providers,models,connectors,skills,runs,consents,registries,preferences,changes]=await Promise.all([this.list<any>(userId,'chat'),this.list<any>(userId,'provider'),this.list<any>(userId,'model'),this.list<any>(userId,'connector'),this.list<any>(userId,'skill'),this.list<Run>(userId,'run'),this.list<any>(userId,'consent'),this.list<any>(userId,'registry'),this.adapters.store.get(userId,'preferences','current'),this.adapters.store.head(userId)]);
   const eventCursor=await this.adapters.events.latest?.(userId,'user');
-  const result:Bootstrap={type:'bootstrap',protocolVersion:PROTOCOL_VERSION,user:{type:'user',id:userId,name:this.local?'Local developer':'Praxis user'},chats:chats.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,50),providers,models:models.slice(0,50),connectors,skills,activeRuns:runs.filter(r=>!this.terminal(r)),consents,registries,preferences:preferences?.value as any,syncCursor:String(changes),syncRoot:'',serverTime:this.now(),...(eventCursor===undefined?{}:{eventCursor})};
+  const result:Bootstrap={type:'bootstrap',protocolVersion:PROTOCOL_VERSION,user:{type:'user',id:userId,name:this.local?'Local developer':'Praxis user'},chats:chats.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,50),providers,models,connectors,skills,activeRuns:runs.filter(r=>!this.terminal(r)),consents,registries,preferences:preferences?.value as any,syncCursor:String(changes),syncRoot:'',serverTime:this.now(),...(eventCursor===undefined?{}:{eventCursor})};
   await this.adapters.kv.set(`bootstrap:${userId}`,result,10,userId);return result;
  }
  terminal(run:Run){return ['completed','cancelled','failed'].includes(run.status);}

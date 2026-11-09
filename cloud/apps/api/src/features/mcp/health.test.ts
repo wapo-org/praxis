@@ -139,24 +139,13 @@ describe('MCP progress notifications (parity: MCPClient notifications/progress)'
 });
 
 describe('MCP resource tools (parity: MCPResourceTools)', () => {
-  it('offers list/read resource tools for servers that share resources, under the same policy as read-only tools', async () => {
+  it('keeps internal resource discovery out of the model catalog', async () => {
     const s = setup();
     await s.ctx.store.put('alice', 'chat', 'chat-1', {...s.chat});
     await s.ctx.store.put('alice', 'consent', '127.0.0.1', {type: 'consent', host: '127.0.0.1', allowed: true});
     await s.add(`${remote.base}/mcp`);
     const tools = await getMcpTools(s.ctx, {chatId: 'chat-1', disabledConnectorIds: []});
-    const list = tools.find(t => t.name.includes('resources_list'))!, read = tools.find(t => t.name.includes('resources_read'))!;
-    // Namespaced: a server tool literally named list_resources/read_resource can't be shadowed (REV-R1 P2).
-    const value = (await s.ctx.store.list('alice', 'connector'))[0]!.value as never;
-    expect(list.name).not.toBe(qualifiedName(value, 'list_resources'));
-    expect(read.name).not.toBe(qualifiedName(value, 'read_resource'));
-    expect(list.traits).toEqual(['readOnly', 'idempotent']);
-    expect(list.source.type).toBe('mcp');
-    const run = {chatId: 'chat-1', runId: 'r', mode: 'auto' as const, callId: 'c'};
-    const listed = await list.execute({}, run) as {resources: {uri: string}[]};
-    expect(listed.resources.length).toBeGreaterThan(0);
-    const content = JSON.stringify(await read.execute({uri: listed.resources[0]!.uri}, run));
-    expect(content).toContain('"type":"text"');
-    await expect(list.execute({}, {...run, mode: 'plan'})).rejects.toMatchObject({code: 'plan_read_only'}); // untrusted server in plan mode
+    expect(tools.some(t=>t.name.includes('resources_list')||t.name.includes('resources_read'))).toBe(false);
+
   });
 });

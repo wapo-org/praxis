@@ -1,3 +1,4 @@
+import {ensureBuiltins,builtin,builtinCatalog} from './builtins.js';
 import {searchRegistry} from './registry.js';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
@@ -7,7 +8,7 @@ import type { FeatureContext } from '../../contracts.js';
 import { catalogKey, discoverTools, toolSpec } from './tools.js';
 import { withClient } from './client.js';
 import { clientMetadata, finishOAuth, startOAuth } from './oauth.js';
-import { connector, HeadersSchema, McpError, now, opaqueId, page, remoteUrl, requireConsent, saveConnector, secretKind, writeSecret, type McpOptions } from './shared.js';
+import { connector, HeadersSchema, McpError, now, opaqueId, page, remoteUrl, grantConsent, requireConsent, saveConnector, secretKind, writeSecret, type McpOptions } from './shared.js';
 export { getMcpTools, createMcpGateway, qualifiedName } from './tools.js';
 export { connectorTurnNotes, probeConnector } from './health.js';
 import { probeConnector } from './health.js';
@@ -59,6 +60,7 @@ export function createMcpRoutes(context: (req: Request) => Promise<FeatureContex
   });
   app.get('/connectors', async c => {
     const ctx = await authenticated(c.req.raw);
+    await ensureBuiltins(ctx.store,ctx.userId);
     const items = (await ctx.store.list(ctx.userId, 'connector')).filter(r => !r.deleted).map(r => ConnectorSchema.parse(r.value)).sort((a, b) => a.id.localeCompare(b.id));
     return c.json(page(items, c.req.query(), JSON.stringify([ctx.userId, 'connectors'])));
   });
@@ -68,6 +70,7 @@ export function createMcpRoutes(context: (req: Request) => Promise<FeatureContex
     if (input.token !== undefined) await writeSecret(ctx, id, 'token', input.token);
     if (input.extraHeaders) await writeSecret(ctx, id, 'headers', input.extraHeaders);
     const value = await saveConnector(ctx, ConnectorSchema.parse({ ...input, id, url, type: 'connector', headerNames: Object.keys(input.extraHeaders ?? {}), authStatus: input.token ? 'connected' : 'none', updatedAt: now() }));
+    await grantConsent(ctx,value.url);
     // Creation always succeeds (the URL or sign-in can be fixed later); the status says what the handshake found.
     return c.json(await probeConnector(ctx, value, options), 201);
   });
@@ -79,11 +82,12 @@ export function createMcpRoutes(context: (req: Request) => Promise<FeatureContex
     const targetChanged = next.url !== value.url || next.transport !== value.transport;
     // Do not carry credentials onto a changed remote endpoint, even on the same host.
     if (targetChanged) { await ctx.store.delete(ctx.userId, secretKind, id); next.authStatus = 'none'; next.headerNames = []; next.toolCount = undefined; next.promptsCount = undefined; }
-    if (input.token !== undefined) { await writeSecret(ctx, id, 'token', input.token); next.authStatus = input.token ? 'connected' : 'none'; }
+    if (input.token !== undefined) { if(id==='builtin-firecrawl')next.url='https://mcp.firecrawl.dev/v2/mcp'; await writeSecret(ctx, id, 'token', input.token); next.authStatus = input.token ? 'connected' : 'none'; }
     if (input.extraHeaders) { await writeSecret(ctx, id, 'headers', input.extraHeaders); next.headerNames = Object.keys(input.extraHeaders); }
     if (targetChanged) { next.status = undefined; next.lastCheckedAt = undefined; next.statusCode = undefined; }
     await ctx.kv.del(catalogKey(ctx, id)); const saved = await saveConnector(ctx, ConnectorSchema.parse(next));
     // A new endpoint or new credentials invalidate the last check: run it again.
+    if(input.enabled===true || (targetChanged && saved.enabled)) await grantConsent(ctx,saved.url);
     const recheck = targetChanged || input.token !== undefined || input.extraHeaders !== undefined || (input.enabled === true && !value.enabled);
     return c.json(recheck && saved.enabled ? await probeConnector(ctx, saved, options) : saved);
   });
@@ -93,21 +97,22 @@ export function createMcpRoutes(context: (req: Request) => Promise<FeatureContex
   });
   app.delete('/connectors/:id', async c => {
     const ctx = await authenticated(c.req.raw); const id = ParamId.parse(c.req.param('id')); await connector(ctx, id);
-    await ctx.store.delete(ctx.userId, 'connector', id); await ctx.store.delete(ctx.userId, secretKind, id); await ctx.kv.del(catalogKey(ctx, id)); return c.json({ type: 'ok' });
+    await ctx.store.delete(ctx.userId, 'connector', id); await ctx.kv.del(`bootstrap:${ctx.userId}`); await ctx.store.delete(ctx.userId, secretKind, id); await ctx.kv.del(catalogKey(ctx, id)); return c.json({ type: 'ok' });
   });
   app.get('/connectors/:id/tools', async c => {
-    const ctx = await authenticated(c.req.raw); const value = await connector(ctx, c.req.param('id')); const tools = await discoverTools(ctx, value, options);
-    return c.json(page(tools.map(tool => ({ type: 'tool.spec', ...toolSpec(value, tool) })), c.req.query(), JSON.stringify([ctx.userId, value.id, 'tools'])));
+    const ctx = await authenticated(c.req.raw); const value = await connector(ctx, c.req.param('id')); const tools = builtinCatalog(value) && !value.enabled ? builtinCatalog(value)! : await discoverTools(ctx, value, options);
+    return c.json(page(tools.map(tool => ({ type: 'tool.spec', ...toolSpec(value, tool), originalName:tool.name })), c.req.query(), JSON.stringify([ctx.userId, value.id, 'tools'])));
   });
   app.patch('/connectors/:id/tools/:name', async c => {
     const ctx = await authenticated(c.req.raw); const value = await connector(ctx, c.req.param('id')); const { enabled } = await body(c, z.object({ type: z.literal('connector.tool'), enabled: z.boolean() }).strict());
-    const tools = await discoverTools(ctx, value, options); const name = z.string().min(1).max(500).parse(c.req.param('name'));
+    const tools = builtinCatalog(value) && !value.enabled ? builtinCatalog(value)! : await discoverTools(ctx, value, options); const name = z.string().min(1).max(500).parse(c.req.param('name'));
     const tool = tools.find(tool => tool.name === name || toolSpec(value, tool).name === name);
     if (!tool) throw new McpError(404, 'not_found', 'MCP tool not found');
     return c.json(await saveConnector(ctx, { ...value, disabledTools: enabled ? value.disabledTools.filter(n => n !== tool.name) : [...new Set([...value.disabledTools, tool.name])] }));
   });
   app.post('/connectors/:id/oauth/start', async c => {
-    const ctx = await authenticated(c.req.raw); const value = await connector(ctx, c.req.param('id'));
+    const ctx = await authenticated(c.req.raw); let value = await connector(ctx, c.req.param('id'));
+    if(value.id==='builtin-firecrawl' && !value.url.endsWith('/mcp-oauth')) {value=await saveConnector(ctx,{...value,url:'https://mcp.firecrawl.dev/v2/mcp-oauth',authStatus:'none'});await writeSecret(ctx,value.id,'token','');await ctx.kv.del(catalogKey(ctx,value.id));}
     const input = await body(c, z.object({ type: z.literal('oauth.start'), returnUrl: z.string().url().optional() }).strict());
     return c.json(await startOAuth(ctx, value, input, options));
   });
@@ -132,6 +137,6 @@ export function createMcpRoutes(context: (req: Request) => Promise<FeatureContex
     return c.json(await withClient(ctx, value, options, async client => { const result = await client.getPrompt({ name: input.name, arguments: input.arguments }); return { type: 'mcp.prompt.result', description: result.description, messages: result.messages.map(v => JsonObjectSchema.parse(v)) }; }));
   });
   app.get('/consents', async c => { const ctx = await authenticated(c.req.raw); return c.json(page((await ctx.store.list(ctx.userId, 'consent')).map(r => ConsentSchema.parse(r.value)), c.req.query(), JSON.stringify([ctx.userId, 'consents']))); });
-  app.post('/consents', async c => { const ctx = await authenticated(c.req.raw); const input = await body(c, ConsentSchema); const host = new URL(`https://${input.host}`).host.toLowerCase(); if (input.host.toLowerCase() !== host) throw new McpError(400, 'invalid_host', 'Supply a host (hostname, optionally with a port)'); const value = { ...input, host, updatedAt: now() }; await ctx.store.put(ctx.userId, 'consent', host, value); return c.json(value); });
+  app.post('/consents', async c => { const ctx = await authenticated(c.req.raw); const input = await body(c, ConsentSchema); const host = new URL(`https://${input.host}`).host.toLowerCase(); if (input.host.toLowerCase() !== host) throw new McpError(400, 'invalid_host', 'Supply a host (hostname, optionally with a port)'); const value = { ...input, host, updatedAt: now() }; await ctx.store.put(ctx.userId, 'consent', host, value); await ctx.kv.del(`bootstrap:${ctx.userId}`); return c.json(value); });
   return app;
 }

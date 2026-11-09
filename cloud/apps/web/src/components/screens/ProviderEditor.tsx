@@ -309,6 +309,8 @@ export function ProviderEditor() {
               const result = defaultModel.trim()
                 ? await apiClient.testProvider(saved.id, defaultModel.trim())
                 : discovery;
+              const detected = result.models.find(m=>m.id===defaultModel.trim()) ?? discovery.models.find(m=>m.id===defaultModel.trim());
+              if (detected) setCapabilities({...detected.capabilities, ...(result.probe ? {tools:result.probe.tools,vision:result.probe.vision,reasoningEffort:result.probe.reasoningEfforts.length>0} : {})});
               if (!result.ok)
                 throw new Error(
                   result.error

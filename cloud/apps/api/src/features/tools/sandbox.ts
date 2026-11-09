@@ -4,6 +4,7 @@ import {z} from 'zod';
 import {JsonValueSchema,type JsonValue} from '@praxis/protocol';
 import type {FeatureContext,FeatureTool} from '../../contracts.js';
 import {ApiError} from '../../service.js';
+import {requireConsent} from '../mcp/shared.js';
 import {publicFetch} from './http.js';
 export type ToolExecution=Parameters<FeatureTool['execute']>[1]&{signal?:AbortSignal;callId?:string};
 export interface SandboxFiles {list():Promise<string[]>;read(name:string):Promise<Uint8Array>}
@@ -28,6 +29,7 @@ export async function runSandbox(args:JsonValue,ctx:FeatureContext,execution:Too
     if(++fetches>16)throw new Error('Fetch call limit exceeded');const request=FetchInput.parse(data);
     if(execution.mode==='plan'&&!['GET','HEAD'].includes(request.method))throw new ApiError(403,'method_denied','Plan mode permits GET and HEAD only');
     const forbidden=['authorization','cookie','host','connection','proxy-authorization','transfer-encoding'];if(Object.keys(request.headers).some(h=>forbidden.includes(h.toLowerCase())))throw new Error('Credential and routing headers are not allowed');
+    try { await requireConsent(ctx,{url:request.url} as import('@praxis/protocol').Connector,execution); } catch(error) {hostFailure=error;throw error;}
     const {response,bytes}=await publicFetch(ctx,request.url,{method:request.method,headers:request.headers,body:['GET','HEAD'].includes(request.method)?undefined:request.body,signal},true,1000000);
     result={status:response.status,statusText:response.statusText,url:request.url,headers:[...response.headers.entries()],body:new TextDecoder().decode(bytes)};
    }else if(op==='fs.list')result=await files.list();

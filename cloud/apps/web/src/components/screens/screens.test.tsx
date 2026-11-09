@@ -234,13 +234,13 @@ describe('connector health status', () => {
   it('uses the API health field and never infers Connected from authStatus', async () => {
     store.connectors = [{ ...connector, authStatus: 'none' }];
     await mount(<ConnectorsScreen />);
-    expect(container.textContent).toContain('Status unknown');
+    expect(container.textContent).toContain('Ready to connect');
     expect(container.textContent).not.toContain('Connected');
     for (const [status, label] of [
       ['connected', 'Connected'],
       ['unreachable', 'Unreachable'],
-      ['needs_auth', 'Needs auth'],
-      ['needs_reauth', 'Needs reauth'],
+      ['needs_auth', 'Sign in to connect'],
+      ['needs_reauth', 'Sign in again'],
       ['error', 'Error'],
     ] as const) {
       store.connectors = [{ ...connector, status }];
