@@ -99,6 +99,7 @@ export function ComposerBar({
           </motion.button>
         ) : (
           <>
+            {voiceSupported ? (
             <motion.button
               type="button"
               className={`${styles.round} ${styles.secondary} ${styles.slotButton}`}
@@ -115,6 +116,7 @@ export function ComposerBar({
             >
               {recording ? <Square size={16} fill="currentColor" /> : <Mic size={18} />}
             </motion.button>
+            ) : null}
             <motion.button
               type="button"
               className={`${styles.round} ${styles.primary} ${styles.slotButton}`}

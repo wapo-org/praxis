@@ -9,11 +9,13 @@ test('T3 group disclosure keeps its label before its chevron and uses relaxed 14
 test('tool rows use type icons, mono commands and indented pre output instead of Details',async({page})=>{
  await page.getByTestId('agent-activity-toggle').click();
  const command=page.getByTestId('tool-step-header-sample-1');await expect(command.locator('[data-kind=command]')).toHaveCount(1);await expect(command).toContainText('npm run typecheck');expect(await command.innerText()).not.toContain('Details');
- await command.click();const detail=page.getByTestId('tool-step-detail-sample-1');await expect(detail).toHaveCSS('margin-inline-start','28px');await expect(detail.locator('pre')).toContainText('All workspaces passed.');await expect(command).toHaveAttribute('aria-expanded','true');
+ await command.click();const detail=page.getByTestId('tool-step-detail-sample-1');await expect(detail).toHaveCSS('margin-inline-start','24px'); // 16 px icon + 8 px gap: the label's x (WP-J2)await expect(detail.locator('pre')).toContainText('All workspaces passed.');await expect(command).toHaveAttribute('aria-expanded','true');
 });
 test('question previews retain the answer and warnings remain inline',async({page})=>{
  await page.getByTestId('agent-activity-toggle').click();
- await expect(page.getByTestId('tool-step-header-sample-4')).toContainText('Asked “Which output format should I use?”');await expect(page.getByTestId('tool-step-header-sample-4')).toContainText('Markdown, with a short table.');await expect(page.getByRole('img',{name:'Tool call denied'})).toBeVisible();await expect(page.getByText('Tool call denied',{exact:true})).toBeVisible();
+ await expect(page.getByTestId('tool-step-header-sample-4')).toContainText('Asked “Which output format should I use?”');await expect(page.getByTestId('tool-step-header-sample-4')).toContainText('Markdown, with a short table.');await expect(page.getByRole('img',{name:'Tool call denied'})).toBeVisible();
+ // WP-J2: the denial is a small status at the row's end; the row stays one line.
+ const denied=page.getByTestId('tool-step-header-sample-5');await expect(denied.getByText('Denied',{exact:true})).toBeVisible();expect((await denied.boundingBox())!.height).toBeLessThan(34); // one line, never wrapped
 });
 test('reading option has a bounded measure and a real h1–h4 hierarchy',async({page})=>{
  const reading=page.getByTestId('typography-options').locator('article').nth(1).getByTestId('agent-message-view');await expect(reading).toHaveCSS('font-size','16px');await expect(reading).toHaveCSS('line-height','26px');for(const level of [1,2,3,4])await expect(reading.locator(`h${level}`)).toHaveCount(1);

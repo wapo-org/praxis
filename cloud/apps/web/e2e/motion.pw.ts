@@ -212,19 +212,62 @@ test('a sent message flies from the composer with overshoot and never renders tw
   expect(await page.getByTestId('user-message-bubble').first().evaluate((el) => (el as HTMLElement).style.opacity)).toBe('');
 });
 
-test('opening the activity disclosure glides what follows, by transform', async ({ page }) => {
+/**
+ * WP-J2 (J-ref/12): opening "Worked for" or a tool row moves everything on one curve. Per frame: the answer
+ * below stays glued to the fold's bottom edge, and the chevron's turn, the content's fade and the fold's
+ * height have the same progress. Nothing reaches its end state early. Same for collapse and the nested row.
+ */
+async function foldTrack(page: Page, fold: Locator, chevron: Locator, follower: Locator, act: () => Promise<unknown>) {
+  await page.evaluate(([f, c, n]) => {
+    const w = window as unknown as { __t: unknown[]; __go: boolean };
+    w.__t = []; w.__go = true;
+    const clip = f!.firstElementChild as HTMLElement;
+    const tick = () => {
+      if (!w.__go) return;
+      const m = new DOMMatrixReadOnly(getComputedStyle(c!).transform);
+      w.__t.push({ h: f!.getBoundingClientRect().height, bottom: f!.getBoundingClientRect().bottom, follow: n!.getBoundingClientRect().top, angle: Math.atan2(m.b, m.a) * 180 / Math.PI, opacity: Number(getComputedStyle(clip).opacity) });
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [await fold.elementHandle(), await chevron.elementHandle(), await follower.elementHandle()] as const);
+  await act();
+  await page.waitForTimeout(700);
+  return page.evaluate(() => { const w = window as unknown as { __t: { h: number; bottom: number; follow: number; angle: number; opacity: number }[]; __go: boolean }; w.__go = false; return w.__t; });
+}
+
+function expectOneCurve(track: { h: number; bottom: number; follow: number; angle: number; opacity: number }[], opening: boolean) {
+  const H = Math.max(...track.map((f) => f.h));
+  if (process.env.J2_DEBUG) console.log(track.map((f) => `${(f.h / H).toFixed(2)}/${(Math.abs(f.angle) / 90).toFixed(2)}/${f.opacity.toFixed(2)}`).join(' '));
+  expect(H).toBeGreaterThan(20);
+  const gap = track[0]!.follow - track[0]!.bottom;
+  const moving = track.filter((f) => f.h > 1 && f.h < H - 1);
+  expect(moving.length).toBeGreaterThanOrEqual(3); // it glides; it does not jump
+  for (const f of track) {
+    expect(Math.abs(f.follow - f.bottom - gap)).toBeLessThanOrEqual(1.5); // what follows moves with the fold
+    const height = f.h / H;
+    const turn = Math.abs(f.angle) / 90;
+    expect(Math.abs(turn - height)).toBeLessThanOrEqual(0.12); // the chevron neither leads nor lags
+    expect(Math.abs(f.opacity - height)).toBeLessThanOrEqual(0.12); // nor does the content
+  }
+  const last = track.at(-1)!;
+  expect(last.h).toBeCloseTo(opening ? H : 0, 0);
+}
+
+test('the activity disclosure opens and closes on one curve: height, fade, chevron and what follows (WP-J2)', async ({ page }) => {
   await page.getByTestId('starter-chip-1').click();
   const toggle = page.getByTestId('agent-activity-toggle').first();
   await toggle.waitFor();
   await page.waitForFunction(() => !document.querySelector('[aria-label="Stop generating"]'));
   await page.waitForTimeout(300);
-  // Tool iterations and their answer now share one visible turn. Measure the
-  // answer that follows the disclosure, preserving the same FLIP assertions.
-  const follower = toggle.locator('xpath=ancestor::*[@data-testid="assistant-turn"][1]').getByTestId('agent-message-view');
-  const values = await sample(follower, async () => {
-    await toggle.click();
-    await page.waitForTimeout(500);
-  }, 'matrixY');
-  expect(Math.min(...values)).toBeLessThan(-5); // starts where it was
-  expect(values[values.length - 1]).toBeCloseTo(0, 0);
+  const turn = toggle.locator('xpath=ancestor::*[@data-testid="assistant-turn"][1]');
+  const fold = turn.getByTestId('agent-activity-fold');
+  const chevron = toggle.locator('span[class*="chevron"]').first();
+  const follower = turn.getByTestId('agent-message-view');
+  expectOneCurve(await foldTrack(page, fold, chevron, follower, () => toggle.click()), true);
+  // The nested tool row: its own fold, chevron and the same rule for the answer below.
+  const row = turn.locator('[data-testid^="tool-step-header-"]').first();
+  const rowFold = row.locator('xpath=following-sibling::*[1]');
+  expectOneCurve(await foldTrack(page, rowFold, row.locator('span[class*="chevron"]').last(), follower, () => row.click()), true);
+  expectOneCurve(await foldTrack(page, rowFold, row.locator('span[class*="chevron"]').last(), follower, () => row.click()), false);
+  expectOneCurve(await foldTrack(page, fold, chevron, follower, () => toggle.click()), false);
 });

@@ -39,7 +39,9 @@ for(const shape of ['titles','summary','raw','redacted','none']) test(`reasoning
   if(shape==='none') {await expect(page.getByTestId('reasoning-view')).toHaveCount(0);return;}
   const view=page.getByTestId('reasoning-view');await expect(view).toHaveAttribute('data-live','false');
   const button=view.getByRole('button');await expect(button).toHaveAttribute('aria-expanded','false');await button.click();await expect(button).toHaveAttribute('aria-expanded','true');
-  await expect(button).toContainText('Reasoned for');
+  // Never a zero duration: under a second it reasoned briefly (WP-J2).
+  await expect(button).toContainText(/Reasoned (for \d|briefly)/);
+  await expect(button).not.toContainText(/for 0s/);
   expect(await view.innerText()).not.toContain('**');
 });
 
