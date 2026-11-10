@@ -83,7 +83,13 @@ export function ChatScreen() {
 
   return (
     <main data-testid="chat-screen" className={styles.screen}>
-      <ProgressiveBlurScrim edge="top" height={48} />
+      {/* The blur bands follow the column (Chromium mirrors scrolled text into a blur reaching past its edge);
+          the paper tint stays full-width so the lane has no visible edge. */}
+      <motion.div className={styles.scrimLane} aria-hidden="true" initial={false} animate={{ x: shift }} transition={PANEL}>
+        <ProgressiveBlurScrim edge="top" height={48} layers="blur" />
+        <ProgressiveBlurScrim edge="bottom" height={64} layers="blur" />
+      </motion.div>
+      <ProgressiveBlurScrim edge="top" height={48} layers="tint" />
       <ChatHeader />
 
       <div
@@ -210,7 +216,7 @@ export function ChatScreen() {
         </motion.div>
       </div>
 
-      <ProgressiveBlurScrim edge="bottom" height={64} />
+      <ProgressiveBlurScrim edge="bottom" height={64} layers="tint" />
 
       <motion.div className={styles.jump} data-visible={showJumpToLatest} aria-hidden={!showJumpToLatest} inert={!showJumpToLatest} initial={false} animate={{ x: shift }} transition={PANEL}>
         <GlassChip data-testid="jump-to-latest-button" icon={<ArrowDown size={16}/>} onClick={()=>scrollToBottom('smooth')}>

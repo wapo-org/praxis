@@ -19,6 +19,11 @@ export interface ProgressiveBlurScrimProps extends React.HTMLAttributes<HTMLDivE
   edge: 'top' | 'bottom';
   height?: number;
   tintColor?: string;
+  /**
+   * `blur` (the bands) and `tint` (the paper feather) can be placed apart: the chat keeps the bands inside the
+   * content lane, because Chromium mirrors scrolled text into a blur that reaches past the column's edge.
+   */
+  layers?: 'all' | 'blur' | 'tint';
 }
 
 /** Radii from the edge inward. */
@@ -28,6 +33,7 @@ export function ProgressiveBlurScrim({
   edge,
   height = 64,
   tintColor,
+  layers = 'all',
   className = '',
   style,
   ...rest
@@ -36,6 +42,7 @@ export function ProgressiveBlurScrim({
     <div
       aria-hidden="true"
       data-slot={`progressive-blur-${edge}`}
+      data-layers={layers}
       className={`${styles.scrim} ${styles[edge]} ${className}`.trim()}
       style={
         {
@@ -46,10 +53,12 @@ export function ProgressiveBlurScrim({
       }
       {...rest}
     >
-      {SCRIM_RADII.map((radius, i) => (
-        <div key={radius} className={styles.band} style={{ '--band-blur': `${radius}px`, '--band-index': i } as React.CSSProperties} />
-      ))}
-      <div className={styles.feather} />
+      {layers !== 'tint'
+        ? SCRIM_RADII.map((radius, i) => (
+            <div key={radius} className={styles.band} style={{ '--band-blur': `${radius}px`, '--band-index': i } as React.CSSProperties} />
+          ))
+        : null}
+      {layers !== 'blur' ? <div className={styles.feather} /> : null}
     </div>
   );
 }

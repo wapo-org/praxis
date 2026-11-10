@@ -154,3 +154,14 @@
 .jump { opacity:1; visibility:visible; transition:opacity var(--duration-fast) var(--ease-standard), visibility var(--duration-fast) step-start; }
 .jump[data-visible='false'] { opacity:0; visibility:hidden; transition-timing-function:var(--ease-standard),step-end; }
 .jump[data-visible='false'] > * { pointer-events:none; }
+
+/* The blur bands' lane: the column plus the viewport's padding on each side, shifted with the column. */
+.scrimLane {
+  position: absolute;
+  inset-block: 0;
+  inset-inline: 0;
+  margin-inline: auto;
+  max-width: calc(var(--column-width) + var(--space-6) * 2);
+  z-index: 15;
+  pointer-events: none;
+}

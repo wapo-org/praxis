@@ -14,7 +14,7 @@ The target is a calm desktop chat app with the iOS identity: warm paper neutrals
    Pick one control height per cluster.
 4. **Glass is for floating chrome only.** That means the composer pill, the top-bar clusters, menus and popovers.
    Content (messages, activity rows, cards, chips on the canvas) is never glass.
-5. **Motion goes through `@praxis/glass` presets**, and only `transform` and `opacity` animate.
+5. **Motion goes through `@praxis/glass` presets**, and only `transform` and `opacity` animate (one exception: the activity disclosures animate grid rows, see Motion).
    No ad-hoc durations. `design-system.test.ts` fails the build if you add one.
 6. **Icons:** lucide only, imported from `lib/icons.ts`. Each is bound through `<Icon>`, so sizes are 16/18/20 and the stroke is 1.75.
 
@@ -94,8 +94,8 @@ No centered dialogs and no dimmed backdrops, on any screen size. `SettingsModal`
   - Trajectory (calibrated to 60 fps iOS reference `design/send-ref/sheet1.png` & `sheet2.png`, 0–820 ms): materialises over the input field by ~40 ms; left edge pulls right rapidly while right edge stays anchored (40–200 ms); rises to final Y (40–320 ms) while inner text is counter-scaled so glyphs stay 1:1 and left-aligned; overshoots ~4–7 CSS px above the final slot (360–480 ms); drifts gently back down into rest by 820 ms with no second bounce.
   - Preceding messages in the column glide up smoothly via transform FLIP on `SPRING` as room is made.
   - Respects `prefers-reduced-motion: reduce` (skips flight and places the message in its slot immediately).
-- Disclosure and arrivals: `chat/chatMotion.ts`. A height change happens once in layout and what follows glides there with transforms (FLIP) while preserving scroll anchor. A new assistant message rises in; a loaded history does not.
-- Only `transform` and `opacity` animate, plus the lens scale for the held rig.
+- Disclosures: `chat/Fold.tsx` (WP-J2). Height (grid rows), fade and chevron run on one duration and curve and what follows moves with the height in the flow; the FLIP glide it replaces let the revealed content and the chevron arrive before the text below (J-ref/12). Arrivals: `chat/chatMotion.ts`: a new assistant message rises in; a loaded history does not.
+- Only `transform` and `opacity` animate, plus the lens scale for the held rig and the activity disclosures' grid rows (`Fold`).
 - `STAGGER` is 30 ms between rows.
 - Presets:
   - `popIn`: the consent popover and small chips. Opacity plus scale 0.88. Menus and the tray use the morph below, not this.
@@ -286,3 +286,16 @@ Pinned rows reserve one trailing slot: pin at rest, actions on hover/focus/menu-
 - **Morph landing.** The tray "shifted diagonally at the end": the glass decelerated near its rest size but still circle-pulled (387×387 for a 360×390 tray), then the slow `form` clock squared it up and the overshoot returned: a second move of up to 26 px, with the rows (centred on the glass) riding it ~11 px. Now the shape and form springs are the same critically damped spring (2900/108), the overshoot target is 0, resize is critical (900/60), and the rows are pinned to their rest layout as they land (`MORPH.open.pinFrom`, `engine.ts` `pinShift`). Spec: `morph.pw.ts` "no move at the end" (every menu kind and the tray with its model list): after the glass reaches 90 % of its size no edge moves back away from rest by more than 0.5 px and the rows never move more than 0.5 px once landed. Probe: `scripts/i1-tray-probe.mjs`.
 - **Reduced motion.** `resolvePreset` keeps each preset's own opacity per state; the inverted `slideUnder` had become a 0 → 1 fade, leaving the + tray's main view invisible for reduced-motion users.
 
+
+## WP-J2: activity rows, attachments, centring, Chrome corners, blur, search close, voice (2026-11-10)
+- **One left edge.** "Reasoned for", "Worked for", "Waiting for tool approval" and tool rows start on the content column's edge, the same x as body text (no horizontal padding on the headers). A tool row's 16 px icon sits on that edge and its label 8 px after it; the detail is indented 24 px (the label's x) and is fluid: the column's width minus that indent, scrolling only when it overflows (thin track).
+- **One chevron, one motion.** Every disclosure uses a right chevron that turns down when open (t3-code's tool-row convention). `Fold` (`components/chat/Fold.tsx`) animates height (grid `0fr → 1fr`), the content's fade and the chevron's turn as three CSS transitions on `--fold-duration`/`--fold-ease`, started by one attribute, so nothing arrives early; what follows moves with the height because it is in the flow. It reverses mid-flight, mounts on open and unmounts after a close. Opening one stops the scroll follower from pinning to the latest line.
+- **Durations.** Reasoning never shows "0s": under a second it "Reasoned briefly". Reasoning titles carry their own spacing; the blank lines around them are dropped.
+- **Failed tool rows** stay one line: the label truncates and a small "Failed"/"Denied" status sits at the row's end; the reason is in the detail.
+- **Attachments are files.** Sent files render as chips (type icon, name, type and size) and images as thumbnails on the bubble. The composer queues the same chips, shows the upload, and states size limits at attach time (`ATTACHMENT_LIMITS` in protocol: 25 MB upload; above 1 MB a file the model can only read through `fs` cannot be opened). The API stores a file the model reaches through `fs` as a `note` part with its `attachmentId`: model input only; the user's text part is exactly what they typed. Older stored notes are hidden from the bubble.
+- **The sent message never leaves.** Committed tool results share the turn's `clientTurnId` and the wire role `user`; reconciliation (`state/reconcileMessages.ts`) only replaces the optimistic prompt with the committed prompt.
+- **Centring.** With the docked sidebar open, the column, the header pill, the composer, the jump chip and the scrim's blur lane are centred in the area right of the sidebar (`useContentShift`: half the sidebar's right edge, clamped to keep the column's padding). They glide on the sidebar's own `PANEL` spring when it opens or closes.
+- **Corners.** A card whose corner is clamped to half its short side (the composer pill) is a capsule in every engine: `data-glass-capsule` sets `--glass-corner: round`, and the lens map, which reads it, traces the round end. Chromium painted `superellipse(1.46)` there; Safari, without `corner-shape`, the round end.
+- **Search** owns its open state (`SearchHost`), so closing it re-renders only the palette. Chat and action rows close at once; the work they start (switching chats, New chat) runs after the close has painted, and failures go to the app's error banner.
+- **Voice** uses the Web Speech API: interim words stream into the composer, the mic becomes a stop control while listening, and permission and other errors are stated plainly. Without the API (Firefox) there is no mic and the send button holds the slot.
+- **New chat** (button, Cmd/Ctrl+Shift+O, phone drawer) lands the caret in the composer.
