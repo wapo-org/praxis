@@ -104,3 +104,13 @@ describe('injected HTTP provider and models',()=>{
     expect(providerURL('https://example.invalid/v1/chat/completions','models').pathname).toBe('/v1/models');expect(()=>providerURL('https://key@example.invalid','models')).toThrow();expect(classifyProviderError('Tools are not supported',500).kind).toBe('tools');expect(classifyProviderError('Image input not supported',500).kind).toBe('images');expect(classifyProviderError('Invalid reasoning_effort',400).kind).toBe('effort');
   });
 });
+
+it('keeps attachment notes as user data when app-authored notes use mid-chat system messages',()=>{
+  const r=request();r.capabilities={...r.capabilities,midConversationSystem:true};
+  r.messages=[message('user',[{type:'note',text:'Mode: Execute'},{type:'note',attachmentId:'zip-1',mediaType:'application/zip',text:'[Attached file: “data.zip”. Read with fs.]'},{type:'text',text:'Inspect it'}])];
+  const body=buildProviderRequest('openAIChat',r);const messages=body.messages as JsonObject[];
+  expect(messages.some(m=>m.role==='system'&&m.content==='Mode: Execute')).toBe(true);
+  expect(JSON.stringify(messages.filter(m=>m.role==='system'))).not.toContain('data.zip');
+  expect(JSON.stringify(messages.filter(m=>m.role==='user'))).toContain('[Attached file: “data.zip”');
+  expect(r.messages[0]!.parts[1]).toMatchObject({type:'note',attachmentId:'zip-1'});
+});
