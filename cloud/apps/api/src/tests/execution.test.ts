@@ -51,7 +51,7 @@ describe('execution driver with a real HTTP provider', () => {
     expect(messages.map(m => m.role)).toEqual(['user', 'assistant']);
     expect(messages[0]!.parts[0]).toEqual({type: 'note', text: 'Current mode: build.'});
     expect(messages[1]!.parts.find(p => p.type === 'text')?.text).toBe('Hello world');
-    expect(JSON.stringify(fake.requests[0])).toContain('You are Praxis, an assistant running in a mobile app.');
+    expect(JSON.stringify(fake.requests[0])).toContain('You are Praxis, an assistant running in a web app.');
     expect(fake.requests[0].model).toBe('fake-model');
 
     const second = await (await f.req('/v1/runs', {type: 'run.start', chatId: chat.id, text: 'More'})).json();
