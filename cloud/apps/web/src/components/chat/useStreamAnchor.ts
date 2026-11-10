@@ -42,11 +42,13 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
       measure();
     };
     const interrupt=()=>{jumping.current=false;pinned.current=scrollMetrics(el).distance<=BOTTOM_EDGE;measure();};
+    // A disclosure opened by the user: what it reveals grows below it, and the page must not follow it down.
+    const hold=()=>{jumping.current=false;pinned.current=false;};
     const observer=typeof ResizeObserver!=='undefined'?new ResizeObserver(resized):undefined;
     observer?.observe(el);observer?.observe(body);
-    el.addEventListener('wheel',interrupt,{passive:true});el.addEventListener('touchstart',interrupt,{passive:true});el.addEventListener('keydown',interrupt);
+    el.addEventListener('praxis:hold',hold);el.addEventListener('wheel',interrupt,{passive:true});el.addEventListener('touchstart',interrupt,{passive:true});el.addEventListener('keydown',interrupt);
     window.addEventListener('resize',resized);
-    return ()=>{observer?.disconnect();el.removeEventListener('wheel',interrupt);el.removeEventListener('touchstart',interrupt);el.removeEventListener('keydown',interrupt);window.removeEventListener('resize',resized);};
+    return ()=>{observer?.disconnect();el.removeEventListener('praxis:hold',hold);el.removeEventListener('wheel',interrupt);el.removeEventListener('touchstart',interrupt);el.removeEventListener('keydown',interrupt);window.removeEventListener('resize',resized);};
   },[content,measure,viewport]);
   return {onScroll,jumpToLatest,showJump:state.identity===identity&&state.show};
 }

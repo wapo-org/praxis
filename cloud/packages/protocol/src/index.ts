@@ -59,6 +59,12 @@ export const ToolSourceSchema = z.object({type:z.enum(['builtin','skill','javasc
 export const ToolPresentationSchema = z.object({type:z.literal('tool.presentation').default('tool.presentation'),category:z.enum(['integration','command','webSearch','webFetch','readFile','edit','skill','other']),runningTitle:z.string(),finishedTitle:z.string()});
 export const ToolSpecSchema = z.object({type:z.literal('tool.spec'),name:z.string(),description:z.string(),inputSchema:JsonObjectSchema,source:ToolSourceSchema,traits:z.array(z.enum(['readOnly','destructive','idempotent','openWorld','sandboxed']))});
 export type ToolSpec = z.infer<typeof ToolSpecSchema>;
+/**
+ * Attachment size limits, shared by the API and the composer (which states them at attach time).
+ * uploadBytes: the upload cap. inlineDocumentBytes / inlineTextBytes: PDFs and text the model reads directly.
+ * codeReadBytes: the largest file run_javascript's `fs` reads; any other file over it can't be read at all.
+ */
+export const ATTACHMENT_LIMITS = {uploadBytes: 25_000_000, inlineDocumentBytes: 10 << 20, inlineTextBytes: 200_000, codeReadBytes: 1_000_000} as const;
 export const AttachmentSchema = z.object({type:z.literal('attachment'),id:IdSchema,name:z.string(),mediaType:z.string(),size:z.number().int().nonnegative(),url:z.string().optional(),hiddenFromCode:z.boolean().default(false)});
 export type Attachment = z.infer<typeof AttachmentSchema>;
 export const MessagePartSchema = z.object({
@@ -167,7 +173,7 @@ export type Skill = z.infer<typeof SkillSchema>;
 export const SkillInputSchema = z.object({type:z.literal('skill.input'),name:z.string().min(1).max(100),description:z.string().max(2000),document:z.string().max(500000),enabled:z.boolean().default(true)});
 export const RegistrySchema = z.object({type:z.literal('skill.registry'),id:IdSchema,name:z.string(),url:z.string().url(),enabled:z.boolean()});
 export const RegistryInputSchema = z.object({type:z.literal('skill.registry.input'),name:z.string().min(1),url:z.string().url(),enabled:z.boolean().default(true)});
-export const UploadRequestSchema = z.object({type:z.literal('upload.request'),clientAttachmentId:IdSchema.optional(),name:z.string().min(1),mediaType:z.string().min(1),size:z.number().int().positive().max(25000000),chatId:IdSchema.optional()});
+export const UploadRequestSchema = z.object({type:z.literal('upload.request'),clientAttachmentId:IdSchema.optional(),name:z.string().min(1),mediaType:z.string().min(1),size:z.number().int().positive().max(ATTACHMENT_LIMITS.uploadBytes),chatId:IdSchema.optional()});
 export const UploadCompleteSchema = z.object({type:z.literal('upload.complete'),clientAttachmentId:IdSchema.optional(),hiddenFromCode:z.boolean().default(false),storageId:IdSchema,name:z.string(),mediaType:z.string(),size:z.number().int().nonnegative(),chatId:IdSchema.optional()});
 export const TranscriptionSchema = z.object({type:z.literal('transcription'),text:z.string(),language:z.string().optional(),segments:z.array(z.object({type:z.literal('transcription.segment'),start:z.number(),end:z.number(),text:z.string()}))});
 export const UserSchema = z.object({type:z.literal('user'),id:IdSchema,name:z.string(),email:z.string().optional()});

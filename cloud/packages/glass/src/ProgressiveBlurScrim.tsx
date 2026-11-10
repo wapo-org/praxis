@@ -2,14 +2,27 @@ import React from 'react';
 import styles from './scrim.module.css';
 
 /**
- * ProgressiveBlurScrim — static stacked backdrop-blur bands under the top bar and above the composer
- * (port of PraxisChat DesignSystem/ProgressiveBlurScrim.swift). Pure CSS; nothing runs per frame.
+ * ProgressiveBlurScrim: a blur that ramps up toward the edge, without bloom.
+ *
+ * Technique (stacked windowed bands): five backdrop-filter layers whose radii double toward the edge
+ * (0.375 → 6 px). Each layer's mask is a band that rises, holds and falls, overlapping only its neighbours,
+ * so every point sees about one radius instead of all of them summed. Each layer also extends past the
+ * visible scrim into the content (its mask is sized to the scrim), so the blur samples real pixels there
+ * instead of repeating the layer's edge row, which is what made bright content glow. No brightness or
+ * saturation boost; a light paper feather keeps the bar legible.
+ * Sources: Kenneth Nym, "Progressive blur in CSS" (code.nym.sh/kennethnym); Josh W. Comeau, "Next-level
+ * frosted glass with backdrop-filter" (joshwcomeau.com/css/backdrop-filter); Chromium "backdrop-filter
+ * mirror edgeMode" PSA (groups.google.com/a/chromium.org/g/blink-dev/c/ZtMnFCHZhMQ).
+ * Pure CSS; nothing runs per frame.
  */
 export interface ProgressiveBlurScrimProps extends React.HTMLAttributes<HTMLDivElement> {
   edge: 'top' | 'bottom';
   height?: number;
   tintColor?: string;
 }
+
+/** Radii from the edge inward. */
+export const SCRIM_RADII = [6, 3, 1.5, 0.75, 0.375] as const;
 
 export function ProgressiveBlurScrim({
   edge,
@@ -33,10 +46,9 @@ export function ProgressiveBlurScrim({
       }
       {...rest}
     >
-      <div className={styles.band} />
-      <div className={styles.band} />
-      <div className={styles.band} />
-      <div className={styles.band} />
+      {SCRIM_RADII.map((radius, i) => (
+        <div key={radius} className={styles.band} style={{ '--band-blur': `${radius}px`, '--band-index': i } as React.CSSProperties} />
+      ))}
       <div className={styles.feather} />
     </div>
   );

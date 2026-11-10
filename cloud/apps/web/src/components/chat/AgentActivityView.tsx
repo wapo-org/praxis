@@ -18,11 +18,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { SNAP, SPRING } from '@praxis/glass';
-import { motion } from 'framer-motion';
 import React from 'react';
 import { ChevronRight } from '../../lib/icons';
-import { glideFollowing } from './chatMotion';
+import { Fold, holdScrollPosition } from './Fold';
+import foldStyles from './Fold.module.css';
 import {
   resolveTurnStartIso,
   stoppedLabel,
@@ -90,24 +89,18 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
     observedRunRef.current = { runId, status: currentStatus };
   }, [runId, isRunning, runStatus]);
 
-  // Preserve the disclosure header's scroll anchor when toggling, while FLIP-gliding following siblings.
+  // Preserve the disclosure header's scroll position when toggling; the fold's height carries what follows.
   const rootRef = React.useRef<HTMLDivElement | null>(null);
-  const height = React.useRef(0);
   const anchorTopRef = React.useRef<number | null>(null);
   React.useLayoutEffect(() => {
     const el = rootRef.current;
-    if (!el) return;
-    if (anchorTopRef.current !== null) {
-      const viewport = el.closest<HTMLElement>('[data-testid="chat-scroll-viewport"]');
-      if (viewport) {
-        const deltaTop = el.getBoundingClientRect().top - anchorTopRef.current;
-        if (Math.abs(deltaTop) > 1) viewport.scrollTop += deltaTop;
-      }
-      anchorTopRef.current = null;
+    if (!el || anchorTopRef.current === null) return;
+    const viewport = el.closest<HTMLElement>('[data-testid="chat-scroll-viewport"]');
+    if (viewport) {
+      const deltaTop = el.getBoundingClientRect().top - anchorTopRef.current;
+      if (Math.abs(deltaTop) > 1) viewport.scrollTop += deltaTop;
     }
-    const next = el.offsetHeight;
-    if (height.current) glideFollowing(el, next - height.current);
-    height.current = next;
+    anchorTopRef.current = null;
   }, [expanded, openStepIds]);
 
   const effectiveStart = resolveTurnStartIso(startedAt, finishedAt, promptStartedAt);
@@ -160,11 +153,13 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
 
   const toggleExpanded = () => {
     if (rootRef.current) anchorTopRef.current = rootRef.current.getBoundingClientRect().top;
+    holdScrollPosition(rootRef.current);
     setExpanded((v) => !v);
   };
 
   const toggleStepDetail = (callId: string) => {
     if (rootRef.current) anchorTopRef.current = rootRef.current.getBoundingClientRect().top;
+    holdScrollPosition(rootRef.current);
     setOpenStepIds((prev) => ({ ...prev, [callId]: !prev[callId] }));
   };
 
@@ -196,21 +191,14 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
         </span>
         {activelyWorking && effectiveStart ? <WorkingTimer startedAt={effectiveStart} /> : null}
         {subLine ? <span className={styles.detail}>{subLine}</span> : null}
-        <motion.span
-          className={styles.chevron}
-          aria-hidden="true"
-          initial={false}
-          animate={{ rotate: expanded ? 90 : 0 }}
-          transition={SNAP}
-        >
+        <span className={`${styles.chevron} ${foldStyles.chevron}`} aria-hidden="true">
           <ChevronRight size={16} />
-        </motion.span>
+        </span>
 
       </button></div>
 
       {/* Level 2: one line per call; level 3: details inside the line. */}
-      {expanded && (
-        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} transition={SPRING}>
+      <Fold open={expanded} testId="agent-activity-fold">
           <ActivityDetails
             reasoningBlocks={reasoningBlocks.filter(b => b.afterToolCallId)}
             visionActivities={visionActivities}
@@ -221,8 +209,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
             toggleStepDetail={toggleStepDetail}
             copyText={copyText}
           />
-        </motion.div>
-      )}
+      </Fold>
 
       {/* Always visible, even folded: what needs the user. */}
       <ApprovalCards

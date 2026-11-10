@@ -70,17 +70,35 @@ export function squirclePath(w: number, h: number, radius: number, exponent = CO
   return `M${points.join('L')}Z`;
 }
 
-/** Attach the fallback to a card's root. A no-op where corner-shape exists. */
+/**
+ * A card whose corner spans half its short side has no straight edge left between its corners: it is a
+ * capsule. Chromium paints `corner-shape: superellipse(…)` there as a pinched, squarish end (and its lens map
+ * traced the same curve), while Safari, without corner-shape, paints the round end. Marking the clamp makes
+ * every engine, and the lens map (which reads --glass-corner), use the round capsule end.
+ */
+export function isClampedToCapsule(radius: number, w: number, h: number): boolean {
+  return w >= 8 && h >= 8 && radius >= Math.min(w, h) / 2 - 0.5;
+}
+
+function tokenRadius(el: HTMLElement): number {
+  return Number.parseFloat(getComputedStyle(el).getPropertyValue('--glass-radius')) || 0;
+}
+
+/** Attach the clamp mark and, where corner-shape is missing, the path fallback to a card's root. */
 export function attachSquircle(el: HTMLElement): () => void {
-  if (hasCornerShape() || typeof ResizeObserver === 'undefined') return () => {};
+  if (typeof ResizeObserver === 'undefined') return () => {};
+  const native = hasCornerShape();
   let last = '';
   const build = () => {
     const w = el.offsetWidth;
     const h = el.offsetHeight;
     if (w < 8 || h < 8) return;
+    const radius = tokenRadius(el);
+    if (isClampedToCapsule(radius, w, h)) el.dataset.glassCapsule = 'true';
+    else delete el.dataset.glassCapsule;
+    if (native) return;
     const style = getComputedStyle(el);
-    const radius = Number.parseFloat(style.getPropertyValue('--glass-radius')) || 0;
-    // The surface's own corner (the sidebar is `squircle`, the rest superellipse(1.46)).
+    // The surface's own corner (the sidebar is `squircle`, the rest superellipse(1.46)); round when clamped.
     const exponent = cornerExponent(style.getPropertyValue('--glass-corner') || 'superellipse(1.46)');
     const key = `${w}x${h}r${radius}n${exponent}`;
     if (key === last) return;
@@ -94,6 +112,7 @@ export function attachSquircle(el: HTMLElement): () => void {
   observer.observe(el);
   return () => {
     observer.disconnect();
+    delete el.dataset.glassCapsule;
     el.style.removeProperty('--glass-squircle');
     el.style.removeProperty('--glass-radius-round');
   };

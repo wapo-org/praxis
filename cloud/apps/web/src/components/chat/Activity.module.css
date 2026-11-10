@@ -37,7 +37,8 @@
   gap: var(--space-1);
   max-width: 100%;
   min-height: var(--space-6);
-  padding: 0 var(--space-1);
+  /* On the column's left edge, like the body text and the tool icons (WP-J2). */
+  padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;

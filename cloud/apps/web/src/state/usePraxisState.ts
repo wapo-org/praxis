@@ -9,6 +9,7 @@ import type {
   Skill,
 } from '@praxis/protocol';
 import React from 'react';
+import { requestComposerFocus } from '../components/chat/composerFocus';
 import { DEFAULT_MODE, type Mode } from '../lib/modes';
 import { nameTaken, uniqueChatName } from '../lib/chatNames';
 import {
@@ -145,6 +146,8 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     setActiveSheetState(null);
     setPlusTrayOpen(false);
     onNavigate?.('/');
+    // Button, shortcut or phone drawer: the caret lands in the composer (inside the gesture where possible).
+    requestComposerFocus();
   };
   const restoreRoute = (chatId: string | null, sheet: ActiveSheet, providerId?: string | null) => {
     setActiveSheetState(sheet);

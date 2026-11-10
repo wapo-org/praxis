@@ -9,7 +9,7 @@ const SettingsPage = React.lazy(() =>
     default: m.SettingsPage,
   })),
 );
-import { SearchPalette } from './components/search/SearchPalette';
+import { SearchHost } from './components/search/SearchPalette';
 const Sidebar = React.lazy(() =>
   import('./components/shell/Sidebar').then((m) => ({ default: m.Sidebar })),
 );
@@ -27,16 +27,6 @@ export function App() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const store = usePraxisStore();
-  const [searchOpen, setSearchOpen] = React.useState(false);
-  React.useEffect(() => {
-    const open = () => {
-      store.setPlusTrayOpen(false);
-      if (window.matchMedia('(max-width: 1023px)').matches) store.setDesktopSidebarOpen(false);
-      setSearchOpen(true);
-    };
-    window.addEventListener('praxis:search', open);
-    return () => window.removeEventListener('praxis:search', open);
-  }, [store.setPlusTrayOpen]);
   const restore = React.useRef(store.restoreRoute);
   restore.current = store.restoreRoute;
   React.useEffect(() => {
@@ -55,6 +45,11 @@ export function App() {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         window.dispatchEvent(new Event('praxis:search'));
+      }
+      // New chat: Cmd/Ctrl+Shift+O, as in other chat apps.
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'o') {
+        event.preventDefault();
+        store.startNewConversation();
       }
       // The tray handles Escape itself (models → main → close); stay out
       // of the way when it already handled the key.
@@ -97,7 +92,7 @@ export function App() {
         )}
       </div>
       <ConsentPopover />
-      <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <SearchHost />
     </div>
   );
 }

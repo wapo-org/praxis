@@ -101,6 +101,8 @@ export interface PraxisStoreContextValue {
   syncing: boolean;
   errorBanner: string | null;
   clearErrorBanner: () => void;
+  /** Shows a failure in the app's error banner (for work that finishes after its surface has closed). */
+  reportError: (message: string) => void;
 
   // Theme
   themeMode: ThemeMode;

@@ -18,6 +18,7 @@ export function ComposerBar({
   onToggleVoice,
   onSend,
   attachmentCount,
+  voiceSupported = true,
 }: {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   text: string;
@@ -28,6 +29,8 @@ export function ComposerBar({
   onToggleVoice: () => void;
   onSend: () => void;
   attachmentCount: number;
+  /** No Web Speech API (Firefox): no mic; the send button holds the slot. */
+  voiceSupported?: boolean;
 }) {
   const { plusTrayOpen, setPlusTrayOpen, inlineModelSearchActive, activeLiveRun, cancelActiveRun } =
     usePraxisStore();
@@ -36,7 +39,7 @@ export function ComposerBar({
     activeLiveRun && ['running', 'awaitingApproval', 'awaitingElicitation'].includes(activeLiveRun.run.status);
   const hasInput = text.length > 0 || attachmentCount > 0;
   const canSend = !!text.trim() || attachmentCount > 0;
-  const showMic = !isRunning && (!hasInput || recording || transcribing);
+  const showMic = voiceSupported && !isRunning && (!hasInput || recording || transcribing);
 
   // Auto-grow: measure once per text change, never per frame.
   React.useLayoutEffect(() => {
@@ -72,7 +75,7 @@ export function ComposerBar({
           inlineModelSearchActive
             ? 'Type to filter models…'
             : recording
-              ? 'Listening… tap mic to finish'
+              ? 'Listening…'
               : transcribing
                 ? 'Transcribing voice…'
                 : 'Ask or execute…'
@@ -99,7 +102,8 @@ export function ComposerBar({
             <motion.button
               type="button"
               className={`${styles.round} ${styles.secondary} ${styles.slotButton}`}
-              aria-label={recording ? 'Stop voice recording' : 'Voice input'}
+              aria-label={recording ? 'Stop voice input' : 'Voice input'}
+              aria-pressed={recording}
               aria-hidden={!showMic || undefined}
               tabIndex={showMic ? 0 : -1}
               disabled={!showMic}
@@ -109,7 +113,7 @@ export function ComposerBar({
               onClick={onToggleVoice}
               {...pressProps}
             >
-              <Mic size={18} />
+              {recording ? <Square size={16} fill="currentColor" /> : <Mic size={18} />}
             </motion.button>
             <motion.button
               type="button"

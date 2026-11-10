@@ -1,0 +1,53 @@
+/* The activity disclosures' one motion: height, fade and chevron on a single duration and curve. */
+:root {
+  --fold-duration: var(--duration-slow);
+  --fold-ease: var(--ease-standard);
+}
+
+.fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  min-width: 0;
+  width: 100%;
+  transition: grid-template-rows var(--fold-duration) var(--fold-ease);
+}
+
+.fold[data-open='true'] {
+  grid-template-rows: 1fr;
+}
+
+.clip {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity var(--fold-duration) var(--fold-ease);
+}
+
+.fold[data-open='true'] > .clip {
+  opacity: 1;
+}
+
+/* At rest open, nothing clips: focus rings and wide rows show whole. */
+.fold[data-settled='true'] > .clip {
+  overflow: visible;
+}
+
+/* The chevron every disclosure uses: right when closed, turned down when open, on the fold's own curve. */
+.chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  transition: transform var(--fold-duration) var(--fold-ease);
+}
+
+[aria-expanded='true'] .chevron {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fold,
+  .clip,
+  .chevron {
+    transition: none;
+  }
+}

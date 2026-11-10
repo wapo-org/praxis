@@ -4,6 +4,7 @@ import { apiClient } from '../lib/api';
 import { applySidebarLook, useSidebarPalette } from '../lib/sidebarPalette';
 import { enqueue, flushEdits, pendingEdits } from './outbox';
 import type { PraxisState } from '../state/usePraxisState';
+import { reconcileMessages } from '../state/reconcileMessages';
 
 /** Account preferences use one durable row per field: unrelated concurrent edits never overwrite each other. */
 export function useAccountSync(state: PraxisState, streams: { attachRunStream: (run: import('@praxis/protocol').Run, after?: number) => void; applySnapshotToLiveRun: (snapshot: import('@praxis/protocol').RunSnapshot) => void }) {
@@ -53,7 +54,7 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
         }
         if (kind === 'message') {
           if (entity.deleted) s.setMessagesByChat(prev => Object.fromEntries(Object.entries(prev).map(([chat, messages]) => [chat, messages.filter(m => m.id !== id)])));
-          else { const message = MessageSchema.parse(entity.value); s.setMessagesByChat(prev => ({ ...prev, [message.chatId]: [...(prev[message.chatId] ?? []).filter(m => m.id !== id), message].sort((a,b) => a.createdAt.localeCompare(b.createdAt)) })); }
+          else { const message = MessageSchema.parse(entity.value); s.setMessagesByChat(prev => ({ ...prev, [message.chatId]: reconcileMessages(prev[message.chatId] ?? [], [message]) })); }
         }
         if (kind === 'accountSetting' && !entity.deleted) {
           const { field, value } = entity.value as { field: string; value: string };

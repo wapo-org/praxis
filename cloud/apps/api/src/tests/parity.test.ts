@@ -27,7 +27,9 @@ describe('attachments reach the model (parity: AttachmentMedia)', () => {
     expect(JSON.stringify(content)).toContain('[Attached file: “data.zip”. Read them with `fs` in run_javascript.]');
     const stored: Message[] = (await (await f.req(`/v1/chats/${chat.id}/messages`)).json()).items;
     expect(JSON.stringify(stored[0])).not.toContain(Buffer.from(image).toString('base64')); // bytes are never persisted in history
-    expect(stored[0]!.parts.filter(p => p.attachmentId).map(p => p.type)).toEqual(['image', 'document', 'document']);
+    // The zip is a structured note (model input), never text in the user's visible bubble (WP-J2).
+    expect(stored[0]!.parts.filter(p => p.attachmentId).map(p => p.type)).toEqual(['image', 'document', 'document', 'note']);
+    expect(stored[0]!.parts.filter(p => p.type === 'text').map(p => p.text)).toEqual(['Look']);
   });
 
   it('re-encodes oversized images like the app (max 2000 px side) and sends nothing for a blind model', async () => {

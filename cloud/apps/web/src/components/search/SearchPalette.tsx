@@ -22,10 +22,36 @@ export function Highlight({ text, query }: { text: string; query: string }) {
   const pattern = new RegExp(`(?<![\\p{L}\\p{N}])(${words.join('|')})`, 'giu');
   return <>{text.split(pattern).map((part, i) => i % 2 ? <strong key={i}>{part}</strong> : part)}</>;
 }
-export function SearchPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
-  return createPortal(<AnimatePresence>{open ? <Palette key="search" onClose={onClose} /> : null}</AnimatePresence>, document.body);
+/**
+ * Owns whether search is open, so opening and closing it re-renders only the palette. While this state lived
+ * in App, every close re-rendered the sidebar and the whole chat inside the key or click handler (~37 ms in
+ * Chromium on a 120 Hz Mac, a dropped frame at the start of the close; WP-J2).
+ */
+export function SearchHost() {
+  const { setPlusTrayOpen, setDesktopSidebarOpen } = usePraxisStore();
+  const [open, setOpen] = React.useState(false);
+  const actions = React.useRef({ setPlusTrayOpen, setDesktopSidebarOpen });
+  actions.current = { setPlusTrayOpen, setDesktopSidebarOpen };
+  React.useEffect(() => {
+    const show = () => {
+      actions.current.setPlusTrayOpen(false);
+      if (window.matchMedia('(max-width: 1023px)').matches) actions.current.setDesktopSidebarOpen(false);
+      setOpen(true);
+    };
+    window.addEventListener('praxis:search', show);
+    return () => window.removeEventListener('praxis:search', show);
+  }, []);
+  // Work that would cost a frame (switching chats renders and commits the whole chat in one task) waits
+  // until the close has finished and the palette's last frame is painted.
+  const after = React.useRef<(() => void) | null>(null);
+  const close = React.useCallback((then?: () => void) => { after.current = then ?? null; setOpen(false); }, []);
+  const exited = React.useCallback(() => { const run = after.current; after.current = null; if (run) requestAnimationFrame(() => setTimeout(run, 0)); }, []);
+  return <SearchPalette open={open} onClose={close} onExitComplete={exited} />;
 }
-function Palette({ onClose }: { onClose: () => void }) {
+export function SearchPalette({ open, onClose, onExitComplete }: { open: boolean; onClose: (then?: () => void) => void; onExitComplete?: () => void }) {
+  return createPortal(<AnimatePresence onExitComplete={onExitComplete}>{open ? <Palette key="search" onClose={onClose} /> : null}</AnimatePresence>, document.body);
+}
+function Palette({ onClose }: { onClose: (then?: () => void) => void }) {
   const store = usePraxisStore();
   const reduced = useReducedMotion();
   const arrival = usePreset(searchArrival);
@@ -80,9 +106,11 @@ function Palette({ onClose }: { onClose: () => void }) {
     document.addEventListener('keydown', escape);
     return () => document.removeEventListener('keydown', escape);
   }, [level, onClose, present]);
-  const run = async (fn: () => unknown) => {
-    try { await fn(); onClose(); } catch { setError('Unable to apply action. Try again.'); }
-  };
+  // An action closes the palette at once, like a chat row; it runs once the close has finished, and a failure
+  // goes to the app's error banner instead of holding the palette open (New chat creates a chat first).
+  const run = (fn: () => unknown) => onClose(() => {
+    void Promise.resolve().then(fn).catch(() => store.reportError('Couldn’t apply that action. Try again.'));
+  });
   const options = level ? actionOptions(level, store, level === 'model' ? modelSearch.items : store.models)
     .filter(o => level === 'model' || o.label.toLocaleLowerCase().includes(query.toLocaleLowerCase())) : [];
   const commands = level ? [] : (Object.keys(ACTIONS) as ActionId[]).filter(key =>
@@ -92,9 +120,10 @@ function Palette({ onClose }: { onClose: () => void }) {
     ...commands.map(key => ({ id: key, label: ACTIONS[key].label, snippet: '', Icon: ACTIONS[key].Icon, selected: false,
       apply: () => { if ('options' in ACTIONS[key]) { setLevel(key); setQuery(''); setHits([]); } else void run(() => applyOption(key, store, '')); } })),
     ...(query.trim() ? hits : []).map(hit => ({ id: `chat-${hit.chat.id}`, label: hit.chat.title || 'New chat', snippet: hit.snippet,
-      // Close now, like any dismiss: the switch is instant and the messages load behind it (selectChat reports
-      // its own errors). Awaiting it held the palette open for the whole message fetch.
-      Icon: MessageCircle, selected: false, apply: () => { onClose(); store.setActiveSheet(null); void store.selectChat(hit.chat.id); } })),
+      // Close now, like any dismiss; the switch runs the moment the close has finished (selectChat reports its
+      // own errors). Awaiting it held the palette open for the whole message fetch; running it during the
+      // close dropped frames in Chromium.
+      Icon: MessageCircle, selected: false, apply: () => onClose(() => { store.setActiveSheet(null); void store.selectChat(hit.chat.id); }) })),
   ];
   if (level === 'model' && modelSearch.cursor) rows.push({ id: 'load-more', label: 'Load more models', snippet: '',
     Icon: Search, selected: false, apply: modelSearch.loadMore });

@@ -1,12 +1,26 @@
 import { ComposerBar } from './ComposerBar';
 import { cancelSendFlight, launchSendFlight } from './chatMotion';
-import { Photo, Paperclip, X } from '../../lib/icons';
 import { useModelSearch } from '../../lib/useModelSearch';
 import React from 'react';
 import type { Attachment } from '@praxis/protocol';
 import { GlassSurface } from '@praxis/glass';
 import { usePraxisStore } from '../../state/store';
 import { PlusTray } from './PlusTray';
+import { AttachmentChip } from './AttachmentChip';
+import { attachmentLimit } from './attachmentInfo';
+import { registerComposerInput } from './composerFocus';
+import { useSpeechInput } from './useSpeechInput';
+
+interface QueuedFile {
+  key: string;
+  name: string;
+  mediaType: string;
+  size: number;
+  status: 'uploading' | 'ready' | 'blocked' | 'failed';
+  attachment?: Attachment;
+  note?: string;
+  level?: 'warn' | 'block';
+}
 import styles from './Composer.module.css';
 
 export const Composer: React.FC = () => {
@@ -20,19 +34,19 @@ export const Composer: React.FC = () => {
     cacheModels,
     sendMessage,
     uploadFiles,
-    transcribeAudioBlob,
   } = usePraxisStore();
 
   const [text, setText] = React.useState('');
-  const [queuedAttachments, setQueuedAttachments] = React.useState<Attachment[]>([]);
-  const [uploading, setUploading] = React.useState(false);
-  const [recording, setRecording] = React.useState(false);
-  const [transcribing, setTranscribing] = React.useState(false);
+  const [queued, setQueued] = React.useState<QueuedFile[]>([]);
+  const queuedAttachments = queued.flatMap((q) => (q.attachment ? [q.attachment] : []));
+  const uploading = queued.some((q) => q.status === 'uploading');
 
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
-  const audioChunksRef = React.useRef<BlobPart[]>([]);
+  React.useEffect(() => {
+    registerComposerInput(textareaRef.current);
+    return () => registerComposerInput(null);
+  }, []);
 
   const handlePickFiles = (accept = '*/*', capture = false) => {
     const input = fileInputRef.current;
@@ -49,23 +63,41 @@ export const Composer: React.FC = () => {
   const [mediaError, setMediaError] = React.useState('');
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = '';
     if (files.length === 0) return;
-    setUploading(true);
-    try {
-      const uploaded = await uploadFiles(files);
-      setQueuedAttachments((prev) => [...prev, ...uploaded]);
-    } catch (err) {
-      setMediaError(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
-      setUploading(false);
-      e.target.value = '';
-    }
+    setMediaError('');
+    const entries = files.map((file): QueuedFile => {
+      const limit = attachmentLimit({ name: file.name, mediaType: file.type || 'application/octet-stream', size: file.size });
+      return {
+        key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: file.name,
+        mediaType: file.type || 'application/octet-stream',
+        size: file.size,
+        status: limit?.level === 'block' ? 'blocked' : 'uploading',
+        note: limit?.message,
+        level: limit?.level,
+      };
+    });
+    setQueued((prev) => [...prev, ...entries]);
+    await Promise.all(
+      files.map(async (file, i) => {
+        const entry = entries[i]!;
+        if (entry.status === 'blocked') return;
+        try {
+          const [attachment] = await uploadFiles([file]);
+          setQueued((prev) => prev.map((q) => (q.key === entry.key ? { ...q, status: 'ready', attachment } : q)));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Upload failed';
+          setQueued((prev) => prev.map((q) => (q.key === entry.key ? { ...q, status: 'failed', note: `Couldn’t upload: ${message}`, level: 'block' } : q)));
+        }
+      }),
+    );
   };
 
   const modelSearch = useModelSearch(text, inlineModelSearchActive);
   const handleSend = async () => {
     const trimmed = text.trim();
-    if (!trimmed && queuedAttachments.length === 0) return;
+    if (uploading || (!trimmed && queuedAttachments.length === 0)) return;
 
     if (inlineModelSearchActive) {
       const match = modelSearch.items[0];
@@ -83,10 +115,10 @@ export const Composer: React.FC = () => {
       launchSendFlight(textareaRef.current, trimmed);
     }
     setText('');
-    setQueuedAttachments([]);
+    setQueued([]);
     setPlusTrayOpen(false);
     try {
-      await sendMessage(trimmed || 'Attached files', { attachmentIds });
+      await sendMessage(trimmed, { attachmentIds });
     } catch {
       cancelSendFlight();
     }
@@ -101,53 +133,8 @@ export const Composer: React.FC = () => {
     }
   };
 
-  const handleToggleVoice = async () => {
-    if (recording) {
-      setRecording(false);
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        mediaRecorderRef.current.stop();
-        return;
-      }
-      setMediaError('Microphone recording is not available in this browser.');
-      return;
-    }
-
-    setRecording(true);
-    if (
-      typeof navigator !== 'undefined' &&
-      navigator.mediaDevices?.getUserMedia &&
-      typeof MediaRecorder !== 'undefined'
-    ) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const recorder = new MediaRecorder(stream);
-        audioChunksRef.current = [];
-        recorder.ondataavailable = (ev) => {
-          if (ev.data.size > 0) audioChunksRef.current.push(ev.data);
-        };
-        recorder.onstop = async () => {
-          stream.getTracks().forEach((t) => t.stop());
-          const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          setTranscribing(true);
-          try {
-            const transcript = await transcribeAudioBlob(blob);
-            if (transcript) {
-              setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
-            }
-          } catch (err) {
-            setMediaError(err instanceof Error ? err.message : 'Transcription failed');
-          } finally {
-            setTranscribing(false);
-          }
-        };
-        mediaRecorderRef.current = recorder;
-        recorder.start();
-      } catch {
-        setRecording(false);
-        setMediaError('Unable to access microphone.');
-      }
-    }
-  };
+  // Web Speech API: interim words stream into the field; the mic turns into a stop control while listening.
+  const speech = useSpeechInput({ text, onText: setText, onError: setMediaError });
 
   const inlineMatchingModels = modelSearch.items;
 
@@ -201,22 +188,21 @@ export const Composer: React.FC = () => {
       <PlusTray onPickFiles={handlePickFiles} />
 
       <GlassSurface material="regular" style={{ '--glass-radius': 'var(--radius-composer)' } as React.CSSProperties} data-testid="composer-surface" className={styles.pill}>
-        {queuedAttachments.length > 0 || uploading ? (
+        {queued.length > 0 ? (
           <div data-testid="composer-attachments-strip" className={styles.attachments}>
-            {queuedAttachments.map((att) => (
-              <div key={att.id} className={styles.attachment}>
-                {att.mediaType.startsWith('image/') ? <Photo size={16} /> : <Paperclip size={16} />}
-                <span className={styles.attachmentName}>{att.name}</span>
-                <button
-                  type="button"
-                  aria-label={`Remove ${att.name}`}
-                  onClick={() => setQueuedAttachments((prev) => prev.filter((x) => x.id !== att.id))}
-                >
-                  <X size={16} />
-                </button>
-              </div>
+            {queued.map((q) => (
+              <AttachmentChip
+                key={q.key}
+                testId="composer-attachment-chip"
+                name={q.name}
+                mediaType={q.mediaType}
+                size={q.size}
+                status={q.status === 'uploading' ? 'Uploading…' : undefined}
+                note={q.note}
+                noteLevel={q.level}
+                onRemove={() => setQueued((prev) => prev.filter((x) => x.key !== q.key))}
+              />
             ))}
-            {uploading ? <span className={styles.note}>Uploading…</span> : null}
           </div>
         ) : null}
 
@@ -225,9 +211,10 @@ export const Composer: React.FC = () => {
           text={text}
           onTextChange={setText}
           onKeyDown={handleKeyDown}
-          recording={recording}
-          transcribing={transcribing}
-          onToggleVoice={() => void handleToggleVoice()}
+          recording={speech.listening}
+          transcribing={false}
+          voiceSupported={speech.supported}
+          onToggleVoice={speech.toggle}
           onSend={() => void handleSend()}
           attachmentCount={queuedAttachments.length}
         />

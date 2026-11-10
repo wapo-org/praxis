@@ -1,32 +1,48 @@
-/* Progressive blur: static stacked bands, each masked toward the edge. No JS, no per-frame work. */
+/* Progressive blur without bloom (see ProgressiveBlurScrim.tsx for the technique and its sources).
+   Five layers, radii doubling toward the edge. Layer i holds over its own sixth of the scrim and fades over one
+   sixth on each side, so only neighbours overlap. */
 .scrim {
   position: absolute;
   inset-inline: 0;
   height: var(--scrim-height, 64px);
   pointer-events: none;
   z-index: 15;
+  /* How far each layer reaches into the content past the visible scrim, so it blurs real pixels there. */
+  --scrim-reach: 24px;
 }
-.top { top: 0; --scrim-dir: to bottom; }
-.bottom { bottom: 0; --scrim-dir: to top; }
+.top { top: 0; }
+.bottom { bottom: 0; }
 
-.band,
-.feather {
+.band {
   position: absolute;
   inset-inline: 0;
-  -webkit-mask-image: linear-gradient(var(--scrim-dir), #000 0%, transparent 100%);
-  mask-image: linear-gradient(var(--scrim-dir), #000 0%, transparent 100%);
+  height: calc(100% + var(--scrim-reach));
+  -webkit-backdrop-filter: blur(var(--band-blur));
+  backdrop-filter: blur(var(--band-blur));
+  /* The band's window in px from the edge: rise, hold, fall over sixths of the scrim, so the weakest band has
+     faded to nothing exactly at the scrim's inner edge and the reach beyond it is sampled, never shown. */
+  --s: calc(var(--scrim-height, 64px) / 6);
+  --a: calc((var(--band-index) - 1) * var(--s));
+  --b: calc(var(--band-index) * var(--s));
+  --c: calc((var(--band-index) + 1) * var(--s));
+  --d: calc((var(--band-index) + 2) * var(--s));
 }
-.top .band { top: 0; }
-.bottom .band { bottom: 0; }
-.band:nth-child(1) { height: 100%; -webkit-backdrop-filter: blur(1px); backdrop-filter: blur(1px); }
-.band:nth-child(2) { height: 72%; -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
-.band:nth-child(3) { height: 46%; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
-.band:nth-child(4) { height: 24%; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.top .band {
+  top: 0;
+  -webkit-mask-image: linear-gradient(to bottom, transparent var(--a), #000 var(--b), #000 var(--c), transparent var(--d));
+  mask-image: linear-gradient(to bottom, transparent var(--a), #000 var(--b), #000 var(--c), transparent var(--d));
+}
+.bottom .band {
+  bottom: 0;
+  -webkit-mask-image: linear-gradient(to top, transparent var(--a), #000 var(--b), #000 var(--c), transparent var(--d));
+  mask-image: linear-gradient(to top, transparent var(--a), #000 var(--b), #000 var(--c), transparent var(--d));
+}
+/* The edge band holds right to the edge. */
+.band:first-child { --a: calc(-1 * var(--s)); --b: 0px; }
 
 .feather {
+  position: absolute;
   inset: 0;
-  -webkit-mask-image: none;
-  mask-image: none;
   background: linear-gradient(
     var(--scrim-dir),
     color-mix(in srgb, var(--scrim-tint, var(--color-paper)) 88%, transparent) 0%,
@@ -34,6 +50,8 @@
     transparent 100%
   );
 }
+.top .feather { --scrim-dir: to bottom; }
+.bottom .feather { --scrim-dir: to top; }
 
 /* Scroll fade for menus and lists: a mask, not a blur, so it is free on glass. */
 @property --fade-top {

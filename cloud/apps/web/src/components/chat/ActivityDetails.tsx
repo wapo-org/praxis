@@ -22,6 +22,8 @@ import { ReasoningView } from './ReasoningView';
 import {workEntry} from './WorkEntry.logic';
 import {WorkEntryIcon,WorkLogLine,workLogStyles as log} from './WorkLog';
 import { ChevronRight } from '../../lib/icons';
+import { Fold } from './Fold';
+import fold from './Fold.module.css';
 
 import styles from './Activity.module.css';
 import type { AgentActivityViewProps } from './activityTypes';
@@ -80,18 +82,26 @@ export function ActivityDetails({
               onClick={() => toggleStepDetail(step.callId)}
               className={log.button}
             >
-              <WorkLogLine icon={<WorkEntryIcon kind={entry.icon} failed={entry.failed} warning={entry.warning}/>} trailing={<span className={log.chevron} style={{transform:isStepOpen?'rotate(90deg)':undefined}} aria-hidden="true"><ChevronRight size={16}/></span>}>
+              <WorkLogLine
+                icon={<WorkEntryIcon kind={entry.icon} failed={entry.failed} warning={entry.warning}/>}
+                trailing={<>
+                  {entry.failed||entry.warning?<span className={`${log.status} ${entry.warning?log.warning:log.failure}`}>{entry.warning?'Denied':'Failed'}</span>:null}
+                  <span className={`${log.chevron} ${fold.chevron}`} aria-hidden="true"><ChevronRight size={16}/></span>
+                </>}
+              >
                 <span className={step.running?'praxis-shimmer-text':undefined}>{entry.title}</span>
                 {entry.preview?<>{' '}<span className={`${log.preview} ${entry.mono?log.mono:''}`}>{entry.quoted?'“':''}{entry.preview}{entry.quoted?'”':''}</span></>:null}
                 {entry.answer?<span className={log.answer}>{' '}→ {entry.answer}</span>:null}
               </WorkLogLine>
             </button>
 
-            {entry.failed||entry.warning?<span className={`${log.status} ${entry.warning?log.warning:log.failure}`}>{entry.warning?'Tool call denied':step.completion?.summary||'Tool call failed'}</span>:null}
-            {isStepOpen && <div id={`tool-detail-${step.callId}`} data-testid={`tool-step-detail-${step.callId}`} className={log.details}>
-              <pre className={log.pre}>{entry.body||'No additional output.'}</pre>
-              <button type="button" className={log.copy} onClick={()=>copyText(step.callId,entry.body)}>{copiedStepId===step.callId?'Copied':'Copy output'}</button>
-            </div>}
+            <Fold open={isStepOpen} id={`tool-detail-${step.callId}`}>
+              <div data-testid={`tool-step-detail-${step.callId}`} className={log.details}>
+                {entry.failed||entry.warning?<p className={`${log.reason} ${entry.warning?log.warning:log.failure}`}>{entry.warning?'Tool call denied':'Tool call failed'}</p>:null}
+                <pre className={log.pre}>{entry.body||'No additional output.'}</pre>
+                <button type="button" className={log.copy} onClick={()=>copyText(step.callId,entry.body)}>{copiedStepId===step.callId?'Copied':'Copy output'}</button>
+              </div>
+            </Fold>
             {reasoningBlocks.filter(b => b.afterToolCallId === step.callId).map(block => <ReasoningView key={block.id} block={block} />)}
           </div>
         );

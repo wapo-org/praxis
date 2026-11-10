@@ -29,7 +29,7 @@ export function WorkEntryIcon({kind,failed=false,warning=false}:{kind:WorkIcon;f
   const Icon=failed||warning?Alert:icons[kind];
   return <span className={styles.icon} data-kind={kind} data-tone={warning?'warning':failed?'error':undefined} aria-label={failed?'Tool call failed':warning?'Tool call denied':undefined} role={failed||warning?'img':undefined}><Icon size={16}/></span>;
 }
-/** WorkLogLine: a 24px icon slot, baseline-aligned label, then a disclosure chevron. */
+/** WorkLogLine: the icon on the column edge, a baseline-aligned label, then status and chevron. */
 export function WorkLogLine({icon,children,trailing}:{icon:React.ReactNode;children:React.ReactNode;trailing?:React.ReactNode}) {
   return <span className={styles.line}><span className={styles.main}><span className={styles.slot}>{icon}</span><span className={styles.label}>{children}</span></span>{trailing}</span>;
 }

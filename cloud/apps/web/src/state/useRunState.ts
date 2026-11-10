@@ -1,6 +1,7 @@
 import type { Message, RunEvent, RunSnapshot } from '@praxis/protocol';
 import React from 'react';
 import { snapshotProgress } from '../lib/toolProgress';
+import { reconcileMessages } from './reconcileMessages';
 
 import type { ActiveElicitation, LiveRunState } from './types';
 import type { PraxisState } from './usePraxisState';
@@ -34,23 +35,10 @@ export function useRunState(state: PraxisState) {
       },
     }));
     if (snapshot.messages.length > 0) {
-      setMessagesByChat((prev) => {
-        const existing = prev[snapshot.run.chatId] ?? [];
-        const byId = new Map<string, Message>();
-        for (const m of existing) {
-          const committedMatch = snapshot.messages.find(
-            (cm) => cm.clientTurnId && cm.clientTurnId === m.clientTurnId && cm.role === m.role,
-          );
-          if (!committedMatch) {
-            byId.set(m.id, m);
-          }
-        }
-        for (const m of snapshot.messages) byId.set(m.id, m);
-        const merged = Array.from(byId.values()).sort((a, b) =>
-          a.createdAt.localeCompare(b.createdAt),
-        );
-        return { ...prev, [snapshot.run.chatId]: merged };
-      });
+      setMessagesByChat((prev) => ({
+        ...prev,
+        [snapshot.run.chatId]: reconcileMessages(prev[snapshot.run.chatId] ?? [], snapshot.messages),
+      }));
     }
   }, []);
 
@@ -58,26 +46,7 @@ export function useRunState(state: PraxisState) {
     const { chatId, runId, id: eventId, event } = envelope;
 
     if (event.type === 'messages.committed') {
-      setMessagesByChat((prev) => {
-        const existing = prev[chatId] ?? [];
-        const byId = new Map<string, Message>();
-        for (const m of existing) {
-          // Replace optimistic turn if clientTurnId matches
-          const committedMatch = event.messages.find(
-            (cm) => cm.clientTurnId && cm.clientTurnId === m.clientTurnId && cm.role === m.role,
-          );
-          if (!committedMatch) {
-            byId.set(m.id, m);
-          }
-        }
-        for (const m of event.messages) {
-          byId.set(m.id, m);
-        }
-        const merged = Array.from(byId.values()).sort((a, b) =>
-          a.createdAt.localeCompare(b.createdAt),
-        );
-        return { ...prev, [chatId]: merged };
-      });
+      setMessagesByChat((prev) => ({ ...prev, [chatId]: reconcileMessages(prev[chatId] ?? [], event.messages) }));
     }
 
     setLiveRunsByChat((prev) => {

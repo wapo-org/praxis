@@ -212,11 +212,11 @@ export function ChatScreen() {
 
       <ProgressiveBlurScrim edge="bottom" height={64} />
 
-      <div className={styles.jump} data-visible={showJumpToLatest} aria-hidden={!showJumpToLatest} inert={!showJumpToLatest}>
+      <motion.div className={styles.jump} data-visible={showJumpToLatest} aria-hidden={!showJumpToLatest} inert={!showJumpToLatest} initial={false} animate={{ x: shift }} transition={PANEL}>
         <GlassChip data-testid="jump-to-latest-button" icon={<ArrowDown size={16}/>} onClick={()=>scrollToBottom('smooth')}>
           Jump to latest
         </GlassChip>
-      </div>
+      </motion.div>
 
       <motion.div className={styles.dock} initial={false} animate={{ x: shift }} transition={PANEL}>
         <Composer />

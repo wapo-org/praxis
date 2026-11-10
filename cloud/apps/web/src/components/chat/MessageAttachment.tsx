@@ -1,8 +1,10 @@
 import type { Attachment, MessagePart } from '@praxis/protocol';
 import React from 'react';
 import { apiClient } from '../../lib/api';
-import { FileText, Paperclip } from '../../lib/icons';
 import { safeLink } from '../../lib/links';
+import { AttachmentChip, AttachmentThumb } from './AttachmentChip';
+
+/** One attachment on a sent message: images as thumbnails, everything else as a file chip. */
 export function MessageAttachment({
   part,
   attachment,
@@ -35,53 +37,17 @@ export function MessageAttachment({
   }, [attachment, part.attachmentId]);
   const att = attachment ?? loaded;
   const url = safeLink(att?.url);
-  const image = part.type === 'image' && url && /^https?:/.test(url);
-  if (image)
-    return (
-      <button
-        type="button"
-        onClick={() => onPreview(url)}
-        style={{
-          padding: 0,
-          border: '1px solid var(--paper-hairline)',
-          borderRadius: 14,
-          overflow: 'hidden',
-          background: 'var(--paper-fill-1)',
-        }}
-      >
-        <img
-          src={url}
-          alt={att?.name || 'Attached image'}
-          style={{
-            maxWidth: 180,
-            maxHeight: 160,
-            display: 'block',
-            objectFit: 'cover',
-          }}
-        />
-      </button>
-    );
+  const mediaType = att?.mediaType ?? part.mediaType ?? 'application/octet-stream';
+  if (part.type === 'image' && url && /^https?:/.test(url))
+    return <AttachmentThumb src={url} name={att?.name || 'Attached image'} onOpen={() => onPreview(url)} />;
+  const name = unavailable ? 'Attachment unavailable' : (att?.name ?? (part.type === 'image' ? 'Image' : 'File'));
   return (
-    <div
-      data-testid="document-attachment-chip"
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 7,
-        padding: '9px 12px',
-        borderRadius: 12,
-        background: 'var(--paper-fill-1)',
-        border: '1px solid var(--paper-hairline)',
-        color: 'var(--paper-ink)',
-        fontSize: 'var(--text-sm)',
-      }}
-    >
-      {part.type === 'document' ? <FileText size={18} /> : <Paperclip size={18} />}
-      <span>
-        {unavailable
-          ? 'Attachment unavailable'
-          : (att?.name ?? (part.type === 'document' ? 'Document' : 'Attachment'))}
-      </span>
-    </div>
+    <AttachmentChip
+      testId="document-attachment-chip"
+      name={name}
+      mediaType={mediaType}
+      size={att?.size}
+      status={att ? undefined : unavailable ? 'Removed or not accessible' : 'Loading…'}
+    />
   );
 }

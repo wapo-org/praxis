@@ -155,6 +155,11 @@
   --glass-corner: round;
 }
 
+/* A card whose corner is clamped to half its height (the composer pill) is a capsule too (squircle.ts). */
+.glass[data-glass-capsule='true'] {
+  --glass-corner: round;
+}
+
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .lens,
   .finish {
