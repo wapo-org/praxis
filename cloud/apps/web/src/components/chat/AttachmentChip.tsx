@@ -40,11 +40,11 @@ export function AttachmentChip({
   const Icon = ICONS[kind];
   const meta = status ?? [KIND_LABEL[kind], size !== undefined ? formatBytes(size) : ''].filter(Boolean).join(' · ');
   return (
-    <div className={styles.chip} data-testid={testId} data-kind={kind} data-level={noteLevel}>
+    <div className={styles.chip} data-testid={testId} data-kind={kind} data-level={status ? undefined : noteLevel} data-busy={status ? 'true' : undefined}>
       <span className={styles.tile} aria-hidden="true"><Icon size={18} /></span>
       <span className={styles.copy}>
         <span className={styles.name} title={name}>{name}</span>
-        <span className={styles.meta} role={note ? 'status' : undefined}>{note ?? meta}</span>
+        <span className={styles.meta} role={note || status ? 'status' : undefined}>{status ?? note ?? meta}</span>
       </span>
       {onRemove ? (
         <button type="button" className={styles.remove} aria-label={`Remove ${name}`} onClick={onRemove}>

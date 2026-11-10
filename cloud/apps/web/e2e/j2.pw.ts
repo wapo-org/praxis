@@ -140,11 +140,12 @@ test('a sent message with an attachment never leaves the list, shows the file as
   await page.getByTestId('assistant-turn').last().waitFor();
   await page.waitForFunction(() => !document.querySelector('[aria-label="Stop generating"]'));
   await page.getByTestId('composer-file-input').setInputFiles({ name: 'Chat screen draft.zip', mimeType: 'application/zip', buffer: Buffer.alloc(1_500_000, 7) });
-  const queued = page.getByTestId('composer-attachment-chip');
+  const queued = page.getByTestId('composer-attachment-chip').first();
   await expect(queued).toContainText('Chat screen draft.zip');
   // Over the 1 MB code-read limit: said at attach time, with the limit.
   await expect(queued).toContainText('It reads files up to 1 MB');
-  await expect(queued).not.toContainText('Uploading');
+  // A second file, sent while it is still uploading: the send waits for it instead of being ignored.
+  await page.getByTestId('composer-file-input').setInputFiles({ name: 'notes.csv', mimeType: 'text/csv', buffer: Buffer.from('name,value\na,1\n') });
   await page.evaluate(() => {
     const w = window as unknown as { __n: number[]; __go: boolean };
     w.__n = []; w.__go = true;
@@ -161,15 +162,16 @@ test('a sent message with an attachment never leaves the list, shows the file as
   expect(firstTwo).toBeGreaterThanOrEqual(0);
   expect(Math.min(...counts.slice(firstTwo))).toBe(2); // once sent, it stays through the whole run
   const sent = page.getByTestId('user-message-bubble').last();
-  await expect(sent.getByTestId('document-attachment-chip')).toContainText('Chat screen draft.zip');
-  await expect(sent.getByTestId('document-attachment-chip')).toContainText('1.5 MB');
+  const zip = sent.getByTestId('document-attachment-chip').filter({ hasText: 'Chat screen draft.zip' });
+  await expect(zip).toContainText('1.5 MB');
   await expect(sent).toContainText("what's here");
+  await expect(sent.getByTestId('document-attachment-chip').filter({ hasText: 'notes.csv' })).toBeVisible();
   await expect(page.locator('[data-chat-column]')).not.toContainText('[Attached file');
   // After a reload the stored message reads the same.
   await page.reload();
   await page.getByTestId('user-message-bubble').last().waitFor();
   await expect(page.locator('[data-chat-column]')).not.toContainText('[Attached file');
-  await expect(page.getByTestId('user-message-bubble').last().getByTestId('document-attachment-chip')).toContainText('Chat screen draft.zip');
+  await expect(page.getByTestId('user-message-bubble').last().getByTestId('document-attachment-chip').filter({ hasText: 'Chat screen draft.zip' })).toBeVisible();
 });
 
 /** A scripted SpeechRecognition: the test speaks through window.__speech. */

@@ -37,9 +37,16 @@ export const Composer: React.FC = () => {
   } = usePraxisStore();
 
   const [text, setText] = React.useState('');
-  const [queued, setQueued] = React.useState<QueuedFile[]>([]);
-  const queuedAttachments = queued.flatMap((q) => (q.attachment ? [q.attachment] : []));
-  const uploading = queued.some((q) => q.status === 'uploading');
+  const [queued, setQueuedState] = React.useState<QueuedFile[]>([]);
+  // The queue also lives in a ref updated in the same call, so a send pressed before React re-renders sees
+  // the files just picked; send waits for uploads in flight instead of ignoring the press (WP-J2).
+  const queueRef = React.useRef<QueuedFile[]>([]);
+  const setQueued = React.useCallback((next: QueuedFile[] | ((prev: QueuedFile[]) => QueuedFile[])) => {
+    queueRef.current = typeof next === 'function' ? next(queueRef.current) : next;
+    setQueuedState(queueRef.current);
+  }, []);
+  const uploadsRef = React.useRef<Promise<unknown>>(Promise.resolve());
+  const sendingRef = React.useRef(false);
 
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -79,7 +86,7 @@ export const Composer: React.FC = () => {
       };
     });
     setQueued((prev) => [...prev, ...entries]);
-    await Promise.all(
+    const work = Promise.all(
       files.map(async (file, i) => {
         const entry = entries[i]!;
         if (entry.status === 'blocked') return;
@@ -92,12 +99,23 @@ export const Composer: React.FC = () => {
         }
       }),
     );
+    uploadsRef.current = Promise.all([uploadsRef.current, work]);
+    await work;
   };
 
   const modelSearch = useModelSearch(text, inlineModelSearchActive);
   const handleSend = async () => {
+    if (sendingRef.current) return;
     const trimmed = text.trim();
-    if (uploading || (!trimmed && queuedAttachments.length === 0)) return;
+    if (!trimmed && queueRef.current.length === 0) return;
+    sendingRef.current = true;
+    try {
+      await uploadsRef.current;
+    } finally {
+      sendingRef.current = false;
+    }
+    const ready = queueRef.current.flatMap((q) => (q.status === 'ready' && q.attachment ? [q.attachment] : []));
+    if (!trimmed && ready.length === 0) return;
 
     if (inlineModelSearchActive) {
       const match = modelSearch.items[0];
@@ -110,7 +128,7 @@ export const Composer: React.FC = () => {
       return;
     }
 
-    const attachmentIds = queuedAttachments.map((a) => a.id);
+    const attachmentIds = ready.map((a) => a.id);
     if (trimmed) {
       launchSendFlight(textareaRef.current, trimmed);
     }
@@ -216,7 +234,7 @@ export const Composer: React.FC = () => {
           voiceSupported={speech.supported}
           onToggleVoice={speech.toggle}
           onSend={() => void handleSend()}
-          attachmentCount={queuedAttachments.length}
+          attachmentCount={queued.filter((q) => q.status === 'ready' || q.status === 'uploading').length}
         />
       </GlassSurface>
     </div>
