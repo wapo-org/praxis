@@ -82,7 +82,9 @@ export function toolDisplay(step: ActiveToolStep): ToolRowDisplay {
   const technical = activity.originalName || raw;
   const display = readDisplay(step);
   const args = parseArgs(step.argumentsJson);
-  if (display) {
+  // The catalogue meta-tools get a generic display ("Call connector tool"); name the tool they act on instead.
+  const metaTarget = META.test(raw) && typeof args.tool === 'string' && parseMcpName(args.tool) ? args.tool : '';
+  if (display && !metaTarget) {
     return {
       title: display.title,
       detail: display.detail ?? '',

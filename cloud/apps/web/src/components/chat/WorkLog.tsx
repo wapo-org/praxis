@@ -20,19 +20,23 @@
  */
 import React from 'react';
 import {bindIcon} from '@praxis/glass';
-import {Eye,SquarePen,Terminal,Search,Globe,MessageCircle,Wrench,CircleAlert,Code,FileText,BookOpen,Database,Image,Sparkles,Link,Bot,Zap,Hammer} from 'lucide-react';
+import {Eye,SquarePen,Terminal,Search,Globe,MessageCircle,Wrench,CircleAlert,Code,FileText,BookOpen,Database,Image,Sparkles,Link,Bot,Zap,Hammer,Plug} from 'lucide-react';
 import type {WorkIcon} from './WorkEntry.logic';
 import styles from './WorkLog.module.css';
 const icons={read:bindIcon(Eye),edit:bindIcon(SquarePen),command:bindIcon(Terminal),search:bindIcon(Search),web:bindIcon(Globe),question:bindIcon(MessageCircle),tool:bindIcon(Wrench)};
 const Alert=bindIcon(CircleAlert);
 /** Lucide names the API may send in `display.icon`; anything else falls back to the row's own glyph. */
-const named:Record<string,ReturnType<typeof bindIcon>>={search:icons.search,globe:icons.web,web:icons.web,wrench:icons.tool,tool:icons.tool,terminal:icons.command,eye:icons.read,'square-pen':icons.edit,'message-circle':icons.question,code:bindIcon(Code),'file-text':bindIcon(FileText),'book-open':bindIcon(BookOpen),database:bindIcon(Database),image:bindIcon(Image),sparkles:bindIcon(Sparkles),link:bindIcon(Link),bot:bindIcon(Bot),zap:bindIcon(Zap),hammer:bindIcon(Hammer)};
+const named:Record<string,ReturnType<typeof bindIcon>>={search:icons.search,globe:icons.web,web:icons.web,wrench:icons.tool,tool:icons.tool,terminal:icons.command,eye:icons.read,'square-pen':icons.edit,'message-circle':icons.question,code:bindIcon(Code),'file-text':bindIcon(FileText),'book-open':bindIcon(BookOpen),database:bindIcon(Database),image:bindIcon(Image),sparkles:bindIcon(Sparkles),link:bindIcon(Link),bot:bindIcon(Bot),zap:bindIcon(Zap),hammer:bindIcon(Hammer),plug:bindIcon(Plug)};
+const GENERIC=new Set(['plug','wrench','tool','hammer']);
 /** The row glyph: K1's `display.icon` (a lucide name or a connector favicon), else the kind's glyph. Failure wins. */
 export function ToolGlyph({kind,display,failed=false,warning=false}:{kind:WorkIcon;display?:string;failed?:boolean;warning?:boolean}) {
   if(!failed&&!warning&&display){
     if(/^(https?:|data:image\/)/.test(display))return <span className={styles.icon} data-kind="favicon"><img className={styles.favicon} src={display} alt="" width={16} height={16} loading="lazy" referrerPolicy="no-referrer"/></span>;
-    const Named=named[display.toLowerCase()];
-    if(Named)return <span className={styles.icon} data-kind={kind}><Named size={16}/></span>;
+    // Lucide names arrive as PascalCase ("BookOpen") or kebab-case ("book-open"). A generic glyph (plug, wrench)
+    // says less than the row's own kind, so a specific kind keeps its glyph.
+    const key=display.replace(/([a-z0-9])([A-Z])/g,'$1-$2').toLowerCase();
+    const Named=named[key];
+    if(Named&&!(GENERIC.has(key)&&kind!=='tool'))return <span className={styles.icon} data-kind={kind}><Named size={16}/></span>;
   }
   return <WorkEntryIcon kind={kind} failed={failed} warning={warning}/>;
 }
