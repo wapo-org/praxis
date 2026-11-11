@@ -218,6 +218,10 @@ nav.list {
 .row[data-active='true'] {
   background: var(--sb-active);
 }
+/* Pressed: the hover fill even without hover (touch, keyboard), as the Settings rows show it. */
+.row[data-pressed]:not([data-active='true']) {
+  background: var(--sb-hl);
+}
 
 .rowSelect {
   flex: 1;

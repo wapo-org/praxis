@@ -41,11 +41,16 @@ export function App() {
     return () => media.removeEventListener('change', apply);
   }, []);
   React.useEffect(() => {
+    const onSearchKey = (event: KeyboardEvent) => {
+      // ⌘K on macOS, Ctrl+K elsewhere, from anywhere (capture phase, so a focused field cannot swallow it);
+      // pressing it again closes. Any other modifier is the browser's or the OS's, so it passes through.
+      if (!isSearchShortcut(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      window.dispatchEvent(new Event('praxis:search-toggle'));
+    };
+    window.addEventListener('keydown', onSearchKey, true);
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        window.dispatchEvent(new Event('praxis:search'));
-      }
       // New chat: Cmd/Ctrl+Shift+O, as in other chat apps.
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'o') {
         event.preventDefault();
@@ -56,7 +61,10 @@ export function App() {
       if (event.key === 'Escape' && !event.defaultPrevented) store.setPlusTrayOpen(false);
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onSearchKey, true);
+    };
   }, [store]);
   const lab = import.meta.env.DEV ? () => navigate('/lab') : undefined;
   if (import.meta.env.DEV && GlassLabPage && (pathname === '/lab' || pathname === '/lab/glass'))
@@ -95,4 +103,12 @@ export function App() {
       <SearchHost />
     </div>
   );
+}
+
+const IS_MAC = typeof navigator !== 'undefined' && /mac|iphone|ipad|ipod/i.test((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform || navigator.platform || navigator.userAgent);
+/** The search shortcut: exactly ⌘K on Apple platforms, exactly Ctrl+K elsewhere. */
+export function isSearchShortcut(event: Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'isComposing' | 'repeat'>, mac = IS_MAC): boolean {
+  if (event.isComposing || event.repeat || event.altKey || event.shiftKey) return false;
+  if (event.key.toLowerCase() !== 'k' && event.code !== 'KeyK') return false;
+  return mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
 }

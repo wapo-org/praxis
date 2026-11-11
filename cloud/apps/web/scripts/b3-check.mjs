@@ -61,7 +61,7 @@ try {
   await page.goto(`${base}/settings/providers/missing`); await page.getByText('Provider not found.', { exact: true }).waitFor();
   await page.goto(`${base}${chatPath}`); await page.getByTestId('chat-top-bar').waitFor();
   // WP-G3C: Meta-K opens the floating search and focuses it, independently of history.
-  await page.keyboard.press('Meta+k');
+  await page.keyboard.press('ControlOrMeta+k');
   await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Search conversations' && !!document.activeElement?.closest('[data-testid="search-palette"]'));
   assert.equal(await page.getByRole('dialog', { name: 'Chats', exact: true }).count(), 0);
   await page.keyboard.press('Escape'); await page.waitForURL(`**${chatPath}`);

@@ -1,0 +1,56 @@
+/* The run background (WP-K2 item 9). Low opacity, palette tones, transforms and opacity only. */
+.backdrop {
+  --run-bg-opacity: 0.08;
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-run-out) var(--ease-standard);
+  contain: strict;
+}
+:global([data-theme='dark']) .backdrop {
+  --run-bg-opacity: 0.11;
+}
+.backdrop[data-active='true'] {
+  opacity: var(--run-bg-opacity);
+  transition-duration: var(--duration-run-in);
+}
+
+/* Each orbit is a zero-size pivot that turns; its blob sits off-centre on it and breathes on its own period. */
+.orbit {
+  position: absolute;
+  width: 0;
+  height: 0;
+  animation: turn var(--orbit) linear infinite;
+  will-change: transform;
+}
+.blob {
+  position: absolute;
+  left: var(--reach);
+  top: 0;
+  width: var(--size);
+  height: var(--size);
+  margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--tone) 0%, color-mix(in srgb, var(--tone) 55%, transparent) 45%, transparent 100%);
+  animation: breathe var(--wobble) var(--ease-ambient) infinite alternate;
+  will-change: transform;
+}
+.orbit[data-blob='1'] { left: 28%; top: 30%; --orbit: var(--orbit-1); --wobble: var(--orbit-wobble-1); --reach: 12vmax; --size: 58vmax; --tone: var(--sb-accent); }
+.orbit[data-blob='2'] { left: 74%; top: 62%; --orbit: var(--orbit-2); --wobble: var(--orbit-wobble-2); --reach: 15vmax; --size: 52vmax; --tone: var(--sb-border); animation-direction: reverse; }
+.orbit[data-blob='3'] { left: 62%; top: 18%; --orbit: var(--orbit-3); --wobble: var(--orbit-wobble-1); --reach: 10vmax; --size: 46vmax; --tone: color-mix(in srgb, var(--sb-accent) 55%, var(--sb-base)); }
+.orbit[data-blob='4'] { left: 22%; top: 82%; --orbit: var(--orbit-4); --wobble: var(--orbit-wobble-2); --reach: 13vmax; --size: 50vmax; --tone: var(--sb-base); animation-direction: reverse; }
+
+@keyframes turn {
+  to { transform: rotate(360deg); }
+}
+@keyframes breathe {
+  from { transform: scale(0.86) translateY(-4vmax); }
+  to { transform: scale(1.14) translateY(4vmax); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop { display: none; }
+}

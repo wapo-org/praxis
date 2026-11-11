@@ -8,6 +8,8 @@
   overflow: hidden;
   /* Transparent: messages scroll behind the floating sidebar / composer. */
   background: transparent;
+  /* Its own stack, so the run background (z-index −1) sits above the page's paper and below the chat. */
+  isolation: isolate;
 }
 
 .viewport {

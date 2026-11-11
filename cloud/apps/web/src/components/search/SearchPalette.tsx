@@ -38,13 +38,22 @@ export function SearchHost() {
       if (window.matchMedia('(max-width: 1023px)').matches) actions.current.setDesktopSidebarOpen(false);
       setOpen(true);
     };
+    const toggle = () => (openRef.current ? closeRef.current() : show());
     window.addEventListener('praxis:search', show);
-    return () => window.removeEventListener('praxis:search', show);
+    window.addEventListener('praxis:search-toggle', toggle);
+    return () => {
+      window.removeEventListener('praxis:search', show);
+      window.removeEventListener('praxis:search-toggle', toggle);
+    };
   }, []);
   // Work that would cost a frame (switching chats renders and commits the whole chat in one task) waits
   // until the close has finished and the palette's last frame is painted.
   const after = React.useRef<(() => void) | null>(null);
   const close = React.useCallback((then?: () => void) => { after.current = then ?? null; setOpen(false); }, []);
+  const openRef = React.useRef(open);
+  openRef.current = open;
+  const closeRef = React.useRef(() => close());
+  closeRef.current = () => close();
   const exited = React.useCallback(() => { const run = after.current; after.current = null; if (run) requestAnimationFrame(() => setTimeout(run, 0)); }, []);
   return <SearchPalette open={open} onClose={close} onExitComplete={exited} />;
 }

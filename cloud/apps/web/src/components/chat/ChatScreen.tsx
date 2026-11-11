@@ -17,6 +17,7 @@ import { extractMessageToolSteps } from './messageTools';
 import { MessageActivity } from './MessageActivity';
 import {messageTurns} from './messageTurns';
 import { UserBubble } from './UserBubble';
+import { RunBackdrop } from './RunBackdrop';
 import styles from './ChatScreen.module.css';
 
 /** The header bar's height (--topbar-height + --float-margin): the top ramp ends just past the title. */
@@ -92,6 +93,7 @@ export function ChatScreen() {
 
   return (
     <main data-testid="chat-screen" className={styles.screen}>
+      <RunBackdrop active={status === 'running'} />
       {/* The blur bands follow the column (Chromium mirrors scrolled text into a blur reaching past its edge);
           the paper tint stays full-width so the lane has no visible edge. */}
       <motion.div className={styles.scrimLane} aria-hidden="true" initial={false} animate={{ x: shift }} transition={PANEL}>

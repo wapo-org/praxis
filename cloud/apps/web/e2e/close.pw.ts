@@ -55,7 +55,7 @@ const closeTrack = (page: Page) =>
 for (const how of ['Escape', 'an outside click', 'choosing a result'] as const) {
   test(`search closes in about 150 ms by ${how}, leaving no text, no blur and no hit target`, async ({ page }) => {
     await signIn(page);
-    await page.keyboard.press('Control+k');
+    await page.keyboard.press('ControlOrMeta+k');
     const palette = page.getByTestId('search-palette');
     const input = palette.getByRole('combobox');
     await input.fill(how === 'choosing a result' ? 'new chat' : 'search the workspace');

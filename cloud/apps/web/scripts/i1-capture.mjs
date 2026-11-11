@@ -160,7 +160,7 @@ if (parts.includes('cards')) {
 if (parts.includes('search')) {
   for (const theme of ['light', 'dark']) {
     const { context, page } = await open(theme, { width: 1440, height: 900 });
-    await page.keyboard.press('Control+k');
+    await page.keyboard.press('ControlOrMeta+k');
     const palette = page.getByTestId('search-palette');
     await palette.waitFor();
     await page.waitForTimeout(500);

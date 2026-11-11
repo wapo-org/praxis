@@ -24,7 +24,7 @@ test('narrow History never focuses an input; explicit Search keeps focus after H
   await expect(page.getByTestId('search-palette')).toHaveCount(0);
 });
 test('command options stay in one panel, support filtering and back, and close on outside click', async ({ page }) => {
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('ControlOrMeta+k');
   const palette = page.getByTestId('search-palette');
   const input = palette.getByRole('combobox');
   await input.fill('reasoning');
@@ -43,7 +43,7 @@ test('command options stay in one panel, support filtering and back, and close o
   await input.press('Tab');
   await page.keyboard.press('Escape');
   await expect(palette).toHaveCount(0);
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('ControlOrMeta+k');
   await expect(input).toBeFocused();
   await page.mouse.click(1100, 700);
   await expect(palette).toHaveCount(0);
@@ -56,7 +56,7 @@ test('debounces, ignores stale network results, emphasizes Unicode, and clears r
     if (q === 'old') await pending;
     await route.fulfill({ json: { type: 'page', items: [{ chat: { id: q, title: `${q} title` }, snippet: `Context ${q} match` }], nextCursor: null } });
   });
-  await page.keyboard.press('Meta+k');
+  await page.keyboard.press('ControlOrMeta+k');
   const palette = page.getByTestId('search-palette');
   const input = palette.getByRole('combobox');
   const requested = page.waitForRequest('**/v1/search?q=old&*');
@@ -74,7 +74,7 @@ test('the last option keeps the panel inset below it, at rest and scrolled to th
   await page.route('**/v1/search?**', route => route.fulfill({ json: { type: 'page', nextCursor: null,
     items: Array.from({ length: 24 }, (_, i) => ({ chat: { id: `pad-${i}`, title: `Padding ${i}` }, snippet: `Context ${i}` })) } }));
   for (const query of ['Padding', 'Padding 1']) {
-    await page.keyboard.press('Control+k');
+    await page.keyboard.press('ControlOrMeta+k');
     const palette = page.getByTestId('search-palette');
     await palette.getByRole('combobox').fill(query);
     const last = palette.getByRole('option').last();
@@ -99,7 +99,7 @@ test('search is semantic: chats are found by meaning through the local API', asy
     const chat = await (await page.request.post('/v1/chats', { data: { type: 'chat.input', title } })).json();
     await page.request.post('/v1/runs', { data: { type: 'run.start', chatId: chat.id, text } });
   }
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('ControlOrMeta+k');
   const palette = page.getByTestId('search-palette');
   const input = palette.getByRole('combobox');
   for (const [query, title] of [['how to pack for a trip', 'Trip packing list'], ['date regex', 'Regex help']] as const) {
@@ -108,7 +108,7 @@ test('search is semantic: chats are found by meaning through the local API', asy
   }
 });
 test('with no input the panel is just the bar: no extra inset below it (WP-I1)', async ({ page }) => {
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('ControlOrMeta+k');
   const palette = page.getByTestId('search-palette');
   const input = palette.getByRole('combobox');
   await expect(input).toBeFocused();
@@ -135,7 +135,7 @@ test('choosing a chat closes the panel at once, even while its messages are stil
   let release!: () => void;
   const slow = new Promise<void>((r) => { release = r; });
   await page.route('**/v1/chats/welcome/messages**', async (route) => { await slow; await route.continue(); });
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('ControlOrMeta+k');
   const palette = page.getByTestId('search-palette');
   await palette.getByRole('combobox').fill('Welcome');
   const option = palette.getByRole('option', { name: /Welcome to Praxis Cloud/ });
@@ -160,7 +160,7 @@ test('choosing a chat closes the panel at once, even while its messages are stil
 test('the panel has the dropdowns\' material and subtle rim, light and dark (WP-I1)', async ({ page }) => {
   for (const theme of ['light', 'dark']) {
     await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
-    await page.keyboard.press('Control+k');
+    await page.keyboard.press('ControlOrMeta+k');
     const palette = page.getByTestId('search-palette');
     const rim = palette.locator('[data-search-rim]');
     const look = await rim.evaluate((el) => {

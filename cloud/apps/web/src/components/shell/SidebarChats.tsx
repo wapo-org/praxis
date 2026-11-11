@@ -1,5 +1,5 @@
 import {TitleText} from '../chat/TitleText';
-import { GlassDropdown, usePress } from '@praxis/glass';
+import { GlassDropdown, press, usePress } from '@praxis/glass';
 import type { Chat } from '@praxis/protocol';
 import { motion } from 'framer-motion';
 import React from 'react';
@@ -115,6 +115,11 @@ function ChatRow({
   onNavigate?: () => void;
 }) {
   const store = usePraxisStore();
+  // The Settings rows' press (scale on the SNAP spring, and the row's fill), for pointer and keyboard alike.
+  // Driven by the select button only, so pressing the row's actions button does not press the row.
+  const canPress = Object.keys(usePress()).length > 0;
+  const [pressed, setPressed] = React.useState(false);
+  const release = () => setPressed(false);
   const [renaming, setRenaming] = React.useState(false);
   const [title, setTitle] = React.useState(chat.title);
   const [error, setError] = React.useState('');
@@ -152,10 +157,14 @@ function ChatRow({
   const openRowMenu = (row: HTMLElement | null) =>
     row?.querySelector<HTMLButtonElement>(`[aria-label^="Actions for"]`)?.click();
   return (
-    <div
+    <motion.div
       className={styles.row}
       data-active={active}
+      data-pressed={pressed || undefined}
       data-sidebar-row=""
+      initial={false}
+      animate={{ scale: pressed && canPress ? press.whileTap.scale : 1 }}
+      transition={press.transition}
       onContextMenu={(event) => {
         event.preventDefault();
         openRowMenu(event.currentTarget);
@@ -173,6 +182,22 @@ function ChatRow({
         data-sidebar-row-select=""
         aria-current={active ? 'page' : undefined}
         title={chat.title || 'New chat'}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          setPressed(true);
+          // The release can land anywhere (or the row re-renders under it): listen on the window, once.
+          const up = () => {
+            setPressed(false);
+            window.removeEventListener('pointerup', up, true);
+            window.removeEventListener('pointercancel', up, true);
+          };
+          window.addEventListener('pointerup', up, true);
+          window.addEventListener('pointercancel', up, true);
+        }}
+        onPointerLeave={release}
+        onKeyDown={(event) => (event.key === 'Enter' || event.key === ' ') && !event.repeat && setPressed(true)}
+        onKeyUp={release}
+        onBlur={release}
         onClick={() => {
           run(() => store.selectChat(chat.id));
           onNavigate?.();
@@ -220,6 +245,6 @@ function ChatRow({
           {error}
         </p>
       ) : null}
-    </div>
+    </motion.div>
   );
 }

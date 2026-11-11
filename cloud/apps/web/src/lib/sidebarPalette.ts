@@ -65,6 +65,7 @@ export function paletteVars(id: SidebarPaletteId) {
     '--sb-ring': ringBackground(p.acc),
     '--sb-base': p.base,
     '--sb-border': p.border,
+    '--sb-accent': p.acc,
     '--sb-ink': p.dark ? '#f2f1ed' : '#1c1c1c',
     '--sb-mute': p.dark ? '#b5b4b0' : '#454440',
     '--sb-hl': p.dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
