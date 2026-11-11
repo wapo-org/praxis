@@ -195,16 +195,9 @@ export function useSendActions(
       action: 'accept' | 'decline' | 'cancel',
       content?: Record<string, unknown>,
     ) => {
-      // Remove the pending form synchronously, before the network or executor resumes.
-      const pending=Object.values(state.liveRunsByChat).find(live=>live?.run.id===runId)?.pendingElicitations.find(e=>e.id===elicitationId);
-      setLiveRunsByChat(prev=>Object.fromEntries(Object.entries(prev).map(([id,live])=>[id,live?.run.id===runId?{...live,pendingElicitations:live.pendingElicitations.filter(e=>e.id!==elicitationId)}:live])));
-      try { await apiClient.submitElicitation(runId, elicitationId, action, content); }
-      catch(error){
-        if(pending)setLiveRunsByChat(prev=>Object.fromEntries(Object.entries(prev).map(([id,live])=>[id,live?.run.id===runId&&!live.pendingElicitations.some(e=>e.id===elicitationId)?{...live,pendingElicitations:[...live.pendingElicitations,pending]}:live])));
-        setErrorBanner(runErrorCopy(error));throw error;
-      }
+      await apiClient.submitElicitation(runId, elicitationId, action, content);
     },
-    [state.liveRunsByChat],
+    [],
   );
 
   return {

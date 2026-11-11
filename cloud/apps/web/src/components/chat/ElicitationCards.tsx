@@ -125,7 +125,7 @@ export function ElicitationCards({
             setElicitationValues((prev) => ({ ...prev, [elicitation.id]: { ...(prev[elicitation.id] ?? {}), [key]: value } }))
           }
           onResolve={onResolveElicitation}
-          onSettled={(entry) => setSettled((prev) => ({ ...prev, [elicitation.id]: entry }))}
+          onSettled={(entry) => setSettled((prev) => {const next={...prev};if(entry)next[elicitation.id]=entry;else delete next[elicitation.id];return next;})}
           settled={settled[elicitation.id]}
         />
       ))}
@@ -166,7 +166,7 @@ function ElicitationCard({
   values: Record<string, unknown>;
   setValue: (key: string, value: unknown) => void;
   onResolve: AgentActivityViewProps['onResolveElicitation'];
-  onSettled: (entry: Settled) => void;
+  onSettled: (entry: Settled | null) => void;
   settled?: Settled;
 }) {
   const fields = fieldsOf(elicitation);
@@ -222,10 +222,11 @@ function ElicitationCard({
     setFailed('');
     try {
       if(content){for(const f of fields)if(saveAll||f.spec.format==='password'||f.spec['x-sensitive'])content['__save_'+f.key]=saveAll||values['__save_'+f.key]===true;if(saveAll&&free)content.__save_response=true;}
+      onSettled({ action, elicitation, summary: action === 'accept' && content ? (free ? String(content.response ?? '') : summarise(fields, content)) : '' });
       await onResolve?.(runId, elicitation.id, action, content);
       for(const f of fields)if(f.spec.format==='password'||f.spec['x-sensitive'])setValue(f.key,'');
-      onSettled({ action, elicitation, summary: action === 'accept' && content ? (free ? String(content.response ?? '') : summarise(fields, content)) : '' });
     } catch {
+      onSettled(null);
       setFailed('Could not send your answer. Try again.');
     } finally {
       setBusy(null);
@@ -239,11 +240,13 @@ function ElicitationCard({
     }
   };
 
+  if(done)return <SettledLine entry={done}/>;
+
   return (
     <section
       data-testid={`elicitation-card-${elicitation.id}`}
       data-mode={elicitation.mode ?? 'form'}
-      data-state={done ? done.action : busy ? 'sending' : 'open'}
+      data-state={busy ? 'sending' : 'open'}
       className={styles.card}
       aria-labelledby={`${idBase}-message`}
       aria-busy={busy ? true : undefined}
