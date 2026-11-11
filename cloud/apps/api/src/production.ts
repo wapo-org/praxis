@@ -37,6 +37,7 @@ export function encryptionKeyring(env: Record<string, string | undefined>): stri
 }
 
 export function readProductionEnv(env: Record<string, string | undefined>): ProductionEnv {
+  if (env.PRAXIS_LOCAL_DATA_DIR !== undefined) throw new Error("PRAXIS_LOCAL_DATA_DIR is only supported by dev:local, never production");
   const problems: string[] = [];
   for (const name of PRODUCTION_ENV) if (!env[name]?.trim()) problems.push(`${name} is missing`);
   const https = (name: string) => {

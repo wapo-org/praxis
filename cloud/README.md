@@ -15,7 +15,15 @@ PORT=8797 npm run dev:local # B, from cloud/ or cloud/apps/api
 PORT=8807 npm run dev:local # C
 ```
 
-Use `Authorization: Bearer dev-local`, or POST `/v1/auth/dev` with `{"type":"auth.dev"}` to receive a cookie and bearer token. For user isolation, include optional `userId` in that request. Dev auth and in-memory adapters cannot start with NODE_ENV=production or on Vercel. State is intentionally lost when the local process exits. No production adapter silently falls back to memory.
+Use `Authorization: Bearer dev-local`, or POST `/v1/auth/dev` with `{"type":"auth.dev"}` to receive a cookie and bearer token. For user isolation, include optional `userId` in that request. Dev auth and in-memory adapters cannot start with NODE_ENV=production or on Vercel. State is lost when the local process exits unless local persistence is explicitly enabled. No production adapter silently falls back to memory.
+
+To keep local chats, providers, encrypted credentials, connectors and saved values across restarts:
+
+```sh
+PRAXIS_LOCAL_DATA_DIR=~/.praxis-agent-state/cloud/local-data npm run dev:local
+```
+
+This local-only option loads and debounces atomic JSON snapshots to `<dir>/store.json`, flushing on SIGINT/SIGTERM. The directory is restricted to 0700 and files to 0600. Unless `PRAXIS_ENCRYPTION_KEY` (or the existing keyring setting) is supplied, `<dir>/dev-encryption.key` holds a stable generated key. Keep that key with the data: credentials stay sealed in the snapshot. The startup log shows only the directory. Setting `PRAXIS_LOCAL_DATA_DIR` with `NODE_ENV=production` or any `VERCEL` value refuses startup. Existing ephemeral data cannot be recovered after an earlier process has exited.
 
 Read `packages/protocol/PROTOCOL.md` for routes and exact Zod types in `packages/protocol/src/index.ts`. Dates are ISO-8601 UTC, resource IDs opaque strings, run events monotonic integers. Bootstrap contains seed chat `welcome`, provider `scripted`, two models, vision/voice preferences and active runs.
 
