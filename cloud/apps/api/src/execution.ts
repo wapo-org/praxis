@@ -1,3 +1,4 @@
+import {titleModel} from './title-model.js';
 import {executionSecrets} from './saved-secrets.js';
 import {
   AgentRunner, CheckpointSchema, ExecutionFenced, ToolResultSchema, createScriptedProvider, isRunControl, scriptedTools, textResult,
@@ -247,7 +248,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     async title(userId:string,chat:Chat,text:string) {
       if(!text.trim()||!chat.providerId)return;
       const started=clock();
-      const model=(await service.list<Model>(userId,'model')).filter(m=>m.providerId===chat.providerId).sort((a,b)=>(b.speed??0)-(a.speed??0)||a.id.localeCompare(b.id))[0];
+      const model=titleModel((await service.list<Model>(userId,'model')).filter(m=>m.providerId===chat.providerId));
       if(!model)return;
       try {
         if(chat.providerId!=='scripted')await service.providers?.requireConsent(userId,chat.providerId);

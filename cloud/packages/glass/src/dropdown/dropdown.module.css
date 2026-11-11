@@ -396,11 +396,3 @@
  --glass-solid-backdrop: blur(14px);
  --glass-solid-border: 1px solid var(--color-divider);
 }
-.surface[data-glass-surface='frost'] {
- -webkit-backdrop-filter: blur(20px);
- backdrop-filter: blur(20px);
-}
-.surface[data-glass-surface='frost'] > span[aria-hidden='true'] {
- -webkit-backdrop-filter: none;
- backdrop-filter: none;
-}

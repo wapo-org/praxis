@@ -21,7 +21,7 @@ export async function executionSecrets(ctx:FeatureContext,chatId:string) {
   const row=await ctx.store.get(ctx.userId,'savedSecretValue',r.id);
   if(row&&!row.deleted&&ctx.encryptionKey)values.set('{{secret:'+r.id+'}}',unseal(String(row.value.cipher),ctx.userId,'saved:'+r.id,ctx.encryptionKey));
  }
- const walk=(value:JsonValue,replace:(s:string)=>string):JsonValue=>typeof value==='string'?replace(value):Array.isArray(value)?value.map(v=>walk(v,replace)):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([k,v])=>[k,walk(v,replace)])):value;
+ const walk=(value:JsonValue,replace:(s:string)=>string):JsonValue=>typeof value==='string'?replace(value):Array.isArray(value)?value.map(v=>walk(v,replace)):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([k,v])=>[replace(k),walk(v,replace)])):value;
  return {
   async touch(v:JsonValue) {
     const text=JSON.stringify(v);

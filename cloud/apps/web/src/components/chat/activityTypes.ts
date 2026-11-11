@@ -33,5 +33,5 @@ export interface AgentActivityViewProps {
     elicitationId: string,
     action: 'accept' | 'decline' | 'cancel',
     content?: Record<string, unknown>,
-  ) => void;
+  ) => void | Promise<void>;
 }

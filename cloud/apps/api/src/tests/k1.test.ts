@@ -109,3 +109,22 @@ it('accepts a sensitive answer over HTTP without exposing it in decisions, check
  expect(metadata.items[0].name).toBe('token');
  expect(JSON.stringify(metadata)).not.toMatch(/cipher|SYNTHETIC-HTTP-K1/);
 });
+it('chooses the least expensive advertised title model before speed and uses speed without prices',async()=>{
+ const {titleModel}=await import('../title-model.js');
+ const base={type:'model' as const,providerId:'p',displayName:'Model',capabilities:(await import('@praxis/protocol')).CapabilitiesSchema.parse({}),reasoningEfforts:[],pinned:false,favorite:false};
+ expect(titleModel([{...base,id:'costly',speed:5,pricing:{prompt:1,completion:1}},{...base,id:'cheap',speed:1,pricing:{prompt:0.001,completion:0.001}}])?.id).toBe('cheap');
+ expect(titleModel([{...base,id:'slow',speed:1},{...base,id:'fast',speed:5}])?.id).toBe('fast');
+});
+it('QuickJS receives an opaque env reference only at execution and persists redacted KV and results',async()=>{
+ const {adaptTool}=await import('../execution.js');
+ const {javascriptTool}=await import('../features/tools/builtin.js');
+ const {saveSecret}=await import('../saved-secrets.js');
+ const service=new ApiService(createLocalAdapters(),true),ctx=featureContext(service,'u',{encryptionKey:randomBytes(32).toString('base64')});
+ const ref=await saveSecret(ctx,'token','SYNTHETIC-QUICKJS-K1',false,'c');
+ const tool=adaptTool(javascriptTool(ctx,{attachmentIds:[],hostToolNames:[]}),ctx);
+ const context={userId:'u',chatId:'c',runId:'r',mode:'build' as const,callId:'js',signal:new AbortController().signal,elicit:async()=>{throw new Error('unused')},callTool:async()=>{throw new Error('unused')},emit:async()=>{}};
+ const result=await tool.execute({code:"console.log(env.TOKEN);kv.set('copy',env.TOKEN);kv.set(env.TOKEN,'value');return {[env.TOKEN]:env.TOKEN}",env:{TOKEN:ref}},context);
+ expect(result.isError).toBe(false);
+ expect(JSON.stringify(result)).toContain(ref);
+ expect(JSON.stringify({result,rows:await ctx.store.changes('u',0,1000)})).not.toContain('SYNTHETIC-QUICKJS-K1');
+});

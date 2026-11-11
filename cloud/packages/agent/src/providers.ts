@@ -68,6 +68,7 @@ export function createHTTPProvider(config:HTTPProviderConfig,fetcher:typeof fetc
       }
     },
     async complete(input,signal) {
+      if(c.maxTokensField==='omit')throw new ProviderFailure('This provider does not support a bounded title completion.');
       const body=buildProviderRequest(c.flavor,input,c as RequestOptions);
       body.stream=false;
       delete body.stream_options;
@@ -113,5 +114,9 @@ export function parseModelMetadata(raw:unknown,providerId:string,defaults:Capabi
   else if(params.length||capList.length)efforts=[];
   const capabilities=CapabilitiesSchema.parse({...defaults,...(images!==undefined?{vision:images}:{}),...(tools!==undefined?{tools}:{}),...(efforts!==undefined?{reasoningEffort:efforts.length>0}:{})});
   const context=number(m.context_window)||number(m.max_input_tokens)||number(m.context_length)||number(object(m.top_provider).context_length),maxOutput=number(m.max_output_tokens)||number(m.max_tokens)||number(object(m.top_provider).max_completion_tokens);
-  return ModelSchema.parse({type:'model',id:m.id??m.key??m.name,providerId,displayName:string(m.display_name)||string(m.name)||string(m.id)||string(m.key),capabilities,reasoningEfforts:efforts??(capabilities.reasoningEffort?['low','medium','high']:[]),pinned:false,favorite:false,...(context>0?{contextWindow:context}:{}),...(maxOutput>0?{maxOutputTokens:maxOutput}:{})});
+  const prices=object(m.pricing);
+  const inputPrice=typeof prices.prompt==='string'||typeof prices.prompt==='number'?Number(prices.prompt):NaN;
+  const outputPrice=typeof prices.completion==='string'||typeof prices.completion==='number'?Number(prices.completion):NaN;
+  const pricing=Number.isFinite(inputPrice)&&inputPrice>=0&&Number.isFinite(outputPrice)&&outputPrice>=0?{prompt:inputPrice,completion:outputPrice}:undefined;
+  return ModelSchema.parse({...(pricing?{pricing}:{}),type:'model',id:m.id??m.key??m.name,providerId,displayName:string(m.display_name)||string(m.name)||string(m.id)||string(m.key),capabilities,reasoningEfforts:efforts??(capabilities.reasoningEffort?['low','medium','high']:[]),pinned:false,favorite:false,...(context>0?{contextWindow:context}:{}),...(maxOutput>0?{maxOutputTokens:maxOutput}:{})});
 }

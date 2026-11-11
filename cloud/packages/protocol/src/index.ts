@@ -50,6 +50,7 @@ export const ProviderInputSchema = z.object({
 });
 export const ModelSchema = z.object({
   type: z.literal('model'), id: IdSchema, providerId: IdSchema, displayName: z.string(),
+  pricing:z.object({prompt:z.number().nonnegative(),completion:z.number().nonnegative()}).optional(),
   contextWindow: z.number().int().positive().optional(), maxOutputTokens: z.number().int().positive().optional(),
   tagline:z.string().optional(),speed:z.number().int().min(1).max(5).optional(),intelligence:z.number().int().min(1).max(5).optional(),supportsImages:z.boolean().nullable().optional(),capabilities: CapabilitiesSchema, reasoningEfforts: z.array(z.string()), pinned: z.boolean(), favorite: z.boolean(),
 });

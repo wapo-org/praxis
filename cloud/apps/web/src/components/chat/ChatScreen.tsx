@@ -198,7 +198,7 @@ export function ChatScreen() {
                 compactions={activeLiveRun.compactions}
                 onResolveApproval={(rId, aId, decision) => void resolveApproval(rId, aId, decision)}
                 onResolveElicitation={(rId, eId, action, content) =>
-                  void resolveElicitation(rId, eId, action, content)
+                  resolveElicitation(rId, eId, action, content)
                 }
               />
               {activeLiveRun.run.error ? <p role="alert" data-testid="chat-error-banner" className={styles.error}>Couldn't finish: {activeLiveRun.run.error}</p> : null}
