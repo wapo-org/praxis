@@ -57,14 +57,19 @@ board.save('${out}')
 
 if (ONLY.has('fold')) {
   const { browser, page } = await open();
-  await startRun(page, 'Interpret the financial reports', 'reasoningSummary', { speed: '40tps', chunkSize: 'word' });
+  await startRun(page, 'Interpret the financial reports', 'streamSim', { speed: '40tps', chunkSize: 'word', reasoningShape: 'summary', sample: 'torture' });
+  // CSS transitions at 1/10 speed so a screenshot every ~100 ms is a real frame of the fold; streaming is JS-paced.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Animation.enable');
+  await cdp.send('Animation.setPlaybackRate', { playbackRate: 0.1 });
   const turn = page.getByTestId('live-run-streaming-turn');
   await page.getByTestId('reasoning-peek').waitFor({ timeout: 20000 });
   const files = []; const log = [];
   const t0 = Date.now();
   let closedAt = null;
-  for (let i = 0; i < 400 && (closedAt === null || Date.now() - closedAt < 900); i++) {
-    const box = await turn.boundingBox().catch(() => null);
+  for (let i = 0; i < 400 && (closedAt === null || Date.now() - closedAt < 4200); i++) {
+    // No auto-wait: the live turn hands over to the saved message when the run ends.
+    const box = await page.evaluate(() => { const el = [...document.querySelectorAll('[data-testid="live-run-streaming-turn"],[data-testid="assistant-turn"]')].at(-1); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; });
     if (!box) break;
     const state = await page.evaluate(() => {
       const fold = document.querySelector('[data-testid="agent-activity-peek"]');
@@ -80,8 +85,9 @@ if (ONLY.has('fold')) {
     await page.waitForTimeout(40);
   }
   await writeFile(`${OUT}/after-1-fold-frames.json`, JSON.stringify(log, null, 2));
-  const tail = files.slice(-18);
-  strip(tail, `${OUT}/after-1-fold-strip.png`, 6);
+  // From two frames before the fold starts closing.
+  const start = Math.max(0, log.findIndex((l) => l.open === 'false') - 2);
+  strip(files.slice(start, start + 18), `${OUT}/after-1-fold-strip.png`, 6);
   console.log('fold frames', log.slice(-18).map((l) => `${l.t}ms open=${l.open} h=${l.h}`).join(' | '));
   await page.waitForTimeout(3000);
   await browser.close();

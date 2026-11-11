@@ -25,6 +25,8 @@ const SCRIM_TOP = 72;
 /** The dock's height, so the composer's ramp reaches as far past its top edge as the header's does. */
 const SCRIM_BOTTOM = 88;
 const SCRIM_BLUR = 10;
+/** A little over --fold-duration (320 ms). */
+const FOLD_LINGER_MS = 360;
 /** A light paper feather: legibility without a white band. */
 const SCRIM_TINT = 0.6;
 
@@ -55,9 +57,23 @@ export function ChatScreen() {
   const {onScroll:handleScroll,jumpToLatest:scrollToBottom,showJump:showJumpToLatest}=useStreamAnchor(scrollRef,columnRef,activeChat?.id);
 
   const status = activeLiveRun?.run.status;
+  // A run that just completed keeps its live turn for one fold, so a thought that is still folding away
+  // finishes in place instead of snapping shut when the saved message takes over (WP-K2 item 1).
+  const runId = activeLiveRun?.run.id;
+  const [lingerRunId, setLingerRunId] = React.useState<string | undefined>();
+  const wasRunning = React.useRef(false);
+  React.useEffect(() => {
+    if (status === 'running') wasRunning.current = true;
+    if (status !== 'completed' || !wasRunning.current || !runId) return;
+    wasRunning.current = false;
+    setLingerRunId(runId);
+    const id = window.setTimeout(() => setLingerRunId(undefined), FOLD_LINGER_MS);
+    return () => window.clearTimeout(id);
+  }, [status, runId]);
   const hasLiveStreamingContent =
     !!activeLiveRun &&
-    (status === 'running' ||
+    ((status === 'completed' && lingerRunId === runId) ||
+      status === 'running' ||
       status === 'awaitingApproval' ||
       status === 'awaitingElicitation' ||
       status === 'failed' ||
