@@ -43,7 +43,7 @@ function fieldsOf(elicitation: Elicitation): Field[] {
       : Array.isArray(spec.oneOf) && spec.oneOf.every((o) => o && 'const' in o)
         ? spec.oneOf.map((o) => ({ value: String(o.const), label: o.title ?? String(o.const) }))
         : [];
-    const kind: Field['kind'] = choices.length
+    const kind: Field['kind'] = spec.format==='password'||spec['x-sensitive'] ? 'text' : choices.length
       ? 'enum'
       : spec.type === 'boolean'
         ? 'boolean'
@@ -175,8 +175,15 @@ function ElicitationCard({
   const [shown, setShown] = React.useState(false); // errors appear after the first submit, then follow the input
   const [busy, setBusy] = React.useState<Action | null>(null);
   const [failed, setFailed] = React.useState('');
-  const [savedSecrets,setSavedSecrets]=React.useState<{id:string;name:string}[]>([]);
-  React.useEffect(()=>{if(fields.some(f=>f.spec.format==='password'||f.spec['x-sensitive']))void apiClient.savedSecrets().then(r=>setSavedSecrets(r.items)).catch(()=>{});},[elicitation.id]);
+  const [savedSecrets,setSavedSecrets]=React.useState<{id:string;name:string;kind:'secret'|'variable';value?:unknown}[]>([]);
+  const [savedStatus,setSavedStatus]=React.useState<'loading'|'ready'|'unavailable'>('loading');
+  const hasSensitive=fields.some(f=>f.spec.format==='password'||f.spec['x-sensitive']);
+  const loadSaved=React.useCallback(async()=>{
+    setSavedStatus('loading');
+    try{const result=await apiClient.savedValues();setSavedSecrets(result.items);setSavedStatus('ready');}
+    catch{setSavedStatus('unavailable');}
+  },[elicitation.id]);
+  React.useEffect(()=>{if(elicitation.mode!=='url')void loadSaved();},[loadSaved,elicitation.mode]);
   const [revealed,setRevealed]=React.useState<Record<string,boolean>>({});
   const idBase = `elicit-${React.useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const valueOf = (field: Field) => (values[field.key] !== undefined ? values[field.key] : initialValue(field));
@@ -184,8 +191,12 @@ function ElicitationCard({
   const invalid = fields.some((f) => problems[f.key]);
   const done = settled ?? null;
 
-  const resolve = async (action: Action) => {
+  const resolve = async (action: Action, saveAll=false) => {
     if (!runId || busy || done) return;
+    if(action==='accept'&&(hasSensitive||saveAll)&&savedStatus!=='ready'){
+      setFailed(hasSensitive?'Secure input is unavailable. Retry loading saved values.':'Saving is unavailable. Retry loading saved values.');
+      return;
+    }
     let content: Record<string, unknown> | undefined;
     if (action === 'accept') {
       setShown(true);
@@ -210,7 +221,7 @@ function ElicitationCard({
     setBusy(action);
     setFailed('');
     try {
-      if(content)for(const f of fields)if(f.spec.format==='password'||f.spec['x-sensitive'])content['__save_'+f.key]=values['__save_'+f.key]===true;
+      if(content){for(const f of fields)if(saveAll||f.spec.format==='password'||f.spec['x-sensitive'])content['__save_'+f.key]=saveAll||values['__save_'+f.key]===true;if(saveAll&&free)content.__save_response=true;}
       await onResolve?.(runId, elicitation.id, action, content);
       for(const f of fields)if(f.spec.format==='password'||f.spec['x-sensitive'])setValue(f.key,'');
       onSettled({ action, elicitation, summary: action === 'accept' && content ? (free ? String(content.response ?? '') : summarise(fields, content)) : '' });
@@ -242,6 +253,11 @@ function ElicitationCard({
       </p>
       {elicitation.connectorName ? <p className={styles.source}>Asked by {elicitation.connectorName}</p> : null}
 
+      <div className={styles.body} data-testid="elicitation-form-surface">
+      {savedStatus==='unavailable'&&elicitation.mode!=='url'?<div className={styles.hint}>
+        <p>{hasSensitive?'Secure input is unavailable on this server. Update the server or retry.':'To save answers, update the server or retry loading saved values.'}</p>
+        <button type="button" className={styles.secondary} onClick={()=>void loadSaved()}>Retry saved values</button>
+      </div>:null}
       {elicitation.mode === 'url' ? (
         url ? (
           <p className={styles.hint}>
@@ -341,16 +357,17 @@ function ElicitationCard({
                         aria-required={field.required || undefined}
                         aria-invalid={problem ? true : undefined}
                         aria-describedby={described}
-                        disabled={!!busy}
+                        disabled={!!busy||((field.spec.format==='password'||field.spec['x-sensitive'])&&savedStatus!=='ready')}
                         onChange={(e) => setValue(field.key, e.target.value)}
                         onKeyDown={submitOnEnter}
                       />
                     )}
                     {field.spec.format==='password'||field.spec['x-sensitive'] ? <>
                       <button type="button" className={styles.quiet} aria-pressed={!!revealed[field.key]} onClick={()=>setRevealed(p=>({...p,[field.key]:!p[field.key]}))}>{revealed[field.key]?'Hide':'Reveal'} {field.label}</button>
-                      {savedSecrets.filter(secret=>secret.name===field.key).map(secret=><button key={secret.id} type="button" className={styles.secondary} onClick={()=>setValue(field.key,'{{secret:'+secret.id+'}}')}>Use saved {secret.name}</button>)}
+                      {savedSecrets.filter(secret=>secret.kind==='secret'&&secret.name===field.key).map(secret=><button key={secret.id} type="button" className={styles.secondary} onClick={()=>setValue(field.key,'{{secret:'+secret.id+'}}')}>Use saved {secret.name}</button>)}
                       <label className={styles.label}><input type="checkbox"  checked={values['__save_'+field.key]===true} onChange={e=>setValue('__save_'+field.key,e.target.checked)}/> Save to account</label>
                     </> : null}
+                    {!(field.spec.format==='password'||field.spec['x-sensitive'])?savedSecrets.filter(item=>item.kind==='variable'&&item.name===field.key).map(item=><button key={item.id} type="button" className={styles.secondary} onClick={()=>setValue(field.key,item.value)}>Use saved {item.name}</button>):null}
                   </>
                 )}
                 {problem ? (
@@ -387,11 +404,12 @@ function ElicitationCard({
           data-testid="elicitation-submit"
           data-tone={url ? 'secondary' : 'primary'}
           className={url ? styles.secondary : styles.primary}
-          disabled={!!busy || (elicitation.mode === 'url' && !url)}
+          disabled={!!busy || (hasSensitive&&savedStatus!=='ready') || (elicitation.mode === 'url' && !url)}
           onClick={() => void resolve('accept')}
         >
           {busy === 'accept' ? 'Sending…' : url ? 'Done' : 'Submit'}
         </button>
+        {elicitation.mode!=='url'?<button type="button" className={styles.secondary} data-testid="elicitation-submit-save" disabled={!!busy||savedStatus!=='ready'} onClick={()=>void resolve('accept',true)}>Submit and save</button>:null}
         <button
           type="button"
           data-testid="elicitation-decline"
@@ -412,6 +430,7 @@ function ElicitationCard({
         >
           Cancel
         </button>
+      </div>
       </div>
     </section>
   );

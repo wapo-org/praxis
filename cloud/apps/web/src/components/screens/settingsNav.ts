@@ -2,13 +2,14 @@ import { FlaskConical, Link, Settings, Shield, Sparkles, Star, User } from '../.
 import type { ActiveSheet } from '../../state/store.js';
 
 export type SettingsSheet = Exclude<NonNullable<ActiveSheet>, 'history'>;
-export type SettingsSection = 'general' | 'providers' | 'connectors' | 'skills' | 'consents' | 'account' | 'developer';
+export type SettingsSection = 'general' | 'providers' | 'connectors' | 'skills' | 'consents' | 'saved-values' | 'account' | 'developer';
 
 export const SETTINGS_NAV: Array<{ sheet: SettingsSection; title: string; Icon: typeof Settings; devOnly?: boolean }> = [
   { sheet: 'general', title: 'General', Icon: Settings },
   { sheet: 'providers', title: 'Models & providers', Icon: Star },
   { sheet: 'connectors', title: 'Connectors', Icon: Link },
   { sheet: 'skills', title: 'Skills', Icon: Sparkles },
+  { sheet: 'saved-values', title: 'Secrets & variables', Icon: Shield },
   { sheet: 'consents', title: 'Data & privacy', Icon: Shield },
   { sheet: 'account', title: 'Account', Icon: User },
   { sheet: 'developer', title: 'Developer', Icon: FlaskConical, devOnly: true },
@@ -28,6 +29,7 @@ export const SETTINGS_PAGES: Record<Exclude<SettingsSheet, 'settings'>, { title:
   skills: { title: 'Skills', section: 'skills' },
   'skill-import': { title: 'Import skill', section: 'skills', parent: 'skills' },
   'skill-browser': { title: 'Browse skills', section: 'skills', parent: 'skills' },
+  'saved-values': {title:'Secrets & variables',section:'saved-values'},
   consents: { title: 'Data & privacy', section: 'consents' },
   account: { title: 'Account', section: 'account' },
   developer: { title: 'Developer', section: 'developer' },

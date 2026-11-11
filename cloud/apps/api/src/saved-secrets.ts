@@ -10,6 +10,17 @@ export async function saveSecret(ctx:FeatureContext,name:string,value:string,sav
  await ctx.store.put(ctx.userId,'savedSecret',id,{id,name,createdAt,saved,chatId});
  return '{{secret:'+id+'}}';
 }
+export async function saveVariable(ctx:FeatureContext,name:string,value:JsonValue) {
+ if(Buffer.byteLength(JSON.stringify(value))>64_000)throw new ApiError(413,'value_too_large','Saved values must be smaller than 64 KB.');
+ const id=randomUUID();
+ await ctx.store.put(ctx.userId,'savedVariable',id,{id,name,value,createdAt:new Date().toISOString()});
+ return id;
+}
+export async function savedValues(ctx:FeatureContext) {
+ const secrets=(await secretMetadata(ctx)).map(v=>({id:String(v.id),name:String(v.name),createdAt:String(v.createdAt),...(typeof v.lastUsedAt==='string'?{lastUsedAt:v.lastUsedAt}:{}),kind:'secret' as const}));
+ const variables=(await ctx.store.list(ctx.userId,'savedVariable')).filter(r=>!r.deleted).map(r=>({id:r.id,name:String(r.value.name),createdAt:String(r.value.createdAt),value:r.value.value??null,...(typeof r.value.lastUsedAt==='string'?{lastUsedAt:r.value.lastUsedAt}:{}),kind:'variable' as const}));
+ return [...secrets,...variables].sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+}
 export async function secretMetadata(ctx:FeatureContext) {
  return (await ctx.store.list(ctx.userId,'savedSecret')).filter(r=>!r.deleted&&r.value.saved===true).map(r=>r.value);
 }
@@ -37,16 +48,21 @@ export async function executionSecrets(ctx:FeatureContext,chatId:string) {
 /** Before the decision is written, replace sensitive form fields with opaque references. */
 export async function protectAnswer(ctx:FeatureContext,chatId:string,schema:JsonObject,content:JsonObject):Promise<JsonObject> {
  const next={...content};
- const props=schema.properties;
- if(!props||typeof props!=='object'||Array.isArray(props))return next;
- for(const [name,spec] of Object.entries(props)) {
-  if(!spec||typeof spec!=='object'||Array.isArray(spec)||(spec.format!=='password'&&spec['x-sensitive']!==true))continue;
-  const value=next[name];if(typeof value!=='string')continue;
-  if(value.startsWith('{{secret:')) {
-   const id=value.slice(9,-2),row=await ctx.store.get(ctx.userId,'savedSecret',id);
-   if(!row||row.deleted||row.value.saved!==true)throw new ApiError(409,'secret_missing','Saved secret unavailable. Enter it again.');
-  } else next[name]=await saveSecret(ctx,name,value,next['__save_'+name]===true,chatId);
-  delete next['__save_'+name];
+ const rawProps=schema.properties;
+ const props=rawProps&&typeof rawProps==='object'&&!Array.isArray(rawProps)?rawProps:{};
+ const names=Object.keys(props).length?Object.keys(props):['response'];
+ for(const name of names) {
+  const spec=props[name];
+  const sensitive=!!spec&&typeof spec==='object'&&!Array.isArray(spec)&&(spec.format==='password'||spec['x-sensitive']===true);
+  const value=next[name],saved=next['__save_'+name]===true;
+  if(value===undefined)continue;
+  if(sensitive) {
+   if(typeof value==='string'&&value.startsWith('{{secret:')) {
+    const id=value.slice(9,-2),row=await ctx.store.get(ctx.userId,'savedSecret',id);
+    if(!row||row.deleted||row.value.saved!==true)throw new ApiError(409,'secret_missing','Saved secret unavailable. Enter it again.');
+   }else next[name]=await saveSecret(ctx,name,typeof value==='string'?value:JSON.stringify(value),saved,chatId);
+  }else if(saved)await saveVariable(ctx,name,value);
  }
+ for(const key of Object.keys(next))if(key.startsWith('__save_'))delete next[key];
  return next;
 }

@@ -1,3 +1,4 @@
+import {apiClient} from '../../lib/api';
 // @vitest-environment jsdom
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -18,6 +19,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
+  vi.restoreAllMocks();
 });
 
 const many: Elicitation = {
@@ -125,4 +127,15 @@ describe('the elicitation card (WP-I1)', () => {
     expect($('[data-testid="elicitation-card-e2"]')).not.toBeNull();
     expect($('[role="alert"]')!.textContent).toContain('Could not send');
   });
+});
+
+it('never submits a credential to a server without saved-values support',async()=>{
+ vi.spyOn(apiClient,'savedValues').mockRejectedValue(new Error('Endpoint unavailable'));
+ const resolve=mount({id:'sensitive',message:'Credentials',schema:{type:'object',properties:{token:{type:'string',format:'password'}},required:['token']}} as Elicitation);
+ await act(async()=>{await Promise.resolve();});
+ expect($<HTMLInputElement>('[data-testid="elicitation-input-token"]')!.disabled).toBe(true);
+ expect($<HTMLButtonElement>('[data-testid="elicitation-submit"]')!.disabled).toBe(true);
+ await click($('[data-testid="elicitation-submit"]'));
+ expect(resolve).not.toHaveBeenCalled();
+ expect(host.textContent).toContain('Secure input is unavailable');
 });

@@ -33,7 +33,7 @@ export function ApprovalCards({
           <div
             key={approval.id}
             data-testid={`approval-card-${approval.id}`}
-            className={card.card}
+            className={`${card.card} ${card.body}`}
           >
             <div className={card.message} style={{display:'flex',flexDirection:'column',gap:4}}>
               <span>

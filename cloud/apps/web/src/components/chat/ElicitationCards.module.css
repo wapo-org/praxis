@@ -7,13 +7,20 @@
   gap: var(--space-3);
   width: 100%;
   margin-top: var(--space-1);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   box-sizing: border-box;
-  padding: var(--space-5, 24px);
-  border: 1px solid var(--color-border, rgba(128,128,128,.18));
-  border-radius: 28px;
+  width: min(100%, 480px);
+  padding: var(--space-4);
+  border: 0;
+  border-radius: 24px;
   corner-shape: squircle;
   overflow: hidden;
-  background: var(--color-surface-soft, rgba(128,128,128,.04));
+  background: color-mix(in srgb, var(--color-ink) 6%, var(--color-surface));
 }
 
 .message {
@@ -69,9 +76,9 @@
   width: 100%;
   min-height: var(--control-md);
   padding: 0 var(--space-4);
-  border: 1px solid transparent;
+  border: 1px solid var(--color-hairline-strong);
   border-radius: var(--radius-full);
-  background: var(--color-fill-1);
+  background: var(--color-surface);
   color: var(--color-ink);
   font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
   outline: none;

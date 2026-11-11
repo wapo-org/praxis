@@ -149,7 +149,7 @@ export class AgentRunner {
       await this.emit(cp,{type:'approval.resolved',approvalId:id,callId:approval.callId,decision:reply.decision});
     }else {
       if(cp.elicitation?.id!==id)throw new ResumeConflict('Elicitation is no longer pending');
-      if(reply.action==='accept'){const schema=JSON.parse(JSON.stringify(cp.elicitation.schema));for(const v of Object.values(schema.properties??{}) as Record<string,unknown>[])if(v.format==='password'||v['x-sensitive']===true){delete v.format;delete v.minLength;delete v.maxLength;delete v.pattern;}z.fromJSONSchema(schema).parse(reply.content??{});}
+      if(reply.action==='accept'){const schema=JSON.parse(JSON.stringify(cp.elicitation.schema));for(const v of Object.values(schema.properties??{}) as Record<string,unknown>[])if(v.format==='password'||v['x-sensitive']===true){for(const key of Object.keys(v))delete v[key];v.type='string';}z.fromJSONSchema(schema).parse(reply.content??{});}
       delete cp.elicitation;
       await this.emit(cp,{type:'elicitation.resolved',elicitationId:id,action:reply.action});
     }

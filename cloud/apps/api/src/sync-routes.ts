@@ -8,7 +8,7 @@ import type {StoredRecord} from './contracts.js';
 import {ApiError, type ApiService} from './service.js';
 
 /** Kinds a client replica holds. Secrets, checkpoints, idempotency rows and other server state never sync. */
-export const SYNC_KINDS = new Set(['chat', 'message', 'provider', 'model', 'connector', 'skill', 'registry', 'consent', 'preferences', 'attachment', 'run', 'accountSetting', 'savedSecret']);
+export const SYNC_KINDS = new Set(['chat', 'message', 'provider', 'model', 'connector', 'skill', 'registry', 'consent', 'preferences', 'attachment', 'run', 'accountSetting', 'savedSecret', 'savedVariable']);
 
 export {canonicalJSON};
 export const entityHash = (value: unknown) => createHash('sha256').update(canonicalJSON(value), 'utf8').digest('hex');

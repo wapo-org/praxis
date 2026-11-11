@@ -5,7 +5,7 @@ export const sheetPaths: Partial<Record<NonNullable<ActiveSheet>, string>> = {
   connectors: '/settings/connectors', 'connector-add-url': '/settings/connectors/add',
   'connector-paste-config': '/settings/connectors/config', 'connector-registry': '/settings/connectors/registry',
   skills: '/settings/skills', 'skill-import': '/settings/skills/import', 'skill-browser': '/settings/skills/browse',
-  'image-reader': '/settings/images', 'voice-settings': '/settings/voice', consents: '/settings/sharing',
+  'image-reader': '/settings/images', 'voice-settings': '/settings/voice', consents: '/settings/sharing', 'saved-values': '/settings/saved-values',
 };
 export function pathForSheet(sheet: ActiveSheet, chatId: string | null, providerId: string | null) {
   if (!sheet) return chatId ? `/c/${encodeURIComponent(chatId)}` : '/';

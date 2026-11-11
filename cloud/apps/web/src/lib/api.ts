@@ -22,7 +22,12 @@ import {
 import { safeMessage } from './links';
 import { localUploadPath } from './hosts';
 export * from './api-transport';
+export interface SavedValue {id:string;name:string;kind:'secret'|'variable';value?:unknown;createdAt:string;lastUsedAt?:string}
 export class PraxisApiClient extends FeatureApiClient {
+  savedValues(){return this.request<{items:SavedValue[]}>('/v1/saved-values');}
+  createSavedValue(input:{name:string;kind:'secret'|'variable';value:unknown}){return this.request('/v1/saved-values',{method:'POST',body:JSON.stringify(input)});}
+  renameSavedValue(id:string,name:string){return this.request('/v1/saved-values/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({name})});}
+  deleteSavedValue(id:string){return this.request('/v1/saved-values/'+encodeURIComponent(id),{method:'DELETE'});}
   savedSecrets(){return this.request<{items:{id:string;name:string;createdAt:string;lastUsedAt?:string}[]}>('/v1/saved-secrets');}
   renameSavedSecret(id:string,name:string){return this.request('/v1/saved-secrets/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({name})});}
   deleteSavedSecret(id:string){return this.request('/v1/saved-secrets/'+encodeURIComponent(id),{method:'DELETE'});}

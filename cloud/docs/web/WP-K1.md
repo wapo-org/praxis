@@ -37,3 +37,11 @@ The client formerly replaced every 404 message with "Not available: <request pat
 The installed headless WebKit does not paint backdrop blur even on a standalone HTML control. Its layout/focus/mounting results are valid; optical blur onset is not verified there. See webkit-native-blur-control.png in the capture directory.
 
 Evidence is in ~/.praxis-agent-state/cloud/design/K/K1/ (synthetic data only). No new dependencies.
+
+## Owner's follow-up: compact questions and saved values
+
+The question title now stays outside a compact, borderless gray form surface. Pill inputs use their own contrasting surface and hairline. The shared approval surface uses the same fill and spacing.
+
+Secrets & variables has its own Settings route (/settings/saved-values), with manual secret, text and JSON creation, rename and delete. Secret values remain write-only. Submit and save persists ordinary question answers as variables and sensitive answers as encrypted references; matching saved variables can be reused in later forms.
+
+A missing saved-values endpoint is treated as a server capability mismatch, with Retry and no contradictory empty-account message. Sensitive question submission is blocked until the server confirms support; failed capability checks cannot send a credential to an old API. Existing saved-secret endpoints remain supported. A fresh API returns 200 for an empty list. Owner-held server ports are not restarted by this worker.

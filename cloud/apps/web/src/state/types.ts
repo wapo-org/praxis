@@ -85,7 +85,8 @@ export type ActiveSheet =
   | 'skill-browser'
   | 'image-reader'
   | 'voice-settings'
-  | 'consents';
+  | 'consents'
+  | 'saved-values';
 
 export interface PendingConsentPrompt {
   host: string;

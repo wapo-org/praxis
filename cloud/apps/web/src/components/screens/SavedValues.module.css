@@ -1,0 +1,5 @@
+.form { display: grid; gap: var(--space-3); max-width: 540px; }
+.entry { display: grid; gap: var(--space-3); padding: var(--space-4); }
+.value { margin: 0; padding: var(--space-3); border-radius: var(--radius-sm); background: var(--color-fill-1); color: var(--color-ink); overflow-wrap: anywhere; white-space: pre-wrap; }
+.loadError { display: grid; justify-items: start; gap: var(--space-2); color: var(--color-ink-2); }
+.loadError p { margin: 0; }

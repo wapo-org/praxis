@@ -1,3 +1,4 @@
+import {SavedValues} from './SavedSecrets';
 import { GlassIconButton, PANEL } from '@praxis/glass';
 import { motion } from 'framer-motion';
 import React from 'react';
@@ -12,7 +13,7 @@ import {
 } from './ConnectorsScreen.js';
 import { ImageReaderScreen } from './ImageReaderScreen.js';
 import { ProviderEditor } from './ProviderEditor.js';
-import { BackButton } from './ScreenUI.js';
+import { BackButton, ScreenBody } from './ScreenUI.js';
 import screen from './Screen.module.css';
 import {
   AccountSection,
@@ -59,6 +60,8 @@ function PageContent({ sheet, onOpenGlassLab }: { sheet: SettingsSheet; onOpenGl
       return <SkillImport />;
     case 'skill-browser':
       return <SkillBrowser />;
+    case 'saved-values':
+      return <ScreenBody><SavedValues/></ScreenBody>;
     case 'consents':
       return <ConsentsSection />;
     case 'account':
