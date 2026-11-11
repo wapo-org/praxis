@@ -36,6 +36,7 @@ export function useSendActions(
     async (
       text: string,
       options?: {
+        regenerateMessageId?: string;
         attachmentIds?: string[];
         script?:
           | 'text'
@@ -80,9 +81,10 @@ export function useSendActions(
         updatedAt: nowIso,
       };
 
+      const originalMessages=state.messagesByChat[targetChatId!]??[];
       setMessagesByChat((prev) => ({
         ...prev,
-        [targetChatId!]: [...(prev[targetChatId!] ?? []), optimisticUserMsg],
+        [targetChatId!]: options?.regenerateMessageId ? (prev[targetChatId!]??[]).slice(0,(prev[targetChatId!]??[]).findIndex(m=>m.id===options.regenerateMessageId)) : [...(prev[targetChatId!] ?? []), optimisticUserMsg],
       }));
 
       // Infer script in local mode from prompt keywords if not explicitly provided
@@ -109,6 +111,7 @@ export function useSendActions(
         const suggestedTitle=await browserTitle(text);
         const run = await apiClient.startRun({
           suggestedTitle,
+          regenerateMessageId: options?.regenerateMessageId,
           chatId: targetChatId,
           text,
           providerId: selectedProviderId,
@@ -150,6 +153,7 @@ export function useSendActions(
           );
         attachRunStream(run, 0);
       } catch (err) {
+        if(options?.regenerateMessageId)setMessagesByChat(prev=>({...prev,[targetChatId!]:originalMessages}));
         const msg = runErrorCopy(err);
         setErrorBanner(msg);
       }
@@ -191,9 +195,16 @@ export function useSendActions(
       action: 'accept' | 'decline' | 'cancel',
       content?: Record<string, unknown>,
     ) => {
-      await apiClient.submitElicitation(runId, elicitationId, action, content);
+      // Remove the pending form synchronously, before the network or executor resumes.
+      const pending=Object.values(state.liveRunsByChat).find(live=>live?.run.id===runId)?.pendingElicitations.find(e=>e.id===elicitationId);
+      setLiveRunsByChat(prev=>Object.fromEntries(Object.entries(prev).map(([id,live])=>[id,live?.run.id===runId?{...live,pendingElicitations:live.pendingElicitations.filter(e=>e.id!==elicitationId)}:live])));
+      try { await apiClient.submitElicitation(runId, elicitationId, action, content); }
+      catch(error){
+        if(pending)setLiveRunsByChat(prev=>Object.fromEntries(Object.entries(prev).map(([id,live])=>[id,live?.run.id===runId&&!live.pendingElicitations.some(e=>e.id===elicitationId)?{...live,pendingElicitations:[...live.pendingElicitations,pending]}:live])));
+        setErrorBanner(runErrorCopy(error));throw error;
+      }
     },
-    [],
+    [state.liveRunsByChat],
   );
 
   return {

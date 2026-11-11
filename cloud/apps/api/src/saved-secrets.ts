@@ -5,6 +5,7 @@ import {seal,unseal} from './secrets.js';
 import {ApiError} from './service.js';
 
 export async function saveSecret(ctx:FeatureContext,name:string,value:string,saved:boolean,chatId:string) {
+ if(Buffer.byteLength(value)>64_000)throw new ApiError(413,'value_too_large','Saved values must be smaller than 64 KB.');
  const id=randomUUID(),createdAt=new Date().toISOString();
  await ctx.store.put(ctx.userId,'savedSecretValue',id,{cipher:seal(value,ctx.userId,'saved:'+id,ctx.encryptionKey)});
  await ctx.store.put(ctx.userId,'savedSecret',id,{id,name,createdAt,saved,chatId});

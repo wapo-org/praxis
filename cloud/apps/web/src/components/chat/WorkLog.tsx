@@ -30,8 +30,9 @@ const named:Record<string,ReturnType<typeof bindIcon>>={search:icons.search,glob
 const GENERIC=new Set(['plug','wrench','tool','hammer']);
 /** The row glyph: K1's `display.icon` (a lucide name or a connector favicon), else the kind's glyph. Failure wins. */
 export function ToolGlyph({kind,display,failed=false,warning=false}:{kind:WorkIcon;display?:string;failed?:boolean;warning?:boolean}) {
-  if(!failed&&!warning&&display){
-    if(/^(https?:|data:image\/)/.test(display))return <span className={styles.icon} data-kind="favicon"><img className={styles.favicon} src={display} alt="" width={16} height={16} loading="lazy" referrerPolicy="no-referrer"/></span>;
+  const [broken,setBroken]=React.useState<string>();
+  if(!failed&&!warning&&display&&broken!==display){
+    if(/^(https?:|data:image\/|\/v1\/connectors\/)/.test(display))return <span className={styles.icon} data-kind="favicon"><img className={styles.favicon} src={display} alt="" width={16} height={16} loading="lazy" referrerPolicy="no-referrer" onError={()=>setBroken(display)}/></span>;
     // Lucide names arrive as PascalCase ("BookOpen") or kebab-case ("book-open"). A generic glyph (plug, wrench)
     // says less than the row's own kind, so a specific kind keeps its glyph.
     const key=display.replace(/([a-z0-9])([A-Z])/g,'$1-$2').toLowerCase();

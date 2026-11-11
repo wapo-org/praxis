@@ -1,3 +1,4 @@
+import {connectorIcon} from '../../connector-icons.js';
 import {ensureBuiltins,builtin,builtinCatalog} from './builtins.js';
 import {searchRegistry} from './registry.js';
 import { Hono } from 'hono';
@@ -36,6 +37,12 @@ export function createMcpRoutes(context: (req: Request) => Promise<FeatureContex
     const query = z.object({ state: z.string().regex(/^[A-Za-z0-9_-]{32}$/), code: z.string().min(1).max(8192).optional(), error: z.string().max(500).optional(), iss: z.string().url().optional() }).parse(c.req.query());
     const result = await finishOAuth(await context(c.req.raw), query, options);
     return result.target ? c.redirect(result.target, 302) : c.json({ type: 'ok' });
+  });
+  app.get('/connectors/:id/icon',async c=>{
+    const icon=await connectorIcon(await authenticated(c.req.raw),c.req.param('id'));
+    if(!icon)return c.body(null,404);
+    c.header('Cache-Control','private, max-age=3600');c.header('Content-Type',String(icon.mediaType));
+    return c.body(new Uint8Array(Buffer.from(String(icon.data),'base64')));
   });
   app.get('/connectors/registry',async c=>c.json(await searchRegistry(await authenticated(c.req.raw),c.req.query())));
   app.post('/connectors/discover', async c => {

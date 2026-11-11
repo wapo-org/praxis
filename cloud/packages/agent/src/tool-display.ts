@@ -12,5 +12,5 @@ export function toolDisplay(name: string, spec?: ToolSpec, args?: JsonValue) {
   const value = ['query','url','name','path'].map(k => obj[k]).find(v => typeof v === 'string' && !v.includes('{{secret:') && !v.includes('mcp__'));
   return {title: title.slice(0,60), ...(typeof value === 'string' ? {detail:value.slice(0,60)} : {}),
     ...(spec?.source.serverId ? {connectorId:spec.source.serverId} : {}), ...(connectorName ? {connectorName} : {}),
-    icon:connectorName ? 'Plug' : name==='run_javascript' ? 'Code' : name==='load_skill' ? 'BookOpen' : 'Wrench'};
+    icon:spec?.source.serverId ? `/v1/connectors/${encodeURIComponent(spec.source.serverId)}/icon` : connectorName ? 'Plug' : name==='run_javascript' ? 'Code' : name==='load_skill' ? 'BookOpen' : 'Wrench'};
 }

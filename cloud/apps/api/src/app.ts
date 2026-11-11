@@ -1,5 +1,5 @@
 import {JsonValueSchema} from '@praxis/protocol';
-import {protectAnswer,secretMetadata,querySavedValues,saveVariable,saveSecret} from './saved-secrets.js';
+import {protectAnswer,secretMetadata,savedValues,querySavedValues,saveVariable,saveSecret} from './saved-secrets.js';
 import { searchChats } from './search.js';
 import {registerAccountDeletion} from './account-routes.js';
 import {AccountDeleteSchema} from '@praxis/protocol';
@@ -87,9 +87,9 @@ export function createApp(options:AppOptions){
   if(input.kind==='secret'){
    if(typeof input.value!=='string'||!input.value)throw new ApiError(400,'invalid_value','Enter a secret value.');
    const reference=await saveSecret(ctx,input.name,input.value,true,'');
-   return c.json({id:reference.slice(9,-2),name:input.name,kind:'secret'},201);
+   return c.json((await savedValues(ctx)).find(v=>v.id===reference.slice(9,-2)),201);
   }
-  return c.json({id:await saveVariable(ctx,input.name,input.value),name:input.name,kind:'variable'},201);
+  const id=await saveVariable(ctx,input.name,input.value);return c.json((await savedValues(ctx)).find(v=>v.id===id),201);
  });
  app.patch('/v1/saved-values/:id',async c=>{
   const user=c.get('userId'),id=c.req.param('id'),input=await body(c,z.object({name:z.string().trim().min(1).max(100).optional(),value:JsonValueSchema.optional()}).strict().refine(v=>v.name!==undefined||v.value!==undefined));

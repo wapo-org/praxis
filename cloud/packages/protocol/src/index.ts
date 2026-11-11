@@ -111,7 +111,7 @@ export const StreamSimOptionsSchema = z.object({
   edgeCase: z.enum(['none', 'emptyDeltas', 'duplicateFinal', 'reasoningAfterText', 'midStreamError', 'interleavedTools']).default('none'),
 });
 export type StreamSimOptions = z.infer<typeof StreamSimOptionsSchema>;
-export const StartRunSchema = z.object({suggestedTitle:z.string().max(42).optional(),
+export const StartRunSchema = z.object({regenerateMessageId:IdSchema.optional(),suggestedTitle:z.string().max(42).optional(),
   type:z.literal('run.start'),chatId:IdSchema,text:z.string().max(200000).default(''),
   providerId:IdSchema.optional(),modelId:z.string().optional(),mode:ModeSchema.optional(),effort:z.string().optional(),
   attachmentIds:z.array(IdSchema).default([]),webSearch:z.boolean().default(false),idempotencyKey:IdSchema.optional(),clientTurnId:IdSchema.optional(),

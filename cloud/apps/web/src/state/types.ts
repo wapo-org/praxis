@@ -175,7 +175,8 @@ export interface PraxisStoreContextValue {
   sendMessage: (
     text: string,
     options?: {
-      attachmentIds?: string[];
+      regenerateMessageId?: string;
+        attachmentIds?: string[];
       script?:
         | 'text'
         | 'tools'

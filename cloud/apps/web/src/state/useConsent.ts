@@ -20,6 +20,7 @@ export function useConsent(
     async (
       text: string,
       options?: {
+        regenerateMessageId?: string;
         attachmentIds?: string[];
         script?:
           | 'text'

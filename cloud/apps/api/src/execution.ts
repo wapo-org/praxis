@@ -1,3 +1,4 @@
+import {variablesTool,variablePrompt} from './variables.js';
 import {titleModels} from './title-model.js';
 import {executionSecrets} from './saved-secrets.js';
 import {
@@ -192,7 +193,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   }
 
   async function agentTools(userId: string, chat: Chat, run: Run, request: RunRequest, script?: Script): Promise<AgentTool[]> {
-    const tools: AgentTool[] = [...(script ? scriptedTools() : []), readToolOutputTool(service)];
+    const tools: AgentTool[] = [...(script ? scriptedTools() : []), readToolOutputTool(service), variablesTool(ctx(userId),service.search?.embedder)];
     if (options.features?.tools) {
       const features = await options.features.tools(ctx(userId), {chat, runId: run.id, attachmentIds: request.attachmentIds});
       for (const tool of features) if (!tools.some(t => t.spec.name === tool.name)) tools.push(adaptTool(tool, ctx(userId)));
@@ -223,10 +224,13 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   }
 
   async function freezeSetup(userId: string, chat: Chat, tools: AgentTool[]): Promise<ConversationSetup | undefined> {
-    if (chat.setup) return undefined;
+    if (chat.setup) {
+      const spec=variablesTool(ctx(userId),service.search?.embedder).spec;
+      return {...chat.setup,system:chat.setup.system.includes('Saved variables exist:')?chat.setup.system:chat.setup.system+'\nSaved variables exist: use variables list/search/get; secrets are opaque references.',tools:chat.setup.tools.some(t=>t.name==='variables')?chat.setup.tools:[...chat.setup.tools,spec]};
+    }
     const c = ctx(userId);
     const skills = (await options.features?.skills?.(c)) ?? [];
-    const toolNotes = (await options.features?.toolNotes?.(c, chat)) ?? [];
+    const toolNotes = [...((await options.features?.toolNotes?.(c, chat)) ?? []),'Saved variables exist: use variables list/search/get; secrets are opaque references and their values are never visible.'];
     const offersSkills = tools.some(t => t.spec.name === 'load_skill' && !t.hidden);
     const catalogSkills = offersSkills ? skills : [];
     return {
@@ -280,7 +284,8 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       const skills = (await options.features?.skills?.(ctx(userId))) ?? [];
       const previousNotes = previous.filter(m => m.role === 'user').flatMap(m => m.parts).flatMap(p => (p.type === 'note' && p.text ? [p.text] : []));
       const extra = (await options.features?.turnNotes?.(ctx(userId), chat, previousNotes)) ?? [];
-      return [...turnNotes({
+      const variables=await variablePrompt(ctx(userId),input.text,service.search?.embedder);
+      return [...(variables?[variables]:[]),...turnNotes({
         mode: input.mode ?? chat.mode,
         ...((input.effort ?? chat.effort) ? {effort: (input.effort ?? chat.effort)!} : {}),
         previous,

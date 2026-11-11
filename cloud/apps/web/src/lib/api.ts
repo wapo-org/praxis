@@ -148,6 +148,7 @@ export class PraxisApiClient extends FeatureApiClient {
 
   // Runs & Interactive Loop
   async startRun(input: {
+    regenerateMessageId?: string;
     suggestedTitle?: string;
     chatId: string;
     text: string;

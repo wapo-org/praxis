@@ -45,8 +45,9 @@ it('persists owner purge and closed-account state',async()=>{
 });
 it.each(['SIGINT','SIGTERM'] as const)('flushes the real dev entrypoint on %s and reloads it',async signal=>{
  const {spawn}=await import('node:child_process');const dir=directory();
+ const {createServer}=await import('node:net');const probe=createServer();await new Promise<void>(r=>probe.listen(0,'127.0.0.1',r));const port=(probe.address() as {port:number}).port;await new Promise<void>((r,j)=>probe.close(e=>e?j(e):r()));
  const start=async()=>{
-  const child=spawn(process.execPath,['--import','tsx','apps/api/src/local.ts'],{cwd:process.cwd(),env:{PATH:process.env.PATH,NODE_ENV:'test',PORT:'8881',PRAXIS_EMBEDDER:'none',PRAXIS_LOCAL_DATA_DIR:dir},stdio:['ignore','pipe','pipe']});
+  const child=spawn(process.execPath,['--import','tsx','apps/api/src/local.ts'],{cwd:process.cwd(),env:{PATH:process.env.PATH,NODE_ENV:'test',PORT:String(port),PRAXIS_EMBEDDER:'none',PRAXIS_LOCAL_DATA_DIR:dir},stdio:['ignore','pipe','pipe']});
   const exited=new Promise<void>(resolve=>child.once('exit',()=>resolve()));let output='';
   try{await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Local API startup timed out')),10000);child.once('exit',()=>{clearTimeout(timer);reject(new Error('Local API exited before startup'));});child.stdout.on('data',chunk=>{output+=String(chunk);if(output.includes('Praxis local API:')){clearTimeout(timer);resolve();}});});}
   catch(error){child.kill('SIGTERM');await exited;throw error;}
@@ -54,9 +55,9 @@ it.each(['SIGINT','SIGTERM'] as const)('flushes the real dev entrypoint on %s an
  };
  let running=await start();
  try{
-  const response=await fetch('http://127.0.0.1:8881/v1/chats',{method:'POST',headers:{Authorization:'Bearer dev-local','content-type':'application/json'},body:JSON.stringify({type:'chat.input',title:'Signal flush'})});expect(response.ok).toBe(true);const chat=await response.json();
+  const response=await fetch(`http://127.0.0.1:${port}/v1/chats`,{method:'POST',headers:{Authorization:'Bearer dev-local','content-type':'application/json'},body:JSON.stringify({type:'chat.input',title:'Signal flush'})});expect(response.ok).toBe(true);const chat=await response.json();
   running.child.kill(signal);await running.exited;running=await start();
-  const response2=await fetch('http://127.0.0.1:8881/v1/chats/'+chat.id,{headers:{Authorization:'Bearer dev-local'}});expect(response2.ok).toBe(true);expect((await response2.json()).title).toBe('Signal flush');
+  const response2=await fetch(`http://127.0.0.1:${port}/v1/chats/`+chat.id,{headers:{Authorization:'Bearer dev-local'}});expect(response2.ok).toBe(true);expect((await response2.json()).title).toBe('Signal flush');
  }finally{if(running.child.exitCode===null&&running.child.signalCode===null){running.child.kill('SIGTERM');await running.exited;}}
 },30000);
 

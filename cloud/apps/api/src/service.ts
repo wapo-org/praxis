@@ -70,13 +70,33 @@ export class ApiService{
   if(!this.driver)throw new ApiError(503,'runner_unavailable','Run executor is not configured');
   const attachments:AttachmentRow[]=[];for(const id of input.attachmentIds)attachments.push(attachmentRow(id,await this.require<JsonObject>(userId,'attachment',id)));
   await this.driver.validate?.(userId,chat,input);
+  let messages=(await this.list<Message>(userId,'message',chat.id)).sort((a,b)=>(a.sequence??0)-(b.sequence??0)||a.createdAt.localeCompare(b.createdAt));
+  let regenerationUserAt=-1;
+  if(input.regenerateMessageId){
+   const at=messages.findIndex(m=>m.id===input.regenerateMessageId&&m.role==='assistant');
+   regenerationUserAt=at-1;
+   while(regenerationUserAt>=0&&(messages[regenerationUserAt]!.role!=='user'||messages[regenerationUserAt]!.parts.every(p=>p.type==='toolResult')))regenerationUserAt--;
+   if(at<0||regenerationUserAt<0)throw new ApiError(404,'message_missing','Reply to regenerate not found');
+  }
   const now=this.now();const run=RunSchema.parse({type:'run',id:randomUUID(),chatId:chat.id,status:'queued',createdAt:now,updatedAt:now,lastEventId:0,clientTurnId:input.clientTurnId??key});
   await this.put(userId,'run',run.id,run);await this.put(userId,'snapshot',run.id,initialSnapshot(run));
   if(key)await this.put(userId,'idempotency',`${chat.id}:${key}`,{body:JSON.stringify(input),runId:run.id});
-  const messages=(await this.list<Message>(userId,'message',chat.id)).sort((a,b)=>(a.sequence??0)-(b.sequence??0)||a.createdAt.localeCompare(b.createdAt));
-  const notes=(await this.driver.notes?.(userId,chat,input,messages))??[];
-  const message:Message={type:'message',id:randomUUID(),chatId:chat.id,runId:run.id,clientTurnId:run.clientTurnId,sequence:messages.length+1,role:'user',parts:[...notes.map(text=>({type:'note' as const,text})),...attachmentParts(attachments,input.text)],createdAt:now,updatedAt:now};
-  await this.emit(userId,run.id,{type:'messages.committed',messages:[message]});messages.push(message);
+  if(input.regenerateMessageId){
+   const userAt=regenerationUserAt;
+   // Discard the previous attempt and later branch. The original user turn is retained once.
+   const removed=messages.slice(userAt+1);
+   for(const m of removed)await this.remove(userId,'message',m.id);
+   const oldRunIds=new Set(removed.flatMap(m=>m.runId?[m.runId]:[]));
+   for(const id of oldRunIds){await this.adapters.store.delete(userId,'snapshot',id);await this.changed(userId,'run',id,'delete');}
+   messages=messages.slice(0,userAt+1);
+   run.clientTurnId=messages[userAt]!.clientTurnId;
+   await this.put(userId,'run',run.id,run);await this.put(userId,'snapshot',run.id,initialSnapshot(run));
+   input={...input,text:messages[userAt]!.parts.filter(p=>p.type==='text').map(p=>p.text??'').join(' ')};
+  }else{
+   const notes=(await this.driver.notes?.(userId,chat,input,messages))??[];
+   const message:Message={type:'message',id:randomUUID(),chatId:chat.id,runId:run.id,clientTurnId:run.clientTurnId,sequence:messages.length+1,role:'user',parts:[...notes.map(text=>({type:'note' as const,text})),...attachmentParts(attachments,input.text)],createdAt:now,updatedAt:now};
+   await this.emit(userId,run.id,{type:'messages.committed',messages:[message]});messages.push(message);
+  }
   const title=await this.titleFor(userId,chat,input.text,attachments,messages.slice(0,-1));
   const suggested=input.suggestedTitle?.trim();
   const updated=await this.updateChat(userId,chat.id,live=>({...live,...(title&&live.title===chat.title&&live.titleRevision===chat.titleRevision?{title:suggested||title}:{}),activeRunId:run.id,updatedAt:now}));
@@ -138,7 +158,9 @@ export class ApiService{
   const snapshot=await this.require<RunSnapshot>(userId,'snapshot',runId);
   const exists=decision.type==='approval.decision'?snapshot.pendingApprovals.some(x=>x.id===id):snapshot.pendingElicitations.some(x=>x.id===id);
   if(!exists||this.terminal(run))throw new ApiError(409,'decision_stale','Pending request no longer exists');
-  await this.put(userId,'decision',`${runId}:${id}`,decision);run.status='running';await this.put(userId,'run',runId,run);this.enqueue(userId,runId,()=>this.driver!.resume(userId,runId,decision));return run;
+  await this.put(userId,'decision',`${runId}:${id}`,decision);run.status='running';await this.put(userId,'run',runId,run);
+  if(decision.type==='elicitation.response')await this.emit(userId,runId,{type:'elicitation.resolved',elicitationId:id,action:decision.action});
+  this.enqueue(userId,runId,()=>this.driver!.resume(userId,runId,decision));return run;
  });}
  async truncate(userId:string,chatId:string,clientTurnId:string){return this.exclusive(`${userId}:${chatId}`,async()=>{
   const chat=await this.require<Chat>(userId,'chat',chatId);

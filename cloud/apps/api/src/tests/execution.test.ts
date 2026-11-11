@@ -87,7 +87,7 @@ describe('execution driver with a real HTTP provider', () => {
     const snapshot = RunSnapshotSchema.parse(await (await f.req(`/v1/runs/${run.id}/snapshot`)).json());
     expect(snapshot.run.status).toBe('completed');
     expect(calls).toEqual([{x: 1}]);
-    expect(fake.requests[0].tools.map((t: any) => t.function.name)).toEqual(['read_tool_output', 'echo']);
+    expect(fake.requests[0].tools.map((t: any) => t.function.name)).toEqual(['read_tool_output', 'variables', 'echo']);
     expect(JSON.stringify(fake.requests[1].messages)).toContain('echoed');
   });
 });
@@ -126,4 +126,28 @@ describe('background work never rejects unobserved', () => {
     expect(logged).toEqual(['r1']);
     expect(unhandled).toEqual([]);
   });
+});
+
+it('regenerates exactly the selected reply and sends one original prompt to the model',async()=>{
+ const fake=fakeOpenAI(Array.from({length:3},()=>[delta({content:'An answer'}),delta({},'stop')]));
+ const f=setup(fake.fetcher),{chat}=await realChat(f);
+ // Explicit title prevents a background title request from consuming fake model frames.
+ await f.req('/v1/chats/'+chat.id,{type:'chat.patch',title:'Fixed title'},'PATCH');
+ await f.req('/v1/runs',{type:'run.start',chatId:chat.id,text:'Closer'});await f.service.drain();
+ const first=(await f.service.list<Message>('local-user','message',chat.id)).find(m=>m.role==='assistant')!;
+ await f.req('/v1/runs',{type:'run.start',chatId:chat.id,text:'Later turn'});await f.service.drain();
+ const response=await f.req('/v1/runs',{type:'run.start',chatId:chat.id,regenerateMessageId:first.id});expect(response.status).toBe(202);await f.service.drain();
+ const model=fake.requests.at(-1).messages;
+ expect(model.filter((m:any)=>m.role==='user')).toHaveLength(1);
+ expect(JSON.stringify(model)).toContain('Closer');expect(JSON.stringify(model)).not.toContain('Later turn');expect(JSON.stringify(model)).not.toContain('An answer');
+ if(process.env.L1_CAPTURE_DIR){const {writeFile}=await import('node:fs/promises');await writeFile(process.env.L1_CAPTURE_DIR+'/regenerate-model-input.json',JSON.stringify(model,null,2));}
+});
+it('injects related variables into actual model input with references and no secret value',async()=>{
+ const fake=fakeOpenAI([[delta({content:'Done'}),delta({},'stop')]]),f=setup(fake.fetcher),{chat}=await realChat(f);
+ await f.req('/v1/chats/'+chat.id,{type:'chat.patch',title:'Fixed title'},'PATCH');
+ await f.req('/v1/saved-values',{name:'deployment region',kind:'variable',value:'Warsaw'});
+ const secret=await f.req('/v1/saved-values',{name:'deployment token',kind:'secret',value:'SYNTHETIC-L1-HIDDEN'}).then(r=>r.json());
+ await f.req('/v1/runs',{type:'run.start',chatId:chat.id,text:'Use deployment region and token'});await f.service.drain();
+ const input=JSON.stringify(fake.requests[0].messages);expect(input).toContain('Warsaw');expect(input).toContain('{{secret:'+secret.id+'}}');expect(input).not.toContain('SYNTHETIC-L1-HIDDEN');
+ if(process.env.L1_CAPTURE_DIR){const {writeFile}=await import('node:fs/promises');await writeFile(process.env.L1_CAPTURE_DIR+'/variables-model-input.json',JSON.stringify({input:fake.requests[0].messages,promptTokenBudget:2400,promptTokenUpperBound:Buffer.byteLength((input.match(/Related saved variables[\s\S]*?Current mode/)??[''])[0]!)},null,2));}
 });

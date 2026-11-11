@@ -48,7 +48,7 @@ it('saved values are account scoped',async()=>{
 });
 
 it('filters, pages newest first with stable cursors, edits values without exposing secrets',async()=>{
- const {app,service}=createPraxisApp({adapters:createLocalAdapters(),local:true,encryptionKey:randomBytes(32).toString('base64')});
+ const key=randomBytes(32).toString('base64'),{app,service}=createPraxisApp({adapters:createLocalAdapters(),local:true,encryptionKey:key});
  const req=async(path:string,data?:unknown,method=data?'POST':'GET')=>app.request('/v1/saved-values'+path,{method,headers:{Authorization:'Bearer dev-local','Content-Type':'application/json'},...(data?{body:JSON.stringify(data)}:{})});
  const a=await req('',{name:'region',kind:'variable',value:'Warsaw'}).then(r=>r.json());
  const b=await req('',{name:'token',kind:'secret',value:'SYNTHETIC-HIDDEN'}).then(r=>r.json());
@@ -61,6 +61,7 @@ it('filters, pages newest first with stable cursors, edits values without exposi
  expect((await req('?kind=secret&cursor='+page.nextCursor)).status).toBe(400);
  expect((await req('/'+b.id,{name:'new token',value:'SYNTHETIC-ROTATED'},'PATCH')).status).toBe(200);
  expect((await req('/'+a.id,{value:'Berlin'},'PATCH')).status).toBe(200);
+ const boundary=await executionSecrets(featureContext(service,'local-user',{encryptionKey:key}),'c');expect(boundary.resolve('{{secret:'+b.id+'}}')).toBe('SYNTHETIC-ROTATED');
  expect(JSON.stringify(await req('').then(r=>r.json()))).not.toContain('SYNTHETIC-ROTATED');
  expect((await req('?query=Berlin').then(r=>r.json())).items).toHaveLength(1);
 });

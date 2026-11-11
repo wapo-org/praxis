@@ -71,8 +71,9 @@ export function ConnectorsScreen() {
                       if (!open) void task.run(() => store.loadConnectorTools(connector.id));
                     }}
                   >
-                    <span className={styles.avatar}>
+                    <span className={styles.avatar} style={{position:'relative'}} >
                       {connector.name.slice(0, 1).toUpperCase()}
+                      <img src={`/v1/connectors/${encodeURIComponent(connector.id)}/icon`} alt="" style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'contain',borderRadius:'inherit'}} onLoad={e=>{e.currentTarget.parentElement!.style.color='transparent';}} onError={e=>{e.currentTarget.style.display='none';e.currentTarget.parentElement!.style.color='';}} />
                     </span>
                     <span className={styles.rowCopy}>
                       <strong>{connector.name}</strong>

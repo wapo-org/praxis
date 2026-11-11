@@ -83,7 +83,6 @@ export function ChatScreen() {
     () => [...visibleMessages].reverse().find((m) => m.role === 'user'),
     [visibleMessages],
   );
-  const lastUserText = () => (lastUserMessage ? messageText(lastUserMessage, '\n') : '');
   const error = errorBanner || activeLiveRun?.run.error;
   React.useEffect(() => {
     if (error) cancelSendFlight();
@@ -196,8 +195,8 @@ export function ChatScreen() {
                       animateArrival={!!live}
                       revealSegments={msg.parts.filter(p=>p.type==='text').map((p,i)=>({id:p.blockId??`${msg.id}.${i}`,text:p.text??''}))}
                       onRetry={() => {
-                        const retry = lastUserText();
-                        if (retry) void sendMessage(retry);
+                        const user=visibleMessages.slice(0,index).reverse().find(m=>m.role==='user');
+                        if(user)void sendMessage(messageText(user,' '),{regenerateMessageId:msg.id});
                       }}
                     />
                   ) : null}
