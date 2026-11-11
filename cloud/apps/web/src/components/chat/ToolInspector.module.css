@@ -1,0 +1,126 @@
+/* The tool inspector (WP-K2, K-ref/05): soft squircle boxes for Input and Output, quiet JSON tones. */
+.inspector {
+  --insp-fill: color-mix(in srgb, var(--color-ink) 3%, transparent);
+  --insp-line: color-mix(in srgb, var(--color-ink) 7.5%, transparent);
+  --insp-divider: color-mix(in srgb, var(--color-ink) 5.5%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+:global([data-theme='dark']) .inspector {
+  --insp-fill: color-mix(in srgb, var(--color-ink) 4%, transparent);
+  --insp-line: color-mix(in srgb, var(--color-ink) 8%, transparent);
+  --insp-divider: color-mix(in srgb, var(--color-ink) 6%, transparent);
+}
+
+.meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+.technical {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--weight-regular) var(--text-xs) / var(--leading-sm) var(--font-mono);
+  user-select: all;
+}
+
+.reason {
+  margin: 0;
+  font: var(--weight-medium) var(--text-sm) / 1.625 var(--font-sans);
+}
+.failure { color: var(--color-danger); }
+.warning { color: var(--paper-warn); }
+
+.box {
+  min-width: 0;
+  border: 1px solid var(--insp-line);
+  border-radius: 12px;
+  background: var(--insp-fill);
+  overflow: hidden;
+}
+@supports (corner-shape: squircle) {
+  .box {
+    border-radius: 18px;
+    corner-shape: squircle;
+  }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--control-sm);
+  padding: 0 var(--space-1) 0 var(--space-3);
+  border-bottom: 1px solid var(--insp-divider);
+}
+.caption {
+  color: var(--color-ink-2);
+  font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-sans);
+  letter-spacing: 0.01em;
+}
+.copy {
+  height: 22px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-ink-2);
+  font: var(--weight-medium) var(--text-xs) / 1 var(--font-sans);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .copy:hover { background: var(--color-hover); color: var(--color-ink); }
+}
+.copy:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 0; }
+
+/* Long output scrolls inside its box; a thin thumb, no track. */
+.scroll {
+  max-height: 22rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-ink-3) 40%, transparent) transparent;
+}
+.pre {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / 1.6 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
+.empty { color: var(--color-ink-3); font-family: var(--font-sans); }
+
+.json { display: block; }
+.jBlock { display: block; padding-inline-start: 2ch; }
+.jLine { display: block; }
+.jKey { color: var(--code-key); }
+.jStr { color: var(--code-string); }
+.jNum { color: var(--code-number); font-variant-numeric: tabular-nums; }
+.jBool, .jNull { color: var(--code-literal); }
+.jPunct { color: var(--color-ink-3); }
+.jToggle {
+  display: inline;
+  margin: 0 0.25ch 0 0;
+  padding: 0 0.5ch;
+  border: 0;
+  border-radius: 6px;
+  background: var(--color-hover);
+  color: var(--color-ink-2);
+  font: inherit;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .jToggle:hover { background: var(--color-pressed); color: var(--color-ink); }
+}
+.jToggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }

@@ -30,7 +30,9 @@ import {
 } from './useActivityClock';
 
 import styles from './Activity.module.css';
-import { ReasoningView } from './ReasoningView';
+import { ReasoningBody, hasThought, reasoningLabel, thoughtSummary, type ReasoningBlock } from './ReasoningView';
+import reasoningStyles from './ReasoningView.module.css';
+import { computeElapsedMs } from './useActivityClock';
 import { ActivityDetails } from './ActivityDetails';
 import type { AgentActivityViewProps } from './activityTypes';
 import { ApprovalCards } from './ApprovalCards';
@@ -105,9 +107,16 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
 
   const effectiveStart = resolveTurnStartIso(startedAt, finishedAt, promptStartedAt);
   const worked = useActivityClock(isRunning, startedAt, finishedAt, promptStartedAt);
+  // A thought with nothing to show is not activity (K-ref/07): no row, no chevron, no group.
+  const thoughts = reasoningBlocks.filter(hasThought);
+  // While a thought streams and the group is folded, it shows under the header; when it ends it folds in place.
+  const liveThought = reasoningBlocks.find((b) => !b.finished && hasThought(b));
+  const peekRef = React.useRef<ReasoningBlock | undefined>(undefined);
+  if (liveThought) peekRef.current = liveThought;
+  const peekBlock = liveThought ?? (peekRef.current ? reasoningBlocks.find((b) => b.id === peekRef.current!.id) ?? peekRef.current : undefined);
   const hasActivity =
     toolSteps.length > 0 ||
-    reasoningBlocks.length > 0 ||
+    thoughts.length > 0 ||
     pendingApprovals.length > 0 ||
     pendingElicitations.length > 0 ||
     visionActivities.length > 0 ||
@@ -140,15 +149,19 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
         currentStep.activity.presentation?.runningTitle ||
         currentStep.activity.name;
       if (totalToolsCount > 1) subLine = `${subLine} · ${totalToolsCount} steps`;
+    } else if (liveThought) {
+      subLine = thoughtSummary(liveThought.text, liveThought.shape, true) || 'Thinking…';
     } else if (reasoningBlocks.some((b) => !b.finished)) {
       subLine = 'Thinking…';
     }
   } else if (stopped) {
     label = stoppedLabel(startedAt, finishedAt, promptStartedAt);
+  } else if (totalToolsCount === 0 && thoughts.length > 0 && visionActivities.length === 0 && compactions.length === 0) {
+    // The turn only reasoned: say so, with the time it spent reasoning.
+    const known = thoughts.map((b) => b.durationMs ?? computeElapsedMs(b.startedAt, b.finishedAt)).filter((ms): ms is number => typeof ms === 'number' && Number.isFinite(ms));
+    label = reasoningLabel(false, known.length ? known.reduce((a, b) => a + b, 0) : computeElapsedMs(effectiveStart, finishedAt));
   } else if (totalToolsCount > 0 || startedAt || finishedAt) {
     label = worked;
-  } else if (reasoningBlocks.length > 0) {
-    label = 'Thought process';
   }
 
   const toggleExpanded = () => {
@@ -175,7 +188,6 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
 
   return (
     <div ref={rootRef} data-testid="agent-activity-view" className={styles.root}>
-      {reasoningBlocks.filter(b => !b.afterToolCallId).map(block => <ReasoningView key={block.id} block={block} />)}
       {/* Level 1: t3code turn-fold disclosure header. */}
       <div className={styles.groupBar}><button
         type="button"
@@ -197,10 +209,16 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
 
       </button></div>
 
+      {/* The live thought, while the group is folded: the text streams here and folds away when it ends. */}
+      <Fold open={!expanded && !!liveThought} testId="agent-activity-peek">
+        {peekBlock ? <div className={reasoningStyles.peek} data-testid="reasoning-peek"><ReasoningBody block={peekBlock} capped /></div> : null}
+      </Fold>
+      <span className={reasoningStyles.sr} role="status" aria-live="polite">{liveThought ? 'Thinking' : ''}</span>
+
       {/* Level 2: one line per call; level 3: details inside the line. */}
       <Fold open={expanded} testId="agent-activity-fold">
           <ActivityDetails
-            reasoningBlocks={reasoningBlocks.filter(b => b.afterToolCallId)}
+            reasoningBlocks={reasoningBlocks}
             visionActivities={visionActivities}
             compactions={compactions}
             toolSteps={toolSteps}

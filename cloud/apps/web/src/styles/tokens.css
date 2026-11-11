@@ -108,6 +108,11 @@
   --color-success: #17653f;
   --color-focus: rgba(21, 20, 15, 0.32);
   --color-scrim: rgba(21, 20, 15, 0.18);
+  /* Quiet syntax tones for JSON in the tool inspector (WP-K2). */
+  --code-key: #4f6488;
+  --code-string: #4a7354;
+  --code-number: #9a5b25;
+  --code-literal: #82559a;
 
   /* Elevation: three levels */
   --shadow-1: 0 1px 6px rgba(21, 20, 15, 0.035);
@@ -189,6 +194,10 @@
   --color-success: #4cc38a;
   --color-focus: rgba(241, 239, 233, 0.36);
   --color-scrim: rgba(0, 0, 0, 0.5);
+  --code-key: #9db1d6;
+  --code-string: #a6c9aa;
+  --code-number: #ddb07c;
+  --code-literal: #c8a4d8;
 
   --shadow-1: 0 1px 6px rgba(0, 0, 0, 0.24);
   --shadow-2: 0 2px 12px rgba(0, 0, 0, 0.18), 0 10px 40px rgba(0, 0, 0, 0.26);

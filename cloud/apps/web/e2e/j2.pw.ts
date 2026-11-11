@@ -72,12 +72,16 @@ test('every activity row starts on the body text’s left edge; failed rows are 
   await page.waitForTimeout(500);
   const body = await textLeft(page, '[data-testid="assistant-turn"]:last-of-type [data-testid="agent-message-view"] p');
   const worked = await turn.getByTestId('agent-activity-toggle').locator('span').first().evaluate((el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getClientRects()[0]!.left; });
-  const reasoned = await page.getByTestId('reasoning-view').first().getByRole('button').locator('span').first().evaluate((el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getClientRects()[0]!.left; });
+  // Thoughts are rows inside the group (WP-K2): their glyph sits on the same edge as the tool glyphs.
+  const firstTurn = page.getByTestId('assistant-turn').first();
+  await firstTurn.getByTestId('agent-activity-toggle').click();
+  const thoughtRow = firstTurn.getByTestId('reasoning-row').first();
+  const reasoned = (await thoughtRow.locator('svg').first().boundingBox())!.x;
   const icon = (await turn.getByTestId('tool-step-header-j2-js').locator('svg').first().boundingBox())!.x;
   expect(body).not.toBeNull();
   for (const x of [worked, reasoned, icon]) expect(Math.abs(x - body!)).toBeLessThanOrEqual(1);
   // One chevron convention: right when closed, turned down when open.
-  await expect(page.getByTestId('reasoning-view').first().locator('svg.lucide-chevron-right')).toHaveCount(1);
+  await expect(thoughtRow.locator('svg.lucide-chevron-right')).toHaveCount(1);
   // Failed: one line, label truncated inside the column, a small "Failed" at the end.
   const header = turn.getByTestId('tool-step-header-j2-js');
   const column = (await page.locator('[data-chat-column]').boundingBox())!;
@@ -94,7 +98,7 @@ test('every activity row starts on the body text’s left edge; failed rows are 
   const width = (await detail.boundingBox())!.width;
   expect(Math.abs(width - (column.width - 24))).toBeLessThanOrEqual(1);
   // Never a zero reasoning duration.
-  await expect(page.getByTestId('reasoning-view').first().getByRole('button')).not.toContainText(/for 0s/);
+  await expect(page.getByTestId('agent-activity-toggle').first()).not.toContainText(/for 0s/);
 });
 
 test('the column, the header pill and the composer are centred right of the open sidebar, and re-centre with it', async ({ page }) => {

@@ -18,15 +18,31 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { ReasoningView } from './ReasoningView';
+import { ThoughtRow, hasThought, type ReasoningBlock } from './ReasoningView';
 import {workEntry} from './WorkEntry.logic';
-import {WorkEntryIcon,WorkLogLine,workLogStyles as log} from './WorkLog';
+import {ToolGlyph,WorkLogLine,workLogStyles as log} from './WorkLog';
+import { ToolInspector } from './ToolInspector';
 import { ChevronRight } from '../../lib/icons';
 import { Fold } from './Fold';
 import fold from './Fold.module.css';
 
 import styles from './Activity.module.css';
 import type { AgentActivityViewProps } from './activityTypes';
+import type { ActiveToolStep } from '../../state/types';
+
+type Entry = { kind: 'thought'; block: ReasoningBlock } | { kind: 'tool'; step: ActiveToolStep };
+/** Thoughts and calls in the order they happened (t3-code's work group): a thought follows the call it came after. */
+export function workEntries(toolSteps: ActiveToolStep[], reasoningBlocks: ReasoningBlock[]): Entry[] {
+  const thoughts = reasoningBlocks.filter(hasThought);
+  const ids = new Set(toolSteps.map((s) => s.callId));
+  const after = (id?: string) => thoughts.filter((b) => b.afterToolCallId === id).map((block) => ({ kind: 'thought' as const, block }));
+  return [
+    ...thoughts.filter((b) => !b.afterToolCallId).map((block) => ({ kind: 'thought' as const, block })),
+    ...toolSteps.flatMap((step) => [{ kind: 'tool' as const, step }, ...after(step.callId)]),
+    ...thoughts.filter((b) => b.afterToolCallId && !ids.has(b.afterToolCallId)).map((block) => ({ kind: 'thought' as const, block })),
+  ];
+}
+
 export function ActivityDetails({
   reasoningBlocks = [],
   visionActivities = [],
@@ -36,6 +52,7 @@ export function ActivityDetails({
   copiedStepId,
   toggleStepDetail,
   copyText,
+  onThoughtToggle,
 }: Pick<
   AgentActivityViewProps,
   'reasoningBlocks' | 'visionActivities' | 'compactions' | 'toolSteps'
@@ -44,6 +61,7 @@ export function ActivityDetails({
   copiedStepId: string | null;
   toggleStepDetail: (id: string) => void;
   copyText: (id: string, text: string) => void;
+  onThoughtToggle?: () => void;
 }) {
   return (
     <div data-testid="agent-activity-steps" className={styles.steps}>
@@ -63,11 +81,11 @@ export function ActivityDetails({
         </div>
       ))}
 
-      {toolSteps.map((step) => {
+      {workEntries(toolSteps, reasoningBlocks).map((item) => {
+        if (item.kind === 'thought') return <ThoughtRow key={`t:${item.block.id}`} block={item.block} onToggle={onThoughtToggle} />;
+        const step = item.step;
         const isStepOpen = Boolean(openStepIds[step.callId]);
-
         const entry=workEntry(step);
-
         return (
           <div
             key={step.callId}
@@ -83,7 +101,7 @@ export function ActivityDetails({
               className={log.button}
             >
               <WorkLogLine
-                icon={<WorkEntryIcon kind={entry.icon} failed={entry.failed} warning={entry.warning}/>}
+                icon={<ToolGlyph kind={entry.icon} display={entry.displayIcon} failed={entry.failed} warning={entry.warning}/>}
                 trailing={<>
                   {entry.failed||entry.warning?<span className={`${log.status} ${entry.warning?log.warning:log.failure}`}>{entry.warning?'Denied':'Failed'}</span>:null}
                   <span className={`${log.chevron} ${fold.chevron}`} aria-hidden="true"><ChevronRight size={16}/></span>
@@ -97,12 +115,9 @@ export function ActivityDetails({
 
             <Fold open={isStepOpen} id={`tool-detail-${step.callId}`}>
               <div data-testid={`tool-step-detail-${step.callId}`} className={log.details}>
-                {entry.failed||entry.warning?<p className={`${log.reason} ${entry.warning?log.warning:log.failure}`}>{entry.warning?'Tool call denied':'Tool call failed'}</p>:null}
-                <pre className={log.pre}>{entry.body||'No additional output.'}</pre>
-                <button type="button" className={log.copy} onClick={()=>copyText(step.callId,entry.body)}>{copiedStepId===step.callId?'Copied':'Copy output'}</button>
+                <ToolInspector id={step.callId} technical={entry.technical} connectorName={entry.connectorName} failed={entry.failed} warning={entry.warning} input={entry.input} progress={entry.progress} output={entry.output} copiedId={copiedStepId} copyText={copyText}/>
               </div>
             </Fold>
-            {reasoningBlocks.filter(b => b.afterToolCallId === step.callId).map(block => <ReasoningView key={block.id} block={block} />)}
           </div>
         );
       })}
