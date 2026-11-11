@@ -77,14 +77,34 @@ export class ApiService{
   const notes=(await this.driver.notes?.(userId,chat,input,messages))??[];
   const message:Message={type:'message',id:randomUUID(),chatId:chat.id,runId:run.id,clientTurnId:run.clientTurnId,sequence:messages.length+1,role:'user',parts:[...notes.map(text=>({type:'note' as const,text})),...attachmentParts(attachments,input.text)],createdAt:now,updatedAt:now};
   await this.emit(userId,run.id,{type:'messages.committed',messages:[message]});messages.push(message);
-  const originalTitle=chat.title;
-  const title=await this.titleFor(userId,chat,input.text,attachments,messages.slice(0,-1));if(title)chat.title=input.suggestedTitle?.trim()||await this.driver.title?.(userId,chat,input.text)||title;
-  const liveChat=await this.require<Chat>(userId,'chat',chat.id);if(liveChat.title!==originalTitle)chat.title=liveChat.title;
-  chat.activeRunId=run.id;chat.updatedAt=now;await this.write(userId,'chat',chat.id,chat);
-  this.enqueue(userId,run.id,()=>this.driver!.start(userId,run,chat,messages,input));return run;
+  const title=await this.titleFor(userId,chat,input.text,attachments,messages.slice(0,-1));
+  const suggested=input.suggestedTitle?.trim();
+  const updated=await this.updateChat(userId,chat.id,live=>({...live,...(title&&live.title===chat.title&&live.titleRevision===chat.titleRevision?{title:suggested||title}:{}),activeRunId:run.id,updatedAt:now}));
+  const runChat=updated??chat;
+  this.enqueue(userId,run.id,()=>this.driver!.start(userId,run,runChat,messages,input));
+  if(title&&!suggested&&runChat.title===title&&runChat.titleRevision===chat.titleRevision&&this.driver.title){
+   const expected=runChat.title,revision=runChat.titleRevision;
+   const work=Promise.resolve().then(async()=>{
+    const generated=await this.driver!.title!(userId,runChat,input.text);if(!generated)return;
+    await this.updateChat(userId,chat.id,live=>live.title===expected&&live.titleRevision===revision?{...live,title:generated,updatedAt:this.now()}:undefined);
+   }).catch(()=>this.put(userId,'titleMetric',chat.id,{reason:'provider_error: unknown'})).catch(()=>{}).finally(()=>this.work.delete(work));
+   this.work.add(work);this.defer?.(work);
+  }
+  return run;
  });}
+ /** CAS preserves renames and unrelated chat updates across background invocations. */
+ async updateChat(userId:string,id:string,update:(chat:Chat)=>Chat|undefined):Promise<Chat|undefined>{
+  for(let attempt=0;attempt<20;attempt++){
+   const row=await this.adapters.store.get(userId,'chat',id);if(!row||row.deleted)return;
+   const next=update(ChatSchema.parse(row.value));if(!next)return;
+   const saved=await this.adapters.store.putIfRevision(userId,'chat',id,JSON.parse(JSON.stringify(next)),row.revision);
+   if(saved){await this.adapters.kv.del(`bootstrap:${userId}`);this.indexed(userId,'chat',id);await this.changed(userId,'chat',id,'upsert',next);return next;}
+  }
+  throw new ApiError(409,'chat_conflict','Chat changed; try again');
+ }
  /** Port of the app's ConversationTitle: the first message names the chat (or its attachments do, until words arrive). */
  private async titleFor(userId:string,chat:Chat,text:string,attachments:AttachmentRow[],previous:Message[]){
+  if(chat.titleRevision)return undefined;
   const first=previous.find(m=>m.role==='user');let firstTurn:{text:string;attachments:AttachmentRow[]}|undefined;
   if(first){const ids=first.parts.flatMap(p=>p.attachmentId?[p.attachmentId]:[]);const rows:AttachmentRow[]=[];for(const id of ids){const r=await this.adapters.store.get(userId,'attachment',id);if(r&&!r.deleted)rows.push(attachmentRow(id,r.value));}firstTurn={text:first.parts.filter(p=>p.type==='text').map(p=>p.text??'').join(' ').replace(/\[Attached file[\s\S]*$/,'').trim(),attachments:rows};}
   if(!wantsTitle(chat.title,text,firstTurn))return undefined;return makeTitle(text,attachments);
@@ -107,7 +127,7 @@ export class ApiService{
    const record=await this.adapters.events.append(userId,`run:${runId}`,{event,createdAt:this.now(),chatId:run.chatId},eventKey);run.lastEventId=Math.max(run.lastEventId,record.id);
    await this.put(userId,'run',runId,run);
    const current=await this.require<RunSnapshot>(userId,'snapshot',runId);await this.put(userId,'snapshot',runId,foldSnapshot(current,event,record.id,run));
-   if(this.terminal(run)){const chat=await this.require<Chat>(userId,'chat',run.chatId).catch(()=>null);if(chat){delete chat.activeRunId;chat.updatedAt=this.now();await this.write(userId,'chat',chat.id,chat);}await this.changed(userId,'run',runId,'upsert',run);}
+   if(this.terminal(run)){await this.updateChat(userId,run.chatId,chat=>{if(chat.activeRunId===run.id)delete chat.activeRunId;chat.updatedAt=this.now();return chat;});await this.changed(userId,'run',runId,'upsert',run);}
    return record.id;
   });
  }

@@ -14,7 +14,7 @@ Tests inspect storage revision history, events, checkpoints, transcripts and rec
 
 ## Titles
 
-Chrome's Prompt API runs only when availability() is "available"; no automatic model download is requested. A bounded session is destroyed after use. Otherwise the server requests one non-streaming completion with 20 output tokens from the account's provider. Advertised token pricing selects the cheapest model; without prices, speed metadata and lightweight family names guide selection. Provider failures fall back to deterministic meaningful words. User renames are preserved.
+Chrome's Prompt API runs only when availability() is "available"; no automatic model download is requested. A bounded session is destroyed after use. Otherwise the server enqueues the run immediately with a keyword title and generates a title in background work registered with the existing Vercel waitUntil hook. It tries at most two eligible paid text models, preferring small instruct families before price. Free/zero-priced, mandatory reasoning and non-text models are excluded. Each completion has 32 output tokens and an eight-second deadline. OpenRouter requests use metadata-compatible none/minimal/low reasoning plus exclude; exclude alone does not reduce reasoning token usage. Safe failure codes and per-attempt usage are stored in titleMetric. Compare-and-set updates preserve settings and manual rename intent, including a rename to the existing title. PATCH defaults no longer reset an omitted title. Keyword fallback strips request verbs and stop words.
 
 Sources:
 - https://developer.chrome.com/docs/ai/prompt-api — Gemini Nano, availability states and session lifecycle.
@@ -45,3 +45,9 @@ The question title now stays outside a compact, borderless gray form surface. Pi
 Secrets & variables has its own Settings route (/settings/saved-values), with manual secret, text and JSON creation, rename and delete. Secret values remain write-only. Submit and save persists ordinary question answers as variables and sensitive answers as encrypted references; matching saved variables can be reused in later forms.
 
 A missing saved-values endpoint is treated as a server capability mismatch, with Retry and no contradictory empty-account message. Sensitive question submission is blocked until the server confirms support; failed capability checks cannot send a credential to an old API. Existing saved-secret endpoints remain supported. A fresh API returns 200 for an empty list. Owner-held server ports are not restarted by this worker.
+
+## WP-K1d fake OpenRouter evidence
+
+A real HTTP fixture reproduces the former price-sort hazard (a free-model 429), empty reasoning-only output, and a queue response after the old three-second deadline. The replacement skips ineligible models, records rate_limited / empty / timeout / provider_error: HTTP status without provider payloads, retries one other eligible model, and accepts a delayed response under eight seconds. The actual eight-second abort is tested. A gated title promise proves the run finishes while title work remains pending, and defer receives both tasks. No owner-provider cause is asserted without a live credential; these are confirmed reproductions of the code paths.
+
+OpenRouter budget and per-model reasoning metadata reference: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens . Reasoning consumes the output budget; exclude hides reasoning and does not disable it. The title request chooses an accepted low/no-reasoning effort from model metadata.

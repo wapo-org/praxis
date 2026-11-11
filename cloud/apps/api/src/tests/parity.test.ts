@@ -74,7 +74,7 @@ describe('chat titles (parity: ConversationTitle)', () => {
     await f.run(b.id, '', [await f.upload(b.id, 'x.png', 'image/png', await png(2, 2))]);
     expect((await (await f.req(`/v1/chats/${b.id}`)).json()).title).toBe('Photo');
     await f.run(b.id, 'What is this?');
-    expect((await (await f.req(`/v1/chats/${b.id}`)).json()).title).toBe('What Is This');
+    expect((await (await f.req(`/v1/chats/${b.id}`)).json()).title).toBe('What');
   });
 });
 

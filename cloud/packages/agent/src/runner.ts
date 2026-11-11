@@ -21,6 +21,7 @@ export class ExecutionFenced extends Error {constructor(){super('Execution fence
 class Cancelled extends Error {}
 export class ResumeConflict extends Error {}
 export class ProviderFailure extends Error {
+  status?:number;
   constructor(message:string,public readonly kind:'retryable'|'tools'|'images'|'effort'|'context'|'fatal'='fatal',public readonly retryAfterMs?:number){super(message);}
 }
 const terminal=(run:Run)=>['completed','cancelled','failed'].includes(run.status);

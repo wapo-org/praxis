@@ -48,7 +48,7 @@ export function createHTTPProvider(config:HTTPProviderConfig,fetcher:typeof fetc
       const summary=string(error.message)||string(json.message);
       const message=redact([summary,upstream].filter(Boolean).join(': ')||text||`Provider HTTP ${response.status}`);
       const retry=response.headers.get('retry-after');const delay=retry?Math.max(0,Number.isFinite(Number(retry))?Number(retry)*1000:Date.parse(retry)-Date.now()):undefined;
-      throw classifyProviderError(message,response.status,delay&&Number.isFinite(delay)?delay:undefined);
+      const failure=classifyProviderError(message,response.status,delay&&Number.isFinite(delay)?delay:undefined);failure.status=response.status;throw failure;
     }
     return response;
   }
@@ -71,6 +71,7 @@ export function createHTTPProvider(config:HTTPProviderConfig,fetcher:typeof fetc
       if(c.maxTokensField==='omit')throw new ProviderFailure('This provider does not support a bounded title completion.');
       const body=buildProviderRequest(c.flavor,input,c as RequestOptions);
       body.stream=false;
+      if(input.titleReasoning&&c.flavor==='openAIChat'&&new URL(c.baseUrl).hostname==='openrouter.ai'){delete body.reasoning_effort;body.reasoning={effort:input.titleReasoning,exclude:true};}
       delete body.stream_options;
       const path=c.flavor==='anthropicMessages'?'messages':c.flavor==='openAIChat'?'chat/completions':'responses';
       const h=headers();h.set('accept','application/json');
@@ -118,5 +119,5 @@ export function parseModelMetadata(raw:unknown,providerId:string,defaults:Capabi
   const inputPrice=typeof prices.prompt==='string'||typeof prices.prompt==='number'?Number(prices.prompt):NaN;
   const outputPrice=typeof prices.completion==='string'||typeof prices.completion==='number'?Number(prices.completion):NaN;
   const pricing=Number.isFinite(inputPrice)&&inputPrice>=0&&Number.isFinite(outputPrice)&&outputPrice>=0?{prompt:inputPrice,completion:outputPrice}:undefined;
-  return ModelSchema.parse({...(pricing?{pricing}:{}),type:'model',id:m.id??m.key??m.name,providerId,displayName:string(m.display_name)||string(m.name)||string(m.id)||string(m.key),capabilities,reasoningEfforts:efforts??(capabilities.reasoningEffort?['low','medium','high']:[]),pinned:false,favorite:false,...(context>0?{contextWindow:context}:{}),...(maxOutput>0?{maxOutputTokens:maxOutput}:{})});
+  return ModelSchema.parse({...(pricing?{pricing}:{}),...(Array.isArray(architecture.output_modalities)?{outputModalities:architecture.output_modalities}:{}),...(typeof reasoning.mandatory==='boolean'?{reasoningMandatory:reasoning.mandatory}:{}),type:'model',id:m.id??m.key??m.name,providerId,displayName:string(m.display_name)||string(m.name)||string(m.id)||string(m.key),capabilities,reasoningEfforts:efforts??(capabilities.reasoningEffort?['low','medium','high']:[]),pinned:false,favorite:false,...(context>0?{contextWindow:context}:{}),...(maxOutput>0?{maxOutputTokens:maxOutput}:{})});
 }

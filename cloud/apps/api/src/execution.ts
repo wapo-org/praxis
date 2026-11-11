@@ -1,4 +1,4 @@
-import {titleModel} from './title-model.js';
+import {titleModels} from './title-model.js';
 import {executionSecrets} from './saved-secrets.js';
 import {
   AgentRunner, CheckpointSchema, ExecutionFenced, ToolResultSchema, createScriptedProvider, isRunControl, scriptedTools, textResult,
@@ -46,6 +46,7 @@ export interface ExecutionOptions {
   service: ApiService;
   /** Wall-clock budget per slice; past it the run parks as `continuing` and is rescheduled. */
   budgetMs?: number;
+  titleTimeoutMs?:number;
   scheduler?: ContinuationScheduler;
   features?: ExecutionFeatures;
   encryptionKey?: string;
@@ -247,22 +248,29 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   const driver = {
     async title(userId:string,chat:Chat,text:string) {
       if(!text.trim()||!chat.providerId)return;
-      const started=clock();
-      const model=titleModel((await service.list<Model>(userId,'model')).filter(m=>m.providerId===chat.providerId));
-      if(!model)return;
-      try {
+      const started=clock(),attempts:JsonObject[]=[];
+      const models=titleModels((await service.list<Model>(userId,'model')).filter(m=>m.providerId===chat.providerId)).slice(0,2);
+      const metric=async()=>service.put(userId,'titleMetric',chat.id,{latencyMs:clock()-started,attempts,...(attempts.find(a=>a.reason)?.reason?{reason:attempts.find(a=>a.reason)!.reason}:{}),...attempts.at(-1)});
+      if(!models.length){await service.put(userId,'titleMetric',chat.id,{reason:'no_eligible_model',latencyMs:clock()-started});return;}
+      for(const model of models){
+       const signal=AbortSignal.timeout(options.titleTimeoutMs??8000),attempt:JsonObject={modelId:model.id};
+       try {
         if(chat.providerId!=='scripted')await service.providers?.requireConsent(userId,chat.providerId);
         const resolved=await resolveProvider(userId,chat,{type:'run.start',chatId:chat.id,text,attachmentIds:[],webSearch:false});
-        const request={model:model.id,system:'Return only a short 3 to 5 word title for this chat. No quotes.',messages:[{type:'message' as const,id:'title',chatId:chat.id,role:'user' as const,parts:[{type:'text' as const,text:text.slice(0,600)}],createdAt:service.now(),updatedAt:service.now()}],tools:[],capabilities:resolved.provider.capabilities,maxTokens:20,webSearch:false};
+        const effort:'none'|'minimal'|'low'=!model.capabilities.reasoningEffort?'none':model.reasoningEfforts.includes('none')?'none':model.reasoningEfforts.includes('minimal')?'minimal':'low';
+        const request={model:model.id,system:'Return only a short, specific 3 to 5 word topic title for this chat. Omit request verbs and filler. No quotes or explanation.',messages:[{type:'message' as const,id:'title',chatId:chat.id,role:'user' as const,parts:[{type:'text' as const,text:text.slice(0,600)}],createdAt:service.now(),updatedAt:service.now()}],tools:[],capabilities:model.capabilities,maxTokens:32,effort,supportedEfforts:model.reasoningEfforts,titleReasoning:effort,webSearch:false};
         let result;
         if(chat.providerId==='scripted'){
-          for await(const event of resolved.provider.stream(request,AbortSignal.timeout(3000)))if(event.type==='completed')result=event.response;
-        }else result=await (await service.providers!.resolve(userId,chat.providerId)).provider.complete(request,AbortSignal.timeout(3000));
-        if(!result)return;
-        await service.put(userId,'titleMetric',chat.id,{latencyMs:clock()-started,inputTokens:result.usage.inputTokens,outputTokens:result.usage.outputTokens,modelId:model.id});
-        const title=result.parts.filter(p=>p.type==='text').map(p=>p.text??'').join('').trim().replace(/^["']|["']$/g,'');
-        return title.slice(0,42)||undefined;
-      }catch{return;}
+          for await(const event of resolved.provider.stream(request,signal))if(event.type==='completed')result=event.response;
+        }else result=await (await service.providers!.resolve(userId,chat.providerId)).provider.complete(request,signal);
+        const title=result?.parts.filter(p=>p.type==='text').map(p=>p.text??'').join('').trim().replace(/^["']|["']$/g,'').slice(0,42);
+        if(result)Object.assign(attempt,{inputTokens:result.usage.inputTokens,outputTokens:result.usage.outputTokens});
+        if(title){attempt.outcome='success';attempts.push(attempt);await metric();return title;}
+        attempt.reason='empty';
+       }catch(error){const status=(error as {status?:number}).status;attempt.reason=signal.aborted?'timeout':status===429?'rate_limited':`provider_error: ${typeof status==='number'?status:'unknown'}`;}
+       attempts.push(attempt);await metric();
+      }
+      return;
     },
     async validate(userId: string, chat: Chat, input: StartRun) {
       await resolveProvider(userId, chat, {...input, attachmentIds: input.attachmentIds ?? []});
