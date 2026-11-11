@@ -17,9 +17,9 @@ export async function saveVariable(ctx:FeatureContext,name:string,value:JsonValu
  return id;
 }
 export async function savedValues(ctx:FeatureContext) {
- const secrets=(await secretMetadata(ctx)).map(v=>({id:String(v.id),name:String(v.name),createdAt:String(v.createdAt),...(typeof v.lastUsedAt==='string'?{lastUsedAt:v.lastUsedAt}:{}),kind:'secret' as const}));
- const variables=(await ctx.store.list(ctx.userId,'savedVariable')).filter(r=>!r.deleted).map(r=>({id:r.id,name:String(r.value.name),createdAt:String(r.value.createdAt),value:r.value.value??null,...(typeof r.value.lastUsedAt==='string'?{lastUsedAt:r.value.lastUsedAt}:{}),kind:'variable' as const}));
- return [...secrets,...variables].sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+ const secrets=(await secretMetadata(ctx)).map(v=>({id:String(v.id),name:String(v.name),createdAt:String(v.createdAt),...(typeof v.lastUsedAt==='string'?{lastUsedAt:v.lastUsedAt}:{lastUsedAt:null}),kind:'secret' as const}));
+ const variables=(await ctx.store.list(ctx.userId,'savedVariable')).filter(r=>!r.deleted).map(r=>({id:r.id,name:String(r.value.name),createdAt:String(r.value.createdAt),value:r.value.value??null,...(typeof r.value.lastUsedAt==='string'?{lastUsedAt:r.value.lastUsedAt}:{lastUsedAt:null}),kind:'variable' as const}));
+ return [...secrets,...variables].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)||a.id.localeCompare(b.id));
 }
 export async function secretMetadata(ctx:FeatureContext) {
  return (await ctx.store.list(ctx.userId,'savedSecret')).filter(r=>!r.deleted&&r.value.saved===true).map(r=>r.value);
@@ -65,4 +65,19 @@ export async function protectAnswer(ctx:FeatureContext,chatId:string,schema:Json
  }
  for(const key of Object.keys(next))if(key.startsWith('__save_'))delete next[key];
  return next;
+}
+
+/** Keyset pagination survives insertions before the current page; cursor is bound to the filters. */
+export async function querySavedValues(ctx:FeatureContext,q:{query?:string;kind?:'secret'|'variable';since?:string;cursor?:string;limit:number}) {
+ const scope=JSON.stringify([q.query??'',q.kind??'',q.since??'']);
+ let after:{createdAt:string;id:string}|undefined;
+ if(q.cursor)try{const c=JSON.parse(Buffer.from(q.cursor,'base64url').toString());if(c.scope!==scope||typeof c.createdAt!=='string'||typeof c.id!=='string')throw 0;after=c;}catch{throw new ApiError(400,'invalid_cursor','Invalid saved-values cursor');}
+ const needle=q.query?.toLocaleLowerCase();
+ const rows=(await savedValues(ctx)).filter(v=>(!q.kind||v.kind===q.kind)&&(!q.since||Date.parse(v.createdAt)>=Date.parse(q.since))&&(!needle||v.name.toLocaleLowerCase().includes(needle)||(v.kind==='variable'&&JSON.stringify(v.value).toLocaleLowerCase().includes(needle)))&&(!after||v.createdAt<after.createdAt||(v.createdAt===after.createdAt&&v.id>after.id)));
+ const items=rows.slice(0,q.limit),last=items.at(-1);
+ return {items,nextCursor:rows.length>items.length&&last?Buffer.from(JSON.stringify({scope,createdAt:last.createdAt,id:last.id})).toString('base64url'):null};
+}
+export async function touchSavedValue(ctx:FeatureContext,id:string,kind:'secret'|'variable') {
+ const key=kind==='secret'?'savedSecret':'savedVariable',row=await ctx.store.get(ctx.userId,key,id);
+ if(row&&!row.deleted)await ctx.store.put(ctx.userId,key,id,{...row.value,lastUsedAt:new Date().toISOString()});
 }

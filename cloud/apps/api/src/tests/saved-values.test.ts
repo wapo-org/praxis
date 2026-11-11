@@ -10,7 +10,7 @@ it('serves empty accounts, saves variables and write-only secrets, survives a ne
  let runtime=createPraxisApp({adapters,local:true,encryptionKey:key});
  const req=async(path:string,data?:unknown,method=data?'POST':'GET')=>runtime.app.request(path,{method,headers:{Authorization:'Bearer dev-local','Content-Type':'application/json'},...(data?{body:JSON.stringify(data)}:{})});
  expect((await req('/v1/saved-secrets')).status).toBe(200);
- expect(await req('/v1/saved-values').then(r=>r.json())).toEqual({items:[]});
+ expect(await req('/v1/saved-values').then(r=>r.json())).toEqual({items:[],nextCursor:null});
  const secret=await req('/v1/saved-values',{name:'token',kind:'secret',value:'SYNTHETIC-R2-CREDENTIAL'}).then(r=>r.json());
  const variable=await req('/v1/saved-values',{name:'region',kind:'variable',value:{region:'eu',replicas:2}}).then(r=>r.json());
  runtime=createPraxisApp({adapters,local:true,encryptionKey:key});
@@ -43,6 +43,24 @@ it('saved values are account scoped',async()=>{
  const session=await request('/v1/auth/dev',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'auth.dev',userId:'other'})}).then(r=>r.json());
  const secret=await request('/v1/saved-values',{method:'POST',headers:{Authorization:'Bearer dev-local','content-type':'application/json'},body:JSON.stringify({name:'private',kind:'secret',value:'SYNTHETIC-OWNER'})}).then(r=>r.json());
  const headers={Authorization:'Bearer '+session.bearerToken,'content-type':'application/json'};
- expect(await request('/v1/saved-values',{headers}).then(r=>r.json())).toEqual({items:[]});
+ expect(await request('/v1/saved-values',{headers}).then(r=>r.json())).toEqual({items:[],nextCursor:null});
  expect((await request('/v1/saved-values/'+secret.id,{method:'DELETE',headers})).status).toBe(404);
+});
+
+it('filters, pages newest first with stable cursors, edits values without exposing secrets',async()=>{
+ const {app,service}=createPraxisApp({adapters:createLocalAdapters(),local:true,encryptionKey:randomBytes(32).toString('base64')});
+ const req=async(path:string,data?:unknown,method=data?'POST':'GET')=>app.request('/v1/saved-values'+path,{method,headers:{Authorization:'Bearer dev-local','Content-Type':'application/json'},...(data?{body:JSON.stringify(data)}:{})});
+ const a=await req('',{name:'region',kind:'variable',value:'Warsaw'}).then(r=>r.json());
+ const b=await req('',{name:'token',kind:'secret',value:'SYNTHETIC-HIDDEN'}).then(r=>r.json());
+ for(const [id,kind,date] of [[a.id,'savedVariable','2026-01-01'],[b.id,'savedSecret','2026-02-01']]){const row=await service.require<any>('local-user',kind,id);await service.put('local-user',kind,id,{...row,createdAt:date+'T00:00:00.000Z'});}
+ const page=await req('?limit=1').then(r=>r.json());expect(page.items[0].id).toBe(b.id);expect(page.items[0].lastUsedAt).toBeNull();
+ expect((await req('?limit=1&cursor='+page.nextCursor).then(r=>r.json())).items[0].id).toBe(a.id);
+ expect((await req('?query=Warsaw&kind=variable').then(r=>r.json())).items).toHaveLength(1);
+ expect((await req('?query=SYNTHETIC-HIDDEN').then(r=>r.json())).items).toHaveLength(0);
+ expect((await req('?since=2026-01-15T00:00:00Z').then(r=>r.json())).items).toHaveLength(1);
+ expect((await req('?kind=secret&cursor='+page.nextCursor)).status).toBe(400);
+ expect((await req('/'+b.id,{name:'new token',value:'SYNTHETIC-ROTATED'},'PATCH')).status).toBe(200);
+ expect((await req('/'+a.id,{value:'Berlin'},'PATCH')).status).toBe(200);
+ expect(JSON.stringify(await req('').then(r=>r.json()))).not.toContain('SYNTHETIC-ROTATED');
+ expect((await req('?query=Berlin').then(r=>r.json())).items).toHaveLength(1);
 });

@@ -1,5 +1,5 @@
 import {JsonValueSchema} from '@praxis/protocol';
-import {protectAnswer,secretMetadata,savedValues,saveVariable,saveSecret} from './saved-secrets.js';
+import {protectAnswer,secretMetadata,querySavedValues,saveVariable,saveSecret} from './saved-secrets.js';
 import { searchChats } from './search.js';
 import {registerAccountDeletion} from './account-routes.js';
 import {AccountDeleteSchema} from '@praxis/protocol';
@@ -80,7 +80,7 @@ export function createApp(options:AppOptions){
  app.post('/v1/runs/:id/cancel',async c=>{await body(c,z.object({type:z.literal('run.cancel')}));return c.json(await service.cancel(c.get('userId'),c.req.param('id')),202);});
  app.post('/v1/runs/:id/approvals',async c=>c.json(await service.decision(c.get('userId'),c.req.param('id'),await body(c,ApprovalDecisionSchema)),202));
  const savedContext=(user:string)=>featureContext(service,user,{encryptionKey:options.encryptionKey});
- app.get('/v1/saved-values',async c=>c.json({items:await savedValues(savedContext(c.get('userId')))}));
+ app.get('/v1/saved-values',async c=>{c.header('Cache-Control','private, no-store');const q=z.object({query:z.string().max(500).optional(),kind:z.enum(['secret','variable']).optional(),since:z.iso.datetime({offset:true}).optional(),cursor:z.string().max(4000).optional(),limit:z.coerce.number().int().min(1).max(200).default(50)}).parse(c.req.query());return c.json(await querySavedValues(savedContext(c.get('userId')),q));});
  app.post('/v1/saved-values',async c=>{
   const user=c.get('userId'),input=await body(c,z.object({name:z.string().trim().min(1).max(100),kind:z.enum(['secret','variable']),value:JsonValueSchema}).strict());
   const ctx=savedContext(user);
@@ -92,10 +92,19 @@ export function createApp(options:AppOptions){
   return c.json({id:await saveVariable(ctx,input.name,input.value),name:input.name,kind:'variable'},201);
  });
  app.patch('/v1/saved-values/:id',async c=>{
-  const user=c.get('userId'),id=c.req.param('id'),input=await body(c,z.object({name:z.string().trim().min(1).max(100)}).strict());
+  const user=c.get('userId'),id=c.req.param('id'),input=await body(c,z.object({name:z.string().trim().min(1).max(100).optional(),value:JsonValueSchema.optional()}).strict().refine(v=>v.name!==undefined||v.value!==undefined));
   const secret=await service.adapters.store.get(user,'savedSecret',id);
   const kind=secret&&!secret.deleted&&secret.value.saved===true?'savedSecret':'savedVariable';
-  const row=await service.require<JsonObject>(user,kind,id);await service.write(user,kind,id,{...row,name:input.name});return c.json({type:'ok'});
+  const row=await service.require<JsonObject>(user,kind,id);
+  if(input.value!==undefined){
+   if(Buffer.byteLength(JSON.stringify(input.value))>64_000)throw new ApiError(413,'value_too_large','Saved values must be smaller than 64 KB.');
+   if(kind==='savedSecret'){
+    if(typeof input.value!=='string'||!input.value)throw new ApiError(400,'invalid_value','Enter a secret value.');
+    await service.adapters.store.put(user,'savedSecretValue',id,{cipher:seal(input.value,user,'saved:'+id,options.encryptionKey)});
+   }else row.value=input.value;
+  }
+  if(input.name!==undefined)row.name=input.name;
+  await service.write(user,kind,id,row);return c.json({type:'ok'});
  });
  app.delete('/v1/saved-values/:id',async c=>{
   const user=c.get('userId'),id=c.req.param('id'),secret=await service.adapters.store.get(user,'savedSecret',id);
