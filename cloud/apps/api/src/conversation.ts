@@ -19,6 +19,8 @@ The user picks a mode; the current mode is announced in a system note and may ch
 - auto: carry out the task end to end. Only destructive actions need approval.
 If a tool call is refused or declined, adapt instead of retrying the same call.
 
+Use ask_user to ask the user anything in every mode, including Execute; it is always available. Do not search the connector catalogue for a question tool.
+
 Keep answers concise and well structured. Use Markdown.`,
   ];
   if (sections.instructions) parts.push(sections.instructions);

@@ -1,3 +1,4 @@
+import {toolDisplay} from './tool-display.js';
 import { z } from 'zod';
 import {
   ApprovalDecisionSchema,ElicitationResponseSchema,JsonObjectSchema,JsonValueSchema,
@@ -68,7 +69,7 @@ export class AgentRunner {
     if(i.run.chatId!==i.chat.id||i.messages.some(m=>m.chatId!==i.chat.id))throw new Error('Chat scope mismatch');
     if(terminal(i.run))throw new Error('Cannot start a terminal run');
     let setup=i.chat.setup??i.setup??{type:'conversation.setup' as const,system:'You are Praxis, a helpful assistant.',tools:[...this.tools.values()].filter(t=>!t.hidden).map(t=>t.spec),skillCatalog:'',connectorIds:i.chat.connectorIds,createdAt:this.now()};
-    const added=[...this.tools.values()].filter(t=>t.spec.source.type==='mcp'&&!t.hidden&&!t.unavailableReason&&!setup.tools.some(s=>s.name===t.spec.name));
+    const added=[...this.tools.values()].filter(t=>(t.spec.source.type==='mcp'||t.spec.name==='ask_user')&&!t.hidden&&!t.unavailableReason&&!setup.tools.some(s=>s.name===t.spec.name));
     if(added.length)setup={...setup,tools:[...setup.tools,...added.map(t=>t.spec)]};
     const cp=CheckpointSchema.parse({
       version:1,userId:i.userId,run:{...i.run,status:'running'},chat:{...i.chat,setup},setup,
@@ -148,7 +149,7 @@ export class AgentRunner {
       await this.emit(cp,{type:'approval.resolved',approvalId:id,callId:approval.callId,decision:reply.decision});
     }else {
       if(cp.elicitation?.id!==id)throw new ResumeConflict('Elicitation is no longer pending');
-      if(reply.action==='accept')z.fromJSONSchema(cp.elicitation.schema).parse(reply.content??{});
+      if(reply.action==='accept'){const schema=JSON.parse(JSON.stringify(cp.elicitation.schema));for(const v of Object.values(schema.properties??{}) as Record<string,unknown>[])if(v.format==='password'||v['x-sensitive']===true){delete v.format;delete v.minLength;delete v.maxLength;delete v.pattern;}z.fromJSONSchema(schema).parse(reply.content??{});}
       delete cp.elicitation;
       await this.emit(cp,{type:'elicitation.resolved',elicitationId:id,action:reply.action});
     }
@@ -344,7 +345,7 @@ export class AgentRunner {
   }
 
   private activity(id:string,name:string,spec?:ToolSpec,parentCallId?:string,args?:JsonValue) {
-    return {type:'tool.activity' as const,id,name,source:spec?.source??{type:'builtin' as const},
+    return {display:toolDisplay(name,spec,args),type:'tool.activity' as const,id,name,source:spec?.source??{type:'builtin' as const},
       presentation:{type:'tool.presentation' as const,category:'other' as const,runningTitle:`Running ${name}`,finishedTitle:name},
       ...(args!==undefined?{arguments:args}:{}),...(parentCallId?{parentCallId}:{})};
   }

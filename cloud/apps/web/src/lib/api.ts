@@ -23,6 +23,9 @@ import { safeMessage } from './links';
 import { localUploadPath } from './hosts';
 export * from './api-transport';
 export class PraxisApiClient extends FeatureApiClient {
+  savedSecrets(){return this.request<{items:{id:string;name:string;createdAt:string;lastUsedAt?:string}[]}>('/v1/saved-secrets');}
+  renameSavedSecret(id:string,name:string){return this.request('/v1/saved-secrets/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({name})});}
+  deleteSavedSecret(id:string){return this.request('/v1/saved-secrets/'+encodeURIComponent(id),{method:'DELETE'});}
   // Bootstrap & Auth
   async bootstrap(): Promise<Bootstrap> {
     return this.request<Bootstrap>('/v1/bootstrap');
@@ -140,6 +143,7 @@ export class PraxisApiClient extends FeatureApiClient {
 
   // Runs & Interactive Loop
   async startRun(input: {
+    suggestedTitle?: string;
     chatId: string;
     text: string;
     providerId?: string;

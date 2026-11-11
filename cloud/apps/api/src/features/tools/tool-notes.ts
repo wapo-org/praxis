@@ -7,5 +7,5 @@ export function connectorToolNotes(tools:FeatureTool[],enabled:Connector[]=[]):s
  for(const c of enabled)servers.set(c.id,{name:c.name,count:0,names:[]});
  for(const t of tools){if(t.source.type!=='mcp'||!t.source.serverId)continue;const id=t.source.serverId;const s=servers.get(id)??{name:t.source.serverName??id,count:0,names:[]};s.count++;s.names.push(t.name);servers.set(id,s);}
  if(!servers.size)return [];
- return [...servers.entries()].map(([id,s])=>`${s.name} (MCP connector): ${BUILTINS.find(b=>b.id===id)?.brief??'Use these connector tools for tasks in this service.'} Enabled tools: ${s.names.join(', ')||'none (all tools disabled or unavailable)'}.`).concat('Code run with run_javascript can call connector tools as tools[toolName](args); use it to chain or batch calls.');
+ return [...servers.entries()].map(([id,s])=>`${s.name} (MCP connector): ${BUILTINS.find(b=>b.id===id)?.brief??'Use these connector tools for tasks in this service.'} Enabled tools: ${s.names.length<=4 ? s.names.join(', ')||'none (all tools disabled or unavailable)' : s.count+' available; relevant definitions are callable directly; catalogue for the long tail'}.`).concat('Code run with run_javascript can call connector tools as tools[toolName](args); use it to chain or batch calls.');
 }

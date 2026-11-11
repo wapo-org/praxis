@@ -44,6 +44,7 @@ export function useReplica(
     syncCursor,
     setSyncCursor,
     setSelectedProviderId,
+    selectedProviderId,
     selectedModelId,
     setSelectedModelId,
     setSelectedEffort,
@@ -91,7 +92,7 @@ export function useReplica(
       setChats(boot.chats);
       setProviders(boot.providers);
       setModels(boot.models);
-      if (!selectedModelId && boot.models[0]) {
+      if (!boot.models.some(m=>m.id===selectedModelId&&m.providerId===selectedProviderId) && boot.models[0]) {
         setSelectedModelId(boot.models[0].id);
         setSelectedProviderId(boot.models[0].providerId);
       }
@@ -171,9 +172,12 @@ export function useReplica(
 
   const routeChat = chats.find((value) => value.id === activeChatId);
   React.useEffect(() => {
-    if (routeChat?.providerId) setSelectedProviderId(routeChat.providerId);
-    if (routeChat?.modelId) setSelectedModelId(routeChat.modelId);
-  }, [activeChatId, routeChat?.providerId, routeChat?.modelId]);
+    const selected=models.find(m=>m.providerId===routeChat?.providerId&&m.id===routeChat?.modelId);
+    const fallback=models.find(m=>providers.some(p=>p.id===m.providerId));
+    const next=selected??fallback;
+    if(next){setSelectedProviderId(next.providerId);setSelectedModelId(next.id);}
+    if(!selected&&routeChat?.providerId&&next)setErrorBanner('The previous model is no longer available. Switched to '+next.displayName+'.');
+  }, [activeChatId, routeChat?.providerId, routeChat?.modelId,models,providers]);
   React.useEffect(() => {
     if (routeChat?.mode) setSelectedMode(fromWireMode(routeChat.mode)); // a stored plan reads as Auto
   }, [activeChatId, routeChat?.mode]);

@@ -1,3 +1,5 @@
+import {selectEmbedder} from '../../api/src/embedding';
+import {memoryVectorIndex} from '../../api/src/search-index';
 // Test harness: the real local API (dev:local adapters, deterministic upstreams) on API_PORT, Vite on WEB_PORT.
 // Run from cloud/: `npx tsx apps/web/scripts/x1-server.ts`, then `node apps/web/scripts/x1-check.mjs`.
 import { advance, fixtureFetch } from './x1-fixtures';
@@ -9,7 +11,8 @@ import { createLocalAdapters } from '../../api/src/local-memory';
 import { localModules } from '../../api/src/modules';
 const apiPort = Number(process.env.API_PORT ?? 8821), webPort = Number(process.env.WEB_PORT ?? 5195);
 const apiOrigin = `http://127.0.0.1:${apiPort}`;
-const { app, service } = createPraxisApp({ adapters:createLocalAdapters(),local:true,encryptionKey:randomBytes(32).toString('base64'),fetcher:fixtureFetch,modules:service=>localModules(apiOrigin)(service).map(module=>({...module,routes:module.routes?(context=>module.routes!(async request=>({...await context(request),egress:fixtureFetch}))):undefined})) });
+const embedder=process.env.PRAXIS_TEST_SEMANTIC==='1'?await selectEmbedder(process.env,true):undefined;
+const { app, service } = createPraxisApp({ ...(embedder?{search:{embedder,vectors:memoryVectorIndex()}}:{}), adapters:createLocalAdapters(),local:true,encryptionKey:randomBytes(32).toString('base64'),fetcher:fixtureFetch,modules:service=>localModules(apiOrigin)(service).map(module=>({...module,routes:module.routes?(context=>module.routes!(async request=>({...await context(request),egress:fixtureFetch}))):undefined})) });
 await service.seed('local-user');
 app.post('/__test/x1/advance',async c=>{advance();const {registryId}=await c.req.json();await service.adapters.kv.del(JSON.stringify(['tools','registry','local-user',registryId,'https://example.com/x1/skills']));return c.json({ok:true});});
 const api = serve({ fetch: app.fetch, port: apiPort, hostname: '127.0.0.1' });

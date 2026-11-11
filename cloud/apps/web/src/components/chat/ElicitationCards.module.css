@@ -7,7 +7,13 @@
   gap: var(--space-3);
   width: 100%;
   margin-top: var(--space-1);
-  padding: var(--space-1) 0 var(--space-2);
+  box-sizing: border-box;
+  padding: var(--space-5, 24px);
+  border: 1px solid var(--color-border, rgba(128,128,128,.18));
+  border-radius: 28px;
+  corner-shape: squircle;
+  overflow: hidden;
+  background: var(--color-surface-soft, rgba(128,128,128,.04));
 }
 
 .message {

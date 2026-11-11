@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {CapabilitiesSchema,IdSchema,JsonObjectSchema,ModelSchema,ProviderFlavorSchema,type Capabilities,type JsonObject,type Model} from '@praxis/protocol';
-import type {ModelProvider,ProviderRequest,ProviderEvent} from './types.js';
+import type {ModelProvider,ProviderRequest,ProviderEvent,ProviderResponse} from './types.js';
 import {ProviderFailure} from './runner.js';
 import {buildProviderRequest,array,number,object,string,type RequestOptions} from './wire.js';
 import {classifyProviderError,decodeAnthropic,decodeOpenAIChat,decodeOpenAIResponses,parseSSE} from './streams.js';
@@ -15,7 +15,7 @@ export const HTTPProviderConfigSchema=z.object({
   maxEventBytes:z.number().int().positive().max(16_000_000).default(1_000_000),
 });
 export type HTTPProviderConfig=z.input<typeof HTTPProviderConfigSchema>;
-export interface HTTPProvider extends ModelProvider {listModels(signal?:AbortSignal):Promise<Model[]>}
+export interface HTTPProvider extends ModelProvider {complete(input:ProviderRequest,signal:AbortSignal):Promise<ProviderResponse>;listModels(signal?:AbortSignal):Promise<Model[]>}
 /** baseUrl is endpoint root (including a custom prefix), or a full known generation URL. */
 export function providerURL(baseUrl:string,path:string):URL {
   const url=new URL(baseUrl);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw new Error('Provider URL must be HTTP(S) without embedded credentials');
@@ -66,6 +66,19 @@ export function createHTTPProvider(config:HTTPProviderConfig,fetcher:typeof fetc
         if(error instanceof ProviderFailure)throw new ProviderFailure(redact(error.message),error.kind,error.retryAfterMs);
         if(signal.aborted)throw error;throw new ProviderFailure('Provider sent malformed stream data');
       }
+    },
+    async complete(input,signal) {
+      const body=buildProviderRequest(c.flavor,input,c as RequestOptions);
+      body.stream=false;
+      delete body.stream_options;
+      const path=c.flavor==='anthropicMessages'?'messages':c.flavor==='openAIChat'?'chat/completions':'responses';
+      const h=headers();h.set('accept','application/json');
+      const response=await request(providerURL(c.baseUrl,path),{method:'POST',headers:h,body:JSON.stringify(body),signal});
+      const json=object(JSON.parse(await readBounded(response,64000))),usage=object(json.usage);
+      const text=c.flavor==='openAIChat'?string(object(object(array(json.choices)[0]).message).content):
+        c.flavor==='anthropicMessages'?array(json.content).map(v=>string(object(v).text)).join(''):
+        array(json.output).flatMap(v=>array(object(v).content)).map(v=>string(object(v).text)).join('');
+      return {parts:[{type:'text',text}],stop:'endTurn',usage:{type:'usage',inputTokens:number(usage.prompt_tokens)||number(usage.input_tokens),outputTokens:number(usage.completion_tokens)||number(usage.output_tokens),cacheReadTokens:0,cacheWriteTokens:0}};
     },
     async listModels(signal=AbortSignal.timeout(30000)):Promise<Model[]> {
       let cursor:string|undefined;const seen=new Set<string>(),models=new Map<string,Model>();

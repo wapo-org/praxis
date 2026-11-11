@@ -66,15 +66,15 @@ describe('chat titles (parity: ConversationTitle)', () => {
     const f = setup();
     const a = await f.chat();
     await f.run(a.id, '   Plan   a trip\nto Lisbon with a very long description that goes on and on');
-    expect((await (await f.req(`/v1/chats/${a.id}`)).json()).title).toBe('Plan a trip to Lisbon with a very long des');
+    expect((await (await f.req(`/v1/chats/${a.id}`)).json()).title).toBe('Plan Trip Lisbon Very Long');
     await f.run(a.id, 'Second message');
-    expect((await (await f.req(`/v1/chats/${a.id}`)).json()).title).toBe('Plan a trip to Lisbon with a very long des');
+    expect((await (await f.req(`/v1/chats/${a.id}`)).json()).title).toBe('Plan Trip Lisbon Very Long');
 
     const b = await f.chat();
     await f.run(b.id, '', [await f.upload(b.id, 'x.png', 'image/png', await png(2, 2))]);
     expect((await (await f.req(`/v1/chats/${b.id}`)).json()).title).toBe('Photo');
     await f.run(b.id, 'What is this?');
-    expect((await (await f.req(`/v1/chats/${b.id}`)).json()).title).toBe('What is this?');
+    expect((await (await f.req(`/v1/chats/${b.id}`)).json()).title).toBe('What Is This');
   });
 });
 

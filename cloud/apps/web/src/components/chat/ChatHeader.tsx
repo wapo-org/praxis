@@ -1,3 +1,4 @@
+import {TitleText} from './TitleText';
 import { GlassSurface, PANEL, popIn, usePreset, usePress, type GlassSurfaceProps } from '@praxis/glass';
 import { AnimatePresence, motion } from 'framer-motion';
 import type React from 'react';
@@ -49,7 +50,7 @@ export function ChatHeader() {
             aria-label="Chat and model settings"
             {...pressProps}
           >
-            <span className={styles.titleText}>{displayTitle(store.activeChat ? store.activeChat.title || 'New chat' : store.draftTitle)}</span>
+            <span className={styles.titleText}>{<TitleText title={displayTitle(store.activeChat ? store.activeChat.title || 'New chat' : store.draftTitle)}/>}</span>
             <span className={styles.model}>{model?.displayName || 'Select model'}</span>
           </motion.button>
         </GlassSurface>

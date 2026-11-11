@@ -140,7 +140,8 @@ export class ApiTransport {
         if (err.message) message = err.message;
         if (err.requestId) requestId = err.requestId;
       } catch {}
-      if (res.status === 404) message = `Not available: ${path}`;
+      if (res.status === 404 && path === '/v1/runs') message = 'This chat or its model is no longer available after the server restarted. Refresh the page, choose an available model, and start a new chat.';
+      else if (res.status === 404) message = 'This item is no longer available. Refresh the page and try again.';
       throw new PraxisApiError(res.status, code, message, requestId);
     }
 

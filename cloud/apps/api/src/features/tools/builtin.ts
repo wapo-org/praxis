@@ -25,6 +25,17 @@ export function skillTools(ctx: FeatureContext, storage?: ToolsStorage): Feature
   return [
     ...skillAuthoringTools(ctx, storage),
     {
+      name:'ask_user',
+      description:'Ask the user any question in every mode, including Execute. Provide message and a JSON Schema of fields. Wait for their answer; never search for a question tool.',
+      inputSchema:{type:'object',properties:{message:{type:'string'},schema:{type:'object'}},required:['message','schema']},
+      source:{type:'builtin'},traits:['readOnly'],
+      async execute(args,run) {
+        const request=z.object({message:z.string(),schema:z.record(z.string(),z.json())}).parse(args);
+        if(!run.elicit)throw new Error('Questions are unavailable; retry this turn.');
+        return await run.elicit(request) as JsonValue;
+      },
+    },
+    {
       name: 'load_skill',
       description: "Load a skill's full instructions. Call this before starting a task that matches one of the skills listed in the system prompt, then follow the instructions it returns.",
       inputSchema: {type: 'object', properties: {name: {type: 'string', description: 'Skill name exactly as listed, e.g. "pdf-processing"'}}, required: ['name']},

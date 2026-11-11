@@ -1,4 +1,5 @@
 import styles from './Activity.module.css';
+import card from './ElicitationCards.module.css';
 import type { AgentActivityViewProps } from './activityTypes';
 export function ApprovalCards({
   pendingApprovals = [],
@@ -32,9 +33,9 @@ export function ApprovalCards({
           <div
             key={approval.id}
             data-testid={`approval-card-${approval.id}`}
-            className={styles.card}
+            className={card.card}
           >
-            <div className={styles.cardTitle}>
+            <div className={card.message} style={{display:'flex',flexDirection:'column',gap:4}}>
               <span>
                 Approval required: {(approval.title || approval.toolName).replace(/_/g, ' ')}
               </span>
@@ -47,12 +48,12 @@ export function ApprovalCards({
 
             {hasArguments ? <pre className={styles.cardArgs}>{formattedApprovalArgs}</pre> : null}
 
-            <div className={styles.cardActions}>
+            <div className={card.actions}>
               <button
                 type="button"
                 data-testid="approval-allow-once"
                 data-tone="primary"
-                className={styles.cardButton}
+                className={card.primary}
                 onClick={() => runId && onResolveApproval?.(runId, approval.id, 'allowOnce')}
               >
                 Allow Once
@@ -61,7 +62,7 @@ export function ApprovalCards({
                 type="button"
                 data-testid="approval-allow-always"
                 data-tone="secondary"
-                className={styles.cardButton}
+                className={card.secondary}
                 onClick={() => runId && onResolveApproval?.(runId, approval.id, 'allowAlways')}
               >
                 Always Allow
@@ -70,7 +71,7 @@ export function ApprovalCards({
                 type="button"
                 data-testid="approval-deny"
                 data-tone="danger"
-                className={styles.cardButton}
+                className={card.secondary}
                 onClick={() => runId && onResolveApproval?.(runId, approval.id, 'deny')}
               >
                 Deny

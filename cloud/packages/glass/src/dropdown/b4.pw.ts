@@ -75,9 +75,10 @@ test('action grid corners, transparent tiles, native geometry and Math Results s
     await expect(grid).toHaveCSS('overflow', 'hidden');
     await expect(grid).toHaveCSS('border-top-left-radius', '42px');
     await expect(grid).toHaveCSS('border-top-right-radius', '42px');
-    await expect(grid).toHaveCSS('column-gap', '0px');
+    await expect(grid).toHaveCSS('column-gap', '4px');
     for (const tile of await grid.getByRole('menuitem').all()) {
       await expect(tile).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(tile).toHaveCSS('border-radius','18px');
       await expect(tile).not.toHaveAttribute('data-highlighted', 'true');
     }
     const math = menu.getByRole('menuitem', { name: 'Math Results Suggest Results', exact: true });

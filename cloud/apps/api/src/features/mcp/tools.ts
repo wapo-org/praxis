@@ -53,6 +53,7 @@ export function toolSpec(value: Connector, tool: Tool): Omit<FeatureTool, 'execu
   }
 
   return {
+    originalName: tool.name,
     name: qualifiedName(value, tool.name),
     description: `${value.name}: ${tool.description ?? tool.name}`,
     inputSchema: schema,
@@ -226,7 +227,7 @@ export function createMcpGateway(catalog: FeatureTool[]): FeatureTool[] {
   return [
     {
       name: 'mcp_search_tools',
-      description: 'Find connector tools in the frozen catalog.',
+      description: 'Fallback for the long tail: find connector tools. Listed tools are already callable directly; call them without searching first.',
       inputSchema: {
         type: 'object',
         properties: { query: { type: 'string' } },

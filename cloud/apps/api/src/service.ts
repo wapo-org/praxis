@@ -10,6 +10,7 @@ const attachmentRow=(id:string,v:JsonObject):AttachmentRow=>({id,name:String(v.n
 export class ApiError extends Error{constructor(public status:number,public code:string,message:string){super(message);}}
 export type RunDecision={type:'approval.decision';approvalId:string;decision:'allowOnce'|'allowAlways'|'deny'}|{type:'elicitation.response';elicitationId:string;action:'accept'|'decline'|'cancel';content?:JsonObject};
 export interface ExecutionDriver{
+ title?(userId:string,chat:Chat,text:string):Promise<string|undefined>;
  validate?(userId:string,chat:Chat,input:StartRun):Promise<void>;
  /** Context notes (mode/effort, new skills) for the new user turn; see conversation.ts. */
  notes?(userId:string,chat:Chat,input:StartRun,previous:Message[]):Promise<string[]>;
@@ -62,7 +63,7 @@ export class ApiService{
  }
  terminal(run:Run){return ['completed','cancelled','failed'].includes(run.status);}
  async start(userId:string,input:StartRun):Promise<Run>{return this.exclusive(`${userId}:${input.chatId}`,async()=>{
-  const chat=await this.require<Chat>(userId,'chat',input.chatId);
+  const chat=await this.require<Chat>(userId,'chat',input.chatId).catch(()=>{throw new ApiError(404,'chat_missing','This chat was removed or the server restarted. Refresh and start a new chat.');});
   const key=input.idempotencyKey??input.clientTurnId;
   if(key){const prior=await this.adapters.store.get(userId,'idempotency',`${chat.id}:${key}`);if(prior){if(prior.value.body!==JSON.stringify(input))throw new ApiError(409,'idempotency_conflict','This turn ID was used with different content');return this.require<Run>(userId,'run',String(prior.value.runId));}}
   if((await this.list<Run>(userId,'run',chat.id)).some(r=>!this.terminal(r)))throw new ApiError(409,'run_active','A run is already active in this chat');
@@ -76,7 +77,9 @@ export class ApiService{
   const notes=(await this.driver.notes?.(userId,chat,input,messages))??[];
   const message:Message={type:'message',id:randomUUID(),chatId:chat.id,runId:run.id,clientTurnId:run.clientTurnId,sequence:messages.length+1,role:'user',parts:[...notes.map(text=>({type:'note' as const,text})),...attachmentParts(attachments,input.text)],createdAt:now,updatedAt:now};
   await this.emit(userId,run.id,{type:'messages.committed',messages:[message]});messages.push(message);
-  const title=await this.titleFor(userId,chat,input.text,attachments,messages.slice(0,-1));if(title)chat.title=title;
+  const originalTitle=chat.title;
+  const title=await this.titleFor(userId,chat,input.text,attachments,messages.slice(0,-1));if(title)chat.title=input.suggestedTitle?.trim()||await this.driver.title?.(userId,chat,input.text)||title;
+  const liveChat=await this.require<Chat>(userId,'chat',chat.id);if(liveChat.title!==originalTitle)chat.title=liveChat.title;
   chat.activeRunId=run.id;chat.updatedAt=now;await this.write(userId,'chat',chat.id,chat);
   this.enqueue(userId,run.id,()=>this.driver!.start(userId,run,chat,messages,input));return run;
  });}

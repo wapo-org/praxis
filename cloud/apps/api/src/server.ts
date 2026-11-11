@@ -108,6 +108,7 @@ export function createPraxisApp(deps: PraxisDeps) {
 
 function mergeExecutionFeatures(list: ExecutionFeatures[]): ExecutionFeatures {
   return {
+    refreshCatalog:list.some(f=>f.refreshCatalog),
     tools: async (ctx, input) => (await Promise.all(list.map(f => f.tools?.(ctx, input) ?? []))).flat(),
     agentTools: async (ctx, input) => (await Promise.all(list.map(f => f.agentTools?.(ctx, input) ?? []))).flat(),
     skills: async ctx => (await Promise.all(list.map(f => f.skills?.(ctx) ?? []))).flat(),

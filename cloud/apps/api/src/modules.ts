@@ -1,3 +1,4 @@
+import {selectRunTools} from './tool-selection.js';
 import {cropImage, cropImageReaderTool} from './features/tools/image-crop.js';
 import {connectorToolNotes} from './features/tools/tool-notes.js';
 import {Hono} from 'hono';
@@ -33,6 +34,7 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
         return app;
       },
       execution: {
+        refreshCatalog:true,
         skills: ctx => listSkillsForCatalog(ctx),
         turnNotes: (ctx, chat, previous) => connectorTurnNotes(ctx, chat, previous),
         media: (ctx, part, caps) => rehydrateAttachment(ctx, storage, part, caps),
@@ -42,7 +44,7 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
           const skills = skillTools(ctx, storage);
           const hostToolNames = [...connectors, ...skills].map(t => t.name);
           const js = javascriptTool(ctx, {attachmentIds, hostToolNames, ...(storage ? {storage} : {})});
-          return [...skills, js, ...withGateway(chat, connectors)] satisfies FeatureTool[];
+          return [...skills, js, ...await selectRunTools(ctx, chat, connectors, service.search?.embedder)] satisfies FeatureTool[];
         },
         agentTools: async (ctx, {chat}) => visionTools(service, ctx, chat, storage),
       },

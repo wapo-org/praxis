@@ -1,3 +1,4 @@
+import {TitleText} from '../chat/TitleText';
 import { GlassDropdown, usePress } from '@praxis/glass';
 import type { Chat } from '@praxis/protocol';
 import { motion } from 'framer-motion';
@@ -177,7 +178,7 @@ function ChatRow({
           onNavigate?.();
         }}
       >
-        <span className={styles.rowTitle}>{chat.title || 'New chat'}</span>
+        <span className={styles.rowTitle}><TitleText title={chat.title || 'New chat'}/></span>
       </button>
       {chat.pinned ? (
         <span className={styles.rowPin}>

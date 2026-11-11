@@ -115,6 +115,7 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
       <div className={styles.triggerWrap}>
         <GlassSurface
           shape="capsule"
+          lens={false}
           material={material ?? ctx.materialControls.material ?? 'regular'}
           className={`${styles.triggerSurface} ${className}`.trim()}
         >

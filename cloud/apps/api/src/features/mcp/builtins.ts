@@ -21,7 +21,7 @@ export async function ensureBuiltins(store: FeatureContext['store'],userId:strin
 /** Offline settings catalog; actual remote schemas always come from MCP before model exposure. */
 export function builtinCatalog(value:Connector):Tool[]|undefined {
   const b=builtin(value);if(!b)return undefined;
-  return b.tools.map(name=>({name,description:b.id==='builtin-e2b'?'Run Python or JavaScript in a temporary Linux sandbox.':'Connect to discover the current tool schema and description.',inputSchema:b.id==='builtin-e2b'?{type:'object' as const,properties:{code:{type:'string'},language:{type:'string',enum:['python','javascript']}},required:['code']}:{type:'object' as const}}));
+  return b.tools.map(name=>({name,description:b.id==='builtin-e2b'?'Run Python or JavaScript in a temporary Linux sandbox.':'Connect to discover the current tool schema and description.',inputSchema:b.id==='builtin-e2b'?{type:'object' as const,properties:{env:{type:'object',additionalProperties:{type:'string'}},code:{type:'string'},language:{type:'string',enum:['python','javascript']}},required:['code']}:{type:'object' as const}}));
 }
 export async function runE2B(ctx:FeatureContext,value:Connector,args:JsonObject) {
   const key=await readSecret<string>(ctx,value.id,'token');
@@ -29,7 +29,7 @@ export async function runE2B(ctx:FeatureContext,value:Connector,args:JsonObject)
   const {Sandbox}=await import('@e2b/code-interpreter');
   const sandbox=await Sandbox.create({apiKey:key,timeoutMs:60_000}).catch(()=>{throw new McpError(502,'mcp_failed','The E2B sandbox could not be created');});
   try {
-    const result=await sandbox.runCode(String(args.code),{language:args.language==='javascript'?'javascript':'python',timeoutMs:50_000});
+    const result=await sandbox.runCode(String(args.code),{language:args.language==='javascript'?'javascript':'python',timeoutMs:50_000,...(args.env&&typeof args.env==='object'&&!Array.isArray(args.env)?{envs:args.env as Record<string,string>}:{})});
     return JSON.parse(JSON.stringify({logs:result.logs,results:result.results,error:result.error})) as JsonObject;
   } catch {throw new McpError(502,'mcp_failed','The E2B code execution failed');}
   finally {await sandbox.kill().catch(()=>{});}

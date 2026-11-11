@@ -1,8 +1,9 @@
+import {browserTitle} from '../lib/browserTitle';
 import type { Message } from '@praxis/protocol';
 import React from 'react';
 import { toWireMode } from '../lib/modes';
 import { apiClient } from '../lib/api';
-import { nameTaken, uniqueChatName } from '../lib/chatNames';
+
 
 import type { useChatActions } from './useChatActions';
 import type { PraxisState } from './usePraxisState';
@@ -50,11 +51,9 @@ export function useSendActions(
       setErrorBanner(null);
       let targetChatId = activeChatId;
       if (!targetChatId) {
-        // The draft name was unique when drawn; chats synced since may have taken it.
-        const titles = chats.map(c => c.title);
-        const title = !state.draftTitle || nameTaken(titles, state.draftTitle) ? uniqueChatName(titles) : state.draftTitle;
+        const title = 'New chat';
         const created = await createNewChat(title);
-        state.setDraftTitle(uniqueChatName([...titles, title]));
+        state.setDraftTitle('New chat');
         targetChatId = created.id;
       }
 
@@ -106,7 +105,9 @@ export function useSendActions(
         if (typeof performance !== 'undefined') {
           performance.mark('praxis:run-start');
         }
+        const suggestedTitle=await browserTitle(text);
         const run = await apiClient.startRun({
+          suggestedTitle,
           chatId: targetChatId,
           text,
           providerId: selectedProviderId,

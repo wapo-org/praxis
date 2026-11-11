@@ -1,3 +1,4 @@
+import {apiClient} from '../../lib/api';
 import React from 'react';
 import { Check, X } from '../../lib/icons';
 import { safeLink } from '../../lib/links';
@@ -20,6 +21,7 @@ type FieldSpec = {
   minLength?: number;
   maxLength?: number;
   format?: string;
+  'x-sensitive'?: boolean;
 };
 type Field = { key: string; spec: FieldSpec; label: string; kind: 'text' | 'number' | 'integer' | 'boolean' | 'enum'; required: boolean; choices: { value: string; label: string }[] };
 /** What the card shows once answered: the server drops the request, the card keeps one quiet line. */
@@ -83,6 +85,7 @@ function summarise(fields: Field[], content: Record<string, unknown>) {
     .filter((f) => content[f.key] !== undefined && content[f.key] !== '')
     .map((f) => {
       const v = content[f.key];
+      if(f.spec.format==='password'||f.spec['x-sensitive'])return f.label+': Provided securely';
       const shown = f.kind === 'boolean' ? (v ? 'Yes' : 'No') : f.kind === 'enum' ? (f.choices.find((c) => c.value === String(v))?.label ?? String(v)) : String(v);
       return fields.length === 1 ? shown : `${f.label}: ${shown}`;
     })
@@ -172,6 +175,9 @@ function ElicitationCard({
   const [shown, setShown] = React.useState(false); // errors appear after the first submit, then follow the input
   const [busy, setBusy] = React.useState<Action | null>(null);
   const [failed, setFailed] = React.useState('');
+  const [savedSecrets,setSavedSecrets]=React.useState<{id:string;name:string}[]>([]);
+  React.useEffect(()=>{if(fields.some(f=>f.spec.format==='password'||f.spec['x-sensitive']))void apiClient.savedSecrets().then(r=>setSavedSecrets(r.items)).catch(()=>{});},[elicitation.id]);
+  const [revealed,setRevealed]=React.useState<Record<string,boolean>>({});
   const idBase = `elicit-${React.useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const valueOf = (field: Field) => (values[field.key] !== undefined ? values[field.key] : initialValue(field));
   const problems = Object.fromEntries(fields.map((f) => [f.key, problemWith(f, valueOf(f))]));
@@ -204,7 +210,9 @@ function ElicitationCard({
     setBusy(action);
     setFailed('');
     try {
+      if(content)for(const f of fields)if(f.spec.format==='password'||f.spec['x-sensitive'])content['__save_'+f.key]=values['__save_'+f.key]===true;
       await onResolve?.(runId, elicitation.id, action, content);
+      for(const f of fields)if(f.spec.format==='password'||f.spec['x-sensitive'])setValue(f.key,'');
       onSettled({ action, elicitation, summary: action === 'accept' && content ? (free ? String(content.response ?? '') : summarise(fields, content)) : '' });
     } catch {
       setFailed('Could not send your answer. Try again.');
@@ -322,7 +330,8 @@ function ElicitationCard({
                     ) : (
                       <input
                         id={id}
-                        type={field.kind === 'text' ? (field.spec.format === 'email' ? 'email' : 'text') : 'number'}
+                        type={(field.spec.format==='password'||field.spec['x-sensitive'])&&!revealed[field.key]?'password':field.kind === 'text' ? (field.spec.format === 'email' ? 'email' : 'text') : 'number'}
+                        autoComplete={field.spec.format==='password'||field.spec['x-sensitive']?'off':undefined}
                         inputMode={field.kind === 'integer' ? 'numeric' : field.kind === 'number' ? 'decimal' : undefined}
                         step={field.kind === 'integer' ? 1 : field.kind === 'number' ? 'any' : undefined}
                         data-testid={`elicitation-input-${field.key}`}
@@ -337,6 +346,11 @@ function ElicitationCard({
                         onKeyDown={submitOnEnter}
                       />
                     )}
+                    {field.spec.format==='password'||field.spec['x-sensitive'] ? <>
+                      <button type="button" className={styles.quiet} aria-pressed={!!revealed[field.key]} onClick={()=>setRevealed(p=>({...p,[field.key]:!p[field.key]}))}>{revealed[field.key]?'Hide':'Reveal'} {field.label}</button>
+                      {savedSecrets.filter(secret=>secret.name===field.key).map(secret=><button key={secret.id} type="button" className={styles.secondary} onClick={()=>setValue(field.key,'{{secret:'+secret.id+'}}')}>Use saved {secret.name}</button>)}
+                      <label className={styles.label}><input type="checkbox"  checked={values['__save_'+field.key]===true} onChange={e=>setValue('__save_'+field.key,e.target.checked)}/> Save to account</label>
+                    </> : null}
                   </>
                 )}
                 {problem ? (

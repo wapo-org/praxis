@@ -1,3 +1,4 @@
+import {protectAnswer,secretMetadata} from './saved-secrets.js';
 import { searchChats } from './search.js';
 import {registerAccountDeletion} from './account-routes.js';
 import {AccountDeleteSchema} from '@praxis/protocol';
@@ -77,7 +78,18 @@ export function createApp(options:AppOptions){
  app.get('/v1/runs/:id/snapshot',async c=>c.json(RunSnapshotSchema.parse(await service.require(c.get('userId'),'snapshot',c.req.param('id')))));
  app.post('/v1/runs/:id/cancel',async c=>{await body(c,z.object({type:z.literal('run.cancel')}));return c.json(await service.cancel(c.get('userId'),c.req.param('id')),202);});
  app.post('/v1/runs/:id/approvals',async c=>c.json(await service.decision(c.get('userId'),c.req.param('id'),await body(c,ApprovalDecisionSchema)),202));
- app.post('/v1/runs/:id/elicitations',async c=>c.json(await service.decision(c.get('userId'),c.req.param('id'),await body(c,ElicitationResponseSchema)),202));
+ app.get('/v1/saved-secrets',async c=>c.json({items:await secretMetadata(featureContext(service,c.get('userId'),{encryptionKey:options.encryptionKey}))}));
+ app.patch('/v1/saved-secrets/:id',async c=>{const u=c.get('userId'),id=c.req.param('id'),row=await service.require<JsonObject>(u,'savedSecret',id);const input=await body(c,z.object({name:z.string().trim().min(1).max(100)}));await service.write(u,'savedSecret',id,{...row,name:input.name});return c.json({type:'ok'});});
+ app.delete('/v1/saved-secrets/:id',async c=>{const u=c.get('userId'),id=c.req.param('id');await service.remove(u,'savedSecret',id);await service.adapters.store.delete(u,'savedSecretValue',id);return c.json({type:'ok'});});
+ app.post('/v1/runs/:id/elicitations',async c=>{
+  const user=c.get('userId'),id=c.req.param('id'),answer=await body(c,ElicitationResponseSchema);
+  if(answer.action==='accept'&&answer.content){
+   const snapshot=await service.require<import('@praxis/protocol').RunSnapshot>(user,'snapshot',id);
+   const pending=snapshot.pendingElicitations.find(e=>e.id===answer.elicitationId);
+   if(pending)answer.content=await protectAnswer(featureContext(service,user,{encryptionKey:options.encryptionKey}),snapshot.run.chatId,pending.schema,answer.content);
+  }
+  return c.json(await service.decision(user,id,answer),202);
+ });
  app.get('/v1/runs/:id/events',async c=>{
   const user=c.get('userId'),runId=c.req.param('id');await service.require<Run>(user,'run',runId);let after=eventCursor(c);
   const first=await service.adapters.events.read(user,`run:${runId}`,after,100);if(first.length&&first[0]!.id>after+1)throw new ApiError(409,'cursor_expired','Fetch the run snapshot before reconnecting');

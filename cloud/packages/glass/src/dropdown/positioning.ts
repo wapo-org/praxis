@@ -72,6 +72,9 @@ export function usePositioning(
       const parent = ctx.portal
         ? undefined
         : menu.offsetParent?.getBoundingClientRect();
+      const viewport=menu.querySelector<HTMLElement>('[data-slot="scroll-blur-viewport"]');
+      const fixedHeight=viewport?Math.max(0,menu.offsetHeight-viewport.offsetHeight):0;
+      menu.style.setProperty('--menu-list-height',Math.max(0,result.maxHeight-fixedHeight)+'px');
       setSide(result.side);
       setPosition({
         left: result.left - (parent?.left ?? 0),
@@ -80,7 +83,7 @@ export function usePositioning(
         maxHeight: result.maxHeight,
         // Scroll only when the menu is taller than the space; otherwise stay visible so the glass shadow is not clipped.
         // A cascading menu's submenu lives outside the box and must not count, or clip.
-        overflowY: ctx.submenuMode !== 'cascade' && menu.scrollHeight > result.maxHeight + 1 ? 'auto' : 'visible',
+        overflowY: 'visible',
         visibility: 'visible',
         transformOrigin: `${rect.left + rect.width / 2 - result.left}px ${result.side === 'top' ? 'bottom' : 'top'}`,
       });

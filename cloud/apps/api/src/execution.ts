@@ -1,3 +1,4 @@
+import {executionSecrets} from './saved-secrets.js';
 import {
   AgentRunner, CheckpointSchema, ExecutionFenced, ToolResultSchema, createScriptedProvider, isRunControl, scriptedTools, textResult,
   type AgentCheckpoint, type AgentPorts, type AgentTool, type ModelProvider, type Script, type ToolResult,
@@ -25,6 +26,7 @@ export interface ContinuationScheduler {
 
 /** Feature modules composed by the entry point (tools + MCP). All optional so tests can run the bare loop. */
 export interface ExecutionFeatures {
+  refreshCatalog?: boolean;
   tools?(ctx: FeatureContext, input: {chat: Chat; runId: string; attachmentIds: string[]}): Promise<FeatureTool[]>;
   /** Tools already shaped for the loop (e.g. `look_at_image` from @praxis/agent). */
   agentTools?(ctx: FeatureContext, input: {chat: Chat; runId: string; attachmentIds: string[]}): Promise<AgentTool[]>;
@@ -168,6 +170,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       return {provider: scriptedProvider('text', request.streamSim), script: 'text'};
     }
     if (!service.providers) throw new ApiError(503, 'providers_unavailable', 'Providers are not configured');
+    if(!(await service.adapters.store.get(userId,'provider',providerId))?.value)throw new ApiError(409,'provider_missing','Your selected provider is no longer available. Choose a provider in Settings and try again.');
     await service.providers.requireConsent(userId, providerId);
     const {provider} = await service.providers.resolve(userId, providerId);
     const modelId = request.modelId ?? chat.modelId;
@@ -190,7 +193,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     const tools: AgentTool[] = [...(script ? scriptedTools() : []), readToolOutputTool(service)];
     if (options.features?.tools) {
       const features = await options.features.tools(ctx(userId), {chat, runId: run.id, attachmentIds: request.attachmentIds});
-      for (const tool of features) if (!tools.some(t => t.spec.name === tool.name)) tools.push(adaptTool(tool));
+      for (const tool of features) if (!tools.some(t => t.spec.name === tool.name)) tools.push(adaptTool(tool, ctx(userId)));
     }
     if (options.features?.agentTools) {
       const extra = await options.features.agentTools(ctx(userId), {chat, runId: run.id, attachmentIds: request.attachmentIds});
@@ -241,6 +244,25 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   }
 
   const driver = {
+    async title(userId:string,chat:Chat,text:string) {
+      if(!text.trim()||!chat.providerId)return;
+      const started=clock();
+      const model=(await service.list<Model>(userId,'model')).filter(m=>m.providerId===chat.providerId).sort((a,b)=>(b.speed??0)-(a.speed??0)||a.id.localeCompare(b.id))[0];
+      if(!model)return;
+      try {
+        if(chat.providerId!=='scripted')await service.providers?.requireConsent(userId,chat.providerId);
+        const resolved=await resolveProvider(userId,chat,{type:'run.start',chatId:chat.id,text,attachmentIds:[],webSearch:false});
+        const request={model:model.id,system:'Return only a short 3 to 5 word title for this chat. No quotes.',messages:[{type:'message' as const,id:'title',chatId:chat.id,role:'user' as const,parts:[{type:'text' as const,text:text.slice(0,600)}],createdAt:service.now(),updatedAt:service.now()}],tools:[],capabilities:resolved.provider.capabilities,maxTokens:20,webSearch:false};
+        let result;
+        if(chat.providerId==='scripted'){
+          for await(const event of resolved.provider.stream(request,AbortSignal.timeout(3000)))if(event.type==='completed')result=event.response;
+        }else result=await (await service.providers!.resolve(userId,chat.providerId)).provider.complete(request,AbortSignal.timeout(3000));
+        if(!result)return;
+        await service.put(userId,'titleMetric',chat.id,{latencyMs:clock()-started,inputTokens:result.usage.inputTokens,outputTokens:result.usage.outputTokens,modelId:model.id});
+        const title=result.parts.filter(p=>p.type==='text').map(p=>p.text??'').join('').trim().replace(/^["']|["']$/g,'');
+        return title.slice(0,42)||undefined;
+      }catch{return;}
+    },
     async validate(userId: string, chat: Chat, input: StartRun) {
       await resolveProvider(userId, chat, {...input, attachmentIds: input.attachmentIds ?? []});
     },
@@ -268,7 +290,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       const modelId = request.modelId ?? chat.modelId;
       const cp = await runner.run({
         userId, run, messages,
-        chat: {...chat, mode: request.mode ?? chat.mode},
+        chat: {...chat, mode: request.mode ?? chat.mode, ...(options.features?.refreshCatalog&&chat.setup?{setup:{...chat.setup,tools:tools.filter(t=>!t.hidden).map(t=>t.spec),hiddenTools:tools.filter(t=>t.hidden).map(t=>t.spec)}}:{})},
         ...(setup ? {setup} : {}),
         ...(modelId ? {modelId} : {}),
         ...(effort ? {effort} : {}),
@@ -377,29 +399,37 @@ async function localSummary(req: Parameters<NonNullable<AgentPorts['summarize']>
 }
 
 /** Bridges an API feature tool (MCP, builtin) onto the loop's tool port; the runner keeps policy. */
-export function adaptTool(tool: FeatureTool): AgentTool {
+export function adaptTool(tool: FeatureTool, featureCtx?: FeatureContext): AgentTool {
   return {
-    spec: {type: 'tool.spec', name: tool.name, description: tool.description, inputSchema: tool.inputSchema, source: tool.source, traits: tool.traits},
+    spec: {type: 'tool.spec', ...(tool.originalName ? {originalName:tool.originalName} : {}), name: tool.name, description: tool.description, inputSchema: tool.inputSchema, source: tool.source, traits: tool.traits},
     ...(tool.classify ? {classify: (args: JsonValue) => tool.classify!(args)} : {}),
     ...(tool.hidden ? {hidden: true} : {}),
     async execute(args, context): Promise<ToolResult> {
       try {
-        const value = await tool.execute(args, {
+        const secrets=featureCtx?await executionSecrets(featureCtx,context.chatId):undefined;
+        await secrets?.touch(args);
+        let executionArgs=args;
+        if(secrets&&args&&typeof args==='object'&&!Array.isArray(args)){
+          executionArgs={...args};
+          for(const key of ['env','headers'])if(args[key])executionArgs[key]=secrets.resolve(args[key]!);
+        }
+        const value = await tool.execute(executionArgs, {
           chatId: context.chatId,
           runId: context.runId,
           mode: context.mode,
           callId: context.callId,
           signal: context.signal,
           elicit: request => context.elicit(request),
-          callTool: async (name, nested) => JsonValueSchema.parse(await context.callTool(name, nested)),
-          emit: async event => context.emit(RunEventPayloadSchema.parse(event)),
+          callTool: async (name, nested) => JsonValueSchema.parse(await context.callTool(name, secrets?secrets.redact(nested):nested)),
+          emit: async event => context.emit(RunEventPayloadSchema.parse(secrets?secrets.redact(event):event)),
         });
-        return toToolResult(value);
+        return toToolResult(secrets?secrets.redact(value):value);
       } catch (error) {
         // Park (nested approval/elicitation) and cancel are loop control flow, not tool failures.
         if (isRunControl(error) || error instanceof ExecutionFenced || context.signal.aborted) throw error;
         const message = error instanceof ApiError || error instanceof Error ? error.message : 'Tool failed';
-        return textResult(message, true);
+        const secrets=featureCtx?await executionSecrets(featureCtx,context.chatId):undefined;
+        return textResult(String(secrets?secrets.redact(message):message), true);
       }
     },
   } as AgentTool;

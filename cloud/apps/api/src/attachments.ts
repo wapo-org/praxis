@@ -52,7 +52,9 @@ export function attachmentTitle(rows: AttachmentRow[]): string | undefined {
 }
 
 export function makeTitle(text: string, rows: AttachmentRow[]): string | undefined {
-  const collapsed = text.split(/\s+/).filter(Boolean).join(' ');
+  const filler=new Set('a an the please can could would you i me my help with to for of and how do does want need'.split(' '));
+  const words=(text.match(/[\p{L}\p{N}]+/gu)??[]).filter(w=>!filler.has(w.toLowerCase())).slice(0,5);
+  const collapsed=words.map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
   return collapsed ? collapsed.slice(0, MAX_TITLE) : attachmentTitle(rows);
 }
 

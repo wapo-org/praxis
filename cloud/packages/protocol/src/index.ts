@@ -109,7 +109,7 @@ export const StreamSimOptionsSchema = z.object({
   edgeCase: z.enum(['none', 'emptyDeltas', 'duplicateFinal', 'reasoningAfterText', 'midStreamError', 'interleavedTools']).default('none'),
 });
 export type StreamSimOptions = z.infer<typeof StreamSimOptionsSchema>;
-export const StartRunSchema = z.object({
+export const StartRunSchema = z.object({suggestedTitle:z.string().max(42).optional(),
   type:z.literal('run.start'),chatId:IdSchema,text:z.string().max(200000).default(''),
   providerId:IdSchema.optional(),modelId:z.string().optional(),mode:ModeSchema.optional(),effort:z.string().optional(),
   attachmentIds:z.array(IdSchema).default([]),webSearch:z.boolean().default(false),idempotencyKey:IdSchema.optional(),clientTurnId:IdSchema.optional(),
@@ -127,7 +127,8 @@ export const ElicitationSchema = z.object({type:z.literal('elicitation'),id:IdSc
 export const ElicitationResponseSchema = z.object({type:z.literal('elicitation.response'),elicitationId:IdSchema,action:z.enum(['accept','decline','cancel']),content:JsonObjectSchema.optional()});
 export const UsageSchema = z.object({type:z.literal('usage').default('usage'),inputTokens:z.number().nonnegative(),outputTokens:z.number().nonnegative(),cacheReadTokens:z.number().nonnegative().default(0),cacheWriteTokens:z.number().nonnegative().default(0)});
 export type Usage = z.infer<typeof UsageSchema>;
-export const ToolActivitySchema = z.object({type:z.literal('tool.activity'),id:IdSchema,name:z.string(),source:ToolSourceSchema,presentation:ToolPresentationSchema,arguments:JsonValueSchema.optional(),parentCallId:IdSchema.optional()});
+export const ToolDisplaySchema = z.object({title:z.string(),detail:z.string().optional(),connectorId:z.string().optional(),connectorName:z.string().optional(),icon:z.string().optional()});
+export const ToolActivitySchema = z.object({display:ToolDisplaySchema.optional(),type:z.literal('tool.activity'),id:IdSchema,name:z.string(),source:ToolSourceSchema,presentation:ToolPresentationSchema,arguments:JsonValueSchema.optional(),parentCallId:IdSchema.optional()});
 export const ToolCompletionSchema = z.object({type:z.literal('tool.completion'),status:z.enum(['succeeded','failed','denied','cancelled']),summary:z.string(),preview:z.string(),content:z.array(JsonObjectSchema).optional(),outputRef:IdSchema.optional()});
 export const RunEventPayloadSchema = z.discriminatedUnion('type',[
  z.object({type:z.literal('run.started')}),

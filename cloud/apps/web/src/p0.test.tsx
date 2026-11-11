@@ -89,7 +89,7 @@ it('propagates unavailable routes instead of fabricating successful entities', a
   for (const operation of operations)
     await expect(operation()).rejects.toMatchObject({
       status: 404,
-      message: expect.stringContaining('Not available:'),
+      message: expect.stringContaining('no longer available'),
     });
 });
 it('drops unknown and invalid stream payloads; accepts valid protocol events', () => {

@@ -267,7 +267,7 @@ it('uses the server title and never generates a client title PATCH', async () =>
   );
   // Design v2: the chat is created with the draft's random two-word name, never one made from the message.
   const draft = get().draftTitle;
-  expect(draft).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
+  expect(draft).toBe('New chat');
   await act(async () => get().sendMessage('Client words must not become a title'));
   expect(create).toHaveBeenCalledWith(expect.objectContaining({ title: draft }));
   expect(patch).not.toHaveBeenCalled();

@@ -40,7 +40,7 @@ export interface ContentProps
 
 const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
   {
-    maxHeight = 380,
+    maxHeight = Number.MAX_SAFE_INTEGER,
     minWidth = 240,
     children,
     className = '',
@@ -176,7 +176,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                       custom={ctx.morphDirection}
                     >
                       <MorphPanel
-                        key={pathKey || '__root__'}
+                        key={ctx.submenuMode === 'cascade' ? '__root__' : pathKey || '__root__'}
                         data-dropdown-panel={pathKey || '__root__'}
                         custom={ctx.morphDirection}
                         initial={
@@ -213,7 +213,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                         {topPinnedNodes}
 
                         {/* Scrollable items with progressive blur edge scrims */}
-                        <ScrollBlur maxHeight={ctx.submenuMode === 'cascade' ? undefined : maxHeight} scrimHeight={16} open={ctx.submenuMode === 'cascade'}>
+                        <ScrollBlur maxHeight={`min(${maxHeight}px, var(--menu-list-height, calc(100vh - 32px)))`} scrimHeight={16} open={ctx.submenuMode === 'cascade'}>
                           <DepthContext.Provider
                             value={morphState.trail.length}
                           >

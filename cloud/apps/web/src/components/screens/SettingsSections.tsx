@@ -1,3 +1,4 @@
+import {SavedSecrets} from './SavedSecrets';
 import { SidebarLookControl } from './SidebarLookControl';
 import { Eye, FlaskConical, Mic, Plus } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store.js';
@@ -131,6 +132,7 @@ export function ConsentsSection() {
         again before sending.
       </p>
       <TaskError error={task.error} />
+      <SavedSecrets/>
       <Section title="Data consents">
         {consents.length ? (
           <Card>

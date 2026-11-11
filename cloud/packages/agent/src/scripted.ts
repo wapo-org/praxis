@@ -314,6 +314,11 @@ export function createScriptedProvider(
         return;
       }
 
+      if(request.system.startsWith('Return only a short')){
+        const text=request.messages.at(-1)?.parts.find(p=>p.type==='text')?.text??'';
+        const title=text.split(/\s+/).slice(0,5).join(' ');
+        yield {type:'completed',response:{parts:[{type:'text',text:title}],stop:'endTurn',usage:{type:'usage',inputTokens:Math.ceil((request.system.length+text.length)/4),outputTokens:Math.min(20,Math.ceil(title.length/4)),cacheReadTokens:0,cacheWriteTokens:0}}};return;
+      }
       // Default legacy scripts ('text', 'tools', 'approval', 'nestedApproval', 'elicitation', 'elicitationURL', 'error', 'long', 'compaction', 'vision')
       yield { type: 'reasoning', index: 100, text: 'Checking the scripted scenario.' };
       yield { type: 'blockEnd', index: 100 };
