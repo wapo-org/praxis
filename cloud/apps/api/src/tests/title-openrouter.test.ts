@@ -82,8 +82,8 @@ it('a late title cannot resurrect a deleted chat',async()=>{
 
 it('prefers small instruct families before price, then sorts eligible small models by price',()=>{
  const base={type:'model' as const,providerId:'p',displayName:'M',capabilities:CapabilitiesSchema.parse({}),reasoningEfforts:[],pinned:false,favorite:false};
- const candidates=[{...base,id:'large-cheap',pricing:{prompt:0.0001,completion:0.0001}},{...base,id:'flash-lite',pricing:{prompt:0.01,completion:0.01}},{...base,id:'nano',pricing:{prompt:0.001,completion:0.001}},{...base,id:'mini:free'},{...base,id:'zero',pricing:{prompt:0,completion:0}}];
- expect(titleModels(candidates).map(m=>m.id)).toEqual(['nano','flash-lite','large-cheap']);
+ const candidates=[{...base,id:'google/gemini-pro',pricing:{prompt:0.00001,completion:0.00001}},{...base,id:'large-cheap',pricing:{prompt:0.0001,completion:0.0001}},{...base,id:'flash-lite',pricing:{prompt:0.01,completion:0.01}},{...base,id:'nano',pricing:{prompt:0.001,completion:0.001}},{...base,id:'mini:free'},{...base,id:'zero',pricing:{prompt:0,completion:0}}];
+ expect(titleModels(candidates).map(m=>m.id)).toEqual(['nano','flash-lite','google/gemini-pro','large-cheap']);
 });
 
 it('a user rename to the placeholder before the first turn suppresses title generation',async()=>{
