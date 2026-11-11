@@ -23,7 +23,7 @@ Sources:
 
 ## Run 404
 
-The client formerly replaced every 404 message with "Not available: <request path>", discarding the server's resource-specific explanation. After an in-memory restart, the first lookup in POST /v1/runs is the chat; a retained client chat id produces chat_missing. A missing provider is a separate case with an actionable provider_missing response. The selected provider/model is checked against refreshed account models.
+The client formerly replaced every 404 message with "Not available: <request path>", discarding the server's resource-specific explanation. After an in-memory restart, the first lookup in POST /v1/runs is the chat; a retained client chat id produces chat_missing. A missing provider is a separate case with an actionable provider_missing response. The selected provider/model is checked against refreshed account models. Both failed starts and streamed failures use plain recovery copy. A browser fixture verifies that a failed question submission keeps its answer and offers retry in both engines.
 
 ## Menu causes
 

@@ -1,3 +1,4 @@
+import {runErrorCopy} from '../lib/runErrorCopy';
 import {browserTitle} from '../lib/browserTitle';
 import type { Message } from '@praxis/protocol';
 import React from 'react';
@@ -149,7 +150,7 @@ export function useSendActions(
           );
         attachRunStream(run, 0);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Failed to start run';
+        const msg = runErrorCopy(err);
         setErrorBanner(msg);
       }
     },

@@ -1,3 +1,4 @@
+import {runErrorCopy} from '../../lib/runErrorCopy';
 import React from 'react';
 import type { Message } from '@praxis/protocol';
 import { GlassChip, PANEL, ProgressiveBlurScrim } from '@praxis/glass';
@@ -201,7 +202,7 @@ export function ChatScreen() {
                   resolveElicitation(rId, eId, action, content)
                 }
               />
-              {activeLiveRun.run.error ? <p role="alert" data-testid="chat-error-banner" className={styles.error}>Couldn't finish: {activeLiveRun.run.error}</p> : null}
+              {activeLiveRun.run.error ? <p role="alert" data-testid="chat-error-banner" className={styles.error}>Couldn't finish: {runErrorCopy(activeLiveRun.run.error)}</p> : null}
               {activeLiveRun.textBlocks.length > 0 ? (
                 <AgentMessageView
                   text={activeLiveRun.textBlocks.map((b) => b.text).join('\n\n')}
