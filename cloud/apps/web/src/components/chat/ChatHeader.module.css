@@ -73,6 +73,10 @@
 
 .titleText,
 .model {
+  /* A soft paper halo keeps the title legible over busy content without a box. */
+  text-shadow:
+    0 0 2px color-mix(in srgb, var(--color-paper) 90%, transparent),
+    0 0 10px color-mix(in srgb, var(--color-paper) 80%, transparent);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

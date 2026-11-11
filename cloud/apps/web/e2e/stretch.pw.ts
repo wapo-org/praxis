@@ -198,7 +198,7 @@ test.describe('the stretch', () => {
   test('every surface in the shell stretches, the navbar included', async ({ page }) => {
     const targets: Array<[string, Locator]> = [
       ['sidebar', page.getByTestId('sidebar-account')],
-      ['title pill', page.getByTestId('nav-chat-title-pill')],
+      // The title has no glass of its own any more (WP-K2, K-ref/13): it sits on the blur, so nothing to stretch.
       ['action cluster', page.getByTestId('nav-settings-button')],
       ['composer', page.getByTestId('composer-input')],
     ];

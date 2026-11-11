@@ -162,7 +162,7 @@ if (ONLY.has('activity')) for (const scheme of SCHEMES) {
 }
 
 if (ONLY.has('type')) for (const scheme of SCHEMES) {
-  const { browser, page } = await open(chromium, { scheme });
+  const { browser, page } = await open(chromium, { scheme, height: 1900 });
   const chatId = await scriptedChat(page, 'K2 typography', [['Show me every element', 'text']]);
   await injectTypography(page);
   await page.goto(`${BASE}/c/${chatId}`);

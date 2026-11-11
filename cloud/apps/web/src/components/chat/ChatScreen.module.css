@@ -21,7 +21,7 @@
 
 .column {
   width: 100%;
-  max-width: var(--column-width);
+  max-width: var(--reading-width);
   margin: 0 auto;
   display: flex;
   flex-direction: column;

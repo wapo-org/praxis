@@ -2,11 +2,13 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  color: var(--color-ink);
-  font: var(--weight-regular) var(--response-size, var(--text-lg)) / var(--response-leading, var(--leading-lg)) var(--response-font, var(--font-sans));
-  max-inline-size: min(100%, 70ch);
+  /* The owner's reading spec (K-ref/06): 16 px / 1.6, near-black, Inter's tight tracking, ~600 px measure. */
+  --para-gap: var(--space-3);
+  color: var(--color-reading);
+  font: var(--weight-regular) var(--response-size, var(--text-lg)) / var(--response-leading, 1.6) var(--response-font, var(--font-sans));
+  max-inline-size: min(100%, var(--reading-width));
   width:100%;
-  letter-spacing: normal;
+  letter-spacing: -0.011em;
 }
 
 .actions {

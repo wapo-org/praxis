@@ -2,7 +2,7 @@ import React from 'react';
 import { usePraxisStore } from '../../state/store';
 
 const SIDEBAR_RIGHT = 232 + 12; // --sidebar-width + --float-margin: the docked sidebar's right edge
-const COLUMN = 720; // --column-width
+const COLUMN = 600; // --reading-width: the conversation column (WP-K2)
 const NARROW = 1024;
 const PADDING = 24; // the chat viewport's inline padding (--space-6)
 

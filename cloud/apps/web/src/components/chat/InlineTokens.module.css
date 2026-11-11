@@ -11,15 +11,45 @@
   cursor: pointer;
   vertical-align: baseline;
 }
+/* Inline code (K-ref/06): a touch smaller than the body, a 4.5 % ink wash, 1 × 5 px, 5 px corners. A hair of
+   margin keeps two chips with a comma between them from reading as one blob. */
 button.token {
+  margin: 0 1px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-ink) 4.5%, transparent);
+  color: inherit;
   font-family: var(--font-mono);
-  font-size: var(--text-md);
+  font-size: 0.86em;
+  letter-spacing: 0;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
-a.token {
-  color: var(--color-ink);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+/* Real links: a thin underline at ~28 % that comes to full strength on hover. */
+a.token,
+a.link {
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, currentColor 28%, transparent);
+  text-underline-offset: 3px;
   background: transparent;
+  padding: 0;
+  border-radius: 0;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  transition: text-decoration-color var(--duration-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  a.token:hover,
+  a.link:hover {
+    text-decoration-color: currentColor;
+  }
+}
+a.link:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 .token span {
   background: transparent;

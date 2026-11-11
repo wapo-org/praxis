@@ -22,9 +22,31 @@ export function renderInlineTokens(
   let match: RegExpExecArray | null;
   let keyIdx = 0;
 
+  // Bare URLs in prose become links (K-ref/06); trailing sentence punctuation stays text.
+  const pushText = (text: string) => {
+    const url = /https?:\/\/[^\s<>"'`]+/g;
+    let at = 0;
+    let m: RegExpExecArray | null;
+    while ((m = url.exec(text)) !== null) {
+      let href = m[0];
+      const trail = /[.,;:!?)\]]+$/.exec(href)?.[0] ?? '';
+      if (trail && !(trail.startsWith(')') && href.includes('('))) href = href.slice(0, -trail.length);
+      const safe = safeLink(href);
+      if (!safe) continue;
+      if (m.index > at) nodes.push(text.slice(at, m.index));
+      nodes.push(
+        <a key={`url-${keyIdx++}`} href={safe} target="_blank" rel="noreferrer" data-testid="inline-url" className={styles.link}>
+          {href}
+        </a>,
+      );
+      at = m.index + href.length;
+    }
+    if (at < text.length) nodes.push(text.slice(at));
+  };
+
   while ((match = tokenRegex.exec(str)) !== null) {
     if (match.index > lastIndex) {
-      nodes.push(str.slice(lastIndex, match.index));
+      pushText(str.slice(lastIndex, match.index));
     }
 
     if (match[2] !== undefined && match[3] !== undefined) {
@@ -114,7 +136,7 @@ export function renderInlineTokens(
   }
 
   if (lastIndex < str.length) {
-    nodes.push(str.slice(lastIndex));
+    pushText(str.slice(lastIndex));
   }
 
   return nodes;

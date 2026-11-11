@@ -1,4 +1,11 @@
 /* Composer tray: a compact popover anchored to the + button (360 x 480 max). */
+/* WP-K2 (K-ref/08): the tray's own list. Every control in the tray is a translucent squircle on the glass
+   (tiles, segmented tracks, rows): no opaque white card, no full-width separators. DESIGN.md "Lists". */
+.surface {
+  --tray-fill: color-mix(in srgb, var(--color-ink) 4.5%, transparent);
+  --tray-fill-hover: color-mix(in srgb, var(--color-ink) 7%, transparent);
+  --tray-fill-press: color-mix(in srgb, var(--color-ink) 10%, transparent);
+}
 .anchor {
   position: absolute;
   bottom: calc(100% + var(--space-2));
@@ -102,18 +109,23 @@
   padding: 0 var(--space-1);
   border: 0;
   border-radius: var(--radius-lg);
-  background: var(--color-fill-1);
+  background: var(--tray-fill);
   color: var(--color-ink);
   font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-sans);
   cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+.tile:active {
+  background: var(--tray-fill-press);
+  transform: scale(0.97);
 }
 
 .group {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  gap: 6px;
 }
 .row {
   display: flex;
@@ -123,25 +135,34 @@
   min-height: var(--control-lg);
   padding: var(--space-1) var(--space-3);
   border: 0;
-  background: transparent;
+  border-radius: var(--radius-lg);
+  background: var(--tray-fill);
   color: var(--color-ink);
   font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
   text-align: start;
-}
-button.row {
   cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
 }
-.row:first-child {
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+.row:active {
+  background: var(--tray-fill-press);
+  transform: scale(0.985);
 }
-.row:last-child {
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+.row:has(input:disabled) {
+  cursor: default;
 }
-.row:only-child {
-  border-radius: var(--radius-lg);
+.row:has(input:disabled):active {
+  background: var(--tray-fill);
+  transform: none;
 }
-.row + .row {
-  box-shadow: inset 0 1px 0 var(--color-hairline);
+/* The tray's squircle family: the same continuous corner on tiles and rows. */
+@supports (corner-shape: squircle) {
+  .row,
+  .tile {
+    border-radius: 22px;
+    corner-shape: squircle;
+  }
 }
 .rowIcon {
   display: inline-flex;
@@ -172,12 +193,18 @@ button.row {
   padding-inline-start: calc(var(--space-3) + var(--icon-md) + var(--space-3));
 }
 @media (hover: hover) {
-  .modelRow:hover,
-  button.row:hover {
+  .modelRow:hover {
     background: var(--color-hover);
   }
-  .tile:hover {
-    background: var(--color-fill-2);
+  .row:not(:has(input:disabled)):not(:active):hover,
+  .tile:not(:active):hover {
+    background: var(--tray-fill-hover);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .row:active,
+  .tile:active {
+    transform: none;
   }
 }
 .modelRow:focus-visible,
@@ -185,4 +212,8 @@ button.row {
 button.row:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: -2px;
+}
+/* An off switch on a translucent row: a translucent track, so it reads on the glass in both themes. */
+.row [data-checked='false'] {
+  background: color-mix(in srgb, var(--color-ink) 13%, transparent);
 }

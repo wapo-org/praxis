@@ -84,6 +84,8 @@
   --settings-nav-width: 200px;
   --row-model: 56px; /* two-line model row; MODEL_ROW_HEIGHT in ModelList.tsx */
   --column-width: 720px;
+  /* The conversation's reading column (K-ref/06): 66–70 characters of 16 px Inter. */
+  --reading-width: 600px;
   --topbar-height: 56px;
 
   /* Colour: warm paper neutrals, black primary controls */
@@ -113,6 +115,8 @@
   --code-string: #4a7354;
   --code-number: #9a5b25;
   --code-literal: #82559a;
+  /* Long-form reading ink: near-black, softer than the UI ink on warm paper (K-ref/06). */
+  --color-reading: #1c1c1c;
 
   /* Elevation: three levels */
   --shadow-1: 0 1px 6px rgba(21, 20, 15, 0.035);
@@ -198,6 +202,7 @@
   --code-string: #a6c9aa;
   --code-number: #ddb07c;
   --code-literal: #c8a4d8;
+  --color-reading: #e6e4de;
 
   --shadow-1: 0 1px 6px rgba(0, 0, 0, 0.24);
   --shadow-2: 0 2px 12px rgba(0, 0, 0, 0.18), 0 10px 40px rgba(0, 0, 0, 0.26);

@@ -45,8 +45,8 @@
   inset: 0;
   background: linear-gradient(
     var(--scrim-dir),
-    color-mix(in srgb, var(--scrim-tint, var(--color-paper)) 88%, transparent) 0%,
-    color-mix(in srgb, var(--scrim-tint, var(--color-paper)) 40%, transparent) 55%,
+    color-mix(in srgb, var(--scrim-tint, var(--color-paper)) var(--scrim-tint-a, 88%), transparent) 0%,
+    color-mix(in srgb, var(--scrim-tint, var(--color-paper)) var(--scrim-tint-b, 40%), transparent) 55%,
     transparent 100%
   );
 }

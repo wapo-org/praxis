@@ -24,6 +24,10 @@ export interface ProgressiveBlurScrimProps extends React.HTMLAttributes<HTMLDivE
    * content lane, because Chromium mirrors scrolled text into a blur that reaches past the column's edge.
    */
   layers?: 'all' | 'blur' | 'tint';
+  /** The edge band's radius; the others halve inward from it. Default 6 px. */
+  maxBlur?: number;
+  /** The paper feather's strength at the edge, 0–1 (default 0.88). A light feather keeps the scrim free of a white band. */
+  tintStrength?: number;
 }
 
 /** Radii from the edge inward. */
@@ -34,6 +38,8 @@ export function ProgressiveBlurScrim({
   height = 64,
   tintColor,
   layers = 'all',
+  maxBlur = SCRIM_RADII[0],
+  tintStrength,
   className = '',
   style,
   ...rest
@@ -48,6 +54,7 @@ export function ProgressiveBlurScrim({
         {
           '--scrim-height': `${height}px`,
           ...(tintColor ? { '--scrim-tint': tintColor } : null),
+          ...(tintStrength !== undefined ? { '--scrim-tint-a': `${Math.round(tintStrength * 100)}%`, '--scrim-tint-b': `${Math.round(tintStrength * 45)}%` } : null),
           ...style,
         } as React.CSSProperties
       }
@@ -55,7 +62,7 @@ export function ProgressiveBlurScrim({
     >
       {layers !== 'tint'
         ? SCRIM_RADII.map((radius, i) => (
-            <div key={radius} className={styles.band} style={{ '--band-blur': `${radius}px`, '--band-index': i } as React.CSSProperties} />
+            <div key={radius} className={styles.band} style={{ '--band-blur': `${(radius * maxBlur) / SCRIM_RADII[0]}px`, '--band-index': i } as React.CSSProperties} />
           ))
         : null}
       {layers !== 'blur' ? <div className={styles.feather} /> : null}

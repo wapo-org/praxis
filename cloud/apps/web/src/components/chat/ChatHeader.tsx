@@ -41,7 +41,8 @@ export function ChatHeader() {
       </div>
 
       <motion.div className={styles.center} initial={false} animate={{ x: shift }} transition={PANEL}>
-        <GlassSurface material="regular" shape="capsule" className={styles.titlePill}>
+        {/* No box (K-ref/13): the title and model sit on the stretched blur. */}
+        <div className={styles.titlePill}>
           <motion.button
             type="button"
             className={styles.title}
@@ -53,7 +54,7 @@ export function ChatHeader() {
             <span className={styles.titleText}>{<TitleText title={displayTitle(store.activeChat ? store.activeChat.title || 'New chat' : store.draftTitle)}/>}</span>
             <span className={styles.model}>{model?.displayName || 'Select model'}</span>
           </motion.button>
-        </GlassSurface>
+        </div>
       </motion.div>
 
       <div className={`${styles.side} ${styles.end}`}>

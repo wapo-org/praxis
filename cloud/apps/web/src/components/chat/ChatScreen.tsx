@@ -19,6 +19,14 @@ import {messageTurns} from './messageTurns';
 import { UserBubble } from './UserBubble';
 import styles from './ChatScreen.module.css';
 
+/** The header bar's height (--topbar-height + --float-margin): the top ramp ends just past the title. */
+const SCRIM_TOP = 72;
+/** The dock's height, so the composer's ramp reaches as far past its top edge as the header's does. */
+const SCRIM_BOTTOM = 88;
+const SCRIM_BLUR = 10;
+/** A light paper feather: legibility without a white band. */
+const SCRIM_TINT = 0.6;
+
 function messageText(message: Message, joiner: string) {
   return message.parts
     .filter((p) => p.type === 'text')
@@ -87,10 +95,12 @@ export function ChatScreen() {
       {/* The blur bands follow the column (Chromium mirrors scrolled text into a blur reaching past its edge);
           the paper tint stays full-width so the lane has no visible edge. */}
       <motion.div className={styles.scrimLane} aria-hidden="true" initial={false} animate={{ x: shift }} transition={PANEL}>
-        <ProgressiveBlurScrim edge="top" height={48} layers="blur" />
-        <ProgressiveBlurScrim edge="bottom" height={64} layers="blur" />
+        {/* WP-K2 (K-ref/13): one ramp from the very top to just past the title's baseline, strongest at the edge;
+            the title sits on the blur with no box. The composer's ramp matches it. */}
+        <ProgressiveBlurScrim edge="top" height={SCRIM_TOP} maxBlur={SCRIM_BLUR} layers="blur" />
+        <ProgressiveBlurScrim edge="bottom" height={SCRIM_BOTTOM} maxBlur={SCRIM_BLUR} layers="blur" />
       </motion.div>
-      <ProgressiveBlurScrim edge="top" height={48} layers="tint" />
+      <ProgressiveBlurScrim edge="top" height={SCRIM_TOP} tintStrength={SCRIM_TINT} layers="tint" />
       <ChatHeader />
 
       <div
@@ -217,7 +227,7 @@ export function ChatScreen() {
         </motion.div>
       </div>
 
-      <ProgressiveBlurScrim edge="bottom" height={64} layers="tint" />
+      <ProgressiveBlurScrim edge="bottom" height={SCRIM_BOTTOM} tintStrength={SCRIM_TINT} layers="tint" />
 
       <motion.div className={styles.jump} data-visible={showJumpToLatest} aria-hidden={!showJumpToLatest} inert={!showJumpToLatest} initial={false} animate={{ x: shift }} transition={PANEL}>
         <GlassChip data-testid="jump-to-latest-button" icon={<ArrowDown size={16}/>} onClick={()=>scrollToBottom('smooth')}>

@@ -193,7 +193,7 @@ describe('ChatHeader', () => {
     const narrow = renderToStaticMarkup(<ChatHeader />);
     expect(narrow).toContain('nav-history-button');
     expect(narrow).not.toContain('nav-settings-button');
-    expect(narrow.match(/data-glass-surface/g)).toHaveLength(3); // history, title, new chat
+    expect(narrow.match(/data-glass-surface/g)).toHaveLength(2); // history, new chat: the title has no box (WP-K2, K-ref/13)
   });
 });
 
