@@ -341,3 +341,19 @@ test('menu motion captures stay on-screen inside the lab card', async ({
     path: shot(info, `IMG_7774-replica-${info.project.name}.png`),
   });
 });
+
+test('a cascade near a narrow viewport edge flips, shifts and keeps its final item visible',async({page})=>{
+ await page.setViewportSize({width:402,height:450});
+ await page.goto('/lab/glass?morph');
+ await page.getByTestId('nested-cascade').click();
+ await page.getByRole('menuitem',{name:'Save as',exact:true}).click();
+ const last=page.getByRole('menuitem',{name:'Save as HTML',exact:true});
+ await expect(last).toBeVisible();
+ await expect(async()=>{
+  const menu=await last.locator('xpath=ancestor::*[@role="menu"][1]').boundingBox();
+  expect(menu!.x).toBeGreaterThanOrEqual(7.5);
+  expect(menu!.x+menu!.width).toBeLessThanOrEqual(394.5);
+  expect(menu!.y).toBeGreaterThanOrEqual(7.5);
+  expect(menu!.y+menu!.height).toBeLessThanOrEqual(442.5);
+ }).toPass();
+});

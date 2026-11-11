@@ -115,3 +115,12 @@ export function usePositioning(
   ]);
   return { position, resolvedSide };
 }
+
+/** Cascades prefer the right edge, flip left, then shift inside the viewport. */
+export function placeSubmenu(trigger:DOMRect,width:number,height:number,vw:number,vh:number,gap=8) {
+ const w=Math.min(width,Math.max(0,vw-16)),h=Math.min(height,Math.max(0,vh-16));
+ const right=trigger.right+gap;
+ const side=right+w<=vw-8?'right':'left';
+ const ideal=side==='right'?right:trigger.left-gap-w;
+ return {left:Math.max(8,Math.min(ideal,vw-8-w)),top:Math.max(8,Math.min(trigger.top-8,vh-8-h)),width:w,maxHeight:Math.max(0,vh-16),side};
+}

@@ -44,3 +44,12 @@ describe('dropdown viewport geometry', () => {
     ).toMatchObject({ side: 'bottom', top: 40, maxHeight: 826 });
   });
 });
+
+it('flips and shifts cascading menus and caps their height at the viewport',async()=>{
+ const {placeSubmenu}=await import('./positioning');
+ const p=placeSubmenu(({left:350,right:390,top:700,bottom:740,width:40,height:40} as DOMRect),240,600,402,800);
+ expect(p.side).toBe('left');
+ expect(p.left).toBeGreaterThanOrEqual(8);
+ expect(p.left+p.width).toBeLessThanOrEqual(394);
+ expect(p.top+Math.min(600,p.maxHeight)).toBeLessThanOrEqual(792);
+});

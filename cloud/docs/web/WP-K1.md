@@ -31,6 +31,7 @@ The client formerly replaced every 404 message with "Not available: <request pat
 - That restarted animation and delayed live backdrop handed the child a clear initial surface; the child now has a native backdrop from creation.
 - Chromium's displaced lens on small pill triggers produced rim echoes; these triggers now use one clipped native frost layer.
 - The outer shell previously became a rectangular scrolling compositor, clipping the glass and last item; scrolling now stays in the inner viewport, capped after fixed rows are measured.
+- Cascade positioning previously had no viewport calculation. Children now flip, shift and cap their inner scroll lane; a 402×450 live-browser test covers the last item.
 - Negative action-grid margins put square tile highlights against the rim; the inset grid now uses equally rounded squircle tiles.
 
 The installed headless WebKit does not paint backdrop blur even on a standalone HTML control. Its layout/focus/mounting results are valid; optical blur onset is not verified there. See webkit-native-blur-control.png in the capture directory.

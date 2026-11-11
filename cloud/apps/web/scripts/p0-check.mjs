@@ -15,7 +15,7 @@ try {
     try { await apiClient.createConnector({ name: 'Ghost', url: 'https://invalid.invalid' }); return 'FAKE'; }
     catch (error) { return error.message; }
   });
-  assert.match(unavailable, /Not available/);
+  assert.match(unavailable, /no longer available/);
   // Finding 2: a 401 from any authenticated call unmounts the private store.
   await page.route('**/v1/bootstrap', r => r.fulfill({ status: 401, body: '{}' }));
   await page.evaluate(async () => {
