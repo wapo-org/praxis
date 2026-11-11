@@ -25,14 +25,21 @@ export function useCatalogActions(state: PraxisState) {
       setSelectedProviderId(providerId);
       setSelectedModelId(modelId);
       if (activeChatId) {
+        // Until the save answers, nothing automatic replaces this pick (WP-K2b).
+        const pick = { chatId: activeChatId, providerId, modelId };
+        state.pendingPickRef.current = pick;
         void apiClient
           .patchChat(activeChatId, { providerId, modelId })
           .then((updated) => {
             setChats((prev) => prev.map((c) => (c.id === activeChatId ? updated : c)));
           })
           .catch((err) =>
-            setErrorBanner(err instanceof Error ? err.message : 'Unable to save model'),
-          );
+            // The pick stays for this session; the failure is said out loud, never a silent revert.
+            setErrorBanner(`Couldn't save the model for this chat: ${err instanceof Error ? err.message : 'unknown error'}`),
+          )
+          .finally(() => {
+            if (state.pendingPickRef.current === pick) state.pendingPickRef.current = null;
+          });
       }
     },
     [activeChatId],

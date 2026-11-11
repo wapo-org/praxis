@@ -70,7 +70,7 @@ export async function clearReplica(): Promise<void> {
   scope = null;
   memoryCache = null;
   await queue;
-  if (previous) { localStorage.removeItem(`praxis-outbox:${previous.key}`); await remove(previous.key); }
+  if (previous) { localStorage.removeItem(`praxis-outbox:${previous.key}`); localStorage.removeItem(`praxis-model:${previous.key}`); await remove(previous.key); }
 }
 
 export function readReplicaSync(): LocalReplicaSnapshot | null {
@@ -121,7 +121,7 @@ export async function wipeReplicaStorage(): Promise<void> {
   await clearReplica();
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const key = localStorage.key(i);
-    if (key?.startsWith('praxis-outbox:') || key?.startsWith('praxis-replica-owner:') || key === 'praxis-cloud-replica-v1')
+    if (key?.startsWith('praxis-outbox:') || key?.startsWith('praxis-model:') || key?.startsWith('praxis-replica-owner:') || key === 'praxis-cloud-replica-v1')
       localStorage.removeItem(key);
   }
   if (typeof indexedDB === 'undefined') return;

@@ -67,8 +67,11 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
             localStorage.setItem('praxis-sidebar-palette', value);
             window.dispatchEvent(new Event('praxis:sidebar-look'));
           }
-          if (field === 'model') s.setSelectedModelId(value);
-          if (field === 'provider') s.setSelectedProviderId(value);
+          // The account's last model applies where no chat has its own, and never over a pick being saved (WP-K2b).
+          const openChat = s.chats.find(c => c.id === s.activeChatId);
+          const chatOwnsModel = !!(openChat?.providerId && openChat.modelId) || !!s.pendingPickRef.current;
+          if (field === 'model' && !chatOwnsModel) s.setSelectedModelId(value);
+          if (field === 'provider' && !chatOwnsModel) s.setSelectedProviderId(value);
           if (field === 'effort') s.setSelectedEffort(value);
         }
       }

@@ -21,6 +21,7 @@ import {
   type ToolSpec,
 } from '../lib/api';
 import { getReplicaIdentity, readReplicaSync } from '../lib/idb';
+import { readStoredSelection } from './modelSelection';
 import { pathForSheet } from '../lib/navigation';
 
 import type { ActiveSheet, LiveRunState, PendingConsentPrompt } from './types';
@@ -114,8 +115,14 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   const [syncCursor, setSyncCursor] = React.useState<string>(() => initialCache?.syncCursor ?? '0');
 
   // Selected composer controls
-  const [selectedProviderId, setSelectedProviderId] = React.useState<string>('');
-  const [selectedModelId, setSelectedModelId] = React.useState<string>('');
+  // Starts from this account's last selection (WP-K2b), not from the first model in the list.
+  const storedSelection = React.useMemo(() => readStoredSelection(replicaKey.current), []);
+  const [selectedProviderId, setSelectedProviderId] = React.useState<string>(() => storedSelection?.providerId ?? '');
+  const [selectedModelId, setSelectedModelId] = React.useState<string>(() => storedSelection?.modelId ?? '');
+  /** The full model list has loaded (bootstrap answered or failed): only then may a missing model be replaced. */
+  const [catalogReady, setCatalogReady] = React.useState(false);
+  /** A model the user picked whose save to the chat has not answered yet: nothing automatic replaces it. */
+  const pendingPickRef = React.useRef<{ chatId: string; providerId: string; modelId: string } | null>(null);
   const [webSearch, setWebSearch] = React.useState(false);
   const cacheModels = React.useCallback(
     (items: Model[]) =>
@@ -234,6 +241,9 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     setSelectedProviderId,
     selectedModelId,
     setSelectedModelId,
+    catalogReady,
+    setCatalogReady,
+    pendingPickRef,
     webSearch,
     setWebSearch,
     cacheModels,

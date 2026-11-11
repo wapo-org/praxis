@@ -1,6 +1,7 @@
 import {useAccountSync} from '../sync/useAccountSync';
 import React from 'react';
 import { fromWireMode } from '../lib/modes';
+import { decideSelection, writeStoredSelection } from './modelSelection';
 import { apiClient } from '../lib/api';
 import { readReplicaSync, saveReplica, type LocalReplicaSnapshot } from '../lib/idb';
 
@@ -92,10 +93,8 @@ export function useReplica(
       setChats(boot.chats);
       setProviders(boot.providers);
       setModels(boot.models);
-      if (!boot.models.some(m=>m.id===selectedModelId&&m.providerId===selectedProviderId) && boot.models[0]) {
-        setSelectedModelId(boot.models[0].id);
-        setSelectedProviderId(boot.models[0].providerId);
-      }
+      // No reset here: the selection resolver below decides, now that the list is complete (WP-K2b).
+      state.setCatalogReady(true);
       setConnectors(boot.connectors);
       setSkills(boot.skills);
       if (boot.consents) setConsents(boot.consents);
@@ -165,19 +164,46 @@ export function useReplica(
     } catch (err) {
       setErrorBanner(err instanceof Error ? err.message : 'Unable to load account');
       setHydrated(true);
+      // Offline or failing: the cached list is all there will be.
+      state.setCatalogReady(true);
     } finally {
       setSyncing(false);
     }
   }, [activeChatId, applySnapshotToLiveRun, attachRunStream]);
 
   const routeChat = chats.find((value) => value.id === activeChatId);
+  // WP-K2b: the selection changes on its own only when the open chat changes (to that chat's model) or when
+  // the selected model is no longer available, and the latter only once the full list has loaded. A valid
+  // choice, or one whose save is still pending, is never replaced.
+  const decidedChat = React.useRef<string | null | undefined>(undefined);
+  const lastChatModel = React.useRef<string | undefined>(undefined);
   React.useEffect(() => {
-    const selected=models.find(m=>m.providerId===routeChat?.providerId&&m.id===routeChat?.modelId);
-    const fallback=models.find(m=>providers.some(p=>p.id===m.providerId));
-    const next=selected??fallback;
-    if(next){setSelectedProviderId(next.providerId);setSelectedModelId(next.id);}
-    if(!selected&&routeChat?.providerId&&next)setErrorBanner('The previous model is no longer available. Switched to '+next.displayName+'.');
-  }, [activeChatId, routeChat?.providerId, routeChat?.modelId,models,providers]);
+    const chatKey = activeChatId ?? null;
+    const chatModel = routeChat?.providerId && routeChat.modelId ? { providerId: routeChat.providerId, modelId: routeChat.modelId } : undefined;
+    const chatModelKey = chatModel ? `${chatModel.providerId}/${chatModel.modelId}` : undefined;
+    const pending = state.pendingPickRef.current;
+    // The open chat's model changed elsewhere (another device): follow it, unless our own pick is in flight.
+    const remoteChange = decidedChat.current === chatKey && chatModelKey !== lastChatModel.current && !(pending && pending.chatId === activeChatId);
+    lastChatModel.current = chatModelKey;
+    const decision = decideSelection({
+      chatChanged: decidedChat.current !== chatKey || remoteChange,
+      chatModel,
+      current: { providerId: selectedProviderId, modelId: selectedModelId },
+      models,
+      providers,
+      ready: state.catalogReady,
+    });
+    if (decision.kind === 'wait') return;
+    decidedChat.current = chatKey;
+    if (decision.kind === 'select') {
+      setSelectedProviderId(decision.ref.providerId);
+      setSelectedModelId(decision.ref.modelId);
+      if (decision.notice) setErrorBanner(decision.notice);
+    }
+  }, [activeChatId, routeChat?.providerId, routeChat?.modelId, models, providers, state.catalogReady, selectedProviderId, selectedModelId]);
+  React.useEffect(() => {
+    writeStoredSelection(replicaKey.current, { providerId: selectedProviderId, modelId: selectedModelId });
+  }, [selectedProviderId, selectedModelId]);
   React.useEffect(() => {
     if (routeChat?.mode) setSelectedMode(fromWireMode(routeChat.mode)); // a stored plan reads as Auto
   }, [activeChatId, routeChat?.mode]);
