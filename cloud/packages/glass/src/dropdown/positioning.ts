@@ -72,7 +72,12 @@ export function usePositioning(
       const parent = ctx.portal
         ? undefined
         : menu.offsetParent?.getBoundingClientRect();
-      const viewport=menu.querySelector<HTMLElement>('[data-slot="scroll-blur-viewport"]');
+      // The live panel's list. While a submenu swaps in place the exiting panel (inert, popped out of the flow)
+      // is still in the DOM first; measuring its list fed the menu's height back into the new list's cap, so the
+      // list and the glass alternated between two heights every frame (L-ref/13).
+      const viewport=
+        menu.querySelector<HTMLElement>('[data-dropdown-panel]:not([inert]) [data-slot="scroll-blur-viewport"]') ??
+        menu.querySelector<HTMLElement>('[data-slot="scroll-blur-viewport"]');
       const fixedHeight=viewport?Math.max(0,menu.offsetHeight-viewport.offsetHeight):0;
       menu.style.setProperty('--menu-list-height',Math.max(0,result.maxHeight-fixedHeight)+'px');
       setSide(result.side);

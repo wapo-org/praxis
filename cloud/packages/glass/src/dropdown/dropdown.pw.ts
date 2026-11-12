@@ -357,3 +357,61 @@ test('a cascade near a narrow viewport edge flips, shifts and keeps its final it
   expect(menu!.y+menu!.height).toBeLessThanOrEqual(442.5);
  }).toPass();
 });
+
+// L-ref/13: an in-place submenu resize is monotonic. The list cap was measured from the exiting panel's list, so
+// the new list and the glass alternated between two heights every frame while the old panel faded out.
+test('an in-place submenu grows monotonically: no frame steps back toward the old size', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 900 });
+  await page.goto('/lab/glass');
+  const trigger = page.getByTestId('motion-preview-trigger');
+  await trigger.scrollIntoViewIfNeeded();
+  await trigger.click();
+  await page.waitForTimeout(700);
+  await page.evaluate(() => {
+    const log: number[] = ((window as any).__heights = []);
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () => {
+      const s = document.querySelector('.praxis-glass-dropdown-content [data-glass-surface]');
+      if (s) log.push(s.getBoundingClientRect().height);
+    };
+    const loop = () => { ch.port2.postMessage(0); if (log.length < 60) requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  });
+  await page.getByTestId('recent-chats-subtrigger').click();
+  await page.waitForFunction(() => (window as any).__heights.length >= 60);
+  const heights: number[] = await page.evaluate(() => (window as any).__heights);
+  const from = heights[0]!, to = heights.at(-1)!;
+  expect(to).toBeGreaterThan(from + 100);
+  let peak = from, backstep = 0;
+  for (const h of heights) { backstep = Math.max(backstep, peak - h); peak = Math.max(peak, h); }
+  expect(backstep).toBeLessThan(0.5);
+  const layout = await page.evaluate(() => (document.querySelector('[data-dropdown-panel]:not([inert])') as HTMLElement).offsetHeight);
+  expect(layout).toBeGreaterThan(0);
+});
+
+// L-ref/11: the text trigger is one surface. The button paints no fill of its own and fills its capsule exactly;
+// the open state darkens the capsule's own layer.
+test('a text trigger is one surface, open or closed', async ({ page }) => {
+  for (const url of ['/lab/glass?dropdown', '/lab/glass']) {
+    await page.goto(url);
+    const trigger = page.getByTestId('position-top-start');
+    await trigger.scrollIntoViewIfNeeded();
+    const read = () => trigger.evaluate((button) => {
+      const surface = button.parentElement!;
+      const solid = surface.querySelector(':scope > [data-glass-solid]')!;
+      const b = button.getBoundingClientRect(), s = surface.getBoundingClientRect();
+      return { fill: getComputedStyle(button).backgroundColor, solid: getComputedStyle(solid).backgroundColor, dw: s.width - b.width, dh: s.height - b.height };
+    });
+    const closed = await read();
+    await trigger.click();
+    await expect(trigger).toHaveAttribute('data-state', 'open');
+    const open = await read();
+    for (const state of [closed, open]) {
+      expect(state.fill).toBe('rgba(0, 0, 0, 0)');
+      expect(Math.abs(state.dw)).toBeLessThan(0.5);
+      expect(Math.abs(state.dh)).toBeLessThan(0.5);
+    }
+    expect(open.solid).not.toBe(closed.solid);
+    await page.keyboard.press('Escape');
+  }
+});

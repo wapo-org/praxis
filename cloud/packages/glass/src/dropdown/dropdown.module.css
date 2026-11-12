@@ -346,6 +346,10 @@
   display: inline-flex;
   max-width: 100%;
 }
+/* Sizing belongs to the button: padding on the capsule would leave a ring of glass around it. */
+.triggerSurface.triggerSurface {
+  padding: 0;
+}
 .trigger {
   display: inline-flex;
   align-items: center;
@@ -362,8 +366,11 @@
   touch-action: none;
   outline: none;
 }
-.trigger[data-state='open'] {
-  background: var(--color-pressed);
+/* One surface (L-ref/11): the capsule is the button. The button never paints a fill of its own, and the open
+   and pressed states darken the capsule's own layer, so no second pill appears inside the first. */
+.triggerSurface:has(> .trigger[data-state='open']),
+.triggerSurface:has(> .trigger:active) {
+  --glass-solid-bg: color-mix(in srgb, var(--color-ink) 7%, var(--glass-tint));
 }
 .trigger:focus-visible {
   outline: 2px solid var(--color-focus);

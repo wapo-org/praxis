@@ -35,9 +35,9 @@
 .dropdown {
   min-width: 0;
 }
-[data-compact='true'] .trigger {
+[data-compact='true'] .trigger > button {
+  padding-inline: var(--space-3);
   font-size: var(--text-xs);
-  padding: var(--space-2) var(--space-1);
 }
 .footer {
   padding: var(--space-4);
