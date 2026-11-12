@@ -55,7 +55,7 @@ function instrument(page, probes) {
                 l3.text += event.text;
                 l3.chunks += 1;
                 l3.arrivals.push([now, l3.text.length]);
-                for (const p of l3.probes) if (p.arrivedAt === undefined && l3.text.length > p.end) p.arrivedAt = now;
+                for (const p of l3.probes) if (p.arrivedAt === undefined && l3.text.length >= p.end) p.arrivedAt = now;
               }
               if (event?.type === 'run.finished') { l3.finishedAt = now; for (const p of l3.probes) p.arrivedAt ??= now; }
             } catch { /* keepalive */ }
@@ -86,7 +86,7 @@ function instrument(page, probes) {
             // relative to the message or change height. A new <p> inside a list item that turns loose is a new
             // element, not a move.
             const origin = view.getBoundingClientRect().top;
-            const els = [...view.querySelectorAll(LEAVES)];
+            const els = [...view.querySelectorAll(LEAVES)].filter(el => !el.closest('section[data-footnotes]'));
             const now_ = new Map(els.map((el) => { const r = el.getBoundingClientRect(); return [el, [el.tagName, r.top - origin, r.height]]; }));
             if (previous && l3.lastView === view) {
               let moved = 0, resized = 0;
@@ -154,7 +154,7 @@ if (ONLY.has('latency')) {
   const worst = [...lat].sort((a, b) => (b.ms ?? 1e9) - (a.ms ?? 1e9)).slice(0, 8);
   const frames = data.frames;
   const summary = {
-    tag: TAG, fixture: 'OWNER_DOC', chars: data.text.length, chunks: data.chunks, streamMs: round(streamMs), tokensPerSecond: round(data.chunks / (streamMs / 1000)),
+    tag: TAG, fixture: process.env.STRESS === '1' ? 'OWNER_DOC + extended prose' : 'OWNER_DOC', measurement: 'First animation frame with the sampled word in DOM text, measured from receipt of its final source character.', chars: data.text.length, chunks: data.chunks, streamMs: round(streamMs), tokensPerSecond: round(data.chunks / (streamMs / 1000)),
     chunkToPaintMs: { p50: round(quantile(painted, 0.5)), p95: round(quantile(painted, 0.95)), max: round(Math.max(...painted)), probes: lat.length, neverPainted: lat.filter((l) => l.ms === null).map((l) => l.word), over100ms: painted.filter((ms) => ms > 100).length, over1000ms: painted.filter((ms) => ms > 1000).length, heldUntilRunEnd: lat.filter((l) => l.heldUntilEnd).length },
     worst: worst.map((w) => ({ word: w.word, ms: round(w.ms) })),
     frameMs: { p50: round(quantile(frames, 0.5)), p95: round(quantile(frames, 0.95)), p99: round(quantile(frames, 0.99)), max: round(Math.max(...frames)), over20ms: frames.filter((f) => f > 20).length, over34ms: frames.filter((f) => f > 34).length, frames: frames.length },
@@ -170,7 +170,7 @@ if (ONLY.has('layout')) {
   const { data } = await stream('layout');
   const during = data.layout.filter((e) => !e.after), atEnd = data.layout.filter((e) => e.after);
   const sum = (list, key) => round(list.reduce((a, e) => a + e[key], 0));
-  const summary = { tag: TAG, liveToSavedSwaps: data.viewSwaps ?? 0, note: 'Positions are relative to the message, so scrolling does not count. moved = Σ|Δtop| of blocks that already existed (by element identity, excluding the one being written and its ancestors); resized = Σ|Δheight| of those blocks. A swap of the live view for the saved one is compared by position in at-finish.',
+  const summary = { tag: TAG, liveToSavedSwaps: data.viewSwaps ?? 0, note: 'Positions are relative to the message, so scrolling does not count. moved = Σ|Δtop| of blocks that already existed (by element identity, excluding the one being written and its ancestors); resized = Σ|Δheight| of those blocks. Generated footnotes stay below the growing document and are excluded. A swap of the live view for the saved one is compared by position in at-finish.',
     whileStreaming: { framesWithReflow: during.length, movedPx: sum(during, 'moved'), resizedPx: sum(during, 'resized') },
     atFinish: { framesWithReflow: atEnd.length, movedPx: sum(atEnd, 'moved'), resizedPx: sum(atEnd, 'resized') },
     events: data.layout.slice(0, 40).map((e) => ({ atMs: round(e.at - data.firstAt), moved: round(e.moved), resized: round(e.resized), after: e.after, leaves: e.leaves, detail: e.detail })) };
