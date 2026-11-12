@@ -16,6 +16,11 @@ test('a short chat never shows Jump to latest, including after a resize',async({
   const input=page.getByTestId('composer-input');await input.fill('A short answer');await input.press('Enter');
   await page.getByTestId('turn-copy-button').last().waitFor();
   await expect(page.getByTestId('jump-to-latest-button')).toBeHidden();
+  const viewport=page.getByTestId('chat-scroll-viewport');
+  await viewport.evaluate(el=>el.scrollTop=100);
+  await page.evaluate(()=>new Promise(requestAnimationFrame));
+  await viewport.evaluate(el=>el.scrollTop=0);
+  await expect(page.getByTestId('jump-to-latest-button')).toBeHidden();
   await page.setViewportSize({width:1440,height:1100});
   await expect(page.getByTestId('jump-to-latest-button')).toBeHidden();
   // A sent message stays at the top under the WP-L3 send anchor, including a short reply.

@@ -15,7 +15,10 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
   const measure=React.useCallback((fromScroll=false)=>{
     const el=viewport.current;if(!el)return;
     let metrics=scrollMetrics(el);
-    if(metrics.distance<=BOTTOM_EDGE||metrics.overflow<=BOTTOM_EDGE){pinned.current=true;jumping.current=false;}
+    if(metrics.distance<=BOTTOM_EDGE||metrics.overflow<=BOTTOM_EDGE){
+      if(!sentAnchor.current||userMoved.current)pinned.current=true;
+      jumping.current=false;
+    }
     else if(fromScroll&&!jumping.current&&Math.abs(el.scrollTop-lastTop.current)>1){
       userMoved.current=true;
       if(el.scrollTop<lastTop.current-1)pinned.current=false;
@@ -26,7 +29,7 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
     lastTop.current=el.scrollTop;
     const show=metrics.showJump&&!jumping.current&&(!sentAnchor.current||userMoved.current);
     setState(old=>old.identity===identity&&old.show===show?old:{identity,show});
-  },[identity,viewport]);
+  },[identity,viewport,content]);
   const onScroll=React.useCallback(()=>measure(true),[measure]);
   const jumpToLatest=React.useCallback((behavior:ScrollBehavior='smooth')=>{
     const el=viewport.current;if(!el)return;
@@ -55,8 +58,12 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
     sentAnchor.current = true;
     userMoved.current = false;
     const offset = target.getBoundingClientRect().top - body.getBoundingClientRect().top;
-    body.style.minHeight = `${offset + el.clientHeight}px`;
-    const top = el.scrollTop + target.getBoundingClientRect().top - el.getBoundingClientRect().top - parseFloat(getComputedStyle(el).paddingTop);
+    const padding = getComputedStyle(el);
+    const paddingTop = parseFloat(padding.paddingTop);
+    const paddingBottom = parseFloat(padding.paddingBottom);
+    // Reserve the usable viewport, accounting for its existing header and composer padding once.
+    body.style.minHeight = `${offset + Math.max(0, el.clientHeight - paddingTop - paddingBottom)}px`;
+    const top = el.scrollTop + target.getBoundingClientRect().top - el.getBoundingClientRect().top - paddingTop;
     jumping.current = Math.abs(el.scrollTop - top) > 1;
     setState({identity, show:false});
     el.scrollTo({top, behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
