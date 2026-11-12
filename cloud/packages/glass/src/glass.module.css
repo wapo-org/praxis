@@ -160,6 +160,55 @@
   --glass-corner: round;
 }
 
+/* Engines without corner-shape (squircle.ts sets data-glass-path): the lines are strokes of the clip's own path,
+   so no ring is cut where a corner starts to round (L-ref/12). While the morph still paints the circle, the
+   box-shadow rings come back with it. */
+.outline {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  display: none;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke-width: 1px;
+  pointer-events: none;
+}
+.glass[data-glass-path='true']:not([data-morph-round='true']) > .outline {
+  display: block;
+}
+.glass[data-glass-path='true']:not([data-morph-round='true']) > :is(.lens, .finish) {
+  box-shadow:
+    inset 0 2px 24px rgba(0, 0, 0, calc(0.2 * var(--glass-inner))),
+    inset 0 -2px 24px rgba(255, 255, 255, calc(0.2 * var(--glass-inner)));
+}
+.outlineEdge {
+  stroke: rgba(15, 15, 20, calc(0.07 * var(--glass-border)));
+}
+.outlineRing {
+  stroke: rgba(255, 255, 255, calc(0.16 * var(--glass-border)));
+}
+.outlineTop {
+  stop-color: rgba(255, 255, 255, calc(0.5 * var(--glass-rim)));
+}
+.outlineBottom {
+  stop-color: rgba(255, 255, 255, calc(0.22 * var(--glass-rim)));
+}
+/* The morph's rim (morph.module.css): only on glass that has one. */
+.outlineRim,
+.outlineRimLight {
+  display: none;
+}
+.glass:has(> [data-glass-rim]) > .outline > .outlineRim {
+  display: inline;
+  stroke: var(--glass-morph-rim);
+}
+.glass:has(> [data-glass-rim]) > .outline > .outlineRimLight {
+  display: inline;
+  stroke: var(--glass-morph-rim-light);
+}
+
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .lens,
   .finish {

@@ -52,14 +52,14 @@ export function mapCorner(
 }
 
 /** A closed path for a w x h box whose corners are a superellipse spanning `radius`. */
-export function squirclePath(w: number, h: number, radius: number, exponent = CORNER_EXPONENT): string {
+export function squirclePath(w: number, h: number, radius: number, exponent = CORNER_EXPONENT, offset = 0): string {
   const r = clampedRadius(radius, w, h);
   const points: string[] = [];
   const corner = (cx: number, cy: number, sx: number, sy: number, reverse: boolean) => {
     for (let i = 0; i <= CORNER_STEPS; i++) {
       const t = ((reverse ? CORNER_STEPS - i : i) / CORNER_STEPS) * (Math.PI / 2);
-      const x = cx + sx * r * Math.cos(t) ** (2 / exponent);
-      const y = cy + sy * r * Math.sin(t) ** (2 / exponent);
+      const x = offset + cx + sx * r * Math.cos(t) ** (2 / exponent);
+      const y = offset + cy + sy * r * Math.sin(t) ** (2 / exponent);
       points.push(`${x.toFixed(2)} ${y.toFixed(2)}`);
     }
   };
@@ -105,6 +105,17 @@ export function attachSquircle(el: HTMLElement): () => void {
     last = key;
     el.style.setProperty('--glass-radius-round', `${(radius * roundPerCurve(exponent)).toFixed(2)}px`);
     el.style.setProperty('--glass-squircle', `path("${squirclePath(w, h, radius, exponent)}")`);
+    // The rings come from the same path (L-ref/12). An inset box-shadow follows the circle under the path, and
+    // the path clip shaved up to half of its 1 px line where each corner starts to round.
+    el.dataset.glassPath = 'true';
+    const outline = el.querySelector<SVGSVGElement>(':scope > [data-glass-outline]');
+    if (outline) {
+      outline.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      for (const line of outline.querySelectorAll<SVGPathElement>('path[data-inset]')) {
+        const inset = Number(line.dataset.inset) || 0;
+        line.setAttribute('d', squirclePath(w - 2 * inset, h - 2 * inset, radius - inset, exponent, inset));
+      }
+    }
   };
   // Now, not on the observer's first callback: whatever reads the corner on mount must see the final one.
   build();
@@ -113,6 +124,7 @@ export function attachSquircle(el: HTMLElement): () => void {
   return () => {
     observer.disconnect();
     delete el.dataset.glassCapsule;
+    delete el.dataset.glassPath;
     el.style.removeProperty('--glass-squircle');
     el.style.removeProperty('--glass-radius-round');
   };

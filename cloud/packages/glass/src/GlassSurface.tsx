@@ -146,6 +146,31 @@ function attachSpotlight(el: HTMLElement) {
 }
 
 /**
+ * The glass's lines as strokes of its own squircle path, for engines without corner-shape (squircle.ts fills in
+ * the paths and turns it on). One shape: the fill, the lens and the clip use that path too. Non-scaling strokes
+ * stay 1 px on screen through the morph's scale, like the rim they replace.
+ */
+const GlassOutline = React.memo(function GlassOutline({ id }: { id: string }) {
+  return (
+    <svg aria-hidden="true" focusable="false" data-glass-outline="" className={styles.outline} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" className={styles.outlineTop} />
+          <stop offset="0.14" stopColor="rgba(255, 255, 255, 0)" />
+          <stop offset="0.86" stopColor="rgba(255, 255, 255, 0)" />
+          <stop offset="1" className={styles.outlineBottom} />
+        </linearGradient>
+      </defs>
+      <path data-inset="0.5" className={styles.outlineEdge} vectorEffect="non-scaling-stroke" />
+      <path data-inset="0.5" className={styles.outlineRing} vectorEffect="non-scaling-stroke" />
+      <path data-inset="0.5" stroke={`url(#${id})`} className={styles.outlineSheen} vectorEffect="non-scaling-stroke" />
+      <path data-inset="1.5" className={styles.outlineRimLight} vectorEffect="non-scaling-stroke" />
+      <path data-inset="0.5" className={styles.outlineRim} vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+});
+
+/**
  * Liquid glass. On Chromium a real lens (`backdrop-filter: url(#id)`, the kube.io
  * construction from wapo.dp); elsewhere a progressive frost with the same finish.
  * Layout and DOM geometry never move: the stretch is `scale` + `translate` on this
@@ -223,6 +248,7 @@ export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(
           <span data-glass-spot="" className={styles.spot} />
         </span>
       ) : null}
+      {shape === 'capsule' || tier === 'solid' ? null : <GlassOutline id={`${filterId}-outline`} />}
       {children as React.ReactNode}
     </motion.div>
   );

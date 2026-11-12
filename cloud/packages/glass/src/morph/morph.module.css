@@ -48,6 +48,11 @@
   opacity: 0;
 }
 
+/* Path engines draw this line as a stroke of the clip's path at rest (glass.module.css .outline). */
+[data-glass-path='true']:not([data-morph-round='true']) > .rim {
+  box-shadow: none;
+}
+
 /* The glass's one crisp line: through the whole morph, the lens handover and at rest, so it never pops. */
 .rim {
   --morph-rim: 1px;

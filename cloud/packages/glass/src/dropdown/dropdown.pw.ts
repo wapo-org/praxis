@@ -415,3 +415,33 @@ test('a text trigger is one surface, open or closed', async ({ page }) => {
     await page.keyboard.press('Escape');
   }
 });
+
+// L-ref/12: without corner-shape (Safari 26) the rings were inset box-shadows on the circle under the squircle
+// clip, which shaved them where each corner starts to round. They are strokes of the clip's own path now.
+test('without corner-shape the menu lines are strokes of the clip path', async ({ page }) => {
+  await page.addInitScript(() => {
+    const supports = CSS.supports.bind(CSS);
+    CSS.supports = ((a: string, b?: string) => (String(a).includes('corner-shape') ? false : b === undefined ? supports(a) : supports(a, b))) as typeof CSS.supports;
+    document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '*{corner-shape: round !important}'; document.head.append(s); });
+  });
+  await page.goto('/lab/glass?dropdown');
+  await page.getByTestId('position-top-start').click();
+  const surface = page.locator('.praxis-glass-dropdown-content [data-glass-surface]').first();
+  await expect(surface).toHaveAttribute('data-glass-path', 'true');
+  await expect(async () => {
+    const state = await surface.evaluate((el) => {
+      const outline = el.querySelector(':scope > [data-glass-outline]')!;
+      const clip = getComputedStyle(el.querySelector(':scope > [data-glass-lens]')!).clipPath;
+      const edge = outline.querySelector('path[data-inset="0.5"]')!.getAttribute('d') ?? '';
+      return {
+        shown: getComputedStyle(outline).display,
+        rim: getComputedStyle(el.querySelector(':scope > [data-glass-rim]')!).boxShadow,
+        lens: getComputedStyle(el.querySelector(':scope > [data-glass-lens]')!).boxShadow.split('inset').length - 1,
+        clip: clip.startsWith('path('),
+        edge: edge.length > 100,
+        round: el.dataset.morphRound ?? null,
+      };
+    });
+    expect(state).toEqual({ shown: 'block', rim: 'none', lens: 2, clip: true, edge: true, round: null });
+  }).toPass();
+});
