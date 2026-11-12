@@ -1,8 +1,9 @@
-import { GlassDropdown, ScrollBlur, usePress } from '@praxis/glass';
-import { motion } from 'framer-motion';
+import { GlassDropdown, ScrollBlur } from '@praxis/glass';
 import React from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown } from '../../lib/icons';
+import { ChevronLeft, ChevronRight, ChevronsUpDown } from '../../lib/icons';
 import { Switch } from '../ui/controls';
+import { Button } from '../ui/Button';
+import { fieldClass, Select as FieldSelect } from '../ui/fields';
 import styles from './Screen.module.css';
 
 export function useScreenTask() {
@@ -34,28 +35,18 @@ export function TaskError({ error }: { error: string | null }) {
   ) : null;
 }
 
+/** Settings' button: the shared Button (components/ui/Button), `tone` naming its variant. */
 export function ScreenButton({
   children,
   tone = 'secondary',
-  className = '',
   ...props
-}: Omit<
-  React.ButtonHTMLAttributes<HTMLButtonElement>,
-  'onAnimationStart' | 'onDrag' | 'onDragEnd' | 'onDragStart'
-> & {
-  tone?: 'primary' | 'secondary' | 'destructive';
+}: Omit<React.ComponentProps<typeof Button>, 'variant'> & {
+  tone?: 'primary' | 'secondary' | 'destructive' | 'quiet';
 }) {
-  const pressProps = usePress();
   return (
-    <motion.button
-      type="button"
-      {...pressProps}
-      data-tone={tone}
-      className={`${styles.button} ${className}`.trim()}
-      {...props}
-    >
+    <Button variant={tone} data-tone={tone} {...props}>
       {children}
-    </motion.button>
+    </Button>
   );
 }
 
@@ -144,6 +135,9 @@ export function Toggle({
   );
 }
 
+const TEXT_INPUTS = new Set(['checkbox', 'radio', 'file', 'hidden', 'range', 'color']);
+
+/** A labelled field. A bare <input> or <textarea> child becomes the shared pill field (components/ui/fields). */
 export function Field({
   label,
   hint,
@@ -153,24 +147,26 @@ export function Field({
   hint?: string;
   children: React.ReactNode;
 }) {
+  const dressed = React.Children.map(children, (child) => {
+    if (!React.isValidElement<{ className?: string; type?: string }>(child)) return child;
+    const own = child.props.className ?? '';
+    const mono = own.split(' ').includes(styles.mono!) ? fieldClass.mono : '';
+    if (child.type === 'textarea') return React.cloneElement(child, { className: [fieldClass.textarea, mono, own].filter(Boolean).join(' ') });
+    if (child.type === 'input' && !TEXT_INPUTS.has(child.props.type ?? 'text'))
+      return React.cloneElement(child, { className: [fieldClass.input, mono, own].filter(Boolean).join(' ') });
+    return child;
+  });
   return (
     <label className={styles.field}>
       <span>{label}</span>
-      {children}
+      {dressed}
       {hint ? <span className={styles.footnote}>{hint}</span> : null}
     </label>
   );
 }
 
-/** Native select (the OS picker is the right control) dressed to match the other fields. */
-export function Select({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <span className={styles.select}>
-      <select {...props}>{children}</select>
-      <ChevronDown size={16} aria-hidden="true" />
-    </span>
-  );
-}
+/** Native select (the OS picker is the right control) dressed as the shared pill field. */
+export const Select = FieldSelect;
 
 /** One-of-many choice when the options can overflow a segmented control. */
 export function ChoiceChip({

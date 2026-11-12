@@ -122,38 +122,7 @@
   font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
 }
 
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  min-height: var(--control-md);
-  padding: 0 var(--space-4);
-  border: 1px solid var(--color-hairline-strong);
-  border-radius: var(--radius-full);
-  background: var(--color-surface);
-  color: var(--color-ink);
-  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
-  cursor: pointer;
-}
-.button[data-tone='primary'] {
-  border-color: transparent;
-  background: var(--color-accent);
-  color: var(--color-on-accent);
-}
-.button[data-tone='destructive'] {
-  color: var(--color-danger);
-}
-.button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-@media (hover: hover) {
-  .button[data-tone='secondary']:hover:not(:disabled),
-  .button[data-tone='destructive']:hover:not(:disabled) {
-    background: var(--color-fill-1);
-  }
-}
+/* Buttons: components/ui/Button (ScreenButton). */
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -178,35 +147,9 @@
 .field > span:first-child {
   margin-inline: var(--space-1);
 }
-.field > input,
-.select select,
-.field > textarea,
+/* Fields: components/ui/fields (Field dresses a bare input or textarea; Select is the shared one). */
 .search {
-  width: 100%;
-  min-height: var(--control-md);
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--color-hairline-strong);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-ink);
-  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
-}
-.select {
-  position: relative;
-  display: block;
-}
-.select select {
-  padding-inline-end: var(--space-8);
-  appearance: none;
-  cursor: pointer;
-}
-.select svg {
-  position: absolute;
-  top: 50%;
-  right: var(--space-3);
-  color: var(--color-ink-3);
-  pointer-events: none;
-  transform: translateY(-50%);
+  composes: input from '../ui/fields.module.css';
 }
 .menuValue {
   display: inline-flex;
@@ -235,21 +178,11 @@
   border-color: transparent;
   background: var(--color-fill-2);
 }
-.field > textarea {
-  padding-block: var(--space-2);
-  resize: vertical;
-}
-.field > input::placeholder,
-.field > textarea::placeholder,
-.search::placeholder {
-  color: var(--color-ink-3);
-}
 .field > .footnote {
   margin-block: 0;
   font-weight: var(--weight-regular);
 }
-.mono,
-.field > textarea.mono {
+.mono {
   font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-mono);
 }
 .headerFields {
@@ -383,7 +316,6 @@
 }
 .iconButton:focus-visible,
 .textButton:focus-visible,
-.button:focus-visible,
 .navRow:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
@@ -391,12 +323,8 @@
 .navRow:focus-visible {
   outline-offset: -2px;
 }
-.field > input:focus-visible,
-.select select:focus-visible,
 .menuValue:focus-visible,
-.chip:focus-visible,
-.field > textarea:focus-visible,
-.search:focus-visible {
+.chip:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 0;
   border-color: transparent;
@@ -409,16 +337,5 @@
   }
   [data-nested='true'] .body {
     padding-top: var(--space-3);
-  }
-  /* 44 px controls on touch; 16 px text stops iOS zooming into focused fields. */
-  .button {
-    min-height: var(--control-lg);
-  }
-  .field > input,
-  .select select,
-  .field > textarea,
-  .search {
-    min-height: var(--control-lg);
-    font-size: var(--text-input-touch);
   }
 }
