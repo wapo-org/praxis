@@ -86,5 +86,8 @@ test.describe('send anchor', () => {
   await expect.poll(top).toBeGreaterThanOrEqual(72);
   await expect.poll(top).toBeLessThanOrEqual(82);
   await expect(page.getByTestId('jump-to-latest-button')).toBeHidden();
+  // Scrollbar dragging dispatches scroll without a wheel or touch event.
+  await page.getByTestId('chat-scroll-viewport').evaluate(el => el.scrollTop += 100);
+  await expect(page.getByTestId('jump-to-latest-button')).toBeVisible();
 });
 });

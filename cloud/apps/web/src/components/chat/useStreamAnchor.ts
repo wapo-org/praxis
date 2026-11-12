@@ -16,7 +16,10 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
     const el=viewport.current;if(!el)return;
     let metrics=scrollMetrics(el);
     if(metrics.distance<=BOTTOM_EDGE||metrics.overflow<=BOTTOM_EDGE){pinned.current=true;jumping.current=false;}
-    else if(fromScroll&&!jumping.current&&el.scrollTop<lastTop.current-1)pinned.current=false;
+    else if(fromScroll&&!jumping.current&&Math.abs(el.scrollTop-lastTop.current)>1){
+      userMoved.current=true;
+      if(el.scrollTop<lastTop.current-1)pinned.current=false;
+    }
     // Height growth can itself dispatch scroll (including browser anchoring).
     // It must not be mistaken for a user leaving the live edge.
     if(pinned.current&&metrics.distance>BOTTOM_EDGE&&!jumping.current){el.scrollTop=el.scrollHeight;metrics=scrollMetrics(el);}
@@ -54,6 +57,7 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
     const offset = target.getBoundingClientRect().top - body.getBoundingClientRect().top;
     body.style.minHeight = `${offset + el.clientHeight}px`;
     const top = el.scrollTop + target.getBoundingClientRect().top - el.getBoundingClientRect().top - parseFloat(getComputedStyle(el).paddingTop);
+    jumping.current = Math.abs(el.scrollTop - top) > 1;
     setState({identity, show:false});
     el.scrollTo({top, behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
   }, [identity, turnKey, localSend, viewport, content]);
@@ -63,14 +67,16 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
       if(pinned.current)el.scrollTop=el.scrollHeight;
       measure();
     };
+    const landed=()=>{jumping.current=false;measure();};
     const interrupt=()=>{userMoved.current=true;jumping.current=false;pinned.current=scrollMetrics(el).distance<=BOTTOM_EDGE;measure();};
     // A disclosure opened by the user: what it reveals grows below it, and the page must not follow it down.
     const hold=()=>{jumping.current=false;pinned.current=false;};
     const observer=typeof ResizeObserver!=='undefined'?new ResizeObserver(resized):undefined;
     observer?.observe(el);observer?.observe(body);
+    el.addEventListener('scrollend',landed);
     el.addEventListener('praxis:hold',hold);el.addEventListener('wheel',interrupt,{passive:true});el.addEventListener('touchstart',interrupt,{passive:true});el.addEventListener('keydown',interrupt);
     window.addEventListener('resize',resized);
-    return ()=>{observer?.disconnect();el.removeEventListener('praxis:hold',hold);el.removeEventListener('wheel',interrupt);el.removeEventListener('touchstart',interrupt);el.removeEventListener('keydown',interrupt);window.removeEventListener('resize',resized);};
+    return ()=>{observer?.disconnect();el.removeEventListener('scrollend',landed);el.removeEventListener('praxis:hold',hold);el.removeEventListener('wheel',interrupt);el.removeEventListener('touchstart',interrupt);el.removeEventListener('keydown',interrupt);window.removeEventListener('resize',resized);};
   },[content,measure,viewport]);
   return {onScroll,jumpToLatest,showJump:state.identity===identity&&state.show};
 }
