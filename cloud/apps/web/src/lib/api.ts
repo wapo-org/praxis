@@ -22,10 +22,19 @@ import {
 import { safeMessage } from './links';
 import { localUploadPath } from './hosts';
 export * from './api-transport';
-export interface SavedValue {id:string;name:string;kind:'secret'|'variable';value?:unknown;createdAt:string;lastUsedAt?:string}
+export interface SavedValue {id:string;name:string;kind:'secret'|'variable';value?:unknown;createdAt:string;lastUsedAt?:string|null}
+export interface SavedValueQuery {query?:string;kind?:'secret'|'variable';since?:string;cursor?:string;limit?:number}
 export class PraxisApiClient extends FeatureApiClient {
   savedValues(){return this.request<{items:SavedValue[]}>('/v1/saved-values');}
   createSavedValue(input:{name:string;kind:'secret'|'variable';value:unknown}){return this.request('/v1/saved-values',{method:'POST',body:JSON.stringify(input)});}
+  /** One page of saved values, newest first (L1's keyset pagination; the cursor is bound to the filters). */
+  querySavedValues(q:SavedValueQuery,signal?:AbortSignal){
+   const params=new URLSearchParams();
+   for(const [k,v] of Object.entries(q))if(v!==undefined&&v!=='')params.set(k,String(v));
+   return this.request<{items:SavedValue[];nextCursor:string|null}>('/v1/saved-values?'+params.toString(),signal?{signal}:{});
+  }
+  /** Rename and/or replace the value; a secret's value is write-only. */
+  updateSavedValue(id:string,patch:{name?:string;value?:unknown}){return this.request('/v1/saved-values/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify(patch)});}
   renameSavedValue(id:string,name:string){return this.request('/v1/saved-values/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({name})});}
   deleteSavedValue(id:string){return this.request('/v1/saved-values/'+encodeURIComponent(id),{method:'DELETE'});}
   savedSecrets(){return this.request<{items:{id:string;name:string;createdAt:string;lastUsedAt?:string}[]}>('/v1/saved-secrets');}
