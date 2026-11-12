@@ -17,7 +17,7 @@
   width: min(100%, 480px);
   padding: var(--space-4);
   border: 0;
-  border-radius: 24px;
+  border-radius: 22px; /* the grouped rows' squircle (components/ui/RowGroup) */
   corner-shape: squircle;
   overflow: hidden;
   background: color-mix(in srgb, var(--color-ink) 6%, var(--color-surface));
@@ -70,21 +70,9 @@
   font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
 }
 
-/* The pill field: a filled capsule; focus darkens its line instead of drawing a ring around it. */
+/* The pill field: the shared one (components/ui/fields). */
 .input {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: var(--control-md);
-  padding: 0 var(--space-4);
-  border: 1px solid var(--color-hairline-strong);
-  border-radius: var(--radius-full);
-  background: var(--color-surface);
-  color: var(--color-ink);
-  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
-  outline: none;
-  transition:
-    border-color var(--duration-fast) var(--ease-standard),
-    background-color var(--duration-fast) var(--ease-standard);
+  composes: input from '../ui/fields.module.css';
 }
 
 /* Numbers are typed: no native spinner inside the pill. */
@@ -98,27 +86,9 @@
   -webkit-appearance: none;
 }
 
-.input::placeholder {
-  color: var(--color-ink-3);
-}
-
-.input:hover:not(:disabled) {
-  border-color: var(--color-hairline-strong);
-}
-
-.input:focus-visible,
-.input:focus {
-  border-color: var(--color-ink-3);
-  background: var(--color-surface);
-}
-
 .field[data-invalid] .input,
 .choices[aria-invalid='true'] {
   border-color: color-mix(in srgb, var(--color-danger) 70%, transparent);
-}
-
-.input:disabled {
-  opacity: 0.6;
 }
 
 .fieldError {
@@ -190,68 +160,23 @@
   gap: var(--space-2);
 }
 
-.primary,
-.secondary,
-.quiet {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--control-md);
-  padding: 0 var(--space-4);
-  border: 1px solid transparent;
-  border-radius: var(--radius-full);
-  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
-  text-decoration: none;
-  cursor: pointer;
-  transition:
-    background-color var(--duration-fast) var(--ease-standard),
-    opacity var(--duration-fast) var(--ease-standard);
-}
-
-/* Submit: the primary ink pill. */
+/* Submit, Decline, Cancel: the shared Button (components/ui/Button). */
 .primary {
-  background: var(--color-accent);
-  color: var(--color-on-accent);
+  composes: button primary from '../ui/Button.module.css';
 }
-
-/* Decline: the quieter outlined pill. */
 .secondary {
-  border-color: var(--color-hairline-strong);
-  background: transparent;
-  color: var(--color-ink);
+  composes: button secondary from '../ui/Button.module.css';
 }
-
-/* Cancel: not destructive, so not red; just text until hovered. */
 .quiet {
-  padding-inline: var(--space-3);
-  background: transparent;
-  color: var(--color-ink-2);
-}
-
-.primary:disabled,
-.secondary:disabled,
-.quiet:disabled {
-  opacity: 0.45;
-  cursor: default;
+  composes: button quiet from '../ui/Button.module.css';
 }
 
 @media (hover: hover) {
-  .primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-accent) 86%, var(--color-paper));
-  }
-  .secondary:hover:not(:disabled),
-  .quiet:hover:not(:disabled),
   .choice:hover:not([aria-checked='true']):not(:disabled) {
     background: var(--color-hover);
   }
-  .quiet:hover:not(:disabled) {
-    color: var(--color-ink);
-  }
 }
 
-.primary:focus-visible,
-.secondary:focus-visible,
-.quiet:focus-visible,
 .choice:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
@@ -291,11 +216,4 @@
   font-weight: var(--weight-regular);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-@media (max-width: 1023px) {
-  .input {
-    min-height: var(--control-lg);
-    font-size: var(--text-input-touch);
-  }
 }

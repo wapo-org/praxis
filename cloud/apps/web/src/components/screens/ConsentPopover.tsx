@@ -4,6 +4,8 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { FileText, Globe, Link, Mic, Paperclip, Wrench } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store.js';
+import { Button } from '../ui/Button';
+import { RowGroup, rowClass } from '../ui/RowGroup';
 import styles from './ConsentPopover.module.css';
 
 /**
@@ -19,6 +21,7 @@ export function ConsentPopover() {
   const box = useAnchorBox(!!prompt);
   const pop = usePreset(popIn);
   const panelRef = React.useRef<HTMLDivElement>(null);
+  const edge = useScrollEdge(!!prompt && !!box);
 
   // Move keyboard focus into the popover on open; restore it on close.
   React.useEffect(() => {
@@ -61,7 +64,7 @@ export function ConsentPopover() {
     // Scale lives on this parent; opacity goes on the glass so its blur fades with it.
     <motion.div
       className={styles.anchor}
-      style={{ left: box.left, bottom: box.bottom }}
+      style={{ left: box.left, bottom: box.bottom, '--consent-max': `${box.maxHeight}px` } as React.CSSProperties}
       initial={{ scale: pop.initial.scale }}
       animate={{ scale: 1 }}
       transition={pop.transition}
@@ -79,7 +82,13 @@ export function ConsentPopover() {
         transition={pop.transition}
       >
         <div className={styles.body}>
-          <div className={styles.scroll}>
+          <div
+            ref={edge.ref}
+            className={styles.scroll}
+            data-overflow={edge.overflow || undefined}
+            data-more-below={edge.moreBelow || undefined}
+            data-testid="consent-scroll"
+          >
             <h2 className={styles.heading} id="consentTitle" data-testid="consentTitle">
               {voice
                 ? 'Share this recording for transcription?'
@@ -94,9 +103,9 @@ export function ConsentPopover() {
               {prompt.host}
             </p>
             <p className={styles.intro}>{prompt.description}</p>
-            <div className={styles.list}>
+            <RowGroup className={styles.list}>
               {items.map((item) => (
-                <div className={styles.row} key={item.title}>
+                <div className={`${rowClass()} ${styles.row}`} key={item.title}>
                   <span className={styles.rowIcon}>{item.icon}</span>
                   <span className={styles.rowCopy}>
                     <strong>{item.title}</strong>
@@ -104,19 +113,21 @@ export function ConsentPopover() {
                   </span>
                 </div>
               ))}
-            </div>
+            </RowGroup>
             <p className={styles.footnote}>
               The service’s own terms and privacy policy apply to what it receives.
               You can withdraw permission in Settings → Data & privacy. Praxis then
               asks again before sending.
             </p>
           </div>
-          <button type="button" className={styles.primary} onClick={prompt.onAllow}>
-            Allow
-          </button>
-          <button type="button" className={styles.secondary} onClick={cancel}>
-            Cancel
-          </button>
+          <div className={styles.actions}>
+            <Button variant="primary" block onClick={prompt.onAllow}>
+              Allow
+            </Button>
+            <Button variant="secondary" block onClick={cancel}>
+              Cancel
+            </Button>
+          </div>
         </div>
       </GlassSurface>
     </motion.div>,
@@ -124,8 +135,35 @@ export function ConsentPopover() {
   );
 }
 
+/**
+ * Whether the details overflow, and whether more lies below the fold: the soft bottom edge shows only then, so
+ * the last line is never left faded once it has been reached (L-ref/14).
+ */
+function useScrollEdge(active: boolean) {
+  const [node, setNode] = React.useState<HTMLDivElement | null>(null);
+  const [state, setState] = React.useState({ overflow: false, moreBelow: false });
+  React.useEffect(() => {
+    if (!active || !node) return;
+    const read = () => {
+      const overflow = node.scrollHeight > node.clientHeight + 1;
+      const moreBelow = overflow && node.scrollTop + node.clientHeight < node.scrollHeight - 2;
+      setState((old) => (old.overflow === overflow && old.moreBelow === moreBelow ? old : { overflow, moreBelow }));
+    };
+    read();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(read);
+    observer?.observe(node);
+    for (const child of node.children) observer?.observe(child);
+    node.addEventListener('scroll', read, { passive: true });
+    return () => {
+      observer?.disconnect();
+      node.removeEventListener('scroll', read);
+    };
+  }, [active, node]);
+  return { ref: setNode, ...state };
+}
+
 function useAnchorBox(active: boolean) {
-  const [box, setBox] = React.useState<{ left: number; bottom: number } | null>(null);
+  const [box, setBox] = React.useState<{ left: number; bottom: number; maxHeight: number } | null>(null);
   React.useEffect(() => {
     if (!active) return;
     const measure = () => {
@@ -143,7 +181,9 @@ function useAnchorBox(active: boolean) {
         rect && rect.height > 0
           ? window.innerHeight - rect.top + 8
           : window.innerHeight - Math.max(96, window.innerHeight / 6);
-      setBox({ left, bottom });
+      // Sized to its content when that fits above the composer; else as tall as the space allows.
+      const maxHeight = Math.max(240, Math.min(640, window.innerHeight - bottom - 12));
+      setBox({ left, bottom, maxHeight });
     };
     measure();
     window.addEventListener('resize', measure);

@@ -15,11 +15,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  max-height: var(--popover-max-height);
+  max-height: var(--consent-max, var(--popover-max-height));
   padding: var(--space-4);
 }
 
-/* Only the details scroll; Allow/Cancel stay pinned and visible. */
+/* Only the details scroll; Allow/Cancel stay pinned and visible. When they must scroll they end on padding,
+   and a soft edge fades the cut line only while more lies below (L-ref/14). */
 .scroll {
   display: flex;
   flex-direction: column;
@@ -27,6 +28,21 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.scroll[data-overflow] {
+  padding-bottom: var(--space-4);
+}
+.scroll[data-more-below] {
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - var(--space-8)), transparent);
+  mask-image: linear-gradient(to bottom, black calc(100% - var(--space-8)), transparent);
+}
+.actions {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
 }
 
 .heading {
@@ -52,22 +68,13 @@
 }
 
 .list {
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--radius-md);
-  background: var(--color-fill-1);
-  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .row {
-  display: flex;
   align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-}
-
-.row + .row {
-  border-top: 1px solid var(--color-hairline);
+  padding-block: var(--space-2);
+  --group-divider-inset: calc(var(--space-3) + var(--icon-md) + var(--space-3));
 }
 
 .rowIcon {
@@ -94,30 +101,4 @@
   margin: 0;
   color: var(--color-ink-2);
   font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
-}
-
-.primary,
-.secondary {
-  height: var(--control-md);
-  border-radius: var(--radius-sm);
-  font: var(--weight-semibold) var(--text-md) / var(--leading-md) var(--font-sans);
-  cursor: pointer;
-}
-
-.primary {
-  border: 0;
-  background: var(--color-accent);
-  color: var(--color-on-accent);
-}
-
-.secondary {
-  border: 1px solid var(--color-hairline-strong);
-  background: transparent;
-  color: var(--color-ink);
-}
-
-.primary:focus-visible,
-.secondary:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
 }

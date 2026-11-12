@@ -46,7 +46,7 @@ for (const engineName of ENGINES) {
       await ctx.close();
     }
     if (ONLY.includes('consent')) {
-      for (const [label, viewport] of [['tall', { width: 1280, height: 980 }], ['short', { width: 1280, height: 640 }]]) {
+      for (const [label, viewport] of [['tall', { width: 1280, height: 980 }], ['short', { width: 1280, height: 640 }], ['tiny', { width: 1280, height: 470 }]]) {
         const { ctx, page } = await open(browser, scheme, '/lab/glass', viewport);
         await page.getByTestId('glass-lab-consent-demo').click();
         const pop = page.getByTestId('consent-popover');
