@@ -13,8 +13,12 @@ for (const scheme of ['light','dark']) {
   await page.waitForTimeout(500);
   await message.screenshot({path:`${OUT}/${TAG}-format-${scheme}.png`});
   if(scheme==='light' && TAG !== 'before') {
-    const block=page.getByTestId('markdown-code-block').first();
-    await block.getByRole('button',{name:'Wrap lines'}).click();
+    const block=page.getByTestId('markdown-code-block').nth(1);
+    const wrap = block.getByRole('button',{name:'Wrap lines'});
+    if (await wrap.getAttribute('aria-pressed') === 'true') await wrap.click();
+    await block.screenshot({path:`${OUT}/${TAG}-code-unwrapped.png`});
+    await wrap.click();
+    if (await wrap.getAttribute('aria-pressed') !== 'true') throw new Error('Wrap did not toggle');
     await block.screenshot({path:`${OUT}/${TAG}-code-wrap.png`});
     await page.getByTestId('user-message-bubble').hover();
     await page.getByTestId('user-message-bubble').screenshot({path:`${OUT}/${TAG}-user-copy.png`});

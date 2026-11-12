@@ -18,7 +18,10 @@ test('a short chat never shows Jump to latest, including after a resize',async({
   await expect(page.getByTestId('jump-to-latest-button')).toBeHidden();
   await page.setViewportSize({width:1440,height:1100});
   await expect(page.getByTestId('jump-to-latest-button')).toBeHidden();
-  expect((await metrics(page)).distance).toBeLessThanOrEqual(4);
+  // A sent message stays at the top under the WP-L3 send anchor, including a short reply.
+  const bubbleTop = await page.getByTestId('user-message-bubble').last().evaluate(el => el.getBoundingClientRect().top - el.closest('[data-testid="chat-scroll-viewport"]')!.getBoundingClientRect().top);
+  expect(bubbleTop).toBeGreaterThanOrEqual(72);
+  expect(bubbleTop).toBeLessThanOrEqual(82);
   if(process.env.H2_CAPTURE_DIR)await page.screenshot({path:`${process.env.H2_CAPTURE_DIR}/jump-short-${test.info().project.name}.png`});
 });
 test('scrolling up reveals the jump and scrolling down hides it',async({page})=>{
@@ -59,4 +62,29 @@ test('resizing to fit the content removes the jump without a scroll event',async
   await page.setViewportSize({width:1440,height});
   await expect(page.getByTestId('jump-to-latest-button')).toBeHidden();
   expect((await metrics(page)).overflow).toBeLessThanOrEqual(4);
+});
+
+// A new chat creates its identity and optimistic first message together. That first send owns the anchor too.
+test.describe('send anchor', () => {
+  test.use({serviceWorkers:'block'});
+  test('the first send pins the user message while a long answer grows below it', async ({ page }) => {
+  await page.getByTestId('nav-new-chat-desktop').click();
+  const input = page.getByTestId('composer-input');
+  await page.route('**/v1/runs', route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    return route.continue({ postData: JSON.stringify({ ...route.request().postDataJSON(), script: 'long' }) });
+  });
+  await input.fill('Write a long response');
+  await input.press('Enter');
+  const bubble = page.getByTestId('user-message-bubble').last();
+  await expect(bubble).toBeVisible();
+  await expect.poll(async () => (await metrics(page)).overflow, {timeout:20000}).toBeGreaterThan(400);
+  const top = () => bubble.evaluate(el => {
+    const viewport = el.closest('[data-testid="chat-scroll-viewport"]')!;
+    return el.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+  });
+  await expect.poll(top).toBeGreaterThanOrEqual(72);
+  await expect.poll(top).toBeLessThanOrEqual(82);
+  await expect(page.getByTestId('jump-to-latest-button')).toBeHidden();
+});
 });

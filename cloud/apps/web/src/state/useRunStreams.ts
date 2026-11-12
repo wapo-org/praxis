@@ -33,8 +33,9 @@ export function useRunStreams(
             frame = requestAnimationFrame(flush);
           }
         },
-        onSnapshotRecovered: applySnapshotToLiveRun,
+        onSnapshotRecovered: (snapshot) => { flush(); applySnapshotToLiveRun(snapshot); },
         onComplete: () => {
+          flush();
           activeRunUnsubMapRef.current.delete(run.id);
           void apiClient
             .getChat(run.chatId)

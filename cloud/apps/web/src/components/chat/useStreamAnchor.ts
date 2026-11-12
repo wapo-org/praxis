@@ -7,7 +7,7 @@ export function scrollMetrics(el:Pick<HTMLElement,'scrollHeight'|'clientHeight'|
   return {overflow,distance,showJump:overflow>BOTTOM_EDGE&&distance>JUMP_THRESHOLD};
 }
 /** One source of truth for scroll following and its disclosure, including rendered (not transport) growth. */
-export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,content:React.RefObject<HTMLElement|null>,identity?:string,turnKey?:string) {
+export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,content:React.RefObject<HTMLElement|null>,identity?:string,turnKey?:string,localSend=false) {
   const sentAnchor=React.useRef(false), userMoved=React.useRef(false);
   const previousTurn=React.useRef({identity,turnKey});
   const pinned=React.useRef(true),jumping=React.useRef(false),lastTop=React.useRef(0);
@@ -42,7 +42,7 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
   React.useLayoutEffect(() => {
     const previous = previousTurn.current;
     previousTurn.current = {identity, turnKey};
-    if (!turnKey || previous.turnKey === turnKey || previous.identity !== identity) return;
+    if (!turnKey || previous.turnKey === turnKey || !localSend) return;
     const el = viewport.current, body = content.current;
     const bubbles = body?.querySelectorAll<HTMLElement>('[data-testid="user-message-bubble"]');
     const target = bubbles?.[bubbles.length - 1];
@@ -56,7 +56,7 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
     const top = el.scrollTop + target.getBoundingClientRect().top - el.getBoundingClientRect().top - parseFloat(getComputedStyle(el).paddingTop);
     setState({identity, show:false});
     el.scrollTo({top, behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
-  }, [identity, turnKey, viewport, content]);
+  }, [identity, turnKey, localSend, viewport, content]);
   React.useLayoutEffect(()=>{
     const el=viewport.current,body=content.current;if(!el||!body)return;
     const resized=()=>{

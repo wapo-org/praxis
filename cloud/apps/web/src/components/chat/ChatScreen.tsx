@@ -58,7 +58,7 @@ export function ChatScreen() {
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const shift = useContentShift();
   const columnRef = React.useRef<HTMLDivElement | null>(null);
-  const {onScroll:handleScroll,jumpToLatest:scrollToBottom,showJump:showJumpToLatest}=useStreamAnchor(scrollRef,columnRef,activeChat?.id, lastUserMessage?.clientTurnId ?? lastUserMessage?.id);
+  const {onScroll:handleScroll,jumpToLatest:scrollToBottom,showJump:showJumpToLatest}=useStreamAnchor(scrollRef,columnRef,activeChat?.id, lastUserMessage?.clientTurnId ?? lastUserMessage?.id, lastUserMessage?.id.startsWith('optimistic-'));
 
   const status = activeLiveRun?.run.status;
   // A run that just completed keeps its live turn for one fold, so a thought that is still folding away

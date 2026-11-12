@@ -230,7 +230,7 @@ Plain fence with no language.
 
 ---
 
-![A small test image](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=)
+![A small test image](/__l3/image.svg)
 
 A sentence with a footnote.[^1] And another.[^note]
 
@@ -275,7 +275,7 @@ export function fixtureFor(prompt: string): { text: string; reasoning?: string }
   const p = prompt.toLowerCase();
   if (p.includes('nested')) return { text: NESTED_DOC };
   if (p.includes('every element')) return { text: FORMATTING_DOC };
-  if (p.includes('long for formatting')) return { text: OWNER_DOC, reasoning: REASONING };
+  if (p.includes('long for formatting')) return { text: p.includes('extended') ? `${OWNER_DOC}\n\n${LONG_PROSE.slice(0, 3300)}` : OWNER_DOC, reasoning: REASONING };
   if (p.includes('long prose')) return { text: LONG_PROSE };
   if (p.includes('thanks')) return { text: "You're welcome! 🎉\n\nLet me know if you want more test content — different lengths, themes, or edge cases." };
   return { text: `Here is a short answer to “${prompt.slice(0, 80)}”. It has two sentences.` };

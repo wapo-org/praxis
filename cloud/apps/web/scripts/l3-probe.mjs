@@ -6,7 +6,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { OUT, TAG, chat, open, quantile, round, send } from './l3-lib.mjs';
 
 const ONLY = new Set((process.env.ONLY ?? 'latency,layout,strip,scroll').split(','));
-const PROMPT = 'write something long for formatting test';
+const PROMPT = process.env.STRESS === '1' ? 'write something long for formatting test extended' : 'write something long for formatting test';
 await mkdir(OUT, { recursive: true });
 const { OWNER_DOC } = await import('./l3-fixtures.ts').catch(async () => {
   // Plain node cannot import TypeScript before 22.18; read the template literal instead.
@@ -102,6 +102,20 @@ function instrument(page, probes) {
               }
               if (moved > 0.5 || resized > 0.5) l3.layout.push({ at: now, moved, resized, after: l3.finishedAt !== undefined, leaves: els.length, detail });
             }
+            if (previous && l3.lastView !== view) {
+              l3.viewSwaps = (l3.viewSwaps ?? 0) + 1;
+              const before = [...previous.map];
+              let moved = 0, resized = 0;
+              for (let i = 0; i < Math.min(before.length, els.length); i++) {
+                const [oldElement, was] = before[i];
+                const element = els[i];
+                const current = now_.get(element);
+                if (oldElement.tagName !== element.tagName || oldElement.textContent !== element.textContent) continue;
+                moved += Math.abs(current[1] - was[1]);
+                resized += Math.abs(current[2] - was[2]);
+              }
+              if (moved > 0.5 || resized > 0.5) l3.layout.push({ at: now, moved, resized, after: true, detail: ['live-to-saved view swap'] });
+            }
             previous = { map: now_, last: els[els.length - 1] }; l3.lastView = view;
           }
         }
@@ -156,7 +170,7 @@ if (ONLY.has('layout')) {
   const { data } = await stream('layout');
   const during = data.layout.filter((e) => !e.after), atEnd = data.layout.filter((e) => e.after);
   const sum = (list, key) => round(list.reduce((a, e) => a + e[key], 0));
-  const summary = { tag: TAG, note: 'Positions are relative to the message, so scrolling does not count. moved = Σ|Δtop| of blocks that already existed (by element identity, excluding the one being written and its ancestors); resized = Σ|Δheight| of those blocks. A swap of the live view for the saved one is compared by position in at-finish.',
+  const summary = { tag: TAG, liveToSavedSwaps: data.viewSwaps ?? 0, note: 'Positions are relative to the message, so scrolling does not count. moved = Σ|Δtop| of blocks that already existed (by element identity, excluding the one being written and its ancestors); resized = Σ|Δheight| of those blocks. A swap of the live view for the saved one is compared by position in at-finish.',
     whileStreaming: { framesWithReflow: during.length, movedPx: sum(during, 'moved'), resizedPx: sum(during, 'resized') },
     atFinish: { framesWithReflow: atEnd.length, movedPx: sum(atEnd, 'moved'), resizedPx: sum(atEnd, 'resized') },
     events: data.layout.slice(0, 40).map((e) => ({ atMs: round(e.at - data.firstAt), moved: round(e.moved), resized: round(e.resized), after: e.after, leaves: e.leaves, detail: e.detail })) };

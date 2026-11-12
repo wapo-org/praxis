@@ -32,6 +32,8 @@ describe('Streamdown formatting (WP-L3)', () => {
     expect(out).toContain('<hr/>');
     expect(out).toMatch(/<img src="https:\/\/example.com\/a.png" alt="alt text"/);
     expect(out).toContain('data-footnotes');
+    expect(out).toContain('data-footnote-backref');
+    expect(out).toContain('id="user-content-fnref-1"');
     expect(visible(out)).toContain('The footnote.');
   });
   it('shows raw HTML as text, in prose and in code alike, and hardens links', () => {
@@ -42,7 +44,10 @@ describe('Streamdown formatting (WP-L3)', () => {
     expect(visible(out)).toContain('<b>x</b>');
     expect(out).not.toContain('&amp;lt;');
     expect(out).not.toContain('javascript:');
-    expect(out).toContain('href="https://example.com/" target="_blank" rel="noopener noreferrer"');
+    const safe = out.match(/<a\b[^>]*>safe<\/a>/)?.[0];
+    expect(safe).toContain('href="https://example.com/"');
+    expect(safe).toContain('target="_blank"');
+    expect(safe).toContain('rel="noopener noreferrer"');
   });
   it('inline code is plain code: no chip button, no inspector (L-ref/01)', () => {
     const out = html('Use `code` and `src/app.ts`.');

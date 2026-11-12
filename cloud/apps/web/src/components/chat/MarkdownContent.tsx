@@ -27,7 +27,7 @@ const plugins = {
 
 // A soft fade for new words only: it starts on arrival (never later) and runs on the compositor (opacity only).
 // The keyframes are `sd-praxisIn` in MarkdownContent.module.css; reduced motion turns it off there.
-const ANIMATION = { animation: 'praxisIn', duration: 220, easing: 'cubic-bezier(0.2, 0, 0, 1)', stagger: 0, maxBacklogMs: 0 } as const;
+const ANIMATION = { animation: 'praxisIn', duration: 200, easing: 'var(--ease-standard)', stagger: 0, maxBacklogMs: 0 } as const;
 
 const WRAP_KEY = 'praxis-code-wrap';
 const readWrap = () => { try { return sessionStorage.getItem(WRAP_KEY) === 'true'; } catch { return false; } };
@@ -104,9 +104,13 @@ const components: Components = {
   code: ({ node: _node, children, className, ...props }) => ('data-block' in props
     ? <FencedCode code={textOf(children).replace(/\n$/, '')} language={/language-(\S+)/.exec(className ?? '')?.[1] ?? ''} />
     : <code data-testid="inline-code-pill">{children}</code>),
-  a: ({ node: _node, children, href }) => (href && href !== 'streamdown:incomplete-link'
-    ? <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
-    : <span data-incomplete-link="">{children}</span>),
+  a: ({ node: _node, children, href, ...props }) => {
+    if (!href || href === 'streamdown:incomplete-link') return <span data-incomplete-link="">{children}</span>;
+    if (href.startsWith('#')) {
+      return <a {...props} href={href}>{'data-footnote-backref' in props ? '↩︎' : children}</a>;
+    }
+    return <a {...props} href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+  },
   strong: ({ node: _node, children }) => <strong>{children}</strong>,
   img: ({ node: _node, src, alt }) => (typeof src === 'string' && src && !src.startsWith('streamdown:') ? <img src={src} alt={alt ?? ''} loading="lazy" /> : null),
   table: ({ node: _node, children }) => <div className={styles.table} data-testid="markdown-table-card" tabIndex={0}><table>{children}</table></div>,
