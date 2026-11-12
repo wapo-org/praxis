@@ -1,143 +1,184 @@
-.paragraph {
-  margin: 0 0 var(--para-gap, var(--space-3));
-  white-space: pre-wrap;
+/*
+ * Assistant answers (WP-L3, the owner's typeset L-ref/19). The body comes from .message (AgentMessageView):
+ * Noto Serif 15 px / 1.6. Compact flow: 1em between blocks. Headings are Noto Sans on a scale derived for a
+ * 15 px serif body. Everything is a fixed length or em of the body, so a block's height never depends on whether
+ * it is still streaming.
+ */
+.prose { min-width: 0; overflow-wrap: break-word; }
+.prose :where(p, ul, ol, blockquote, pre, table, hr, h1, h2, h3, h4, h5, h6, figure) { margin: 0; }
+.prose > * + * { margin-top: var(--reading-flow); }
+
+/* Headings: one family, tighter tracking as they grow; each sits with the section it opens. */
+.prose :where(h1, h2, h3, h4, h5, h6) {
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-optical-sizing: auto;
+  text-wrap: balance;
+}
+.prose h1 { font-size: 24px; line-height: 1.25; font-weight: 650; letter-spacing: -0.022em; }
+.prose h2 { font-size: 20px; line-height: 1.3; font-weight: 650; letter-spacing: -0.016em; }
+.prose h3 { font-size: 17px; line-height: 1.35; font-weight: 620; letter-spacing: -0.01em; }
+.prose h4 { font-size: 15px; line-height: 1.45; font-weight: 620; letter-spacing: -0.004em; }
+.prose :where(h5, h6) { font-size: 14px; line-height: 1.45; font-weight: 600; letter-spacing: 0; color: var(--color-ink-2); }
+.prose > * + :where(h1, h2) { margin-top: 30px; }
+.prose > * + :where(h3, h4, h5, h6) { margin-top: 24px; }
+.prose > :where(h1, h2, h3, h4, h5, h6) + * { margin-top: 8px; }
+
+/* Inline: bold stays in the serif; links are a solid 1 px underline with an offset. */
+.prose :where(strong, b) { font-weight: 650; }
+.prose :where(em, i) { font-style: italic; }
+.prose del { text-decoration-thickness: 1px; color: var(--color-ink-2); }
+.prose a {
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  text-decoration-skip-ink: auto;
+  border-radius: 2px;
+}
+.prose a:hover { text-decoration-thickness: 2px; }
+.prose a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+/* Inline code: Geist Mono matched to the serif's x-height, a quiet chip that cannot open the line. */
+.prose :not(pre) > code {
+  padding: 0.12em 0.36em;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+  color: var(--color-ink);
+  font: 400 0.86em / 1 var(--font-mono);
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.prose :where(sup, sub) { font-size: 0.72em; line-height: 0; }
+.prose sup a { text-decoration: none; padding: 0 0.1em; font-family: var(--font-heading); }
+
+/* Lists: real nesting. Markers per level (disc, circle, dash), 6 px between items, wrapped lines hang under
+   the text. Ordered lists keep their numbers in tabular figures. */
+.prose :where(ul, ol) { padding-inline-start: 1.45em; }
+.prose ol { list-style-type: decimal; }
+.prose ul { list-style-type: disc; }
+.prose :where(ul, ol) ul { list-style-type: circle; }
+.prose :where(ul, ol) :where(ul, ol) ul { list-style-type: '–  '; }
+.prose :where(ul, ol) ol { list-style-type: lower-alpha; }
+.prose :where(ul, ol) :where(ul, ol) ol { list-style-type: lower-roman; }
+.prose li { padding-inline-start: 0.15em; }
+.prose li::marker { color: var(--color-ink-3); font-variant-numeric: tabular-nums; }
+/* Spacing names block children only: while streaming, words are wrapped in fade spans, and a list can turn from
+   tight to loose (its text wrapped in <p>) as lines arrive. Neither may change a single pixel. */
+.prose li + li { margin-top: 6px; }
+.prose li > :where(ul, ol) { margin-top: 6px; }
+.prose li > p + p { margin-top: 0.6em; }
+.prose li > :where(div, blockquote, table, pre) { margin-block: 10px; }
+.prose li > :where(div, blockquote, table, pre):last-child { margin-bottom: 4px; }
+.prose li > p + :where(ul, ol) { margin-top: 6px; }
+/* Task lists: the checkbox sits where the marker would. */
+.prose :global(.contains-task-list) { list-style: none; }
+.prose :global(.task-list-item) { list-style: none; }
+.prose :global(.task-list-item) > input[type='checkbox'] {
+  width: 0.9em; height: 0.9em;
+  margin: 0 0.5em 0 -1.4em;
+  vertical-align: -0.08em;
+  accent-color: var(--color-ink-2);
 }
 
-/* Headings belong to the section they open: 28 px above (with the block gap), 7 px below. Sans, one weight. */
-.heading {
-  margin: calc(28px - var(--para-gap, var(--space-3))) 0 7px;
-  color: var(--color-reading, var(--color-ink));
-  font-family: var(--font-sans);
-  font-weight: var(--weight-semibold);
-  line-height: 1.35;
-  letter-spacing: -0.014em;
+.prose blockquote {
+  padding-inline-start: 1em;
+  border-inline-start: 2px solid var(--color-hairline-strong);
+  color: var(--color-ink-2);
 }
-.heading:first-child {
-  margin-top: 0;
-}
-.heading[data-level='1'] { font-size: 20px; }
-.heading[data-level='2'] { font-size: 18px; }
-.heading[data-level='3'] { font-size: 17px; }
-.heading[data-level='4'],.heading[data-level='5'],.heading[data-level='6'] { font-size: var(--text-lg); }
+.prose blockquote > * + * { margin-top: 0.6em; }
+.prose hr { height: 0; border: 0; border-top: 1px solid var(--color-hairline-strong); }
+.prose > hr, .prose > * + hr, .prose > hr + * { margin-block: 1.6em; }
+.prose img { display: block; max-width: 100%; height: auto; border-radius: var(--radius-md); }
 
-.code {
-  margin:0 0 var(--para-gap, var(--space-3));
-  overflow: hidden;
+/* Footnotes, under a hairline, in the UI's quieter size. */
+.prose :global(section[data-footnotes]) {
+  padding-top: 0.8em;
+  border-top: 1px solid var(--color-hairline);
+  color: var(--color-ink-2);
+  font-size: 13.5px;
+}
+.prose :global(section[data-footnotes]) ol { padding-inline-start: 1.3em; }
+.prose :global(.sr-only) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Tables: contained, horizontally scrollable, tabular figures, a quiet sans header. */
+.table {
+  max-width: 100%;
+  overflow-x: auto;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-md);
-  background: var(--color-fill-1);
+  overscroll-behavior-x: contain;
+}
+.table:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.table table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.5; font-variant-numeric: tabular-nums lining-nums; }
+.table :where(th, td) { padding: 7px 14px; text-align: start; vertical-align: top; }
+.table td { max-width: 28em; }
+.table th {
+  border-bottom: 1px solid var(--color-hairline);
+  background: color-mix(in srgb, var(--color-ink) 3%, transparent);
+  color: var(--color-ink-2);
+  font: 600 12.5px / 1.5 var(--font-heading);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.table tbody tr + tr td { border-top: 1px solid var(--color-hairline); }
+.table :where(th, td)[align='right'] { text-align: right; }
+.table :where(th, td)[align='center'] { text-align: center; }
+
+/* Code blocks: a header with the language and two icon buttons (Wrap, Copy), Geist Mono 13 px. */
+.code {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--color-hairline);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-ink) 3%, var(--color-paper, transparent));
 }
 .codeHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: var(--control-md);
-  padding: 0 var(--space-2) 0 var(--space-4);
+  height: 36px;
+  padding: 0 4px 0 14px;
   border-bottom: 1px solid var(--color-hairline);
   color: var(--color-ink-2);
-  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-mono);
+  font: 500 12px / 1 var(--font-sans);
 }
+.codeLanguage { font-family: var(--font-mono); font-weight: 400; letter-spacing: 0; text-transform: lowercase; }
+.codeActions { display: flex; gap: 2px; }
 .codeHeader button {
-  height: var(--control-sm);
-  padding: 0 var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: 7px;
   background: transparent;
-  color: var(--color-ink-2);
-  font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-sans);
-  cursor: pointer;
-}
-.code pre {
-  margin: 0;
-  padding: var(--space-3) var(--space-4);
-  overflow-x: auto;
-  color: var(--color-ink);
-  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-mono);
-}
-
-.table {
-  margin:0 0 var(--para-gap, var(--space-3));
-  overflow-x: auto;
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-md);
-}
-.table table {
-  width: 100%;
-  border-collapse: collapse;
-  font: inherit;
-  font-variant-numeric: tabular-nums;
-}
-.table th,
-.table td {
-  padding: var(--space-2) var(--space-4);
-  text-align: left;
-  vertical-align: top;
-}
-.table th {
-  color: var(--color-ink);
-  font-weight: var(--weight-semibold);
-  white-space: nowrap;
-  background: var(--color-fill-1);
-  border-bottom: 1px solid var(--color-hairline);
-}
-.table td {
-  color: var(--color-ink);
-}
-.table tbody tr + tr td {
-  border-top: 1px solid var(--color-hairline);
-}
-
-.quote {
-  margin: 0 0 var(--para-gap, var(--space-3));
-  padding: 0 0 0 var(--space-4);
-  border-left: 2px solid var(--color-hairline-strong);
-  color: var(--color-ink-2);
-}
-
-/* One rhythm for bullets and numbers (6 px), and adjacent lists read as one group (6 px between). */
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 0 0 var(--para-gap, var(--space-3));
-  padding-left: var(--space-6);
-}
-.list:has(+ .list) {
-  margin-bottom: 6px;
-}
-.list li::marker {
   color: var(--color-ink-3);
-  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
 }
-.list li[data-task='true'] {
-  margin-left: calc(-1 * var(--space-5));
-  list-style: none;
+@media (hover: hover) { .codeHeader button:hover { background: var(--color-hover); color: var(--color-ink); } }
+.codeHeader button[aria-pressed='true'] { background: color-mix(in srgb, var(--color-ink) 10%, transparent); color: var(--color-ink); }
+.codeHeader button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.codeBody {
+  margin: 0;
+  padding: 12px 14px 13px;
+  overflow-x: auto;
+  color: var(--color-ink);
+  font: 400 13px / 1.6 var(--font-mono);
+  font-variant-ligatures: none;
+  tab-size: 4;
+  white-space: pre;
 }
-.list input {
-  margin: 0 var(--space-2) 0 0;
-  accent-color: var(--color-accent);
-}
-
-.rule {
-  margin: var(--space-2) 0;
-  border: 0;
-  border-top: 1px solid var(--color-hairline);
-}
-
-@media (hover: hover) {
-  .codeHeader button:hover {
-    background: var(--color-hover);
-    color: var(--color-ink);
-  }
-}
-
-.table [data-align='right'] {
-  text-align: right;
-}
-.table [data-align='center'] {
-  text-align: center;
-}
-.codeHeader button:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
-}
+.codeBody:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.code[data-wrap='true'] .codeBody { white-space: pre-wrap; overflow-wrap: anywhere; }
+.codeBody code { font: inherit; }
+.codeLine span { color: var(--c, inherit); }
+:global([data-theme='dark']) .codeLine span { color: var(--cd, var(--c, inherit)); }
+/* The footnote back-link (↩) as a text glyph, never a colour emoji. */
+.prose :global([data-footnote-backref]) { font-family: var(--font-sans); font-variant-emoji: text; text-decoration: none; color: var(--color-ink-3); }

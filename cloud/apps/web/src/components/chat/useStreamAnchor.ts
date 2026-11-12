@@ -7,7 +7,9 @@ export function scrollMetrics(el:Pick<HTMLElement,'scrollHeight'|'clientHeight'|
   return {overflow,distance,showJump:overflow>BOTTOM_EDGE&&distance>JUMP_THRESHOLD};
 }
 /** One source of truth for scroll following and its disclosure, including rendered (not transport) growth. */
-export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,content:React.RefObject<HTMLElement|null>,identity?:string) {
+export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,content:React.RefObject<HTMLElement|null>,identity?:string,turnKey?:string) {
+  const sentAnchor=React.useRef(false), userMoved=React.useRef(false);
+  const previousTurn=React.useRef({identity,turnKey});
   const pinned=React.useRef(true),jumping=React.useRef(false),lastTop=React.useRef(0);
   const [state,setState]=React.useState({identity,show:false});
   const measure=React.useCallback((fromScroll=false)=>{
@@ -19,7 +21,7 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
     // It must not be mistaken for a user leaving the live edge.
     if(pinned.current&&metrics.distance>BOTTOM_EDGE&&!jumping.current){el.scrollTop=el.scrollHeight;metrics=scrollMetrics(el);}
     lastTop.current=el.scrollTop;
-    const show=metrics.showJump&&!jumping.current;
+    const show=metrics.showJump&&!jumping.current&&(!sentAnchor.current||userMoved.current);
     setState(old=>old.identity===identity&&old.show===show?old:{identity,show});
   },[identity,viewport]);
   const onScroll=React.useCallback(()=>measure(true),[measure]);
@@ -31,17 +33,37 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
     measure();
   },[identity,measure,viewport]);
   React.useLayoutEffect(()=>{
+    sentAnchor.current=false;userMoved.current=false;
+    if(content.current)content.current.style.minHeight='';
     pinned.current=true;jumping.current=false;
     const el=viewport.current;if(el)el.scrollTop=el.scrollHeight;
     measure();
   },[identity,measure,viewport]);
+  React.useLayoutEffect(() => {
+    const previous = previousTurn.current;
+    previousTurn.current = {identity, turnKey};
+    if (!turnKey || previous.turnKey === turnKey || previous.identity !== identity) return;
+    const el = viewport.current, body = content.current;
+    const bubbles = body?.querySelectorAll<HTMLElement>('[data-testid="user-message-bubble"]');
+    const target = bubbles?.[bubbles.length - 1];
+    if (!el || !body || !target) return;
+    pinned.current = false;
+    jumping.current = true;
+    sentAnchor.current = true;
+    userMoved.current = false;
+    const offset = target.getBoundingClientRect().top - body.getBoundingClientRect().top;
+    body.style.minHeight = `${offset + el.clientHeight}px`;
+    const top = el.scrollTop + target.getBoundingClientRect().top - el.getBoundingClientRect().top - parseFloat(getComputedStyle(el).paddingTop);
+    setState({identity, show:false});
+    el.scrollTo({top, behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
+  }, [identity, turnKey, viewport, content]);
   React.useLayoutEffect(()=>{
     const el=viewport.current,body=content.current;if(!el||!body)return;
     const resized=()=>{
       if(pinned.current)el.scrollTop=el.scrollHeight;
       measure();
     };
-    const interrupt=()=>{jumping.current=false;pinned.current=scrollMetrics(el).distance<=BOTTOM_EDGE;measure();};
+    const interrupt=()=>{userMoved.current=true;jumping.current=false;pinned.current=scrollMetrics(el).distance<=BOTTOM_EDGE;measure();};
     // A disclosure opened by the user: what it reveals grows below it, and the page must not follow it down.
     const hold=()=>{jumping.current=false;pinned.current=false;};
     const observer=typeof ResizeObserver!=='undefined'?new ResizeObserver(resized):undefined;

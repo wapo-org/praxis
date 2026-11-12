@@ -26,7 +26,8 @@ for(const chunk of ['char','token','word','sentence','2kb','whole']) for(const s
     const lag=await page.evaluate(()=>(window as any).h2Lag);
     expect(lag.revealedAt-lag.completedAt).toBeLessThanOrEqual(300);
     const values=await page.evaluate(()=>(window as any).reveals as string[]);
-    if(chunk==='whole'&&speed==='instant')expect(new Set(values).size).toBeGreaterThan(1);
+    // WP-L3: no typewriter. Text is shown in the frame it arrives in (with a fade), so a whole arrival is one step.
+    if(chunk==='whole'&&speed==='instant')expect(values.at(-1)).toBe(expected);
     for(let i=1;i<values.length;i++) expect(values[i]!.startsWith(values[i-1]!), JSON.stringify([values[i-1],values[i]])).toBe(true);
   });
 }

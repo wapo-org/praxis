@@ -142,8 +142,8 @@ describe('@praxis/web core chat & lab components', () => {
     expect(html).toContain('markdown-table-card');
     expect(html).toContain('svg-displacement');
     expect(html).toContain('markdown-code-block');
-    expect(html).toContain('inline-file-chip');
-    expect(html).toContain('inline-link-chip');
+    expect(html).toContain('inline-code-pill');
+    expect(html).toContain('rel="noopener noreferrer"');
     expect(html).toContain('120 in · 85 out');
   });
 

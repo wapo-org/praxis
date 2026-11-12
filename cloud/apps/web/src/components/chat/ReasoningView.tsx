@@ -5,8 +5,6 @@ import { Fold } from './Fold';
 import fold from './Fold.module.css';
 import { computeElapsedMs, formatDuration } from './useActivityClock';
 import { renderInlineTokens } from './InlineTokens';
-import {stableStreamingMarkdown} from './streamingMarkdown';
-import {usePacedText} from './usePacedText';
 import { holdScrollPosition } from './Fold';
 import { WorkLogLine, workLogStyles as log } from './WorkLog';
 import { Brain } from 'lucide-react';
@@ -23,8 +21,8 @@ export const hasThought = (b: ReasoningBlock) => !b.redacted && !!b.text?.trim()
 /** The thought's body: paced while live, capped and pinned to its latest line until the user opens it. */
 export function ReasoningBody({ block, capped, id }: { block: ReasoningBlock; capped: boolean; id?: string }) {
   const live = !block.finished;
-  const revealed = usePacedText(block.text, live);
-  const text = (live || revealed !== block.text) && block.shape !== 'titles' ? stableStreamingMarkdown(revealed) : revealed;
+  // Live, an opened title (`**Ti`) waits for its closing marker, so `**` never flashes; a title is a few words.
+  const text = live && block.shape !== 'titles' && (block.text.match(/\*\*/g)?.length ?? 0) % 2 ? block.text.slice(0, block.text.lastIndexOf('**')) : block.text;
   const body = React.useRef<HTMLDivElement>(null);
   React.useLayoutEffect(() => {
     if (capped && body.current) body.current.scrollTop = body.current.scrollHeight;

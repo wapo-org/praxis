@@ -355,3 +355,10 @@
 }
 
 .groupBar { width:100%; padding:var(--space-1) calc(var(--space-1) / 2) var(--space-2) 0; border-bottom:1px solid color-mix(in srgb,var(--color-hairline) 60%,transparent); }
+
+/* L-ref/05: one line, "Working · 4s", never squeezed; an optional detail after it takes what is left and truncates.
+   The timer carries its own " · " separator, so it sits flush against the label. */
+.header { width:100%; min-width:0; flex-wrap:nowrap; }
+.header > .label { flex-shrink:0; }
+.header > :global(.tabular-nums) { flex-shrink:0; white-space:pre; margin-inline-start:calc(-1 * var(--space-1)); }
+.detail { flex:0 1 auto; min-width:0; }

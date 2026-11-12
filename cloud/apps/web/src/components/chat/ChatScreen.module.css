@@ -167,3 +167,6 @@
   z-index: 15;
   pointer-events: none;
 }
+
+/* One scroll writer (useStreamAnchor): the browser's own scroll anchoring would be a second one. */
+.viewport { overflow-anchor: none; }

@@ -80,7 +80,7 @@ describe('agent activity header (t3code TurnFoldTimelineRow + iOS parity)', () =
     expect(container.querySelector('span[style*="border-radius: 50%"]')).toBeNull();
   });
 
-  it('shimmers "Working…" and shows live elapsed timer while running', async () => {
+  it('shimmers "Working" and shows live elapsed timer while running', async () => {
     await render(
       <AgentActivityView
         startedAt="2026-01-01T00:00:00Z"
@@ -90,7 +90,7 @@ describe('agent activity header (t3code TurnFoldTimelineRow + iOS parity)', () =
       />,
     );
     const toggle = container.querySelector<HTMLButtonElement>('[data-testid="agent-activity-toggle"]');
-    expect(toggle?.textContent).toContain('Working…');
+    expect(toggle?.textContent).toContain('Working');
     expect(toggle?.querySelector('.praxis-shimmer-text')).not.toBeNull();
   });
 

@@ -1,4 +1,4 @@
-import type { Run } from '@praxis/protocol';
+import type { Run, RunEvent } from '@praxis/protocol';
 import React from 'react';
 import { apiClient } from '../lib/api';
 import { subscribeRunEvents } from '../lib/sse';
@@ -15,8 +15,24 @@ export function useRunStreams(
       const existingUnsub = activeRunUnsubMapRef.current.get(run.id);
       if (existingUnsub) existingUnsub();
 
-      const unsub = subscribeRunEvents(apiClient, run.id, afterEventId, {
-        onEvent: handleRunEvent,
+      let frame = 0;
+      let pending: RunEvent[] = [];
+      const flush = () => {
+        cancelAnimationFrame(frame);
+        frame = 0;
+        const batch = pending;
+        pending = [];
+        for (const event of batch) handleRunEvent(event);
+      };
+      const stop = subscribeRunEvents(apiClient, run.id, afterEventId, {
+        onEvent: (event) => {
+          pending.push(event);
+          if (document.hidden || !['text.delta', 'reasoning.delta'].includes(event.event.type)) {
+            flush();
+          } else if (!frame) {
+            frame = requestAnimationFrame(flush);
+          }
+        },
         onSnapshotRecovered: applySnapshotToLiveRun,
         onComplete: () => {
           activeRunUnsubMapRef.current.delete(run.id);
@@ -37,7 +53,7 @@ export function useRunStreams(
             .catch(() => {});
         },
       });
-      activeRunUnsubMapRef.current.set(run.id, unsub);
+      activeRunUnsubMapRef.current.set(run.id, () => { flush(); stop(); });
     },
     [handleRunEvent, applySnapshotToLiveRun],
   );

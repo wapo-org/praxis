@@ -1,5 +1,7 @@
 import type { Attachment, Message } from '@praxis/protocol';
 import React from 'react';
+import { Copy, Check } from '../../lib/icons';
+import actionStyles from './AgentMessageView.module.css';
 import { bindSendFlightTarget, isSendFlightTarget } from './chatMotion';
 import { MessageAttachment } from './MessageAttachment';
 import { visibleUserText } from './attachmentInfo';
@@ -11,6 +13,7 @@ export interface UserBubbleProps {
 }
 
 export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById }) => {
+  const [copied, setCopied] = React.useState(false);
   const [lightboxUrl, setLightboxUrl] = React.useState<string | null>(null);
 
   const textParts = message.parts.filter((p) => p.type === 'text');
@@ -52,6 +55,7 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
             {combinedText}
           </div>
         ) : null}
+        {combinedText ? <button type="button" className={`${actionStyles.action} ${styles.copy}`} data-testid="user-copy-button" aria-label={copied ? 'Copied' : 'Copy message'} onClick={async () => { await navigator.clipboard.writeText(combinedText); setCopied(true); setTimeout(() => setCopied(false), 1600); }}>{copied ? <Check size={16}/> : <Copy size={16}/>}</button> : null}
       </div>
 
       {lightboxUrl ? (

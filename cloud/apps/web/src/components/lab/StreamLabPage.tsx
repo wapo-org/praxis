@@ -68,7 +68,7 @@ export function StreamLabPage() {
     </div>
     <p role="status" data-testid="stream-status">{status}</p>{error && <p role="alert">{error}</p>}
     <div ref={viewport} data-testid="stream-viewport" style={{height:'65vh',overflow:'auto',overflowAnchor:'none'}} onScroll={onScroll}>
-      <div ref={content}>{blocks.map(b => b.type === 'reasoning' ? <ReasoningView key={b.id} block={b}/> : <AgentMessageView key={b.id} text={b.text} animateArrival revealSegments={[{id:b.id,text:b.text}]} isStreaming={!b.finished && status === 'running'}/>)}</div>
+      <div ref={content}>{blocks.map(b => b.type === 'reasoning' ? <ReasoningView key={b.id} block={b}/> : <AgentMessageView key={b.id} text={b.text} isStreaming={!b.finished && status === 'running'}/>)}</div>
     </div>
     <output hidden data-testid="stream-final">{blocks.filter(b => b.type==='text').map(b=>b.text).join('')}</output>
   </main>;

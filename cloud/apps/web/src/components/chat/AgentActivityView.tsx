@@ -30,7 +30,7 @@ import {
 } from './useActivityClock';
 
 import styles from './Activity.module.css';
-import { ReasoningBody, hasThought, reasoningLabel, thoughtSummary, type ReasoningBlock } from './ReasoningView';
+import { ReasoningBody, hasThought, reasoningLabel, type ReasoningBlock } from './ReasoningView';
 import reasoningStyles from './ReasoningView.module.css';
 import { computeElapsedMs } from './useActivityClock';
 import { ActivityDetails } from './ActivityDetails';
@@ -141,7 +141,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
   } else if (hasElicitation) {
     label = 'Waiting for your input';
   } else if (activelyWorking) {
-    label = 'Working…';
+    label = 'Working';
     const currentStep = toolSteps.find((s) => s.running) ?? toolSteps[toolSteps.length - 1];
     if (currentStep) {
       subLine =
@@ -150,7 +150,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
         currentStep.activity.name;
       if (totalToolsCount > 1) subLine = `${subLine} · ${totalToolsCount} steps`;
     } else if (liveThought) {
-      subLine = thoughtSummary(liveThought.text, liveThought.shape, true) || 'Thinking…';
+      // The thought streams in the peek under the row (L-ref/05): the header does not repeat it.
     } else if (reasoningBlocks.some((b) => !b.finished)) {
       subLine = 'Thinking…';
     }

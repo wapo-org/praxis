@@ -53,3 +53,8 @@
 }
 
 
+
+.turn { position:relative; padding-bottom:24px; }
+.copy { position:absolute; bottom:0; right:0; opacity:0; }
+.turn:hover .copy,.turn:focus-within .copy { opacity:1; }
+@media (hover:none) { .copy { opacity:1; } }

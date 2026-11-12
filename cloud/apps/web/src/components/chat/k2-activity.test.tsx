@@ -70,7 +70,7 @@ describe('one work group (WP-K2 item 1, K-ref/02, 07)', () => {
     const live = thought('r1', '**Inspecting workspace**\nChecking the repo.', { finished: false });
     await render(<AgentActivityView runId="run" isRunning startedAt="2026-01-01T00:00:00Z" toolSteps={[]} reasoningBlocks={[live]} />);
     expect(container.querySelector('[data-testid="agent-activity-peek"]')?.getAttribute('data-open')).toBe('true');
-    expect(container.querySelector('[data-testid="agent-activity-toggle"]')?.textContent).toContain('Inspecting workspace');
+    expect(container.querySelector('[data-testid="agent-activity-toggle"]')?.textContent).not.toContain('Inspecting workspace');
     await render(<AgentActivityView runId="run" isRunning startedAt="2026-01-01T00:00:00Z" toolSteps={[]} reasoningBlocks={[{ ...live, finished: true }]} />);
     expect(container.querySelector('[data-testid="agent-activity-peek"]')?.getAttribute('data-open')).toBe('false');
   });

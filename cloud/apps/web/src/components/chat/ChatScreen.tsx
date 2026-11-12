@@ -51,10 +51,14 @@ export function ChatScreen() {
   } = usePraxisStore();
 
   const visibleMessages=React.useMemo(()=>messageTurns(activeMessages),[activeMessages]);
+  const lastUserMessage = React.useMemo(
+    () => [...visibleMessages].reverse().find((m) => m.role === 'user'),
+    [visibleMessages],
+  );
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const shift = useContentShift();
   const columnRef = React.useRef<HTMLDivElement | null>(null);
-  const {onScroll:handleScroll,jumpToLatest:scrollToBottom,showJump:showJumpToLatest}=useStreamAnchor(scrollRef,columnRef,activeChat?.id);
+  const {onScroll:handleScroll,jumpToLatest:scrollToBottom,showJump:showJumpToLatest}=useStreamAnchor(scrollRef,columnRef,activeChat?.id, lastUserMessage?.clientTurnId ?? lastUserMessage?.id);
 
   const status = activeLiveRun?.run.status;
   // A run that just completed keeps its live turn for one fold, so a thought that is still folding away
@@ -79,10 +83,6 @@ export function ChatScreen() {
       status === 'failed' ||
       status === 'cancelled');
   const isEmpty = activeMessages.length === 0 && !hasLiveStreamingContent;
-  const lastUserMessage = React.useMemo(
-    () => [...visibleMessages].reverse().find((m) => m.role === 'user'),
-    [visibleMessages],
-  );
   const error = errorBanner || activeLiveRun?.run.error;
   React.useEffect(() => {
     if (error) cancelSendFlight();
@@ -192,8 +192,6 @@ export function ChatScreen() {
                   {text ? (
                     <AgentMessageView
                       text={text}
-                      animateArrival={!!live}
-                      revealSegments={msg.parts.filter(p=>p.type==='text').map((p,i)=>({id:p.blockId??`${msg.id}.${i}`,text:p.text??''}))}
                       onRetry={() => {
                         const user=visibleMessages.slice(0,index).reverse().find(m=>m.role==='user');
                         if(user)void sendMessage(messageText(user,' '),{regenerateMessageId:msg.id});
@@ -233,8 +231,6 @@ export function ChatScreen() {
               {activeLiveRun.textBlocks.length > 0 ? (
                 <AgentMessageView
                   text={activeLiveRun.textBlocks.map((b) => b.text).join('\n\n')}
-                  animateArrival
-                  revealSegments={activeLiveRun.textBlocks}
                   isStreaming={status === 'running'}
                   usage={activeLiveRun.usage}
                 />

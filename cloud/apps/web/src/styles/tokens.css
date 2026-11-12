@@ -19,7 +19,15 @@
   /* Type: one UI sans, one display serif, mono for code only. Fixed line heights. */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
   --font-display: 'Source Serif 4', 'Newsreader', Georgia, serif;
-  --font-mono: 'IBM Plex Mono', 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  /* The reading typeset (WP-L3, L-ref/19): answers in Noto Serif, their headings in Noto Sans, code in Geist Mono.
+     UI chrome (rows, buttons, labels) stays on --font-sans. Emoji fall through to the system's colour font. */
+  --font-body: 'Noto Serif Variable', 'Noto Serif Fallback', Georgia, serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-heading: 'Noto Sans Variable', 'Noto Sans Fallback', -apple-system, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-mono: 'Geist Mono Variable', 'Geist Mono Fallback', 'SF Mono', Menlo, Consolas, monospace;
+  --reading-size: 15px;
+  --reading-leading: 1.6;
+  /* Compact flow: one em of the body between blocks. */
+  --reading-flow: 1em;
   --text-xs: 11px;
   --leading-xs: 15px;
   --text-sm: 12px;
@@ -84,8 +92,10 @@
   --settings-nav-width: 200px;
   --row-model: 56px; /* two-line model row; MODEL_ROW_HEIGHT in ModelList.tsx */
   --column-width: 720px;
-  /* The conversation's reading column (K-ref/06): 66–70 characters of 16 px Inter. */
-  --reading-width: 600px;
+  /* The conversation's reading column: 70ch of the 15 px body face (Noto Serif's zero is 0.559 em, so
+     70 × 8.385 px). A fixed length, so it neither depends on the element's own font nor moves on font swap.
+     useContentShift.ts COLUMN mirrors it. */
+  --reading-width: 587px;
   --topbar-height: 56px;
 
   /* Colour: warm paper neutrals, black primary controls */

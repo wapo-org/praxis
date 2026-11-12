@@ -67,3 +67,5 @@ a.token span + span {
 }
 
 a.token span + span { font:var(--weight-regular) var(--text-sm)/var(--leading-sm) var(--font-sans); color:var(--color-ink-2); text-decoration:none; }
+
+code.token { font: .86em/1 var(--font-mono); cursor:text; }

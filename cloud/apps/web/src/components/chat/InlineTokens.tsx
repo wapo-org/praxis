@@ -35,7 +35,7 @@ export function renderInlineTokens(
       if (!safe) continue;
       if (m.index > at) nodes.push(text.slice(at, m.index));
       nodes.push(
-        <a key={`url-${keyIdx++}`} href={safe} target="_blank" rel="noreferrer" data-testid="inline-url" className={styles.link}>
+        <a key={`url-${keyIdx++}`} href={safe} target="_blank" rel="noopener noreferrer" data-testid="inline-url" className={styles.link}>
           {href}
         </a>,
       );
@@ -86,7 +86,7 @@ export function renderInlineTokens(
             key={`link-${keyIdx++}`}
             href={safeLink(url)}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             data-testid="inline-link-chip"
             className={styles.token}
           >
@@ -99,31 +99,7 @@ export function renderInlineTokens(
       }
     } else if (match[4] !== undefined) {
       const codeContent = match[4];
-      const isFileRef = FILE_PATH_PATTERN.test(codeContent);
-      nodes.push(
-        <button
-          key={`code-${keyIdx++}`}
-          type="button"
-          data-testid={isFileRef ? 'inline-file-chip' : 'inline-code-pill'}
-          onClick={() =>
-            setInspectedChip({
-              kind: isFileRef ? 'file' : 'code',
-              label: codeContent,
-              detail: isFileRef
-                ? `Workspace file reference: ${codeContent}`
-                : `Symbol / code snippet: ${codeContent}`,
-            })
-          }
-          className={styles.token}
-        >
-          {isFileRef && (
-            <span aria-hidden="true" className={styles.token}>
-              <FileText size={16} />
-            </span>
-          )}
-          <span>{codeContent}</span>
-        </button>,
-      );
+      nodes.push(<code key={`code-${keyIdx++}`} data-testid="inline-code-pill" className={styles.token}>{codeContent}</code>);
     } else if (match[5] !== undefined) {
       nodes.push(<strong key={`bold-${keyIdx++}`}>{match[5]}</strong>);
     } else if (match[6] !== undefined) {
