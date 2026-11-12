@@ -143,24 +143,33 @@ test('reduced motion: no run background', async ({ browser }) => {
   await context.close();
 });
 
-test('the tray\'s list is translucent squircle rows with gaps, no card and no separators', async ({ page }) => {
+// WP-L2 (L-ref/08) supersedes K2's separate pills: rows next to each other are one translucent squircle group,
+// flat joins with an inset hairline, no gaps, the highlight clipped by the group.
+test('the tray\'s rows group into one translucent squircle with flat, hairline joins', async ({ page }) => {
   await signIn(page);
   await page.getByTestId('composer-plus-button').click();
   const tray = page.getByTestId('plus-tray');
   await tray.waitFor();
   const list = tray.getByRole('button', { name: /Model providers/ }).locator('..');
+  const group = await list.evaluate((el) => { const s = getComputedStyle(el); return { bg: s.backgroundColor, border: s.borderTopWidth, radius: parseFloat(s.borderTopLeftRadius), overflow: s.overflow, shadow: s.boxShadow }; });
+  const alpha = (bg: string) => Number(/[\d.]+\)$/.exec(bg)?.[0]?.slice(0, -1) ?? (bg.includes('color(') ? /\/ ([\d.]+)\)/.exec(bg)?.[1] : '1'));
+  expect(alpha(group.bg), group.bg).toBeGreaterThan(0);
+  expect(alpha(group.bg), group.bg).toBeLessThan(0.2);
+  expect(group).toMatchObject({ border: '0px', overflow: 'hidden', shadow: 'none' });
+  expect(group.radius).toBeGreaterThanOrEqual(16);
   const rows = await list.locator('> *').evaluateAll((els) => els.map((el) => {
-    const s = getComputedStyle(el);
-    return { bg: s.backgroundColor, shadow: s.boxShadow, top: el.getBoundingClientRect().top, bottom: el.getBoundingClientRect().bottom, radius: parseFloat(s.borderTopLeftRadius) };
+    const s = getComputedStyle(el), d = getComputedStyle(el, '::before');
+    return { bg: s.backgroundColor, radius: parseFloat(s.borderTopLeftRadius), top: el.getBoundingClientRect().top, bottom: el.getBoundingClientRect().bottom, divider: d.content !== 'none' && d.content !== 'normal', dividerLeft: parseFloat(d.left) };
   }));
-  const group = await list.evaluate((el) => { const s = getComputedStyle(el); return { bg: s.backgroundColor, border: s.borderTopWidth }; });
-  expect(group).toEqual({ bg: 'rgba(0, 0, 0, 0)', border: '0px' });
-  expect(rows.length).toBeGreaterThanOrEqual(2);
-  for (const r of rows) {
-    const alpha = Number(/[\d.]+\)$/.exec(r.bg)?.[0]?.slice(0, -1) ?? (r.bg.includes('color(') ? /\/ ([\d.]+)\)/.exec(r.bg)?.[1] : '1'));
-    expect(alpha, r.bg).toBeLessThan(0.2);
-    expect(r.shadow).toBe('none');
-    expect(r.radius).toBeGreaterThanOrEqual(16);
-  }
-  for (let i = 1; i < rows.length; i++) expect(rows[i]!.top - rows[i - 1]!.bottom).toBeGreaterThanOrEqual(4);
+  expect(rows.length).toBeGreaterThanOrEqual(3);
+  rows.forEach((r, i) => {
+    expect(r.bg).toBe('rgba(0, 0, 0, 0)');
+    expect(r.radius).toBe(0);
+    expect(r.divider).toBe(i > 0);
+    if (i > 0) { expect(Math.abs(r.top - rows[i - 1]!.bottom)).toBeLessThan(0.5); expect(r.dividerLeft).toBeGreaterThan(8); }
+  });
+  // The hover fill of an end row is clipped by the group's rounded corner.
+  const last = tray.getByRole('button', { name: /Model providers/ });
+  await last.hover();
+  await expect.poll(() => last.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
 });

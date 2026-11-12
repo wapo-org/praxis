@@ -122,43 +122,15 @@
   transform: scale(0.97);
 }
 
-.group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
+/* The rows next to each other are one group (components/ui/RowGroup, DESIGN.md "Lists", L-ref/08). */
 .row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  min-height: var(--control-lg);
-  padding: var(--space-1) var(--space-3);
-  border: 0;
-  border-radius: var(--radius-lg);
-  background: var(--tray-fill);
-  color: var(--color-ink);
-  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
-  text-align: start;
-  cursor: pointer;
-  transition:
-    background-color var(--duration-fast) var(--ease-standard),
-    transform var(--duration-fast) var(--ease-standard);
-}
-.row:active {
-  background: var(--tray-fill-press);
-  transform: scale(0.985);
+  --group-divider-inset: calc(var(--space-3) + var(--icon-md) + var(--space-3));
 }
 .row:has(input:disabled) {
   cursor: default;
 }
-.row:has(input:disabled):active {
-  background: var(--tray-fill);
-  transform: none;
-}
 /* The tray's squircle family: the same continuous corner on tiles and rows. */
 @supports (corner-shape: squircle) {
-  .row,
   .tile {
     border-radius: 22px;
     corner-shape: squircle;
@@ -196,20 +168,17 @@
   .modelRow:hover {
     background: var(--color-hover);
   }
-  .row:not(:has(input:disabled)):not(:active):hover,
   .tile:not(:active):hover {
     background: var(--tray-fill-hover);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .row:active,
   .tile:active {
     transform: none;
   }
 }
 .modelRow:focus-visible,
-.tile:focus-visible,
-button.row:focus-visible {
+.tile:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: -2px;
 }

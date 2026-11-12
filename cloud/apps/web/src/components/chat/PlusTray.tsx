@@ -4,6 +4,7 @@ import React from 'react';
 import { ChevronRight, Globe, Link, Settings } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import { SegmentedControl, Switch } from '../ui/controls';
+import { RowGroup, rowClass } from '../ui/RowGroup';
 import { ModelList } from './ModelList';
 import { ACTIONS, actionOptions, applyOption, ATTACHMENTS } from '../../actions/registry';
 import styles from './PlusTray.module.css';
@@ -148,8 +149,8 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                 </button>
               ))}
             </div>
-            <div className={styles.group}>
-              <label className={styles.row}>
+            <RowGroup>
+              <label className={`${rowClass(searchSupported)} ${styles.row}`}>
                 <span className={styles.rowIcon}>
                   <Globe size={18} />
                 </span>
@@ -166,7 +167,7 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                   onChange={store.setWebSearch}
                 />
               </label>
-              <button type="button" className={styles.row} onClick={() => openSheet('connectors')}>
+              <button type="button" className={`${rowClass(true)} ${styles.row}`} onClick={() => openSheet('connectors')}>
                 <span className={styles.rowIcon}>
                   <Link size={18} />
                 </span>
@@ -177,7 +178,7 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                 </span>
               </button>
               {enabledConnectors.map((connector) => (
-                    <label key={connector.id} className={`${styles.row} ${styles.indent}`}>
+                    <label key={connector.id} className={`${rowClass(!!store.activeChat)} ${styles.row} ${styles.indent}`}>
                       <span className={styles.rowCopy}>
                         <span className={styles.rowTitle}>{connector.name}</span>
                       </span>
@@ -191,7 +192,7 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                       />
                     </label>
                   ))}
-              <button type="button" className={styles.row} onClick={() => openSheet('providers')}>
+              <button type="button" className={`${rowClass(true)} ${styles.row}`} onClick={() => openSheet('providers')}>
                 <span className={styles.rowIcon}>
                   <Settings size={18} />
                 </span>
@@ -200,7 +201,7 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                   <ChevronRight size={16} />
                 </span>
               </button>
-            </div>
+            </RowGroup>
           </motion.div>
           <AnimatePresence initial={false}>
             {view === 'models' ? (

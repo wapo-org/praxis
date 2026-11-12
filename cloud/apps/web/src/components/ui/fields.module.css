@@ -1,0 +1,84 @@
+/* The one text field (WP-L2 §4): the question card's pill. Filled with the surface, a strong hairline, and on
+   focus the line darkens instead of a ring being drawn around it. Textareas are the same field as a squircle. */
+.input,
+.textarea,
+.select select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--control-md);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
+  outline: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+.textarea {
+  display: block;
+  min-height: calc(var(--control-lg) * 2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: 18px;
+  corner-shape: squircle;
+  resize: vertical;
+}
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--color-ink-3);
+}
+.input:focus,
+.textarea:focus,
+.select select:focus {
+  border-color: var(--color-ink-3);
+}
+.input:focus-visible,
+.textarea:focus-visible,
+.select select:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 22%, transparent);
+}
+.input:disabled,
+.textarea:disabled,
+.select select:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.input[aria-invalid='true'],
+.textarea[aria-invalid='true'] {
+  border-color: color-mix(in srgb, var(--color-danger) 70%, transparent);
+}
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+.select {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+.select select {
+  padding-inline-end: var(--space-8);
+  appearance: none;
+  cursor: pointer;
+}
+.select svg {
+  position: absolute;
+  top: 50%;
+  right: var(--space-4);
+  color: var(--color-ink-3);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+/* 44 px and 16 px text on touch screens: iOS zooms a focused field below that. */
+@media (max-width: 1023px) {
+  .input,
+  .select select {
+    min-height: var(--control-lg);
+    font-size: var(--text-input-touch);
+  }
+  .textarea {
+    font-size: var(--text-input-touch);
+  }
+}
