@@ -1,8 +1,7 @@
 /* The floating sidebar, ported literally from the owner's design v2 (Chat Screen.dc.html: <aside>, PAL, ACC,
-   grad, ringBg). A skeuomorphic slab whose fill is solid to 45 % and fades to 40 % at the bottom over a 14 px
-   backdrop blur; the border is transparent (the fill is clipped to the padding box) and a 1 px conic ring in the
-   palette's reflection colour sits on it; an inset top highlight; a plain 29 px radius (v2 drops the squircle).
-   Every metric below is the source's; only the width is 232 px (the source's box is 196 px). See DESIGN.md. */
+   grad, ringBg) with reworked bright palettes (Sand, Paper) carrying crisp conic highlight, inset bevel,
+   depth shadow and dark-ink active pill. A 1 px conic ring sits on the padding-clipped surface; a plain
+   29 px radius (v2 drops the squircle). See DESIGN.md. */
 
 .docked {
   position: fixed;
@@ -29,7 +28,7 @@
   --glass-solid-bg: var(--sb-gloss), var(--sb-bg); /* the aside's literal gloss over sbBg */
   --glass-solid-border: 1px solid transparent;
   --glass-solid-clip: padding-box;
-  --glass-solid-shadow: inset 0 1px 2px rgb(255 255 255 / 30%);
+  --glass-solid-shadow: var(--sb-shadow, inset 0 1px 2px rgb(255 255 255 / 30%));
   --glass-solid-backdrop: blur(var(--sidebar-blur));
   /* Shared parts inside (rename field, menus' triggers) read the app tokens: point them at the palette. */
   --color-ink: var(--sb-ink);
@@ -104,6 +103,13 @@
   font: 500 13px / 16px var(--font-sans);
   text-align: left;
   cursor: pointer;
+}
+
+:global([data-sidebar-palette='sand']) .primaryPill,
+:global([data-sidebar-palette='paper']) .primaryPill {
+  box-shadow:
+    inset 0 0 0 1px var(--sb-line),
+    0 1px 2px rgb(21 20 15 / 6%);
 }
 
 .iconButton {

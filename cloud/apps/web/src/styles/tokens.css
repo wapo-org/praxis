@@ -295,6 +295,7 @@
   --sidebar-radius: 29px;
   --sidebar-blur: 14px;
   /* The <aside>'s literal gloss, painted over sbBg = grad(base) (v2: sheen, then the fading base). */
+  --sb-shadow: inset 0 1px 2px rgb(255 255 255 / 30%);
   --sb-gloss: linear-gradient(to bottom, rgb(255 255 255/20%) 0%, rgb(255 255 255/12%) 2%, rgb(255 255 255/6%) 5%, rgb(255 255 255/2%) 9%, transparent 14%, rgb(0 0 0/12%) 100%);
   --sb-base: #16181b;
   --sb-border: #3d4147;

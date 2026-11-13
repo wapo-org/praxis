@@ -7,23 +7,31 @@ test.beforeEach(async ({ page }) => {
   await page.getByTestId('sidebar-new-chat').waitFor();
   await page.evaluate(() => document.fonts.ready);
 });
-// Name, base, the reflection colour (v2's ACC), ink.
+// Name, top/base RGB, ring hot RGB [r,g,b], ink RGB, dark flag.
 const PALETTES = [
-  ['Graphite', 'rgb(22, 24, 27)', [142, 160, 179], 'rgb(242, 241, 237)'],
-  ['Midnight', 'rgb(16, 28, 51)', [75, 127, 214], 'rgb(242, 241, 237)'],
-  ['Forest', 'rgb(18, 38, 29)', [68, 168, 119], 'rgb(242, 241, 237)'],
-  ['Plum', 'rgb(38, 21, 48)', [168, 102, 212], 'rgb(242, 241, 237)'],
-  ['Sand', 'rgb(233, 228, 216)', [217, 199, 154], 'rgb(28, 28, 28)'],
-  ['Paper', 'rgb(251, 251, 249)', [214, 214, 224], 'rgb(28, 28, 28)'],
+  ['Graphite', 'rgb(22, 24, 27)', [142, 160, 179], 'rgb(242, 241, 237)', true],
+  ['Midnight', 'rgb(16, 28, 51)', [75, 127, 214], 'rgb(242, 241, 237)', true],
+  ['Forest', 'rgb(18, 38, 29)', [68, 168, 119], 'rgb(242, 241, 237)', true],
+  ['Plum', 'rgb(38, 21, 48)', [168, 102, 212], 'rgb(242, 241, 237)', true],
+  ['Sand', 'rgb(245, 240, 229)', [255, 255, 255], 'rgb(28, 28, 28)', false],
+  ['Paper', 'rgb(255, 255, 255)', [255, 255, 255], 'rgb(28, 28, 28)', false],
 ] as const;
 const solid = (page: import('@playwright/test').Page) =>
   page.locator('[data-testid="app-sidebar"] [data-glass-solid]').first();
 const ring = (page: import('@playwright/test').Page) => page.locator('[data-testid="app-sidebar"] [data-sidebar-ring]');
-/** The ring's stops as 0–255 RGB: hot (the reflection colour), mid, base (10 % of it over black). */
-const ringStops = (image: string) =>
-  [...image.matchAll(/color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)\)/g)].map((m) => [m[1], m[2], m[3]].map((v) => Math.round(Number(v) * 255)));
-/** The fading base layer: solid to 45 %, then 40 % of the base at the bottom. */
-const fade = (base: string) => new RegExp(`linear-gradient\\(${base.replace(/[()]/g, '\\$&')} 0%, ${base.replace(/[()]/g, '\\$&')} 45%, color\\(srgb [\\d.]+ [\\d.]+ [\\d.]+ / 0\\.4\\) 100%\\)$`);
+/** The ring's first color stop as 0–255 RGB (handles both color(srgb ...) and rgb(...)). */
+const ringFirstStop = (image: string) => {
+  const m = /(?:color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)\)|rgb\((\d+), (\d+), (\d+)\))/.exec(image);
+  if (!m) return [];
+  return m[1] !== undefined
+    ? [m[1], m[2], m[3]].map((v) => Math.round(Number(v) * 255))
+    : [Number(m[4]), Number(m[5]), Number(m[6])];
+};
+/** The fading base layer: dark palettes fade to 40 %, light palettes keep 90 % coherence without muddy grey. */
+const fade = (topRgb: string, dark: boolean) =>
+  dark
+    ? new RegExp(`linear-gradient\\(${topRgb.replace(/[()]/g, '\\$&')} 0%, ${topRgb.replace(/[()]/g, '\\$&')} 45%, color\\(srgb [\\d.]+ [\\d.]+ [\\d.]+ / 0\\.4\\) 100%\\)$`)
+    : new RegExp(`linear-gradient\\(${topRgb.replace(/[()]/g, '\\$&')} 0%, rgb\\([^)]+\\) 45%, color\\(srgb [\\d.]+ [\\d.]+ [\\d.]+ / 0\\.9\\) 100%\\)$`);
 test('the sidebar is the owner\'s v2 slab, identical in both themes, with the source metrics', async ({
   page,
 }) => {
@@ -56,7 +64,7 @@ test('the sidebar is the owner\'s v2 slab, identical in both themes, with the so
     const sheen = (bottom: string) =>
       `linear-gradient(rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.12) 2%, rgba(255, 255, 255, 0.06) 5%, rgba(255, 255, 255, 0.02) 9%, rgba(0, 0, 0, 0) 14%, ${bottom} 100%)`;
     expect(layer.image.startsWith(`${sheen('rgba(0, 0, 0, 0.12)')}, ${sheen('rgba(0, 0, 0, 0)')}, `)).toBe(true);
-    expect(layer.image).toMatch(fade('rgb(22, 24, 27)'));
+    expect(layer.image).toMatch(fade('rgb(22, 24, 27)', true));
     expect(layer.color).toBe('rgba(0, 0, 0, 0)');
     expect(layer.clip.split(', ').every((c) => c === 'padding-box')).toBe(true);
     expect(layer.border).toBe('1px solid rgba(0, 0, 0, 0)');
@@ -71,7 +79,7 @@ test('the sidebar is the owner\'s v2 slab, identical in both themes, with the so
       return { image: s.backgroundImage, padding: s.paddingTop, radius: s.borderTopLeftRadius, events: s.pointerEvents, mask: s.maskComposite || s.getPropertyValue('-webkit-mask-composite'), box: [box.x, box.y, box.width, box.height] };
     });
     expect(reflection.image.startsWith('conic-gradient(from 45deg')).toBe(true);
-    expect(ringStops(reflection.image)[0]).toEqual([142, 160, 179]);
+    expect(ringFirstStop(reflection.image)).toEqual([142, 160, 179]);
     expect(reflection).toMatchObject({ padding: '1px', radius: '29px', events: 'none', box: [12, 18, 232, 858] });
     expect(reflection.mask).toMatch(/exclude|xor/);
     looks.push({ layer, reflection });
@@ -112,7 +120,7 @@ test('settings Back is the same pill in the same position as New chat', async ({
   await back.click();
   await expect(page.getByTestId('sidebar-new-chat')).toBeVisible();
 });
-test('the six sidebar palettes apply live, persist, and are there before first paint; there is no button colour', async ({
+test('the six sidebar palettes apply live, persist, and are there before first paint; light palettes preserve skeuomorphic depth & active contrast', async ({
   page,
 }) => {
   await page.goto('/settings/general');
@@ -120,13 +128,21 @@ test('the six sidebar palettes apply live, persist, and are there before first p
   const palettes = look.getByRole('radiogroup', { name: 'Sidebar palette' });
   for (const theme of ['Light', 'Dark']) {
     await page.getByRole('button', { name: theme, exact: true }).click();
-    for (const [name, base, acc, ink] of PALETTES) {
+    for (const [name, topRgb, acc, ink, dark] of PALETTES) {
       const radio = palettes.getByRole('radio', { name, exact: true });
       await radio.click();
       await expect(radio).toHaveAttribute('aria-checked', 'true');
-      await expect(solid(page)).toHaveCSS('background-image', fade(base));
-      expect(ringStops(await ring(page).evaluate((el) => getComputedStyle(el).backgroundImage))[0]).toEqual(acc);
-      await expect(page.locator('[data-testid="app-sidebar"] [aria-current="page"]').first()).toHaveCSS('color', ink);
+      await expect(solid(page)).toHaveCSS('background-image', fade(topRgb, dark));
+      expect(ringFirstStop(await ring(page).evaluate((el) => getComputedStyle(el).backgroundImage))).toEqual(acc);
+      const current = page.locator('[data-testid="app-sidebar"] [aria-current="page"]').first();
+      await expect(current).toHaveCSS('color', ink);
+      if (!dark) {
+        // Light palettes show visible dark-ink active row tint and carry inset highlight + elevation shadow
+        await expect(current).toHaveCSS('background-color', 'rgba(21, 20, 15, 0.09)');
+        const shadow = await solid(page).evaluate((el) => getComputedStyle(el).boxShadow);
+        expect(shadow).toContain('inset');
+        expect(shadow.split(',').length).toBeGreaterThanOrEqual(4);
+      }
       // WP-I1: Back (and New chat) is always the white pill, whatever the palette.
       await expect(page.getByTestId('settings-back')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
       await expect(page.getByTestId('settings-back')).toHaveCSS('color', 'rgb(28, 28, 28)');
@@ -141,7 +157,7 @@ test('the six sidebar palettes apply live, persist, and are there before first p
   await midnight.focus();
   await page.keyboard.press('ArrowRight');
   await expect(palettes.getByRole('radio', { name: 'Forest', exact: true })).toBeFocused();
-  await expect(solid(page)).toHaveCSS('background-image', fade('rgb(18, 38, 29)'));
+  await expect(solid(page)).toHaveCSS('background-image', fade('rgb(18, 38, 29)', true));
   // A colour stored by the old option is ignored before first paint and after, and cleared.
   await page.evaluate(() => localStorage.setItem('praxis-button-color', '#123abc'));
   await page.addInitScript(() => {

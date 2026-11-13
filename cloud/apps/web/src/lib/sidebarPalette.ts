@@ -2,19 +2,36 @@ import { useSyncExternalStore } from 'react';
 
 /**
  * The owner's sidebar palettes, ported from Chat Screen.dc.html (design v2: `PAL`, `ACC`, `grad()`,
- * `renderVals()`). The choice persists and is applied before first paint by the inline script in index.html,
- * which must stay in step with `applySidebarLook` (sidebarPalette.test.ts runs it). `acc` is v2's `ACC`: the
- * colour of each palette's border reflection. The New chat and Back pills are always the source's white pill
- * (tokens.css `--nb-*`); the old button-colour option is gone (WP-I1) and its stored values are ignored.
+ * `renderVals()`), with the two light palettes (Sand and Paper) reworked for coherent light material,
+ * clean specular rim, top highlight/depth, visible selection fill, and AA contrast in both themes (WP-N4).
+ * Dark palettes stay verbatim from v2. The choice persists and is applied before first paint by index.html.
  */
 export const SIDEBAR_PALETTES = [
   { id: 'graphite', name: 'Graphite', base: '#16181b', border: '#3d4147', acc: '#8ea0b3', dark: true },
   { id: 'midnight', name: 'Midnight', base: '#101c33', border: '#2f4570', acc: '#4b7fd6', dark: true },
   { id: 'forest', name: 'Forest', base: '#12261d', border: '#2f5a45', acc: '#44a877', dark: true },
   { id: 'plum', name: 'Plum', base: '#261530', border: '#5a3a6b', acc: '#a866d4', dark: true },
-  { id: 'sand', name: 'Sand', base: '#e9e4d8', border: '#cfc8b6', acc: '#d9c79a', dark: false },
-  { id: 'paper', name: 'Paper', base: '#fbfbf9', border: '#d9d9e0', acc: '#d6d6e0', dark: false },
+  { id: 'sand', name: 'Sand', base: '#ede7da', border: '#cfc5b0', acc: '#dfd1af', dark: false },
+  { id: 'paper', name: 'Paper', base: '#fafaf9', border: '#d6d7e0', acc: '#e2e3eb', dark: false },
 ] as const;
+
+const LIGHT_STOP_TONES = {
+  sand: {
+    top: '#f5f0e5',
+    mid: '#ede5d5',
+    bottom: '#e5dcc9',
+    glossBottom: 'rgb(225 214 192/14%)',
+    shadowShade: '#8c8578',
+  },
+  paper: {
+    top: '#ffffff',
+    mid: '#f7f7fa',
+    bottom: '#efeff4',
+    glossBottom: 'rgb(232 234 242/14%)',
+    shadowShade: '#8e90a0',
+  },
+} as const;
+
 export type SidebarPaletteId = (typeof SIDEBAR_PALETTES)[number]['id'];
 export const DEFAULT_PALETTE: SidebarPaletteId = 'graphite';
 
@@ -27,8 +44,7 @@ export const isPaletteId = (value: unknown): value is SidebarPaletteId =>
   SIDEBAR_PALETTES.some((p) => p.id === value);
 
 /**
- * v2's `grad(base)`, verbatim: the top sheen over the base, which is solid to 45 % and then fades to 40 % of
- * itself at the bottom, so the sidebar turns translucent toward the bottom (the aside blurs what is behind).
+ * v2's `grad(base)`, verbatim for dark palettes: top sheen over base solid to 45 %, fading to 40 % at bottom.
  */
 export const sidebarGradient = (base: string) =>
   'linear-gradient(to bottom,rgb(255 255 255/20%) 0%,rgb(255 255 255/12%) 2%,rgb(255 255 255/6%) 5%,rgb(255 255 255/2%) 9%,transparent 14%,transparent 100%),linear-gradient(to bottom,' +
@@ -38,6 +54,43 @@ export const sidebarGradient = (base: string) =>
   ' 45%,color-mix(in srgb,' +
   base +
   ' 40%,transparent) 100%)';
+
+const lightSidebarGradient = (id: 'sand' | 'paper') => {
+  const t = LIGHT_STOP_TONES[id];
+  return (
+    'linear-gradient(to bottom,' +
+    t.top +
+    ' 0%,' +
+    t.mid +
+    ' 45%,color-mix(in srgb,' +
+    t.bottom +
+    ' 90%,transparent) 100%)'
+  );
+};
+
+const DARK_GLOSS =
+  'linear-gradient(to bottom,rgb(255 255 255/20%) 0%,rgb(255 255 255/12%) 2%,rgb(255 255 255/6%) 5%,rgb(255 255 255/2%) 9%,transparent 14%,rgb(0 0 0/12%) 100%)';
+
+const lightGloss = (id: 'sand' | 'paper') => {
+  const t = LIGHT_STOP_TONES[id];
+  const top = id === 'paper' ? 75 : 65;
+  const s2 = id === 'paper' ? 45 : 38;
+  const s6 = id === 'paper' ? 18 : 16;
+  const s11 = id === 'paper' ? 5 : 4;
+  return (
+    'linear-gradient(to bottom,rgb(255 255 255/' +
+    top +
+    '%) 0%,rgb(255 255 255/' +
+    s2 +
+    '%) 2%,rgb(255 255 255/' +
+    s6 +
+    '%) 6%,rgb(255 255 255/' +
+    s11 +
+    '%) 11%,transparent 18%,' +
+    t.glossBottom +
+    ' 100%)'
+  );
+};
 
 /** v2's reflection defaults (`borderAngle`, `glowStrength`). */
 export const RING_ANGLE = 45;
@@ -49,27 +102,68 @@ export function ringBackground(acc: string, angle = RING_ANGLE, strength = RING_
   const hot = 'color-mix(in srgb,' + acc + ' ' + strength + '%,' + base + ')';
   const mid = 'color-mix(in srgb,' + acc + ' ' + Math.round(strength * 0.4) + '%,' + base + ')';
   return (
-    'conic-gradient(from ' + angle + 'deg at 50% 50%,' + hot + ' 0deg,' + mid + ' 35deg,' + base + ' 110deg,' +
-    base + ' 250deg,' + mid + ' 325deg,' + hot + ' 360deg)'
+    'conic-gradient(from ' +
+    angle +
+    'deg at 50% 50%,' +
+    hot +
+    ' 0deg,' +
+    mid +
+    ' 35deg,' +
+    base +
+    ' 110deg,' +
+    base +
+    ' 250deg,' +
+    mid +
+    ' 325deg,' +
+    hot +
+    ' 360deg)'
   );
 }
 
-/**
- * The derived values from `renderVals()`. One deviation, carried from v1: the light mute is #454440, not
- * #5c5b57 (#5c5b57 is 3.2:1 on Sand under the aside's literal gloss, which still darkens the bottom by 12 %).
- */
+function lightRingBackground(id: 'sand' | 'paper', border: string, acc: string, angle = RING_ANGLE) {
+  const shade = LIGHT_STOP_TONES[id].shadowShade;
+  const hi = '#ffffff';
+  const mid = 'color-mix(in srgb,' + acc + ' 45%,#ffffff)';
+  const lo = 'color-mix(in srgb,' + border + ' 72%,' + shade + ')';
+  return (
+    'conic-gradient(from ' +
+    angle +
+    'deg at 50% 50%,' +
+    hi +
+    ' 0deg,' +
+    mid +
+    ' 35deg,' +
+    lo +
+    ' 110deg,' +
+    lo +
+    ' 250deg,' +
+    mid +
+    ' 325deg,' +
+    hi +
+    ' 360deg)'
+  );
+}
+
+const DARK_SHADOW = 'inset 0 1px 2px rgb(255 255 255/30%)';
+const LIGHT_SHADOW =
+  'inset 0 1.5px 1px rgb(255 255 255/92%),inset 0 -1px 1px rgb(21 20 15/6%),0 12px 30px rgb(21 20 15/11%),0 2px 6px rgb(21 20 15/7%)';
+
 export function paletteVars(id: SidebarPaletteId) {
   const p = SIDEBAR_PALETTES.find((x) => x.id === id)!;
+  const lightId = p.dark ? null : (id as 'sand' | 'paper');
   return {
-    '--sb-bg': sidebarGradient(p.base),
-    '--sb-ring': ringBackground(p.acc),
+    '--sb-bg': lightId ? lightSidebarGradient(lightId) : sidebarGradient(p.base),
+    '--sb-gloss': lightId ? lightGloss(lightId) : DARK_GLOSS,
+    '--sb-ring': lightId ? lightRingBackground(lightId, p.border, p.acc) : ringBackground(p.acc),
+    '--sb-shadow': lightId ? LIGHT_SHADOW : DARK_SHADOW,
     '--sb-base': p.base,
     '--sb-border': p.border,
     '--sb-accent': p.acc,
     '--sb-ink': p.dark ? '#f2f1ed' : '#1c1c1c',
-    '--sb-mute': p.dark ? '#b5b4b0' : '#454440',
-    '--sb-hl': p.dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
-    '--sb-line': p.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+    '--sb-mute': p.dark ? '#b5b4b0' : '#44423c',
+    '--sb-hl': p.dark ? 'rgba(255,255,255,0.12)' : 'rgba(21,20,15,0.06)',
+    '--sb-line': p.dark ? 'rgba(255,255,255,0.1)' : 'rgba(21,20,15,0.1)',
+    '--sb-active': p.dark ? 'rgba(255,255,255,0.12)' : 'rgba(21,20,15,0.09)',
   };
 }
 
