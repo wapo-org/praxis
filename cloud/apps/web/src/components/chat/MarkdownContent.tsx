@@ -1,9 +1,13 @@
 import React from 'react';
-import { Streamdown, defaultRehypePlugins, useIsCodeFenceIncomplete, type Components, type HighlightResult } from 'streamdown';
-import { createCodePlugin } from '@streamdown/code';
-import { WrapText } from 'lucide-react';
-import { Check, Copy } from '../../lib/icons';
-import { praxisDark, praxisLight } from './codeThemes';
+import { Streamdown, defaultRehypePlugins, type Components } from 'streamdown';
+import { CircleAlert, SquareTerminal } from 'lucide-react';
+import { FileText } from '../../lib/icons';
+import {
+  CodeBlock, CodeBlockActions, CodeBlockContent, CodeBlockCopyButton, CodeBlockExpandButton, CodeBlockFooter, CodeBlockHeader,
+  CodeBlockLine, CodeBlockTitle, CodeBlockWrapButton, useHighlightedLines,
+} from '../ui/code-block';
+import { copyText, fenceLines, fencePlan, parseFence, type Fence } from './codeFence';
+import { holdScrollPosition } from './Fold';
 import 'streamdown/styles.css';
 import styles from './MarkdownContent.module.css';
 
@@ -17,92 +21,127 @@ import styles from './MarkdownContent.module.css';
 // Sanitising and URL hardening still run. `==highlight==` is not markdown and stays literal too.
 const rehypePlugins = Object.entries(defaultRehypePlugins).filter(([name]) => name !== 'raw').map(([, plugin]) => plugin);
 
-// Shiki through Streamdown's plugin. Grammars load on first use; other languages are plain text.
-const LANGUAGES = new Set(['js', 'javascript', 'jsx', 'ts', 'typescript', 'tsx', 'json', 'css', 'html', 'xml', 'python', 'py', 'bash', 'sh', 'shell', 'zsh', 'swift', 'sql', 'yaml', 'yml', 'diff', 'go', 'rust', 'rs']);
-const THEMES: [typeof praxisLight, typeof praxisDark] = [praxisLight, praxisDark];
-const shiki = createCodePlugin({ themes: THEMES });
-const plugins = {
-  code: { ...shiki, highlight: (options: Parameters<typeof shiki.highlight>[0], done?: Parameters<typeof shiki.highlight>[1]) => (LANGUAGES.has(options.language.toLowerCase()) ? shiki.highlight(options, done) : null) },
-};
-
 // A soft fade for new words only: it starts on arrival (never later) and runs on the compositor (opacity only).
 // The keyframes are `sd-praxisIn` in MarkdownContent.module.css; reduced motion turns it off there.
 const ANIMATION = { animation: 'praxisIn', duration: 200, easing: 'var(--ease-standard)', stagger: 0, maxBacklogMs: 0 } as const;
 
-const WRAP_KEY = 'praxis-code-wrap';
-const readWrap = () => { try { return sessionStorage.getItem(WRAP_KEY) === 'true'; } catch { return false; } };
-const wrapListeners = new Set<(wrap: boolean) => void>();
+const COLLAPSE_AFTER = 20;
+const PREVIEW_LINES = 20; // = COLLAPSE_AFTER: a block that reaches the limit while streaming never shrinks
 
-type Token = { content: string; color?: string; htmlStyle?: Record<string, string> };
-
-/** Highlighted lines for the code that is current. A result for an earlier prefix colours the lines it covers. */
-function useHighlight(code: string, language: string, incomplete: boolean) {
-  const [result, setResult] = React.useState<{ code: string; tokens: Token[][] } | null>(null);
-  React.useEffect(() => {
-    let live = true;
-    const done = (r: HighlightResult) => { if (live) setResult({ code, tokens: r.tokens as Token[][] }); };
-    const sync = plugins.code.highlight({ code, language: language as Parameters<typeof shiki.highlight>[0]['language'], isIncomplete: incomplete, themes: THEMES }, done);
-    if (sync) done(sync);
-    return () => { live = false; };
-  }, [code, language, incomplete]);
-  return result && code.startsWith(result.code) ? result : null;
+/** The element that scrolls `el`: the chat viewport, else the nearest scrolling ancestor, else the page. */
+function scrollerOf(el: Element): HTMLElement | null {
+  const viewport = el.closest<HTMLElement>('[data-testid="chat-scroll-viewport"]');
+  if (viewport) return viewport;
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    const { overflowY } = getComputedStyle(node);
+    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) return node;
+  }
+  return document.scrollingElement as HTMLElement | null;
 }
 
-function FencedCode({ code, language }: { code: string; language: string }) {
-  const incomplete = useIsCodeFenceIncomplete();
-  const [wrap, setWrap] = React.useState(readWrap);
-  const [copied, setCopied] = React.useState(false);
-  const timer = React.useRef<ReturnType<typeof setTimeout>>(undefined);
-  React.useEffect(() => { wrapListeners.add(setWrap); return () => { wrapListeners.delete(setWrap); clearTimeout(timer.current); }; }, []);
-  const highlighted = useHighlight(code, language, incomplete);
-  const lines = code.split('\n');
-  // The last highlighted line may still be growing; it is re-coloured when its result arrives.
-  const coloured = highlighted ? Math.min(highlighted.tokens.length, lines.length) - (highlighted.code === code ? 0 : 1) : 0;
-  const toggleWrap = () => {
-    const next = !wrap;
-    try { sessionStorage.setItem(WRAP_KEY, String(next)); } catch { /* private mode */ }
-    for (const set of wrapListeners) set(next);
-  };
-  const copyCode = () => {
-    void navigator.clipboard?.writeText(code);
-    setCopied(true);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => setCopied(false), 1600);
-  };
+/**
+ * Keeps an element where it is on screen across the block's next layout (N-ref/04): a block that changes height moves
+ * the content below it, never the content above. It also tells the chat's scroll follower to stop pinning.
+ */
+function useKeepOnScreen() {
+  const pending = React.useRef<{ el: Element; top: number } | null>(null);
+  React.useLayoutEffect(() => {
+    const p = pending.current;
+    if (!p) return;
+    pending.current = null;
+    const fix = () => {
+      if (!p.el.isConnected) return;
+      const delta = p.el.getBoundingClientRect().top - p.top;
+      const scroller = Math.abs(delta) >= 0.5 ? scrollerOf(p.el) : null;
+      if (scroller) scroller.scrollTop += delta;
+    };
+    fix();
+    // Once more after the frame's resize observers (the scroll follower, the block's own edges) have run.
+    requestAnimationFrame(fix);
+  });
+  return React.useCallback((el: Element | null) => {
+    if (!el) return;
+    holdScrollPosition(el);
+    pending.current = { el, top: el.getBoundingClientRect().top };
+  }, []);
+}
+
+function FenceTitle({ fence }: { fence: Fence }) {
+  if (fence.title) {
+    const Icon = fence.destructive ? CircleAlert : fence.kind === 'terminal' ? SquareTerminal : FileText;
+    return <CodeBlockTitle data-kind="file" title={fence.title}><Icon aria-hidden="true" /><span>{fence.title}</span></CodeBlockTitle>;
+  }
+  if (fence.kind === 'terminal') return <CodeBlockTitle><SquareTerminal aria-hidden="true" /><span>Terminal</span></CodeBlockTitle>;
+  if (fence.language === 'error') return <CodeBlockTitle><CircleAlert aria-hidden="true" /><span>Error</span></CodeBlockTitle>;
+  return <CodeBlockTitle data-kind="language">{fence.label}</CodeBlockTitle>;
+}
+
+/** A fenced block from the model: the fence's info string picks the features (codeFence.ts). Wrap is per block. */
+function FencedCode({ code, language, meta }: { code: string; language: string; meta: string }) {
+  const fence = React.useMemo(() => parseFence(language, meta), [language, meta]);
+  const lines = React.useMemo(() => fenceLines(code, fence), [code, fence]);
+  const current = React.useRef(lines);
+  current.current = lines;
+  const plan = React.useMemo(() => fencePlan(fence, () => current.current), [fence]);
+  const texts = React.useMemo(() => lines.map((l) => l.text), [lines]);
+  const highlighted = useHighlightedLines(texts, plan);
+  const [wrap, setWrap] = React.useState(false);
+  const [overflow, setOverflow] = React.useState(false);
+  // While wrapped nothing overflows; keep what was measured unwrapped so the toggle stays put (and keeps focus).
+  const wrapped = React.useRef(wrap);
+  wrapped.current = wrap;
+  const onOverflowChange = React.useCallback((next: boolean) => { if (!wrapped.current) setOverflow(next); }, []);
+  const [expanded, setExpanded] = React.useState(false);
+  const keep = useKeepOnScreen();
+  const root = React.useRef<HTMLDivElement>(null);
+  const collapsible = lines.length > COLLAPSE_AFTER;
+  const collapsed = collapsible && !expanded;
+  const actions = (
+    <CodeBlockActions>
+      {wrap || overflow ? (
+        <CodeBlockWrapButton data-testid="code-wrap-button" pressed={wrap} onClick={(e) => { keep(e.currentTarget); setWrap(!wrap); }} />
+      ) : null}
+      <CodeBlockCopyButton data-testid="code-copy-button" value={() => copyText(code, fence)} />
+    </CodeBlockActions>
+  );
+  const header = fence.title || fence.label;
   return (
-    <div className={styles.code} data-testid="markdown-code-block" data-wrap={wrap} data-language={language || undefined}>
-      <div className={styles.codeHeader}>
-        <span className={styles.codeLanguage}>{language || 'text'}</span>
-        <span className={styles.codeActions}>
-          <button type="button" data-testid="code-wrap-button" aria-label="Wrap lines" title="Wrap lines" aria-pressed={wrap} onClick={toggleWrap}>
-            <WrapText size={16} aria-hidden="true" />
-          </button>
-          <button type="button" data-testid="code-copy-button" aria-label={copied ? 'Copied' : 'Copy code'} title={copied ? 'Copied' : 'Copy code'} onClick={copyCode}>
-            {copied ? <Check size={16} /> : <Copy size={16} />}
-          </button>
-        </span>
-      </div>
-      <pre className={styles.codeBody} tabIndex={0}>
-        <code>
-          {lines.map((line, i) => (
-            <span key={i} className={styles.codeLine}>
-              {i < coloured
-                ? highlighted!.tokens[i]!.map((t, j) => <span key={j} style={{ '--c': t.htmlStyle?.color ?? t.color, '--cd': t.htmlStyle?.['--shiki-dark'] } as React.CSSProperties}>{t.content}</span>)
-                : line}
-              {'\n'}
-            </span>
-          ))}
-        </code>
-      </pre>
-    </div>
+    <CodeBlock ref={root} variant={fence.destructive ? 'destructive' : 'default'} data-testid="markdown-code-block" data-wrap={wrap} data-language={fence.language || undefined} data-kind={fence.kind}>
+      {header ? <CodeBlockHeader><FenceTitle fence={fence} />{actions}</CodeBlockHeader> : actions}
+      <CodeBlockContent wrap={wrap} lineNumbers={fence.lineNumbers} startLine={fence.startLine} diff={fence.kind === 'diff'} collapsed={collapsed} previewLines={PREVIEW_LINES} onOverflowChange={onOverflowChange}>
+        {lines.map((line, i) => (
+          <CodeBlockLine key={i} variant={line.variant} prompt={line.prompt} data-role={line.role}>{highlighted[i]}</CodeBlockLine>
+        ))}
+      </CodeBlockContent>
+      {collapsible ? (
+        <CodeBlockFooter>
+          <CodeBlockExpandButton
+            data-testid="code-expand-button"
+            expanded={expanded}
+            hiddenLines={lines.length - PREVIEW_LINES}
+            onClick={(e) => {
+              const block = root.current;
+              const scroller = block ? scrollerOf(block) : null;
+              // Expanding grows the block downwards; collapsing keeps the button under the pointer when the block's
+              // start is already above the fold.
+              const fold = !scroller || scroller === document.scrollingElement ? 0 : scroller.getBoundingClientRect().top;
+              const offTop = !!block && block.getBoundingClientRect().top < fold;
+              keep(expanded && offTop ? e.currentTarget : block);
+              setExpanded(!expanded);
+            }}
+          />
+        </CodeBlockFooter>
+      ) : null}
+    </CodeBlock>
   );
 }
 
 const textOf = (node: React.ReactNode): string => (typeof node === 'string' ? node : Array.isArray(node) ? node.map(textOf).join('') : React.isValidElement<{ children?: React.ReactNode }>(node) ? textOf(node.props.children) : '');
 
 const components: Components = {
+  // Streamdown's codeMeta step keeps the fence's info string after the language as `metastring`.
   code: ({ node: _node, children, className, ...props }) => ('data-block' in props
-    ? <FencedCode code={textOf(children).replace(/\n$/, '')} language={/language-(\S+)/.exec(className ?? '')?.[1] ?? ''} />
+    ? <FencedCode code={textOf(children).replace(/\n$/, '')} language={/language-(\S+)/.exec(className ?? '')?.[1] ?? ''} meta={String((props as { metastring?: unknown }).metastring ?? '')} />
     : <code data-testid="inline-code-pill">{children}</code>),
   a: ({ node: _node, children, href, ...props }) => {
     if (!href || href === 'streamdown:incomplete-link') return <span data-incomplete-link="">{children}</span>;
@@ -127,7 +166,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({ text, isStr
   // few characters for one chunk; everything before them is shown.
   const source = isStreaming ? text.replace(/[\uD800-\uDBFF]$/, '').replace(/[*_~`]{1,3}$/, '') : text;
   return (
-    <Streamdown className={styles.prose} components={components} plugins={plugins} rehypePlugins={rehypePlugins} controls={false}
+    <Streamdown className={styles.prose} components={components} rehypePlugins={rehypePlugins} controls={false}
       lineNumbers={false} isAnimating={isStreaming} parseIncompleteMarkdown={isStreaming} animated={isStreaming ? ANIMATION : false}>
       {source}
     </Streamdown>

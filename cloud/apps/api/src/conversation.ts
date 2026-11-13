@@ -7,6 +7,24 @@ import type {ConversationSetup, Message, MessagePart, Mode, ToolSpec} from '@pra
  */
 export interface CatalogSkill {name: string; description: string}
 
+/**
+ * What the web app's code blocks can do, for the model (WP-N2). The renderer reads the same fence syntax:
+ * apps/web/src/components/chat/codeFence.ts. Kept short: it is in every request.
+ */
+const F = '```';
+export const FORMATTING_GUIDE = [
+  '# Code blocks',
+  `Always name the language (${F}ts, ${F}python, ${F}bash; ${F}text for plain text). Options go after it on the opening fence and combine:`,
+  `- File: title="path" adds a header with the file name. ${F}ts title="src/app.ts"`,
+  `- Highlight lines: {3,5-7} marks the lines that matter. ${F}ts {3,5-7}`,
+  `- Line numbers: showLineNumbers; startLine=N for an excerpt that starts at line N. ${F}ts showLineNumbers startLine=40`,
+  `- Diff: ${F}diff then the language; start each line with "+" (added), "-" (removed) or a space. ${F}diff ts`,
+  `- Terminal session: ${F}terminal; commands start with "$ ", output follows unprefixed. Copy takes only the commands. ${F}terminal`,
+  `- ANSI colours: ${F}ansi for output that contains ANSI escape codes. ${F}ansi`,
+  `- Errors: ${F}error for an error message or stack trace (shown in red), or a title starting with "Error". ${F}error`,
+  'Blocks over 20 lines are collapsed behind "Show more": put the part that matters first.',
+].join('\n');
+
 export function buildSystemPrompt(sections: {assistantName?: string; instructions?: string; skills?: CatalogSkill[]; toolNotes?: string[]}): string {
   const name = sections.assistantName ?? 'Praxis';
   const parts = [
@@ -22,6 +40,7 @@ If a tool call is refused or declined, adapt instead of retrying the same call.
 Use ask_user to ask the user anything in every mode, including Execute; it is always available. Do not search the connector catalogue for a question tool.
 
 Keep answers concise and well structured. Use Markdown.`,
+    FORMATTING_GUIDE,
   ];
   if (sections.instructions) parts.push(sections.instructions);
   if (sections.toolNotes?.length) parts.push('Connected tools:\n' + sections.toolNotes.map(n => `- ${n}`).join('\n'));

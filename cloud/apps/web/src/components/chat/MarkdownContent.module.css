@@ -127,58 +127,6 @@
 .table :where(th, td)[align='right'] { text-align: right; }
 .table :where(th, td)[align='center'] { text-align: center; }
 
-/* Code blocks: a header with the language and two icon buttons (Wrap, Copy), Geist Mono 13 px. */
-.code {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  border: 1px solid var(--color-hairline);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--color-ink) 3%, var(--color-paper, transparent));
-}
-.codeHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 36px;
-  padding: 0 4px 0 14px;
-  border-bottom: 1px solid var(--color-hairline);
-  color: var(--color-ink-2);
-  font: 500 12px / 1 var(--font-sans);
-}
-.codeLanguage { font-family: var(--font-mono); font-weight: 400; letter-spacing: 0; text-transform: lowercase; }
-.codeActions { display: flex; gap: 2px; }
-.codeHeader button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--color-ink-3);
-  cursor: pointer;
-  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
-}
-@media (hover: hover) { .codeHeader button:hover { background: var(--color-hover); color: var(--color-ink); } }
-.codeHeader button[aria-pressed='true'] { background: color-mix(in srgb, var(--color-ink) 10%, transparent); color: var(--color-ink); }
-.codeHeader button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
-.codeBody {
-  margin: 0;
-  padding: 12px 14px 13px;
-  overflow-x: auto;
-  color: var(--color-ink);
-  font: 400 13px / 1.6 var(--font-mono);
-  font-variant-ligatures: none;
-  tab-size: 4;
-  white-space: pre;
-}
-.codeBody:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
-.code[data-wrap='true'] .codeBody { white-space: pre-wrap; overflow-wrap: anywhere; }
-.codeBody code { font: inherit; }
-.codeLine span { color: var(--c, inherit); }
-:global([data-theme='dark']) .codeLine span { color: var(--cd, var(--c, inherit)); }
+/* Code blocks are components/ui/code-block (CodeBlock.module.css). */
 /* The footnote back-link (↩) as a text glyph, never a colour emoji. */
 .prose :global([data-footnote-backref]) { font-family: var(--font-sans); font-variant-emoji: text; text-decoration: none; color: var(--color-ink-3); }

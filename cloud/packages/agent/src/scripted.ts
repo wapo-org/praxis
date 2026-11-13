@@ -9,6 +9,7 @@ import {
 } from '@praxis/protocol';
 import { ProviderFailure, AgentRunner } from './runner.js';
 import { realShapeStream, realShapeTool } from './scripted-real.js';
+import { CODE_FEATURES_MARKDOWN } from './scripted-code.js';
 import {
   textResult,
   type AgentPorts,
@@ -191,6 +192,18 @@ export function createScriptedProvider(
         }
         yield { type: 'completed', response: { parts, stop: iteration < 2 ? 'toolUse' : 'endTurn', usage: { type: 'usage', inputTokens: 32, outputTokens: 64, cacheReadTokens: 0, cacheWriteTokens: 0 } } };
 
+        return;
+      }
+
+      // WP-N2: every code block feature, streamed in small chunks at a model-like pace.
+      if (script === 'codeFeatures') {
+        for (const text of splitIntoSimulatedChunks(CODE_FEATURES_MARKDOWN, 'token')) {
+          if (signal.aborted) throw new Error('Aborted');
+          yield { type: 'text', index: 0, text };
+          await new Promise(r => setTimeout(r, 6));
+        }
+        yield { type: 'blockEnd', index: 0 };
+        yield { type: 'completed', response: { parts: [{ type: 'text', text: CODE_FEATURES_MARKDOWN }], stop: 'endTurn', usage: { type: 'usage', inputTokens: 32, outputTokens: Math.ceil(CODE_FEATURES_MARKDOWN.length / 4), cacheReadTokens: 0, cacheWriteTokens: 0 } } };
         return;
       }
 

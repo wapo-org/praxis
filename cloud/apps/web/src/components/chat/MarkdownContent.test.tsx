@@ -1,6 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { loadHighlighter } from '../ui/code-block/highlighter';
 import { MarkdownContent } from './MarkdownContent';
 
 const html = (text: string, isStreaming = false) => renderToStaticMarkup(<MarkdownContent text={text} isStreaming={isStreaming} />);
@@ -55,10 +56,13 @@ describe('Streamdown formatting (WP-L3)', () => {
     expect(out).not.toContain('chip-inspector-card');
     expect(out.match(/data-testid="inline-code-pill"/g)).toHaveLength(2);
   });
-  it('code blocks have a language label and icon buttons for Wrap (a toggle) and Copy', () => {
+  // WP-N2: the Wrap toggle is per block and only appears once the block is measured to overflow (n2.pw.ts), so the
+  // first render has Copy alone. It used to be on every block, shared through sessionStorage.
+  it('code blocks have a language label and a Copy button; Wrap waits until the block overflows', () => {
     const out = html('```python\nprint(1)\n```');
-    expect(out).toMatch(/data-testid="code-wrap-button"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-testid="code-wrap-button"/);
+    expect(out).not.toContain('code-wrap-button');
     expect(out).toContain('aria-label="Copy code"');
+    expect(out).toContain('data-slot="code-block-header"');
     expect(visible(out)).toContain('python');
   });
   it('shows text inside an unfinished fence without waiting for its closing marker (the stall)', () => {
@@ -84,5 +88,79 @@ describe('Streamdown formatting (WP-L3)', () => {
   it('never splits an emoji across chunks', () => {
     const emoji = '👩🏽‍💻';
     expect(html(`Hello ${emoji.slice(0, 1)}`, true)).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  });
+});
+
+const F = '```';
+const lineVariants = (out: string) => [...out.matchAll(/data-slot="code-block-line" data-variant="(\w+)"/g)].map((m) => m[1]);
+describe('code block fence features (WP-N2)', () => {
+  beforeAll(async () => { await loadHighlighter(['typescript', 'python', 'bash', 'ansi']); });
+  it('title="…" puts the file name in a header', () => {
+    const out = html(`${F}ts title="src/app.ts"\nconst a = 1;\n${F}`);
+    expect(out).toMatch(/data-slot="code-block-title"[^>]*data-kind="file"[^>]*>.*src\/app\.ts/);
+    expect(out).toContain('--shiki-light');
+  });
+  it('{3,5-7} highlights those lines', () => {
+    const out = html(`${F}ts {2,4-5}\na\nb\nc\nd\ne\nf\n${F}`);
+    expect(lineVariants(out)).toEqual(['default', 'highlighted', 'default', 'highlighted', 'highlighted', 'default']);
+  });
+  it('showLineNumbers and startLine=40 number the lines with CSS counters', () => {
+    expect(html(`${F}ts showLineNumbers\na\n${F}`)).toMatch(/data-numbered="true"[^>]*style="counter-reset:line 0"/);
+    expect(html(`${F}python startLine=40\na\n${F}`)).toMatch(/data-numbered="true"[^>]*style="counter-reset:line 39"/);
+    expect(html(`${F}ts\na\n${F}`)).not.toContain('data-numbered');
+  });
+  it('diff: +/- lines are added/removed, the marker is not text, and the language after diff still highlights', () => {
+    const out = html(`${F}diff ts\n@@ -1 +1 @@\n-const a = 1;\n+const a = 2;\n ok();\n${F}`);
+    expect(lineVariants(out)).toEqual(['default', 'removed', 'added', 'default']);
+    expect(out).toContain('data-role="meta"');
+    expect(out).toContain('data-diff="true"');
+    expect(visible(out)).toContain('const a = 1;const a = 2;ok();');
+    expect(out).toMatch(/data-variant="added"[\s\S]*?--shiki-light/);
+    expect(visible(html(`${F}diff\n-a\n+b\n${F}`))).toContain('ab');
+  });
+  it('terminal / console / shell-session: $ lines are commands after a prompt, output is muted, ANSI renders', () => {
+    for (const language of ['terminal', 'console', 'shell-session']) {
+      const out = html(`${F}${language}\n$ npm test\n\u001b[32mok\u001b[0m 3 passed\n${F}`);
+      expect(out).toContain('data-kind="terminal"');
+      expect(out).toMatch(/data-role="command"[\s\S]*?aria-hidden="true">\$ </);
+      expect(out).toContain('data-role="output"');
+      expect(out).not.toContain('\u001b');
+      expect(out).toMatch(/--shiki-light:#3f6b3a[^"]*">ok</i);
+      expect(visible(out)).toContain('Terminal');
+    }
+  });
+  it('ansi renders colours and drops the escape codes', () => {
+    const out = html(`${F}ansi\n\u001b[31merror\u001b[0m plain\n${F}`);
+    expect(out).toMatch(/--shiki-light:#b3382e[^"]*">error</i);
+    expect(out).not.toContain('\u001b');
+    expect(out).not.toContain('data-slot="code-block-header"');
+  });
+  it('an ANSI escape still arriving at the end of the streamed text never shows as text', () => {
+    for (const tail of ['\u001b', '\u001b[', '\u001b[3', '\u001b[1;3']) {
+      const out = html(`${F}ansi\n\u001b[33mwarn\u001b[0m cold\n${tail}`, true);
+      expect(visible(out)).not.toMatch(/\[[0-9;]*$|\[\d/);
+      expect(out).not.toContain('\u001b');
+    }
+  });
+  it('text is plain, without colours and without a header', () => {
+    const out = html(`${F}text\nif (x) { return y; }\n${F}`);
+    expect(out).not.toContain('--shiki');
+    expect(out).not.toContain('data-slot="code-block-header"');
+    expect(out).toContain('data-slot="code-block-actions"');
+  });
+  it('error, or a title that starts with "Error", is the destructive variant', () => {
+    expect(html(`${F}error\nTypeError: x\n${F}`)).toMatch(/data-slot="code-block" data-variant="destructive"/);
+    expect(html(`${F}log title="Error: tsc"\nbad\n${F}`)).toMatch(/data-slot="code-block" data-variant="destructive"/);
+    expect(html(`${F}ts title="errors.ts"\nok\n${F}`)).toMatch(/data-slot="code-block" data-variant="default"/);
+  });
+  it('more than 20 lines collapse behind Show more', () => {
+    const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join('\n');
+    const out = html(`${F}ts\n${lines(26)}\n${F}`);
+    expect(out).toContain('data-collapsed="true"');
+    expect(out).toContain('Show more (6 lines)');
+    expect(out).toContain('aria-expanded="false"');
+    const short = html(`${F}ts\n${lines(20)}\n${F}`);
+    expect(short).not.toContain('data-collapsed');
+    expect(short).not.toContain('data-slot="code-block-footer"');
   });
 });

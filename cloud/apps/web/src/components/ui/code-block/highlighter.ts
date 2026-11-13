@@ -69,6 +69,9 @@ function plainDefaults(tokens: ThemedToken[]): ThemedToken[] {
   return tokens;
 }
 
+// eslint-disable-next-line no-control-regex
+const PARTIAL_ESCAPE = /\u001b(?:\[[0-9;?]*[ -/]*)?$/;
+
 /** How much text has been tokenized (tests assert that streaming tokenizes only new lines). */
 export const highlightStats = { calls: 0, chars: 0 };
 
@@ -79,7 +82,8 @@ function wrap(shiki: HighlighterCore): Highlighter {
       highlightStats.chars += code.length;
       // ANSI has no grammar state: each line is tokenized alone, so it has the same colours streamed or whole.
       if (language === 'ansi') {
-        return { lines: code.split('\n').map((line) => plainDefaults(shiki.codeToTokens(line, { lang: 'ansi', themes: THEMES, defaultColor: false }).tokens[0] ?? [])) };
+        // An escape sequence still arriving at the end of a line is held back, never shown as text for a frame.
+        return { lines: code.split('\n').map((line) => plainDefaults(shiki.codeToTokens(line.replace(PARTIAL_ESCAPE, ''), { lang: 'ansi', themes: THEMES, defaultColor: false }).tokens[0] ?? [])) };
       }
       const result = shiki.codeToTokens(code, { lang: language, themes: THEMES, defaultColor: false, ...(state ? { grammarState: state } : {}) });
       return { lines: result.tokens, state: result.grammarState ?? shiki.getLastGrammarState(result.tokens) };
