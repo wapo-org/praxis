@@ -17,9 +17,28 @@ import { syncSidebarLook } from './lib/sidebarPalette';
 syncSidebarLook();
 
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  });
+  if (import.meta.env.PROD) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  } else {
+    // Never run the shell worker in dev: an earlier dev session's worker served cached CSS/JS forever,
+    // mixing stale styles with fresh components (the owner's tall black composer and empty menu tops).
+    // Remove it and its caches, then reload once so this page is no longer served by it.
+    const controlled = !!navigator.serviceWorker.controller;
+    void navigator.serviceWorker
+      .getRegistrations()
+      .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+      .then(() => ('caches' in window ? caches.keys() : Promise.resolve([] as string[])))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('praxis-')).map((k) => caches.delete(k))))
+      .then(() => {
+        if (controlled && !sessionStorage.getItem('praxis-sw-purged')) {
+          sessionStorage.setItem('praxis-sw-purged', '1');
+          window.location.reload();
+        }
+      })
+      .catch(() => {});
+  }
 }
 
 function RoutedApp() {
