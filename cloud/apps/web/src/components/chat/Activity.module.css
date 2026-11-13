@@ -18,8 +18,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-/* Agent activity: plain text rows per t3code TurnFoldTimelineRow & iOS AgentActivity.swift.
-   One 24px line per call, 14px relaxed text and a 28px detail indent. */
 
 .root {
   display: flex;
@@ -28,55 +26,41 @@
   gap: 0;
   margin-bottom: var(--space-2);
   font-family: var(--font-sans);
-
   width: 100%;
+  min-width: 0;
+}
+
+.groupBar {
+  width: 100%;
+  padding: var(--space-1) calc(var(--space-1) / 2) var(--space-2) 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-hairline) 60%, transparent);
 }
 
 .header {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
   max-width: 100%;
-  min-height: var(--space-6);
-  /* On the column's left edge, like the body text and the tool icons (WP-J2). */
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-ink-2);
-  font: var(--weight-regular) var(--text-md) / 1.625 var(--font-sans);
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.headerLine {
+  max-width: 100%;
+  min-width: 0;
   font-variant-numeric: tabular-nums;
-  text-align: left;
-  user-select: none;
-  cursor: pointer;
-  transition: color var(--duration-fast) var(--ease-standard);
-}
-
-@media (hover: hover) {
-  .header:hover {
-    color: var(--color-ink);
-  }
-}
-
-.header:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
-}
-
-.chevron {
-  display: inline-flex;
-  flex-shrink: 0;
-  color: var(--color-ink-3);
 }
 
 .label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.headerLine > :global(.tabular-nums) {
+  flex-shrink: 0;
+  white-space: pre;
+  margin-inline-start: calc(-1 * var(--space-2));
 }
 
 .detail {
-  margin-inline-start: var(--space-1);
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -85,126 +69,7 @@
 }
 
 .steps {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  padding: 0 0 var(--space-1);
-}
-
-.reasoning {
   padding: var(--space-1) 0;
-  color: var(--color-ink-2);
-  font: var(--weight-regular) var(--text-sm) / var(--leading-md) var(--font-sans);
-  white-space: pre-wrap;
-}
-
-.reasoningCaption {
-  margin-bottom: var(--space-1);
-  color: var(--color-ink-2);
-  font: var(--weight-semibold) var(--text-xs) / var(--leading-xs) var(--font-sans);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.toolStep {
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.toolStepHeader {
-  height: var(--control-md);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  width: 100%;
-  padding: var(--space-1) var(--space-2);
-  border: 0;
-  background: transparent;
-  color: var(--color-ink);
-  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
-  text-align: left;
-  cursor: pointer;
-}
-
-.toolStepMain {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  flex: 1;
-}
-
-.toolStepIcon {
-  display: inline-flex;
-  flex-shrink: 0;
-  color: var(--color-ink-2);
-}
-
-.toolStepIcon[data-tone='error'] {
-  color: var(--color-danger);
-}
-
-.toolStepIcon[data-tone='done'] {
-  color: var(--color-ink-3);
-}
-
-.toolStepName {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-ink);
-  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
-}
-
-.toolStepSummary {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-ink-2);
-}
-
-.toolStepToggle {
-  flex-shrink: 0;
-  color: var(--color-ink-2);
-  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
-}
-
-.toolStepDetail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: var(--space-1) var(--space-2) var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  background: var(--color-fill-1);
-  color: var(--color-ink-2);
-  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-mono);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.toolStepDetailHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.toolStepDetailLabel {
-  color: var(--color-ink-2);
-  font: var(--weight-semibold) var(--text-xs) / var(--leading-xs) var(--font-sans);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.toolStepCopy {
-  border: 0;
-  background: transparent;
-  color: var(--color-ink-2);
-  font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-sans);
-  cursor: pointer;
 }
 
 .vision,
@@ -319,9 +184,7 @@
 }
 
 .cardInput:focus-visible,
-.cardButton:focus-visible,
-.toolStepHeader:focus-visible,
-.toolStepCopy:focus-visible {
+.cardButton:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
@@ -334,20 +197,10 @@
   font: var(--weight-semibold) var(--text-sm) / var(--leading-sm) var(--font-sans);
 }
 
-.detailPre {
-  margin: 0;
-  max-height: var(--popover-max-height);
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 .cardFields {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-}
-.toolStepHeader:hover {
-  background: var(--color-hover);
 }
 
 .outcome {
@@ -356,11 +209,14 @@
   font: var(--weight-regular) var(--text-sm) / var(--leading-md) var(--font-sans);
 }
 
-.groupBar { width:100%; padding:var(--space-1) calc(var(--space-1) / 2) var(--space-2) 0; border-bottom:1px solid color-mix(in srgb,var(--color-hairline) 60%,transparent); }
-
-/* L-ref/05: one line, "Working · 4s", never squeezed; an optional detail after it takes what is left and truncates.
-   The timer carries its own " · " separator, so it sits flush against the label. */
-.header { width:100%; min-width:0; flex-wrap:nowrap; }
-.header > .label { flex-shrink:0; }
-.header > :global(.tabular-nums) { flex-shrink:0; white-space:pre; margin-inline-start:calc(-1 * var(--space-1)); }
-.detail { flex:0 1 auto; min-width:0; }
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

@@ -19,34 +19,38 @@
  * SOFTWARE.
  */
 import React from 'react';
-import { ChevronRight } from '../../lib/icons';
-import { Fold, holdScrollPosition } from './Fold';
-import foldStyles from './Fold.module.css';
+import { Fold } from './Fold';
 import {
   resolveTurnStartIso,
   stoppedLabel,
   useActivityClock,
   WorkingTimer,
+  computeElapsedMs,
 } from './useActivityClock';
-
+import {
+  Trace,
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceDescription,
+  TraceLine,
+  TraceTitle,
+} from '../ui/trace';
 import styles from './Activity.module.css';
 import { ReasoningBody, hasThought, reasoningLabel, type ReasoningBlock } from './ReasoningView';
 import reasoningStyles from './ReasoningView.module.css';
-import { computeElapsedMs } from './useActivityClock';
 import { ActivityDetails } from './ActivityDetails';
 import type { AgentActivityViewProps } from './activityTypes';
 import { ApprovalCards } from './ApprovalCards';
 import { ElicitationCards } from './ElicitationCards';
 import { humanLabel, toolDisplay } from './toolDisplay';
+import { formatTraceTitle } from './WorkEntry.logic';
 
 export type { AgentActivityViewProps } from './activityTypes';
 
 /**
- * Turn fold / work disclosure row (ported from t3code TurnFoldTimelineRow &
- * WorkingTimelineRow + Praxis iOS AgentActivity.swift): one plain line,
- * folded by default. Chevron + muted 13 px medium tabular-nums label —
- * "Working…" (shimmer + live timer) while running, "Worked for <duration>"
- * when done, "Stopped after <duration>" when cancelled or failed.
+ * Turn fold / work disclosure row built on Trace:
+ * Level 1 ("Working · X" / "Worked for X" / "Stopped after X") -> Level 2 steps -> Level 3 output.
  * Approvals and questions always show under the header, even folded.
  */
 export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: string }> = ({
@@ -67,13 +71,13 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
   onResolveElicitation,
 }) => {
   const [expanded, setExpanded] = React.useState<boolean>(false);
-  const [openStepIds, setOpenStepIds] = React.useState<Record<string, boolean>>({});
+  const [openStepIds, setOpenStepIds] = React.useState<Record<string, boolean | undefined>>({});
   const [copiedStepId, setCopiedStepId] = React.useState<string | null>(null);
   const [elicitationValues, setElicitationValues] = React.useState<
     Record<string, Record<string, unknown>>
   >({});
 
-  // Match t3code: an interrupted/cancelled run opens its fold; a newer run closes the previous run's.
+  // An interrupted/cancelled run opens its fold; a newer run closes the previous run's.
   const observedRunRef = React.useRef<{ runId?: string; status?: string }>({
     runId,
     status: isRunning ? 'running' : runStatus,
@@ -83,7 +87,10 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
     const currentStatus = isRunning ? 'running' : runStatus;
     if (prev.runId !== undefined && runId !== undefined) {
       if (prev.runId === runId) {
-        if (prev.status === 'running' && (currentStatus === 'cancelled' || currentStatus === 'interrupted')) {
+        if (
+          prev.status === 'running' &&
+          (currentStatus === 'cancelled' || currentStatus === 'interrupted')
+        ) {
           setExpanded(true);
         }
       } else {
@@ -109,13 +116,17 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
 
   const effectiveStart = resolveTurnStartIso(startedAt, finishedAt, promptStartedAt);
   const worked = useActivityClock(isRunning, startedAt, finishedAt, promptStartedAt);
-  // A thought with nothing to show is not activity (K-ref/07): no row, no chevron, no group.
+  // A finished thought with nothing to show is not activity (K-ref/07): no row, no chevron, no group.
   const thoughts = reasoningBlocks.filter(hasThought);
   // While a thought streams and the group is folded, it shows under the header; when it ends it folds in place.
   const liveThought = reasoningBlocks.find((b) => !b.finished && hasThought(b));
   const peekRef = React.useRef<ReasoningBlock | undefined>(undefined);
   if (liveThought) peekRef.current = liveThought;
-  const peekBlock = liveThought ?? (peekRef.current ? reasoningBlocks.find((b) => b.id === peekRef.current!.id) ?? peekRef.current : undefined);
+  const peekBlock =
+    liveThought ??
+    (peekRef.current
+      ? reasoningBlocks.find((b) => b.id === peekRef.current!.id) ?? peekRef.current
+      : undefined);
   const hasActivity =
     toolSteps.length > 0 ||
     thoughts.length > 0 ||
@@ -134,7 +145,8 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
   const hasElicitation = pendingElicitations.length > 0;
   const activelyWorking = !hasApproval && !hasElicitation && (isRunning || runningToolsCount > 0);
   const stopped =
-    !isRunning && (runStatus === 'cancelled' || runStatus === 'failed' || runStatus === 'refused');
+    !isRunning &&
+    (runStatus === 'cancelled' || runStatus === 'failed' || runStatus === 'refused');
 
   let label = worked;
   let subLine = '';
@@ -147,6 +159,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
     const currentStep = toolSteps.find((s) => s.running) ?? toolSteps[toolSteps.length - 1];
     if (currentStep) {
       const display = toolDisplay(currentStep);
+      const runningTitle = formatTraceTitle(display.title, 'running');
       const rawStatus = currentStep.statusText?.trim();
       const humanStatus =
         rawStatus &&
@@ -156,9 +169,9 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
           : '';
       subLine =
         humanStatus ||
-        (display.title === 'Searching the web' && display.detail
+        (runningTitle === 'Searching the web' && display.detail
           ? `Searching the web for '${display.detail}'`
-          : [display.title, display.detail].filter(Boolean).join(' · '));
+          : [runningTitle, display.detail].filter(Boolean).join(' · '));
       if (totalToolsCount > 1) subLine = `${subLine} · ${totalToolsCount} steps`;
     } else if (liveThought) {
       // The thought streams in the peek under the row (L-ref/05): the header does not repeat it.
@@ -167,24 +180,32 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
     }
   } else if (stopped) {
     label = stoppedLabel(startedAt, finishedAt, promptStartedAt);
-  } else if (!timelineGroup && totalToolsCount === 0 && thoughts.length > 0 && visionActivities.length === 0 && compactions.length === 0) {
-    // Standalone non-timeline turn that only reasoned: say so, with the time it spent reasoning.
-    const known = thoughts.map((b) => b.durationMs ?? computeElapsedMs(b.startedAt, b.finishedAt)).filter((ms): ms is number => typeof ms === 'number' && Number.isFinite(ms));
-    label = reasoningLabel(false, known.length ? known.reduce((a, b) => a + b, 0) : computeElapsedMs(effectiveStart, finishedAt));
+  } else if (
+    !timelineGroup &&
+    totalToolsCount === 0 &&
+    thoughts.length > 0 &&
+    visionActivities.length === 0 &&
+    compactions.length === 0
+  ) {
+    const known = thoughts
+      .map((b) => b.durationMs ?? computeElapsedMs(b.startedAt, b.finishedAt))
+      .filter((ms): ms is number => typeof ms === 'number' && Number.isFinite(ms));
+    label = reasoningLabel(
+      false,
+      known.length ? known.reduce((a, b) => a + b, 0) : computeElapsedMs(effectiveStart, finishedAt),
+    );
   } else if (totalToolsCount > 0 || startedAt || finishedAt) {
     label = worked;
   }
 
-  const toggleExpanded = () => {
+  const handleExpandedChange = (next: boolean) => {
     if (rootRef.current) anchorTopRef.current = rootRef.current.getBoundingClientRect().top;
-    holdScrollPosition(rootRef.current);
-    setExpanded((v) => !v);
+    setExpanded(next);
   };
 
-  const toggleStepDetail = (callId: string) => {
+  const setStepOpen = (callId: string, next: boolean) => {
     if (rootRef.current) anchorTopRef.current = rootRef.current.getBoundingClientRect().top;
-    holdScrollPosition(rootRef.current);
-    setOpenStepIds((prev) => ({ ...prev, [callId]: !prev[callId] }));
+    setOpenStepIds((prev) => ({ ...prev, [callId]: next }));
   };
 
   const copyText = (id: string, text: string) => {
@@ -197,48 +218,63 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
     }, 1500);
   };
 
+  const turnStatus = activelyWorking
+    ? 'running'
+    : !isRunning && (runStatus === 'failed' || runStatus === 'refused')
+      ? 'error'
+      : undefined;
+
   return (
     <div ref={rootRef} data-testid="agent-activity-view" className={styles.root}>
-      {/* Level 1: t3code turn-fold disclosure header. */}
-      <div className={styles.groupBar}><button
-        type="button"
-        data-testid="agent-activity-toggle"
-        data-scroll-anchor-ignore=""
-        aria-expanded={expanded}
-        aria-label={expanded ? 'Hide agent activity' : 'Show agent activity'}
-        onClick={toggleExpanded}
-        className={styles.header}
-      >
-        <span className={`${styles.label} ${activelyWorking ? 'praxis-shimmer-text' : ''}`}>
-          {label}
-        </span>
-        {activelyWorking && effectiveStart ? <WorkingTimer startedAt={effectiveStart} /> : null}
-        {subLine ? <span className={styles.detail}>{subLine}</span> : null}
-        <span className={`${styles.chevron} ${foldStyles.chevron}`} aria-hidden="true">
-          <ChevronRight size={16} />
-        </span>
+      {/* Level 1: Trace turn-fold disclosure -> Level 2 steps -> Level 3 output */}
+      <Trace>
+        <TraceCollapsible open={expanded} onOpenChange={handleExpandedChange}>
+          <div className={styles.groupBar}>
+            <TraceCollapsibleTrigger
+              data-testid="agent-activity-toggle"
+              data-scroll-anchor-ignore=""
+              aria-label={expanded ? 'Hide agent activity' : 'Show agent activity'}
+              className={styles.header}
+            >
+              <TraceLine status={turnStatus} className={styles.headerLine}>
+                <TraceTitle className={styles.label}>{label}</TraceTitle>
+                {activelyWorking && effectiveStart ? (
+                  <WorkingTimer startedAt={effectiveStart} />
+                ) : null}
+                {subLine ? (
+                  <TraceDescription className={styles.detail}>{subLine}</TraceDescription>
+                ) : null}
+              </TraceLine>
+            </TraceCollapsibleTrigger>
+          </div>
 
-      </button></div>
+          {/* Live thought peek while group is folded */}
+          <Fold open={!expanded && !!liveThought} testId="agent-activity-peek">
+            {peekBlock ? (
+              <div className={reasoningStyles.peek} data-testid="reasoning-peek">
+                <ReasoningBody block={peekBlock} capped />
+              </div>
+            ) : null}
+          </Fold>
+          <span className={reasoningStyles.sr} role="status" aria-live="polite">
+            {liveThought ? 'Thinking' : ''}
+          </span>
 
-      {/* The live thought, while the group is folded: the text streams here and folds away when it ends. */}
-      <Fold open={!expanded && !!liveThought} testId="agent-activity-peek">
-        {peekBlock ? <div className={reasoningStyles.peek} data-testid="reasoning-peek"><ReasoningBody block={peekBlock} capped /></div> : null}
-      </Fold>
-      <span className={reasoningStyles.sr} role="status" aria-live="polite">{liveThought ? 'Thinking' : ''}</span>
-
-      {/* Level 2: one line per call; level 3: details inside the line. */}
-      <Fold open={expanded} testId="agent-activity-fold">
-          <ActivityDetails
-            reasoningBlocks={reasoningBlocks}
-            visionActivities={visionActivities}
-            compactions={compactions}
-            toolSteps={toolSteps}
-            openStepIds={openStepIds}
-            copiedStepId={copiedStepId}
-            toggleStepDetail={toggleStepDetail}
-            copyText={copyText}
-          />
-      </Fold>
+          {/* Level 2: Trace steps */}
+          <TraceCollapsibleContent data-testid="agent-activity-fold" rail={false} keepMounted={false}>
+            <ActivityDetails
+              reasoningBlocks={reasoningBlocks}
+              visionActivities={visionActivities}
+              compactions={compactions}
+              toolSteps={toolSteps}
+              openStepIds={openStepIds}
+              copiedStepId={copiedStepId}
+              setStepOpen={setStepOpen}
+              copyText={copyText}
+            />
+          </TraceCollapsibleContent>
+        </TraceCollapsible>
+      </Trace>
 
       {/* Always visible, even folded: what needs the user. */}
       <ApprovalCards

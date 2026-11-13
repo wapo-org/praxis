@@ -1,11 +1,23 @@
 import React from 'react';
+import {
+  CodeBlock,
+  CodeBlockActions,
+  CodeBlockContent,
+  CodeBlockCopyButton,
+  CodeBlockFooter,
+  CodeBlockHeader,
+  CodeBlockTitle,
+} from '../ui/code-block';
 import { JsonView, parseLoose } from './JsonView';
 import styles from './ToolInspector.module.css';
 
+type FadeEdge = 'none' | 'top' | 'bottom' | 'both';
+
 /**
- * The expanded tool row (K-ref/05): Input and Output each in a soft squircle box with a caption and a copy
- * button, JSON pretty-printed and highlighted, big branches collapsed, escaped text shown as lines.
- * The machine name (`mcp__exa__web_search_exa_<hash>`) is never shown: the owner rejected it even here. Only the connector name is.
+ * The expanded tool row (WP-N3): Input, Progress, Output, and Errors in CodeBlock size="sm".
+ * Output is capped at 17rem and scrolls internally without trapping page wheel scroll,
+ * with progressive edge fades only on overflowing edges and "Show all" in the footer.
+ * The machine name (`mcp__exa__web_search_exa_<hash>`) is never shown.
  */
 export function ToolInspector({
   id,
@@ -15,7 +27,7 @@ export function ToolInspector({
   input,
   progress,
   output,
-  copiedId,
+  copiedId: _copiedId,
   copyText,
 }: {
   id: string;
@@ -29,6 +41,13 @@ export function ToolInspector({
   copiedId: string | null;
   copyText: (id: string, text: string) => void;
 }) {
+  const errorLabel = warning ? 'Tool call denied' : 'Tool call failed';
+  const errorText = output
+    ? output.toLowerCase().includes('tool call failed') || output.toLowerCase().includes('tool call denied')
+      ? output
+      : `${errorLabel}: ${output}`
+    : errorLabel;
+
   return (
     <div className={styles.inspector}>
       {connectorName ? (
@@ -36,15 +55,42 @@ export function ToolInspector({
           <span>{connectorName}</span>
         </p>
       ) : null}
-      {failed || warning ? (
-        <p className={`${styles.reason} ${warning ? styles.warning : styles.failure}`}>
-          {warning ? 'Tool call denied' : 'Tool call failed'}
-        </p>
+      {input ? (
+        <Box
+          caption="Input"
+          text={input}
+          copyId={`${id}:in`}
+          copyText={copyText}
+        />
       ) : null}
-      {input ? <Box caption="Input" text={input} copyId={`${id}:in`} copiedId={copiedId} copyText={copyText} /> : null}
-      {progress ? <Box caption="Progress" text={progress} copyId={`${id}:progress`} copiedId={copiedId} copyText={copyText} /> : null}
-      {output || !input ? (
-        <Box caption="Output" text={output} empty="No output." copyId={id} copiedId={copiedId} copyText={copyText} copyLabel="Copy output" />
+      {progress ? (
+        <Box
+          caption="Progress"
+          text={progress}
+          copyId={`${id}:progress`}
+          copyText={copyText}
+        />
+      ) : null}
+      {failed || warning ? (
+        <Box
+          caption="Error"
+          title={errorLabel}
+          variant="destructive"
+          text={errorText}
+          copyId={id}
+          copyText={copyText}
+          copyLabel="Copy error"
+        />
+      ) : output || !input ? (
+        <Box
+          caption="Output"
+          text={output}
+          empty="No output."
+          copyId={id}
+          copyText={copyText}
+          copyLabel="Copy output"
+          scrollable
+        />
       ) : null}
     </div>
   );
@@ -52,98 +98,121 @@ export function ToolInspector({
 
 function Box({
   caption,
+  title,
+  variant = 'default',
   text,
   empty,
   copyId,
-  copiedId,
   copyText,
   copyLabel,
+  scrollable = false,
 }: {
   caption: string;
+  title?: string;
+  variant?: 'default' | 'destructive';
   text: string;
   empty?: string;
   copyId: string;
-  copiedId: string | null;
   copyText: (id: string, text: string) => void;
   copyLabel?: string;
+  scrollable?: boolean;
 }) {
   const parsed = React.useMemo(() => parseLoose(text), [text]);
-  const copied = copiedId === copyId;
-  const scrollRef = React.useRef<HTMLDivElement>(null);
-  const preRef = React.useRef<HTMLPreElement>(null);
-  const maxRef = React.useRef<number>(352);
-  const [clipped, setClipped] = React.useState(false);
+  const contentRef = React.useRef<HTMLPreElement>(null);
+  const maxRef = React.useRef<number>(272);
+  const [overflows, setOverflows] = React.useState(false);
+  const [fade, setFade] = React.useState<FadeEdge>('none');
   const [expanded, setExpanded] = React.useState(false);
+
+  const copyPayload =
+    parsed.kind === 'json' ? JSON.stringify(parsed.value, null, 2) : parsed.text;
 
   React.useEffect(() => {
     setExpanded(false);
   }, [text]);
 
-  React.useLayoutEffect(() => {
-    const el = scrollRef.current;
+  const measure = React.useCallback(() => {
+    if (!scrollable) {
+      setOverflows(false);
+      setFade('none');
+      return;
+    }
+    const el = contentRef.current;
     if (!el) return;
-    const measure = () => {
-      const mh = getComputedStyle(el).maxHeight;
-      if (mh && mh !== 'none') {
-        const parsedMax = parseFloat(mh);
-        if (Number.isFinite(parsedMax) && parsedMax > 0) maxRef.current = parsedMax;
+    const mh = getComputedStyle(el).maxHeight;
+    if (mh && mh !== 'none') {
+      const parsedMax = Number.parseFloat(mh);
+      if (Number.isFinite(parsedMax) && parsedMax > 0) {
+        maxRef.current = parsedMax;
       }
-      setClipped(el.scrollHeight > maxRef.current + 1);
-    };
+    }
+    const hasOverflow = el.scrollHeight > maxRef.current + 1;
+    setOverflows(hasOverflow);
+    if (expanded || el.scrollHeight <= el.clientHeight + 1) {
+      setFade('none');
+      return;
+    }
+    const moreAbove = el.scrollTop > 1;
+    const moreBelow = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+    if (moreAbove && moreBelow) setFade('both');
+    else if (moreAbove) setFade('top');
+    else if (moreBelow) setFade('bottom');
+    else setFade('none');
+  }, [scrollable, expanded]);
+
+  React.useLayoutEffect(() => {
     measure();
-    if (typeof ResizeObserver === 'undefined') return;
+    if (!scrollable || typeof ResizeObserver === 'undefined') return;
+    const el = contentRef.current;
+    if (!el) return;
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    if (preRef.current) ro.observe(preRef.current);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => ro.disconnect();
-  }, [text, expanded]);
+  }, [measure, scrollable, text]);
 
   return (
-    <section className={styles.box} data-caption={caption.toLowerCase()}>
-      <header className={styles.head}>
-        <span className={styles.caption}>{caption}</span>
-        <span className={styles.headActions}>
-          {clipped ? (
-            <button
-              type="button"
-              className={styles.copy}
-              aria-expanded={expanded}
-              onClick={() => setExpanded((v) => !v)}
-            >
-              {expanded ? 'Show less' : 'Show all'}
-            </button>
-          ) : null}
-          {text ? (
-            <button
-              type="button"
-              className={styles.copy}
-              aria-label={copyLabel ?? `Copy ${caption.toLowerCase()}`}
-              onClick={() =>
-                copyText(
-                  copyId,
-                  parsed.kind === 'json' ? JSON.stringify(parsed.value, null, 2) : parsed.text,
-                )
-              }
-            >
-              {copied ? 'Copied' : 'Copy'}
-            </button>
-          ) : null}
-        </span>
-      </header>
-      <div
-        ref={scrollRef}
-        className={styles.scroll}
-        data-clipped={clipped && !expanded}
-        data-expanded={expanded}
-      >
-        <pre ref={preRef} className={styles.pre}>
+    <section className={styles.section} data-caption={caption.toLowerCase()}>
+      <CodeBlock size="sm" variant={variant}>
+        <CodeBlockHeader>
+          <CodeBlockTitle>{title ?? caption}</CodeBlockTitle>
+          <CodeBlockActions>
+            {text ? (
+              <CodeBlockCopyButton
+                value={copyPayload}
+                aria-label={copyLabel ?? `Copy ${caption.toLowerCase()}`}
+                onClick={() => copyText(copyId, copyPayload)}
+              />
+            ) : null}
+          </CodeBlockActions>
+        </CodeBlockHeader>
+        <CodeBlockContent
+          ref={contentRef}
+          wrap
+          className={scrollable ? styles.scrollContent : undefined}
+          data-expanded={scrollable ? (expanded ? 'true' : 'false') : undefined}
+          data-fade={scrollable ? fade : undefined}
+          onScroll={scrollable ? measure : undefined}
+        >
           {parsed.kind === 'json' ? (
             <JsonView value={parsed.value} />
           ) : (
             parsed.text || <span className={styles.empty}>{empty ?? 'Nothing.'}</span>
           )}
-        </pre>
-      </div>
+        </CodeBlockContent>
+        {scrollable && (overflows || expanded) ? (
+          <CodeBlockFooter>
+            <button
+              type="button"
+              className={styles.showAll}
+              aria-expanded={expanded}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? 'Show less' : 'Show all'}
+            </button>
+          </CodeBlockFooter>
+        ) : null}
+      </CodeBlock>
     </section>
   );
 }

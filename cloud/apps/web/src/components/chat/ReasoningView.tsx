@@ -1,78 +1,203 @@
 import React from 'react';
 import type { RunBlock } from '@praxis/protocol';
-import { ChevronRight } from '../../lib/icons';
-import { Fold } from './Fold';
-import fold from './Fold.module.css';
-import { computeElapsedMs, formatDuration } from './useActivityClock';
-import { renderInlineTokens } from './InlineTokens';
-import { holdScrollPosition } from './Fold';
-import { WorkLogLine, workLogStyles as log } from './WorkLog';
 import { Brain } from 'lucide-react';
 import { bindIcon } from '@praxis/glass';
+import {
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceDescription,
+  TraceIcon,
+  TraceLine,
+  TraceTitle,
+} from '../ui/trace';
+import { computeElapsedMs, formatDuration } from './useActivityClock';
+import { renderInlineTokens } from './InlineTokens';
+import { workLogStyles as log } from './WorkLog';
 import styles from './ReasoningView.module.css';
+
 const BrainIcon = bindIcon(Brain);
-const choices = new Map<string,boolean>();
-const remember = (id: string, open: boolean) => { choices.set(id, open); if (choices.size > 500) choices.delete(choices.keys().next().value!); };
+const choices = new Map<string, boolean>();
+const remember = (id: string, open: boolean) => {
+  choices.set(id, open);
+  if (choices.size > 500) choices.delete(choices.keys().next().value!);
+};
+
 export type ReasoningBlock = Omit<RunBlock, 'type'> & { timelineOrder?: number };
 
 /** A reasoning block has something to show: text the provider did not redact. */
 export const hasThought = (b: ReasoningBlock) => !b.redacted && !!b.text?.trim();
 
 /** The thought's body: paced while live, capped and pinned to its latest line until the user opens it. */
-export function ReasoningBody({ block, capped, id }: { block: ReasoningBlock; capped: boolean; id?: string }) {
+export function ReasoningBody({
+  block,
+  capped,
+  id,
+}: {
+  block: ReasoningBlock;
+  capped: boolean;
+  id?: string;
+}) {
   const live = !block.finished;
   // Live, an opened title (`**Ti`) waits for its closing marker, so `**` never flashes; a title is a few words.
-  const text = live && block.shape !== 'titles' && (block.text.match(/\*\*/g)?.length ?? 0) % 2 ? block.text.slice(0, block.text.lastIndexOf('**')) : block.text;
+  const text =
+    live && block.shape !== 'titles' && (block.text.match(/\*\*/g)?.length ?? 0) % 2
+      ? block.text.slice(0, block.text.lastIndexOf('**'))
+      : block.text;
   const body = React.useRef<HTMLDivElement>(null);
   React.useLayoutEffect(() => {
     if (capped && body.current) body.current.scrollTop = body.current.scrollHeight;
   }, [text, capped]);
-  return <div id={id} ref={body} className={styles.body} data-capped={capped}>
-    {block.shape === 'titles' ? text.split('\n').filter(Boolean).map((line, i, lines) => <div key={i} className={live && i === lines.length - 1 ? 'praxis-shimmer-text' : undefined}>{line.replace(/^\*\*|\*\*$/g, '')}</div>) :
-    reasoningSegments(text).map((part, i) => part.title ? <h4 key={i} className={styles.title}>{part.text}</h4> : <span key={i}>{renderInlineTokens(part.text, () => {})}</span>)}
-  </div>;
+  return (
+    <div id={id} ref={body} className={styles.body} data-capped={capped}>
+      {block.shape === 'titles'
+        ? text
+            .split('\n')
+            .filter(Boolean)
+            .map((line, i, lines) => (
+              <div
+                key={i}
+                className={live && i === lines.length - 1 ? 'praxis-shimmer-text' : undefined}
+              >
+                {line.replace(/^\*\*|\*\*$/g, '')}
+              </div>
+            ))
+        : reasoningSegments(text).map((part, i) =>
+            part.title ? (
+              <h4 key={i} className={styles.title}>
+                {part.text}
+              </h4>
+            ) : (
+              <span key={i}>{renderInlineTokens(part.text, () => {})}</span>
+            ),
+          )}
+    </div>
+  );
 }
 
 /** Standalone reasoning disclosure (the stream lab). In chat, reasoning is a row inside "Worked for". */
 export function ReasoningView({ block }: { block: ReasoningBlock }) {
-  const [choice, setChoice] = React.useState<boolean | null>(() => choices.get(block.id) ?? null);
+  const [choice, setChoice] = React.useState<boolean | undefined>(() => choices.get(block.id));
   const live = !block.finished;
   const open = choice ?? live;
-  const label = reasoningLabel(live, block.durationMs ?? computeElapsedMs(block.startedAt, block.finishedAt));
+  const label = reasoningLabel(
+    live,
+    block.durationMs ?? computeElapsedMs(block.startedAt, block.finishedAt),
+  );
   const ref = React.useRef<HTMLElement>(null);
-  return <section ref={ref} className={styles.root} data-testid="reasoning-view" data-shape={block.shape ?? 'raw'} data-live={live}>
-    <button type="button" aria-expanded={open} aria-controls={`reasoning-${block.id}`} className={styles.header} onClick={() => { holdScrollPosition(ref.current); remember(block.id, !open); setChoice(!open); }}>
-      <span className={live ? 'praxis-shimmer-text' : undefined}>{label}</span><span className={`${styles.chevron} ${fold.chevron}`} aria-hidden="true"><ChevronRight size={16} /></span>
-    </button>
-    <span className={styles.sr} role="status" aria-live="polite">{live ? 'Reasoning started' : 'Reasoning finished'}</span>
-    <Fold open={open && !!block.text && !block.redacted}>
-      <ReasoningBody block={block} capped={live && choice !== true} id={`reasoning-${block.id}`} />
-    </Fold>
-  </section>;
+  const canOpen = !!block.text && !block.redacted;
+
+  return (
+    <section
+      ref={ref}
+      className={styles.root}
+      data-testid="reasoning-view"
+      data-shape={block.shape ?? 'raw'}
+      data-live={live}
+    >
+      <TraceCollapsible
+        open={open}
+        onOpenChange={(next) => {
+          remember(block.id, next);
+          setChoice(next);
+        }}
+      >
+        <TraceCollapsibleTrigger aria-controls={`reasoning-${block.id}`} className={styles.header}>
+          <TraceLine status={live ? 'running' : undefined}>
+            <TraceTitle>{label}</TraceTitle>
+          </TraceLine>
+        </TraceCollapsibleTrigger>
+        <span className={styles.sr} role="status" aria-live="polite">
+          {live ? 'Reasoning started' : 'Reasoning finished'}
+        </span>
+        <TraceCollapsibleContent id={`reasoning-${block.id}`} rail={false} keepMounted>
+          {canOpen ? <ReasoningBody block={block} capped={live && choice !== true} /> : null}
+        </TraceCollapsibleContent>
+      </TraceCollapsible>
+    </section>
+  );
 }
 
 /**
- * One thought inside the work group (K-ref/02, 07; t3-code's reasoning work entry): a brain glyph on the
- * column edge and the thought's own short summary, which opens to the full text. A thought with nothing to
- * show has no row at all.
+ * One thought inside the work group (Trace): a brain glyph on the column edge and the thought's
+ * own short summary (`open ?? running`), which opens to the full text inside the Trace rail.
+ * While streaming with no text yet, renders a static TraceLine; if finished empty, renders nothing.
  */
-export function ThoughtRow({ block, onToggle }: { block: ReasoningBlock; onToggle?: (el: Element | null) => void }) {
-  const [choice, setChoice] = React.useState<boolean | null>(() => choices.get(block.id) ?? null);
+export function ThoughtRow({
+  block,
+  onToggle,
+}: {
+  block: ReasoningBlock;
+  onToggle?: (el: Element | null) => void;
+}) {
+  const [choice, setChoice] = React.useState<boolean | undefined>(() => choices.get(block.id));
   const ref = React.useRef<HTMLDivElement>(null);
-  if (!hasThought(block)) return null;
   const live = !block.finished;
+  const withText = hasThought(block);
+
+  if (!withText) {
+    if (!live || block.redacted) return null;
+    return (
+      <div
+        ref={ref}
+        className={log.row}
+        data-testid="reasoning-row"
+        data-live="true"
+        data-shape={block.shape ?? 'raw'}
+      >
+        <TraceLine status="running">
+          <TraceIcon className={log.icon} data-kind="thought">
+            <BrainIcon size={16} />
+          </TraceIcon>
+          <TraceTitle>Thinking</TraceTitle>
+        </TraceLine>
+      </div>
+    );
+  }
+
   const open = choice ?? live;
   const summary = thoughtSummary(block.text, block.shape, live);
-  return <div ref={ref} className={log.row} data-testid="reasoning-row" data-live={live} data-shape={block.shape ?? 'raw'}>
-    <button type="button" className={log.button} aria-expanded={open} aria-controls={`thought-${block.id}`} onClick={() => { onToggle?.(ref.current); holdScrollPosition(ref.current); remember(block.id, !open); setChoice(!open); }}>
-      <WorkLogLine icon={<span className={log.icon} data-kind="thought"><BrainIcon size={16} /></span>} trailing={<span className={`${log.chevron} ${fold.chevron}`} aria-hidden="true"><ChevronRight size={16} /></span>}>
-        <span className={live ? 'praxis-shimmer-text' : undefined}>{summary || (live ? 'Thinking' : 'Thought')}</span>
-      </WorkLogLine>
-    </button>
-    <Fold open={open} id={`thought-${block.id}`}>
-      <div className={styles.indent}><ReasoningBody block={block} capped={live && choice !== true} /></div>
-    </Fold>
-  </div>;
+  const duration =
+    !live &&
+    typeof block.durationMs === 'number' &&
+    Number.isFinite(block.durationMs) &&
+    block.durationMs >= 1000
+      ? formatDuration(block.durationMs)
+      : '';
+
+  return (
+    <div
+      ref={ref}
+      className={log.row}
+      data-testid="reasoning-row"
+      data-live={live}
+      data-shape={block.shape ?? 'raw'}
+    >
+      <TraceCollapsible
+        open={open}
+        onOpenChange={(next) => {
+          onToggle?.(ref.current);
+          remember(block.id, next);
+          setChoice(next);
+        }}
+      >
+        <TraceCollapsibleTrigger aria-controls={`thought-${block.id}`} className={log.button}>
+          <TraceLine status={live ? 'running' : undefined}>
+            <TraceIcon className={log.icon} data-kind="thought">
+              <BrainIcon size={16} />
+            </TraceIcon>
+            <TraceTitle>{summary || (live ? 'Thinking' : 'Thought')}</TraceTitle>
+            {duration ? <TraceDescription>{duration}</TraceDescription> : null}
+          </TraceLine>
+        </TraceCollapsibleTrigger>
+        <TraceCollapsibleContent id={`thought-${block.id}`} keepMounted>
+          <div className={styles.indent}>
+            <ReasoningBody block={block} capped={live && choice !== true} />
+          </div>
+        </TraceCollapsibleContent>
+      </TraceCollapsible>
+    </div>
+  );
 }
 
 /** The thought's title: its first **Title** (or, for title streams, the latest line), else its first sentence. */
@@ -82,7 +207,9 @@ export function thoughtSummary(text: string, shape?: string, live = false): stri
     const lines = text.split('\n').map(clean).filter(Boolean);
     return (live ? lines.at(-1) : lines[0]) ?? '';
   }
-  const titles = [...text.matchAll(/\*\*([^*\n]+)\*\*/g)].map((m) => clean(m[1]!)).filter(Boolean);
+  const titles = [...text.matchAll(/\*\*([^*\n]+)\*\*/g)]
+    .map((m) => clean(m[1]!))
+    .filter(Boolean);
   if (titles.length) return (live ? titles.at(-1) : titles[0])!;
   const flat = clean(text.replace(/^#+\s*/gm, ''));
   const sentence = /^(.{8,}?[.!?])(\s|$)/.exec(flat)?.[1] ?? flat;

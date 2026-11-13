@@ -7,6 +7,8 @@ import { AgentMessageView } from './AgentMessageView';
 import styles from './AgentMessageView.module.css';
 import { MarkdownContent } from './MarkdownContent';
 import { hasThought, type ReasoningBlock } from './ReasoningView';
+import { SourcesTrace } from './SourcesTrace';
+import { extractToolSources } from './toolSources';
 
 type Node = {
   id: string;
@@ -128,6 +130,8 @@ export function ResponseTimeline({
   const firstTextIndex = groups.findIndex((g) => g.text !== undefined);
   const leading = firstTextIndex >= 0 ? groups.slice(0, firstTextIndex) : groups;
   const rest = firstTextIndex >= 0 ? groups.slice(firstTextIndex) : [];
+  const allSteps = nodes.flatMap((n) => (n.step ? [n.step] : []));
+  const sources = React.useMemo(() => extractToolSources(allSteps), [allSteps]);
 
   const renderGroup = (group: { id: string; nodes: Node[]; text?: string }, i: number) => {
     if (group.text !== undefined) {
@@ -173,6 +177,8 @@ export function ResponseTimeline({
     );
   };
 
+  const sourcesEl = !activity.isRunning && sources.length > 0 ? <SourcesTrace sources={sources} /> : null;
+
   return (
     <>
       {leading.map((g, idx) => renderGroup(g, idx))}
@@ -180,8 +186,11 @@ export function ResponseTimeline({
       {rest.length > 0 ? (
         <AgentMessageView text={text} isStreaming={activity.isRunning} usage={usage} onRetry={onRetry}>
           {rest.map((g, idx) => renderGroup(g, leading.length + idx))}
+          {sourcesEl}
         </AgentMessageView>
-      ) : null}
+      ) : (
+        sourcesEl
+      )}
     </>
   );
 }

@@ -9,7 +9,9 @@ test('T3 group disclosure keeps its label before its chevron and uses relaxed 14
 test('tool rows use type icons, mono commands and indented pre output instead of Details',async({page})=>{
  await page.getByTestId('agent-activity-toggle').click();
  const command=page.getByTestId('tool-step-header-sample-1');await expect(command.locator('[data-kind=command]')).toHaveCount(1);await expect(command).toContainText('npm run typecheck');expect(await command.innerText()).not.toContain('Details');
- await command.click();const detail=page.getByTestId('tool-step-detail-sample-1');await expect(detail).toHaveCSS('margin-inline-start','24px'); // 16 px icon + 8 px gap: the label's x (WP-J2)await expect(detail.locator('pre')).toContainText('All workspaces passed.');await expect(command).toHaveAttribute('aria-expanded','true');
+ await command.click();const detail=page.getByTestId('tool-step-detail-sample-1');
+ const commandBox=(await command.boundingBox())!;const detailBox=(await detail.boundingBox())!;expect(Math.round(detailBox.x-commandBox.x)).toBe(24); // Trace rail indent: 7px margin + 1px border + 16px padding
+ await expect(detail.locator('section[data-caption="output"] pre')).toContainText('All workspaces passed.');await expect(command).toHaveAttribute('aria-expanded','true');
 });
 test('question previews retain the answer and warnings remain inline',async({page})=>{
  await page.getByTestId('agent-activity-toggle').click();
