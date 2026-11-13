@@ -162,6 +162,23 @@ export function createScriptedProvider(
           .flatMap((m) => m.parts)
           .find((p) => p.type === 'text')?.text ?? '';
 
+      if (script === 'bursty') {
+        const text = TORTURE_MARKDOWN_SAMPLE + '\n\n' + OWNER_REFERENCE_ANSWER_TEXT;
+        const sizes = [1, 170, 400, 35, 280, 4, 340];
+        const delays = [50, 700, 1800, 80, 500, 1200, 90];
+        let offset = 0, burst = 0;
+        while (offset < text.length) {
+          if (signal.aborted) throw new Error('Aborted');
+          const chunk = text.slice(offset, offset + sizes[burst % sizes.length]!);
+          yield { type: 'text', index: 0, text: chunk };
+          offset += chunk.length;
+          await new Promise(r => setTimeout(r, delays[burst++ % delays.length]));
+        }
+        yield { type: 'blockEnd', index: 0 };
+        yield { type: 'completed', response: { parts: [{ type: 'text', text }], stop: 'endTurn', usage: {type:'usage',inputTokens:32,outputTokens:640,cacheReadTokens:0,cacheWriteTokens:0} } };
+        return;
+      }
+
       // Owner's real assistant / user-toolResult / assistant shape, with local-only tools.
       if (script === 'helloReplay') {
         const iteration = request.messages.slice(start).filter(m => m.parts.some(p => p.type === 'toolResult')).length;

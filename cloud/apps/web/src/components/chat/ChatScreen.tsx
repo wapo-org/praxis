@@ -5,6 +5,7 @@ import { GlassChip, PANEL, ProgressiveBlurScrim } from '@praxis/glass';
 import { motion } from 'framer-motion';
 import { ArrowDown } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
+import { useSmoothText } from './smoothText';
 import {useStreamAnchor} from './useStreamAnchor';
 import { useContentShift } from '../shell/useContentShift';
 import { ChatHeader } from './ChatHeader';
@@ -75,6 +76,17 @@ export function ChatScreen() {
   const flightActive = useSendFlightActive();
   const status = activeLiveRun?.run.status;
   const runId = activeLiveRun?.run.id;
+  // Keep an inspected live turn mounted after completion: swapping it for saved rows would close
+  // the user's disclosure and discard the very element the scroll layer is pinning.
+  const [inspectedRunId, setInspectedRunId] = React.useState<string>();
+  React.useLayoutEffect(() => {
+    const viewport = scrollRef.current;
+    const preserve = (event: MouseEvent) => {
+      if ((event.target as Element).closest('[aria-expanded]')?.closest('[data-testid="live-run-streaming-turn"]')) setInspectedRunId(runId);
+    };
+    viewport?.addEventListener('click', preserve, true);
+    return () => viewport?.removeEventListener('click', preserve, true);
+  }, [runId]);
   const liveHasFoldableActivity =
     !!activeLiveRun &&
     (activeLiveRun.toolSteps.length > 0 ||
@@ -83,6 +95,20 @@ export function ChatScreen() {
       activeLiveRun.compactions.length > 0 ||
       activeLiveRun.pendingApprovals.length > 0 ||
       activeLiveRun.pendingElicitations.length > 0);
+  const receivedText = activeLiveRun?.textBlocks.map(b => b.text).join('') ?? '';
+  // A provider can finish a text block and then spend seconds in a tool. Reveal its last word now.
+  const textIsStreaming = (status === 'running' || status === 'queued') && !activeLiveRun?.textBlocks.at(-1)?.finished;
+  const pacedText = useSmoothText(flightActive ? '' : receivedText, textIsStreaming, runId);
+  const draining = pacedText.length < receivedText.length;
+  let revealBudget = pacedText.length;
+  const pacedLiveRun = activeLiveRun ? {
+    ...activeLiveRun,
+    textBlocks: activeLiveRun.textBlocks.map(block => {
+      const text = block.text.slice(0, Math.max(0, revealBudget));
+      revealBudget -= block.text.length;
+      return { ...block, text };
+    }),
+  } : undefined;
   const savedForLiveRun =
     !!runId && visibleMessages.some((m) => m.role === 'assistant' && m.runId === runId);
   // A run that just completed keeps its live turn for one fold only when it has foldable activity
@@ -107,7 +133,7 @@ export function ChatScreen() {
     (liveHasFoldableActivity || !savedForLiveRun);
   const hasLiveStreamingContent =
     !!activeLiveRun &&
-    (shouldLinger ||
+    (draining || shouldLinger || (status === 'completed' && inspectedRunId === runId) ||
       status === 'queued' ||
       status === 'running' ||
       status === 'awaitingApproval' ||
@@ -219,7 +245,7 @@ export function ChatScreen() {
               let promptStartedAt: string | undefined;
               for (let i = index - 1; i >= 0; i--) {
                 if (visibleMessages[i]?.role === 'user') {
-                  promptStartedAt = visibleMessages[i]?.createdAt;
+                  promptStartedAt = msg.promptStartedAt ?? visibleMessages[i]?.createdAt;
                   break;
                 }
               }
@@ -265,8 +291,9 @@ export function ChatScreen() {
               className={styles.assistantTurn}
             >
               <LiveResponseTimeline
-                live={activeLiveRun}
-                promptStartedAt={lastUserMessage?.createdAt}
+                live={pacedLiveRun!}
+                revealing={draining}
+                promptStartedAt={activeLiveRun.run.promptStartedAt ?? lastUserMessage?.createdAt}
                 onRetry={
                   liveText.trim().length > 0 && lastUserMessage
                     ? () => {

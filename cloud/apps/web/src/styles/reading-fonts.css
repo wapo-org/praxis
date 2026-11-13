@@ -174,8 +174,8 @@
 /* The streaming fade (Streamdown stamps `--sd-animation: sd-praxisIn` on new words): opacity only, on the
    compositor, starting at arrival, so text is never later than the frame it arrived in. */
 @keyframes sd-praxisIn {
-  from { opacity: 0.18; }
-  to { opacity: 1; }
+  from { opacity: 0.12; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 @media (prefers-reduced-motion: reduce) {
   [data-sd-animate] { animation: none !important; }

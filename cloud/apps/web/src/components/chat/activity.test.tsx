@@ -179,31 +179,18 @@ describe('iMessage send animation trajectory (chatMotion)', () => {
   const fromBox = { left: 52, top: 800, width: 290, height: 36 };
   const toBox = { left: 280, top: 560, width: 64, height: 36 };
 
-  it('lifts on the first frame, stays <= 250ms, and lands smoothly without bounce', () => {
-    expect(SEND_FLIGHT_DURATION_MS).toBeLessThanOrEqual(250);
-    const p0 = sendBubbleShapeAt(0, fromBox, toBox);
-    const p16 = sendBubbleShapeAt(16, fromBox, toBox);
-    const p33 = sendBubbleShapeAt(33, fromBox, toBox);
-    const p110 = sendBubbleShapeAt(110, fromBox, toBox);
-    const p195 = sendBubbleShapeAt(195, fromBox, toBox);
-    const pEnd = sendBubbleShapeAt(SEND_FLIGHT_DURATION_MS, fromBox, toBox);
-
-    expect(p0.width).toBeCloseTo(fromBox.width, 1);
-    expect(p0.fillOpacity).toBeGreaterThanOrEqual(0.5);
-    // First 16ms and 33ms frames immediately show full fill, narrower width, and measurable upward lift.
-    expect(p16.top).toBeLessThan(fromBox.top - 15);
-    expect(p16.width).toBeLessThan(fromBox.width);
-    expect(p33.fillOpacity).toBe(1);
-    expect(p33.top).toBeLessThan(fromBox.top - 35);
-    // Right edge anchors quickly while width contracts rapidly.
-    expect(p110.width).toBeLessThan(fromBox.width * 0.45);
-    expect(p110.left + p110.width).toBeCloseTo(toBox.left + toBox.width, -1);
-    // Slight upward overshoot near 185ms, then settled cleanly onto toBox at SEND_FLIGHT_DURATION_MS.
-    expect(toBox.top - p195.top).toBeGreaterThanOrEqual(3);
-    expect(toBox.top - p195.top).toBeLessThanOrEqual(6);
-    expect(pEnd.top).toBeCloseTo(toBox.top, 1);
-    expect(pEnd.left).toBeCloseTo(toBox.left, 1);
-    expect(pEnd.width).toBeCloseTo(toBox.width, 1);
+  it('restores the calibrated 820ms trajectory and settles without a second bounce', () => {
+    expect(SEND_FLIGHT_DURATION_MS).toBe(820);
+    expect(sendBubbleShapeAt(0, fromBox, toBox).width).toBe(fromBox.width);
+    expect(sendBubbleShapeAt(36, fromBox, toBox).fillOpacity).toBe(1);
+    expect(sendBubbleShapeAt(40, fromBox, toBox).top).toBeLessThan(fromBox.top);
+    expect(sendBubbleShapeAt(200, fromBox, toBox).width).toBeCloseTo(toBox.width, 1);
+    const peak=sendBubbleShapeAt(430, fromBox, toBox);
+    expect(toBox.top-peak.top).toBeGreaterThanOrEqual(4);
+    expect(toBox.top-peak.top).toBeLessThanOrEqual(7);
+    const landing=[480,560,640,720,820].map(t=>sendBubbleShapeAt(t,fromBox,toBox).top);
+    expect(landing).toEqual([...landing].sort((a,b)=>a-b));
+    expect(landing.at(-1)).toBeCloseTo(toBox.top,1);
   });
 
   it('notifies subscribers when a send flight starts and ends', () => {

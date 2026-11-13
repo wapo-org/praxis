@@ -26,7 +26,7 @@ const MAX_ARRIVALS = 3;
 /** Chat-switch entrance staggers only the visible rows, capped so long histories never wait. */
 const MAX_SWITCH_STAGGER = 8;
 
-export const SEND_FLIGHT_DURATION_MS = 240;
+export const SEND_FLIGHT_DURATION_MS = 820;
 const BUBBLE_RADIUS = 20;
 
 export interface SendBubblePose extends Box {
@@ -36,21 +36,23 @@ export interface SendBubblePose extends Box {
 }
 
 /**
- * Pure trajectory math for the iMessage-style send flight (`0..240 ms`):
- * - `0 ms`: bubble materialises immediately (`fillOpacity >= 0.55`, full by `20 ms`)
- *   and begins narrowing and lifting on the very first frame with non-zero initial velocity.
- * - `0..145 ms`: left edge pulls right rapidly while right edge locks to `toBox.right`.
- * - `0..195 ms`: rises cleanly to `toBox.top`, with a brief `3..5 px` upward overshoot
- *   settling softly onto `toBox.top` at `240 ms`.
+ * Pure trajectory math for the iMessage-style send animation, calibrated to the
+ * 60 fps reference sheets (`IMG_7907`–`IMG_7926`, press at `0 ms`, settled at `820 ms`):
+ * - `0..36 ms`: filled bubble materialises over the composer input field (`fromBox`)
+ *   with text at the exact input-field coordinates while the field clears behind it.
+ * - `40..200 ms`: left edge pulls right rapidly while right edge anchors toward
+ *   `toBox.right`, narrowing from full input width to final bubble width.
+ * - `40..320 ms`: rises toward `toBox.top`.
+ * - `320..480 ms`: overshoots ~4–7 CSS px above `toBox.top`.
+ * - `480..820 ms`: drifts gently back down into `toBox.top` with no second bounce.
  */
 export function sendBubbleShapeAt(elapsedMs: number, fromBox: Box, toBox: Box): SendBubblePose {
   const t = Math.max(0, elapsedMs);
-  const fillOpacity = clamp(0.55 + 0.45 * (t / 20), 0.55, 1);
+  const fillOpacity = smoothstep(4, 28, t);
 
-  const uw = clamp(t / 145, 0, 1);
-  const w = 1 - Math.pow(1 - uw, 2);
-  const ur = clamp(t / 110, 0, 1);
-  const rightAnchor = 1 - Math.pow(1 - ur, 2);
+  const uw = Math.max(0, t - 32);
+  const w = clamp(Math.max(smoothstep(32, 195, t), 1 - Math.exp(-Math.pow(uw / 48, 1.35))), 0, 1);
+  const rightAnchor = smoothstep(32, 180, t);
   const fromRight = fromBox.left + fromBox.width;
   const toRight = toBox.left + toBox.width;
   const right = lerp(fromRight, toRight, rightAnchor);
@@ -58,13 +60,13 @@ export function sendBubbleShapeAt(elapsedMs: number, fromBox: Box, toBox: Box): 
   const left = right - width;
   const height = lerp(fromBox.height, toBox.height, w);
 
-  const uy = clamp(t / 195, 0, 1);
-  const ry = 1 - Math.pow(1 - uy, 1.45);
+  const uy = Math.max(0, t - 36);
+  const rawRise = 1 - (1 + uy / 68) * Math.exp(-uy / 68);
+  const ry = clamp(rawRise + 0.1 * smoothstep(120, 320, t), 0, 1);
 
   const travel = Math.max(0, fromBox.top - toBox.top);
-  const maxOvershoot = travel > 8 ? Math.min(5, Math.max(3, travel * 0.03)) : 0;
-  const overshoot =
-    maxOvershoot * smoothstep(125, 185, t) * (1 - smoothstep(185, SEND_FLIGHT_DURATION_MS, t));
+  const maxOvershoot = travel > 8 ? Math.min(6.5, Math.max(4, travel * 0.04)) : 0;
+  const overshoot = maxOvershoot * smoothstep(220, 420, t) * (1 - smoothstep(430, 810, t));
   const top = lerp(fromBox.top, toBox.top, ry) - overshoot;
 
   const radius = Math.min(BUBBLE_RADIUS, Math.min(width, height) / 2);
@@ -153,7 +155,8 @@ function syncFlightTargetBox(flight: ActiveSendFlight) {
 }
 
 function writeFlightFrame(flight: ActiveSendFlight, elapsedMs: number) {
-  const pose = sendBubbleShapeAt(elapsedMs, flight.fromBox, flight.toBox);
+  // Start at the first lifting pose for M1’s frame-one handoff; keep the calibrated math and 820ms clock.
+  const pose = sendBubbleShapeAt(Math.max(40, elapsedMs), flight.fromBox, flight.toBox);
   const finalW = Math.max(1, flight.toBox.width);
   const finalH = Math.max(1, flight.toBox.height);
   const sx = Math.max(1e-3, pose.width / finalW);

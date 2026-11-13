@@ -123,6 +123,7 @@ export function useSendActions(
           chatId: targetChatId,
           clientTurnId,
           status: 'queued',
+          promptStartedAt: options?.regenerateMessageId ? nowIso : undefined,
           createdAt: nowIso,
           updatedAt: nowIso,
           lastEventId: 0,

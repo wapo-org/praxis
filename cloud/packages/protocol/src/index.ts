@@ -81,7 +81,7 @@ export const MessagePartSchema = z.object({
 });
 export type MessagePart = z.infer<typeof MessagePartSchema>;
 export const MessageSchema = z.object({
-  type:z.literal('message'),id:IdSchema,chatId:IdSchema,runId:IdSchema.optional(),clientTurnId:IdSchema.optional(),
+  type:z.literal('message'),id:IdSchema,chatId:IdSchema,runId:IdSchema.optional(),clientTurnId:IdSchema.optional(),promptStartedAt:TimestampSchema.optional(),
   role:z.enum(['user','assistant']),parts:z.array(MessagePartSchema),
   raw:z.object({type:z.literal('provider.payload'),flavor:ProviderFlavorSchema,data:JsonValueSchema}).optional(),
   createdAt:TimestampSchema,updatedAt:TimestampSchema,sequence:z.number().int().positive().optional(),
@@ -99,7 +99,7 @@ export const ChatInputSchema = z.object({type:z.literal('chat.input'),id:IdSchem
 export const ChatPatchSchema = ChatInputSchema.partial().extend({type:z.literal('chat.patch'),title:ChatInputSchema.shape.title.removeDefault().optional(),mode:ChatInputSchema.shape.mode.removeDefault().optional(),connectorIds:ChatInputSchema.shape.connectorIds.removeDefault().optional(),disabledConnectorIds:ChatInputSchema.shape.disabledConnectorIds.removeDefault().optional()});
 export const RunStatusSchema = z.enum(['queued','running','awaitingApproval','awaitingElicitation','continuing','completed','cancelled','failed']);
 export const RunOutcomeSchema = z.enum(['completed','truncated','maxIterations','refused','cancelled','failed']);
-export const RunSchema = z.object({type:z.literal('run'),id:IdSchema,chatId:IdSchema,status:RunStatusSchema,outcome:RunOutcomeSchema.optional(),error:z.string().optional(),createdAt:TimestampSchema,updatedAt:TimestampSchema,lastEventId:z.number().int().nonnegative(),clientTurnId:IdSchema.optional(),parentRunId:IdSchema.optional()});
+export const RunSchema = z.object({type:z.literal('run'),id:IdSchema,chatId:IdSchema,status:RunStatusSchema,outcome:RunOutcomeSchema.optional(),error:z.string().optional(),createdAt:TimestampSchema,updatedAt:TimestampSchema,lastEventId:z.number().int().nonnegative(),clientTurnId:IdSchema.optional(),parentRunId:IdSchema.optional(),promptStartedAt:TimestampSchema.optional()});
 export type Run = z.infer<typeof RunSchema>;
 export const StreamSimOptionsSchema = z.object({
   sample: z.enum(['short', 'torture']).default('torture'),
@@ -117,7 +117,7 @@ export const StartRunSchema = z.object({regenerateMessageId:IdSchema.optional(),
   attachmentIds:z.array(IdSchema).default([]),webSearch:z.boolean().default(false),idempotencyKey:IdSchema.optional(),clientTurnId:IdSchema.optional(),
   script:z.enum([
     'text','tools','approval','nestedApproval','elicitation','elicitationURL','error','long','compaction','vision',
-    'reasoningTitles','reasoningSummary','reasoningRaw','reasoningRedacted','reasoningNone','reasoningInterleaved','helloReplay','realShape','streamSim','codeFeatures',
+    'reasoningTitles','reasoningSummary','reasoningRaw','reasoningRedacted','reasoningNone','reasoningInterleaved','helloReplay','realShape','streamSim','codeFeatures','bursty',
   ]).optional(),
   streamSim:StreamSimOptionsSchema.optional(),
 });

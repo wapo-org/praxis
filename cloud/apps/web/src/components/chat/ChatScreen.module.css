@@ -16,6 +16,7 @@
   flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
+  overflow-anchor: none;
   padding: calc(var(--topbar-height) + var(--space-6)) var(--space-6)
     calc(var(--space-16) * 2 + var(--space-8));
   scrollbar-gutter: stable both-edges;

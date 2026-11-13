@@ -95,6 +95,7 @@ export class ApiService{
    if(at<0||regenerationUserAt<0)throw new ApiError(404,'message_missing','Reply to regenerate not found');
   }
   const now=this.now();const run=RunSchema.parse({type:'run',id:randomUUID(),chatId:chat.id,status:'queued',createdAt:now,updatedAt:now,lastEventId:0,clientTurnId:input.clientTurnId??key});
+  if(input.regenerateMessageId) run.promptStartedAt=now;
   tracker.runId=run.id;registerRunTiming(tracker);
   const persistRun=()=>timedStep('persistRun',()=>Promise.all([
    this.put(userId,'run',run.id,run),
@@ -210,6 +211,7 @@ export class ApiService{
      const m=event.messages[i]!,before=beforeRows[i];
      m.sequence=(before?.value.sequence as number|undefined)??m.sequence??++count;
      m.clientTurnId??=run.clientTurnId;
+     m.promptStartedAt??=run.promptStartedAt;
      await this.write(userId,'message',m.id,m);
     }
    }

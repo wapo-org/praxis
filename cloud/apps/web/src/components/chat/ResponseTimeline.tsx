@@ -92,7 +92,7 @@ export function ResponseTimeline({
   errorElement,
 }: {
   nodes: Node[];
-  activity: AgentActivityViewProps & { runStatus?: string };
+  activity: AgentActivityViewProps & { runStatus?: string; revealing?: boolean };
   text: string;
   usage?: LiveRunState['usage'];
   onRetry?: () => void;
@@ -137,7 +137,7 @@ export function ResponseTimeline({
     if (group.text !== undefined) {
       return (
         <div key={group.id} className={styles.timelineText} data-timeline-text="">
-          <MarkdownContent text={group.text} isStreaming={!!activity.isRunning && i === groups.length - 1} />
+          <MarkdownContent text={group.text} isStreaming={(!!activity.isRunning || !!activity.revealing) && i === groups.length - 1} />
         </div>
       );
     }
@@ -184,7 +184,7 @@ export function ResponseTimeline({
       {leading.map((g, idx) => renderGroup(g, idx))}
       {errorElement}
       {rest.length > 0 ? (
-        <AgentMessageView text={text} isStreaming={activity.isRunning} usage={usage} onRetry={onRetry}>
+        <AgentMessageView text={text} isStreaming={activity.isRunning || activity.revealing} usage={usage} onRetry={onRetry}>
           {rest.map((g, idx) => renderGroup(g, leading.length + idx))}
           {sourcesEl}
         </AgentMessageView>
@@ -197,12 +197,14 @@ export function ResponseTimeline({
 
 export function LiveResponseTimeline({
   live,
+  revealing = false,
   promptStartedAt,
   onRetry,
   errorElement,
   ...handlers
 }: {
   live: LiveRunState;
+  revealing?: boolean;
   promptStartedAt?: string;
   onRetry?: () => void;
   errorElement?: React.ReactNode;
@@ -218,6 +220,7 @@ export function LiveResponseTimeline({
         ...live,
         ...live.run,
         runId: live.run.id,
+        revealing,
         startedAt: live.run.createdAt,
         finishedAt: live.run.updatedAt,
         promptStartedAt,

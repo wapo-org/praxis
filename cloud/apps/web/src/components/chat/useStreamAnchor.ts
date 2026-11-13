@@ -8,12 +8,19 @@ export function scrollMetrics(el:Pick<HTMLElement,'scrollHeight'|'clientHeight'|
 }
 /** One source of truth for scroll following and its disclosure, including rendered (not transport) growth. */
 export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,content:React.RefObject<HTMLElement|null>,identity?:string,turnKey?:string,localSend=false) {
+  const disclosure=React.useRef<{element:HTMLElement;top:number;until:number}|null>(null);
   const sentAnchor=React.useRef(false), userMoved=React.useRef(false);
   const previousTurn=React.useRef({identity,turnKey});
   const pinned=React.useRef(true),jumping=React.useRef(false),lastTop=React.useRef(0);
   const [state,setState]=React.useState({identity,show:false});
   const measure=React.useCallback((fromScroll=false)=>{
     const el=viewport.current;if(!el)return;
+    const anchor=disclosure.current;
+    if(anchor && anchor.element.isConnected && performance.now()<anchor.until){
+      el.scrollTop+=anchor.element.getBoundingClientRect().top-anchor.top;
+      lastTop.current=el.scrollTop;
+      return;
+    }
     let metrics=scrollMetrics(el);
     if(metrics.distance<=BOTTOM_EDGE||metrics.overflow<=BOTTOM_EDGE){
       if(!sentAnchor.current||userMoved.current)pinned.current=true;
@@ -32,6 +39,7 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
   },[identity,viewport,content]);
   const onScroll=React.useCallback(()=>measure(true),[measure]);
   const jumpToLatest=React.useCallback((behavior:ScrollBehavior='smooth')=>{
+    disclosure.current=null;
     const el=viewport.current;if(!el)return;
     pinned.current=true;jumping.current=true;
     setState({identity,show:false});
@@ -39,6 +47,7 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
     measure();
   },[identity,measure,viewport]);
   React.useLayoutEffect(()=>{
+    disclosure.current=null;
     sentAnchor.current=false;userMoved.current=false;
     if(content.current)content.current.style.minHeight='';
     pinned.current=true;jumping.current=false;
@@ -53,6 +62,7 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
     const bubbles = body?.querySelectorAll<HTMLElement>('[data-testid="user-message-bubble"]');
     const target = bubbles?.[bubbles.length - 1];
     if (!el || !body || !target) return;
+    disclosure.current = null;
     pinned.current = false;
     jumping.current = true;
     sentAnchor.current = true;
@@ -71,19 +81,36 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
   React.useLayoutEffect(()=>{
     const el=viewport.current,body=content.current;if(!el||!body)return;
     const resized=()=>{
-      if(pinned.current)el.scrollTop=el.scrollHeight;
+      if(pinned.current && !disclosure.current)el.scrollTop=el.scrollHeight;
       measure();
     };
     const landed=()=>{jumping.current=false;measure();};
-    const interrupt=()=>{userMoved.current=true;jumping.current=false;pinned.current=scrollMetrics(el).distance<=BOTTOM_EDGE;measure();};
+    const interrupt=()=>{disclosure.current=null;userMoved.current=true;jumping.current=false;pinned.current=scrollMetrics(el).distance<=BOTTOM_EDGE;measure();};
     // A disclosure opened by the user: what it reveals grows below it, and the page must not follow it down.
     const hold=()=>{jumping.current=false;pinned.current=false;};
+    let frame=0;
+    const pinFrame=()=>{
+      const anchor=disclosure.current;
+      if(!anchor)return;
+      measure();
+      if(performance.now()<anchor.until)frame=requestAnimationFrame(pinFrame);
+      else disclosure.current=null;
+    };
+    const pinDisclosure=(event:MouseEvent)=>{
+      const control=(event.target as Element).closest<HTMLElement>('[aria-expanded]');
+      if(!control || !body.contains(control))return;
+      cancelAnimationFrame(frame);
+      disclosure.current={element:control,top:control.getBoundingClientRect().top,until:performance.now()+800};
+      jumping.current=false;pinned.current=false;userMoved.current=true;
+      frame=requestAnimationFrame(pinFrame);
+    };
+    el.addEventListener('click',pinDisclosure,true);
     const observer=typeof ResizeObserver!=='undefined'?new ResizeObserver(resized):undefined;
     observer?.observe(el);observer?.observe(body);
     el.addEventListener('scrollend',landed);
     el.addEventListener('praxis:hold',hold);el.addEventListener('wheel',interrupt,{passive:true});el.addEventListener('touchstart',interrupt,{passive:true});el.addEventListener('keydown',interrupt);
     window.addEventListener('resize',resized);
-    return ()=>{observer?.disconnect();el.removeEventListener('scrollend',landed);el.removeEventListener('praxis:hold',hold);el.removeEventListener('wheel',interrupt);el.removeEventListener('touchstart',interrupt);el.removeEventListener('keydown',interrupt);window.removeEventListener('resize',resized);};
+    return ()=>{cancelAnimationFrame(frame);el.removeEventListener('click',pinDisclosure,true);observer?.disconnect();el.removeEventListener('scrollend',landed);el.removeEventListener('praxis:hold',hold);el.removeEventListener('wheel',interrupt);el.removeEventListener('touchstart',interrupt);el.removeEventListener('keydown',interrupt);window.removeEventListener('resize',resized);};
   },[content,measure,viewport]);
   return {onScroll,jumpToLatest,showJump:state.identity===identity&&state.show};
 }

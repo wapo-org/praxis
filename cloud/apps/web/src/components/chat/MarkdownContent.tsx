@@ -23,7 +23,7 @@ const rehypePlugins = Object.entries(defaultRehypePlugins).filter(([name]) => na
 
 // A soft fade for new words only: it starts on arrival (never later) and runs on the compositor (opacity only).
 // The keyframes are `sd-praxisIn` in MarkdownContent.module.css; reduced motion turns it off there.
-const ANIMATION = { animation: 'praxisIn', duration: 200, easing: 'var(--ease-standard)', stagger: 0, maxBacklogMs: 0 } as const;
+const ANIMATION = { animation: 'praxisIn', duration: 280, easing: 'var(--ease-standard)', stagger: 0, maxBacklogMs: 0 } as const;
 
 const COLLAPSE_AFTER = 20;
 const PREVIEW_LINES = 20; // = COLLAPSE_AFTER: a block that reaches the limit while streaming never shrinks

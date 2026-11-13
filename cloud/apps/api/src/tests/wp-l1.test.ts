@@ -13,11 +13,14 @@ it('regenerates a middle reply with the original user message once and branches 
  service.driver={async start(u,r,_c,m){received.push(structuredClone(m));const now=service.now();await service.emit(u,r.id,{type:'messages.committed',messages:[{type:'message',id:r.id+'-reply',chatId:r.chatId,runId:r.id,role:'assistant',parts:[{type:'text',text:'answer'}],createdAt:now,updatedAt:now}]});await service.emit(u,r.id,{type:'run.finished',outcome:'completed'});},async resume(){}};
  const start=async(text:string,regenerateMessageId?:string)=>{const run=await service.start('u',{type:'run.start',chatId:'welcome',text,attachmentIds:[],webSearch:false,clientTurnId:crypto.randomUUID(),regenerateMessageId});await service.drain();return run;};
  const first=await start('Closer');await start('Later question');
- await start('Closer',first.id+'-reply');
+ const regenerated=await start('Closer',first.id+'-reply');
+ expect(regenerated.promptStartedAt).toBe(regenerated.createdAt);
+ expect(first.promptStartedAt).toBeUndefined();
  const rows=await service.list<Message>('u','message','welcome');
  expect(rows.filter(m=>m.role==='user')).toHaveLength(1);
  expect(rows.some(m=>m.parts.some(p=>p.text==='Later question'))).toBe(false);
  expect(rows.filter(m=>m.role==='assistant')).toHaveLength(1);
+ expect(rows.find(m=>m.role==='assistant')?.promptStartedAt).toBe(regenerated.createdAt);
  expect(received[2]!.map(m=>m.parts.map(p=>p.text).join(''))).toEqual(['Closer']);
 });
 it('retrieves related variables with a bounded prompt and never reads secret plaintext',async()=>{

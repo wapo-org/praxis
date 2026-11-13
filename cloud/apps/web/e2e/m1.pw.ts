@@ -87,10 +87,10 @@ test('Working · 0s, Stop generating, and RunBackdrop appear immediately even wh
   await input.fill('Wait on queued start');
   await input.press('Enter');
 
-  // Stop & RunBackdrop appear immediately; Working · 0s appears once the bubble lands (< 500ms).
+  // Stop & RunBackdrop appear immediately; Working · 0s appears once the bubble lands (after the restored 820ms flight).
   await expect(page.getByTestId('composer-stop-button')).toBeVisible({ timeout: 500 });
   await expect(page.getByTestId('run-backdrop')).toBeAttached({ timeout: 500 });
-  await expect(page.getByTestId('live-run-streaming-turn')).toContainText('Working', { timeout: 500 });
+  await expect(page.getByTestId('live-run-streaming-turn')).toContainText('Working', { timeout: 1200 });
 
   // Cancel while still queued on the client before POST /v1/runs returns.
   await page.getByTestId('composer-stop-button').click();
@@ -113,16 +113,18 @@ test('existing-chat send flies smoothly without losing or duplicating the bubble
 
   await input.fill('Second turn in existing chat');
   await page.evaluate(() => {
-    const w = window as unknown as { __flightSamples: Array<{ t: number; y: number }>; __go: boolean };
+    const w = window as unknown as { __flightSamples: Array<{ t: number; y: number; targetY?: number; scrollTop?: number }>; __go: boolean };
     w.__flightSamples = [];
     w.__go = true;
+    // Sample after the paint: Framer and this probe have separate rAF callbacks,
+    // and delayed pre-paint callbacks can pair an old pose with a new timestamp.
     const tick = () => {
       if (!w.__go) return;
       const flight = document.querySelector<HTMLElement>('[data-testid="send-flight-bubble"]');
-      if (flight) w.__flightSamples.push({ t: performance.now(), y: flight.getBoundingClientRect().top });
-      requestAnimationFrame(tick);
+      if (flight) w.__flightSamples.push({ t: performance.now(), y: flight.getBoundingClientRect().top, targetY: document.querySelector('[data-send-in-flight]')?.getBoundingClientRect().top, scrollTop: document.querySelector('[data-testid=chat-scroll-viewport]')?.scrollTop });
+      requestAnimationFrame(() => setTimeout(tick, 0));
     };
-    requestAnimationFrame(tick);
+    requestAnimationFrame(() => setTimeout(tick, 0));
   });
 
   await input.press('Enter');
@@ -131,10 +133,11 @@ test('existing-chat send flies smoothly without losing or duplicating the bubble
   await page.waitForFunction(() => !document.querySelector('[aria-label="Stop generating"]'), null, { timeout: 20000 });
 
   const samples = await page.evaluate(() => {
-    const w = window as unknown as { __flightSamples: Array<{ t: number; y: number }>; __go: boolean };
+    const w = window as unknown as { __flightSamples: Array<{ t: number; y: number; targetY?: number; scrollTop?: number }>; __go: boolean };
     w.__go = false;
     return w.__flightSamples;
   });
+  await test.info().attach('send-flight-samples', { body: JSON.stringify(samples), contentType: 'application/json' });
   expect(samples.length).toBeGreaterThan(3);
   const maxNormStep = Math.max(
     0,
@@ -240,11 +243,11 @@ test('defect 1: text leaves composer, EmptyState exits, and bubble starts liftin
   const at35ms = frames.find((f) => f.dt >= 12 && f.flightTop !== null);
   expect(at35ms).toBeDefined();
   expect(at35ms!.dt).toBeLessThanOrEqual(45);
-  expect(at35ms!.flightTop!).toBeLessThan(fromRect.top - 25);
-  expect(at35ms!.flightWidth!).toBeLessThan(fromRect.width - 20);
+  expect(at35ms!.flightTop!).toBeLessThan(fromRect.top - 0.1);
+  expect(at35ms!.flightWidth!).toBeLessThan(fromRect.width - 0.1);
 });
 
-test('defect 2: instant scripted reply never paints before the <= 250ms bubble flight lands', async ({ page }) => {
+test('defect 2: instant scripted reply never paints before the 820ms bubble flight lands', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await signIn(page);
 
@@ -292,7 +295,8 @@ test('defect 2: instant scripted reply never paints before the <= 250ms bubble f
   const flightFrames = frames.filter((f) => f.hasFlight);
   expect(flightFrames.length).toBeGreaterThan(2);
   const flightDuration = flightFrames.at(-1)!.t - flightFrames[0]!.t;
-  expect(flightDuration).toBeLessThanOrEqual(260);
+  expect(flightDuration).toBeGreaterThanOrEqual(700);
+  expect(flightDuration).toBeLessThanOrEqual(900);
   // Zero assistant or live turns may be painted while the bubble is in flight.
   expect(flightFrames.filter((f) => f.liveCount > 0 || f.assistantCount > 0)).toEqual([]);
 
