@@ -7,6 +7,7 @@ import {
   type ToolSpec,
 } from '@praxis/protocol';
 import { ProviderFailure, AgentRunner } from './runner.js';
+import { realShapeStream, realShapeTool } from './scripted-real.js';
 import {
   textResult,
   type AgentPorts,
@@ -156,6 +157,11 @@ export function createScriptedProvider(
           .slice(start)
           .flatMap((m) => m.parts)
           .find((p) => p.type === 'text')?.text ?? '';
+
+      if (script === 'realShape') {
+        yield* realShapeStream(request, signal, done);
+        return;
+      }
 
       // Specialised reasoning & simulator scripts
       if (
@@ -388,6 +394,7 @@ function spec(
 
 export function scriptedTools(): AgentTool[] {
   return [
+    realShapeTool(),
     {
       spec: spec('local_echo', { type: 'builtin' }, ['readOnly']),
       execute: async (args) => textResult(JSON.stringify(args)),
