@@ -1,0 +1,253 @@
+/*
+ * Code block (port of shadcn's base-nova Code Block) in the app's look: the transcript's quiet card, Geist Mono,
+ * hairlines and ink on paper. Parts are styled through their data-slot / data-variant / data-size hooks so tool
+ * output (size sm) and markdown fences share one stylesheet.
+ */
+.root {
+  --pad-x: 14px;
+  --pad-top: 12px;
+  --pad-bottom: 13px;
+  --fade: 28px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--color-hairline);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-ink) 3%, var(--color-paper, transparent));
+  color: var(--color-ink);
+  font: 400 13px / 1.6 var(--font-mono);
+  font-variant-ligatures: none;
+  letter-spacing: 0;
+  text-align: start;
+}
+.root[data-size='sm'] {
+  --pad-x: 10px;
+  --pad-top: 8px;
+  --pad-bottom: 9px;
+  --fade: 20px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+/* The focus ring sits on the block, never clipped by the scroller's fade. */
+.root:has(> [data-slot='code-block-content']:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.root[data-variant='destructive'] {
+  border-color: color-mix(in srgb, var(--color-danger) 32%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 5%, var(--color-paper, transparent));
+  color: color-mix(in srgb, var(--color-danger) 82%, var(--color-ink));
+}
+
+/* Header: the title (a file name, "Terminal", or the language) and the actions, on a hairline. */
+.header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 4px 0 var(--pad-x);
+  border-bottom: 1px solid var(--color-hairline);
+  color: var(--color-ink-2);
+  font: 500 12px / 1 var(--font-sans);
+}
+.root[data-size='sm'] .header { height: 30px; padding-inline-end: 3px; font-size: 11.5px; }
+.root[data-variant='destructive'] .header { border-bottom-color: color-mix(in srgb, var(--color-danger) 22%, transparent); color: var(--color-danger); }
+.title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  white-space: nowrap;
+}
+.title > :not(svg) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.title svg { flex-shrink: 0; width: 14px; height: 14px; pointer-events: none; color: var(--color-ink-3); }
+.root[data-variant='destructive'] .title svg { color: inherit; }
+.title[data-kind='file'] { color: var(--color-ink); font-family: var(--font-mono); font-weight: 400; }
+.title[data-kind='language'] { font-family: var(--font-mono); font-weight: 400; text-transform: lowercase; }
+.root[data-variant='destructive'] .title[data-kind] { color: var(--color-danger); }
+
+.actions { display: flex; flex-shrink: 0; align-items: center; gap: 2px; margin-inline-start: auto; }
+/* Without a header the actions float over the code: shown on hover and focus, and always on touch. */
+.root > .actions {
+  position: absolute;
+  z-index: 1;
+  top: 6px;
+  inset-inline-end: 6px;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+.root[data-size='sm'] > .actions { top: 4px; inset-inline-end: 4px; }
+.root:hover > .actions, .root:focus-within > .actions { opacity: 1; }
+@media (pointer: coarse) { .root > .actions { opacity: 1; } }
+.root > .actions .button {
+  background: color-mix(in srgb, var(--color-paper) 88%, transparent);
+  box-shadow: 0 0 0 1px var(--color-hairline);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-ink-3);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+.button svg { width: 16px; height: 16px; }
+.root[data-size='sm'] .button { width: 24px; height: 24px; border-radius: 6px; }
+.root[data-size='sm'] .button svg { width: 14px; height: 14px; }
+@media (hover: hover) { .button:hover { background: var(--color-hover); color: var(--color-ink); } }
+.button[aria-pressed='true'] { background: color-mix(in srgb, var(--color-ink) 10%, transparent); color: var(--color-ink); }
+.button[data-copied] { color: var(--color-ink); }
+.button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Content: a focusable, left-to-right scroller. Lines are blocks so a line's background spans the code's width. */
+.content {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+  overflow: auto hidden;
+  color: inherit;
+  font: inherit;
+  tab-size: 4;
+  text-align: start;
+  white-space: pre;
+  outline: none;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+.root:has(> .footer) .content { padding-bottom: 6px; }
+.content[data-wrap] { white-space: pre-wrap; overflow-wrap: anywhere; }
+.content[data-diff] { --pad-x-start: calc(var(--pad-x) + 12px); padding-inline-start: var(--pad-x-start); }
+/* Long blocks show a preview; the rest is one "Show more" away. The height is lines, so it never depends on fonts. */
+.content[data-collapsed] { max-height: calc(var(--preview-lines, 15) * 1lh + var(--pad-top) + 6px); overflow-y: hidden; }
+/* Scroll-edge fades, only on an edge with more content past it. */
+.content:is([data-fade-start], [data-fade-end], [data-collapsed]) {
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 var(--fade-start, 0px), #000 calc(100% - var(--fade-end, 0px)), transparent),
+    linear-gradient(to bottom, #000 calc(100% - var(--fade-bottom, 0px)), transparent);
+  mask-image:
+    linear-gradient(to right, transparent, #000 var(--fade-start, 0px), #000 calc(100% - var(--fade-end, 0px)), transparent),
+    linear-gradient(to bottom, #000 calc(100% - var(--fade-bottom, 0px)), transparent);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+.content[data-fade-start] { --fade-start: var(--fade); }
+.content[data-fade-end] { --fade-end: var(--fade); }
+.content[data-collapsed] { --fade-bottom: 2.5lh; }
+
+.code { display: grid; align-content: start; min-width: max-content; min-height: 1lh; font: inherit; }
+.content[data-numbered] .code { grid-template-columns: auto 1fr; }
+.content[data-wrap] .code { min-width: 0; }
+
+/* A line: full-bleed to the scroller's padding so highlights reach both edges. Numbers and diff markers are
+   pseudo-elements, so a selection or a copy never includes them. */
+.line {
+  position: relative;
+  display: block;
+  min-height: 1lh;
+  margin-inline: calc(-1 * var(--pad-x-start, var(--pad-x))) calc(-1 * var(--pad-x));
+  padding-inline: var(--pad-x-start, var(--pad-x)) var(--pad-x);
+}
+.lineContent { min-width: 0; }
+.content[data-numbered] .line {
+  display: grid;
+  grid-column: span 2;
+  grid-template-columns: subgrid;
+  column-gap: 14px;
+  counter-increment: line;
+}
+.content[data-numbered] .line::before {
+  content: counter(line);
+  content: counter(line) / '';
+  min-width: 2ch;
+  color: var(--color-ink-3);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.line::after {
+  position: absolute;
+  top: 0;
+  inset-inline-start: calc(var(--pad-x-start, var(--pad-x)) - 1ch - 6px);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.line[data-variant='highlighted'] {
+  background: color-mix(in srgb, var(--color-ink) 6.5%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-ink) 30%, transparent);
+}
+.line[data-variant='added'] { background: color-mix(in srgb, var(--color-success) 11%, transparent); }
+.line[data-variant='added']::after { content: '+'; content: '+' / ''; color: var(--color-success); }
+.line[data-variant='removed'] { background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
+.line[data-variant='removed']::after { content: '−'; content: '−' / ''; color: var(--color-danger); }
+/* Diff hunk and file headers recede, uncoloured by the code's grammar. */
+.line[data-role='meta'] { color: var(--color-ink-3); }
+/* Terminal: commands in ink after a muted prompt; output muted unless ANSI colours it. */
+.prompt { color: var(--color-ink-3); user-select: none; -webkit-user-select: none; }
+.line[data-role='output'] { color: var(--color-ink-2); }
+
+/* Shiki's two-theme tokens: colour, style and (ANSI) background per theme. */
+.line span[style] {
+  color: var(--shiki-light, inherit);
+  background-color: var(--shiki-light-bg, transparent);
+  font-style: var(--shiki-light-font-style, inherit);
+  font-weight: var(--shiki-light-font-weight, inherit);
+  text-decoration: var(--shiki-light-text-decoration, inherit);
+}
+:global([data-theme='dark']) .line span[style] {
+  color: var(--shiki-dark, inherit);
+  background-color: var(--shiki-dark-bg, transparent);
+  font-style: var(--shiki-dark-font-style, inherit);
+  font-weight: var(--shiki-dark-font-weight, inherit);
+  text-decoration: var(--shiki-dark-text-decoration, inherit);
+}
+
+/* After the token rules, so it wins in both themes. */
+.line[data-role='meta'] span[style] { color: inherit; font-style: inherit; }
+
+.footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px var(--pad-x) 8px;
+  color: var(--color-ink-2);
+  font: 500 12px / 1 var(--font-sans);
+}
+.footer .more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  margin-inline-start: -8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-ink-2);
+  font: inherit;
+  cursor: pointer;
+}
+.footer .more svg { width: 14px; height: 14px; transition: transform var(--duration-base) var(--ease-standard); }
+.footer .more[aria-expanded='true'] svg { transform: rotate(180deg); }
+@media (hover: hover) { .footer .more:hover { background: var(--color-hover); color: var(--color-ink); } }
+.footer .more:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) { .root > .actions, .button, .footer .more svg { transition: none; } }
