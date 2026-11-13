@@ -61,7 +61,16 @@ export function MessageActivity({
   const finishedAt =
     maxIsoTimestamp(run?.updatedAt, maxIsoTimestamp(message.updatedAt, message.createdAt)) ??
     undefined;
-  const resolvedSteps = liveSteps ?? recoveredSteps ?? steps;
+  // Snapshots carry no timing; the message-derived steps know when each call and result were committed.
+  const timedRecovered = React.useMemo(
+    () =>
+      recoveredSteps?.map((r) => {
+        const m = steps.find((s) => s.callId === r.callId);
+        return m ? { ...r, startedAt: r.startedAt ?? m.startedAt, finishedAt: r.finishedAt ?? m.finishedAt } : r;
+      }),
+    [recoveredSteps, steps],
+  );
+  const resolvedSteps = liveSteps ?? timedRecovered ?? steps;
 
   return (
     <ResponseTimeline

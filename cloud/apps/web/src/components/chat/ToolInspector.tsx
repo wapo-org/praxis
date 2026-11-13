@@ -5,11 +5,10 @@ import styles from './ToolInspector.module.css';
 /**
  * The expanded tool row (K-ref/05): Input and Output each in a soft squircle box with a caption and a copy
  * button, JSON pretty-printed and highlighted, big branches collapsed, escaped text shown as lines.
- * The machine name lives here and nowhere else.
+ * The machine name (`mcp__exa__web_search_exa_<hash>`) is never shown: the owner rejected it even here. Only the connector name is.
  */
 export function ToolInspector({
   id,
-  technical,
   connectorName,
   failed,
   warning,
@@ -32,12 +31,9 @@ export function ToolInspector({
 }) {
   return (
     <div className={styles.inspector}>
-      {technical ? (
+      {connectorName ? (
         <p className={styles.meta}>
-          {connectorName ? <span>{connectorName}</span> : null}
-          <code className={styles.technical} title={technical}>
-            {technical}
-          </code>
+          <span>{connectorName}</span>
         </p>
       ) : null}
       {failed || warning ? (

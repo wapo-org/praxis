@@ -146,4 +146,9 @@ describe('the tool inspector (item 3, K-ref/05)', () => {
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Copy output"]')!.click());
     expect(copy).toHaveBeenCalledWith('s', '{\n  "r": [\n    1\n  ]\n}');
   });
+  it('never renders the machine name, even in the expanded detail (M-ref/01)', async () => {
+    await render(<ToolInspector id="s" technical="mcp__exa__web_search_exa_226473000415" connectorName="Exa" failed={false} warning={false} input='{"q":"a"}' progress="" output="ok" copiedId={null} copyText={vi.fn()} />);
+    expect(container.textContent).toContain('Exa');
+    expect(container.innerHTML).not.toMatch(/mcp__|_[0-9a-f]{8,}|[0-9]{9,}/);
+  });
 });

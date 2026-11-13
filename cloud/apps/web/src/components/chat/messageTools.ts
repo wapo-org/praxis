@@ -1,6 +1,7 @@
 import { toolDisplay } from './toolDisplay';
 import type { Message } from '@praxis/protocol';
 import type { ActiveToolStep } from '../../state/store';
+import { partCommittedAt } from './messageTurns';
 export function extractMessageToolSteps(msg: Message): ActiveToolStep[] {
   const byCallId = new Map<string, ActiveToolStep>();
   for (const part of msg.parts) {
@@ -22,6 +23,7 @@ export function extractMessageToolSteps(msg: Message): ActiveToolStep[] {
         argumentsJson: part.arguments ?? '{}',
         running: false,
         progressLines: [],
+        startedAt: partCommittedAt.get(part),
       });
     } else if (part.type === 'toolResult' && part.callId) {
       const existing = byCallId.get(part.callId);
@@ -35,6 +37,7 @@ export function extractMessageToolSteps(msg: Message): ActiveToolStep[] {
       };
       if (existing) {
         existing.completion = completion;
+        existing.finishedAt = partCommittedAt.get(part);
       } else {
         byCallId.set(part.callId, {
           callId: part.callId,

@@ -78,4 +78,16 @@ describe('owner Hello fixture', () => {
       for (const label of labels) expect(label ?? '').not.toMatch(/mcp__|_[0-9a-f]{8,}|[0-9]{9,}/);
     }
   });
+
+  it('times saved tool steps from their message commit times, not the reasoning blocks', () => {
+    // Real gaps from the owner's Hello chat: the call commits with the assistant message, the result with the tool-result message.
+    const at = ['00:45:39.537', '00:46:09.873', '00:46:11.924', '00:46:39.599', '00:46:43.772', '00:46:50.343'];
+    const timed = messages.map((m, i) => ({ ...m, parts: m.parts.map((p) => ({ ...p })), createdAt: `2026-11-13T${at[i]}Z` }));
+    const turn = messageTurns(timed)[1]!;
+    const steps = extractMessageToolSteps(turn);
+    expect(steps.map((s) => [s.startedAt, s.finishedAt])).toEqual([
+      ['2026-11-13T00:46:09.873Z', '2026-11-13T00:46:11.924Z'],
+      ['2026-11-13T00:46:39.599Z', '2026-11-13T00:46:43.772Z'],
+    ]);
+  });
 });
