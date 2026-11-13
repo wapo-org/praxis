@@ -47,7 +47,15 @@ test('a separate settings page creates, renames and deletes secrets and variable
  await expect(box.getByText('eu-west')).toBeVisible();
  await page.getByRole('button',{name:'Add new',exact:true}).click();
  await add.getByLabel('Saved value name').fill('deploy_token');
- await add.getByLabel('Saved value type').selectOption('secret');
+ // Escape closes the opened dropdown menu without closing the <Modal>.
+ const typeTrigger=add.getByLabel('Saved value type');
+ await typeTrigger.click();
+ await expect(add.getByRole('menuitemradio',{name:'Secret',exact:true})).toBeVisible();
+ await page.keyboard.press('Escape');
+ await expect(add).toBeVisible();
+ await expect(add.getByRole('menuitemradio',{name:'Secret',exact:true})).toHaveCount(0);
+ await typeTrigger.click();
+ await add.getByRole('menuitemradio',{name:'Secret',exact:true}).click();
  const secretInput=add.getByLabel('Saved secret value');
  await secretInput.fill('SYNTHETIC-BROWSER-TOKEN');
  await expect(secretInput).toHaveAttribute('type','password');

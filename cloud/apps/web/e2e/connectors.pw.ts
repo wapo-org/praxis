@@ -16,3 +16,25 @@ test('cold draft tray always shows the same connector rows across five openings'
   await page.getByTestId('composer-plus-button').click();await expect(page.getByTestId('plus-tray').getByRole('button',{name:/Connectors/})).toBeVisible();await page.keyboard.press('Escape');
  }
 });
+test('connector Transport and provider Flavor selects use GlassDropdown with keyboard navigation (no native select)',async({page})=>{
+ await page.request.post('/v1/auth/dev',{data:{type:'auth.dev',userId:'select-check-'+Date.now()}});
+ await page.goto('/settings/connectors');
+ await page.getByRole('button',{name:/Add by URL/}).click();
+ expect(await page.locator('select').count()).toBe(0);
+ const trigger=page.getByLabel('Transport');
+ await expect(trigger).toHaveText(/Streamable HTTP/);
+ await trigger.focus();
+ await page.keyboard.press('ArrowDown');
+ await expect(page.getByRole('menuitemradio',{name:'Server-sent events (SSE)'})).toBeVisible();
+ await page.keyboard.press('ArrowDown');
+ await page.keyboard.press('Enter');
+ await expect(trigger).toHaveText(/Server-sent events \(SSE\)/);
+ await page.goto('/settings/providers');
+ await page.getByRole('button',{name:'Add provider'}).click();
+ const flavor=page.getByLabel('Flavor');
+ await expect(flavor).toBeVisible();
+ expect(await page.locator('select').count()).toBe(0);
+ await flavor.click();
+ await page.getByRole('menuitemradio',{name:'OpenAI Responses'}).click();
+ await expect(flavor).toHaveText(/OpenAI Responses/);
+});

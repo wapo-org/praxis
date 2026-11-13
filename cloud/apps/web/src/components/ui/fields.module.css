@@ -2,7 +2,7 @@
    focus the line darkens instead of a ring being drawn around it. Textareas are the same field as a squircle. */
 .input,
 .textarea,
-.select select {
+.selectTrigger {
   box-sizing: border-box;
   width: 100%;
   min-height: var(--control-md);
@@ -31,22 +31,24 @@
 }
 .input:focus,
 .textarea:focus,
-.select select:focus {
+.selectTrigger:focus,
+.selectTrigger[data-state='open'] {
   border-color: var(--color-ink-3);
 }
 .input:focus-visible,
 .textarea:focus-visible,
-.select select:focus-visible {
+.selectTrigger:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 22%, transparent);
 }
 .input:disabled,
 .textarea:disabled,
-.select select:disabled {
+.selectTrigger:disabled {
   opacity: 0.6;
   cursor: default;
 }
 .input[aria-invalid='true'],
-.textarea[aria-invalid='true'] {
+.textarea[aria-invalid='true'],
+.selectTrigger[aria-invalid='true'] {
   border-color: color-mix(in srgb, var(--color-danger) 70%, transparent);
 }
 .input.mono,
@@ -59,23 +61,48 @@
   display: block;
   width: 100%;
 }
-.select select {
+.selectTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
   padding-inline-end: var(--space-8);
-  appearance: none;
+  text-align: start;
   cursor: pointer;
 }
-.select svg {
+.selectValue {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.selectChevron {
   position: absolute;
   top: 50%;
   right: var(--space-4);
   color: var(--color-ink-3);
   pointer-events: none;
   transform: translateY(-50%);
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+.selectTrigger[data-state='open'] .selectChevron {
+  transform: translateY(-50%) rotate(180deg);
+}
+.validationProxy {
+  position: absolute;
+  inset: auto 0 0;
+  width: 100%;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 /* 44 px and 16 px text on touch screens: iOS zooms a focused field below that. */
 @media (max-width: 1023px) {
   .input,
-  .select select {
+  .selectTrigger {
     min-height: var(--control-lg);
     font-size: var(--text-input-touch);
   }

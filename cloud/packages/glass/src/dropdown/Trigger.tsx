@@ -40,6 +40,10 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
     const ctx = useGlassDropdownContext('Trigger');
     const pointerOpened = React.useRef(false);
     const reduced = useMenuReducedMotion();
+    const childProps = asChild && React.isValidElement(children)
+      ? (children.props as Record<string, unknown>)
+      : null;
+    const isDisabled = Boolean(otherProps.disabled || childProps?.disabled);
 
     const setRef = React.useCallback(
       (node: HTMLButtonElement | null) => {
@@ -51,7 +55,7 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
 
     const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
       onPointerDown?.(e);
-      if (e.defaultPrevented || otherProps.disabled || e.button !== 0) return;
+      if (e.defaultPrevented || isDisabled || e.button !== 0) return;
       e.preventDefault();
       ctx.focusTrigger();
       pointerOpened.current = !ctx.open;
@@ -61,7 +65,7 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
 
     const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
       onClick?.(e);
-      if (e.defaultPrevented) return;
+      if (e.defaultPrevented || isDisabled) return;
       ctx.endScrub();
       if (!pointerOpened.current) ctx.setOpen(!ctx.open);
       pointerOpened.current = false;
@@ -69,10 +73,10 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
       onKeyDown?.(e);
-      if (e.defaultPrevented) return;
+      if (e.defaultPrevented || isDisabled) return;
       ctx.pointerOpening.current = false;
       if (e.key === 'Tab' && ctx.open) { e.preventDefault(); closeAndFocusNext(ctx, e.shiftKey); return; }
-      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         ctx.endScrub();
         ctx.setOpen(true);
@@ -84,20 +88,25 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
         if (ctx.open) focusFirst(); else requestAnimationFrame(focusFirst);
       } else if (e.key === 'Escape' && ctx.open) {
         e.preventDefault();
+        e.stopPropagation();
         if (ctx.activeSubPath.length) ctx.popSub(); else ctx.setOpen(false);
       }
     };
 
     if (asChild && React.isValidElement(children)) {
+      const childRef = childProps?.ref as React.Ref<HTMLButtonElement> | undefined;
       return React.cloneElement(
         children as React.ReactElement<Record<string, unknown>>,
         {
           style: {
             touchAction: 'none',
-            ...(children.props as { style?: React.CSSProperties }).style,
+            ...(childProps?.style as React.CSSProperties | undefined),
             ...style,
           },
-          ref: setRef,
+          ref: (node: HTMLButtonElement | null) => {
+            setRef(node);
+            if (childRef) assignForwardedRef(childRef, node);
+          },
           id: ctx.triggerId,
           'aria-haspopup': ctx.searchable ? 'listbox' : 'menu',
           'aria-expanded': ctx.open,

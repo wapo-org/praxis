@@ -137,7 +137,7 @@ export function Toggle({
 
 const TEXT_INPUTS = new Set(['checkbox', 'radio', 'file', 'hidden', 'range', 'color']);
 
-/** A labelled field. A bare <input> or <textarea> child becomes the shared pill field (components/ui/fields). */
+/** A labelled field. A bare <input>, <textarea>, or <Select> child becomes the shared pill field (components/ui/fields). */
 export function Field({
   label,
   hint,
@@ -147,25 +147,28 @@ export function Field({
   hint?: string;
   children: React.ReactNode;
 }) {
+  const labelId = React.useId();
   const dressed = React.Children.map(children, (child) => {
-    if (!React.isValidElement<{ className?: string; type?: string }>(child)) return child;
+    if (!React.isValidElement<{ className?: string; type?: string; 'aria-label'?: string; 'aria-labelledby'?: string }>(child)) return child;
     const own = child.props.className ?? '';
     const mono = own.split(' ').includes(styles.mono!) ? fieldClass.mono : '';
     if (child.type === 'textarea') return React.cloneElement(child, { className: [fieldClass.textarea, mono, own].filter(Boolean).join(' ') });
     if (child.type === 'input' && !TEXT_INPUTS.has(child.props.type ?? 'text'))
       return React.cloneElement(child, { className: [fieldClass.input, mono, own].filter(Boolean).join(' ') });
+    if (child.type === FieldSelect && !child.props['aria-label'] && !child.props['aria-labelledby'])
+      return React.cloneElement(child, { 'aria-labelledby': labelId });
     return child;
   });
   return (
     <label className={styles.field}>
-      <span>{label}</span>
+      <span id={labelId}>{label}</span>
       {dressed}
       {hint ? <span className={styles.footnote}>{hint}</span> : null}
     </label>
   );
 }
 
-/** Native select (the OS picker is the right control) dressed as the shared pill field. */
+/** Shared select field backed by GlassDropdown. */
 export const Select = FieldSelect;
 
 /** One-of-many choice when the options can overflow a segmented control. */

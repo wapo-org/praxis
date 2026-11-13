@@ -77,7 +77,7 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
     [ctx, forwardedRef],
   );
 
-  const { position, resolvedSide } = usePositioning(ctx, minWidth);
+  const { position } = usePositioning(ctx, minWidth);
   const handleKeyDown = useKeyboard(
     ctx,
     onKeyDown,
@@ -127,8 +127,11 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
     }
   });
 
+  // Render inside an ancestor <dialog> when triggered from a top-layer modal so it stays above the dialog and interactive.
+  const portalContainer = ctx.getTriggerEl()?.closest('dialog') ?? undefined;
+
   return (
-    <DropdownPortal enabled={ctx.portal}>
+    <DropdownPortal enabled={ctx.portal} container={portalContainer}>
       <AnimatePresence>
         {ctx.open ? (
           <DepthContext.Provider value={0}>
