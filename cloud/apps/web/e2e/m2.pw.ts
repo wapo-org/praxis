@@ -21,6 +21,8 @@ test('real Hello turn stays ordered, copies the whole turn, and output wheel rea
   await page.screenshot({path:captures+'/streaming.png'});
   await expect(page.getByText('First lookup done — now for the second step in that sequence.', {exact:true})).toBeVisible({timeout:20000});
   expect(Math.abs((await first.evaluate(el => el.getBoundingClientRect().top)) - y)).toBeLessThan(2);
+  await expect(page.getByTestId('turn-copy-button')).toHaveCount(1, {timeout:30000});
+  await expect(page.getByTestId('live-run-streaming-turn')).toHaveCount(0, {timeout:10000});
   await page.getByTestId('assistant-turn').waitFor({timeout:30000});
   await expect(page.getByTestId('turn-copy-button')).toHaveCount(1);
   await expect(page.getByTestId('turn-retry-button')).toHaveCount(1);
@@ -35,6 +37,8 @@ test('real Hello turn stays ordered, copies the whole turn, and output wheel rea
   await page.screenshot({path:captures+'/finished.png'});
   // Tool 1 follows text 1, and its disclosure stays between text 1 and text 2.
   await turns.nth(1).click();
+  await expect(turns.nth(1)).toHaveAttribute('aria-expanded', 'true');
+  await page.locator('[data-testid="agent-activity-fold"][data-open="true"][data-settled="true"]').waitFor();
   await page.locator('[data-testid^="tool-step-header-"]').first().click();
   const output = page.locator('section[data-caption="output"]');
   await expect(output.getByRole('button',{name:'Show all',exact:true})).toBeVisible();
