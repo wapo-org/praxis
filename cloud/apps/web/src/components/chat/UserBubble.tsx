@@ -1,6 +1,7 @@
 import type { Attachment, Message } from '@praxis/protocol';
 import React from 'react';
 import { Copy, Check } from '../../lib/icons';
+import { AttachmentGroup } from '../ui/attachment';
 import actionStyles from './AgentMessageView.module.css';
 import { bindSendFlightTarget, isSendFlightTarget } from './chatMotion';
 import { MessageAttachment } from './MessageAttachment';
@@ -39,7 +40,7 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
     <>
       <div data-testid="user-message-bubble" data-message-key={`m:${turnKey}`} className={styles.turn}>
         {mediaParts.length > 0 ? (
-          <div className={styles.media} data-with-text={!!combinedText}>
+          <AttachmentGroup className={styles.media} data-with-text={!!combinedText}>
             {mediaParts.map((part, index) => (
               <MessageAttachment
                 key={`${part.attachmentId}-${index}`}
@@ -48,7 +49,7 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
                 onPreview={setLightboxUrl}
               />
             ))}
-          </div>
+          </AttachmentGroup>
         ) : null}
         {combinedText ? (
           <div ref={bubbleRef} data-user-bubble="" className={styles.bubble} style={isSendFlightTarget(turnKey,combinedText)?{visibility:'hidden',opacity:0}:undefined}>

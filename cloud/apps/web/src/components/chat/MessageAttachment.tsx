@@ -2,9 +2,10 @@ import type { Attachment, MessagePart } from '@praxis/protocol';
 import React from 'react';
 import { apiClient } from '../../lib/api';
 import { safeLink } from '../../lib/links';
+import { formatBytes } from './attachmentInfo';
 import { AttachmentChip, AttachmentThumb } from './AttachmentChip';
 
-/** One attachment on a sent message: images as thumbnails, everything else as a file chip. */
+/** One attachment on a sent message: images vertical with preview, files horizontal with type · size. */
 export function MessageAttachment({
   part,
   attachment,
@@ -38,15 +39,21 @@ export function MessageAttachment({
   const att = attachment ?? loaded;
   const url = safeLink(att?.url);
   const mediaType = att?.mediaType ?? part.mediaType ?? 'application/octet-stream';
-  if (part.type === 'image' && url && /^https?:/.test(url))
-    return <AttachmentThumb src={url} name={att?.name || 'Attached image'} onOpen={() => onPreview(url)} />;
+  if (part.type === 'image' && url && /^https?:/.test(url)) {
+    const imageName = att?.name || 'Attached image';
+    const meta = ['Image', att?.size !== undefined ? formatBytes(att.size) : ''].filter(Boolean).join(' · ');
+    return <AttachmentThumb src={url} name={imageName} meta={meta} onOpen={() => onPreview(url)} />;
+  }
   const name = unavailable ? 'Attachment unavailable' : (att?.name ?? (part.type === 'image' ? 'Image' : 'File'));
   return (
     <AttachmentChip
       testId="document-attachment-chip"
+      orientation="horizontal"
       name={name}
       mediaType={mediaType}
       size={att?.size}
+      href={url && /^https?:/.test(url) ? url : undefined}
+      state={!att ? (unavailable ? 'error' : 'uploading') : 'done'}
       status={att ? undefined : unavailable ? 'Removed or not accessible' : 'Loading…'}
     />
   );

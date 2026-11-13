@@ -5,6 +5,7 @@ import React from 'react';
 import type { Attachment } from '@praxis/protocol';
 import { GlassSurface } from '@praxis/glass';
 import { usePraxisStore } from '../../state/store';
+import { AttachmentGroup } from '../ui/attachment';
 import { PlusTray } from './PlusTray';
 import { AttachmentChip } from './AttachmentChip';
 import { attachmentLimit } from './attachmentInfo';
@@ -18,6 +19,7 @@ interface QueuedFile {
   size: number;
   status: 'uploading' | 'ready' | 'blocked' | 'failed';
   attachment?: Attachment;
+  previewUrl?: string;
   note?: string;
   level?: 'warn' | 'block';
 }
@@ -48,6 +50,15 @@ export const Composer: React.FC = () => {
   const uploadsRef = React.useRef<Promise<unknown>>(Promise.resolve());
   const sendingRef = React.useRef(false);
 
+  React.useEffect(
+    () => () => {
+      for (const q of queueRef.current) {
+        if (q.previewUrl) URL.revokeObjectURL(q.previewUrl);
+      }
+    },
+    [],
+  );
+
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   React.useEffect(() => {
@@ -68,39 +79,76 @@ export const Composer: React.FC = () => {
   };
 
   const [mediaError, setMediaError] = React.useState('');
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const enqueueFiles = React.useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+      setMediaError('');
+      const entries = files.map((file): QueuedFile => {
+        const mediaType = file.type || 'application/octet-stream';
+        const limit = attachmentLimit({ name: file.name, mediaType, size: file.size });
+        const previewUrl =
+          mediaType.startsWith('image/') && typeof URL.createObjectURL === 'function'
+            ? URL.createObjectURL(file)
+            : undefined;
+        return {
+          key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          name: file.name || 'pasted-file',
+          mediaType,
+          size: file.size,
+          status: limit?.level === 'block' ? 'blocked' : 'uploading',
+          previewUrl,
+          note: limit?.message,
+          level: limit?.level,
+        };
+      });
+      setQueued((prev) => [...prev, ...entries]);
+      const work = Promise.all(
+        files.map(async (file, i) => {
+          const entry = entries[i]!;
+          if (entry.status === 'blocked') return;
+          try {
+            const [attachment] = await uploadFiles([file]);
+            setQueued((prev) => prev.map((q) => (q.key === entry.key ? { ...q, status: 'ready', attachment } : q)));
+          } catch (err) {
+            const message = err instanceof Error ? err.message : 'Upload failed';
+            setQueued((prev) =>
+              prev.map((q) =>
+                q.key === entry.key ? { ...q, status: 'failed', note: `Couldn’t upload: ${message}`, level: 'block' } : q,
+              ),
+            );
+          }
+        }),
+      );
+      uploadsRef.current = Promise.all([uploadsRef.current, work]);
+      await work;
+    },
+    [setQueued, uploadFiles],
+  );
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
     e.target.value = '';
+    void enqueueFiles(files);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const files = Array.from(e.clipboardData?.files ?? []);
     if (files.length === 0) return;
-    setMediaError('');
-    const entries = files.map((file): QueuedFile => {
-      const limit = attachmentLimit({ name: file.name, mediaType: file.type || 'application/octet-stream', size: file.size });
-      return {
-        key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        name: file.name,
-        mediaType: file.type || 'application/octet-stream',
-        size: file.size,
-        status: limit?.level === 'block' ? 'blocked' : 'uploading',
-        note: limit?.message,
-        level: limit?.level,
-      };
-    });
-    setQueued((prev) => [...prev, ...entries]);
-    const work = Promise.all(
-      files.map(async (file, i) => {
-        const entry = entries[i]!;
-        if (entry.status === 'blocked') return;
-        try {
-          const [attachment] = await uploadFiles([file]);
-          setQueued((prev) => prev.map((q) => (q.key === entry.key ? { ...q, status: 'ready', attachment } : q)));
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Upload failed';
-          setQueued((prev) => prev.map((q) => (q.key === entry.key ? { ...q, status: 'failed', note: `Couldn’t upload: ${message}`, level: 'block' } : q)));
-        }
-      }),
-    );
-    uploadsRef.current = Promise.all([uploadsRef.current, work]);
-    await work;
+    e.preventDefault();
+    void enqueueFiles(files);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault();
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (files.length === 0) return;
+    e.preventDefault();
+    void enqueueFiles(files);
   };
 
   const modelSearch = useModelSearch(text, inlineModelSearchActive);
@@ -134,6 +182,9 @@ export const Composer: React.FC = () => {
     if (trimmed) {
       launchSendFlight(textareaRef.current, trimmed);
     }
+    for (const q of queueRef.current) {
+      if (q.previewUrl) URL.revokeObjectURL(q.previewUrl);
+    }
     setText('');
     setQueued([]);
     setPlusTrayOpen(false);
@@ -159,7 +210,13 @@ export const Composer: React.FC = () => {
   const inlineMatchingModels = modelSearch.items;
 
   return (
-    <div data-testid="composer-dock" className={styles.dock}>
+    <div
+      data-testid="composer-dock"
+      className={styles.dock}
+      onPaste={handlePaste}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
       <input ref={fileInputRef} type="file" multiple data-testid="composer-file-input" onChange={handleFileChange} hidden />
 
       {mediaError ? (
@@ -209,7 +266,7 @@ export const Composer: React.FC = () => {
 
       <GlassSurface material="regular" style={{ '--glass-radius': 'var(--radius-composer)' } as React.CSSProperties} data-testid="composer-surface" className={styles.pill}>
         {queued.length > 0 ? (
-          <div data-testid="composer-attachments-strip" className={styles.attachments}>
+          <AttachmentGroup data-testid="composer-attachments-strip" className={styles.attachments}>
             {queued.map((q) => (
               <AttachmentChip
                 key={q.key}
@@ -217,13 +274,17 @@ export const Composer: React.FC = () => {
                 name={q.name}
                 mediaType={q.mediaType}
                 size={q.size}
+                previewUrl={q.previewUrl}
                 status={q.status === 'uploading' ? 'Uploading…' : undefined}
                 note={q.note}
                 noteLevel={q.level}
-                onRemove={() => setQueued((prev) => prev.filter((x) => x.key !== q.key))}
+                onRemove={() => {
+                  if (q.previewUrl) URL.revokeObjectURL(q.previewUrl);
+                  setQueued((prev) => prev.filter((x) => x.key !== q.key));
+                }}
               />
             ))}
-          </div>
+          </AttachmentGroup>
         ) : null}
 
         <ComposerBar

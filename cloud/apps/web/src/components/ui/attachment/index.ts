@@ -1,0 +1,18 @@
+export {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+  AttachmentTrigger,
+  type AttachmentActionProps,
+  type AttachmentMediaProps,
+  type AttachmentOrientation,
+  type AttachmentProps,
+  type AttachmentSize,
+  type AttachmentState,
+  type AttachmentTriggerProps,
+} from './Attachment';

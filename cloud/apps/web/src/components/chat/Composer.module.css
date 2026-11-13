@@ -27,10 +27,6 @@
 }
 
 .attachments {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  overflow-x: auto;
   padding: var(--space-1) var(--space-1) 0;
 }
 
