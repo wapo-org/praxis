@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import React from 'react';
 import { useAccount } from '../../lib/account';
 import { groupChats } from '../../lib/chatGroups';
+import { normalizeTitle } from '../../lib/chatTitle';
 import { MoreHorizontal, Pin, Search, Settings, Edit } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import { chatActions } from '../../actions/registry';
@@ -121,7 +122,8 @@ function ChatRow({
   const [pressed, setPressed] = React.useState(false);
   const release = () => setPressed(false);
   const [renaming, setRenaming] = React.useState(false);
-  const [title, setTitle] = React.useState(chat.title);
+  const cleanTitle = normalizeTitle(chat.title) || 'New chat';
+  const [title, setTitle] = React.useState(cleanTitle);
   const [error, setError] = React.useState('');
   const run = (task: () => Promise<unknown>) =>
     void task().catch((err: unknown) =>
@@ -181,7 +183,7 @@ function ChatRow({
         className={styles.rowSelect}
         data-sidebar-row-select=""
         aria-current={active ? 'page' : undefined}
-        title={chat.title || 'New chat'}
+        title={cleanTitle}
         onPointerDown={(event) => {
           if (event.button !== 0) return;
           setPressed(true);
@@ -203,7 +205,7 @@ function ChatRow({
           onNavigate?.();
         }}
       >
-        <span className={styles.rowTitle}><TitleText title={chat.title || 'New chat'}/></span>
+        <span className={styles.rowTitle}><TitleText title={cleanTitle}/></span>
       </button>
       {chat.pinned ? (
         <span className={styles.rowPin}>
@@ -216,14 +218,14 @@ function ChatRow({
             <button
               type="button"
               className={styles.rowMenu}
-              aria-label={`Actions for ${chat.title}`}
+              aria-label={`Actions for ${normalizeTitle(chat.title)}`}
             >
               <MoreHorizontal size={16} />
             </button>
           </GlassDropdown.Trigger>
           <GlassDropdown.Content minWidth={180}>
             {chatActions(store, chat, () => {
-              setTitle(chat.title);
+              setTitle(cleanTitle);
               setRenaming(true);
             }).map((action) => (
               <React.Fragment key={action.id}>

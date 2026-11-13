@@ -10,6 +10,7 @@ export const ProviderRequestSchema = z.object({
   model: IdSchema, system: z.string(), messages: z.array(MessageSchema),
   tools: z.array(z.lazy(() => ConversationSetupSchema.shape.tools.element)),
   capabilities: CapabilitiesSchema, maxTokens: z.number().int().positive(),
+  temperature: z.number().min(0).max(2).optional(),
   titleReasoning:z.enum(['none','minimal','low']).optional(),effort: z.string().optional(), supportedEfforts: z.array(z.string()).optional(),
   webSearch: z.boolean().default(false),
 });

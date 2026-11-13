@@ -130,6 +130,16 @@ describe('Sidebar', () => {
     act(() => root.render(<Sidebar key="closed" />));
     expect(container.querySelector('[data-testid="app-sidebar"]')).toBeNull();
   });
+
+  it('normalizes legacy multiline stored titles to a single line in sidebar rows', () => {
+    const multilineChat: Chat = { ...chat('multiline', '2026-11-01T11:00:00Z'), title: 'Hello\nHello\nHello' };
+    store = { ...store, chats: [multilineChat], activeChat: multilineChat, activeChatId: multilineChat.id };
+    act(() => root.render(<Sidebar />));
+    const select = container.querySelector<HTMLButtonElement>('[data-sidebar-row-select]');
+    expect(select?.textContent).toBe('Hello Hello Hello');
+    expect(select?.getAttribute('title')).toBe('Hello Hello Hello');
+    expect(select?.textContent).not.toContain('\n');
+  });
 });
 
 describe('ComposerBar', () => {
@@ -194,6 +204,13 @@ describe('ChatHeader', () => {
     expect(narrow).toContain('nav-history-button');
     expect(narrow).not.toContain('nav-settings-button');
     expect(narrow.match(/data-glass-surface/g)).toHaveLength(2); // history, new chat: the title has no box (WP-K2, K-ref/13)
+  });
+  it('normalizes legacy multiline stored titles to a single line in the header pill', () => {
+    store = { ...store, activeChat: { ...chats[0]!, title: 'Hello\nHello\nHello' } };
+    act(() => root.render(<ChatHeader />));
+    const pill = container.querySelector<HTMLButtonElement>('[data-testid="nav-chat-title-pill"]');
+    expect(pill?.textContent).toContain('Hello Hello Hello');
+    expect(pill?.textContent).not.toContain('\n');
   });
 });
 

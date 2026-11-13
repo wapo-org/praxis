@@ -1,7 +1,48 @@
-.stack { display: inline-grid; max-width: 100%; }
-.current, .previous { grid-area: 1 / 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.current { animation: arrive var(--duration-base) var(--ease-standard) both; }
-.previous { animation: leave var(--duration-base) var(--ease-standard) both; pointer-events: none; }
-@keyframes arrive { from { opacity: 0; } to { opacity: 1; } }
-@keyframes leave { from { opacity: 1; } to { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .current, .previous { animation: none; } .previous { display: none; } }
+.stack {
+  display: inline-grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: top;
+}
+.current,
+.previous {
+  grid-area: 1 / 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.current {
+  animation: arrive var(--duration-base) var(--ease-standard) both;
+}
+.previous {
+  animation: leave var(--duration-base) var(--ease-standard) both;
+  pointer-events: none;
+}
+@keyframes arrive {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes leave {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .current,
+  .previous {
+    animation: none;
+  }
+  .previous {
+    display: none;
+  }
+}

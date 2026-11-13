@@ -92,6 +92,53 @@ test('a separate settings page creates, renames and deletes secrets and variable
  await edit.getByRole('alert').getByRole('button',{name:'Delete',exact:true}).click();
  await expect(page.getByTestId('saved-value-'+secret.id)).toHaveCount(0);
 });
+test('saved-values box hugs 1 and 3 rows with uniform 8px inner padding on all four sides',async({page})=>{
+ await page.request.post('/v1/saved-values',{data:{name:'api_key_one',kind:'secret',value:'SYNTH-ONE'}});
+ await page.goto('/settings/saved-values');
+ const box=page.getByTestId('saved-values-box');
+ const rows=box.locator('[data-testid^="saved-value-"]:not([data-testid="saved-value-skeleton"])');
+ await expect(rows).toHaveCount(1);
+ const measure=()=>box.evaluate(el=>{
+  const r=el.getBoundingClientRect();
+  const rowEls=[...el.querySelectorAll('[data-testid^="saved-value-"]:not([data-testid="saved-value-skeleton"])')];
+  const first=rowEls[0]!;
+  const last=rowEls[rowEls.length-1]!;
+  const cs=getComputedStyle(first);
+  const nameRect=first.querySelector('span')!.getBoundingClientRect();
+  const firstBtn=first.querySelector('button')!.getBoundingClientRect();
+  const lastBtn=last.querySelector('button')!.getBoundingClientRect();
+  return {
+   boxHeight:Math.round(r.height),
+   scrollHeight:el.scrollHeight,
+   clientHeight:el.clientHeight,
+   padding:[cs.paddingTop,cs.paddingRight,cs.paddingBottom,cs.paddingLeft],
+   insets:{
+    top:Math.round(firstBtn.top-r.top),
+    right:Math.round(r.right-firstBtn.right),
+    bottom:Math.round(r.bottom-lastBtn.bottom),
+    left:Math.round(nameRect.left-r.left),
+   },
+  };
+ });
+ expect(await measure()).toEqual({
+  boxHeight:44,
+  scrollHeight:44,
+  clientHeight:44,
+  padding:['8px','8px','8px','8px'],
+  insets:{top:8,right:8,bottom:8,left:8},
+ });
+ await page.request.post('/v1/saved-values',{data:{name:'api_key_two',kind:'secret',value:'SYNTH-TWO'}});
+ await page.request.post('/v1/saved-values',{data:{name:'deploy_region',kind:'variable',value:'us-east-1'}});
+ await page.reload();
+ await expect(rows).toHaveCount(3);
+ expect(await measure()).toEqual({
+  boxHeight:132,
+  scrollHeight:132,
+  clientHeight:132,
+  padding:['8px','8px','8px','8px'],
+  insets:{top:8,right:8,bottom:8,left:8},
+ });
+});
 test('an unavailable endpoint shows recovery without claiming the account is empty',async({page},info)=>{
  await page.addInitScript(()=>{
   (window as any).__savedValuesReady=false;

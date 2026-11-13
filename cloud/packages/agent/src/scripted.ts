@@ -314,10 +314,29 @@ export function createScriptedProvider(
         return;
       }
 
-      if(request.system.startsWith('Return only a short')){
-        const text=request.messages.at(-1)?.parts.find(p=>p.type==='text')?.text??'';
-        const title=text.split(/\s+/).slice(0,5).join(' ');
-        yield {type:'completed',response:{parts:[{type:'text',text:title}],stop:'endTurn',usage:{type:'usage',inputTokens:Math.ceil((request.system.length+text.length)/4),outputTokens:Math.min(20,Math.ceil(title.length/4)),cacheReadTokens:0,cacheWriteTokens:0}}};return;
+      if (
+        request.system.startsWith('You are a conversation title generator.') ||
+        request.system.startsWith('Return only a short')
+      ) {
+        const raw = request.messages.at(-1)?.parts.find((p) => p.type === 'text')?.text ?? '';
+        const match = /<message>\s*([\s\S]*?)\s*<\/message>/i.exec(raw);
+        const text = (match ? match[1]! : raw).trim();
+        const title = text.split(/\s+/).slice(0, 5).join(' ');
+        yield {
+          type: 'completed',
+          response: {
+            parts: [{ type: 'text', text: title }],
+            stop: 'endTurn',
+            usage: {
+              type: 'usage',
+              inputTokens: Math.ceil((request.system.length + raw.length) / 4),
+              outputTokens: Math.min(20, Math.ceil(title.length / 4)),
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+            },
+          },
+        };
+        return;
       }
       // Default legacy scripts ('text', 'tools', 'approval', 'nestedApproval', 'elicitation', 'elicitationURL', 'error', 'long', 'compaction', 'vision')
       yield { type: 'reasoning', index: 100, text: 'Checking the scripted scenario.' };

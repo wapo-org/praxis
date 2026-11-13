@@ -211,6 +211,61 @@ test('pinned rows show exactly one aligned trailing control, including menu-open
   await expect(pin).toBeVisible();
   await expect(action).not.toBeVisible();
 });
+test('multiline and long chat titles stay strictly single-line with ellipsis truncation in header and sidebar', async ({
+  page,
+}) => {
+  const cases = [
+    { raw: 'Hello\nHello\nHello', expectedText: 'Hello Hello Hello', expectTruncated: false },
+    { raw: 'Here are a few options:\n\n* Chat: Longer Re', expectedText: 'Here are a few options: * Chat: Longer Re', expectTruncated: true },
+    { raw: 'Very Long Chat Title That Should Stay On One Single Line Without Wrapping At All', expectedText: 'Very Long Chat Title That Should Stay On One Single Line Without Wrapping At All', expectTruncated: true },
+  ];
+  for (const c of cases) {
+    const chat = await (
+      await page.request.post('/v1/chats', { data: { type: 'chat.input', title: c.raw } })
+    ).json();
+    await page.goto('/c/' + chat.id);
+    const pill = page.getByTestId('nav-chat-title-pill');
+    await expect(pill).toBeVisible();
+    const headerStats = await pill.evaluate((el) => {
+      const textSpan = el.querySelector('span');
+      const current = textSpan?.querySelector('span > span') ?? textSpan;
+      const cs = getComputedStyle(textSpan!);
+      return {
+        text: textSpan!.textContent ?? '',
+        height: Math.round(textSpan!.getBoundingClientRect().height),
+        lineHeight: Math.round(parseFloat(cs.lineHeight)),
+        textOverflow: getComputedStyle(current!).textOverflow,
+      };
+    });
+    expect(headerStats.text).not.toContain('\n');
+    expect(headerStats.height).toBeLessThanOrEqual(headerStats.lineHeight + 1);
+
+    const row = page.locator('[data-sidebar-row][data-active="true"]').first();
+    await expect(row).toBeVisible();
+    const rowStats = await row.evaluate((el) => {
+      const btn = el.querySelector('[data-sidebar-row-select]')!;
+      const titleWrap = btn.querySelector('span')!;
+      const stack = titleWrap.querySelector('span')!;
+      const current = stack.querySelector('span')!;
+      return {
+        rowHeight: Math.round(el.getBoundingClientRect().height),
+        text: current.textContent ?? '',
+        scrollWidth: current.scrollWidth,
+        clientWidth: current.clientWidth,
+        wrapClientWidth: titleWrap.clientWidth,
+        textOverflow: getComputedStyle(current).textOverflow,
+      };
+    });
+    expect(rowStats.rowHeight).toBe(31);
+    expect(rowStats.text).toBe(c.expectedText);
+    expect(rowStats.text).not.toContain('\n');
+    expect(rowStats.clientWidth).toBeLessThanOrEqual(rowStats.wrapClientWidth + 1);
+    expect(rowStats.textOverflow).toBe('ellipsis');
+    if (c.expectTruncated) {
+      expect(rowStats.scrollWidth).toBeGreaterThan(rowStats.clientWidth);
+    }
+  }
+});
 test('argument-free approvals have no empty box and questions use a human label', async ({
   page,
 }) => {

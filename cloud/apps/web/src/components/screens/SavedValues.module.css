@@ -40,19 +40,20 @@
   color: var(--color-ink-2);
   font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
 }
-/* The box: a RowGroup that scrolls inside itself. */
+/* The box: a RowGroup that hugs its rows up to the viewport cap, then scrolls inside itself. */
 .box {
   --group-fill: color-mix(in srgb, var(--color-ink) 4%, var(--color-surface));
   max-height: min(560px, calc(100dvh - 300px));
-  min-height: calc(var(--control-lg) * 3);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
-.row {
+/* Beat RowGroup's .row padding regardless of CSS bundle order so all four inner insets are --space-2 (8px),
+   concentric with the 22px squircle box around the 28px (14px-radius) Edit pill. */
+.box .row {
   min-height: var(--control-lg);
-  padding-inline: var(--space-4) var(--space-2);
-  --group-divider-inset: var(--space-4);
+  padding: var(--space-2);
+  --group-divider-inset: var(--space-2);
   contain: layout paint;
 }
 .name {
@@ -102,7 +103,7 @@
     opacity: 0.45;
   }
 }
-.emptyRow {
+.box .emptyRow {
   justify-content: center;
   min-height: calc(var(--control-lg) * 2);
   color: var(--color-ink-2);
@@ -110,6 +111,8 @@
 .sentinel {
   flex-shrink: 0;
   height: 1px;
+  margin-top: -1px;
+  pointer-events: none;
 }
 .form {
   display: flex;

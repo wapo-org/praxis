@@ -66,6 +66,7 @@ export function buildProviderRequest(flavor:ProviderFlavor,raw:ProviderRequest,o
     if(c.tools&&req.webSearch&&c.serverWebSearch)tools.push({type:options.webSearchToolType??'web_search_20250305',name:'web_search'});
     if(tools.length)body.tools=tools;
     if(effort){body.thinking={type:'adaptive'};body.output_config={effort};}
+    if(req.temperature!==undefined&&!effort)body.temperature=req.temperature;
     return body;
   }
   if(flavor==='openAIChat') {
@@ -106,7 +107,9 @@ export function buildProviderRequest(flavor:ProviderFlavor,raw:ProviderRequest,o
     if(options.maxTokensField!=='omit')body[options.maxTokensField??'max_tokens']=req.maxTokens;
     if(c.streamUsage)body.stream_options={include_usage:true};
     if(c.tools&&req.tools.length){body.tools=req.tools.map(t=>({type:'function',function:{name:t.name,description:t.description,parameters:t.inputSchema}}));body.parallel_tool_calls=c.parallelToolCalls;}
-    if(effort)body.reasoning_effort=effort;return body;
+    if(effort)body.reasoning_effort=effort;
+    if(req.temperature!==undefined)body.temperature=req.temperature;
+    return body;
   }
   const input:JsonObject[]=[];
   for(const m of req.messages) {
@@ -128,5 +131,7 @@ export function buildProviderRequest(flavor:ProviderFlavor,raw:ProviderRequest,o
   const tools:JsonObject[]=c.tools?req.tools.map(t=>({type:'function',name:t.name,description:t.description,parameters:t.inputSchema,strict:false})):[];
   if(c.tools&&req.webSearch&&c.serverWebSearch)tools.push({type:'web_search'});
   if(tools.length){body.tools=tools;body.parallel_tool_calls=c.parallelToolCalls;}
-  if(effort)body.reasoning={effort};return body;
+  if(effort)body.reasoning={effort};
+  if(req.temperature!==undefined&&(!effort||effort==='none'))body.temperature=req.temperature;
+  return body;
 }

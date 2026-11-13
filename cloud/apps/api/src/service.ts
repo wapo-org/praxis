@@ -6,6 +6,7 @@ import type {ApiProviders} from './providers.js';
 import {foldSnapshot,initialSnapshot} from './snapshot.js';
 import {attachmentParts,makeTitle,wantsTitle,type AttachmentRow} from './attachments.js';
 import type {SearchIndexer} from './search-index.js';
+import {validateTitle} from './title-model.js';
 const attachmentRow=(id:string,v:JsonObject):AttachmentRow=>({id,name:String(v.name??'file'),mediaType:String(v.mediaType??'application/octet-stream'),size:Number(v.size??0),hiddenFromCode:v.hiddenFromCode===true});
 export class ApiError extends Error{constructor(public status:number,public code:string,message:string){super(message);}}
 export type RunDecision={type:'approval.decision';approvalId:string;decision:'allowOnce'|'allowAlways'|'deny'}|{type:'elicitation.response';elicitationId:string;action:'accept'|'decline'|'cancel';content?:JsonObject};
@@ -98,7 +99,8 @@ export class ApiService{
    await this.emit(userId,run.id,{type:'messages.committed',messages:[message]});messages.push(message);
   }
   const title=await this.titleFor(userId,chat,input.text,attachments,messages.slice(0,-1));
-  const suggested=input.suggestedTitle?.trim();
+  const rawSuggested=input.suggestedTitle?.trim();
+  const suggested=rawSuggested?validateTitle(rawSuggested,input.text)??undefined:undefined;
   const updated=await this.updateChat(userId,chat.id,live=>({...live,...(title&&live.title===chat.title&&live.titleRevision===chat.titleRevision?{title:suggested||title}:{}),activeRunId:run.id,updatedAt:now}));
   const runChat=updated??chat;
   this.enqueue(userId,run.id,()=>this.driver!.start(userId,run,runChat,messages,input));

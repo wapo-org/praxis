@@ -79,6 +79,13 @@ describe('request transforms and raw replay',()=>{
     expect(JSON.stringify(buildProviderRequest('openAIChat',r,{replayReasoning:false}))).not.toContain('reasoning_details');
   });
   it('clamps effort down on ties and drops known unsupported effort',()=>{expect(clampEffort('high',['medium','max'])).toBe('medium');expect(clampEffort('high',[])).toBeUndefined();expect(clampEffort('high',undefined)).toBe('high');});
+  it('forwards temperature when set and safe with adaptive/reasoning effort settings',()=>{
+    const chat=buildProviderRequest('openAIChat',{...request(),temperature:0});expect(chat.temperature).toBe(0);
+    const anthNoEffort=buildProviderRequest('anthropicMessages',{...request(),capabilities:{...caps,reasoningEffort:false},temperature:0});expect(anthNoEffort.temperature).toBe(0);
+    const anthWithEffort=buildProviderRequest('anthropicMessages',{...request(),temperature:0});expect(anthWithEffort.temperature).toBeUndefined();
+    const respNone=buildProviderRequest('openAIResponses',{...request(),effort:'none',temperature:0});expect(respNone.temperature).toBe(0);
+    const respHigh=buildProviderRequest('openAIResponses',{...request(),effort:'high',temperature:0});expect(respHigh.temperature).toBeUndefined();
+  });
 });
 describe('injected HTTP provider and models',()=>{
   it.each(['anthropicMessages','openAIChat','openAIResponses'] as ProviderFlavor[])('calls %s endpoint with configured auth',async flavor=>{
