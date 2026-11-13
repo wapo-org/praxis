@@ -120,6 +120,7 @@ export function Select({
     [isControlled, name, onChange],
   );
 
+  const triggerWidth = open ? Math.max(220, Math.round(triggerRef.current?.getBoundingClientRect().width ?? 220)) : 220;
   return (
     <span className={cx(styles.select, className)}>
       {required ? (
@@ -165,7 +166,12 @@ export function Select({
             <ChevronDown size={16} aria-hidden="true" className={styles.selectChevron} />
           </button>
         </GlassDropdown.Trigger>
-        <GlassDropdown.Content minWidth={220} maxHeight={260}>
+        <GlassDropdown.Content
+          minWidth={triggerWidth}
+          maxHeight={260}
+          // A select's menu is as wide as its field, like the platform's, so options never truncate beside it.
+          style={{ '--menu-max-width': `${triggerWidth}px` } as React.CSSProperties}
+        >
           <GlassDropdown.RadioGroup value={currentValue} onValueChange={handleSelect}>
             {entries.map((entry, idx) =>
               entry.kind === 'option' ? (
