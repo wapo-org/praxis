@@ -120,6 +120,7 @@ export interface PraxisStoreContextValue {
   startNewConversation: () => void;
   /** The random two-word name the next new chat gets (design v2). */
   draftTitle: string;
+  pendingChatSwitchRef: { current: string | null };
   editingProviderId: string | null;
   setEditingProviderId: (id: string | null) => void;
   desktopSidebarOpen: boolean;
@@ -169,7 +170,7 @@ export interface PraxisStoreContextValue {
 
   // Actions
   selectChat: (chatId: string) => Promise<void>;
-  createNewChat: (title?: string) => Promise<Chat>;
+  createNewChat: (title?: string, id?: string) => Promise<Chat>;
   renameChat: (chatId: string, title: string) => Promise<void>;
   togglePinChat: (chatId: string) => Promise<void>;
   deleteChats: (chatIds: string[]) => Promise<void>;

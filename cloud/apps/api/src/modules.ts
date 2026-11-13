@@ -3,14 +3,16 @@ import {cropImage, cropImageReaderTool} from './features/tools/image-crop.js';
 import {connectorToolNotes} from './features/tools/tool-notes.js';
 import {Hono} from 'hono';
 import {createImageReaderTool, type AgentTool, type ModelProvider} from '@praxis/agent';
-import {ConnectorSchema,PreferencesSchema, type Chat, type MessagePart, type Model} from '@praxis/protocol';
+import {PreferencesSchema, type Chat, type MessagePart, type Model} from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from './contracts.js';
 import {connectorTurnNotes, createMcpGateway, createMcpRoutes, getMcpTools, type McpOptions} from './features/mcp/index.js';
+import {listConnectorsMemo} from './features/mcp/tools.js';
 import {createLocalToolsStorage, createToolsRoutes, type ToolsStorage} from './features/tools/index.js';
 import {rehydrateAttachment} from './features/tools/media.js';
 import {javascriptTool, listSkillsForCatalog, skillTools} from './features/tools/builtin.js';
 import type {FeatureModule} from './server.js';
 import type {ApiService} from './service.js';
+import {currentRunTiming, timedStep} from './timing.js';
 
 export interface ModuleOptions {
   /** Attachment storage (Convex files in production). Local dev uses the in-process fixture. */
@@ -35,10 +37,20 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
       },
       execution: {
         refreshCatalog:true,
-        skills: ctx => listSkillsForCatalog(ctx),
-        turnNotes: (ctx, chat, previous) => connectorTurnNotes(ctx, chat, previous),
+        skills: ctx => {
+          const tracker = currentRunTiming();
+          const load = () => timedStep('skills', () => listSkillsForCatalog(ctx));
+          return tracker ? tracker.memo(`skills:${ctx.userId}`, load) : load();
+        },
+        turnNotes: (ctx, chat, previous) => timedStep('connectorTurnNotes', () => connectorTurnNotes(ctx, chat, previous)),
         media: (ctx, part, caps) => rehydrateAttachment(ctx, storage, part, caps),
-        toolNotes: async (ctx, chat) => connectorToolNotes(await getMcpTools(ctx, {chatId: chat.id, disabledConnectorIds: chat.disabledConnectorIds}, mcp),(await ctx.store.list(ctx.userId,'connector')).filter(r=>!r.deleted).map(r=>ConnectorSchema.parse(r.value)).filter(c=>c.enabled&&!chat.disabledConnectorIds.includes(c.id))),
+        toolNotes: async (ctx, chat) => {
+          const [mcpTools, connectors] = await Promise.all([
+            getMcpTools(ctx, {chatId: chat.id, disabledConnectorIds: chat.disabledConnectorIds}, mcp),
+            listConnectorsMemo(ctx),
+          ]);
+          return connectorToolNotes(mcpTools, connectors.filter(c=>c.enabled&&!chat.disabledConnectorIds.includes(c.id)));
+        },
         async tools(ctx, {chat, attachmentIds}) {
           const connectors = await getMcpTools(ctx, {chatId: chat.id, disabledConnectorIds: chat.disabledConnectorIds}, mcp);
           const skills = skillTools(ctx, storage);
@@ -46,7 +58,7 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
           const js = javascriptTool(ctx, {attachmentIds, hostToolNames, ...(storage ? {storage} : {})});
           return [...skills, js, ...await selectRunTools(ctx, chat, connectors, service.search?.embedder)] satisfies FeatureTool[];
         },
-        agentTools: async (ctx, {chat}) => visionTools(service, ctx, chat, storage),
+        agentTools: async (ctx, {chat}) => timedStep('visionTools', () => visionTools(service, ctx, chat, storage)),
       },
     },
   ];
@@ -81,11 +93,16 @@ export function localModules(baseUrl: string): (service: ApiService) => FeatureM
  * model can't take images (capability flag, never a provider name), matching the Swift runtime.
  */
 export async function visionTools(service: ApiService, ctx: FeatureContext, chat: Chat, storage: ToolsStorage | undefined): Promise<AgentTool[]> {
-  const prefsRow = await ctx.store.get(ctx.userId, 'preferences', 'current');
+  if (!storage) return [];
+  const [prefsRow, chatModel] = await Promise.all([
+    ctx.store.get(ctx.userId, 'preferences', 'current'),
+    chat.providerId && chat.modelId
+      ? timedStep('modelMetadata', () => ctx.store.get(ctx.userId, 'model', `${chat.providerId}:${chat.modelId}`))
+      : Promise.resolve(null),
+  ]);
   if (!prefsRow || prefsRow.deleted) return [];
   const vision = PreferencesSchema.parse(prefsRow.value).vision;
-  if (!vision.enabled || !vision.providerId || !vision.modelId || !storage) return [];
-  const chatModel = chat.providerId && chat.modelId ? await ctx.store.get(ctx.userId, 'model', `${chat.providerId}:${chat.modelId}`) : null;
+  if (!vision.enabled || !vision.providerId || !vision.modelId) return [];
   if (chatModel && !chatModel.deleted && (chatModel.value as unknown as Model).capabilities.vision) return [];
   const provider = await readerProvider(service, ctx.userId, vision.providerId, vision.modelId);
   if (!provider) return [];
@@ -110,8 +127,10 @@ async function readerProvider(service: ApiService, userId: string, providerId: s
   if (providerId === 'scripted') return service.local ? scriptedReader() : null;
   if (!service.providers) return null;
   await service.providers.requireConsent(userId, providerId);
-  const {provider} = await service.providers.resolve(userId, providerId);
-  const model = await service.adapters.store.get(userId, 'model', `${providerId}:${modelId}`);
+  const [{provider}, model] = await Promise.all([
+    service.providers.resolve(userId, providerId),
+    timedStep('modelMetadata', () => service.adapters.store.get(userId, 'model', `${providerId}:${modelId}`)),
+  ]);
   if (!model || model.deleted) return provider;
   return {flavor: provider.flavor, capabilities: (model.value as unknown as Model).capabilities, stream: (req, signal) => provider.stream(req, signal)};
 }

@@ -18,8 +18,12 @@ export async function saveVariable(ctx:FeatureContext,name:string,value:JsonValu
  return id;
 }
 export async function savedValues(ctx:FeatureContext) {
- const secrets=(await secretMetadata(ctx)).map(v=>({id:String(v.id),name:String(v.name),createdAt:String(v.createdAt),...(typeof v.lastUsedAt==='string'?{lastUsedAt:v.lastUsedAt}:{lastUsedAt:null}),kind:'secret' as const}));
- const variables=(await ctx.store.list(ctx.userId,'savedVariable')).filter(r=>!r.deleted).map(r=>({id:r.id,name:String(r.value.name),createdAt:String(r.value.createdAt),value:r.value.value??null,...(typeof r.value.lastUsedAt==='string'?{lastUsedAt:r.value.lastUsedAt}:{lastUsedAt:null}),kind:'variable' as const}));
+ const [secretsRaw,varsRaw]=await Promise.all([
+  secretMetadata(ctx),
+  ctx.store.list(ctx.userId,'savedVariable'),
+ ]);
+ const secrets=secretsRaw.map(v=>({id:String(v.id),name:String(v.name),createdAt:String(v.createdAt),...(typeof v.lastUsedAt==='string'?{lastUsedAt:v.lastUsedAt}:{lastUsedAt:null}),kind:'secret' as const}));
+ const variables=varsRaw.filter(r=>!r.deleted).map(r=>({id:r.id,name:String(r.value.name),createdAt:String(r.value.createdAt),value:r.value.value??null,...(typeof r.value.lastUsedAt==='string'?{lastUsedAt:r.value.lastUsedAt}:{lastUsedAt:null}),kind:'variable' as const}));
  return [...secrets,...variables].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)||a.id.localeCompare(b.id));
 }
 export async function secretMetadata(ctx:FeatureContext) {

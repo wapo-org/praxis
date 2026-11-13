@@ -1,4 +1,4 @@
-import { listItem, SPRING, TRANSITION } from '@praxis/glass';
+import { listItem, SPRING, STAGGER, TRANSITION } from '@praxis/glass';
 import { animate, cancelFrame, frame } from 'framer-motion';
 import React from 'react';
 
@@ -23,6 +23,8 @@ const reduced = () =>
 
 /** More keys than this at once is a history load, not an arrival. */
 const MAX_ARRIVALS = 3;
+/** Chat-switch entrance staggers only the visible rows, capped so long histories never wait. */
+const MAX_SWITCH_STAGGER = 8;
 
 export const SEND_FLIGHT_DURATION_MS = 820;
 const BUBBLE_RADIUS = 20;
@@ -227,7 +229,7 @@ export function launchSendFlight(inputEl: HTMLTextAreaElement | null, text: stri
     innerEl,
     inputEl,
     targetBubbleEl: null,
-    targets:new Set<HTMLElement>(),
+    targets: new Set<HTMLElement>(),
     finish() {
       if (activeFlight?.id === id) {
         activeFlight = null;
@@ -237,12 +239,15 @@ export function launchSendFlight(inputEl: HTMLTextAreaElement | null, text: stri
         delete flight.inputEl.dataset.flightLead;
       }
       flight.shellEl.remove();
-      for(const target of flight.targets) {
+      for (const target of flight.targets) {
         // A retiring optimistic node may still be painted during a keyed handoff.
         // Restore all targets together, only after the flight itself is removed.
-        target.style.visibility='';target.style.opacity='';delete target.dataset.sendInFlight;
+        target.style.visibility = '';
+        target.style.opacity = '';
+        delete target.dataset.sendInFlight;
       }
-      flight.targets.clear();flight.targetBubbleEl=null;
+      flight.targets.clear();
+      flight.targetBubbleEl = null;
     },
   };
 
@@ -257,9 +262,13 @@ export function cancelSendFlight() {
 }
 
 /** React owns the initial hidden state too: a ref-only binding can leave one painted frame. */
-export function isSendFlightTarget(turnKey:string,text:string):boolean {
-  const flight=activeFlight;
-  return !!flight&&(flight.turnKey===turnKey||(flight.turnKey===null&&!flight.existingKeys.has(`m:${turnKey}`)&&flight.text===text.trim()));
+export function isSendFlightTarget(turnKey: string, text: string): boolean {
+  const flight = activeFlight;
+  return (
+    !!flight &&
+    (flight.turnKey === turnKey ||
+      (flight.turnKey === null && !flight.existingKeys.has(`m:${turnKey}`) && flight.text === text.trim()))
+  );
 }
 
 export function bindSendFlightTarget(
@@ -319,7 +328,9 @@ export function useMessageArrival(
   React.useLayoutEffect(() => {
     const col = column.current;
     const previous = seen.current;
-    const sameChat = !!previous && (previous.chatId === chatId || (!previous.chatId && !!chatId && previous.keys.size === 0));
+    const sameChat =
+      !!previous &&
+      (previous.chatId === chatId || (!previous.chatId && !!chatId && previous.keys.size === 0));
     const fresh = sameChat ? keys.filter((key) => !previous.keys.has(key)) : [];
 
     const nextTops = new Map<string, number>();
@@ -340,7 +351,9 @@ export function useMessageArrival(
 
     if (activeFlight) {
       if (!activeFlight.targetBubbleEl || !activeFlight.targetBubbleEl.isConnected) {
-        const bubbles = col.querySelectorAll<HTMLElement>('[data-testid="user-message-bubble"] [data-user-bubble]');
+        const bubbles = col.querySelectorAll<HTMLElement>(
+          '[data-testid="user-message-bubble"] [data-user-bubble]',
+        );
         const latestUserBubble = bubbles[bubbles.length - 1] ?? null;
         if (latestUserBubble) {
           bindSendFlightTarget(latestUserBubble);
@@ -373,9 +386,71 @@ export function useMessageArrival(
       if (key.startsWith('m:')) continue;
       const el = col.querySelector<HTMLElement>(`[data-message-key="${CSS.escape(key)}"]`);
       if (!el) continue;
-      animate(el, { opacity: [listItem.initial.opacity ?? 0, 1], y: [listItem.initial.y ?? 0, 0] }, { ...SPRING });
+      animate(
+        el,
+        { opacity: [listItem.initial.opacity ?? 0, 1], y: [listItem.initial.y ?? 0, 0] },
+        { ...SPRING },
+      );
     }
   }, [chatId, column, keys]);
+}
+
+/**
+ * Staggered entrance on an explicit chat switch (`MorphRows` cadence: 30 ms per row,
+ * TRANSITION.fast, up to 8 visible rows). Never replays on page load, same-chat clicks,
+ * stream deltas, or brand-new sends. Runs after `useStreamAnchor` so scrollTop is settled.
+ */
+export function useChatSwitchEntrance(
+  column: React.RefObject<HTMLElement | null>,
+  viewport: React.RefObject<HTMLElement | null>,
+  chatId: string | undefined,
+  pendingSwitchRef: React.MutableRefObject<string | null>,
+  rowSignal: number,
+) {
+  const activeControls = React.useRef<Array<{ stop: () => void }>>([]);
+
+  React.useLayoutEffect(() => {
+    if (!chatId || pendingSwitchRef.current !== chatId) return;
+    const col = column.current;
+    const vp = viewport.current;
+    if (!col || !vp) return;
+
+    const allRows = Array.from(col.querySelectorAll<HTMLElement>(':scope > [data-message-key]'));
+    if (allRows.length === 0) return;
+
+    pendingSwitchRef.current = null;
+    for (const c of activeControls.current) c.stop();
+    activeControls.current = [];
+
+    if (reduced()) return;
+
+    const vpRect = vp.getBoundingClientRect();
+    const visible = allRows.filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.bottom > vpRect.top && r.top < vpRect.bottom;
+    });
+    const targets = (visible.length ? visible : allRows).slice(-MAX_SWITCH_STAGGER);
+
+    targets.forEach((el, i) => {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(8px)';
+      const controls = animate(
+        el,
+        { opacity: [0, 1], y: [8, 0] },
+        { ...TRANSITION.fast, delay: STAGGER * (i + 1) },
+      );
+      activeControls.current.push(controls);
+      void controls.finished.then(
+        () => {
+          if (pendingSwitchRef.current === null) {
+            el.style.opacity = '';
+            el.style.transform = '';
+          }
+        },
+        () => {},
+      );
+    });
+  }, [chatId, column, viewport, pendingSwitchRef, rowSignal]);
 }
 
 /**

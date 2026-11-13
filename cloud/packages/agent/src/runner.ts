@@ -89,8 +89,8 @@ export class AgentRunner {
       if(p.type==='toolResult'&&p.callId)results.add(p.callId);
     }
     const dangling=[...calls].filter(([id])=>!results.has(id));
-    if(dangling.length)await this.commit(cp,this.message(cp,'user',dangling.map(([callId,p])=>({type:'toolResult',callId,name:p.name,isError:true,content:[{type:'text',text:'Tool execution was interrupted.'}]}))));
-    await this.save(cp);return cp;
+    if(dangling.length){await this.commit(cp,this.message(cp,'user',dangling.map(([callId,p])=>({type:'toolResult',callId,name:p.name,isError:true,content:[{type:'text',text:'Tool execution was interrupted.'}]}))));await this.save(cp);}
+    return cp;
   }
   async run(input:RunInput,maxSteps=1000):Promise<AgentCheckpoint>{return this.advance(await this.create(input),maxSteps);}
   async advance(checkpoint:AgentCheckpoint,maxSteps=1000):Promise<AgentCheckpoint>{

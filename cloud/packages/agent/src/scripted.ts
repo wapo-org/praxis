@@ -8,6 +8,7 @@ import {
   type ToolSpec,
 } from '@praxis/protocol';
 import { ProviderFailure, AgentRunner } from './runner.js';
+import { realShapeStream, realShapeTool } from './scripted-real.js';
 import {
   textResult,
   type AgentPorts,
@@ -189,6 +190,12 @@ export function createScriptedProvider(
           index++;
         }
         yield { type: 'completed', response: { parts, stop: iteration < 2 ? 'toolUse' : 'endTurn', usage: { type: 'usage', inputTokens: 32, outputTokens: 64, cacheReadTokens: 0, cacheWriteTokens: 0 } } };
+
+        return;
+      }
+
+      if (script === 'realShape') {
+        yield* realShapeStream(request, signal, done);
         return;
       }
 
@@ -440,8 +447,9 @@ function spec(
   };
 }
 
-export function scriptedTools(): AgentTool[] {
+export function scriptedTools(script?: Script): AgentTool[] {
   return [
+    ...(script === 'realShape' ? [realShapeTool()] : []),
     {
       spec: spec('local_echo', { type: 'builtin' }, ['readOnly']),
       execute: async (args) => textResult(JSON.stringify(args)),
@@ -506,13 +514,13 @@ export function scriptedTools(): AgentTool[] {
         return textResult('A scripted image.');
       },
     },
-    ...helloReplay.messages.flatMap(m => m.parts).filter(p => p.type === 'toolResult').map(part => ({
+    ...(script === 'realShape' ? [] : helloReplay.messages.flatMap(m => m.parts).filter(p => p.type === 'toolResult').map(part => ({
       spec: spec(part.name!, { type: 'builtin' }, ['readOnly']),
       execute: async () => {
         await new Promise(r => setTimeout(r, 4000));
         return textResult(String(part.content![0]!.text ?? ''));
       },
-    })),
+    }))),
   ];
 }
 
@@ -529,7 +537,7 @@ export function createScriptedRunner(ports: AgentPorts, script: Script = 'text')
             .slice(-2000)}`),
     },
     provider: createScriptedProvider(script),
-    tools: scriptedTools(),
+    tools: scriptedTools(script),
     ...(script === 'compaction' ? { contextWindow: 1024 } : {}),
   });
 }

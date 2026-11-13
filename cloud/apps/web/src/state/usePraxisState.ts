@@ -23,6 +23,7 @@ import {
 import { getReplicaIdentity, readReplicaSync } from '../lib/idb';
 import { readStoredSelection } from './modelSelection';
 import { pathForSheet } from '../lib/navigation';
+import { mergeFetchedMessages } from './reconcileMessages';
 
 import type { ActiveSheet, LiveRunState, PendingConsentPrompt } from './types';
 export function usePraxisState(onNavigate?: (path: string) => void) {
@@ -73,6 +74,8 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
 
   // Sheets & Layout
   const [activeSheet, setActiveSheetState] = React.useState<ActiveSheet>(null);
+  const activeSheetRef = React.useRef<ActiveSheet>(activeSheet);
+  activeSheetRef.current = activeSheet;
   const [editingProviderId, setEditingProviderIdState] = React.useState<string | null>(null);
   const providerIdRef = React.useRef(editingProviderId);
   const setEditingProviderId = (id: string | null) => {
@@ -89,6 +92,8 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   // Entities initialized from synchronous replica cache first (<16ms paint)
   const [chats, setChats] = React.useState<Chat[]>(() => initialCache?.chats ?? []);
   const [activeChatId, setActiveChatId] = React.useState<string | null>(null);
+  const activeChatIdRef = React.useRef<string | null>(activeChatId);
+  activeChatIdRef.current = activeChatId;
   /** Placeholder until the first message generates the conversation title. */
   const [draftTitle, setDraftTitle] = React.useState(() => 'New chat');
   const [messagesByChat, setMessagesByChat] = React.useState<Record<string, Message[]>>(
@@ -139,11 +144,25 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   const [pendingConsentPrompt, setPendingConsentPrompt] =
     React.useState<PendingConsentPrompt | null>(null);
 
+  /** Optimistic new-chat POSTs in flight: restoreRoute skips premature listMessages for these IDs. */
+  const creatingChatPromisesRef = React.useRef<Map<string, Promise<void>>>(new Map());
+  /** Local turns stopped while POST /v1/runs was still queued/in-flight. */
+  const cancelledTurnIdsRef = React.useRef<Set<string>>(new Set());
+  /** Chat ID armed by an explicit sidebar/navigation chat switch for one entrance stagger pass. */
+  const pendingChatSwitchRef = React.useRef<string | null>(null);
+  /** Chat ID whose navigation came from selectChat (which already issued listMessages). */
+  const navigatingChatRef = React.useRef<string | null>(null);
+
   const setActiveSheet = (sheet: ActiveSheet) => {
+    activeSheetRef.current = sheet;
     setActiveSheetState(sheet);
-    onNavigate?.(pathForSheet(sheet, activeChatId, providerIdRef.current));
+    onNavigate?.(pathForSheet(sheet, activeChatIdRef.current, providerIdRef.current));
   };
   const startNewConversation = () => {
+    pendingChatSwitchRef.current = null;
+    navigatingChatRef.current = null;
+    activeChatIdRef.current = null;
+    activeSheetRef.current = null;
     setDraftTitle('New chat');
     setActiveChatId(null);
     setActiveSheetState(null);
@@ -153,17 +172,30 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     requestComposerFocus();
   };
   const restoreRoute = (chatId: string | null, sheet: ActiveSheet, providerId?: string | null) => {
+    activeSheetRef.current = sheet;
     setActiveSheetState(sheet);
     if (providerId !== undefined) setEditingProviderId(providerId);
     if (sheet) return;
+    activeChatIdRef.current = chatId;
     setActiveChatId(chatId);
-    if (chatId)
-      void apiClient
-        .listMessages(chatId)
-        .then((page) => {
-          setMessagesByChat((prev) => ({ ...prev, [chatId]: page.items }));
-        })
-        .catch((err) => setErrorBanner(err instanceof Error ? err.message : 'Unable to open chat'));
+    if (!chatId) return;
+    // Brand-new optimistic chat: messages are already staged locally and server POST /v1/chats may still be in flight.
+    if (creatingChatPromisesRef.current.has(chatId)) return;
+    // selectChat already kicked off listMessages for this navigation.
+    if (navigatingChatRef.current === chatId) {
+      navigatingChatRef.current = null;
+      return;
+    }
+    void apiClient
+      .listMessages(chatId)
+      .then((page) => {
+        if (activeChatIdRef.current !== chatId) return;
+        setMessagesByChat((prev) => ({
+          ...prev,
+          [chatId]: mergeFetchedMessages(prev[chatId] ?? [], page.items),
+        }));
+      })
+      .catch((err) => setErrorBanner(err instanceof Error ? err.message : 'Unable to open chat'));
   };
   const activeRunUnsubMapRef = React.useRef<Map<string, () => void>>(new Map());
   /** clientTurnIds this tab started: their runs are attached by the send path, not by the user-event follower. */
@@ -199,6 +231,7 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     setThemeMode,
     activeSheet,
     setActiveSheetState,
+    activeSheetRef,
     editingProviderId,
     setEditingProviderIdState,
     providerIdRef,
@@ -213,6 +246,7 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     setChats,
     activeChatId,
     setActiveChatId,
+    activeChatIdRef,
     messagesByChat,
     setMessagesByChat,
     providers,
@@ -255,6 +289,10 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     setLiveRunsByChat,
     pendingConsentPrompt,
     setPendingConsentPrompt,
+    creatingChatPromisesRef,
+    cancelledTurnIdsRef,
+    pendingChatSwitchRef,
+    navigatingChatRef,
     setActiveSheet,
     startNewConversation,
     draftTitle,

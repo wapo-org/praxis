@@ -4,6 +4,7 @@ import { fromWireMode } from '../lib/modes';
 import { decideSelection, writeStoredSelection } from './modelSelection';
 import { apiClient } from '../lib/api';
 import { readReplicaSync, saveReplica, type LocalReplicaSnapshot } from '../lib/idb';
+import { mergeFetchedMessages } from './reconcileMessages';
 
 import type { PraxisState } from './usePraxisState';
 import type { useRunState } from './useRunState';
@@ -90,7 +91,11 @@ export function useReplica(
     setSyncing(true);
     try {
       const boot = await apiClient.bootstrap();
-      setChats(boot.chats);
+      setChats((prev) => {
+        const creating = state.creatingChatPromisesRef.current;
+        const optimistic = prev.filter((c) => creating.has(c.id) && !boot.chats.some((b) => b.id === c.id));
+        return [...optimistic, ...boot.chats];
+      });
       setProviders(boot.providers);
       setModels(boot.models);
       // No reset here: the selection resolver below decides, now that the list is complete (WP-K2b).
@@ -121,14 +126,17 @@ export function useReplica(
         replicaKey.current,
       );
 
-      const firstChatId = activeChatId;
+      const firstChatId = state.activeChatIdRef.current ?? activeChatId;
       if (firstChatId && !activeChatId) {
         setActiveChatId(firstChatId);
       }
-      if (firstChatId) {
+      if (firstChatId && !state.creatingChatPromisesRef.current.has(firstChatId)) {
         const msgPage = await apiClient.listMessages(firstChatId);
         setMessagesByChat((prev) => {
-          const next = { ...prev, [firstChatId]: msgPage.items };
+          const next = {
+            ...prev,
+            [firstChatId]: mergeFetchedMessages(prev[firstChatId] ?? [], msgPage.items),
+          };
           void saveReplica(
             {
               bootstrap: boot,

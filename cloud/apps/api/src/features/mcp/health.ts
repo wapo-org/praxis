@@ -1,7 +1,7 @@
 import {ConnectorSchema, type Chat, type Connector, type ConnectorStatus} from '@praxis/protocol';
 import type {FeatureContext} from '../../contracts.js';
 import {connector, McpError, now, readSecret, saveConnector, type McpOptions} from './shared.js';
-import {catalogKey, discoverTools} from './tools.js';
+import {catalogKey, discoverTools, listConnectorsMemo} from './tools.js';
 
 /** Statuses whose tools are not offered to the model. */
 export const UNAVAILABLE: ReadonlySet<ConnectorStatus> = new Set(['unreachable', 'needs_auth', 'needs_reauth', 'error']);
@@ -89,9 +89,7 @@ function note(value: Connector): string {
  */
 export async function connectorTurnNotes(ctx: FeatureContext, chat: Chat, previousNotes: string[]): Promise<string[]> {
   const off = new Set([...chat.disabledConnectorIds]);
-  const values = (await ctx.store.list(ctx.userId, 'connector'))
-    .filter(r => !r.deleted)
-    .map(r => ConnectorSchema.parse(r.value))
+  const values = (await listConnectorsMemo(ctx))
     .filter(v => v.enabled && !off.has(v.id))
     .sort((a, b) => a.id.localeCompare(b.id));
   const notes: string[] = [];

@@ -7,6 +7,7 @@ import {foldSnapshot,initialSnapshot} from './snapshot.js';
 import {attachmentParts,makeTitle,wantsTitle,type AttachmentRow} from './attachments.js';
 import type {SearchIndexer} from './search-index.js';
 import {validateTitle} from './title-model.js';
+import {currentRunTiming,registerRunTiming,RunTimingTracker,timedStep,withRunTiming} from './timing.js';
 const attachmentRow=(id:string,v:JsonObject):AttachmentRow=>({id,name:String(v.name??'file'),mediaType:String(v.mediaType??'application/octet-stream'),size:Number(v.size??0),hiddenFromCode:v.hiddenFromCode===true});
 export class ApiError extends Error{constructor(public status:number,public code:string,message:string){super(message);}}
 export type RunDecision={type:'approval.decision';approvalId:string;decision:'allowOnce'|'allowAlways'|'deny'}|{type:'elicitation.response';elicitationId:string;action:'accept'|'decline'|'cancel';content?:JsonObject};
@@ -30,7 +31,7 @@ export class ApiService{
  now(){return new Date().toISOString();}
  async require<T>(userId:string,kind:string,id:string):Promise<T>{const r=await this.adapters.store.get(userId,kind,id);if(!r||r.deleted)throw new ApiError(404,'not_found',`${kind} not found`);return r.value as T;}
  async list<T>(userId:string,kind:string,parentId?:string):Promise<T[]>{return (await this.adapters.store.list(userId,kind,parentId===undefined?undefined:{parentId})).filter(x=>!x.deleted).map(r=>r.value as T);}
- async put(userId:string,kind:string,id:string,value:unknown){const json=JSON.parse(JSON.stringify(value)) as JsonObject;const parentId=kind!=='chat'&&typeof json.chatId==='string'?json.chatId:undefined;await this.adapters.store.put(userId,kind,id,json,parentId===undefined?undefined:{parentId});await this.adapters.kv.del(`bootstrap:${userId}`);this.indexed(userId,kind,id,parentId);}
+ async put(userId:string,kind:string,id:string,value:unknown){const json=JSON.parse(JSON.stringify(value)) as JsonObject;const parentId=kind!=='chat'&&typeof json.chatId==='string'?json.chatId:undefined;await Promise.all([this.adapters.store.put(userId,kind,id,json,parentId===undefined?undefined:{parentId}),this.adapters.kv.del(`bootstrap:${userId}`)]);this.indexed(userId,kind,id,parentId);}
  /** Semantic search index (search-index.ts); absent = lexical search only. */
  search?:SearchIndexer;
  /** A chat or message changed: its chat is reindexed once the writes settle. */
@@ -39,7 +40,7 @@ export class ApiService{
   await this.adapters.events.append(userId,'user',{type:'user.change',createdAt:this.now(),entity,entityId:id,operation,...(value===undefined?{}:{value:JSON.parse(JSON.stringify(value))})});
  }
  async write(userId:string,kind:string,id:string,value:unknown,entity=kind){await this.put(userId,kind,id,value);await this.changed(userId,entity,id,'upsert',value);}
- async remove(userId:string,kind:string,id:string){const prior=await this.require<{chatId?:unknown}>(userId,kind,id);await this.adapters.store.delete(userId,kind,id);await this.adapters.kv.del(`bootstrap:${userId}`);await this.changed(userId,kind,id,'delete');this.indexed(userId,kind,id,typeof prior.chatId==='string'?prior.chatId:undefined);}
+ async remove(userId:string,kind:string,id:string){const prior=await this.require<{chatId?:unknown}>(userId,kind,id);await Promise.all([this.adapters.store.delete(userId,kind,id),this.adapters.kv.del(`bootstrap:${userId}`)]);await this.changed(userId,kind,id,'delete');this.indexed(userId,kind,id,typeof prior.chatId==='string'?prior.chatId:undefined);}
  async exclusive<T>(key:string,fn:()=>Promise<T>):Promise<T>{const prior=this.locks.get(key)??Promise.resolve();const next=prior.catch(()=>{}).then(fn);this.locks.set(key,next);try{return await next;}finally{if(this.locks.get(key)===next)this.locks.delete(key);}}
  async seed(userId:string){
   await ensureBuiltins(this.adapters.store,userId);
@@ -57,21 +58,35 @@ export class ApiService{
  async bootstrap(userId:string):Promise<Bootstrap>{
   const cached=await this.adapters.kv.get<Bootstrap>(`bootstrap:${userId}`);if(cached)return cached;
   await ensureBuiltins(this.adapters.store,userId);
-  const [chats,providers,models,connectors,skills,runs,consents,registries,preferences,changes]=await Promise.all([this.list<any>(userId,'chat'),this.list<any>(userId,'provider'),this.list<any>(userId,'model'),this.list<any>(userId,'connector'),this.list<any>(userId,'skill'),this.list<Run>(userId,'run'),this.list<any>(userId,'consent'),this.list<any>(userId,'registry'),this.adapters.store.get(userId,'preferences','current'),this.adapters.store.head(userId)]);
-  const eventCursor=await this.adapters.events.latest?.(userId,'user');
+  const [chats,providers,models,connectors,skills,runs,consents,registries,preferences,changes,eventCursor]=await Promise.all([this.list<any>(userId,'chat'),this.list<any>(userId,'provider'),this.list<any>(userId,'model'),this.list<any>(userId,'connector'),this.list<any>(userId,'skill'),this.list<Run>(userId,'run'),this.list<any>(userId,'consent'),this.list<any>(userId,'registry'),this.adapters.store.get(userId,'preferences','current'),this.adapters.store.head(userId),this.adapters.events.latest?.(userId,'user')??Promise.resolve(undefined)]);
   const result:Bootstrap={type:'bootstrap',protocolVersion:PROTOCOL_VERSION,user:{type:'user',id:userId,name:this.local?'Local developer':'Praxis user'},chats:chats.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,50),providers,models,connectors,skills,activeRuns:runs.filter(r=>!this.terminal(r)),consents,registries,preferences:preferences?.value as any,syncCursor:String(changes),syncRoot:'',serverTime:this.now(),...(eventCursor===undefined?{}:{eventCursor})};
   await this.adapters.kv.set(`bootstrap:${userId}`,result,10,userId);return result;
  }
  terminal(run:Run){return ['completed','cancelled','failed'].includes(run.status);}
- async start(userId:string,input:StartRun):Promise<Run>{return this.exclusive(`${userId}:${input.chatId}`,async()=>{
-  const chat=await this.require<Chat>(userId,'chat',input.chatId).catch(()=>{throw new ApiError(404,'chat_missing','This chat was removed or the server restarted. Refresh and start a new chat.');});
-  const key=input.idempotencyKey??input.clientTurnId;
-  if(key){const prior=await this.adapters.store.get(userId,'idempotency',`${chat.id}:${key}`);if(prior){if(prior.value.body!==JSON.stringify(input))throw new ApiError(409,'idempotency_conflict','This turn ID was used with different content');return this.require<Run>(userId,'run',String(prior.value.runId));}}
-  if((await this.list<Run>(userId,'run',chat.id)).some(r=>!this.terminal(r)))throw new ApiError(409,'run_active','A run is already active in this chat');
-  if(!this.driver)throw new ApiError(503,'runner_unavailable','Run executor is not configured');
-  const attachments:AttachmentRow[]=[];for(const id of input.attachmentIds)attachments.push(attachmentRow(id,await this.require<JsonObject>(userId,'attachment',id)));
-  await this.driver.validate?.(userId,chat,input);
-  let messages=(await this.list<Message>(userId,'message',chat.id)).sort((a,b)=>(a.sequence??0)-(b.sequence??0)||a.createdAt.localeCompare(b.createdAt));
+ trackWork(work:Promise<unknown>){
+  const tracked=Promise.resolve(work).catch(()=>{}).finally(()=>this.work.delete(tracked));
+  this.work.add(tracked);this.defer?.(tracked);
+ }
+ async start(userId:string,input:StartRun):Promise<Run>{const tracker=new RunTimingTracker('pending',input.chatId,work=>this.trackWork(work));return this.exclusive(`${userId}:${input.chatId}`,()=>withRunTiming(tracker,async()=>{
+  const pre=await timedStep('prechecks',async()=>{
+   const key=input.idempotencyKey??input.clientTurnId;
+   const [chat,prior,runs,...attachmentObjs]=await Promise.all([
+    this.require<Chat>(userId,'chat',input.chatId).catch(()=>{throw new ApiError(404,'chat_missing','This chat was removed or the server restarted. Refresh and start a new chat.');}),
+    key?this.adapters.store.get(userId,'idempotency',`${input.chatId}:${key}`):Promise.resolve(null),
+    this.list<Run>(userId,'run',input.chatId),
+    ...input.attachmentIds.map(id=>this.require<JsonObject>(userId,'attachment',id).then(v=>attachmentRow(id,v))),
+   ]);
+   if(prior){if(prior.value.body!==JSON.stringify(input))throw new ApiError(409,'idempotency_conflict','This turn ID was used with different content');return {chat,key,attachments:[] as AttachmentRow[],existingRun:await this.require<Run>(userId,'run',String(prior.value.runId))};}
+   if(runs.some(r=>!this.terminal(r)))throw new ApiError(409,'run_active','A run is already active in this chat');
+   if(!this.driver)throw new ApiError(503,'runner_unavailable','Run executor is not configured');
+   return {chat,key,attachments:attachmentObjs,existingRun:undefined as Run|undefined};
+  });
+  if(pre.existingRun)return pre.existingRun;
+  const {chat,key,attachments}=pre;
+  let [,messages]=await Promise.all([
+   timedStep('validate',()=>this.driver!.validate?.(userId,chat,input)??Promise.resolve()),
+   timedStep('history',async()=>(await this.list<Message>(userId,'message',chat.id)).sort((a,b)=>(a.sequence??0)-(b.sequence??0)||a.createdAt.localeCompare(b.createdAt))),
+  ]);
   let regenerationUserAt=-1;
   if(input.regenerateMessageId){
    const at=messages.findIndex(m=>m.id===input.regenerateMessageId&&m.role==='assistant');
@@ -80,40 +95,75 @@ export class ApiService{
    if(at<0||regenerationUserAt<0)throw new ApiError(404,'message_missing','Reply to regenerate not found');
   }
   const now=this.now();const run=RunSchema.parse({type:'run',id:randomUUID(),chatId:chat.id,status:'queued',createdAt:now,updatedAt:now,lastEventId:0,clientTurnId:input.clientTurnId??key});
-  await this.put(userId,'run',run.id,run);await this.put(userId,'snapshot',run.id,initialSnapshot(run));
-  if(key)await this.put(userId,'idempotency',`${chat.id}:${key}`,{body:JSON.stringify(input),runId:run.id});
+  tracker.runId=run.id;registerRunTiming(tracker);
+  const persistRun=()=>timedStep('persistRun',()=>Promise.all([
+   this.put(userId,'run',run.id,run),
+   this.put(userId,'snapshot',run.id,initialSnapshot(run)),
+   ...(key?[this.put(userId,'idempotency',`${chat.id}:${key}`,{body:JSON.stringify(input),runId:run.id})]:[]),
+  ]));
+  let title:string|undefined;
+  let titleText=input.text;
   if(input.regenerateMessageId){
+   await persistRun();
    const userAt=regenerationUserAt;
    // Discard the previous attempt and later branch. The original user turn is retained once.
    const removed=messages.slice(userAt+1);
-   for(const m of removed)await this.remove(userId,'message',m.id);
    const oldRunIds=new Set(removed.flatMap(m=>m.runId?[m.runId]:[]));
-   for(const id of oldRunIds){await this.adapters.store.delete(userId,'snapshot',id);await this.changed(userId,'run',id,'delete');}
+   await Promise.all([
+    ...removed.map(m=>this.remove(userId,'message',m.id)),
+    ...[...oldRunIds].flatMap(id=>[this.adapters.store.delete(userId,'snapshot',id),this.changed(userId,'run',id,'delete')]),
+   ]);
    messages=messages.slice(0,userAt+1);
    run.clientTurnId=messages[userAt]!.clientTurnId;
-   await this.put(userId,'run',run.id,run);await this.put(userId,'snapshot',run.id,initialSnapshot(run));
+   await Promise.all([this.put(userId,'run',run.id,run),this.put(userId,'snapshot',run.id,initialSnapshot(run))]);
    input={...input,text:messages[userAt]!.parts.filter(p=>p.type==='text').map(p=>p.text??'').join(' ')};
+   titleText=input.text;
+   title=await timedStep('titleFor',()=>this.titleFor(userId,chat,titleText,attachments,messages.slice(0,-1)));
   }else{
-   const notes=(await this.driver.notes?.(userId,chat,input,messages))??[];
-   const message:Message={type:'message',id:randomUUID(),chatId:chat.id,runId:run.id,clientTurnId:run.clientTurnId,sequence:messages.length+1,role:'user',parts:[...notes.map(text=>({type:'note' as const,text})),...attachmentParts(attachments,input.text)],createdAt:now,updatedAt:now};
-   await this.emit(userId,run.id,{type:'messages.committed',messages:[message]});messages.push(message);
+   const previousMessages=messages;
+   const [,notes,resolvedTitle]=await Promise.all([
+    persistRun(),
+    timedStep('notes',()=>this.driver!.notes?.(userId,chat,input,previousMessages)??Promise.resolve([])),
+    timedStep('titleFor',()=>this.titleFor(userId,chat,input.text,attachments,previousMessages)),
+   ]);
+   title=resolvedTitle;
+   const message:Message={type:'message',id:randomUUID(),chatId:chat.id,runId:run.id,clientTurnId:run.clientTurnId,sequence:previousMessages.length+1,role:'user',parts:[...(notes??[]).map(text=>({type:'note' as const,text})),...attachmentParts(attachments,input.text)],createdAt:now,updatedAt:now};
+   messages=[...previousMessages,message];
+   const rawSuggested=input.suggestedTitle?.trim();
+   const suggested=rawSuggested?validateTitle(rawSuggested,input.text)??undefined:undefined;
+   const [,updated]=await Promise.all([
+    timedStep('commitUser',()=>this.emit(userId,run.id,{type:'messages.committed',messages:[message]})),
+    timedStep('chatUpdate',()=>this.updateChat(userId,chat.id,live=>({...live,...(title&&live.title===chat.title&&live.titleRevision===chat.titleRevision?{title:suggested||title}:{}),activeRunId:run.id,updatedAt:now}))),
+   ]);
+   const runChat=updated??chat;
+   this.enqueue(userId,run.id,()=>withRunTiming(tracker,async()=>{tracker.mark('queueWaitMs');return this.driver!.start(userId,run,runChat,messages,input);}));
+   if(title&&!suggested&&runChat.title===title&&runChat.titleRevision===runChat.titleRevision&&this.driver?.title){
+    const expected=runChat.title,revision=runChat.titleRevision;
+    const work=Promise.resolve().then(()=>withRunTiming(tracker,async()=>{
+     const generated=await timedStep('titleGeneration',()=>this.driver!.title!(userId,runChat,input.text));if(!generated)return;
+     await this.updateChat(userId,chat.id,live=>live.title===expected&&live.titleRevision===revision?{...live,title:generated,updatedAt:this.now()}:undefined);
+    })).catch(()=>this.put(userId,'titleMetric',chat.id,{reason:'provider_error: unknown'})).catch(()=>{}).finally(()=>this.work.delete(work));
+    this.work.add(work);this.defer?.(work);
+   }
+   tracker.mark('postResponseMs');
+   return run;
   }
-  const title=await this.titleFor(userId,chat,input.text,attachments,messages.slice(0,-1));
   const rawSuggested=input.suggestedTitle?.trim();
-  const suggested=rawSuggested?validateTitle(rawSuggested,input.text)??undefined:undefined;
-  const updated=await this.updateChat(userId,chat.id,live=>({...live,...(title&&live.title===chat.title&&live.titleRevision===chat.titleRevision?{title:suggested||title}:{}),activeRunId:run.id,updatedAt:now}));
+  const suggested=rawSuggested?validateTitle(rawSuggested,titleText)??undefined:undefined;
+  const updated=await timedStep('chatUpdate',()=>this.updateChat(userId,chat.id,live=>({...live,...(title&&live.title===chat.title&&live.titleRevision===chat.titleRevision?{title:suggested||title}:{}),activeRunId:run.id,updatedAt:now})));
   const runChat=updated??chat;
-  this.enqueue(userId,run.id,()=>this.driver!.start(userId,run,runChat,messages,input));
-  if(title&&!suggested&&runChat.title===title&&runChat.titleRevision===chat.titleRevision&&this.driver.title){
+  this.enqueue(userId,run.id,()=>withRunTiming(tracker,async()=>{tracker.mark('queueWaitMs');return this.driver!.start(userId,run,runChat,messages,input);}));
+  if(title&&!suggested&&runChat.title===title&&runChat.titleRevision===runChat.titleRevision&&this.driver?.title){
    const expected=runChat.title,revision=runChat.titleRevision;
-   const work=Promise.resolve().then(async()=>{
-    const generated=await this.driver!.title!(userId,runChat,input.text);if(!generated)return;
+   const work=Promise.resolve().then(()=>withRunTiming(tracker,async()=>{
+    const generated=await timedStep('titleGeneration',()=>this.driver!.title!(userId,runChat,titleText));if(!generated)return;
     await this.updateChat(userId,chat.id,live=>live.title===expected&&live.titleRevision===revision?{...live,title:generated,updatedAt:this.now()}:undefined);
-   }).catch(()=>this.put(userId,'titleMetric',chat.id,{reason:'provider_error: unknown'})).catch(()=>{}).finally(()=>this.work.delete(work));
+   })).catch(()=>this.put(userId,'titleMetric',chat.id,{reason:'provider_error: unknown'})).catch(()=>{}).finally(()=>this.work.delete(work));
    this.work.add(work);this.defer?.(work);
   }
+  tracker.mark('postResponseMs');
   return run;
- });}
+ }));}
  /** CAS preserves renames and unrelated chat updates across background invocations. */
  async updateChat(userId:string,id:string,update:(chat:Chat)=>Chat|undefined):Promise<Chat|undefined>{
   for(let attempt=0;attempt<20;attempt++){
@@ -128,7 +178,7 @@ export class ApiService{
  private async titleFor(userId:string,chat:Chat,text:string,attachments:AttachmentRow[],previous:Message[]){
   if(chat.titleRevision)return undefined;
   const first=previous.find(m=>m.role==='user');let firstTurn:{text:string;attachments:AttachmentRow[]}|undefined;
-  if(first){const ids=first.parts.flatMap(p=>p.attachmentId?[p.attachmentId]:[]);const rows:AttachmentRow[]=[];for(const id of ids){const r=await this.adapters.store.get(userId,'attachment',id);if(r&&!r.deleted)rows.push(attachmentRow(id,r.value));}firstTurn={text:first.parts.filter(p=>p.type==='text').map(p=>p.text??'').join(' ').replace(/\[Attached file[\s\S]*$/,'').trim(),attachments:rows};}
+  if(first){const ids=first.parts.flatMap(p=>p.attachmentId?[p.attachmentId]:[]);const recs=await Promise.all(ids.map(id=>this.adapters.store.get(userId,'attachment',id)));const rows:AttachmentRow[]=recs.flatMap((r,i)=>r&&!r.deleted?[attachmentRow(ids[i]!,r.value)]:[]);firstTurn={text:first.parts.filter(p=>p.type==='text').map(p=>p.text??'').join(' ').replace(/\[Attached file[\s\S]*$/,'').trim(),attachments:rows};}
   if(!wantsTitle(chat.title,text,firstTurn))return undefined;return makeTitle(text,attachments);
  }
  enqueue(userId:string,runId:string,task:()=>Promise<void>){
@@ -139,16 +189,36 @@ export class ApiService{
  async drain(){await Promise.all([...this.work]);}
  async emit(userId:string,runId:string,event:RunEventPayload){
   return this.exclusive(`event:${userId}:${runId}`,async()=>{
-   const run=await this.require<Run>(userId,'run',runId);run.updatedAt=this.now();
+   if(event.type==='run.started')currentRunTiming()?.mark('runStartedMs');
+   const [run,current]=await Promise.all([
+    this.require<Run>(userId,'run',runId),
+    this.require<RunSnapshot>(userId,'snapshot',runId),
+   ]);
+   run.updatedAt=this.now();
    if(event.type==='run.started')run.status='running';
    if(event.type==='approval.requested')run.status='awaitingApproval';
    if(event.type==='elicitation.requested')run.status='awaitingElicitation';
    if(event.type==='run.finished'){run.status=event.outcome==='failed'?'failed':event.outcome==='cancelled'?'cancelled':'completed';run.outcome=event.outcome;}
-   if(event.type==='messages.committed'){let count=(await this.list<Message>(userId,'message',run.chatId)).length;for(const m of event.messages){const before=await this.adapters.store.get(userId,'message',m.id);m.sequence=(before?.value.sequence as number|undefined)??m.sequence??++count;m.clientTurnId??=run.clientTurnId;await this.write(userId,'message',m.id,m);}}
+   if(event.type==='messages.committed'){
+    const needCount=event.messages.some(m=>m.sequence===undefined);
+    const [existingList,beforeRows]=await Promise.all([
+     needCount?this.list<Message>(userId,'message',run.chatId):Promise.resolve([]),
+     Promise.all(event.messages.map(m=>this.adapters.store.get(userId,'message',m.id))),
+    ]);
+    let count=existingList.length;
+    for(let i=0;i<event.messages.length;i++){
+     const m=event.messages[i]!,before=beforeRows[i];
+     m.sequence=(before?.value.sequence as number|undefined)??m.sequence??++count;
+     m.clientTurnId??=run.clientTurnId;
+     await this.write(userId,'message',m.id,m);
+    }
+   }
    const eventKey=event.type==='messages.committed'?`messages:${JSON.stringify(event.messages.map(m=>m.id))}`:undefined;
    const record=await this.adapters.events.append(userId,`run:${runId}`,{event,createdAt:this.now(),chatId:run.chatId},eventKey);run.lastEventId=Math.max(run.lastEventId,record.id);
-   await this.put(userId,'run',runId,run);
-   const current=await this.require<RunSnapshot>(userId,'snapshot',runId);await this.put(userId,'snapshot',runId,foldSnapshot(current,event,record.id,run));
+   await Promise.all([
+    this.put(userId,'run',runId,run),
+    this.put(userId,'snapshot',runId,foldSnapshot(current,event,record.id,run)),
+   ]);
    if(this.terminal(run)){await this.updateChat(userId,run.chatId,chat=>{if(chat.activeRunId===run.id)delete chat.activeRunId;chat.updatedAt=this.now();return chat;});await this.changed(userId,'run',runId,'upsert',run);}
    return record.id;
   });

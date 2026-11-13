@@ -36,7 +36,7 @@ export function ComposerBar({
     usePraxisStore();
   const pressProps = usePress();
   const isRunning =
-    activeLiveRun && ['running', 'awaitingApproval', 'awaitingElicitation'].includes(activeLiveRun.run.status);
+    activeLiveRun && ['queued', 'running', 'awaitingApproval', 'awaitingElicitation'].includes(activeLiveRun.run.status);
   const hasInput = text.length > 0 || attachmentCount > 0;
   const canSend = !!text.trim() || attachmentCount > 0;
   const showMic = voiceSupported && !isRunning && (!hasInput || recording || transcribing);

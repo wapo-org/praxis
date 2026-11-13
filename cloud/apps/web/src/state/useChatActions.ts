@@ -2,6 +2,7 @@ import type { Chat } from '@praxis/protocol';
 import React from 'react';
 import { fromWireMode, toWireMode } from '../lib/modes';
 import { apiClient } from '../lib/api';
+import { mergeFetchedMessages } from './reconcileMessages';
 
 import type { PraxisState } from './usePraxisState';
 import type { useReplica } from './useReplica';
@@ -16,7 +17,6 @@ export function useChatActions(
     setChats,
     activeChatId,
     setActiveChatId,
-    messagesByChat,
     setMessagesByChat,
     selectedProviderId,
     setSelectedProviderId,
@@ -27,11 +27,20 @@ export function useChatActions(
     selectedMode,
     setSelectedMode,
   } = state;
+  const selectSeqRef = React.useRef(0);
   const selectChat = React.useCallback(
     async (chatId: string) => {
+      const seq = ++selectSeqRef.current;
+      const isSwitch =
+        state.activeChatIdRef.current !== chatId || state.activeSheetRef.current !== null;
+      if (isSwitch) {
+        state.pendingChatSwitchRef.current = chatId;
+      }
       if (typeof performance !== 'undefined') {
         performance.mark('praxis:chat-switch-start');
       }
+      state.activeChatIdRef.current = chatId;
+      state.navigatingChatRef.current = chatId;
       setActiveChatId(chatId);
       onNavigate?.(`/c/${encodeURIComponent(chatId)}`);
       const chat = chats.find((c) => c.id === chatId);
@@ -55,14 +64,21 @@ export function useChatActions(
         }
       });
 
+      const creating = state.creatingChatPromisesRef.current.get(chatId);
+      if (creating) {
+        await creating;
+      }
+
       try {
         const page = await apiClient.listMessages(chatId);
+        if (selectSeqRef.current !== seq) return;
         setMessagesByChat((prev) => {
-          const next = { ...prev, [chatId]: page.items };
+          const next = { ...prev, [chatId]: mergeFetchedMessages(prev[chatId] ?? [], page.items) };
           persistState({ messagesByChat: next });
           return next;
         });
       } catch (err) {
+        if (selectSeqRef.current !== seq) return;
         setErrorBanner(err instanceof Error ? err.message : 'Unable to load messages');
       }
     },
@@ -70,8 +86,9 @@ export function useChatActions(
   );
 
   const createNewChat = React.useCallback(
-    async (title = 'New chat'): Promise<Chat> => {
+    async (title = 'New chat', id?: string): Promise<Chat> => {
       const created = await apiClient.createChat({
+        id,
         title,
         mode: toWireMode(selectedMode),
         providerId: selectedProviderId,
@@ -83,9 +100,13 @@ export function useChatActions(
         persistState({ chats: next });
         return next;
       });
+      state.activeChatIdRef.current = created.id;
       setActiveChatId(created.id);
       onNavigate?.(`/c/${encodeURIComponent(created.id)}`);
-      setMessagesByChat((prev) => ({ ...prev, [created.id]: [] }));
+      setMessagesByChat((prev) => ({
+        ...prev,
+        [created.id]: prev[created.id] ?? [],
+      }));
       return created;
     },
     [selectedMode, selectedProviderId, selectedModelId, selectedEffort, persistState],
@@ -129,7 +150,9 @@ export function useChatActions(
       setChats((prev) => {
         const remaining = prev.filter((c) => !chatIds.includes(c.id));
         if (activeChatId && chatIds.includes(activeChatId)) {
-          setActiveChatId(remaining[0]?.id ?? null);
+          const fallback = remaining[0]?.id ?? null;
+          state.activeChatIdRef.current = fallback;
+          setActiveChatId(fallback);
         }
         persistState({ chats: remaining });
         return remaining;

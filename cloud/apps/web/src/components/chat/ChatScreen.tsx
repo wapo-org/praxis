@@ -8,7 +8,7 @@ import { usePraxisStore } from '../../state/store';
 import {useStreamAnchor} from './useStreamAnchor';
 import { useContentShift } from '../shell/useContentShift';
 import { ChatHeader } from './ChatHeader';
-import { cancelSendFlight, useMessageArrival } from './chatMotion';
+import { cancelSendFlight, useChatSwitchEntrance, useMessageArrival } from './chatMotion';
 import { Composer } from './Composer';
 import { EmptyState } from './EmptyState';
 import { extractMessageToolSteps } from './messageTools';
@@ -40,16 +40,19 @@ function messageText(message: Message, joiner: string) {
 export function ChatScreen() {
   const {
     activeChat,
+    activeChatId,
     activeMessages,
     activeLiveRun,
     attachmentsById,
     errorBanner,
     clearErrorBanner,
+    pendingChatSwitchRef,
     sendMessage,
     resolveApproval,
     resolveElicitation,
   } = usePraxisStore();
 
+  const chatId = activeChat?.id ?? activeChatId ?? undefined;
   const visibleMessages=React.useMemo(()=>messageTurns(activeMessages),[activeMessages]);
   const lastUserMessage = React.useMemo(
     () => [...visibleMessages].reverse().find((m) => m.role === 'user'),
@@ -58,7 +61,7 @@ export function ChatScreen() {
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const shift = useContentShift();
   const columnRef = React.useRef<HTMLDivElement | null>(null);
-  const {onScroll:handleScroll,jumpToLatest:scrollToBottom,showJump:showJumpToLatest}=useStreamAnchor(scrollRef,columnRef,activeChat?.id, lastUserMessage?.clientTurnId ?? lastUserMessage?.id, lastUserMessage?.id.startsWith('optimistic-'));
+  const {onScroll:handleScroll,jumpToLatest:scrollToBottom,showJump:showJumpToLatest}=useStreamAnchor(scrollRef,columnRef,chatId, lastUserMessage?.clientTurnId ?? lastUserMessage?.id, lastUserMessage?.id.startsWith('optimistic-'));
 
   const status = activeLiveRun?.run.status;
   // A run that just completed keeps its live turn for one fold, so a thought that is still folding away
@@ -67,7 +70,7 @@ export function ChatScreen() {
   const [lingerRunId, setLingerRunId] = React.useState<string | undefined>();
   const wasRunning = React.useRef(false);
   React.useEffect(() => {
-    if (status === 'running') wasRunning.current = true;
+    if (status === 'queued' || status === 'running') wasRunning.current = true;
     if (status !== 'completed' || !wasRunning.current || !runId) return;
     wasRunning.current = false;
     setLingerRunId(runId);
@@ -77,6 +80,7 @@ export function ChatScreen() {
   const hasLiveStreamingContent =
     !!activeLiveRun &&
     ((status === 'completed' && lingerRunId === runId) ||
+      status === 'queued' ||
       status === 'running' ||
       status === 'awaitingApproval' ||
       status === 'awaitingElicitation' ||
@@ -87,28 +91,31 @@ export function ChatScreen() {
   React.useEffect(() => {
     if (error) cancelSendFlight();
   }, [error]);
-  const prevChatIdRef = React.useRef<string | undefined>(activeChat?.id);
+  const prevChatIdRef = React.useRef<string | undefined>(chatId);
   React.useEffect(() => {
-    if (prevChatIdRef.current && activeChat?.id && prevChatIdRef.current !== activeChat.id) {
+    if (prevChatIdRef.current && chatId && prevChatIdRef.current !== chatId) {
       cancelSendFlight();
     }
-    prevChatIdRef.current = activeChat?.id;
-  }, [activeChat?.id]);
+    prevChatIdRef.current = chatId;
+  }, [chatId]);
   React.useEffect(() => () => cancelSendFlight(), []);
 
-  const liveRunId = hasLiveStreamingContent ? activeLiveRun?.run.id : undefined;
+  const liveTurnKey = hasLiveStreamingContent
+    ? (activeLiveRun?.run.clientTurnId ?? activeLiveRun?.run.id)
+    : undefined;
   const arrivalKeys = React.useMemo(() => {
     const keys = visibleMessages.map((m) =>
-      m.role === 'user' ? `m:${m.clientTurnId ?? m.id}` : `r:${m.runId ?? m.id}`,
+      m.role === 'user' ? `m:${m.clientTurnId ?? m.id}` : `r:${m.clientTurnId ?? m.runId ?? m.id}`,
     );
-    if (liveRunId) keys.push(`r:${liveRunId}`);
+    if (liveTurnKey) keys.push(`r:${liveTurnKey}`);
     return keys;
-  }, [visibleMessages, liveRunId]);
-  useMessageArrival(columnRef, activeChat?.id, arrivalKeys);
+  }, [visibleMessages, liveTurnKey]);
+  useMessageArrival(columnRef, chatId, arrivalKeys);
+  useChatSwitchEntrance(columnRef, scrollRef, chatId, pendingChatSwitchRef, visibleMessages.length);
 
   return (
     <main data-testid="chat-screen" className={styles.screen}>
-      <RunBackdrop active={status === 'running'} />
+      <RunBackdrop active={status === 'queued' || status === 'running'} />
       {/* The blur bands follow the column (Chromium mirrors scrolled text into a blur reaching past its edge);
           the paper tint stays full-width so the lane has no visible edge. */}
       <motion.div className={styles.scrimLane} aria-hidden="true" initial={false} animate={{ x: shift }} transition={PANEL}>
@@ -176,7 +183,7 @@ export function ChatScreen() {
                 <div
                   key={msg.id}
                   data-testid="assistant-turn"
-                  data-message-key={`r:${msg.runId ?? msg.id}`}
+                  data-message-key={`r:${msg.clientTurnId ?? msg.runId ?? msg.id}`}
                   className={styles.assistantTurn}
                 >
                   <MessageActivity
@@ -210,7 +217,7 @@ export function ChatScreen() {
           {hasLiveStreamingContent && activeLiveRun ? (
             <div
               data-testid="live-run-streaming-turn"
-              data-message-key={`r:${activeLiveRun.run.id}`}
+              data-message-key={`r:${liveTurnKey}`}
               className={styles.assistantTurn}
             >
               <LiveResponseTimeline

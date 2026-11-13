@@ -7,15 +7,17 @@ import {
 } from '@praxis/agent';
 import {
   JsonValueSchema, RunEventPayloadSchema, type JsonObject,
-  type Chat, type ConversationSetup, type JsonValue, type Message, type MessagePart, type Model, type Run, type StartRun, type StreamSimOptions,
+  type Chat, type ConversationSetup, type JsonValue, type Message, type MessagePart, type Model, type Provider, type Run, type StartRun, type StreamSimOptions,
 } from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from './contracts.js';
 import {buildSystemPrompt, skillCatalogSection, turnNotes, type CatalogSkill} from './conversation.js';
 import {featureContext} from './features.js';
+import {listConnectorsMemo} from './features/mcp/tools.js';
 import {ApiError, type ApiService, type ExecutionDriver, type RunDecision} from './service.js';
 import {learnedFor, recordLearning} from './learning.js';
 import {withMedia, type ModelCapabilities} from './media-provider.js';
 import {readToolOutputTool} from './read-tool-output.js';
+import {currentRunTiming, timedStep} from './timing.js';
 
 export {LEARNED_LIFETIME_MS} from './learning.js';
 export {withMedia} from './media-provider.js';
@@ -127,20 +129,23 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   });
 
   async function syncRun(userId: string, cp: AgentCheckpoint) {
-      const current = await service.require<Run>(userId, 'run', cp.run.id);
+      const [current, chat] = await Promise.all([
+        service.require<Run>(userId, 'run', cp.run.id),
+        service.require<Chat>(userId, 'chat', cp.chat.id).catch(() => null),
+      ]);
       cp.run.lastEventId = Math.max(cp.run.lastEventId, current.lastEventId);
-      await service.put(userId, 'run', cp.run.id, cp.run);
-      const chat = await service.require<Chat>(userId, 'chat', cp.chat.id).catch(() => null);
+      const writes: Promise<unknown>[] = [service.put(userId, 'run', cp.run.id, cp.run)];
       if (chat && !chat.setup) {
         chat.setup = cp.setup;
-        await service.write(userId, 'chat', chat.id, chat);
+        writes.push(service.write(userId, 'chat', chat.id, chat));
       }
+      await Promise.all(writes);
   }
 
   /** Runs `fn` as the run's only executor; a concurrent or duplicate caller returns without doing anything. */
   async function exclusive(userId: string, runId: string, fn: (fence: {revision: number}) => Promise<AgentCheckpoint | void>) {
     const key = `run:${userId}:${runId}`;
-    const token = await lease.acquire(key, leaseTtlMs, userId);
+    const token = await timedStep('leaseAcquire', () => lease.acquire(key, leaseTtlMs, userId));
     if (!token) return;
     let cp: AgentCheckpoint | void = undefined;
     try {
@@ -157,8 +162,13 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   }
 
   async function trustedSources(userId: string): Promise<string[]> {
-    return (await service.adapters.store.list(userId, 'connector'))
-      .filter(r => !r.deleted && r.value.trusted === true && r.value.enabled !== false)
+    const connectors = currentRunTiming()
+      ? await listConnectorsMemo(ctx(userId))
+      : (await service.adapters.store.list(userId, 'connector'))
+          .filter(r => !r.deleted)
+          .map(r => r.value as unknown as import('@praxis/protocol').Connector);
+    return connectors
+      .filter(r => r.trusted === true && r.enabled !== false)
       .map(r => `mcp:${r.id}`);
   }
 
@@ -178,62 +188,96 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     ...(options.encryptionKey ? {encryptionKey: options.encryptionKey} : {}),
   });
 
-  async function resolveProvider(userId: string, chat: Chat, request: RunRequest): Promise<{provider: ModelProvider; script?: Script; model?: Model}> {
-    if (request.script) {
-      if (!service.local) throw new ApiError(400, 'local_only', 'Scripted runs are local only');
-      return {provider: scriptedProvider(request.script, request.streamSim), script: request.script};
-    }
-    // Local dev keeps M1 behaviour: a chat without a provider runs the scripted provider.
+  function resolveScriptHint(chat: Chat, request: RunRequest): Script | undefined {
+    if (request.script) return request.script;
     const providerId = request.providerId ?? chat.providerId ?? (service.local ? 'scripted' : undefined);
-    if (!providerId) throw new ApiError(400, 'provider_required', 'Choose a model provider for this chat');
-    if (providerId === 'scripted') {
-      if (!service.local) throw new ApiError(400, 'local_only', 'Scripted runs are local only');
-      return {provider: scriptedProvider('text', request.streamSim), script: 'text'};
-    }
-    if (!service.providers) throw new ApiError(503, 'providers_unavailable', 'Providers are not configured');
-    if(!(await service.adapters.store.get(userId,'provider',providerId))?.value)throw new ApiError(409,'provider_missing','Your selected provider is no longer available. Choose a provider in Settings and try again.');
-    await service.providers.requireConsent(userId, providerId);
-    const {provider} = await service.providers.resolve(userId, providerId);
-    const modelId = request.modelId ?? chat.modelId;
-    const model = modelId
-      ? await service.adapters.store.get(userId, 'model', `${providerId}:${modelId}`).then(r => (r && !r.deleted ? (r.value as unknown as Model) : undefined))
-      : undefined;
-    if (!model) return {provider};
-    // Capabilities gate features per model, never by provider name; rejections learned from the provider narrow them.
-    const learned = await learnedFor(service, userId, providerId, model.id, clock());
-    const capabilities = {...model.capabilities, ...(learned.images ? {vision: false} : {}), ...(learned.tools ? {tools: false} : {})};
-    const scoped: ModelProvider = {
-      flavor: provider.flavor,
-      capabilities,
-      stream: (req, signal) => provider.stream(req, signal),
+    return providerId === 'scripted' ? 'text' : undefined;
+  }
+
+  async function resolveProvider(userId: string, chat: Chat, request: RunRequest, scope = 'run'): Promise<{provider: ModelProvider; script?: Script; model?: Model}> {
+    const compute = async (): Promise<{provider: ModelProvider; script?: Script; model?: Model}> => {
+      if (request.script) {
+        if (!service.local) throw new ApiError(400, 'local_only', 'Scripted runs are local only');
+        return {provider: scriptedProvider(request.script, request.streamSim), script: request.script};
+      }
+      // Local dev keeps M1 behaviour: a chat without a provider runs the scripted provider.
+      const providerId = request.providerId ?? chat.providerId ?? (service.local ? 'scripted' : undefined);
+      if (!providerId) throw new ApiError(400, 'provider_required', 'Choose a model provider for this chat');
+      if (providerId === 'scripted') {
+        if (!service.local) throw new ApiError(400, 'local_only', 'Scripted runs are local only');
+        return {provider: scriptedProvider('text', request.streamSim), script: 'text'};
+      }
+      if (!service.providers) throw new ApiError(503, 'providers_unavailable', 'Providers are not configured');
+      const modelId = request.modelId ?? chat.modelId;
+      const [providerRow, resolvedAttempt, model, learned] = await Promise.all([
+        service.adapters.store.get(userId, 'provider', providerId),
+        service.providers.resolve(userId, providerId).catch(() => null),
+        modelId
+          ? timedStep('modelMetadata', () => service.adapters.store.get(userId, 'model', `${providerId}:${modelId}`).then(r => (r && !r.deleted ? (r.value as unknown as Model) : undefined)))
+          : Promise.resolve(undefined),
+        modelId
+          ? timedStep('modelMetadata', () => learnedFor(service, userId, providerId, modelId, clock()))
+          : Promise.resolve({images: false, tools: false, efforts: undefined}),
+      ]);
+      if (!providerRow?.value) throw new ApiError(409, 'provider_missing', 'Your selected provider is no longer available. Choose a provider in Settings and try again.');
+      await service.providers.requireConsent(userId, providerId, providerRow.value as unknown as Provider);
+      const {provider} = resolvedAttempt ?? await service.providers.resolve(userId, providerId);
+      if (!model) return {provider};
+      // Capabilities gate features per model, never by provider name; rejections learned from the provider narrow them.
+      const capabilities = {...model.capabilities, ...(learned.images ? {vision: false} : {}), ...(learned.tools ? {tools: false} : {})};
+      const scoped: ModelProvider = {
+        flavor: provider.flavor,
+        capabilities,
+        stream: (req, signal) => provider.stream(req, signal),
+      };
+      return {provider: scoped, model: learned.efforts ? {...model, reasoningEfforts: learned.efforts} : model};
     };
-    return {provider: scoped, model: learned.efforts ? {...model, reasoningEfforts: learned.efforts} : model};
+    const tracker = currentRunTiming();
+    const providerId = request.providerId ?? chat.providerId ?? (service.local ? 'scripted' : '');
+    const modelId = request.modelId ?? chat.modelId ?? '';
+    return tracker ? tracker.memo(`provider:${scope}:${userId}:${providerId}:${modelId}:${request.script ?? ''}`, compute) : compute();
   }
 
   async function agentTools(userId: string, chat: Chat, run: Run, request: RunRequest, script?: Script): Promise<AgentTool[]> {
-    const tools: AgentTool[] = [...(script ? scriptedTools() : []), readToolOutputTool(service), variablesTool(ctx(userId),service.search?.embedder)];
-    if (options.features?.tools) {
-      const features = await options.features.tools(ctx(userId), {chat, runId: run.id, attachmentIds: request.attachmentIds});
-      for (const tool of features) if (!tools.some(t => t.spec.name === tool.name)) tools.push(adaptTool(tool, ctx(userId)));
-    }
-    if (options.features?.agentTools) {
-      const extra = await options.features.agentTools(ctx(userId), {chat, runId: run.id, attachmentIds: request.attachmentIds});
-      for (const tool of extra) if (!tools.some(t => t.spec.name === tool.spec.name)) tools.push(tool);
-    }
+    const tools: AgentTool[] = [...(script ? scriptedTools(script) : []), readToolOutputTool(service), variablesTool(ctx(userId), service.search?.embedder)];
+    const [features, extra] = await Promise.all([
+      options.features?.tools
+        ? options.features.tools(ctx(userId), {chat, runId: run.id, attachmentIds: request.attachmentIds})
+        : Promise.resolve([]),
+      options.features?.agentTools
+        ? options.features.agentTools(ctx(userId), {chat, runId: run.id, attachmentIds: request.attachmentIds})
+        : Promise.resolve([]),
+    ]);
+    for (const tool of features) if (!tools.some(t => t.spec.name === tool.name)) tools.push(adaptTool(tool, ctx(userId)));
+    for (const tool of extra) if (!tools.some(t => t.spec.name === tool.spec.name)) tools.push(tool);
     return tools;
   }
 
   async function runnerFor(userId: string, chat: Chat, run: Run, request: RunRequest, fence: {revision: number}) {
-    const resolved = await resolveProvider(userId, chat, request);
+    const scriptHint = resolveScriptHint(chat, request);
+    const [resolved, tools, toolNotesList] = await Promise.all([
+      timedStep('runnerProvider', () => resolveProvider(userId, chat, request)),
+      timedStep('toolCatalog', () => agentTools(userId, chat, run, request, scriptHint)),
+      timedStep('toolNotes', async () => options.features?.toolNotes?.(ctx(userId), chat)),
+    ]);
     const {script, model} = resolved;
     const media = options.features?.media;
-    const provider = media && !script ? withMedia(resolved.provider, (part, caps) => media(ctx(userId), part, caps)) : resolved.provider;
-    const tools = await agentTools(userId, chat, run, request, script);
+    const baseProvider = media && !script ? withMedia(resolved.provider, (part, caps) => media(ctx(userId), part, caps)) : resolved.provider;
+    const tracker = currentRunTiming();
+    const provider: ModelProvider = tracker
+      ? {
+          ...baseProvider,
+          stream(req, signal) {
+            tracker.mark('providerRequestMs');
+            return baseProvider.stream(req, signal);
+          },
+        }
+      : baseProvider;
     const started = clock();
     const runner = new AgentRunner({
       provider,
       tools,
-      toolNotes: await options.features?.toolNotes?.(ctx(userId),chat),
+      toolNotes: toolNotesList,
       ports: script ? {...slicePorts(fence), summarize: localSummary} : slicePorts(fence),
       shouldYield: () => clock() - started > budgetMs,
       ...(script === 'compaction' ? {contextWindow: 1024} : model?.contextWindow ? {contextWindow: model.contextWindow} : {}),
@@ -247,8 +291,12 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       return {...chat.setup,system:chat.setup.system.includes('Saved variables exist:')?chat.setup.system:chat.setup.system+'\nSaved variables exist: use variables list/search/get; secrets are opaque references.',tools:chat.setup.tools.some(t=>t.name==='variables')?chat.setup.tools:[...chat.setup.tools,spec]};
     }
     const c = ctx(userId);
-    const skills = (await options.features?.skills?.(c)) ?? [];
-    const toolNotes = [...((await options.features?.toolNotes?.(c, chat)) ?? []),'Saved variables exist: use variables list/search/get; secrets are opaque references and their values are never visible.'];
+    const [skillsRaw, rawToolNotes] = await Promise.all([
+      options.features?.skills?.(c) ?? Promise.resolve([]),
+      timedStep('toolNotes', async () => options.features?.toolNotes?.(c, chat)),
+    ]);
+    const skills = skillsRaw ?? [];
+    const toolNotes = [...(rawToolNotes ?? []), 'Saved variables exist: use variables list/search/get; secrets are opaque references and their values are never visible.'];
     const offersSkills = tools.some(t => t.spec.name === 'load_skill' && !t.hidden);
     const catalogSkills = offersSkills ? skills : [];
     return {
@@ -271,14 +319,14 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     async title(userId:string,chat:Chat,text:string) {
       if(!text.trim()||!chat.providerId)return;
       const started=clock(),attempts:JsonObject[]=[];
-      const models=titleModels((await service.list<Model>(userId,'model')).filter(m=>m.providerId===chat.providerId)).slice(0,2);
+      const models=titleModels((await timedStep('modelMetadata',()=>service.list<Model>(userId,'model'))).filter(m=>m.providerId===chat.providerId)).slice(0,2);
       const metric=async()=>service.put(userId,'titleMetric',chat.id,{latencyMs:clock()-started,attempts,...(attempts.find(a=>a.reason)?.reason?{reason:attempts.find(a=>a.reason)!.reason}:{}),...attempts.at(-1)});
       if(!models.length){await service.put(userId,'titleMetric',chat.id,{reason:'no_eligible_model',latencyMs:clock()-started});return;}
       for(const model of models){
        const signal=AbortSignal.timeout(options.titleTimeoutMs??8000),attempt:JsonObject={modelId:model.id};
        try {
         if(chat.providerId!=='scripted')await service.providers?.requireConsent(userId,chat.providerId);
-        const resolved=await resolveProvider(userId,chat,{type:'run.start',chatId:chat.id,text,attachmentIds:[],webSearch:false});
+        const resolved=await resolveProvider(userId,chat,{type:'run.start',chatId:chat.id,text,attachmentIds:[],webSearch:false},'title');
         const effort:'none'|'minimal'|'low'=!model.capabilities.reasoningEffort?'none':model.reasoningEfforts.includes('none')?'none':model.reasoningEfforts.includes('minimal')?'minimal':'low';
         const request={model:model.id,system:TITLE_SYSTEM,messages:[{type:'message' as const,id:'title',chatId:chat.id,role:'user' as const,parts:[{type:'text' as const,text:formatTitleUserMessage(text)}],createdAt:service.now(),updatedAt:service.now()}],tools:[],capabilities:model.capabilities,maxTokens:32,temperature:0,effort,supportedEfforts:model.reasoningEfforts,titleReasoning:effort,webSearch:false};
         let result;
@@ -300,11 +348,13 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     },
 
     async notes(userId: string, chat: Chat, input: StartRun, previous: Message[]): Promise<string[]> {
-      const skills = (await options.features?.skills?.(ctx(userId))) ?? [];
+      const needSkills = !!chat.setup?.tools.some(t => t.name === 'load_skill');
       const previousNotes = previous.filter(m => m.role === 'user').flatMap(m => m.parts).flatMap(p => (p.type === 'note' && p.text ? [p.text] : []));
-      const extra = (await options.features?.turnNotes?.(ctx(userId), chat, previousNotes)) ?? [];
-      const variables=await variablePrompt(ctx(userId),input.text,service.search?.embedder);
-      return [...(variables?[variables]:[]),...turnNotes({
+      const [skills, extra] = await Promise.all([
+        needSkills ? (options.features?.skills?.(ctx(userId)) ?? Promise.resolve([])) : Promise.resolve([]),
+        options.features?.turnNotes?.(ctx(userId), chat, previousNotes) ?? Promise.resolve([]),
+      ]);
+      return [...turnNotes({
         mode: input.mode ?? chat.mode,
         ...((input.effort ?? chat.effort) ? {effort: (input.effort ?? chat.effort)!} : {}),
         previous,
@@ -315,25 +365,53 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
 
     async start(userId: string, run: Run, chat: Chat, messages: Message[], request: StartRun) {
       const stored: RunRequest = {...request, attachmentIds: request.attachmentIds ?? []};
-      await service.put(userId, 'runRequest', run.id, stored);
-      await exclusive(userId, run.id, async fence => {
-      const {runner, tools, model} = await runnerFor(userId, chat, run, stored, fence);
-      const setup = await freezeSetup(userId, chat, tools);
-      const effort = request.effort ?? chat.effort;
-      const modelId = request.modelId ?? chat.modelId;
-      const cp = await runner.run({
-        userId, run, messages,
-        chat: {...chat, mode: request.mode ?? chat.mode, ...(options.features?.refreshCatalog&&chat.setup?{setup:{...chat.setup,tools:tools.filter(t=>!t.hidden).map(t=>t.spec),hiddenTools:tools.filter(t=>t.hidden).map(t=>t.spec)}}:{})},
-        ...(setup ? {setup} : {}),
-        ...(modelId ? {modelId} : {}),
-        ...(effort ? {effort} : {}),
-        ...(model?.reasoningEfforts.length ? {supportedEfforts: model.reasoningEfforts} : {}),
-        ...(model?.maxOutputTokens ? {modelMaxTokens: model.maxOutputTokens} : {}),
-        webSearch: request.webSearch,
-        policy: {trustedSources: await trustedSources(userId), alwaysAllow: []},
-      });
-      return cp;
-      });
+      const tracker = currentRunTiming();
+      const runRequestPromise = timedStep('runRequestPut', () => service.put(userId, 'runRequest', run.id, stored));
+      await Promise.all([
+        runRequestPromise,
+        exclusive(userId, run.id, async fence => {
+          const [{runner, tools, model}, trusted, variableNote] = await Promise.all([
+            runnerFor(userId, chat, run, stored, fence),
+            timedStep('trustedSources', () => trustedSources(userId)),
+            !request.regenerateMessageId
+              ? variablePrompt(ctx(userId), request.text, service.search?.embedder, {
+                  deferTouch: work => tracker?.defer(work),
+                })
+              : Promise.resolve(undefined),
+            !chat.setup ? (options.features?.skills?.(ctx(userId)) ?? Promise.resolve([])) : Promise.resolve([]),
+          ]);
+          const setup = await timedStep('freezeSetup', () => freezeSetup(userId, chat, tools));
+          let runMessages = messages;
+          if (variableNote) {
+            let lastIdx = -1;
+            for (let i = messages.length - 1; i >= 0; i--) { if (messages[i]!.role === 'user') { lastIdx = i; break; } }
+            if (lastIdx >= 0) {
+              const orig = messages[lastIdx]!;
+              const already = orig.parts.some(p => p.type === 'note' && p.text?.startsWith('Related saved variables'));
+              if (!already) {
+                runMessages = messages.map((m, i) =>
+                  i === lastIdx ? {...orig, parts: [{type: 'note' as const, text: variableNote}, ...orig.parts]} : m
+                );
+              }
+            }
+          }
+          await runRequestPromise;
+          const effort = request.effort ?? chat.effort;
+          const modelId = request.modelId ?? chat.modelId;
+          const cp = await runner.run({
+            userId, run, messages: runMessages,
+            chat: {...chat, mode: request.mode ?? chat.mode, ...(options.features?.refreshCatalog&&chat.setup?{setup:{...chat.setup,tools:tools.filter(t=>!t.hidden).map(t=>t.spec),hiddenTools:tools.filter(t=>t.hidden).map(t=>t.spec)}}:{})},
+            ...(setup ? {setup} : {}),
+            ...(modelId ? {modelId} : {}),
+            ...(effort ? {effort} : {}),
+            ...(model?.reasoningEfforts.length ? {supportedEfforts: model.reasoningEfforts} : {}),
+            ...(model?.maxOutputTokens ? {modelMaxTokens: model.maxOutputTokens} : {}),
+            webSearch: request.webSearch,
+            policy: {trustedSources: trusted, alwaysAllow: []},
+          });
+          return cp;
+        }),
+      ]);
     },
 
     async resume(userId: string, runId: string, decision: RunDecision) {

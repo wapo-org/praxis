@@ -13,11 +13,27 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { FeatureContext, FeatureTool } from '../../contracts.js';
 import { connector, McpError, now, requireConsent, saveConnector, type McpOptions } from './shared.js';
 import { recordFailure, skipWithoutContact } from './health.js';
-import { RESOURCE_TOOL_NAMES, resourceTools } from './resources.js';
+import { RESOURCE_TOOL_NAMES } from './resources.js';
 import { listAllTools, withClient } from './client.js';
+import { currentRunTiming, timedStep } from '../../timing.js';
 
 export const catalogKey = (ctx: FeatureContext, id: string) =>
   `mcp:catalog:${JSON.stringify([ctx.userId, id])}`;
+
+const CATALOG_KV_TTL_S = 86_400;
+const CATALOG_SWR_MS = 60_000;
+const inflightCatalogRefreshes = new Map<string, Promise<void>>();
+
+export async function listConnectorsMemo(ctx: FeatureContext): Promise<Connector[]> {
+  const tracker = currentRunTiming();
+  const load = () =>
+    timedStep('mcpConnectorList', async () =>
+      (await ctx.store.list(ctx.userId, 'connector'))
+        .filter((row) => !row.deleted)
+        .map((row) => ConnectorSchema.parse(row.value)),
+    );
+  return tracker ? tracker.memo(`connectors:${ctx.userId}`, load) : load();
+}
 
 export const qualifiedName = (value: Connector, name: string) => {
   const slug =
@@ -79,7 +95,37 @@ export async function settingsTools(ctx:FeatureContext,value:Connector,options:M
   return value.authStatus==='connected'?discoverTools(ctx,value,options):starter;
 }
 
-/** Tools plus whether the server offers resources (from its initialize capabilities); cached briefly per connector. */
+function scheduleCatalogRefresh(
+  ctx: FeatureContext,
+  value: Connector,
+  options: McpOptions,
+  key: string,
+) {
+  if (inflightCatalogRefreshes.has(key)) return;
+  const work = (async () => {
+    try {
+      const { tools, resources } = await withClient(ctx, value, options, async (client) => ({
+        tools: await listAllTools(client),
+        resources: !!client.getServerCapabilities()?.resources,
+      }));
+      await ctx.kv.set(key, { url: value.url, transport: value.transport, tools, resources, fetchedAt: Date.now() }, CATALOG_KV_TTL_S);
+      const latest = await connector(ctx, value.id);
+      if (latest.url === value.url) {
+        await saveConnector(ctx, { ...latest, toolCount: tools.length, error: undefined, status: 'connected', lastCheckedAt: now(), statusCode: undefined });
+      }
+    } catch (error) {
+      if (error instanceof McpError) {
+        await recordFailure(ctx, value, error).catch(() => undefined);
+      }
+    }
+  })().finally(() => {
+    if (inflightCatalogRefreshes.get(key) === work) inflightCatalogRefreshes.delete(key);
+  });
+  inflightCatalogRefreshes.set(key, work);
+  currentRunTiming()?.defer(work);
+}
+
+/** Tools plus whether the server offers resources (from its initialize capabilities); cached with SWR per connector. */
 export async function discoverCatalog(
   ctx: FeatureContext,
   value: Connector,
@@ -87,15 +133,18 @@ export async function discoverCatalog(
 ): Promise<{ tools: Tool[]; resources: boolean }> {
   if(value.id==='builtin-e2b')return {tools:builtinCatalog(value)!,resources:false};
   const key = catalogKey(ctx, value.id);
-  const cached = await ctx.kv.get<{ url: string; transport: string; tools: Tool[]; resources?: boolean }>(key);
+  const cached = await ctx.kv.get<{ url: string; transport: string; tools: Tool[]; resources?: boolean; fetchedAt?: number }>(key);
   if (cached?.url === value.url && cached.transport === value.transport) {
+    if (!cached.fetchedAt || Date.now() - cached.fetchedAt > CATALOG_SWR_MS) {
+      scheduleCatalogRefresh(ctx, value, options, key);
+    }
     return { tools: cached.tools, resources: cached.resources === true };
   }
-  const { tools, resources } = await withClient(ctx, value, options, async (client) => ({
+  const { tools, resources } = await timedStep('mcpDiscoverCatalog', () => withClient(ctx, value, options, async (client) => ({
     tools: await listAllTools(client),
     resources: !!client.getServerCapabilities()?.resources,
-  }));
-  await ctx.kv.set(key, { url: value.url, transport: value.transport, tools, resources }, 60);
+  })));
+  await ctx.kv.set(key, { url: value.url, transport: value.transport, tools, resources, fetchedAt: Date.now() }, CATALOG_KV_TTL_S);
   const latest = await connector(ctx, value.id);
   if (latest.url === value.url) {
     await saveConnector(ctx, { ...latest, toolCount: tools.length, error: undefined, status: 'connected', lastCheckedAt: now(), statusCode: undefined });
@@ -111,8 +160,10 @@ export async function checkExecution(
   disabled: string[],
   readOnly: boolean,
 ) {
-  const live = await connector(ctx, frozen.id);
-  const chat = await ctx.store.get(ctx.userId, 'chat', run.chatId);
+  const [live, chat] = await Promise.all([
+    connector(ctx, frozen.id),
+    ctx.store.get(ctx.userId, 'chat', run.chatId),
+  ]);
   if (!chat || chat.deleted) {
     throw new McpError(404, 'not_found', 'Chat not found');
   }
@@ -149,71 +200,80 @@ export async function getMcpTools(
   mcp: McpOptions = {},
 ): Promise<FeatureTool[]> {
   z.object({ chatId: z.string().min(1), disabledConnectorIds: z.array(z.string()) }).parse(options);
-  const chat = await ctx.store.get(ctx.userId, 'chat', options.chatId);
-  if (!chat || chat.deleted) {
-    throw new McpError(404, 'not_found', 'Chat not found');
-  }
-  const off = z.array(z.string()).parse(chat.value.disabledConnectorIds ?? []);
-  const values = (await ctx.store.list(ctx.userId, 'connector'))
-    .filter((row) => !row.deleted)
-    .map((row) => ConnectorSchema.parse(row.value))
-    .filter(
-      (value) =>
-        value.enabled && !options.disabledConnectorIds.includes(value.id) && !off.includes(value.id),
-    )
-    .sort((a, b) => a.id.localeCompare(b.id));
-
-  const tools: FeatureTool[] = [];
-  for (const value of values) {
-    // Recently failed or signed-out connectors are not offered (a turn note says why); no network call.
-    if (skipWithoutContact(value)) continue;
-    try {
-      const { tools: definitions, resources } = await discoverCatalog(ctx, value, mcp);
-      // Resource management stays in Settings; internal discovery helpers are not model tools.
-      for (const definition of definitions) {
-        if (value.disabledTools.includes(definition.name) || RESOURCE_TOOL_NAMES.includes(definition.name)) continue;
-        tools.push({
-          ...toolSpec(value, definition),
-          execute: async (args, run) => {
-            if (run.chatId !== options.chatId) {
-              throw new McpError(403, 'chat_mismatch', 'MCP tool belongs to a different conversation');
-            }
-            const argumentsObject = JsonObjectSchema.parse(args);
-            const live = await checkExecution(
-              ctx,
-              value,
-              definition.name,
-              run,
-              options.disabledConnectorIds,
-              definition.annotations?.readOnlyHint === true,
-            );
-            if(live.id==='builtin-e2b')return runE2B(ctx,live,argumentsObject);
-            return withClient(
-              ctx,
-              live,
-              mcp,
-              async (client) =>
-                JsonValueSchema.parse(
-                  await client.callTool({ name: definition.name, arguments: argumentsObject }, undefined, {
-                    // MCP progress notifications become tool.progress status lines (as the app shows them).
-                    onprogress: (p) => {
-                      if (!run.emit || !run.callId) return;
-                      const text = p.message ?? (p.total ? `${p.progress}/${p.total}` : String(p.progress));
-                      void run.emit({ type: 'tool.progress', callId: run.callId, kind: 'status', text }).catch(() => {});
-                    },
-                  }),
-                ),
-              run,
-            );
-          },
-        });
-      }
-    } catch (error) {
-      if (!(error instanceof McpError)) throw error;
-      await recordFailure(ctx, value, error);
+  const tracker = currentRunTiming();
+  const memoKey = `mcpCatalog:${ctx.userId}:${options.chatId}:${[...options.disabledConnectorIds].sort().join(',')}`;
+  const load = () => timedStep('mcpCatalog', async () => {
+    const [chat, allConnectors] = await Promise.all([
+      ctx.store.get(ctx.userId, 'chat', options.chatId),
+      listConnectorsMemo(ctx),
+    ]);
+    if (!chat || chat.deleted) {
+      throw new McpError(404, 'not_found', 'Chat not found');
     }
-  }
-  return tools;
+    const off = z.array(z.string()).parse(chat.value.disabledConnectorIds ?? []);
+    const values = allConnectors
+      .filter(
+        (value) =>
+          value.enabled && !options.disabledConnectorIds.includes(value.id) && !off.includes(value.id),
+      )
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    const perConnector = await Promise.all(values.map(async (value): Promise<FeatureTool[]> => {
+      // Recently failed or signed-out connectors are not offered (a turn note says why); no network call.
+      if (skipWithoutContact(value)) return [];
+      try {
+        const { tools: definitions } = await discoverCatalog(ctx, value, mcp);
+        const built: FeatureTool[] = [];
+        // Resource management stays in Settings; internal discovery helpers are not model tools.
+        for (const definition of definitions) {
+          if (value.disabledTools.includes(definition.name) || RESOURCE_TOOL_NAMES.includes(definition.name)) continue;
+          built.push({
+            ...toolSpec(value, definition),
+            execute: async (args, run) => {
+              if (run.chatId !== options.chatId) {
+                throw new McpError(403, 'chat_mismatch', 'MCP tool belongs to a different conversation');
+              }
+              const argumentsObject = JsonObjectSchema.parse(args);
+              const live = await checkExecution(
+                ctx,
+                value,
+                definition.name,
+                run,
+                options.disabledConnectorIds,
+                definition.annotations?.readOnlyHint === true,
+              );
+              if(live.id==='builtin-e2b')return runE2B(ctx,live,argumentsObject);
+              return withClient(
+                ctx,
+                live,
+                mcp,
+                async (client) =>
+                  JsonValueSchema.parse(
+                    await client.callTool({ name: definition.name, arguments: argumentsObject }, undefined, {
+                      // MCP progress notifications become tool.progress status lines (as the app shows them).
+                      onprogress: (p) => {
+                        if (!run.emit || !run.callId) return;
+                        const text = p.message ?? (p.total ? `${p.progress}/${p.total}` : String(p.progress));
+                        void run.emit({ type: 'tool.progress', callId: run.callId, kind: 'status', text }).catch(() => {});
+                      },
+                    }),
+                  ),
+                run,
+              );
+            },
+          });
+        }
+        return built;
+      } catch (error) {
+        if (!(error instanceof McpError)) throw error;
+        await recordFailure(ctx, value, error);
+        return [];
+      }
+    }));
+
+    return perConnector.flat();
+  });
+  return tracker ? tracker.memo(memoKey, load) : load();
 }
 
 /** Optional gateway. Its nested call ALWAYS re-enters the injected policy. Register the catalog as hidden tools. */

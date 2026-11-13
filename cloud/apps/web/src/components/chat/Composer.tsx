@@ -108,11 +108,13 @@ export const Composer: React.FC = () => {
     if (sendingRef.current) return;
     const trimmed = text.trim();
     if (!trimmed && queueRef.current.length === 0) return;
-    sendingRef.current = true;
-    try {
-      await uploadsRef.current;
-    } finally {
-      sendingRef.current = false;
+    if (queueRef.current.some((q) => q.status === 'uploading')) {
+      sendingRef.current = true;
+      try {
+        await uploadsRef.current;
+      } finally {
+        sendingRef.current = false;
+      }
     }
     const ready = queueRef.current.flatMap((q) => (q.status === 'ready' && q.attachment ? [q.attachment] : []));
     if (!trimmed && ready.length === 0) return;

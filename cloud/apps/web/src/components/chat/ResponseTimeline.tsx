@@ -107,11 +107,15 @@ export function ResponseTimeline({
     }
   }
   const last = rawGroups.at(-1);
-  const pending =
+  const pendingCards =
     !!activity.pendingApprovals?.length ||
     !!activity.pendingElicitations?.length ||
     !!activity.visionActivities?.length ||
     !!activity.compactions?.length;
+  const hasVisibleGroups = rawGroups.some(
+    (g) => g.text !== undefined || g.nodes.some((n) => !!n.step || (!!n.thought && hasThought(n.thought))),
+  );
+  const pending = pendingCards || (!!activity.isRunning && !hasVisibleGroups);
   if (pending && (!last || last.text !== undefined)) rawGroups.push({ id: 'pending', nodes: [] });
 
   const groups = rawGroups.filter(
@@ -206,7 +210,7 @@ export function LiveResponseTimeline({
         startedAt: live.run.createdAt,
         finishedAt: live.run.updatedAt,
         promptStartedAt,
-        isRunning: live.run.status === 'running',
+        isRunning: live.run.status === 'queued' || live.run.status === 'running',
         runStatus: live.run.status,
       }}
     />
