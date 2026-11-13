@@ -381,8 +381,6 @@ export function createScriptedProvider(
         return;
       }
       // Default legacy scripts ('text', 'tools', 'approval', 'nestedApproval', 'elicitation', 'elicitationURL', 'error', 'long', 'compaction', 'vision')
-      yield { type: 'reasoning', index: 100, text: 'Checking the scripted scenario.' };
-      yield { type: 'blockEnd', index: 100 };
       if (script === 'error') throw new ProviderFailure('Scripted provider error');
 
       let parts: MessagePart[];

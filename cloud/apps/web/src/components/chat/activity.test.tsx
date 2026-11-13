@@ -7,8 +7,11 @@ import { AgentActivityView } from './AgentActivityView';
 import {
   bindSendFlightTarget,
   cancelSendFlight,
+  isSendFlightActive,
   launchSendFlight,
+  SEND_FLIGHT_DURATION_MS,
   sendBubbleShapeAt,
+  subscribeSendFlight,
 } from './chatMotion';
 import {
   computeElapsedMs,
@@ -176,41 +179,73 @@ describe('iMessage send animation trajectory (chatMotion)', () => {
   const fromBox = { left: 52, top: 800, width: 290, height: 36 };
   const toBox = { left: 280, top: 560, width: 64, height: 36 };
 
-  it('matches the reference keyframe trajectory across 0..820ms', () => {
+  it('lifts on the first frame, stays <= 250ms, and lands smoothly without bounce', () => {
+    expect(SEND_FLIGHT_DURATION_MS).toBeLessThanOrEqual(250);
     const p0 = sendBubbleShapeAt(0, fromBox, toBox);
-    const p40 = sendBubbleShapeAt(40, fromBox, toBox);
+    const p16 = sendBubbleShapeAt(16, fromBox, toBox);
+    const p33 = sendBubbleShapeAt(33, fromBox, toBox);
     const p110 = sendBubbleShapeAt(110, fromBox, toBox);
-    const p200 = sendBubbleShapeAt(200, fromBox, toBox);
-    const p320 = sendBubbleShapeAt(320, fromBox, toBox);
-    const p420 = sendBubbleShapeAt(420, fromBox, toBox);
-    const p820 = sendBubbleShapeAt(820, fromBox, toBox);
+    const p195 = sendBubbleShapeAt(195, fromBox, toBox);
+    const pEnd = sendBubbleShapeAt(SEND_FLIGHT_DURATION_MS, fromBox, toBox);
 
     expect(p0.width).toBeCloseTo(fromBox.width, 1);
-    expect(p40.fillOpacity).toBe(1);
-    // At 110ms the left edge has pulled rapidly right (~40-50% width) while right stays anchored.
-    expect(p110.width).toBeLessThan(fromBox.width * 0.6);
+    expect(p0.fillOpacity).toBeGreaterThanOrEqual(0.5);
+    // First 16ms and 33ms frames immediately show full fill, narrower width, and measurable upward lift.
+    expect(p16.top).toBeLessThan(fromBox.top - 15);
+    expect(p16.width).toBeLessThan(fromBox.width);
+    expect(p33.fillOpacity).toBe(1);
+    expect(p33.top).toBeLessThan(fromBox.top - 35);
+    // Right edge anchors quickly while width contracts rapidly.
+    expect(p110.width).toBeLessThan(fromBox.width * 0.45);
     expect(p110.left + p110.width).toBeCloseTo(toBox.left + toBox.width, -1);
-    // By 200ms width has converged to toBox.width while still rising.
-    expect(p200.width).toBeCloseTo(toBox.width, 0);
-    expect(p200.top).toBeGreaterThan(toBox.top);
-    // Crosses final Y around 320ms and overshoots 4-7px upward at 400-480ms.
-    expect(p320.top).toBeLessThanOrEqual(toBox.top + 1);
-    expect(toBox.top - p420.top).toBeGreaterThanOrEqual(4);
-    expect(toBox.top - p420.top).toBeLessThanOrEqual(7);
-    // Drifts back down to final slot at 820ms with no second bounce.
-    expect(p820.top).toBeCloseTo(toBox.top, 1);
-    expect(p820.left).toBeCloseTo(toBox.left, 1);
-    expect(p820.width).toBeCloseTo(toBox.width, 1);
+    // Slight upward overshoot near 185ms, then settled cleanly onto toBox at SEND_FLIGHT_DURATION_MS.
+    expect(toBox.top - p195.top).toBeGreaterThanOrEqual(3);
+    expect(toBox.top - p195.top).toBeLessThanOrEqual(6);
+    expect(pEnd.top).toBeCloseTo(toBox.top, 1);
+    expect(pEnd.left).toBeCloseTo(toBox.left, 1);
+    expect(pEnd.width).toBeCloseTo(toBox.width, 1);
   });
 
-  it('keeps retiring optimistic targets hidden until the keyed handoff flight ends',()=>{
-    const input=document.createElement('textarea');input.getBoundingClientRect=()=>new DOMRect(64,800,270,36);document.body.appendChild(input);
-    const old=document.createElement('div'),next=document.createElement('div');
-    for(const bubble of [old,next]){bubble.getBoundingClientRect=()=>new DOMRect(280,520,64,36);document.body.appendChild(bubble);}
-    launchSendFlight(input,'Same message');bindSendFlightTarget(old);bindSendFlightTarget(next);
-    expect(old.style.visibility).toBe('hidden');expect(next.style.visibility).toBe('hidden');
-    cancelSendFlight();expect(old.style.visibility).toBe('');expect(next.style.visibility).toBe('');
-    input.remove();old.remove();next.remove();
+  it('notifies subscribers when a send flight starts and ends', () => {
+    const input = document.createElement('textarea');
+    input.getBoundingClientRect = () => new DOMRect(64, 800, 270, 36);
+    document.body.appendChild(input);
+
+    const events: boolean[] = [];
+    const unsub = subscribeSendFlight(() => events.push(isSendFlightActive()));
+    expect(isSendFlightActive()).toBe(false);
+
+    launchSendFlight(input, 'First');
+    expect(isSendFlightActive()).toBe(true);
+    cancelSendFlight();
+    expect(isSendFlightActive()).toBe(false);
+    expect(events).toEqual([true, false]);
+
+    unsub();
+    input.remove();
+  });
+
+  it('keeps retiring optimistic targets hidden until the keyed handoff flight ends', () => {
+    const input = document.createElement('textarea');
+    input.getBoundingClientRect = () => new DOMRect(64, 800, 270, 36);
+    document.body.appendChild(input);
+    const old = document.createElement('div');
+    const next = document.createElement('div');
+    for (const bubble of [old, next]) {
+      bubble.getBoundingClientRect = () => new DOMRect(280, 520, 64, 36);
+      document.body.appendChild(bubble);
+    }
+    launchSendFlight(input, 'Same message');
+    bindSendFlightTarget(old);
+    bindSendFlightTarget(next);
+    expect(old.style.visibility).toBe('hidden');
+    expect(next.style.visibility).toBe('hidden');
+    cancelSendFlight();
+    expect(old.style.visibility).toBe('');
+    expect(next.style.visibility).toBe('');
+    input.remove();
+    old.remove();
+    next.remove();
   });
 
   it('cleans up previous flight on rapid consecutive sends so no bubble stays hidden', () => {

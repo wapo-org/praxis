@@ -157,6 +157,6 @@ describe('durability and provider fallback regressions',()=>{
     const cp=await new AgentRunner({ports:h.ports,provider,tools:scriptedTools()}).run(i);expect(count).toBe(1);expect(cp.run.outcome).toBe('truncated');expect(cp.messages.at(-1)?.parts).toEqual([{type:'text',text:'Partial text'}]);
   });
   it('emits matching reasoning finished events and carries client turn ids',async()=>{
-    const h=harness(),i=input();i.run.clientTurnId='client-turn';const cp=await createScriptedRunner(h.ports).run(i);const started=h.events.find(e=>e.type==='reasoning.delta');expect(started).toBeDefined();expect(h.events).toContainEqual({type:'reasoning.finished',blockId:started&&'blockId' in started?started.blockId:''});expect(cp.messages.at(-1)?.clientTurnId).toBe('client-turn');
+    const h=harness(),i=input();i.run.clientTurnId='client-turn';const cp=await createScriptedRunner(h.ports,'reasoningSummary').run(i);const started=h.events.find(e=>e.type==='reasoning.delta');expect(started).toBeDefined();expect(h.events).toContainEqual(expect.objectContaining({type:'reasoning.finished',blockId:started&&'blockId' in started?started.blockId:''}));expect(cp.messages.at(-1)?.clientTurnId).toBe('client-turn');
   });
 });

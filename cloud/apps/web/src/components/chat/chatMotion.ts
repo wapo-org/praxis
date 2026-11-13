@@ -26,7 +26,7 @@ const MAX_ARRIVALS = 3;
 /** Chat-switch entrance staggers only the visible rows, capped so long histories never wait. */
 const MAX_SWITCH_STAGGER = 8;
 
-export const SEND_FLIGHT_DURATION_MS = 820;
+export const SEND_FLIGHT_DURATION_MS = 240;
 const BUBBLE_RADIUS = 20;
 
 export interface SendBubblePose extends Box {
@@ -36,23 +36,21 @@ export interface SendBubblePose extends Box {
 }
 
 /**
- * Pure trajectory math for the iMessage-style send animation, calibrated to the
- * 60 fps reference sheets (`IMG_7907`–`IMG_7926`, press at `0 ms`, settled at `820 ms`):
- * - `0..36 ms`: filled bubble materialises over the composer input field (`fromBox`)
- *   with text at the exact input-field coordinates while the field clears behind it.
- * - `40..200 ms`: left edge pulls right rapidly while right edge anchors toward
- *   `toBox.right`, narrowing from full input width to final bubble width.
- * - `40..320 ms`: rises toward `toBox.top`.
- * - `320..480 ms`: overshoots ~4–7 CSS px above `toBox.top`.
- * - `480..820 ms`: drifts gently back down into `toBox.top` with no second bounce.
+ * Pure trajectory math for the iMessage-style send flight (`0..240 ms`):
+ * - `0 ms`: bubble materialises immediately (`fillOpacity >= 0.55`, full by `20 ms`)
+ *   and begins narrowing and lifting on the very first frame with non-zero initial velocity.
+ * - `0..145 ms`: left edge pulls right rapidly while right edge locks to `toBox.right`.
+ * - `0..195 ms`: rises cleanly to `toBox.top`, with a brief `3..5 px` upward overshoot
+ *   settling softly onto `toBox.top` at `240 ms`.
  */
 export function sendBubbleShapeAt(elapsedMs: number, fromBox: Box, toBox: Box): SendBubblePose {
   const t = Math.max(0, elapsedMs);
-  const fillOpacity = smoothstep(4, 28, t);
+  const fillOpacity = clamp(0.55 + 0.45 * (t / 20), 0.55, 1);
 
-  const uw = Math.max(0, t - 32);
-  const w = clamp(Math.max(smoothstep(32, 195, t), 1 - Math.exp(-Math.pow(uw / 48, 1.35))), 0, 1);
-  const rightAnchor = smoothstep(32, 180, t);
+  const uw = clamp(t / 145, 0, 1);
+  const w = 1 - Math.pow(1 - uw, 2);
+  const ur = clamp(t / 110, 0, 1);
+  const rightAnchor = 1 - Math.pow(1 - ur, 2);
   const fromRight = fromBox.left + fromBox.width;
   const toRight = toBox.left + toBox.width;
   const right = lerp(fromRight, toRight, rightAnchor);
@@ -60,13 +58,13 @@ export function sendBubbleShapeAt(elapsedMs: number, fromBox: Box, toBox: Box): 
   const left = right - width;
   const height = lerp(fromBox.height, toBox.height, w);
 
-  const uy = Math.max(0, t - 36);
-  const rawRise = 1 - (1 + uy / 68) * Math.exp(-uy / 68);
-  const ry = clamp(rawRise + 0.1 * smoothstep(120, 320, t), 0, 1);
+  const uy = clamp(t / 195, 0, 1);
+  const ry = 1 - Math.pow(1 - uy, 1.45);
 
   const travel = Math.max(0, fromBox.top - toBox.top);
-  const maxOvershoot = travel > 8 ? Math.min(6.5, Math.max(4, travel * 0.04)) : 0;
-  const overshoot = maxOvershoot * smoothstep(220, 420, t) * (1 - smoothstep(430, 810, t));
+  const maxOvershoot = travel > 8 ? Math.min(5, Math.max(3, travel * 0.03)) : 0;
+  const overshoot =
+    maxOvershoot * smoothstep(125, 185, t) * (1 - smoothstep(185, SEND_FLIGHT_DURATION_MS, t));
   const top = lerp(fromBox.top, toBox.top, ry) - overshoot;
 
   const radius = Math.min(BUBBLE_RADIUS, Math.min(width, height) / 2);
@@ -87,11 +85,31 @@ interface ActiveSendFlight {
   inputEl: HTMLTextAreaElement | null;
   targetBubbleEl: HTMLElement | null;
   targets: Set<HTMLElement>;
-  finish: () => void;
+  finish: (notify?: boolean) => void;
 }
 
 let nextFlightId = 1;
 let activeFlight: ActiveSendFlight | null = null;
+const flightListeners = new Set<() => void>();
+
+function notifyFlightListeners() {
+  for (const listener of flightListeners) listener();
+}
+
+export function subscribeSendFlight(listener: () => void): () => void {
+  flightListeners.add(listener);
+  return () => {
+    flightListeners.delete(listener);
+  };
+}
+
+export function isSendFlightActive(): boolean {
+  return activeFlight !== null;
+}
+
+export function useSendFlightActive(): boolean {
+  return React.useSyncExternalStore(subscribeSendFlight, isSendFlightActive, () => false);
+}
 
 function measureNaturalBubbleBox(text: string, fromBox: Box): Box {
   const probe = document.createElement('div');
@@ -146,7 +164,7 @@ function writeFlightFrame(flight: ActiveSendFlight, elapsedMs: number) {
   flight.shellEl.style.setProperty('--send-fill-opacity', pose.fillOpacity.toFixed(3));
   flight.innerEl.style.transform = `scale(${(1 / sx).toFixed(4)}, ${(1 / sy).toFixed(4)})`;
 
-  if (flight.inputEl && elapsedMs >= 28 && flight.inputEl.dataset.flightLead) {
+  if (flight.inputEl && elapsedMs >= 20 && flight.inputEl.dataset.flightLead) {
     delete flight.inputEl.dataset.flightLead;
   }
 }
@@ -179,7 +197,7 @@ export function launchSendFlight(inputEl: HTMLTextAreaElement | null, text: stri
     return null;
   }
 
-  activeFlight?.finish();
+  activeFlight?.finish(false);
 
   const existingKeys = new Set<string>();
   for (const node of document.querySelectorAll<HTMLElement>('[data-message-key]')) {
@@ -230,10 +248,12 @@ export function launchSendFlight(inputEl: HTMLTextAreaElement | null, text: stri
     inputEl,
     targetBubbleEl: null,
     targets: new Set<HTMLElement>(),
-    finish() {
+    finish(notify = true) {
+      let cleared = false;
       if (activeFlight?.id === id) {
         activeFlight = null;
         cancelFrame(tickFlight);
+        cleared = true;
       }
       if (flight.inputEl?.dataset.flightLead) {
         delete flight.inputEl.dataset.flightLead;
@@ -248,12 +268,14 @@ export function launchSendFlight(inputEl: HTMLTextAreaElement | null, text: stri
       }
       flight.targets.clear();
       flight.targetBubbleEl = null;
+      if (cleared && notify) notifyFlightListeners();
     },
   };
 
   activeFlight = flight;
   writeFlightFrame(flight, 0);
   frame.update(tickFlight, true);
+  notifyFlightListeners();
   return id;
 }
 

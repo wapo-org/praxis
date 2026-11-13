@@ -189,18 +189,20 @@ export function ResponseTimeline({
 export function LiveResponseTimeline({
   live,
   promptStartedAt,
+  onRetry,
   errorElement,
   ...handlers
 }: {
   live: LiveRunState;
   promptStartedAt?: string;
+  onRetry?: () => void;
   errorElement?: React.ReactNode;
 } & Pick<AgentActivityViewProps, 'onResolveApproval' | 'onResolveElicitation'>) {
   return (
     <ResponseTimeline
       nodes={liveTimeline(live)}
       text={live.textBlocks.map((b) => b.text).filter(Boolean).join('\n\n')}
-      usage={live.usage}
+      onRetry={onRetry}
       errorElement={errorElement}
       activity={{
         ...handlers,

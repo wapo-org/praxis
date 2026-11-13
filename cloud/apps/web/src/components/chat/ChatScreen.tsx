@@ -8,12 +8,18 @@ import { usePraxisStore } from '../../state/store';
 import {useStreamAnchor} from './useStreamAnchor';
 import { useContentShift } from '../shell/useContentShift';
 import { ChatHeader } from './ChatHeader';
-import { cancelSendFlight, useChatSwitchEntrance, useMessageArrival } from './chatMotion';
+import {
+  cancelSendFlight,
+  useChatSwitchEntrance,
+  useMessageArrival,
+  useSendFlightActive,
+} from './chatMotion';
 import { Composer } from './Composer';
 import { EmptyState } from './EmptyState';
 import { extractMessageToolSteps } from './messageTools';
 import { MessageActivity } from './MessageActivity';
 import {messageTurns} from './messageTurns';
+import { hasThought } from './ReasoningView';
 import { LiveResponseTimeline } from './ResponseTimeline';
 import { UserBubble } from './UserBubble';
 import { RunBackdrop } from './RunBackdrop';
@@ -54,38 +60,61 @@ export function ChatScreen() {
 
   const chatId = activeChat?.id ?? activeChatId ?? undefined;
   const visibleMessages=React.useMemo(()=>messageTurns(activeMessages),[activeMessages]);
-  const lastUserMessage = React.useMemo(
-    () => [...visibleMessages].reverse().find((m) => m.role === 'user'),
-    [visibleMessages],
-  );
+  const lastUserIndex = React.useMemo(() => {
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+      if (visibleMessages[i]?.role === 'user') return i;
+    }
+    return -1;
+  }, [visibleMessages]);
+  const lastUserMessage = lastUserIndex >= 0 ? visibleMessages[lastUserIndex] : undefined;
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const shift = useContentShift();
   const columnRef = React.useRef<HTMLDivElement | null>(null);
   const {onScroll:handleScroll,jumpToLatest:scrollToBottom,showJump:showJumpToLatest}=useStreamAnchor(scrollRef,columnRef,chatId, lastUserMessage?.clientTurnId ?? lastUserMessage?.id, lastUserMessage?.id.startsWith('optimistic-'));
 
+  const flightActive = useSendFlightActive();
   const status = activeLiveRun?.run.status;
-  // A run that just completed keeps its live turn for one fold, so a thought that is still folding away
-  // finishes in place instead of snapping shut when the saved message takes over (WP-K2 item 1).
   const runId = activeLiveRun?.run.id;
+  const liveHasFoldableActivity =
+    !!activeLiveRun &&
+    (activeLiveRun.toolSteps.length > 0 ||
+      activeLiveRun.reasoningBlocks.some(hasThought) ||
+      activeLiveRun.visionActivities.length > 0 ||
+      activeLiveRun.compactions.length > 0 ||
+      activeLiveRun.pendingApprovals.length > 0 ||
+      activeLiveRun.pendingElicitations.length > 0);
+  const savedForLiveRun =
+    !!runId && visibleMessages.some((m) => m.role === 'assistant' && m.runId === runId);
+  // A run that just completed keeps its live turn for one fold only when it has foldable activity
+  // (or until its saved message commits), so thoughts finish folding without snapping shut (WP-K2).
   const [lingerRunId, setLingerRunId] = React.useState<string | undefined>();
   const wasRunning = React.useRef(false);
   React.useEffect(() => {
     if (status === 'queued' || status === 'running') wasRunning.current = true;
     if (status !== 'completed' || !wasRunning.current || !runId) return;
     wasRunning.current = false;
+    if (!liveHasFoldableActivity && savedForLiveRun) {
+      setLingerRunId(undefined);
+      return;
+    }
     setLingerRunId(runId);
     const id = window.setTimeout(() => setLingerRunId(undefined), FOLD_LINGER_MS);
     return () => window.clearTimeout(id);
-  }, [status, runId]);
+  }, [status, runId, liveHasFoldableActivity, savedForLiveRun]);
+  const shouldLinger =
+    status === 'completed' &&
+    lingerRunId === runId &&
+    (liveHasFoldableActivity || !savedForLiveRun);
   const hasLiveStreamingContent =
     !!activeLiveRun &&
-    ((status === 'completed' && lingerRunId === runId) ||
+    (shouldLinger ||
       status === 'queued' ||
       status === 'running' ||
       status === 'awaitingApproval' ||
       status === 'awaitingElicitation' ||
       status === 'failed' ||
       status === 'cancelled');
+  const showLiveTurn = !flightActive && hasLiveStreamingContent && !!activeLiveRun;
   const isEmpty = activeMessages.length === 0 && !hasLiveStreamingContent;
   const error = errorBanner || activeLiveRun?.run.error;
   React.useEffect(() => {
@@ -100,18 +129,33 @@ export function ChatScreen() {
   }, [chatId]);
   React.useEffect(() => () => cancelSendFlight(), []);
 
-  const liveTurnKey = hasLiveStreamingContent
+  const liveTurnKey = showLiveTurn
     ? (activeLiveRun?.run.clientTurnId ?? activeLiveRun?.run.id)
     : undefined;
   const arrivalKeys = React.useMemo(() => {
-    const keys = visibleMessages.map((m) =>
-      m.role === 'user' ? `m:${m.clientTurnId ?? m.id}` : `r:${m.clientTurnId ?? m.runId ?? m.id}`,
-    );
-    if (liveTurnKey) keys.push(`r:${liveTurnKey}`);
+    const keys: string[] = [];
+    visibleMessages.forEach((m, index) => {
+      if (m.role === 'assistant' && flightActive && index > lastUserIndex) return;
+      keys.push(
+        m.role === 'user' ? `m:${m.clientTurnId ?? m.id}` : `r:${m.clientTurnId ?? m.runId ?? m.id}`,
+      );
+    });
+    if (liveTurnKey) {
+      const rk = `r:${liveTurnKey}`;
+      if (!keys.includes(rk)) keys.push(rk);
+    }
     return keys;
-  }, [visibleMessages, liveTurnKey]);
+  }, [visibleMessages, flightActive, lastUserIndex, liveTurnKey]);
   useMessageArrival(columnRef, chatId, arrivalKeys);
   useChatSwitchEntrance(columnRef, scrollRef, chatId, pendingChatSwitchRef, visibleMessages.length);
+
+  const liveText = activeLiveRun
+    ? activeLiveRun.textBlocks.map((b) => b.text).filter(Boolean).join('\n\n')
+    : '';
+  const liveSavedMsg = React.useMemo(
+    () => (runId ? visibleMessages.find((m) => m.role === 'assistant' && m.runId === runId) : undefined),
+    [visibleMessages, runId],
+  );
 
   return (
     <main data-testid="chat-screen" className={styles.screen}>
@@ -157,8 +201,8 @@ export function ChatScreen() {
             visibleMessages.map((msg, index) => {
               if (
                 msg.role === 'assistant' &&
-                hasLiveStreamingContent &&
-                msg.runId === activeLiveRun?.run.id
+                ((hasLiveStreamingContent && msg.runId === activeLiveRun?.run.id) ||
+                  (flightActive && index > lastUserIndex))
               )
                 return null;
               if (msg.role === 'user')
@@ -214,7 +258,7 @@ export function ChatScreen() {
             })
           )}
 
-          {hasLiveStreamingContent && activeLiveRun ? (
+          {showLiveTurn ? (
             <div
               data-testid="live-run-streaming-turn"
               data-message-key={`r:${liveTurnKey}`}
@@ -223,6 +267,15 @@ export function ChatScreen() {
               <LiveResponseTimeline
                 live={activeLiveRun}
                 promptStartedAt={lastUserMessage?.createdAt}
+                onRetry={
+                  liveText.trim().length > 0 && lastUserMessage
+                    ? () => {
+                        void sendMessage(messageText(lastUserMessage, ' '), {
+                          regenerateMessageId: liveSavedMsg?.id,
+                        });
+                      }
+                    : undefined
+                }
                 errorElement={
                   activeLiveRun.run.error ? (
                     <p role="alert" data-testid="chat-error-banner" className={styles.error}>
