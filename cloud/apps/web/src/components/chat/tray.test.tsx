@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { Model } from '@praxis/protocol';
+import type { Connector, Model } from '@praxis/protocol';
 import { CapabilitiesSchema } from '@praxis/protocol';
 import React from 'react';
 import { act } from 'react';
@@ -21,6 +21,18 @@ const model = (id: string, pinned = false, name = id): Model => ({
   reasoningEfforts: ['low', 'high'],
   pinned,
   favorite: false,
+});
+const makeConnector = (id: string, name = id, enabled = true): Connector => ({
+  type: 'connector',
+  id,
+  name,
+  url: `https://${id}.example/mcp`,
+  enabled,
+  transport: 'streamableHttp',
+  authStatus: 'none',
+  trusted: false,
+  disabledTools: [],
+  updatedAt: new Date().toISOString(),
 });
 const page = (items: Model[], nextCursor: string | null = null) => ({ type: 'page', items, nextCursor }) as never;
 
@@ -59,6 +71,39 @@ async function openTray(models: Model[] = [model('a', true)]) {
 async function openList() {
   await act(async () => query<HTMLButtonElement>('[data-testid="tray-model-picker-trigger"]')!.click());
   await flush();
+}
+async function openConnectors() {
+  await act(async () => query<HTMLButtonElement>('[data-testid="tray-connectors-trigger"]')!.click());
+  await flush();
+}
+async function mountBootstrap(connectors: Connector[]) {
+  await act(async () => root.unmount());
+  const now = new Date().toISOString();
+  const chat = { type: 'chat', id: 'c1', title: 'Chat', mode: 'build', pinned: false, connectorIds: [], disabledConnectorIds: [], createdAt: now, updatedAt: now };
+  vi.spyOn(apiClient, 'bootstrap').mockResolvedValue({
+    type: 'bootstrap',
+    protocolVersion: 1,
+    user: { type: 'user', id: 'u', name: 'U' },
+    chats: [chat],
+    models: [model('a', true)],
+    providers: [],
+    connectors,
+    skills: [],
+    activeRuns: [],
+    syncCursor: 'first',
+    syncRoot: 'root',
+    serverTime: now,
+  } as never);
+  vi.spyOn(apiClient, 'listMessages').mockResolvedValue(page([]));
+  root = createRoot(host);
+  await act(async () =>
+    root.render(
+      <PraxisStoreProvider>
+        <Probe />
+      </PraxisStoreProvider>,
+    ),
+  );
+  await act(async () => store.refreshAll());
 }
 
 beforeEach(async () => {
@@ -102,52 +147,61 @@ describe('composer tray', () => {
     expect(picks).toHaveBeenCalledWith('image/*', undefined);
   });
 
-  it('toggles a chat connector with a switch, never a bare checkbox', async () => {
-    await act(async () => root.unmount());
-    const now = new Date().toISOString();
-    const chat = { type: 'chat', id: 'c1', title: 'Chat', mode: 'build', pinned: false, connectorIds: [], disabledConnectorIds: [], createdAt: now, updatedAt: now };
-    vi.spyOn(apiClient, 'bootstrap').mockResolvedValue({
-      type: 'bootstrap',
-      protocolVersion: 1,
-      user: { type: 'user', id: 'u', name: 'U' },
-      chats: [chat],
-      models: [model('a', true)],
-      providers: [],
-      connectors: [{ type: 'connector', id: 'docs', name: 'Docs', url: 'https://docs.example/mcp', enabled: true, transport: 'streamableHttp', authStatus: 'none', tools: [] }],
-      skills: [],
-      activeRuns: [],
-      syncCursor: 'first',
-      syncRoot: 'root',
-      serverTime: now,
-    } as never);
-    vi.spyOn(apiClient, 'listMessages').mockResolvedValue(page([]));
+  it('moves connectors into a nested view with search and Manage button (0, 2, and 30 connectors)', async () => {
     const patch = vi
       .spyOn(apiClient, 'patchChat')
-      .mockImplementation(async (_id, change) => ({ ...chat, ...change }) as never);
-    root = createRoot(host);
-    await act(async () =>
-      root.render(
-        <PraxisStoreProvider>
-          <Probe />
-        </PraxisStoreProvider>,
-      ),
-    );
-    await act(async () => store.refreshAll());
-    expect(store.connectors).toHaveLength(1);
+      .mockImplementation(async (_id, change) => ({ id: 'c1', ...change }) as never);
+
+    // 0 active connectors
+    await mountBootstrap([makeConnector('disabled-one', 'Disabled One', false)]);
     await openTray();
-    expect(query<HTMLInputElement>('input[aria-label="Docs"]')).not.toBeNull();
-    await act(async()=>store.setPlusTrayOpen(false));
-    await flush();
+    expect(query('input[aria-label="Disabled One"]')).toBeNull();
+    expect(query('[data-testid="tray-connectors-trigger"]')!.textContent).toContain('None');
+    await openConnectors();
+    expect(query('[data-testid="tray-connectors-empty"]')).not.toBeNull();
+    await act(async () => query<HTMLButtonElement>('[data-testid="tray-connectors-manage"]')!.click());
+    expect(store.plusTrayOpen).toBe(false);
+    expect(store.activeSheet).toBe('connectors');
+
+    // 2 active connectors
+    await mountBootstrap([makeConnector('docs', 'Docs'), makeConnector('github', 'GitHub')]);
+    await openTray();
+    // Main tray has no inline connector toggles anymore.
+    expect(query('input[aria-label="Docs"]')).toBeNull();
+    expect(query('[data-testid="tray-connectors-trigger"]')!.textContent).toContain('· 2');
     await act(async () => store.selectChat('c1'));
     await flush();
-    await openTray();
+    await openConnectors();
     const toggle = query<HTMLInputElement>('input[aria-label="Docs"]')!;
     expect(toggle.getAttribute('role')).toBe('switch');
     expect(toggle.checked).toBe(true);
     await act(async () => toggle.click());
     expect(patch).toHaveBeenCalledWith('c1', { disabledConnectorIds: ['docs'] });
-    const boxes = [...document.querySelectorAll('[data-testid="plus-tray"] input[type="checkbox"]')];
-    expect(boxes.every((box) => box.getAttribute('role') === 'switch')).toBe(true);
+
+    // Search filters connectors by name
+    const search = query<HTMLInputElement>('input[aria-label="Search connectors"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'git');
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(document.querySelectorAll('[data-testid^="tray-connector-row-"]')).toHaveLength(1);
+    expect(query('[data-testid="tray-connector-row-github"]')).not.toBeNull();
+
+    // Back returns to main tray, and Escape from connectors returns to main tray before closing
+    await act(async () => query<HTMLButtonElement>('[data-testid="tray-connectors-view"] button[aria-label="Back"]')!.click());
+    expect(query('[data-testid="tray-connectors-trigger"]')!.getAttribute('aria-expanded')).toBe('false');
+    await openConnectors();
+    await press('Escape');
+    expect(query('[data-testid="tray-connectors-trigger"]')!.getAttribute('aria-expanded')).toBe('false');
+    expect(store.plusTrayOpen).toBe(true);
+
+    // 30 active connectors
+    const many = Array.from({ length: 30 }, (_, i) => makeConnector(`c-${i}`, `Connector ${String(i + 1).padStart(2, '0')}`));
+    await mountBootstrap(many);
+    await openTray();
+    expect(query('[data-testid="tray-connectors-trigger"]')!.textContent).toContain('· 30');
+    await openConnectors();
+    expect(document.querySelectorAll('[data-testid^="tray-connector-row-"]')).toHaveLength(30);
   });
 
   it('closes on Escape and on an outside press, but not on the + button', async () => {

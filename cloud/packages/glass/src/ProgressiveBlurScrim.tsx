@@ -87,7 +87,15 @@ function toCssSize(value: string | number | undefined): string | undefined {
   return typeof value === 'number' ? `${value}px` : value;
 }
 
-/** A scroll viewport whose edges fade out only once scrolled (CSS scroll-driven mask, no JS). */
+function assignViewportRef(ref: React.Ref<HTMLDivElement> | undefined, node: HTMLDivElement | null) {
+  if (typeof ref === 'function') ref(node);
+  else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
+}
+
+/**
+ * A scroll viewport whose edges fade out only once scrolled: CSS scroll-driven animation on Chromium,
+ * with a lightweight scroll/resize fallback for engines without `animation-timeline: scroll()` (WebKit).
+ */
 export function ScrollBlur({
   children,
   height,
@@ -100,6 +108,57 @@ export function ScrollBlur({
   style,
   ...rest
 }: ScrollBlurProps) {
+  const localViewportRef = React.useRef<HTMLDivElement | null>(null);
+  const supportsScrollTimeline =
+    typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('animation-timeline: scroll()');
+
+  const syncFallbackMask = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      if (!el || open || supportsScrollTimeline) return;
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      if (maxScroll <= 1) {
+        el.style.setProperty('--fade-top', '0px');
+        el.style.setProperty('--fade-bottom', '0px');
+        return;
+      }
+      const top = Math.min(1, el.scrollTop / Math.max(1, scrimHeight)) * scrimHeight;
+      const bottom = Math.min(1, (maxScroll - el.scrollTop) / Math.max(1, scrimHeight)) * scrimHeight;
+      el.style.setProperty('--fade-top', `${Math.round(top)}px`);
+      el.style.setProperty('--fade-bottom', `${Math.round(bottom)}px`);
+    },
+    [open, scrimHeight, supportsScrollTimeline],
+  );
+
+  React.useLayoutEffect(() => {
+    const el = localViewportRef.current;
+    if (!el || open || supportsScrollTimeline) return;
+    syncFallbackMask(el);
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => syncFallbackMask(el)) : null;
+    resizeObserver?.observe(el);
+    if (el.firstElementChild) resizeObserver?.observe(el.firstElementChild);
+    const mutationObserver =
+      typeof MutationObserver !== 'undefined' ? new MutationObserver(() => syncFallbackMask(el)) : null;
+    mutationObserver?.observe(el, { childList: true, subtree: true });
+    return () => {
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+    };
+  }, [open, supportsScrollTimeline, syncFallbackMask]);
+
+  const setRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      localViewportRef.current = node;
+      assignViewportRef(viewportRef, node);
+    },
+    [viewportRef],
+  );
+
+  const handleScroll: React.UIEventHandler<HTMLDivElement> = (event) => {
+    syncFallbackMask(event.currentTarget);
+    onViewportScroll?.(event);
+  };
+
   return (
     <div
       data-slot="scroll-blur"
@@ -109,8 +168,8 @@ export function ScrollBlur({
       {...rest}
     >
       <div
-        ref={viewportRef}
-        onScroll={onViewportScroll}
+        ref={setRef}
+        onScroll={handleScroll}
         data-slot="scroll-blur-viewport"
         className={styles.viewport}
         style={{ maxHeight: toCssSize(maxHeight), '--fade-size': `${scrimHeight}px` } as React.CSSProperties}
