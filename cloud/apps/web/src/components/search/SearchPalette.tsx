@@ -6,6 +6,7 @@ import { ACTIONS, actionOptions, applyOption, type ActionId } from '../../action
 import { apiClient } from '../../lib/api';
 import { Check, ChevronLeft, MessageCircle, Search } from '../../lib/icons';
 import { useModelSearch } from '../../lib/useModelSearch';
+import { scheduleSearchJump } from '../chat/useSearchJump';
 import { usePraxisStore } from '../../state/store';
 import modelStyles from '../chat/ModelList.module.css';
 import styles from './SearchPalette.module.css';
@@ -132,7 +133,7 @@ function Palette({ onClose }: { onClose: (then?: () => void) => void }) {
       // Close now, like any dismiss; the switch runs the moment the close has finished (selectChat reports its
       // own errors). Awaiting it held the palette open for the whole message fetch; running it during the
       // close dropped frames in Chromium.
-      Icon: MessageCircle, selected: false, apply: () => onClose(() => { store.setActiveSheet(null); void store.selectChat(hit.chat.id); }) })),
+      Icon: MessageCircle, selected: false, apply: () => onClose(() => { scheduleSearchJump({ chatId: hit.chat.id, title: hit.chat.title || '', query, snippet: hit.snippet }); store.setActiveSheet(null); void store.selectChat(hit.chat.id); }) })),
   ];
   if (level === 'model' && modelSearch.cursor) rows.push({ id: 'load-more', label: 'Load more models', snippet: '',
     Icon: Search, selected: false, apply: modelSearch.loadMore });

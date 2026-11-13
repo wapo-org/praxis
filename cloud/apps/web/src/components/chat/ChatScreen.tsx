@@ -24,6 +24,7 @@ import { hasThought } from './ReasoningView';
 import { LiveResponseTimeline } from './ResponseTimeline';
 import { UserBubble } from './UserBubble';
 import { RunBackdrop } from './RunBackdrop';
+import { useSearchJump } from './useSearchJump';
 import styles from './ChatScreen.module.css';
 
 /** The header bar's height (--topbar-height + --float-margin): the top ramp ends just past the title. */
@@ -174,6 +175,7 @@ export function ChatScreen() {
   }, [visibleMessages, flightActive, lastUserIndex, liveTurnKey]);
   useMessageArrival(columnRef, chatId, arrivalKeys);
   useChatSwitchEntrance(columnRef, scrollRef, chatId, pendingChatSwitchRef, visibleMessages.length);
+  useSearchJump(scrollRef, columnRef, chatId, visibleMessages, pendingChatSwitchRef);
 
   const liveText = activeLiveRun
     ? activeLiveRun.textBlocks.map((b) => b.text).filter(Boolean).join('\n\n')
