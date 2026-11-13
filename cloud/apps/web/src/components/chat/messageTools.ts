@@ -1,3 +1,4 @@
+import { toolDisplay } from './toolDisplay';
 import type { Message } from '@praxis/protocol';
 import type { ActiveToolStep } from '../../state/store';
 export function extractMessageToolSteps(msg: Message): ActiveToolStep[] {
@@ -57,6 +58,14 @@ export function extractMessageToolSteps(msg: Message): ActiveToolStep[] {
       }
     }
   }
-  return Array.from(byCallId.values());
+  return Array.from(byCallId.values()).map((step) => {
+    const display = toolDisplay(step);
+    step.activity.presentation = {
+      type: 'tool.presentation',
+      category: 'other',
+      runningTitle: display.title,
+      finishedTitle: display.title,
+    };
+    return step;
+  });
 }
-

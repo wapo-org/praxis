@@ -30,6 +30,9 @@ export interface ActiveToolStep {
   progressLines: string[];
   statusText?: string;
   completion?: ToolCompletion;
+  startedAt?: string;
+  finishedAt?: string;
+  timelineOrder?: number;
 }
 
 export interface ActiveElicitation {
@@ -46,7 +49,7 @@ export interface ActiveElicitation {
 export interface LiveRunState {
   run: Run;
   lastEventId: number;
-  textBlocks: Array<{ id: string; text: string; finished: boolean }>;
+  textBlocks: Array<{ id: string; text: string; finished: boolean; timelineOrder?: number }>;
   reasoningBlocks: import('../components/chat/ReasoningView').ReasoningBlock[];
   toolSteps: ActiveToolStep[];
   pendingApprovals: Approval[];

@@ -62,6 +62,11 @@
   padding: 0 var(--space-1) 0 var(--space-3);
   border-bottom: 1px solid var(--insp-divider);
 }
+.headActions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
 .caption {
   color: var(--color-ink-2);
   font: var(--weight-medium) var(--text-xs) / var(--leading-xs) var(--font-sans);
@@ -82,13 +87,17 @@
 }
 .copy:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 0; }
 
-/* Long output scrolls inside its box; a thin thumb, no track. */
+/* Clipped preview by default so wheel and trackpad scrolling never gets trapped inside output; "Show all" expands inline. */
 .scroll {
+  position: relative;
   max-height: 22rem;
-  overflow: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--color-ink-3) 40%, transparent) transparent;
+  overflow: clip;
+}
+.scroll[data-expanded='true'] {
+  max-height: none;
+}
+.scroll[data-clipped='true'] {
+  mask-image: linear-gradient(to bottom, black calc(100% - 2.5rem), transparent);
 }
 .pre {
   margin: 0;

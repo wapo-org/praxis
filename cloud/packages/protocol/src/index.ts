@@ -117,7 +117,7 @@ export const StartRunSchema = z.object({regenerateMessageId:IdSchema.optional(),
   attachmentIds:z.array(IdSchema).default([]),webSearch:z.boolean().default(false),idempotencyKey:IdSchema.optional(),clientTurnId:IdSchema.optional(),
   script:z.enum([
     'text','tools','approval','nestedApproval','elicitation','elicitationURL','error','long','compaction','vision',
-    'reasoningTitles','reasoningSummary','reasoningRaw','reasoningRedacted','reasoningNone','reasoningInterleaved','streamSim',
+    'reasoningTitles','reasoningSummary','reasoningRaw','reasoningRedacted','reasoningNone','reasoningInterleaved','helloReplay','streamSim',
   ]).optional(),
   streamSim:StreamSimOptionsSchema.optional(),
 });

@@ -27,6 +27,7 @@
   align-items: flex-start;
   gap: 0;
   margin-bottom: var(--space-2);
+  font-family: var(--font-sans);
 
   width: 100%;
 }
@@ -80,6 +81,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--color-ink-3);
+  text-decoration: none;
 }
 
 .steps {

@@ -13,7 +13,7 @@ import styles from './ReasoningView.module.css';
 const BrainIcon = bindIcon(Brain);
 const choices = new Map<string,boolean>();
 const remember = (id: string, open: boolean) => { choices.set(id, open); if (choices.size > 500) choices.delete(choices.keys().next().value!); };
-export type ReasoningBlock = Omit<RunBlock, 'type'>;
+export type ReasoningBlock = Omit<RunBlock, 'type'> & { timelineOrder?: number };
 
 /** A reasoning block has something to show: text the provider did not redact. */
 export const hasThought = (b: ReasoningBlock) => !b.redacted && !!b.text?.trim();

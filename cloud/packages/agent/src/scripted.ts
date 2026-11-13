@@ -1,3 +1,4 @@
+import helloReplayJson from './hello-replay.json' with { type: 'json' };
 import {
   CapabilitiesSchema,
   StartRunSchema,
@@ -16,6 +17,8 @@ import {
   type ProviderRequest,
   type ProviderResponse,
 } from './types.js';
+
+const helloReplay = helloReplayJson as unknown as { messages: Array<{ role: string; parts: MessagePart[] }> };
 
 export type Script = NonNullable<import('@praxis/protocol').StartRun['script']>;
 
@@ -156,6 +159,38 @@ export function createScriptedProvider(
           .slice(start)
           .flatMap((m) => m.parts)
           .find((p) => p.type === 'text')?.text ?? '';
+
+      // Owner's real assistant / user-toolResult / assistant shape, with local-only tools.
+      if (script === 'helloReplay') {
+        const iteration = request.messages.slice(start).filter(m => m.parts.some(p => p.type === 'toolResult')).length;
+        const source = helloReplay.messages.filter(m => m.role === 'assistant')[Math.min(iteration, 2)]!;
+        const parts: MessagePart[] = [];
+        let index = 0;
+        for (const part of source.parts) {
+          if (part.type === 'reasoning') {
+            yield { type: 'reasoning', index, text: part.text ?? '', shape: part.shape as ReasoningShape, redacted: part.redacted };
+            await new Promise(r => setTimeout(r, 1000));
+            yield { type: 'blockEnd', index };
+            parts.push({ type: 'reasoning', text: part.text ?? '', shape: part.shape as ReasoningShape, redacted: part.redacted });
+          } else if (part.type === 'text') {
+            for (const text of splitIntoSimulatedChunks(part.text ?? '', 'token')) {
+              if (signal.aborted) throw new Error('Aborted');
+              yield { type: 'text', index, text };
+              await new Promise(r => setTimeout(r, 45));
+            }
+            yield { type: 'blockEnd', index };
+            parts.push({ type: 'text', text: part.text });
+          } else if (part.type === 'toolCall') {
+            const id = crypto.randomUUID();
+            yield { type: 'tool', index, id, name: part.name! };
+            yield { type: 'arguments', index, json: part.arguments! };
+            parts.push({ type: 'toolCall', callId: id, name: part.name, arguments: part.arguments });
+          }
+          index++;
+        }
+        yield { type: 'completed', response: { parts, stop: iteration < 2 ? 'toolUse' : 'endTurn', usage: { type: 'usage', inputTokens: 32, outputTokens: 64, cacheReadTokens: 0, cacheWriteTokens: 0 } } };
+        return;
+      }
 
       // Specialised reasoning & simulator scripts
       if (
@@ -471,6 +506,13 @@ export function scriptedTools(): AgentTool[] {
         return textResult('A scripted image.');
       },
     },
+    ...helloReplay.messages.flatMap(m => m.parts).filter(p => p.type === 'toolResult').map(part => ({
+      spec: spec(part.name!, { type: 'builtin' }, ['readOnly']),
+      execute: async () => {
+        await new Promise(r => setTimeout(r, 4000));
+        return textResult(String(part.content![0]!.text ?? ''));
+      },
+    })),
   ];
 }
 

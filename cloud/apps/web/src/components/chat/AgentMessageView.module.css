@@ -15,6 +15,15 @@
   width: 100%;
 }
 
+.timelineText {
+  min-width: 0;
+}
+
+.timelineText + :not(.actions),
+:not(.timelineText) + .timelineText {
+  margin-top: var(--space-4);
+}
+
 .actions {
   display: flex;
   align-items: center;

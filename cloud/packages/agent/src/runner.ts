@@ -346,8 +346,9 @@ export class AgentRunner {
   }
 
   private activity(id:string,name:string,spec?:ToolSpec,parentCallId?:string,args?:JsonValue) {
-    return {display:toolDisplay(name,spec,args),type:'tool.activity' as const,id,name,source:spec?.source??{type:'builtin' as const},
-      presentation:{type:'tool.presentation' as const,category:'other' as const,runningTitle:`Running ${name}`,finishedTitle:name},
+    const display=toolDisplay(name,spec,args);
+    return {display,type:'tool.activity' as const,id,name,source:spec?.source??{type:'builtin' as const},
+      presentation:{type:'tool.presentation' as const,category:'other' as const,runningTitle:display.title,finishedTitle:display.title},
       ...(args!==undefined?{arguments:args}:{}),...(parentCallId?{parentCallId}:{})};
   }
   private async invoke(cp:AgentCheckpoint,call:PendingCall,nested=false):Promise<ToolResult> {

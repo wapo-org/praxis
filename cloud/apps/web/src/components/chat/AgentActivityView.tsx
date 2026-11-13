@@ -37,6 +37,7 @@ import { ActivityDetails } from './ActivityDetails';
 import type { AgentActivityViewProps } from './activityTypes';
 import { ApprovalCards } from './ApprovalCards';
 import { ElicitationCards } from './ElicitationCards';
+import { humanLabel, toolDisplay } from './toolDisplay';
 
 export type { AgentActivityViewProps } from './activityTypes';
 
@@ -54,6 +55,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
   finishedAt,
   promptStartedAt,
   isRunning = false,
+  timelineGroup = false,
   runStatus,
   reasoningBlocks = [],
   toolSteps,
@@ -144,10 +146,19 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
     label = 'Working';
     const currentStep = toolSteps.find((s) => s.running) ?? toolSteps[toolSteps.length - 1];
     if (currentStep) {
+      const display = toolDisplay(currentStep);
+      const rawStatus = currentStep.statusText?.trim();
+      const humanStatus =
+        rawStatus &&
+        !rawStatus.includes(currentStep.activity.name) &&
+        !/mcp__|_[0-9a-f]{8,}|[0-9]{9,}/i.test(rawStatus)
+          ? humanLabel(rawStatus)
+          : '';
       subLine =
-        currentStep.statusText ||
-        currentStep.activity.presentation?.runningTitle ||
-        currentStep.activity.name;
+        humanStatus ||
+        (display.title === 'Searching the web' && display.detail
+          ? `Searching the web for '${display.detail}'`
+          : [display.title, display.detail].filter(Boolean).join(' · '));
       if (totalToolsCount > 1) subLine = `${subLine} · ${totalToolsCount} steps`;
     } else if (liveThought) {
       // The thought streams in the peek under the row (L-ref/05): the header does not repeat it.
@@ -156,8 +167,8 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
     }
   } else if (stopped) {
     label = stoppedLabel(startedAt, finishedAt, promptStartedAt);
-  } else if (totalToolsCount === 0 && thoughts.length > 0 && visionActivities.length === 0 && compactions.length === 0) {
-    // The turn only reasoned: say so, with the time it spent reasoning.
+  } else if (!timelineGroup && totalToolsCount === 0 && thoughts.length > 0 && visionActivities.length === 0 && compactions.length === 0) {
+    // Standalone non-timeline turn that only reasoned: say so, with the time it spent reasoning.
     const known = thoughts.map((b) => b.durationMs ?? computeElapsedMs(b.startedAt, b.finishedAt)).filter((ms): ms is number => typeof ms === 'number' && Number.isFinite(ms));
     label = reasoningLabel(false, known.length ? known.reduce((a, b) => a + b, 0) : computeElapsedMs(effectiveStart, finishedAt));
   } else if (totalToolsCount > 0 || startedAt || finishedAt) {

@@ -7,6 +7,7 @@ export interface AgentMessageViewProps {
   isStreaming?: boolean;
   usage?: Usage;
   onRetry?: () => void;
+  children?: React.ReactNode;
 }
 
 import { MarkdownContent } from './MarkdownContent';
@@ -16,6 +17,7 @@ export const AgentMessageView: React.FC<AgentMessageViewProps> = ({
   isStreaming = false,
   usage,
   onRetry,
+  children,
 }) => {
   const [copiedTurn, setCopiedTurn] = React.useState(false);
   const handleCopyTurn = () => {
@@ -28,7 +30,7 @@ export const AgentMessageView: React.FC<AgentMessageViewProps> = ({
 
   return (
     <div data-testid="agent-message-view" className={styles.message} data-revealed={text}>
-      <MarkdownContent text={text} isStreaming={isStreaming} />
+      {children ?? <MarkdownContent text={text} isStreaming={isStreaming} />}
 
       {!isStreaming && text.trim().length > 0 ? (
         <div className={styles.actions}>

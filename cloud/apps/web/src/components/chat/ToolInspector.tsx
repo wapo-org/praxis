@@ -73,19 +73,79 @@ function Box({
 }) {
   const parsed = React.useMemo(() => parseLoose(text), [text]);
   const copied = copiedId === copyId;
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const preRef = React.useRef<HTMLPreElement>(null);
+  const maxRef = React.useRef<number>(352);
+  const [clipped, setClipped] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(false);
+
+  React.useEffect(() => {
+    setExpanded(false);
+  }, [text]);
+
+  React.useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => {
+      const mh = getComputedStyle(el).maxHeight;
+      if (mh && mh !== 'none') {
+        const parsedMax = parseFloat(mh);
+        if (Number.isFinite(parsedMax) && parsedMax > 0) maxRef.current = parsedMax;
+      }
+      setClipped(el.scrollHeight > maxRef.current + 1);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    if (preRef.current) ro.observe(preRef.current);
+    return () => ro.disconnect();
+  }, [text, expanded]);
+
   return (
     <section className={styles.box} data-caption={caption.toLowerCase()}>
       <header className={styles.head}>
         <span className={styles.caption}>{caption}</span>
-        {text ? (
-          <button type="button" className={styles.copy} aria-label={copyLabel ?? `Copy ${caption.toLowerCase()}`} onClick={() => copyText(copyId, parsed.kind === 'json' ? JSON.stringify(parsed.value, null, 2) : parsed.text)}>
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-        ) : null}
+        <span className={styles.headActions}>
+          {clipped ? (
+            <button
+              type="button"
+              className={styles.copy}
+              aria-expanded={expanded}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? 'Show less' : 'Show all'}
+            </button>
+          ) : null}
+          {text ? (
+            <button
+              type="button"
+              className={styles.copy}
+              aria-label={copyLabel ?? `Copy ${caption.toLowerCase()}`}
+              onClick={() =>
+                copyText(
+                  copyId,
+                  parsed.kind === 'json' ? JSON.stringify(parsed.value, null, 2) : parsed.text,
+                )
+              }
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          ) : null}
+        </span>
       </header>
-      <div className={styles.scroll}>
-        <pre className={styles.pre}>
-          {parsed.kind === 'json' ? <JsonView value={parsed.value} /> : parsed.text || <span className={styles.empty}>{empty ?? 'Nothing.'}</span>}
+      <div
+        ref={scrollRef}
+        className={styles.scroll}
+        data-clipped={clipped && !expanded}
+        data-expanded={expanded}
+      >
+        <pre ref={preRef} className={styles.pre}>
+          {parsed.kind === 'json' ? (
+            <JsonView value={parsed.value} />
+          ) : (
+            parsed.text || <span className={styles.empty}>{empty ?? 'Nothing.'}</span>
+          )}
         </pre>
       </div>
     </section>

@@ -90,9 +90,9 @@ describe('readable tool rows (item 2, K-ref/04)', () => {
   });
   it('humanises direct calls and the catalogue meta-tools; technical names only for the detail', () => {
     const direct = toolDisplay(tool('a', 'mcp__firecrawl__firecrawl_search_bbc9571288db', { query: 'Firecrawl pricing', limit: 3 }));
-    expect(direct).toMatchObject({ title: 'Firecrawl · search', detail: 'Firecrawl pricing', technical: 'mcp__firecrawl__firecrawl_search_bbc9571288db' });
+    expect(direct).toMatchObject({ title: 'Searching the web', detail: 'Firecrawl pricing', technical: 'mcp__firecrawl__firecrawl_search_bbc9571288db' });
     const call = toolDisplay(tool('b', 'mcp_call_tool', { tool: 'mcp__firecrawl__firecrawl_crawl_ece4ef24cbd6', arguments: { url: 'https://example.com' } }));
-    expect(call).toMatchObject({ title: 'Firecrawl · crawl', detail: 'https://example.com' });
+    expect(call).toMatchObject({ title: 'Reading example.com', detail: '' });
     const describe = toolDisplay(tool('c', 'mcp_describe_tool', { tool: 'mcp__firecrawl__firecrawl_search_bbc9571288db' }));
     expect(describe.title).toBe('Look up Firecrawl · search');
     for (const d of [direct, call, describe]) {
@@ -108,7 +108,7 @@ describe('readable tool rows (item 2, K-ref/04)', () => {
 describe('the display contract as K1 ships it', () => {
   it('names the inner tool when the API sends a generic catalogue title', () => {
     const d = toolDisplay(tool('b', 'mcp_call_tool', { tool: 'mcp__firecrawl__firecrawl_crawl_ece4ef24cbd6', arguments: { url: 'https://example.com' } }, { display: { title: 'Call connector tool', icon: 'Wrench' } }));
-    expect(d).toMatchObject({ title: 'Firecrawl · crawl', detail: 'https://example.com' });
+    expect(d).toMatchObject({ title: 'Reading example.com', detail: '' });
   });
   it('renders PascalCase lucide names, and keeps a specific glyph over a generic one', async () => {
     await render(<AgentActivityView startedAt="2026-01-01T00:00:00Z" finishedAt="2026-01-01T00:00:03Z" toolSteps={[

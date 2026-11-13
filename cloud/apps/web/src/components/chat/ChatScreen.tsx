@@ -5,9 +5,7 @@ import { GlassChip, PANEL, ProgressiveBlurScrim } from '@praxis/glass';
 import { motion } from 'framer-motion';
 import { ArrowDown } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
-import { AgentActivityView } from './AgentActivityView';
 import {useStreamAnchor} from './useStreamAnchor';
-import { AgentMessageView } from './AgentMessageView';
 import { useContentShift } from '../shell/useContentShift';
 import { ChatHeader } from './ChatHeader';
 import { cancelSendFlight, useMessageArrival } from './chatMotion';
@@ -16,6 +14,7 @@ import { EmptyState } from './EmptyState';
 import { extractMessageToolSteps } from './messageTools';
 import { MessageActivity } from './MessageActivity';
 import {messageTurns} from './messageTurns';
+import { LiveResponseTimeline } from './ResponseTimeline';
 import { UserBubble } from './UserBubble';
 import { RunBackdrop } from './RunBackdrop';
 import styles from './ChatScreen.module.css';
@@ -34,6 +33,7 @@ function messageText(message: Message, joiner: string) {
   return message.parts
     .filter((p) => p.type === 'text')
     .map((p) => p.text ?? '')
+    .filter(Boolean)
     .join(joiner);
 }
 
@@ -163,7 +163,6 @@ export function ChatScreen() {
                   />
                 );
               const steps = extractMessageToolSteps(msg);
-              const hasReasoning = msg.parts.some((p) => p.type === 'reasoning');
               const text = messageText(msg, '\n\n');
               const live = activeLiveRun?.run.id === msg.runId ? activeLiveRun : undefined;
               let promptStartedAt: string | undefined;
@@ -180,24 +179,29 @@ export function ChatScreen() {
                   data-message-key={`r:${msg.runId ?? msg.id}`}
                   className={styles.assistantTurn}
                 >
-                  {steps.length > 0 || hasReasoning ? (
-                    <MessageActivity
-                      message={msg}
-                      steps={steps}
-                      liveRun={live?.run}
-                      liveSteps={live?.toolSteps}
-                      promptStartedAt={promptStartedAt}
-                    />
-                  ) : null}
-                  {text ? (
-                    <AgentMessageView
-                      text={text}
-                      onRetry={() => {
-                        const user=visibleMessages.slice(0,index).reverse().find(m=>m.role==='user');
-                        if(user)void sendMessage(messageText(user,' '),{regenerateMessageId:msg.id});
-                      }}
-                    />
-                  ) : null}
+                  <MessageActivity
+                    message={msg}
+                    steps={steps}
+                    text={text}
+                    liveRun={live?.run}
+                    liveSteps={live?.toolSteps}
+                    promptStartedAt={promptStartedAt}
+                    onRetry={
+                      text.trim().length > 0
+                        ? () => {
+                            const user = visibleMessages
+                              .slice(0, index)
+                              .reverse()
+                              .find((m) => m.role === 'user');
+                            if (user) {
+                              void sendMessage(messageText(user, ' '), {
+                                regenerateMessageId: msg.id,
+                              });
+                            }
+                          }
+                        : undefined
+                    }
+                  />
                 </div>
               );
             })
@@ -209,32 +213,21 @@ export function ChatScreen() {
               data-message-key={`r:${activeLiveRun.run.id}`}
               className={styles.assistantTurn}
             >
-              <AgentActivityView
-                startedAt={activeLiveRun.run.createdAt}
-                finishedAt={activeLiveRun.run.updatedAt}
+              <LiveResponseTimeline
+                live={activeLiveRun}
                 promptStartedAt={lastUserMessage?.createdAt}
-                runId={activeLiveRun.run.id}
-                isRunning={status === 'running'}
-                runStatus={status}
-                reasoningBlocks={activeLiveRun.reasoningBlocks}
-                toolSteps={activeLiveRun.toolSteps}
-                pendingApprovals={activeLiveRun.pendingApprovals}
-                pendingElicitations={activeLiveRun.pendingElicitations}
-                visionActivities={activeLiveRun.visionActivities}
-                compactions={activeLiveRun.compactions}
+                errorElement={
+                  activeLiveRun.run.error ? (
+                    <p role="alert" data-testid="chat-error-banner" className={styles.error}>
+                      Couldn't finish: {runErrorCopy(activeLiveRun.run.error)}
+                    </p>
+                  ) : undefined
+                }
                 onResolveApproval={(rId, aId, decision) => void resolveApproval(rId, aId, decision)}
                 onResolveElicitation={(rId, eId, action, content) =>
                   resolveElicitation(rId, eId, action, content)
                 }
               />
-              {activeLiveRun.run.error ? <p role="alert" data-testid="chat-error-banner" className={styles.error}>Couldn't finish: {runErrorCopy(activeLiveRun.run.error)}</p> : null}
-              {activeLiveRun.textBlocks.length > 0 ? (
-                <AgentMessageView
-                  text={activeLiveRun.textBlocks.map((b) => b.text).join('\n\n')}
-                  isStreaming={status === 'running'}
-                  usage={activeLiveRun.usage}
-                />
-              ) : null}
             </div>
           ) : null}
         </motion.div>

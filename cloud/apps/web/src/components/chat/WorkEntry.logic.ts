@@ -19,7 +19,7 @@
  * SOFTWARE.
  */
 import type {ActiveToolStep} from '../../state/types';
-import {toolDisplay} from './toolDisplay';
+import {humanLabel,toolDisplay} from './toolDisplay';
 export type WorkIcon = 'read'|'edit'|'command'|'search'|'web'|'question'|'tool';
 export function workEntry(step:ActiveToolStep) {
   const name=step.activity.name.toLowerCase();
@@ -34,16 +34,18 @@ export function workEntry(step:ActiveToolStep) {
   const command=icon==='command'?first(['command','cmd','script']):undefined;
   const path=(icon==='read'||icon==='edit')?first(['path','file_path','filename','file']):undefined;
   const question=icon==='question'?first(['question','message','prompt']):undefined;
-  const preview=command??path??display.detail;
+  const preview=humanLabel(command??path??display.detail);
   const status=step.completion?.status;
   const failed=status==='failed',warning=status==='denied';
-  const output=step.completion?.preview||step.completion?.summary||'';
+  const contentText=Array.isArray(step.completion?.content)&&step.completion.content.length?JSON.stringify(step.completion.content):'';
+  const rawPreview=step.completion?.preview||'';
+  const output=(rawPreview.length>contentText.length?rawPreview:contentText)||rawPreview||step.completion?.summary||'';
   let answer=output;
   if(icon==='question')try{const value=JSON.parse(output);if(value&&typeof value==='object'&&!Array.isArray(value)){const fields=Object.entries(value).filter(([,v])=>['string','number','boolean'].includes(typeof v));if(fields.length)answer=fields.map(([k,v])=>`${k}: ${v}`).join('; ');}}catch{/* Plain answer text needs no transformation. */}
   const input=step.argumentsJson&&step.argumentsJson!=='{}'?step.argumentsJson:'';
   const progress=step.progressLines.join('\n');
   const blocks=[input?`Tool input\n${input}`:'',progress,output].filter(Boolean);
-  return {icon,title:question?'Asked':display.title,preview:question??preview,mono:!!(command||path),quoted:!!question||!!args.title,answer:icon==='question'?answer:'',failed,warning,
+  return {icon,title:question?'Asked':display.title,preview:humanLabel(question??preview),mono:!!(command||path),quoted:!!question||!!args.title,answer:icon==='question'?answer:'',failed,warning,
     connectorName:display.connectorName,displayIcon:display.icon,technical:display.technical,input,progress,output:output===progress?'':output,
     body:[...new Set(blocks)].join('\n\n')};
 }
