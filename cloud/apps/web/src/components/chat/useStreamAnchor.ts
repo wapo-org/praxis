@@ -15,7 +15,9 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
   const [state,setState]=React.useState({identity,show:false});
   const measure=React.useCallback((fromScroll=false)=>{
     const el=viewport.current;if(!el)return;
-    const anchor=disclosure.current;
+    let anchor=disclosure.current;
+    // A scroll the pin did not write (scrollbar drag, scrollIntoView, a search jump) hands control back at once.
+    if(anchor && fromScroll && Math.abs(el.scrollTop-lastTop.current)>1){disclosure.current=null;anchor=null;}
     if(anchor && anchor.element.isConnected && performance.now()<anchor.until){
       el.scrollTop+=anchor.element.getBoundingClientRect().top-anchor.top;
       lastTop.current=el.scrollTop;
@@ -101,6 +103,7 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
       if(!control || !body.contains(control))return;
       cancelAnimationFrame(frame);
       disclosure.current={element:control,top:control.getBoundingClientRect().top,until:performance.now()+800};
+      lastTop.current=el.scrollTop;
       jumping.current=false;pinned.current=false;userMoved.current=true;
       frame=requestAnimationFrame(pinFrame);
     };
