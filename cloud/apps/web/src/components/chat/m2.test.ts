@@ -39,6 +39,27 @@ describe('owner Hello fixture', () => {
     ]);
   });
 
+  it('places snapshot-only steps in snapshot order ahead of text instead of appending a trailing group', () => {
+    const turn = MessageSchema.parse({
+      type: 'message',
+      id: 'm1',
+      chatId: 'c1',
+      runId: 'r1',
+      role: 'assistant',
+      createdAt: '2026-11-13T00:00:00Z',
+      updatedAt: '2026-11-13T00:00:10Z',
+      parts: [
+        { type: 'toolCall', callId: 'real-call', name: 'local_echo', arguments: '{}' },
+        { type: 'text', text: 'Done.' },
+      ],
+    });
+    const baseStep = extractMessageToolSteps(turn)[0]!;
+    const extra1 = { ...baseStep, callId: 'extra-1', activity: { ...baseStep.activity, id: 'extra-1' } };
+    const extra2 = { ...baseStep, callId: 'extra-2', activity: { ...baseStep.activity, id: 'extra-2' } };
+    const nodes = savedTimeline(turn, [extra1, extra2, baseStep]);
+    expect(nodes.map((n) => n.id)).toEqual(['extra-1', 'extra-2', 'real-call', 'm1-1']);
+  });
+
   it('humanises every label path, including legacy presentation/status text', () => {
     const turn = messageTurns(messages)[1]!;
     for (const step of extractMessageToolSteps(turn)) {

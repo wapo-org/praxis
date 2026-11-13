@@ -39,11 +39,35 @@ export function savedTimeline(message: Message, steps: AgentActivityViewProps['t
     }
     return [];
   });
-  for (const step of steps) {
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i]!;
     if (nodes.some((n) => n.step?.callId === step.callId)) continue;
-    const parent = nodes.findIndex((n) => n.step?.callId === step.activity.parentCallId);
     const node = { id: step.callId, step };
-    if (parent >= 0) nodes.splice(parent + 1, 0, node);
+    const parent = step.activity.parentCallId
+      ? nodes.findIndex((n) => n.step?.callId === step.activity.parentCallId)
+      : -1;
+    if (parent >= 0) {
+      nodes.splice(parent + 1, 0, node);
+      continue;
+    }
+    const nextInNodes = steps
+      .slice(i + 1)
+      .map((later) => nodes.findIndex((n) => n.step?.callId === later.callId))
+      .find((idx) => idx >= 0);
+    if (nextInNodes !== undefined) {
+      nodes.splice(nextInNodes, 0, node);
+      continue;
+    }
+    const prevInNodes = [...steps.slice(0, i)]
+      .reverse()
+      .map((earlier) => nodes.findIndex((n) => n.step?.callId === earlier.callId))
+      .find((idx) => idx >= 0);
+    if (prevInNodes !== undefined) {
+      nodes.splice(prevInNodes + 1, 0, node);
+      continue;
+    }
+    const firstText = nodes.findIndex((n) => n.text !== undefined);
+    if (firstText >= 0) nodes.splice(firstText, 0, node);
     else nodes.push(node);
   }
   return nodes;
