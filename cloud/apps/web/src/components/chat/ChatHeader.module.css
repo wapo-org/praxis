@@ -1,0 +1,109 @@
+.bar {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 480px) 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  height: calc(var(--topbar-height) + var(--float-margin));
+  padding: var(--float-margin) var(--space-3) 0;
+  pointer-events: none;
+}
+
+.side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.end {
+  justify-content: flex-end;
+}
+
+.cluster {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  pointer-events: auto;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-md);
+  height: var(--control-md);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.center {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.titlePill {
+  min-width: 0;
+  max-width: 100%;
+  pointer-events: auto;
+}
+
+.title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  height: calc(var(--control-md) + 4px);
+  justify-content: center;
+  padding: 0 var(--space-5);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.titleText,
+.model {
+  /* A soft paper halo keeps the title legible over busy content without a box. */
+  text-shadow:
+    0 0 2px color-mix(in srgb, var(--color-paper) 90%, transparent),
+    0 0 10px color-mix(in srgb, var(--color-paper) 80%, transparent);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titleText {
+  font: var(--weight-semibold) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  letter-spacing: var(--tracking-tight);
+}
+
+.model {
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}
+
+@media (hover: hover) {
+  .button:hover {
+    background: var(--color-hover);
+  }
+  .title:hover {
+    background: var(--color-hover);
+  }
+}
+
+.button:focus-visible,
+.title:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}

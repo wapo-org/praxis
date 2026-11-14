@@ -2,6 +2,7 @@ import type { Run } from '@praxis/protocol';
 import React from 'react';
 import { apiClient } from '../lib/api';
 import { subscribeRunEvents } from '../lib/sse';
+import { mergeFetchedMessages } from './reconcileMessages';
 
 import type { PraxisState } from './usePraxisState';
 import type { useRunState } from './useRunState';
@@ -31,7 +32,7 @@ export function useRunStreams(
             .then((page) => {
               setMessagesByChat((prev) => ({
                 ...prev,
-                [run.chatId]: page.items,
+                [run.chatId]: mergeFetchedMessages(prev[run.chatId] ?? [], page.items),
               }));
             })
             .catch(() => {});

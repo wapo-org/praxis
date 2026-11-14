@@ -16,7 +16,7 @@ function setup(options: McpOptions = {}) {
   const request = (path: string, data?: unknown, method = data ? 'POST' : 'GET', user = 'alice') => app.request(`/v1${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-User': user }, ...(data ? { body: JSON.stringify(data) } : {}) });
   const add = async (input = {}) => { const response = await request('/connectors', { type: 'connector.input', name: 'Fixture', url: `${remote.base}/mcp`, ...input }); expect(response.status).toBe(201); return await response.json() as Connector; };
   const chat = () => ctx.store.put(ctx.userId, 'chat', 'chat-1', { type: 'chat', id: 'chat-1', disabledConnectorIds: [] });
-  const consent = () => request('/consents', { type: 'consent', host: '127.0.0.1', allowed: true });
+  const consent = () => request('/consents', { type: 'consent', host: new URL(remote.base).host, allowed: true });
   return { ctx, app, request, add, chat, consent };
 }
 const run = { chatId: 'chat-1', runId: 'run-1', mode: 'auto' as const };
@@ -24,7 +24,7 @@ describe('connector routes and ownership', () => {
   it('implements CRUD, write-only encrypted headers/tokens, and owner isolation', async () => {
     const s = setup(), value = await s.add({ token: 'private-token', extraHeaders: { 'X-Fixture': 'private-header' } });
     expect(value.headerNames).toEqual(['X-Fixture']); expect(JSON.stringify(value)).not.toContain('private'); expect(JSON.stringify(await s.ctx.store.get('alice', 'mcpSecret', value.id))).not.toContain('private'); expect(await readSecret(s.ctx, value.id, 'token')).toBe('private-token');
-    expect((await s.request(`/connectors/${value.id}`, undefined, 'GET', 'bob')).status).toBe(404); expect((await (await s.request('/connectors', undefined, 'GET', 'bob')).json()).items).toEqual([]);
+    expect((await s.request(`/connectors/${value.id}`, undefined, 'GET', 'bob')).status).toBe(404); expect((await (await s.request('/connectors', undefined, 'GET', 'bob')).json()).items).toHaveLength(4);
     expect((await (await s.request(`/connectors/${value.id}`, { type: 'connector.patch', name: 'Renamed' }, 'PATCH')).json()).name).toBe('Renamed'); expect(await readSecret(s.ctx, value.id, 'token')).toBe('private-token');
     expect((await s.request(`/connectors/${value.id}`, undefined, 'DELETE')).status).toBe(200); expect((await s.request(`/connectors/${value.id}`)).status).toBe(404); expect((await s.ctx.store.get('alice', 'mcpSecret', value.id))?.deleted).toBe(true);
   });
@@ -49,6 +49,7 @@ describe('official SDK transports and policy', () => {
   });
   it('enforces host consent and live tool/chat disable on frozen tools', async () => {
     const s = setup(); await s.chat(); const value = await s.add({ trusted: true }), tools = await getMcpTools(s.ctx, { chatId: 'chat-1', disabledConnectorIds: [] }), echo = tools.find(t => t.description.includes('Echo'))!;
+    await s.request('/consents',{type:'consent',host:new URL(value.url).host,allowed:false});
     await expect(echo.execute({ text: 'hello' }, run)).rejects.toMatchObject({ code: 'consent_required' }); await s.consent(); expect(await echo.execute({ text: 'hello' }, run)).toMatchObject({ content: [{ text: 'hello' }] });
     await s.request(`/connectors/${value.id}/tools/${echo.name}`, { type: 'connector.tool', enabled: false }, 'PATCH'); await expect(echo.execute({}, run)).rejects.toMatchObject({ code: 'connector_disabled' }); await s.request(`/connectors/${value.id}/tools/echo`, { type: 'connector.tool', enabled: true }, 'PATCH');
     await s.ctx.store.put('alice', 'chat', 'chat-1', { disabledConnectorIds: [value.id] }); await expect(echo.execute({}, run)).rejects.toMatchObject({ code: 'connector_disabled' }); expect(await getMcpTools(s.ctx, { chatId: 'chat-1', disabledConnectorIds: [] })).toEqual([]);
@@ -90,6 +91,7 @@ describe('official SDK OAuth PKCE DCR and CIMD', () => {
     expect((await s.ctx.kv.get<OAuthState>(stateKey(authorization.state)))?.verifier).toMatch(/^v2\./); const redirect = await fetch(authorization.url, { redirect: 'manual' }), callback = new URL(redirect.headers.get('location')!); const response = await s.request(`/connectors/oauth/callback${callback.search}`, undefined, 'GET', ''); expect(response.status).toBe(302); expect(response.headers.get('location')).toBe(`praxis-app://oauth/callback?state=${authorization.state}`);
     expect((await connector(s.ctx, value.id)).authStatus).toBe('connected'); expect(await readSecret(s.ctx, value.id, 'tokens')).toMatchObject({ access_token: 'fixture-access-token' }); expect((await s.request(`/connectors/oauth/callback${callback.search}`, undefined, 'GET', '')).status).toBe(409); expect(JSON.stringify(await (await s.request(`/connectors/${value.id}`)).json())).not.toContain('fixture-access-token');
   });
+  it('completes a local HTTP OAuth round trip with a fake server',async()=>{const s=setup({webReturnOrigins:['http://127.0.0.1:5251']}),value=await s.add();const start=await (await s.request(`/connectors/${value.id}/oauth/start`,{type:'oauth.start',returnUrl:'http://127.0.0.1:5251/'})).json();const redirect=await fetch(start.url,{redirect:'manual'}),callback=new URL(redirect.headers.get('location')!);const done=await s.request(`/connectors/oauth/callback${callback.search}`,undefined,'GET','');expect(done.headers.get('location')).toBe(`http://127.0.0.1:5251/?state=${start.state}`);});
   it('uses hosted HTTPS client metadata as CIMD client id when supported', async () => {
     remote.setCimd(true); const s = setup({ publicOrigin: 'https://praxis.example' }), value = await s.add(), start = await (await s.request(`/connectors/${value.id}/oauth/start`, { type: 'oauth.start' })).json(); expect(new URL(start.url).searchParams.get('client_id')).toBe('https://praxis.example/v1/oauth/client-metadata.json'); expect(await (await s.request('/oauth/client-metadata.json')).json()).toMatchObject({ redirect_uris: ['https://praxis.example/v1/connectors/oauth/callback'], token_endpoint_auth_method: 'none' }); remote.setCimd(false);
   });

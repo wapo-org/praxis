@@ -1,7 +1,6 @@
 import React from 'react';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { GlassRuntime } from '@praxis/glass';
 import { PraxisStoreProvider } from './state/store';
 import { UserBubble } from './components/chat/UserBubble';
 import { AgentActivityView } from './components/chat/AgentActivityView';
@@ -45,7 +44,7 @@ describe('@praxis/web core chat & lab components', () => {
 
   it('renders AgentActivityView with tool steps, pending approval, and pending elicitation', () => {
     const html = renderToStaticMarkup(
-      <GlassRuntime>
+      
         <AgentActivityView
           runId="run-1"
           isRunning={true}
@@ -100,7 +99,7 @@ describe('@praxis/web core chat & lab components', () => {
             },
           ]}
         />
-      </GlassRuntime>,
+      ,
     );
     expect(html).toContain('agent-activity-view');
     expect(html).toContain('approval-card-app-1');
@@ -143,18 +142,16 @@ describe('@praxis/web core chat & lab components', () => {
     expect(html).toContain('markdown-table-card');
     expect(html).toContain('svg-displacement');
     expect(html).toContain('markdown-code-block');
-    expect(html).toContain('inline-file-chip');
-    expect(html).toContain('inline-link-chip');
+    expect(html).toContain('inline-code-pill');
+    expect(html).toContain('rel="noopener noreferrer"');
     expect(html).toContain('120 in · 85 out');
   });
 
-  it('renders ChatScreen inside PraxisStoreProvider and GlassRuntime', () => {
+  it('renders ChatScreen inside PraxisStoreProvider', () => {
     const html = renderToStaticMarkup(
-      <GlassRuntime>
-        <PraxisStoreProvider>
-          <ChatScreen onOpenGlassLab={() => {}} />
-        </PraxisStoreProvider>
-      </GlassRuntime>,
+      <PraxisStoreProvider>
+        <ChatScreen />
+      </PraxisStoreProvider>,
     );
     expect(html).toContain('chat-screen');
     expect(html).toContain('chat-top-bar');
@@ -162,13 +159,16 @@ describe('@praxis/web core chat & lab components', () => {
     expect(html).toContain('What are we working on?');
   });
 
-  it('renders GlassLabPage with Apple Notes 35-frame reference demo and 500-model virtual picker', () => {
+  it('renders GlassLabPage with real material, motion and virtual picker fixtures', () => {
     const html = renderToStaticMarkup(
-      <GlassRuntime>
+      
         <GlassLabPage onNavigateBack={() => {}} />
-      </GlassRuntime>,
+      ,
     );
     expect(html).toContain('Liquid Glass');
-    expect(html).toContain('Recent Notes');
+    expect(html).toContain('Menu motion');
+    expect(html).toContain('500 models');
+    expect(html).toContain('Progressive blur');
+    expect(html).not.toContain('Apple Notes');
   });
 });

@@ -1,87 +1,71 @@
 import React from 'react';
+import styles from './scrim.module.css';
 
 /**
- * ProgressiveBlurScrim & ScrollBlur — Ported from:
- * - PraxisChat/PraxisChat/DesignSystem/ProgressiveBlurScrim.swift
- * - wapo.dp/src/components/ui/scroll-blur.tsx
+ * ProgressiveBlurScrim: a blur that ramps up toward the edge, without bloom.
  *
- * Uses 6 stacked backdrop-blur bands (0.5px -> 1.5px -> 3.5px -> 7px -> 12px -> 20px)
- * masked by linear gradients plus a warm paper color feather so scrolling text dissolves
- * smoothly into the top and bottom edges without a hard clipping line.
+ * Technique (stacked windowed bands): five backdrop-filter layers whose radii double toward the edge
+ * (0.375 → 6 px). Each layer's mask is a band that rises, holds and falls, overlapping only its neighbours,
+ * so every point sees about one radius instead of all of them summed. Each layer also extends past the
+ * visible scrim into the content (its mask is sized to the scrim), so the blur samples real pixels there
+ * instead of repeating the layer's edge row, which is what made bright content glow. No brightness or
+ * saturation boost; a light paper feather keeps the bar legible.
+ * Sources: Kenneth Nym, "Progressive blur in CSS" (code.nym.sh/kennethnym); Josh W. Comeau, "Next-level
+ * frosted glass with backdrop-filter" (joshwcomeau.com/css/backdrop-filter); Chromium "backdrop-filter
+ * mirror edgeMode" PSA (groups.google.com/a/chromium.org/g/blink-dev/c/ZtMnFCHZhMQ).
+ * Pure CSS; nothing runs per frame.
  */
-
 export interface ProgressiveBlurScrimProps extends React.HTMLAttributes<HTMLDivElement> {
   edge: 'top' | 'bottom';
   height?: number;
   tintColor?: string;
+  /**
+   * `blur` (the bands) and `tint` (the paper feather) can be placed apart: the chat keeps the bands inside the
+   * content lane, because Chromium mirrors scrolled text into a blur that reaches past the column's edge.
+   */
+  layers?: 'all' | 'blur' | 'tint';
+  /** The edge band's radius; the others halve inward from it. Default 6 px. */
+  maxBlur?: number;
+  /** The paper feather's strength at the edge, 0–1 (default 0.88). A light feather keeps the scrim free of a white band. */
+  tintStrength?: number;
 }
 
-const BANDS: Array<{ heightRatio: number; blurPx: number; saturate?: number }> = [
-  { heightRatio: 1.0, blurPx: 0.5 },
-  { heightRatio: 0.82, blurPx: 1.5 },
-  { heightRatio: 0.64, blurPx: 3.5 },
-  { heightRatio: 0.46, blurPx: 7 },
-  { heightRatio: 0.28, blurPx: 12 },
-  { heightRatio: 0.14, blurPx: 20, saturate: 1.35 },
-];
+/** Radii from the edge inward. */
+export const SCRIM_RADII = [6, 3, 1.5, 0.75, 0.375] as const;
 
 export function ProgressiveBlurScrim({
   edge,
   height = 64,
-  tintColor = 'var(--paper-canvas)',
+  tintColor,
+  layers = 'all',
+  maxBlur = SCRIM_RADII[0],
+  tintStrength,
   className = '',
   style,
   ...rest
 }: ProgressiveBlurScrimProps) {
-  const isTop = edge === 'top';
-  const maskDir = isTop ? 'to bottom' : 'to top';
-
   return (
     <div
       aria-hidden="true"
       data-slot={`progressive-blur-${edge}`}
-      className={`praxis-progressive-scrim ${className}`.trim()}
-      style={{
-        position: 'absolute',
-        insetInline: 0,
-        ...(isTop ? { top: 0 } : { bottom: 0 }),
-        height: `${height}px`,
-        pointerEvents: 'none',
-        zIndex: 20,
-        ...style,
-      }}
+      data-layers={layers}
+      className={`${styles.scrim} ${styles[edge]} ${className}`.trim()}
+      style={
+        {
+          '--scrim-height': `${height}px`,
+          ...(tintColor ? { '--scrim-tint': tintColor } : null),
+          ...(tintStrength !== undefined ? { '--scrim-tint-a': `${Math.round(tintStrength * 100)}%`, '--scrim-tint-b': `${Math.round(tintStrength * 45)}%` } : null),
+          ...style,
+        } as React.CSSProperties
+      }
       {...rest}
     >
-      {BANDS.map((band, index) => {
-        const bandHeight = Math.round(height * band.heightRatio);
-        const filterStr = band.saturate
-          ? `blur(${band.blurPx}px) saturate(${band.saturate})`
-          : `blur(${band.blurPx}px)`;
-        const maskStr = `linear-gradient(${maskDir}, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 100%)`;
-        return (
-          <div
-            key={index}
-            style={{
-              position: 'absolute',
-              insetInline: 0,
-              ...(isTop ? { top: 0 } : { bottom: 0 }),
-              height: `${bandHeight}px`,
-              backdropFilter: filterStr,
-              WebkitBackdropFilter: filterStr,
-              maskImage: maskStr,
-              WebkitMaskImage: maskStr,
-            }}
-          />
-        );
-      })}
-      {/* Warm paper feather */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: `linear-gradient(${maskDir}, color-mix(in srgb, ${tintColor} 76%, transparent) 0%, color-mix(in srgb, ${tintColor} 28%, transparent) 52%, transparent 100%)`,
-        }}
-      />
+      {layers !== 'tint'
+        ? SCRIM_RADII.map((radius, i) => (
+            <div key={radius} className={styles.band} style={{ '--band-blur': `${(radius * maxBlur) / SCRIM_RADII[0]}px`, '--band-index': i } as React.CSSProperties} />
+          ))
+        : null}
+      {layers !== 'blur' ? <div className={styles.feather} /> : null}
     </div>
   );
 }
@@ -90,7 +74,10 @@ export interface ScrollBlurProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
   height?: string | number;
   maxHeight?: string | number;
+  /** Fade size in px at a scrolled edge. */
   scrimHeight?: number;
+  /** Let children leave the box: no scroll, no clip, no mask (cascading submenus live outside it). */
+  open?: boolean;
   viewportRef?: React.Ref<HTMLDivElement>;
   onViewportScroll?: React.UIEventHandler<HTMLDivElement>;
 }
@@ -100,45 +87,95 @@ function toCssSize(value: string | number | undefined): string | undefined {
   return typeof value === 'number' ? `${value}px` : value;
 }
 
+function assignViewportRef(ref: React.Ref<HTMLDivElement> | undefined, node: HTMLDivElement | null) {
+  if (typeof ref === 'function') ref(node);
+  else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
+}
+
+/**
+ * A scroll viewport whose edges fade out only once scrolled: CSS scroll-driven animation on Chromium,
+ * with a lightweight scroll/resize fallback for engines without `animation-timeline: scroll()` (WebKit).
+ */
 export function ScrollBlur({
   children,
   height,
   maxHeight,
-  scrimHeight = 28,
+  scrimHeight = 16,
+  open = false,
   viewportRef,
   onViewportScroll,
   className = '',
   style,
   ...rest
 }: ScrollBlurProps) {
+  const localViewportRef = React.useRef<HTMLDivElement | null>(null);
+  const supportsScrollTimeline =
+    typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('animation-timeline: scroll()');
+
+  const syncFallbackMask = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      if (!el || open || supportsScrollTimeline) return;
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      if (maxScroll <= 1) {
+        el.style.setProperty('--fade-top', '0px');
+        el.style.setProperty('--fade-bottom', '0px');
+        return;
+      }
+      const top = Math.min(1, el.scrollTop / Math.max(1, scrimHeight)) * scrimHeight;
+      const bottom = Math.min(1, (maxScroll - el.scrollTop) / Math.max(1, scrimHeight)) * scrimHeight;
+      el.style.setProperty('--fade-top', `${Math.round(top)}px`);
+      el.style.setProperty('--fade-bottom', `${Math.round(bottom)}px`);
+    },
+    [open, scrimHeight, supportsScrollTimeline],
+  );
+
+  React.useLayoutEffect(() => {
+    const el = localViewportRef.current;
+    if (!el || open || supportsScrollTimeline) return;
+    syncFallbackMask(el);
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => syncFallbackMask(el)) : null;
+    resizeObserver?.observe(el);
+    if (el.firstElementChild) resizeObserver?.observe(el.firstElementChild);
+    const mutationObserver =
+      typeof MutationObserver !== 'undefined' ? new MutationObserver(() => syncFallbackMask(el)) : null;
+    mutationObserver?.observe(el, { childList: true, subtree: true });
+    return () => {
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+    };
+  }, [open, supportsScrollTimeline, syncFallbackMask]);
+
+  const setRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      localViewportRef.current = node;
+      assignViewportRef(viewportRef, node);
+    },
+    [viewportRef],
+  );
+
+  const handleScroll: React.UIEventHandler<HTMLDivElement> = (event) => {
+    syncFallbackMask(event.currentTarget);
+    onViewportScroll?.(event);
+  };
+
   return (
     <div
       data-slot="scroll-blur"
-      className={className}
-      style={{
-        position: 'relative',
-        overflow: 'hidden',
-        height: toCssSize(height),
-        maxHeight: toCssSize(maxHeight),
-        ...style,
-      }}
+      data-open={open || undefined}
+      className={`${styles.scroll} ${className}`.trim()}
+      style={{ height: toCssSize(height), maxHeight: toCssSize(maxHeight), ...style }}
       {...rest}
     >
       <div
-        ref={viewportRef}
-        onScroll={onViewportScroll}
+        ref={setRef}
+        onScroll={handleScroll}
         data-slot="scroll-blur-viewport"
-        style={{
-          height: '100%',
-          maxHeight: toCssSize(maxHeight),
-          overflowY: 'auto',
-          overscrollBehavior: 'contain',
-        }}
+        className={styles.viewport}
+        style={{ maxHeight: toCssSize(maxHeight), '--fade-size': `${scrimHeight}px` } as React.CSSProperties}
       >
         {children}
       </div>
-      <ProgressiveBlurScrim edge="top" height={scrimHeight} />
-      <ProgressiveBlurScrim edge="bottom" height={scrimHeight} />
     </div>
   );
 }

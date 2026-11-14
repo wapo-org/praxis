@@ -1,6 +1,7 @@
-import { Search as SearchIcon, X } from 'lucide-react';
+import { Search as SearchIcon, X } from '../icons';
 import React from 'react';
 import { SEARCH_MARKER, useGlassDropdownContext } from './context';
+import styles from './dropdown.module.css';
 export interface SearchProps extends Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
   'onChange'
@@ -15,23 +16,8 @@ const Search = React.forwardRef<HTMLInputElement, SearchProps>(function Search(
 ) {
   const ctx = useGlassDropdownContext('Search');
   return (
-    <div
-      data-slot="dropdown-search"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        padding: '6px 10px',
-        margin: '0 0 4px 0',
-        borderRadius: '12px',
-        background: 'var(--paper-fill-1)',
-        border: '1px solid var(--paper-hairline)',
-      }}
-    >
-      <SearchIcon
-        size={14}
-        style={{ color: 'var(--paper-muted-ink)', flexShrink: 0 }}
-      />
+    <div data-slot="dropdown-search" className={styles.search}>
+      <SearchIcon size={16} />
       <input
         ref={ref}
         type="text"
@@ -43,18 +29,8 @@ const Search = React.forwardRef<HTMLInputElement, SearchProps>(function Search(
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
         placeholder={placeholder}
-        style={{
-          flex: 1,
-          minWidth: 0,
-          border: 'none',
-          background: 'transparent',
-          color: 'var(--paper-ink)',
-          fontFamily: 'var(--font-sans)',
-          fontSize: '13px',
-          lineHeight: '18px',
-          outline: 'none',
-          ...style,
-        }}
+        className={styles.searchInput}
+        style={style}
         {...rest}
       />
       {value ? (
@@ -62,16 +38,9 @@ const Search = React.forwardRef<HTMLInputElement, SearchProps>(function Search(
           type="button"
           aria-label="Clear search"
           onClick={() => onValueChange('')}
-          style={{
-            border: 'none',
-            background: 'transparent',
-            color: 'var(--paper-muted-ink)',
-            padding: 2,
-            display: 'inline-flex',
-            cursor: 'pointer',
-          }}
+          className={styles.searchClear}
         >
-          <X size={13} />
+          <X size={16} />
         </button>
       ) : null}
     </div>

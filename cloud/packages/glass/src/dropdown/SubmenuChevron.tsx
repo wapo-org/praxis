@@ -1,5 +1,7 @@
 import { motion } from 'framer-motion';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { SPRING } from '../motion';
+import { ChevronDown, ChevronRight } from '../icons';
+import styles from './dropdown.module.css';
 import { useMenuReducedMotion } from './motion';
 export function SubmenuChevron({
   id,
@@ -11,9 +13,9 @@ export function SubmenuChevron({
   const reduced = useMenuReducedMotion();
   return reduced ? (
     expanded ? (
-      <ChevronDown aria-hidden size={15} />
+      <ChevronDown aria-hidden size={16} />
     ) : (
-      <ChevronRight aria-hidden size={15} />
+      <ChevronRight aria-hidden size={16} />
     )
   ) : (
     <motion.span
@@ -22,14 +24,10 @@ export function SubmenuChevron({
       data-submenu-chevron={expanded ? 'expanded' : 'collapsed'}
       initial={{ rotate: 0 }}
       animate={{ rotate: expanded ? 90 : 0 }}
-      transition={{ type: 'spring', stiffness: 420, damping: 30 }}
-      style={{
-        display: 'inline-flex',
-        flexShrink: 0,
-        color: 'var(--paper-secondary-ink)',
-      }}
+      transition={SPRING}
+      className={styles.chevron}
     >
-      <ChevronRight size={15} />
+      <ChevronRight size={16} />
     </motion.span>
   );
 }

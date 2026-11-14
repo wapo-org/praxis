@@ -17,6 +17,7 @@ export async function alwaysAllowKey(tool:ToolSpec):Promise<string> {
   return `${sourceKey(tool)}/${tool.name}#${await fingerprint({description:tool.description,inputSchema:tool.inputSchema})}`;
 }
 export function decideTool(tool:ToolSpec,mode:Mode,policy:Policy,key:string):ToolDecision {
+  if(mode==='build')return {decision:'allow',reason:''};
   const traits=new Set(tool.source.type==='mcp'&&!policy.trustedSources.includes(sourceKey(tool))?['destructive','openWorld']:tool.traits);
   const destructive=traits.has('destructive'),readOnly=traits.has('readOnly');
   const allowed:ToolDecision={decision:'allow',reason:''};
@@ -30,7 +31,6 @@ export function decideTool(tool:ToolSpec,mode:Mode,policy:Policy,key:string):Too
   if(traits.has('sandboxed'))return mode==='ask'?refuse('Running code is unavailable in Ask mode.'):allowed;
   if(mode==='ask')return refuse('Tools that reach other services are unavailable in Ask mode.');
   if(mode==='plan')return readOnly&&!destructive?allowed:refuse('Plan mode only runs read-only tools.');
-  if(mode==='build'&&readOnly&&!destructive)return allowed;
   if(mode==='auto'&&!destructive)return allowed;
   return ask(destructive?'May change or delete data':'Makes changes');
 }

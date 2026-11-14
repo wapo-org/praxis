@@ -11,8 +11,10 @@ const modules = {
   '../../../../../convex/account.ts': () => import('../../../../../convex/account.js'),
   '../../../../../convex/tools.ts': () => import('../../../../../convex/tools.js'),
   '../../../../../convex/store.ts': () => import('../../../../../convex/store.js'),
+  '../../../../../convex/authClerk.ts': () => import('../../../../../convex/authClerk.js'),
   '../../../../../convex/auth.ts': () => import('../../../../../convex/auth.js'),
   '../../../../../convex/files.ts': () => import('../../../../../convex/files.js'),
+  '../../../../../convex/search.ts': () => import('../../../../../convex/search.js'),
 };
 
 /** Executable Convex database (convex-test) behind the same RPC shape as `createConvexRPC`. */

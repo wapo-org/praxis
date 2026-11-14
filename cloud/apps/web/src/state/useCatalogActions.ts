@@ -25,14 +25,21 @@ export function useCatalogActions(state: PraxisState) {
       setSelectedProviderId(providerId);
       setSelectedModelId(modelId);
       if (activeChatId) {
+        // Until the save answers, nothing automatic replaces this pick (WP-K2b).
+        const pick = { chatId: activeChatId, providerId, modelId };
+        state.pendingPickRef.current = pick;
         void apiClient
           .patchChat(activeChatId, { providerId, modelId })
           .then((updated) => {
             setChats((prev) => prev.map((c) => (c.id === activeChatId ? updated : c)));
           })
           .catch((err) =>
-            setErrorBanner(err instanceof Error ? err.message : 'Unable to save model'),
-          );
+            // The pick stays for this session; the failure is said out loud, never a silent revert.
+            setErrorBanner(`Couldn't save the model for this chat: ${err instanceof Error ? err.message : 'unknown error'}`),
+          )
+          .finally(() => {
+            if (state.pendingPickRef.current === pick) state.pendingPickRef.current = null;
+          });
       }
     },
     [activeChatId],
@@ -115,6 +122,7 @@ export function useCatalogActions(state: PraxisState) {
     async (
       connectorId: string,
       patch: {
+        token?: string;
         enabled?: boolean;
         trusted?: boolean;
         name?: string;
@@ -133,9 +141,16 @@ export function useCatalogActions(state: PraxisState) {
   }, []);
 
   const loadConnectorTools = React.useCallback(async (connectorId: string) => {
-    const page = await apiClient.listConnectorTools(connectorId);
-    setConnectorTools((prev) => ({ ...prev, [connectorId]: page.items }));
-    return page.items;
+    const items: import('@praxis/protocol').ToolSpec[]=[];
+    let cursor:string|undefined;const seen=new Set<string>();
+    do {
+      const page=await apiClient.listConnectorTools(connectorId,cursor);items.push(...page.items);
+      cursor=page.nextCursor??undefined;
+      if(cursor&&seen.has(cursor))throw new Error('Connector tool pages did not advance.');
+      if(cursor)seen.add(cursor);
+    } while(cursor);
+    setConnectorTools((prev) => ({ ...prev, [connectorId]: items }));
+    return items;
   }, []);
 
   const setConnectorToolEnabled = React.useCallback(

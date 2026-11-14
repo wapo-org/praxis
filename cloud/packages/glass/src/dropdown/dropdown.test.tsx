@@ -216,4 +216,5 @@ describe('GlassDropdown (@praxis/glass)', () => {
     expect(html).not.toContain('Synthetic Model #250');
     expect(html).not.toContain('Synthetic Model #500');
   });
+
 });

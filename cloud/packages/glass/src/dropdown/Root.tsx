@@ -1,6 +1,6 @@
 import { MotionConfig } from 'framer-motion';
 import React from 'react';
-import type { GlassMaterialControls } from '../glass-store';
+import type { GlassMaterialControls } from '../GlassSurface';
 import type {
   GlassDropdownAlign,
   GlassDropdownContextValue,
@@ -13,10 +13,13 @@ import {
   GlassDropdownContext,
 } from './context';
 import { useMenuReducedMotion } from './motion';
-import { usePointerRelease } from './pointer';
+import { inGrowingMenu, usePointerRelease } from './pointer';
 export interface GlassDropdownRootProps
   extends React.HTMLAttributes<HTMLDivElement>, GlassMaterialControls {
+  /** Render in document.body so no ancestor can clip the menu. On by default. */
   portal?: boolean;
+  /** Keep the menu inside this element instead of the viewport (non-portal menus in a clipped sheet). */
+  boundary?: () => HTMLElement | null;
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -37,7 +40,8 @@ const GlassDropdownRoot = React.forwardRef<
   GlassDropdownRootProps
 >(function GlassDropdownRoot(
   {
-    portal = false,
+    portal = true,
+    boundary,
     open: controlledOpen,
     defaultOpen = false,
     onOpenChange,
@@ -50,15 +54,7 @@ const GlassDropdownRoot = React.forwardRef<
     sideOffset = 8,
     closeOnSelect = true,
     dismissOnOutsideClick = true,
-    material = 'regular',
-    intensity,
-    refraction,
-    frost,
-    finish,
-    backdrop,
-    stretchable = true,
-    bounce,
-    spotlight = true,
+    material,
     children,
     className = '',
     style,
@@ -107,7 +103,7 @@ const GlassDropdownRoot = React.forwardRef<
   }, []);
   const getContentEl = React.useCallback(() => contentElRef.current, []);
   const focusTrigger = React.useCallback(() => {
-    triggerElRef.current?.focus();
+    triggerElRef.current?.focus({ preventScroll: true });
   }, []);
 
   const startScrub = React.useCallback((source: 'trigger' | 'content' = 'content') => {
@@ -172,7 +168,8 @@ const GlassDropdownRoot = React.forwardRef<
       if (!target || !target.isConnected) return;
       if (
         rootRef.current?.contains(target) ||
-        contentElRef.current?.contains(target)
+        contentElRef.current?.contains(target) ||
+        inGrowingMenu(contentElRef.current, event.clientX, event.clientY)
       )
         return;
       setOpen(false);
@@ -192,33 +189,14 @@ const GlassDropdownRoot = React.forwardRef<
   );
 
   const materialControls = React.useMemo<GlassMaterialControls>(
-    () => ({
-      material,
-      intensity,
-      refraction,
-      frost,
-      finish,
-      backdrop,
-      stretchable,
-      bounce,
-      spotlight,
-    }),
-    [
-      material,
-      intensity,
-      refraction,
-      frost,
-      finish,
-      backdrop,
-      stretchable,
-      bounce,
-      spotlight,
-    ],
+    () => ({ material }),
+    [material],
   );
 
   const ctxValue = React.useMemo<GlassDropdownContextValue>(
     () => ({
       portal,
+      boundary,
       searchable: containsSearch(children),
       open,
       setOpen,
@@ -248,6 +226,7 @@ const GlassDropdownRoot = React.forwardRef<
     }),
     [
       portal,
+      boundary,
       children,
       open,
       setOpen,

@@ -26,7 +26,7 @@ try{
  await page.getByRole('button',{name:'Configure',exact:true}).click();await page.getByLabel('X-Api-Key',{exact:true}).fill('k-123');
  await page.getByRole('button',{name:'Add server',exact:true}).click();await page.getByRole('status').filter({hasText:'X1 Keyed Docs · Connected'}).waitFor();
  // Test connection performs real provider discovery + streamed tool/vision probe through local API.
- await page.goto(`${BASE}/settings`);await page.getByRole('button',{name:'Add provider',exact:true}).click();
+ await page.goto(`${BASE}/settings/providers`);await page.getByRole('button',{name:'Add provider',exact:true}).click();
  await page.getByRole('button',{name:'Provider preset',exact:true}).click();await page.getByRole('menuitem',{name:'Custom',exact:true}).press('Enter');
  await page.getByRole('textbox',{name:'Name',exact:true}).fill('X1 Provider');await page.getByRole('textbox',{name:'Base URL',exact:true}).fill('https://example.com/x1/v1');
  await page.getByLabel(/^Flavor/).selectOption('openAIChat');
@@ -36,7 +36,7 @@ try{
  await page.getByRole('checkbox',{name:/Allow test messages/}).check();
  await page.getByRole('button',{name:'Test connection',exact:true}).click();await page.getByRole('status').filter({hasText:'Streaming: supported'}).waitFor();
  assert.equal(await page.getByRole('switch',{name:'Tool calling',exact:true}).isChecked(),true);
- await page.getByRole('button',{name:'Save provider',exact:true}).click();await page.getByRole('dialog',{name:'Settings',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Save provider',exact:true}).click();await page.getByTestId('settings-page').waitFor();
  assert.equal(await page.evaluate(async()=>{const {apiClient}=await import('/src/lib/api.ts');return (await apiClient.listProviders()).items.find(p=>p.name==='X1 Provider').capabilities.tools;}),true);
  // A refused key: Test connection shows the provider's real error and leaves the toggles alone.
  await page.getByRole('button',{name:'Add provider',exact:true}).click();

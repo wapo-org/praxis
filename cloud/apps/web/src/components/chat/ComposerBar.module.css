@@ -1,0 +1,103 @@
+.bar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--control-md);
+  max-height: 200px;
+  padding: 7px var(--space-1);
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: var(--color-ink);
+  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
+}
+
+.input::placeholder {
+  color: var(--color-ink-3);
+}
+
+.input[data-flight-lead='true']::placeholder {
+  opacity: 0;
+}
+
+.round {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--control-md);
+  height: var(--control-md);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.secondary {
+  background: color-mix(in srgb, var(--color-ink) 10%, transparent);
+  color: var(--color-ink);
+}
+
+.primary {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.trailingSlot {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--control-md);
+  height: var(--control-md);
+}
+
+.slotButton {
+  position: absolute;
+  inset: 0;
+}
+
+.slotButton[data-hidden='true'] {
+  opacity: 0;
+  transform: scale(0.8);
+  pointer-events: none;
+}
+
+.round:disabled {
+  cursor: default;
+}
+
+.primary:disabled:not([data-hidden='true']) {
+  opacity: 0.45;
+}
+
+.round[data-recording='true'] {
+  background: var(--color-danger);
+  color: #fff;
+}
+
+.plusIcon {
+  display: inline-flex;
+}
+
+.round:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .secondary:hover:not(:disabled):not([data-recording='true']) {
+    background: color-mix(in srgb, var(--color-ink) 16%, transparent);
+  }
+  .primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-accent) 86%, var(--color-paper));
+  }
+}

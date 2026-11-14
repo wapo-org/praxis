@@ -1,3 +1,5 @@
+import {enqueue, offlineFallback} from '../sync/outbox';
+import {readReplicaSync} from './idb';
 import type {
   Attachment,
   Bootstrap,
@@ -20,10 +22,31 @@ import {
 import { safeMessage } from './links';
 import { localUploadPath } from './hosts';
 export * from './api-transport';
+export interface SavedValue {id:string;name:string;kind:'secret'|'variable';value?:unknown;createdAt:string;lastUsedAt?:string|null}
+export interface SavedValueQuery {query?:string;kind?:'secret'|'variable';since?:string;cursor?:string;limit?:number}
 export class PraxisApiClient extends FeatureApiClient {
+  savedValues(){return this.request<{items:SavedValue[]}>('/v1/saved-values');}
+  createSavedValue(input:{name:string;kind:'secret'|'variable';value:unknown}){return this.request('/v1/saved-values',{method:'POST',body:JSON.stringify(input)});}
+  /** One page of saved values, newest first (L1's keyset pagination; the cursor is bound to the filters). */
+  querySavedValues(q:SavedValueQuery,signal?:AbortSignal){
+   const params=new URLSearchParams();
+   for(const [k,v] of Object.entries(q))if(v!==undefined&&v!=='')params.set(k,String(v));
+   return this.request<{items:SavedValue[];nextCursor:string|null}>('/v1/saved-values?'+params.toString(),signal?{signal}:{});
+  }
+  /** Rename and/or replace the value; a secret's value is write-only. */
+  updateSavedValue(id:string,patch:{name?:string;value?:unknown}){return this.request('/v1/saved-values/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify(patch)});}
+  renameSavedValue(id:string,name:string){return this.request('/v1/saved-values/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({name})});}
+  deleteSavedValue(id:string){return this.request('/v1/saved-values/'+encodeURIComponent(id),{method:'DELETE'});}
+  savedSecrets(){return this.request<{items:{id:string;name:string;createdAt:string;lastUsedAt?:string}[]}>('/v1/saved-secrets');}
+  renameSavedSecret(id:string,name:string){return this.request('/v1/saved-secrets/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({name})});}
+  deleteSavedSecret(id:string){return this.request('/v1/saved-secrets/'+encodeURIComponent(id),{method:'DELETE'});}
   // Bootstrap & Auth
   async bootstrap(): Promise<Bootstrap> {
     return this.request<Bootstrap>('/v1/bootstrap');
+  }
+
+  async searchChats(q: string) {
+    return this.request<PageResult<{ chat: Chat; snippet: string }>>(`/v1/search?${new URLSearchParams({ q, limit: '50' })}`);
   }
 
   // Chats & Messages
@@ -50,7 +73,14 @@ export class PraxisApiClient extends FeatureApiClient {
     effort?: string;
     disabledConnectorIds?: string[];
   }): Promise<Chat> {
-    return this.request<Chat>('/v1/chats', {
+    const id = input.id ?? crypto.randomUUID();
+    const offline = (): Chat => {
+      const now = new Date().toISOString();
+      const chat: Chat = { type: 'chat', id, title: input.title, pinned: input.pinned ?? false, mode: input.mode ?? 'build', connectorIds: [], disabledConnectorIds: input.disabledConnectorIds ?? [], createdAt: now, updatedAt: now, providerId: input.providerId, modelId: input.modelId, effort: input.effort };
+      enqueue({ path: '/v1/chats', method: 'POST', body: JSON.stringify({ ...input, type: 'chat.input', id: chat.id }) });
+      return chat;
+    };
+    return offlineFallback(() => this.request<Chat>('/v1/chats', {
       method: 'POST',
       body: JSON.stringify({
         type: 'chat.input',
@@ -61,9 +91,9 @@ export class PraxisApiClient extends FeatureApiClient {
         modelId: input.modelId,
         effort: input.effort,
         disabledConnectorIds: input.disabledConnectorIds ?? [],
-        ...(input.id ? { id: input.id } : {}),
+        id,
       }),
-    });
+    }), offline);
   }
 
   async patchChat(
@@ -78,16 +108,26 @@ export class PraxisApiClient extends FeatureApiClient {
       disabledConnectorIds?: string[];
     },
   ): Promise<Chat> {
-    return this.request<Chat>(`/v1/chats/${encodeURIComponent(chatId)}`, {
+    const offline = (): Chat => {
+      const chat = readReplicaSync()?.chats.find(c => c.id === chatId);
+      if (!chat) throw Error('Chat is not cached for offline editing');
+      enqueue({ path: `/v1/chats/${encodeURIComponent(chatId)}`, method: 'PATCH', body: JSON.stringify({ type: 'chat.patch', ...patch }) });
+      return { ...chat, ...patch };
+    };
+    return offlineFallback(() => this.request<Chat>(`/v1/chats/${encodeURIComponent(chatId)}`, {
       method: 'PATCH',
       body: JSON.stringify({ type: 'chat.patch', ...patch }),
-    });
+    }), offline);
   }
 
   async deleteChat(chatId: string): Promise<{ type: 'ok' }> {
-    return this.request<{ type: 'ok' }>(`/v1/chats/${encodeURIComponent(chatId)}`, {
+    const offline = (): {type: 'ok'} => {
+      enqueue({ path: `/v1/chats/${encodeURIComponent(chatId)}`, method: 'DELETE' });
+      return { type: 'ok' };
+    };
+    return offlineFallback(() => this.request<{ type: 'ok' }>(`/v1/chats/${encodeURIComponent(chatId)}`, {
       method: 'DELETE',
-    });
+    }), offline);
   }
 
   async truncateChat(chatId: string, messageId?: string): Promise<{ type: 'ok' } | Chat> {
@@ -117,6 +157,8 @@ export class PraxisApiClient extends FeatureApiClient {
 
   // Runs & Interactive Loop
   async startRun(input: {
+    regenerateMessageId?: string;
+    suggestedTitle?: string;
     chatId: string;
     text: string;
     providerId?: string;

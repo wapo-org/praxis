@@ -2,7 +2,7 @@ import {describe,it,expect} from 'vitest';
 import {CapabilitiesSchema,RunEventPayloadSchema,type RunEventPayload,type ToolSpec,type Message} from '@praxis/protocol';
 import {AgentRunner,createScriptedRunner,createScriptedProvider,scriptedTools,alwaysAllowKey,decideTool,textResult,ProviderFailure,CheckpointSchema,type AgentCheckpoint,type AgentPorts,type RunInput,type ModelProvider,type ProviderRequest} from './index.js';
 const time='2026-10-29T12:00:00.000Z';
-function input():RunInput{return {userId:'u',run:{type:'run',id:'r',chatId:'c',status:'queued',createdAt:time,updatedAt:time,lastEventId:0},chat:{type:'chat',id:'c',title:'Chat',pinned:false,mode:'build',connectorIds:[],disabledConnectorIds:[],createdAt:time,updatedAt:time},messages:[{type:'message',id:'m',chatId:'c',runId:'r',role:'user',parts:[{type:'text',text:'Hello'}],createdAt:time,updatedAt:time}]};}
+function input():RunInput{return {userId:'u',run:{type:'run',id:'r',chatId:'c',status:'queued',createdAt:time,updatedAt:time,lastEventId:0},chat:{type:'chat',id:'c',title:'Chat',pinned:false,mode:'auto',connectorIds:[],disabledConnectorIds:[],createdAt:time,updatedAt:time},messages:[{type:'message',id:'m',chatId:'c',runId:'r',role:'user',parts:[{type:'text',text:'Hello'}],createdAt:time,updatedAt:time}]};}
 function harness(){let saved:AgentCheckpoint|undefined,cancel=false,id=0;const events:RunEventPayload[]=[];const ports:AgentPorts={save:async(user,cp)=>{expect(user).toBe('u');saved=structuredClone(cp);},emit:async(user,run,e)=>{expect(user).toBe('u');expect(run).toBe('r');RunEventPayloadSchema.parse(e);events.push(structuredClone(e));return events.length;},isCancelled:async()=>cancel,now:()=>time,id:()=>`id-${++id}`,sleep:async()=>{}};return {ports,events,get saved(){return saved;},cancel(){cancel=true;}};}
 const custom=(stream:ModelProvider['stream']):ModelProvider=>({flavor:'openAIChat',capabilities:CapabilitiesSchema.parse({}),stream});
 describe('scripted durable loop',()=>{
@@ -69,9 +69,24 @@ describe('scripted durable loop',()=>{
     const before=structuredClone(i.messages);const cp=await createScriptedRunner(h.ports).run(i);expect(cp.messages.slice(0,2)).toEqual(before);expect(JSON.stringify(cp.messages[2])).toContain('interrupted');
   });
   it('keeps frozen setup after live tool descriptions drift',async()=>{
-    const h=harness(),i=input(),tools=scriptedTools();i.chat.setup={type:'conversation.setup',system:'Frozen',tools:[{...tools[0]!.spec,description:'Frozen tool'}],skillCatalog:'Frozen skills',connectorIds:[],createdAt:time};
+    const h=harness(),i=input(),tools=scriptedTools().slice(0,1);i.chat.setup={type:'conversation.setup',system:'Frozen',tools:[{...tools[0]!.spec,description:'Frozen tool'}],skillCatalog:'Frozen skills',connectorIds:[],createdAt:time};
     const requests:ProviderRequest[]=[];const base=createScriptedProvider('tools');const provider={...base,stream:(req:ProviderRequest,s:AbortSignal)=>{requests.push(structuredClone(req));return base.stream(req,s);}};
     const cp=await new AgentRunner({ports:h.ports,tools,provider}).run(i);expect(cp.setup).toEqual(i.chat.setup);expect(requests[0]?.tools[0]?.description).toBe('Frozen tool');expect(requests[0]?.system).toContain('Frozen skills');
+  });
+  it('does not offer disabled connector tools retained in a frozen setup',async()=>{
+    const h=harness(),i=input(),tools=scriptedTools().slice(0,1);
+    const disabled:ToolSpec={...tools[0]!.spec,name:'mcp_disabled',source:{type:'mcp',serverId:'off'}};
+    i.chat.setup={type:'conversation.setup',system:'Frozen',tools:[tools[0]!.spec,disabled],skillCatalog:'',connectorIds:[],createdAt:time};
+    const requests:ProviderRequest[]=[];const base=createScriptedProvider();
+    await new AgentRunner({ports:h.ports,tools,provider:{...base,stream:(req,signal)=>{requests.push(req);return base.stream(req,signal);}}}).run(i);
+    expect(requests[0]!.tools.map(t=>t.name)).toEqual([tools[0]!.spec.name]);
+  });
+  it('adds newly enabled connector tools and replaces stale connector advertisements on a later turn',async()=>{
+    const h=harness(),i=input(),tools=scriptedTools();const enabled={...tools[0]!,spec:{...tools[0]!.spec,name:'mcp_enabled',source:{type:'mcp' as const,serverId:'new'}}};
+    i.chat.setup={type:'conversation.setup',system:'Frozen\n\nConnected tools:\n- Disabled old connector\n\nInstructions remain.',tools:[tools[0]!.spec],skillCatalog:'',connectorIds:[],createdAt:time};
+    const requests:ProviderRequest[]=[];const base=createScriptedProvider();
+    await new AgentRunner({ports:h.ports,tools:[...tools,enabled],toolNotes:['Current connector tools'],provider:{...base,stream:(req,signal)=>{requests.push(req);return base.stream(req,signal);}}}).run(i);
+    expect(requests[0]!.tools.some(t=>t.name==='mcp_enabled')).toBe(true);expect(requests[0]!.system).toContain('Current connector tools');expect(requests[0]!.system).not.toContain('Disabled old connector');expect(requests[0]!.system).toContain('Instructions remain.');
   });
   it('compaction transforms requests without rewriting messages',async()=>{
     const h=harness(),i=input();i.messages.unshift({...i.messages[0]!,id:'old',parts:[{type:'text',text:'history '.repeat(2000)}]});const before=structuredClone(i.messages);
@@ -93,7 +108,7 @@ describe('Swift policy matrix',()=>{
   const policy={trustedSources:['mcp:x'],alwaysAllow:[]};
   const spec:ToolSpec={type:'tool.spec',name:'t',description:'Tool',inputSchema:{type:'object'},source:{type:'mcp',serverId:'x'},traits:[]};
   it.each([
-    ['ask',['readOnly'],'refuse'],['plan',['readOnly'],'allow'],['plan',[],'refuse'],['build',['readOnly'],'allow'],['build',[],'ask'],['auto',[],'allow'],['auto',['destructive'],'ask'],['plan',['readOnly','destructive'],'refuse'],
+    ['ask',['readOnly'],'refuse'],['plan',['readOnly'],'allow'],['plan',[],'refuse'],['build',['readOnly'],'allow'],['build',[],'allow'],['auto',[],'allow'],['auto',['destructive'],'ask'],['plan',['readOnly','destructive'],'refuse'],
   ] as const)('%s %j -> %s',(mode,traits,want)=>{expect(decideTool({...spec,traits:[...traits]},mode,policy,'key').decision).toBe(want);});
   it('does not trust remote traits by default or bypass plan refusal',()=>{expect(decideTool({...spec,traits:['readOnly']},'plan',{trustedSources:[],alwaysAllow:['key']},'key').decision).toBe('refuse');});
   it('always allow fingerprint changes with schema or description, never key order',async()=>{const a=await alwaysAllowKey(spec);expect(await alwaysAllowKey({...spec,description:'changed'})).not.toBe(a);expect(await alwaysAllowKey({...spec,inputSchema:{properties:{x:{type:'string'}},type:'object'}})).not.toBe(a);});
@@ -142,6 +157,6 @@ describe('durability and provider fallback regressions',()=>{
     const cp=await new AgentRunner({ports:h.ports,provider,tools:scriptedTools()}).run(i);expect(count).toBe(1);expect(cp.run.outcome).toBe('truncated');expect(cp.messages.at(-1)?.parts).toEqual([{type:'text',text:'Partial text'}]);
   });
   it('emits matching reasoning finished events and carries client turn ids',async()=>{
-    const h=harness(),i=input();i.run.clientTurnId='client-turn';const cp=await createScriptedRunner(h.ports).run(i);const started=h.events.find(e=>e.type==='reasoning.delta');expect(started).toBeDefined();expect(h.events).toContainEqual({type:'reasoning.finished',blockId:started&&'blockId' in started?started.blockId:''});expect(cp.messages.at(-1)?.clientTurnId).toBe('client-turn');
+    const h=harness(),i=input();i.run.clientTurnId='client-turn';const cp=await createScriptedRunner(h.ports,'reasoningSummary').run(i);const started=h.events.find(e=>e.type==='reasoning.delta');expect(started).toBeDefined();expect(h.events).toContainEqual(expect.objectContaining({type:'reasoning.finished',blockId:started&&'blockId' in started?started.blockId:''}));expect(cp.messages.at(-1)?.clientTurnId).toBe('client-turn');
   });
 });

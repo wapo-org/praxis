@@ -25,15 +25,19 @@ try {
     await page.getByTestId('starter-chip-1').click(); await page.getByTestId('assistant-turn').first().waitFor();
     await page.getByText(/^Worked for \d+s$/).waitFor(); await capture('chat-tools');
     await page.getByText(/^Worked for \d+s$/).click(); await capture('activity-expanded');
-    await page.getByTestId('nav-new-chat-button').click(); await page.getByTestId('starter-chip-2').click();
+    await page.getByTestId(width === 1440 ? 'nav-new-chat-desktop' : 'nav-new-chat-button').click(); await page.getByTestId('starter-chip-2').click();
     const approval = page.getByRole('button', { name: 'Allow Once', exact: true }); await approval.waitFor(); await capture('approval'); await approval.click();
-    for (const [name, path, label] of [
-      ['history', '/chats', 'Chats'], ['settings', '/settings', 'Settings'], ['provider', '/settings/providers/new', 'Provider'],
-      ['connectors', '/settings/connectors', 'Connectors'], ['connector-add', '/settings/connectors/add', 'Add by URL'],
-      ['skills', '/settings/skills', 'Skills'], ['image-reader', '/settings/images', 'Image reading model'],
-      ['voice', '/settings/voice', 'Voice input'], ['sharing', '/settings/sharing', 'Data consents'],
+    if (width === 1440) await page.getByTestId('app-sidebar').waitFor();
+    else { await page.getByTestId('nav-history-button').click(); await page.getByTestId('app-sidebar').waitFor(); }
+    await capture('history');
+    await page.keyboard.press('Escape');
+    for (const [name, path] of [
+      ['settings', '/settings'], ['provider', '/settings/providers/new'],
+      ['connectors', '/settings/connectors'], ['connector-add', '/settings/connectors/add'],
+      ['skills', '/settings/skills'], ['image-reader', '/settings/images'],
+      ['voice', '/settings/voice'], ['sharing', '/settings/sharing'],
     ]) {
-      await page.goto(base + path); await page.getByRole('dialog', { name: label, exact: true }).waitFor();
+      await page.evaluate((p) => { history.pushState({}, '', p); window.dispatchEvent(new PopStateEvent('popstate')); }, path); await page.getByTestId('settings-page').waitFor();
       await capture(name);
       if (name === 'provider') {
         await page.getByText('Hosted web search', { exact: true }).scrollIntoViewIfNeeded(); await capture('provider-capabilities');

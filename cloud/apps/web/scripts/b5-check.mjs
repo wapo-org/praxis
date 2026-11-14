@@ -7,12 +7,20 @@ try {
   await page.goto(BASE); await page.getByRole('button', { name: 'Continue as local dev user' }).click();
   await page.getByTestId('chat-top-bar').waitFor();
   const controls = await page.evaluate(() => {
-    const ink = document.createElement('span'); ink.style.background = 'var(--paper-ink)'; document.body.append(ink);
-    const expected = getComputedStyle(ink).backgroundColor;
-    const fills = ['.composer-camera', '[data-testid="composer-voice-button"]'].map(selector => getComputedStyle(document.querySelector(selector)).backgroundColor);
-    ink.remove(); return { expected, fills, history: !!document.querySelector('[data-testid="nav-history-button"] .tabler-icon-history') };
+    const probe = document.createElement('span');
+    probe.style.background = 'color-mix(in srgb, var(--color-ink) 10%, transparent)';
+    document.body.append(probe);
+    const expected = getComputedStyle(probe).backgroundColor;
+    const fills = ['[data-testid="composer-plus-button"]', '[data-testid="composer-voice-button"]'].map(
+      selector => getComputedStyle(document.querySelector(selector)).backgroundColor,
+    );
+    const cameraCount = document.querySelectorAll('.composer-camera').length;
+    probe.remove();
+    return { expected, fills, cameraCount, history: !!document.querySelector('[data-testid="nav-history-button"] .lucide-history') };
   });
-  assert.equal(controls.history, true); assert.deepEqual(controls.fills, [controls.expected, controls.expected]);
+  assert.equal(controls.history, true);
+  assert.equal(controls.cameraCount, 0);
+  assert.deepEqual(controls.fills, [controls.expected, controls.expected]);
   // Cold / must persist bootstrap before any chat mutation.
   await page.waitForFunction(async () => {
     const { loadReplica } = await import('/src/lib/idb.ts');
@@ -35,22 +43,32 @@ try {
     const { apiClient } = await import('/src/lib/api.ts');
     return apiClient.request('/v1/uploads', { method: 'POST', body: JSON.stringify({ type: 'upload.request', ...input }) });
   }, input);
-  // API request context bypasses the local API's missing PUT CORS method; no response is mocked.
-  const uploaded = await page.request.fetch(ticket.uploadUrl, { method: ticket.method, headers: { 'Content-Type': input.mediaType }, data: 'Document attachment test' });
-  assert.equal(uploaded.ok(), true);
-  const { storageId } = await uploaded.json();
+  // The PUT needs the session cookie: route it through the same origin like
+  // the app does (localUploadPath); no response is mocked.
+  const uploadPath = new URL(ticket.uploadUrl).pathname;
+  const uploaded = await page.evaluate(async ({ uploadPath, mediaType }) => {
+    const res = await fetch(uploadPath, { method: 'PUT', headers: { 'Content-Type': mediaType }, credentials: 'include', body: 'Document attachment test' });
+    return { ok: res.ok, status: res.status, json: res.ok ? await res.json() : null };
+  }, { uploadPath, mediaType: input.mediaType });
+  assert.equal(uploaded.ok, true, `upload PUT failed with ${uploaded.status}`);
+  const { storageId } = uploaded.json;
   await page.evaluate(async ({ input, storageId }) => {
     const { apiClient } = await import('/src/lib/api.ts');
     const att = await apiClient.request('/v1/uploads/complete', { method: 'POST', body: JSON.stringify({ type: 'upload.complete', ...input, storageId }) });
     await apiClient.startRun({ chatId: input.chatId, text: 'Document', attachmentIds: [att.id], script: 'text' });
   }, { input, storageId });
   await page.reload(); await page.getByTestId('document-attachment-chip').filter({ hasText: 'Protocol-notes.txt' }).waitFor();
-  await page.goto(`${BASE}/settings`); const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await page.goto(`${BASE}/settings/account`); const settings = page.getByTestId('settings-page');
   await settings.getByRole('button', { name: 'Sign out', exact: true }).waitFor();
+  assert.equal(await page.getByRole('dialog', { name: 'Settings', exact: true }).count(), 0);
   assert.equal(await page.locator('.account-sign-out').count(), 0);
-  assert.equal(await settings.getByRole('button', { name: 'Close settings' }).textContent(), 'Done');
-  const tools = settings.locator('section').filter({ has: page.getByRole('heading', { name: 'Tools', exact: true }) });
-  await tools.getByText('Voice input', { exact: true }).waitFor(); await tools.getByText('Image reading model', { exact: true }).waitFor();
+  assert.equal(await settings.getByRole('button', { name: 'Done' }).count(), 0, 'Settings has no Done button: the floating nav is the way out');
+  // 402 px: the same floating nav. Open it, pick a section, it closes on the page; its back row leaves Settings.
+  await page.getByTestId('nav-sidebar-button').click();
+  await page.getByTestId('app-sidebar').getByRole('button', { name: 'Close settings' }).waitFor();
+  await page.getByTestId('settings-nav-general').click(); await settings.getByText('Voice input', { exact: true }).waitFor();
+  await page.getByTestId('nav-sidebar-button').click();
+  await page.getByTestId('settings-nav-providers').click(); await settings.getByText('Image reading model', { exact: true }).waitFor();
   await settings.getByRole('button', { name: 'Add provider', exact: true }).click();
   await page.getByRole('button', { name: 'Provider preset', exact: true }).click();
   await page.getByRole('menuitem', { name: 'OpenAI', exact: true }).click();
@@ -62,12 +80,14 @@ try {
   });
   await page.reload(); await page.getByText('Unreachable', { exact: false }).first().waitFor();
   assert.equal(await page.getByText('Connected', { exact: true }).count(), 0);
-  await page.goto(`${BASE}/chats`);
-  assert.equal(await page.locator('.screen-history-tools').count(), 0);
-  const row = page.locator('.screen-history-row').filter({ hasText: server.title }).first();
+  // History is the floating sidebar panel on narrow screens.
+  await page.goto(BASE); await page.getByTestId('nav-history-button').click();
+  const panel = page.getByTestId('app-sidebar'); await panel.waitFor();
+  assert.equal(await panel.getAttribute('aria-label'), 'Conversation history');
+  const row = page.locator('[data-testid="app-sidebar"] [data-sidebar-row]').filter({ hasText: server.title }).first();
   await row.click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Rename', exact: true }).waitFor();
   await page.keyboard.press('Escape');
-  await page.goto(`${BASE}/settings`); await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await page.goto(`${BASE}/settings/account`); await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
   console.log('PASS: first bootstrap replica; authoritative title/no client title PATCH; icon actions; real document chip; Account sign-out; Tools grouping/Done; glass Preset; unreachable connector health; contextual history actions');
 } finally { await browser.close(); }

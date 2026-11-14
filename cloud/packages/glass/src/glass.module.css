@@ -1,0 +1,235 @@
+/* Liquid glass. The lens lives on a child so nested glass never sits inside this
+   root's backdrop, and the outer shadow on the root so its clip never eats it.
+   Recipe values are tokens (apps/web/src/styles/tokens.css → --glass-*). The held
+   rig (rig.ts) animates the shadows from these exact rest values. */
+
+:where(.glass) {
+  --glass-radius: var(--radius-menu);
+}
+
+.glass {
+  position: relative;
+  isolation: isolate;
+  /* Without corner-shape, the circle with the same apex (squircle.ts), under the path on the layers. */
+  border-radius: var(--glass-radius-round, var(--glass-radius));
+  corner-shape: var(--glass-corner);
+  box-shadow:
+    var(--glass-contact) rgba(var(--glass-shadow-rgb), calc(var(--glass-contact-a) * var(--glass-shadow) * var(--glass-fade, 1))),
+    var(--glass-lift) rgba(var(--glass-shadow-rgb), calc(var(--glass-lift-a) * var(--glass-shadow) * var(--glass-fade, 1)));
+  /* Press-drag is a stretch here, not a text selection or a native drag. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.glass[data-glass-stretch='press'] {
+  touch-action: none;
+}
+
+.glass :is(input, textarea, [contenteditable='true'], [contenteditable='']) {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.glass :is(a, img) {
+  -webkit-user-drag: none;
+}
+
+/* A fade goes through --glass-fade (see routeFade): `opacity` on the root would
+   turn it into a backdrop root and blank the lens. Zero specificity on purpose. */
+:where(.glass) > * {
+  opacity: var(--glass-fade, 1);
+}
+
+.lens,
+.finish,
+.solid,
+.band,
+.spotClip {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  corner-shape: inherit;
+  pointer-events: none;
+  /* Engines without corner-shape: the same curve as a path, built per size (squircle.ts). */
+  clip-path: var(--glass-squircle, none);
+}
+
+/* The morph animates a circle into the corner; the path returns the moment the corner has squared, while it
+   still moves (scaled with the glass by at most the overshoot), so it never swaps in at rest. */
+[data-morph-round='true'] > :is(.lens, .finish, .solid, .band, .spotClip) {
+  clip-path: none;
+}
+
+.lens,
+.finish {
+  background-color: var(--glass-tint);
+  background-image:
+    linear-gradient(160deg, rgba(255, 255, 255, var(--glass-sheen-a)) 0%, rgba(255, 255, 255, calc(var(--glass-sheen-a) * 0.24)) 26%, rgba(255, 255, 255, 0) 52%),
+    linear-gradient(340deg, rgba(255, 255, 255, calc(var(--glass-sheen-a) * 0.57)) 0%, rgba(255, 255, 255, calc(var(--glass-sheen-a) * 0.14)) 22%, rgba(255, 255, 255, 0) 44%);
+  box-shadow:
+    inset 0 2px 24px rgba(0, 0, 0, calc(0.2 * var(--glass-inner))),
+    inset 0 -2px 24px rgba(255, 255, 255, calc(0.2 * var(--glass-inner))),
+    inset 0 1px 0 0 rgba(255, 255, 255, calc(0.5 * var(--glass-rim))),
+    inset 0 -1px 0 0 rgba(255, 255, 255, calc(0.22 * var(--glass-rim))),
+    inset 0 0 0 1px rgba(255, 255, 255, calc(0.16 * var(--glass-border))),
+    inset 0 0 0 1px rgba(15, 15, 20, calc(0.07 * var(--glass-border)));
+}
+
+/* Opaque surfaces (lens={false}): one solid layer, so the border and the inset light follow the same
+   corner as the fill, and the held rig (which writes the root's shadow) never touches them. */
+.solid {
+  box-sizing: border-box;
+  background: var(--glass-solid-bg, var(--glass-fallback));
+  background-clip: var(--glass-solid-clip, border-box);
+  border: var(--glass-solid-border, 0 solid transparent);
+  box-shadow: var(--glass-solid-shadow, none);
+  /* A solid fill that turns translucent (the sidebar's bottom) blurs what is behind it. */
+  -webkit-backdrop-filter: var(--glass-solid-backdrop, none);
+  backdrop-filter: var(--glass-solid-backdrop, none);
+}
+
+/* Chromium before its maps have decoded, and any engine that loses the filter. */
+.lens {
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+/* Progressive frost: a sharp core, the blur rising toward the rim. A single
+   uniform blur reads as a frosted card; the gradient reads as bending. */
+.band {
+  -webkit-backdrop-filter: blur(var(--band-blur));
+  backdrop-filter: blur(var(--band-blur));
+}
+
+.bandMid {
+  -webkit-mask-image: radial-gradient(closest-side, transparent 55%, black 85%);
+  mask-image: radial-gradient(closest-side, transparent 55%, black 85%);
+}
+
+.bandRim {
+  -webkit-backdrop-filter: blur(var(--band-blur)) saturate(1.5);
+  backdrop-filter: blur(var(--band-blur)) saturate(1.5);
+  -webkit-mask-image: radial-gradient(closest-side, transparent 78%, black 98%);
+  mask-image: radial-gradient(closest-side, transparent 78%, black 98%);
+}
+
+.spotClip {
+  overflow: hidden;
+}
+
+.spot {
+  position: absolute;
+  top: -132px;
+  left: -132px;
+  width: 264px;
+  height: 264px;
+  opacity: 0;
+  background: radial-gradient(closest-side, var(--glass-spot), transparent 68%);
+}
+
+.regular {
+  --glass-tint: var(--glass-regular-tint);
+  --glass-blur: var(--glass-regular-blur);
+  --glass-lift: var(--glass-regular-lift);
+  --glass-lift-a: var(--glass-regular-lift-a);
+}
+
+.thick {
+  --glass-tint: var(--glass-thick-tint);
+  --glass-blur: var(--glass-thick-blur);
+  --glass-lift: var(--glass-thick-lift);
+  --glass-lift-a: var(--glass-thick-lift-a);
+}
+
+.clear {
+  --glass-tint: var(--glass-clear-tint);
+  --glass-blur: var(--glass-clear-blur);
+  --glass-lift: var(--glass-clear-lift);
+  --glass-lift-a: var(--glass-clear-lift-a);
+}
+
+.capsule {
+  --glass-radius: var(--radius-full);
+  --glass-corner: round;
+}
+
+/* A card whose corner is clamped to half its height (the composer pill) is a capsule too (squircle.ts). */
+.glass[data-glass-capsule='true'] {
+  --glass-corner: round;
+}
+
+/* Engines without corner-shape (squircle.ts sets data-glass-path): the lines are strokes of the clip's own path,
+   so no ring is cut where a corner starts to round (L-ref/12). While the morph still paints the circle, the
+   box-shadow rings come back with it. */
+.outline {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  display: none;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke-width: 1px;
+  pointer-events: none;
+}
+.glass[data-glass-path='true']:not([data-morph-round='true']) > .outline {
+  display: block;
+}
+.glass[data-glass-path='true']:not([data-morph-round='true']) > :is(.lens, .finish) {
+  box-shadow:
+    inset 0 2px 24px rgba(0, 0, 0, calc(0.2 * var(--glass-inner))),
+    inset 0 -2px 24px rgba(255, 255, 255, calc(0.2 * var(--glass-inner)));
+}
+.outlineEdge {
+  stroke: rgba(15, 15, 20, calc(0.07 * var(--glass-border)));
+}
+.outlineRing {
+  stroke: rgba(255, 255, 255, calc(0.16 * var(--glass-border)));
+}
+.outlineTop {
+  stop-color: rgba(255, 255, 255, calc(0.5 * var(--glass-rim)));
+}
+.outlineBottom {
+  stop-color: rgba(255, 255, 255, calc(0.22 * var(--glass-rim)));
+}
+/* The morph's rim (morph.module.css): only on glass that has one. */
+.outlineRim,
+.outlineRimLight {
+  display: none;
+}
+.glass:has(> [data-glass-rim]) > .outline > .outlineRim {
+  display: inline;
+  stroke: var(--glass-morph-rim);
+}
+.glass:has(> [data-glass-rim]) > .outline > .outlineRimLight {
+  display: inline;
+  stroke: var(--glass-morph-rim-light);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lens,
+  .finish {
+    background-color: var(--glass-fallback);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .lens,
+  .finish {
+    background-color: var(--glass-fallback);
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .band {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .glass {
+    border: 1px solid CanvasText;
+  }
+}

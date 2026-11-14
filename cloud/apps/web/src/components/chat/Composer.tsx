@@ -1,49 +1,70 @@
 import { ComposerBar } from './ComposerBar';
-import { Photo, Paperclip, X } from '../../lib/icons';
+import { cancelSendFlight, launchSendFlight } from './chatMotion';
 import { useModelSearch } from '../../lib/useModelSearch';
 import React from 'react';
 import type { Attachment } from '@praxis/protocol';
-import { DotMeter, GlassSurface } from '@praxis/glass';
+import { GlassSurface } from '@praxis/glass';
 import { usePraxisStore } from '../../state/store';
+import { AttachmentGroup } from '../ui/attachment';
 import { PlusTray } from './PlusTray';
+import { AttachmentChip } from './AttachmentChip';
+import { attachmentLimit } from './attachmentInfo';
+import { registerComposerInput } from './composerFocus';
+import { useSpeechInput } from './useSpeechInput';
+
+interface QueuedFile {
+  key: string;
+  name: string;
+  mediaType: string;
+  size: number;
+  status: 'uploading' | 'ready' | 'blocked' | 'failed';
+  attachment?: Attachment;
+  previewUrl?: string;
+  note?: string;
+  level?: 'warn' | 'block';
+}
+import styles from './Composer.module.css';
 
 export const Composer: React.FC = () => {
   const {
-    plusTrayOpen,
     setPlusTrayOpen,
     inlineModelSearchActive,
     setInlineModelSearchActive,
-    models,
     selectedProviderId,
     selectedModelId,
     setSelectedModel,
     cacheModels,
-    activeLiveRun,
     sendMessage,
-    cancelActiveRun,
     uploadFiles,
-    transcribeAudioBlob,
   } = usePraxisStore();
 
   const [text, setText] = React.useState('');
-  const [queuedAttachments, setQueuedAttachments] = React.useState<Attachment[]>([]);
-  const [uploading, setUploading] = React.useState(false);
-  const [recording, setRecording] = React.useState(false);
-  const [transcribing, setTranscribing] = React.useState(false);
+  const [queued, setQueuedState] = React.useState<QueuedFile[]>([]);
+  // The queue also lives in a ref updated in the same call, so a send pressed before React re-renders sees
+  // the files just picked; send waits for uploads in flight instead of ignoring the press (WP-J2).
+  const queueRef = React.useRef<QueuedFile[]>([]);
+  const setQueued = React.useCallback((next: QueuedFile[] | ((prev: QueuedFile[]) => QueuedFile[])) => {
+    queueRef.current = typeof next === 'function' ? next(queueRef.current) : next;
+    setQueuedState(queueRef.current);
+  }, []);
+  const uploadsRef = React.useRef<Promise<unknown>>(Promise.resolve());
+  const sendingRef = React.useRef(false);
+
+  React.useEffect(
+    () => () => {
+      for (const q of queueRef.current) {
+        if (q.previewUrl) URL.revokeObjectURL(q.previewUrl);
+      }
+    },
+    [],
+  );
 
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
-  const audioChunksRef = React.useRef<BlobPart[]>([]);
-
-  const isRunning =
-    activeLiveRun?.run.status === 'running' ||
-    activeLiveRun?.run.status === 'awaitingApproval' ||
-    activeLiveRun?.run.status === 'awaitingElicitation';
-
-  const currentModel =
-    models.find((m) => m.providerId === selectedProviderId && m.id === selectedModelId) ??
-    models[0];
+  React.useEffect(() => {
+    registerComposerInput(textareaRef.current);
+    return () => registerComposerInput(null);
+  }, []);
 
   const handlePickFiles = (accept = '*/*', capture = false) => {
     const input = fileInputRef.current;
@@ -58,25 +79,93 @@ export const Composer: React.FC = () => {
   };
 
   const [mediaError, setMediaError] = React.useState('');
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const enqueueFiles = React.useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+      setMediaError('');
+      const entries = files.map((file): QueuedFile => {
+        const mediaType = file.type || 'application/octet-stream';
+        const limit = attachmentLimit({ name: file.name, mediaType, size: file.size });
+        const previewUrl =
+          mediaType.startsWith('image/') && typeof URL.createObjectURL === 'function'
+            ? URL.createObjectURL(file)
+            : undefined;
+        return {
+          key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          name: file.name || 'pasted-file',
+          mediaType,
+          size: file.size,
+          status: limit?.level === 'block' ? 'blocked' : 'uploading',
+          previewUrl,
+          note: limit?.message,
+          level: limit?.level,
+        };
+      });
+      setQueued((prev) => [...prev, ...entries]);
+      const work = Promise.all(
+        files.map(async (file, i) => {
+          const entry = entries[i]!;
+          if (entry.status === 'blocked') return;
+          try {
+            const [attachment] = await uploadFiles([file]);
+            setQueued((prev) => prev.map((q) => (q.key === entry.key ? { ...q, status: 'ready', attachment } : q)));
+          } catch (err) {
+            const message = err instanceof Error ? err.message : 'Upload failed';
+            setQueued((prev) =>
+              prev.map((q) =>
+                q.key === entry.key ? { ...q, status: 'failed', note: `Couldn’t upload: ${message}`, level: 'block' } : q,
+              ),
+            );
+          }
+        }),
+      );
+      uploadsRef.current = Promise.all([uploadsRef.current, work]);
+      await work;
+    },
+    [setQueued, uploadFiles],
+  );
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = '';
+    void enqueueFiles(files);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const files = Array.from(e.clipboardData?.files ?? []);
     if (files.length === 0) return;
-    setUploading(true);
-    try {
-      const uploaded = await uploadFiles(files);
-      setQueuedAttachments((prev) => [...prev, ...uploaded]);
-    } catch (err) {
-      setMediaError(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
-      setUploading(false);
-      e.target.value = '';
+    e.preventDefault();
+    void enqueueFiles(files);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault();
     }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (files.length === 0) return;
+    e.preventDefault();
+    void enqueueFiles(files);
   };
 
   const modelSearch = useModelSearch(text, inlineModelSearchActive);
   const handleSend = async () => {
+    if (sendingRef.current) return;
     const trimmed = text.trim();
-    if (!trimmed && queuedAttachments.length === 0) return;
+    if (!trimmed && queueRef.current.length === 0) return;
+    if (queueRef.current.some((q) => q.status === 'uploading')) {
+      sendingRef.current = true;
+      try {
+        await uploadsRef.current;
+      } finally {
+        sendingRef.current = false;
+      }
+    }
+    const ready = queueRef.current.flatMap((q) => (q.status === 'ready' && q.attachment ? [q.attachment] : []));
+    if (!trimmed && ready.length === 0) return;
 
     if (inlineModelSearchActive) {
       const match = modelSearch.items[0];
@@ -89,11 +178,21 @@ export const Composer: React.FC = () => {
       return;
     }
 
-    const attachmentIds = queuedAttachments.map((a) => a.id);
+    const attachmentIds = ready.map((a) => a.id);
+    if (trimmed) {
+      launchSendFlight(textareaRef.current, trimmed);
+    }
+    for (const q of queueRef.current) {
+      if (q.previewUrl) URL.revokeObjectURL(q.previewUrl);
+    }
     setText('');
-    setQueuedAttachments([]);
+    setQueued([]);
     setPlusTrayOpen(false);
-    await sendMessage(trimmed || 'Attached files', { attachmentIds });
+    try {
+      await sendMessage(trimmed, { attachmentIds });
+    } catch {
+      cancelSendFlight();
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -105,246 +204,101 @@ export const Composer: React.FC = () => {
     }
   };
 
-  const handleToggleVoice = async () => {
-    if (recording) {
-      setRecording(false);
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        mediaRecorderRef.current.stop();
-        return;
-      }
-      setMediaError('Microphone recording is not available in this browser.');
-      return;
-    }
-
-    setRecording(true);
-    if (
-      typeof navigator !== 'undefined' &&
-      navigator.mediaDevices?.getUserMedia &&
-      typeof MediaRecorder !== 'undefined'
-    ) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const recorder = new MediaRecorder(stream);
-        audioChunksRef.current = [];
-        recorder.ondataavailable = (ev) => {
-          if (ev.data.size > 0) audioChunksRef.current.push(ev.data);
-        };
-        recorder.onstop = async () => {
-          stream.getTracks().forEach((t) => t.stop());
-          const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          setTranscribing(true);
-          try {
-            const transcript = await transcribeAudioBlob(blob);
-            if (transcript) {
-              setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
-            }
-          } catch (err) {
-            setMediaError(err instanceof Error ? err.message : 'Transcription failed');
-          } finally {
-            setTranscribing(false);
-          }
-        };
-        mediaRecorderRef.current = recorder;
-        recorder.start();
-      } catch {
-        setRecording(false);
-        setMediaError('Unable to access microphone.');
-      }
-    }
-  };
+  // Web Speech API: interim words stream into the field; the mic turns into a stop control while listening.
+  const speech = useSpeechInput({ text, onText: setText, onError: setMediaError });
 
   const inlineMatchingModels = modelSearch.items;
 
   return (
     <div
       data-testid="composer-dock"
-      style={{
-        width: '100%',
-        maxWidth: 680,
-        margin: '0 auto',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'stretch',
-        pointerEvents: 'auto',
-      }}
+      className={styles.dock}
+      onPaste={handlePaste}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
     >
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        data-testid="composer-file-input"
-        onChange={handleFileChange}
-        style={{ display: 'none' }}
-      />
+      <input ref={fileInputRef} type="file" multiple data-testid="composer-file-input" onChange={handleFileChange} hidden />
 
-      {mediaError && <div role="alert">{mediaError}</div>}
-      {/* Inline Model Search Results Overlay */}
-      {inlineModelSearchActive && (
-        <GlassSurface
-          material="regular"
-          intensity="medium"
-          radius={20}
-          data-testid="inline-model-search-results"
-          style={{
-            padding: 8,
-            marginBottom: 8,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '4px 10px',
-              fontSize: 11.5,
-              fontWeight: 600,
-              color: 'var(--paper-ink-3)',
-              textTransform: 'uppercase',
-            }}
-          >
-            <span>Filter Models Inline</span>
-            <button
-              type="button"
-              onClick={() => setInlineModelSearchActive(false)}
-              style={{
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--paper-ink-2)',
-                fontSize: 11.5,
-                cursor: 'pointer',
-              }}
-            >
+      {mediaError ? (
+        <div role="alert" className={styles.alert}>
+          {mediaError}
+        </div>
+      ) : null}
+
+      {inlineModelSearchActive ? (
+        <GlassSurface material="thick" data-testid="inline-model-search-results" className={styles.models}>
+          <div className={styles.modelsHeader}>
+            <span>Filter models</span>
+            <button type="button" onClick={() => setInlineModelSearchActive(false)}>
               Done
             </button>
           </div>
-          {modelSearch.error && <p role="alert">{modelSearch.error}</p>}
-          {modelSearch.busy && <p role="status">Searching…</p>}
-          {modelSearch.cursor && <button type="button" onClick={modelSearch.loadMore}>Load more models</button>}
+          {modelSearch.error ? <p role="alert" className={styles.note}>{modelSearch.error}</p> : null}
+          {modelSearch.busy ? <p role="status" className={styles.note}>Searching…</p> : null}
+          {modelSearch.cursor ? (
+            <button type="button" className={styles.modelRow} onClick={modelSearch.loadMore}>
+              Load more models
+            </button>
+          ) : null}
           {inlineMatchingModels.map((m) => (
             <button
               key={`${m.providerId}-${m.id}`}
               type="button"
+              className={styles.modelRow}
               data-testid={`inline-model-option-${m.id}`}
+              data-selected={m.providerId === selectedProviderId && m.id === selectedModelId}
               onClick={() => {
                 cacheModels([m]);
                 setSelectedModel(m.providerId, m.id);
                 setInlineModelSearchActive(false);
                 setText('');
               }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '8px 12px',
-                borderRadius: 12,
-                border: 'none',
-                background:
-                  m.providerId === selectedProviderId && m.id === selectedModelId
-                    ? 'var(--paper-fill-1)'
-                    : 'transparent',
-                color: 'var(--paper-ink)',
-                cursor: 'pointer',
-                textAlign: 'left',
-              }}
             >
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{m.displayName}</div>
-                <div style={{ fontSize: 12, color: 'var(--paper-ink-2)' }}>
-                  {m.tagline ?? m.providerId}
-                </div>
-              </div>
-              {typeof m.speed === 'number' && <DotMeter value={m.speed} />}
+              <span className={styles.modelCopy}>
+                <span className={styles.modelName}>{m.displayName}</span>
+              </span>
             </button>
           ))}
         </GlassSurface>
-      )}
+      ) : null}
 
-      {/* Expandable Plus Tray */}
       <PlusTray onPickFiles={handlePickFiles} />
 
-      {/* Main Floating Glass Composer Pill */}
-      <GlassSurface
-        material="regular"
-        intensity="medium"
-        radius={28}
-        data-testid="composer-surface"
-        style={{
-          padding: '8px 10px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-        }}
-      >
-        {/* Queued Attachments Strip */}
-        {(queuedAttachments.length > 0 || uploading) && (
-          <div
-            data-testid="composer-attachments-strip"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              overflowX: 'auto',
-              padding: '4px 6px 2px',
-            }}
-          >
-            {queuedAttachments.map((att) => (
-              <div
-                key={att.id}
-                style={{
-                  position: 'relative',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '5px 10px',
-                  borderRadius: 12,
-                  background: 'var(--paper-fill-1)',
-                  border: '0.5px solid var(--paper-hairline)',
-                  fontSize: 12.5,
-                  color: 'var(--paper-ink)',
+      <GlassSurface material="regular" style={{ '--glass-radius': 'var(--radius-composer)' } as React.CSSProperties} data-testid="composer-surface" className={styles.pill}>
+        {queued.length > 0 ? (
+          <AttachmentGroup data-testid="composer-attachments-strip" className={styles.attachments}>
+            {queued.map((q) => (
+              <AttachmentChip
+                key={q.key}
+                testId="composer-attachment-chip"
+                name={q.name}
+                mediaType={q.mediaType}
+                size={q.size}
+                previewUrl={q.previewUrl}
+                status={q.status === 'uploading' ? 'Uploading…' : undefined}
+                note={q.note}
+                noteLevel={q.level}
+                onRemove={() => {
+                  if (q.previewUrl) URL.revokeObjectURL(q.previewUrl);
+                  setQueued((prev) => prev.filter((x) => x.key !== q.key));
                 }}
-              >
-                <span>{att.mediaType.startsWith('image/') ? <Photo size={16} /> : <Paperclip size={16} />}</span>
-                <span
-                  style={{
-                    maxWidth: 120,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {att.name}
-                </span>
-                <button
-                  type="button"
-                  aria-label={`Remove ${att.name}`}
-                  onClick={() =>
-                    setQueuedAttachments((prev) => prev.filter((x) => x.id !== att.id))
-                  }
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    color: 'var(--paper-ink-3)',
-                    cursor: 'pointer',
-                    padding: '0 2px',
-                    fontSize: 13,
-                  }}
-                >
-                  <X size={14} />
-                </button>
-              </div>
+              />
             ))}
-            {uploading && (
-              <span style={{ fontSize: 12, color: 'var(--paper-ink-3)' }}>Uploading...</span>
-            )}
-          </div>
-        )}
+          </AttachmentGroup>
+        ) : null}
 
-        <ComposerBar inputRef={textareaRef} text={text} onTextChange={setText} onKeyDown={handleKeyDown}
-          recording={recording} transcribing={transcribing} onCamera={() => handlePickFiles('image/*', true)}
-          onToggleVoice={() => void handleToggleVoice()} onSend={() => void handleSend()} attachmentCount={queuedAttachments.length} />
+        <ComposerBar
+          inputRef={textareaRef}
+          text={text}
+          onTextChange={setText}
+          onKeyDown={handleKeyDown}
+          recording={speech.listening}
+          transcribing={false}
+          voiceSupported={speech.supported}
+          onToggleVoice={speech.toggle}
+          onSend={() => void handleSend()}
+          attachmentCount={queued.filter((q) => q.status === 'ready' || q.status === 'uploading').length}
+        />
       </GlassSurface>
     </div>
   );

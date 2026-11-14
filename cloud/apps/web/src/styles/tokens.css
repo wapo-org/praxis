@@ -1,0 +1,313 @@
+/* Praxis web design tokens. The only place raw values live; see cloud/docs/web/DESIGN.md.
+   Source of truth: PraxisChat/PraxisChat/DesignSystem/Tokens.swift (colours) and the iOS references. */
+
+:root,
+[data-theme='light'] {
+  /* Spacing: 4 px scale */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Type: one UI sans, one display serif, mono for code only. Fixed line heights. */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  --font-display: 'Source Serif 4', 'Newsreader', Georgia, serif;
+  /* The reading typeset (WP-L3, L-ref/19): answers in Noto Serif, their headings in Noto Sans, code in Geist Mono.
+     UI chrome (rows, buttons, labels) stays on --font-sans. Emoji fall through to the system's colour font. */
+  --font-body: 'Noto Serif Variable', 'Noto Serif Fallback', Georgia, serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-heading: 'Noto Sans Variable', 'Noto Sans Fallback', -apple-system, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-mono: 'Geist Mono Variable', 'Geist Mono Fallback', 'SF Mono', Menlo, Consolas, monospace;
+  --reading-size: 15px;
+  --reading-leading: 1.6;
+  /* Compact flow: one em of the body between blocks. */
+  --reading-flow: 1em;
+  --text-xs: 11px;
+  --leading-xs: 15px;
+  --text-sm: 12px;
+  --leading-sm: 17px;
+  --text-md: 14px;
+  --leading-md: 20px;
+  --text-lg: 16px;
+  --leading-lg: 26px;
+  --text-xl: 19px;
+  --leading-xl: 26px;
+  --text-2xl: 26px;
+  --text-input-touch: 16px; /* iOS zooms into focused fields below this */
+  --leading-2xl: 32px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --tracking-tight: -0.01em;
+  --tracking-display: -0.02em;
+
+  /* Controls */
+  --control-sm: 28px;
+  --control-md: 36px;
+  --control-lg: 44px;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+  --radius-full: 9999px;
+  /* Glass corners, measured from IMG_7868 (the iOS menu): the curve spans 42 pt with a superellipse
+     exponent of 2.75, so corner-shape superellipse(1.46). Engines without corner-shape get the circle
+     with the same apex (32) plus the path in glass/squircle.ts. All glass comes through these. */
+  --glass-corner: superellipse(1.46);
+  --radius-menu: 42px; /* menus, popovers, tray */
+  --radius-panel: 36px; /* sidebar and other large cards */
+  --radius-composer: 44px;
+
+  /* Icons: three sizes, one stroke */
+  --icon-sm: 16px;
+  --icon-md: 18px;
+  --icon-lg: 20px;
+  --icon-stroke: 1.75;
+
+  /* Layout */
+  --sidebar-width: 232px; /* the source is 196 px; the owner asked for slightly wider */
+  --float-margin: 12px; /* floating chrome inset from the viewport edges */
+  --popover-width: 360px;
+  --popover-max-height: 480px;
+  --tray-width: 360px;
+  --tray-models-min-height: 420px;
+  --sheet-width: 640px;
+  --sheet-height: 720px;
+  --settings-width: 720px;
+  --menu-min-width: 224px;
+  --menu-max-width: 280px; /* the reference menu is 250 pt; long labels truncate */
+  --menu-pad: 10px; /* panel edge to row pill: --radius round equivalent = pad + row / 2 */
+  --menu-row: 40px;
+  --menu-row-inset: var(--space-4);
+  --settings-height: 560px;
+  --settings-nav-width: 200px;
+  --row-model: 56px; /* two-line model row; MODEL_ROW_HEIGHT in ModelList.tsx */
+  --column-width: 720px;
+  /* The conversation's reading column: 70ch of the 15 px body face (Noto Serif's zero is 0.559 em, so
+     70 × 8.385 px). A fixed length, so it neither depends on the element's own font nor moves on font swap.
+     useContentShift.ts COLUMN mirrors it. */
+  --reading-width: 587px;
+  --topbar-height: 56px;
+
+  /* Colour: warm paper neutrals, black primary controls */
+  --color-paper: #fbfbf9;
+  --color-sidebar: #f6f5f1;
+  --color-surface: #ffffff;
+  --color-fill-1: #f4f2ec;
+  --color-fill-2: #e9e6df;
+  --color-bubble: #ecebe5;
+  --color-ink: #15140f;
+  --color-ink-2: #6e6b62;
+  --color-ink-3: #8a877e;
+  --color-hairline: rgba(21, 20, 15, 0.08);
+  --color-hairline-strong: rgba(21, 20, 15, 0.14);
+  --color-divider: rgba(21, 20, 15, 0.055);
+  --divider-scale: 0.5; /* half a hairline, at any pixel density */
+  --color-hover: rgba(21, 20, 15, 0.045);
+  --color-pressed: rgba(21, 20, 15, 0.08);
+  --color-accent: #15140f;
+  --color-on-accent: #fbfbf9;
+  --color-danger: #b3382e;
+  --color-success: #17653f;
+  --color-focus: rgba(21, 20, 15, 0.32);
+  --color-scrim: rgba(21, 20, 15, 0.18);
+  /* Quiet syntax tones for JSON in the tool inspector (WP-K2). */
+  --code-key: #4f6488;
+  --code-string: #4a7354;
+  --code-number: #9a5b25;
+  --code-literal: #82559a;
+  /* Long-form reading ink: near-black, softer than the UI ink on warm paper (K-ref/06). */
+  --color-reading: #1c1c1c;
+
+  /* Elevation: three levels */
+  --shadow-1: 0 1px 6px rgba(21, 20, 15, 0.035);
+  --shadow-2: 0 2px 12px rgba(21, 20, 15, 0.03), 0 10px 40px rgba(21, 20, 15, 0.05);
+  --shadow-3: 0 4px 20px rgba(21, 20, 15, 0.035), 0 22px 72px rgba(21, 20, 15, 0.08);
+
+  /* Motion (mirrors packages/glass/src/motion.ts) */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  /* Ambient status loops only (running dot, shimmer); never for interaction. */
+  --duration-ambient: 1600ms;
+  --ease-ambient: cubic-bezier(0.45, 0, 0.55, 1);
+  /* The run background (WP-K2): arrives with generation, leaves slower; orbit periods share no common
+     multiple within minutes, so the motion never visibly loops. */
+  --duration-run-in: 600ms;
+  --duration-run-out: 900ms;
+  --orbit-1: 23.7s;
+  --orbit-2: 31.3s;
+  --orbit-3: 41.9s;
+  --orbit-4: 53.1s;
+  --orbit-wobble-1: 17.3s;
+  --orbit-wobble-2: 29.9s;
+
+  /* Glass material (packages/glass/src/glass.module.css, material.ts). The optics
+     are in material.ts; these are the paint, per theme. Tuned on warm paper. */
+  --glass-regular-tint: rgba(252, 252, 250, 0.44);
+  --glass-regular-blur: 20px;
+  --glass-thick-tint: rgba(252, 252, 250, 0.66);
+  --glass-menu-tint: rgba(252, 252, 250, 0.84); /* with the next line, AA over any backdrop: dropdown.pw.ts */
+  --glass-menu-danger: #a6302a;
+  --glass-thick-blur: 32px;
+  --glass-clear-tint: rgba(255, 255, 255, 0.4);
+  --glass-clear-blur: 12px;
+  --glass-sheen-a: 0.21;
+  --glass-inner: 0.4;
+  --glass-rim: 0.9;
+  --glass-border: 0.7;
+  --glass-shadow: 1;
+  --glass-shadow-rgb: 21, 20, 15;
+  /* Soft and wide, with no visible edge: a contact shadow plus a lift per material. Geometry here, alpha
+     separate so a fade can scale it (glass.module.css). rig.ts starts the held shadow from --glass-contact-*. */
+  --glass-contact: 0 1px 14px;
+  --glass-contact-a: 0.03;
+  --glass-regular-lift: 0 10px 44px;
+  --glass-regular-lift-a: 0.06;
+  --glass-thick-lift: 0 22px 84px;
+  --glass-thick-lift-a: 0.085;
+  --glass-clear-lift: 0 6px 30px;
+  --glass-clear-lift-a: 0.045;
+  --glass-spot: rgba(18, 18, 26, 0.04);
+  /* The menu morph: thinner glass while it moves, a fixed blur on the arriving rows. */
+  --glass-morph-tint: rgba(252, 252, 250, 0.46);
+  --glass-morph-rim: rgba(21, 20, 15, 0.2); /* one crisp line, every frame of the morph and at rest */
+  --glass-morph-rim-light: rgba(255, 255, 255, 0.85);
+  --glass-morph-flash: rgba(255, 255, 255, 0.96);
+  --glass-morph-blur: 7px;
+  --glass-morph-backdrop: 6px;
+  --glass-fallback: #fbfbf9;
+  /* Subtle paper depth so floating glass blurs something real (see DESIGN.md). */
+  --paper-gradient:
+    radial-gradient(70% 55% at 8% 12%, rgba(214, 196, 164, 0.22), transparent 70%),
+    radial-gradient(55% 60% at 96% 90%, rgba(176, 186, 170, 0.2), transparent 70%),
+    radial-gradient(45% 40% at 62% 42%, rgba(226, 214, 200, 0.14), transparent 75%),
+    var(--color-paper);
+
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --color-paper: #0b0b0a;
+  --color-sidebar: #111110;
+  --color-surface: #151513;
+  --color-fill-1: #151513;
+  --color-fill-2: #2a2926;
+  --color-bubble: #232220;
+  --color-ink: #f1efe9;
+  --color-ink-2: #a8a49a;
+  --color-ink-3: #8f8c84;
+  --color-hairline: rgba(241, 239, 233, 0.08);
+  --color-hairline-strong: rgba(241, 239, 233, 0.14);
+  --color-divider: rgba(241, 239, 233, 0.07);
+  --color-hover: rgba(241, 239, 233, 0.05);
+  --color-pressed: rgba(241, 239, 233, 0.09);
+  --color-accent: #f1efe9;
+  --color-on-accent: #0b0b0a;
+  --color-danger: #ff7a6e;
+  --color-success: #4cc38a;
+  --color-focus: rgba(241, 239, 233, 0.36);
+  --color-scrim: rgba(0, 0, 0, 0.5);
+  --code-key: #9db1d6;
+  --code-string: #a6c9aa;
+  --code-number: #ddb07c;
+  --code-literal: #c8a4d8;
+  --color-reading: #e6e4de;
+
+  --shadow-1: 0 1px 6px rgba(0, 0, 0, 0.24);
+  --shadow-2: 0 2px 12px rgba(0, 0, 0, 0.18), 0 10px 40px rgba(0, 0, 0, 0.26);
+  --shadow-3: 0 4px 20px rgba(0, 0, 0, 0.2), 0 22px 72px rgba(0, 0, 0, 0.36);
+
+  --glass-regular-tint: rgba(26, 26, 24, 0.42);
+  --glass-thick-tint: rgba(24, 24, 22, 0.66);
+  --glass-menu-tint: rgba(24, 24, 22, 0.8);
+  --glass-menu-danger: #ff9d94;
+  --glass-clear-tint: rgba(40, 40, 37, 0.44);
+  --glass-sheen-a: 0.07;
+  --glass-inner: 0.5;
+  --glass-rim: 0.32;
+  --glass-border: 0.55;
+  --glass-shadow: 3.4;
+  --glass-shadow-rgb: 0, 0, 0;
+  --glass-spot: rgba(255, 255, 255, 0.04);
+  --glass-morph-tint: rgba(36, 36, 33, 0.34);
+  --glass-morph-rim: rgba(241, 239, 233, 0.2);
+  --glass-morph-rim-light: rgba(255, 255, 255, 0.06);
+  --glass-morph-flash: rgba(74, 74, 70, 0.96);
+  --glass-fallback: #1a1a18;
+  --paper-gradient:
+    radial-gradient(70% 55% at 8% 12%, rgba(120, 104, 78, 0.16), transparent 70%),
+    radial-gradient(55% 60% at 96% 90%, rgba(78, 92, 84, 0.15), transparent 70%),
+    radial-gradient(45% 40% at 62% 42%, rgba(90, 80, 70, 0.08), transparent 75%),
+    var(--color-paper);
+
+  color-scheme: dark;
+}
+
+/* Legacy aliases: screens not yet redesigned (D2/D3) read these names. New code uses --color-*. */
+:root,
+[data-theme='light'],
+[data-theme='dark'] {
+  --paper-canvas: var(--color-paper);
+  --paper-card: var(--color-surface);
+  --paper-surface: var(--color-surface);
+  --paper-surface-2: var(--color-fill-1);
+  --paper-ink: var(--color-ink);
+  --paper-ink-2: var(--color-ink-2);
+  --paper-ink-3: var(--color-ink-3);
+  --paper-secondary-ink: var(--color-ink-2);
+  --paper-muted-ink: var(--color-ink-3);
+  --paper-pressed-muted: var(--color-ink-3);
+  --paper-hairline: var(--color-hairline-strong);
+  --paper-rule-strong: var(--color-hairline-strong);
+  --paper-fill-1: var(--color-fill-1);
+  --paper-fill-2: var(--color-fill-2);
+  --paper-tile: var(--color-ink);
+  --paper-tile-glyph: var(--color-paper);
+  --paper-accent: var(--color-accent);
+  --paper-success: var(--color-success);
+  --paper-destructive: var(--color-danger);
+  --paper-danger: var(--color-danger);
+  --paper-warn: var(--color-ink-2);
+  --font-serif: var(--font-display);
+  --dropdown-highlight: var(--color-pressed);
+  --glass-tint: var(--glass-regular-tint);
+  --glass-tile-bg: var(--color-fill-1);
+}
+
+/* Sidebar (WP-H3, design v2): ported from the owner's Chat Screen.dc.html. The fill is solid to 45 % and fades to
+   40 % of itself at the bottom over a 14 px backdrop blur, so the bottom takes on what is behind it; a 1 px conic
+   ring in the palette's reflection colour is the border. --sb-* and --nb-* are set on <html> before first paint
+   (index.html, lib/sidebarPalette.ts); the Graphite and White defaults below cover a missing script. */
+:root {
+  --sidebar-top: 18px; /* the frame's 4 px + the aside's 14 px margin */
+  --sidebar-bottom: 24px; /* 16 px + 8 px */
+  --sidebar-radius: 29px;
+  --sidebar-blur: 14px;
+  /* The <aside>'s literal gloss, painted over sbBg = grad(base) (v2: sheen, then the fading base). */
+  --sb-shadow: inset 0 1px 2px rgb(255 255 255 / 30%);
+  --sb-gloss: linear-gradient(to bottom, rgb(255 255 255/20%) 0%, rgb(255 255 255/12%) 2%, rgb(255 255 255/6%) 5%, rgb(255 255 255/2%) 9%, transparent 14%, rgb(0 0 0/12%) 100%);
+  --sb-base: #16181b;
+  --sb-border: #3d4147;
+  --sb-accent: #8ea0b3; /* the palette's reflection colour, also the run background's lightest tone */
+  --sb-bg: linear-gradient(to bottom, rgb(255 255 255/20%) 0%, rgb(255 255 255/12%) 2%, rgb(255 255 255/6%) 5%, rgb(255 255 255/2%) 9%, transparent 14%, transparent 100%), linear-gradient(to bottom, #16181b 0%, #16181b 45%, color-mix(in srgb, #16181b 40%, transparent) 100%);
+  --sb-ring: conic-gradient(from 45deg at 50% 50%, color-mix(in srgb, #8ea0b3 100%, color-mix(in srgb, #8ea0b3 10%, #000)) 0deg, color-mix(in srgb, #8ea0b3 40%, color-mix(in srgb, #8ea0b3 10%, #000)) 35deg, color-mix(in srgb, #8ea0b3 10%, #000) 110deg, color-mix(in srgb, #8ea0b3 10%, #000) 250deg, color-mix(in srgb, #8ea0b3 40%, color-mix(in srgb, #8ea0b3 10%, #000)) 325deg, color-mix(in srgb, #8ea0b3 100%, color-mix(in srgb, #8ea0b3 10%, #000)) 360deg);
+  --sb-ink: #f2f1ed;
+  --sb-mute: #b5b4b0;
+  --sb-hl: rgba(255, 255, 255, 0.12);
+  --sb-line: rgba(255, 255, 255, 0.1);
+  --sb-active: rgba(255, 255, 255, 0.12); /* the source's active row, the same on every palette */
+  --nb-fill: #ffffff;
+  --nb-ink: #1c1c1c;
+  --nb-border: transparent;
+}

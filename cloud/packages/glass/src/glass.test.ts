@@ -1,78 +1,135 @@
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  PAPER,
-  PAPER_LIGHT,
-  PAPER_DARK,
-  RHYTHM,
-  TYPOGRAPHY,
-  MOTION,
-  MATERIAL_RAMP,
-  negotiateStrategy,
-  generateDisplacementMaps,
-  BAKED_PROFILES,
-} from './index';
+import { squirclePath } from './squircle';
+import { PAPER_DARK, PAPER_LIGHT, popIn, press, resolvePreset, sheet, slideUnder, SPRING } from './index';
 
-describe('@praxis/glass tokens & engine', () => {
-  it('matches exact Swift Paper color tokens in light and dark mode', () => {
-    expect(PAPER_LIGHT.canvas).toBe('#FBFBF9');
-    expect(PAPER_LIGHT.card).toBe('#FFFFFF');
-    expect(PAPER_LIGHT.ink).toBe('#15140F');
-    expect(PAPER_LIGHT.secondaryInk).toBe('#6E6B62');
-    expect(PAPER_LIGHT.hairline).toBe('#E9E6DF');
-    expect(PAPER_LIGHT.fill1).toBe('#F4F2EC');
-    expect(PAPER_LIGHT.fill2).toBe('#E9E6DF');
-    expect(PAPER_LIGHT.tile).toBe('#2A2926');
-    expect(PAPER_LIGHT.tileGlyph).toBe('#F4F2EC');
-    expect(PAPER_LIGHT.success).toBe('#17653F');
-    expect(PAPER_LIGHT.destructive).toBe('#B3382E');
+const here = new URL('.', import.meta.url).pathname;
+const tokensCss = readFileSync(join(here, '../../../apps/web/src/styles/tokens.css'), 'utf8');
+const block = (selector: string) => {
+  const start = tokensCss.indexOf(`${selector} {`);
+  return tokensCss.slice(start, tokensCss.indexOf('\n}', start));
+};
+const KEYS: Record<keyof typeof PAPER_LIGHT, string> = {
+  paper: '--color-paper', surface: '--color-surface', ink: '--color-ink', ink2: '--color-ink-2',
+  ink3: '--color-ink-3', fill1: '--color-fill-1', fill2: '--color-fill-2',
+  success: '--color-success', danger: '--color-danger',
+};
+function files(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory() ? files(path) : [path];
+  });
+}
 
-    expect(PAPER_DARK.canvas).toBe('#0B0B0A');
-    expect(PAPER_DARK.card).toBe('#151513');
-    expect(PAPER_DARK.ink).toBe('#F1EFE9');
-    expect(PAPER_DARK.secondaryInk).toBe('#A8A49A');
-    expect(PAPER_DARK.hairline).toBe('#2A2926');
-    expect(PAPER_DARK.tile).toBe('#DDD9CF');
-    expect(PAPER_DARK.tileGlyph).toBe('#151513');
-    expect(PAPER_DARK.success).toBe('#4CC38A');
-    expect(PAPER_DARK.destructive).toBe('#FF7A6E');
-    expect(PAPER.var.canvas).toBe('var(--paper-canvas)');
+describe('@praxis/glass design system', () => {
+  it('keeps tokens.css on the iOS Paper palette in light and dark', () => {
+    const light = block("[data-theme='light']");
+    const dark = block("[data-theme='dark']");
+    for (const [key, cssVar] of Object.entries(KEYS)) {
+      expect(light).toContain(`${cssVar}: ${PAPER_LIGHT[key as keyof typeof KEYS]};`);
+      expect(dark).toContain(`${cssVar}: ${PAPER_DARK[key as keyof typeof KEYS]};`);
+    }
   });
 
-  it('matches exact Swift Rhythm & Motion spring parameters', () => {
-    expect(RHYTHM.margin).toBe(20);
-    expect(RHYTHM.turnGap).toBe(32);
-    expect(RHYTHM.composerRadius).toBe(28);
-    expect(RHYTHM.maxReadingWidth).toBe(680);
-
-    expect(MOTION.press.response).toBe(0.16);
-    expect(MOTION.press.dampingFraction).toBe(0.86);
-    expect(MOTION.pop.response).toBe(0.36);
-    expect(MOTION.pop.dampingFraction).toBe(0.62);
-    expect(MOTION.reflow.dampingFraction).toBe(0.92);
-    expect(TYPOGRAPHY.sizes.body.fontSize).toBe('17px');
-    expect(TYPOGRAPHY.sizes.body.lineHeight).toBe('27px');
+  it('ships dark glass tints that are actually dark', () => {
+    const dark = block("[data-theme='dark']");
+    for (const recipe of ['regular', 'thick', 'clear']) {
+      const match = dark.match(new RegExp(`--glass-${recipe}-tint: rgba\\((\\d+), (\\d+), (\\d+)`));
+      expect(match, recipe).not.toBeNull();
+      expect(Math.max(...match!.slice(1).map(Number))).toBeLessThan(64);
+    }
   });
 
-  it('generates and caches kube.io displacement and specular maps', () => {
-    const maps1 = generateDisplacementMaps({
-      width: 256,
-      height: 400,
-      radius: 24,
-      bezel: MATERIAL_RAMP.regular.bezel,
-      material: 'regular',
-    });
-    expect(maps1.displacementUrl).toMatch(/^data:image\//);
-    expect(maps1.specularUrl).toMatch(/^data:image\//);
 
-    const maps2 = generateDisplacementMaps({
-      width: 256,
-      height: 400,
-      radius: 24,
-      bezel: MATERIAL_RAMP.regular.bezel,
-      material: 'regular',
-    });
-    expect(maps2).toBe(maps1);
-    expect(BAKED_PROFILES.regular.length).toBe(41);
-    expect(negotiateStrategy()).toMatch(/^(svg-displacement|webgl-refraction|progressive-frost|reduced-transparency)$/);
+  it('uses the spring family and collapses presets to a fade under reduced motion', () => {
+    expect(popIn.transition).toBe(SPRING);
+    expect(sheet.transition).toBe(SPRING);
+    expect(press.whileTap.scale).toBe(0.97);
+    expect(resolvePreset(popIn, true).initial).toEqual({ opacity: 0 });
+    expect(resolvePreset(popIn, false)).toBe(popIn);
+    expect(resolvePreset(popIn, true).animate).toEqual({ opacity: 1 });
+    // An inverted preset keeps its own direction: slideUnder rests visible (WP-I1: the reduced-motion tray was empty).
+    expect(resolvePreset(slideUnder, true).initial).toEqual({ opacity: 1 });
+    expect(resolvePreset(slideUnder, true).animate).toEqual({ opacity: 0 });
+  });
+
+  it('has no WebGL, DOM capture, rAF loop or animated blur; canvas only builds the lens maps', () => {
+    for (const file of files(here).filter((f) => /\.(tsx?|css)$/.test(f) && !/test|\.pw\./.test(f))) {
+      const src = readFileSync(file, 'utf8');
+      expect(src, file).not.toMatch(/WebGL|webgl|html2canvas|drawWindow|requestAnimationFrame\((tick|loop|frame|render|draw)|<canvas/);
+      expect(src, file).not.toMatch(/transition:[^;]*backdrop-filter/);
+      if (!file.endsWith('displacement-map.ts')) expect(src, file).not.toMatch(/getContext\(/);
+    }
+  });
+});
+
+describe('continuous corners', () => {
+  it('a squircle path spans the radius, closes, and stays inside the box', () => {
+    const path = squirclePath(200, 120, 42);
+    expect(path.startsWith('M')).toBe(true);
+    expect(path.endsWith('Z')).toBe(true);
+    const points = path.slice(1, -1).split('L').map((point) => point.split(' ').map(Number));
+    for (const [x, y] of points) {
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(200);
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y).toBeLessThanOrEqual(120);
+    }
+    // The corner's apex is cut by the measured amount: 22 % of the span.
+    const apex = Math.min(...points.map(([x, y]) => Math.hypot(x!, y!)));
+    expect(apex / Math.SQRT2 / 42).toBeCloseTo(0.2227, 1);
+    // Clamped on a small box.
+    expect(() => squirclePath(30, 20, 42)).not.toThrow();
+  });
+  it('all glass reads the corner and radius tokens', () => {
+    const css = readFileSync(join(here, 'glass.module.css'), 'utf8');
+    expect(css).toContain('corner-shape: var(--glass-corner)');
+    expect(css).toContain('border-radius: var(--glass-radius-round, var(--glass-radius))');
+    expect(tokensCss).toContain('--glass-corner: superellipse(1.46)');
+  });
+});
+
+describe('the more transparent glass keeps AA over paper', () => {
+  const lin = (v: number) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4);
+  const lum = ([r, g, b]: number[]) => 0.2126 * lin(r!) + 0.7152 * lin(g!) + 0.0722 * lin(b!);
+  const hex = (value: string) => [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16));
+  const contrast = (a: number[], b: number[]) => {
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x) as [number, number];
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  it.each([["[data-theme='light']", PAPER_LIGHT], ["[data-theme='dark']", PAPER_DARK]] as const)('%s', (selector, paper) => {
+    const theme = block(selector);
+    const page = hex(paper.paper);
+    for (const name of ['regular', 'thick', 'menu', 'clear']) {
+      const hit = new RegExp(`--glass-${name}-tint: rgba\\(([\\d., ]+)\\)`).exec(theme)!;
+      const [r, g, b, a] = hit[1]!.split(',').map(Number) as [number, number, number, number];
+      const over = [r, g, b].map((v, i) => v * a + page[i]! * (1 - a));
+      expect(contrast(hex(paper.ink), over), name).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(hex(paper.ink2), over), name).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
+describe('every GlassSurface stretches', () => {
+  const root = join(here, '../../..');
+  const uses = [...files(join(root, 'apps/web/src')), ...files(here)].filter(
+    (file) => /\.tsx$/.test(file) && !/\.test\.|\/lab\//.test(file) && /<GlassSurface\b/.test(readFileSync(file, 'utf8')),
+  );
+  it('knows every use, so a new one has to be looked at', () => {
+    expect(uses.map((file) => file.slice(file.lastIndexOf('/') + 1)).sort()).toEqual([
+      'ChatHeader.tsx',
+      'Composer.tsx',
+      'ConsentPopover.tsx',
+      'GlassMorph.tsx',
+      'Modal.tsx',
+      'SearchPalette.tsx',
+      'Sidebar.tsx',
+      'Trigger.tsx',
+      'primitives.tsx',
+    ]);
+  });
+  it('never turns the stretch off', () => {
+    for (const file of uses) expect(readFileSync(file, 'utf8'), file).not.toMatch(/<GlassSurface[^>]*\bstretch=\{false\}/);
   });
 });

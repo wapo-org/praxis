@@ -1,0 +1,219 @@
+/* The question card (WP-I1): part of the activity column, not a boxed form. Flat on the page, the
+   activity type scale, our pill fields and pill buttons; one quiet focus line, no double ring. */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  margin-top: var(--space-1);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  width: min(100%, 480px);
+  padding: var(--space-4);
+  border: 0;
+  border-radius: 22px; /* the grouped rows' squircle (components/ui/RowGroup) */
+  corner-shape: squircle;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-ink) 6%, var(--color-surface));
+}
+
+.message {
+  margin: 0;
+  color: var(--color-ink);
+  font: var(--weight-medium) var(--text-md) / var(--leading-md) var(--font-sans);
+}
+
+.source,
+.hint {
+  margin: calc(var(--space-2) * -1) 0 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.hint {
+  margin: 0;
+}
+
+.host {
+  color: var(--color-ink);
+  font-weight: var(--weight-medium);
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 420px;
+}
+
+.label {
+  margin-inline: var(--space-4); /* in line with the text inside the pill */
+  color: var(--color-ink-2);
+  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.fieldHint {
+  margin: -2px var(--space-4) 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}
+
+/* The pill field: the shared one (components/ui/fields). */
+.input {
+  composes: input from '../ui/fields.module.css';
+}
+
+/* Numbers are typed: no native spinner inside the pill. */
+.input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.input[type='number']::-webkit-inner-spin-button,
+.input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.field[data-invalid] .input,
+.choices[aria-invalid='true'] {
+  border-color: color-mix(in srgb, var(--color-danger) 70%, transparent);
+}
+
+.fieldError {
+  margin-inline: var(--space-4);
+  color: var(--color-danger);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}
+
+/* Enum: pill chips, the chosen one filled. */
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  outline: none;
+}
+
+.choice {
+  min-height: var(--control-sm);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-ink);
+  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  cursor: pointer;
+}
+
+.choice[aria-checked='true'] {
+  border-color: transparent;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+/* Boolean: label on the left, our switch on the right, inside a pill row. */
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--control-md);
+  padding: var(--space-1) var(--space-2) var(--space-1) 0;
+  cursor: pointer;
+}
+
+.toggleCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toggleCopy .label,
+.toggleCopy .fieldHint {
+  margin-block: 0;
+}
+
+.error {
+  margin: 0;
+  color: var(--color-danger);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Submit, Decline, Cancel: the shared Button (components/ui/Button). */
+.primary {
+  composes: button primary from '../ui/Button.module.css';
+}
+.secondary {
+  composes: button secondary from '../ui/Button.module.css';
+}
+.quiet {
+  composes: button quiet from '../ui/Button.module.css';
+}
+
+@media (hover: hover) {
+  .choice:hover:not([aria-checked='true']):not(:disabled) {
+    background: var(--color-hover);
+  }
+}
+
+.choice:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Answered: one quiet line where the card was, in the activity header's type. */
+.settled {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  max-width: 100%;
+  margin: var(--space-1) 0 0;
+  color: var(--color-ink-2);
+  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.settledIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-ink-3);
+}
+
+.settled[data-action='accept'] .settledIcon {
+  color: var(--color-success);
+}
+
+.settledText {
+  display: flex;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.settledSummary {
+  overflow: hidden;
+  color: var(--color-ink-3);
+  font-weight: var(--weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,0 +1,323 @@
+/* Shadcn Attachment ported onto Praxis glass surfaces, hairlines, radii, and tokens. */
+
+@keyframes attachment-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.attachment {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-surface) 84%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-1);
+  color: var(--color-ink);
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+@supports (corner-shape: squircle) {
+  .attachment {
+    corner-shape: squircle;
+  }
+}
+
+.attachment:focus-within {
+  box-shadow: 0 0 0 2px var(--color-focus);
+}
+
+.attachment:has(> [data-slot='attachment-trigger']):hover {
+  background: color-mix(in srgb, var(--color-surface) 94%, var(--color-ink) 4%);
+}
+
+.attachment[data-state='idle'] {
+  border-style: dashed;
+}
+
+.attachment[data-state='error'] {
+  border-color: color-mix(in srgb, var(--color-danger) 42%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+}
+
+/* Orientations */
+.attachment[data-orientation='horizontal'] {
+  flex-direction: row;
+  align-items: center;
+  min-width: 160px;
+  max-width: 280px;
+}
+
+.attachment[data-orientation='vertical'] {
+  flex-direction: column;
+  align-items: stretch;
+  width: 112px;
+}
+
+/* Sizes */
+.attachment[data-size='default'] {
+  gap: var(--space-2);
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+
+.attachment[data-size='sm'] {
+  gap: var(--space-2);
+  padding: 6px;
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+}
+
+.attachment[data-size='sm'][data-orientation='vertical'] {
+  width: 96px;
+}
+
+.attachment[data-size='xs'] {
+  gap: var(--space-1);
+  padding: 4px 6px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+}
+
+.attachment[data-size='xs'][data-orientation='vertical'] {
+  width: 80px;
+}
+
+/* Media */
+.media {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--color-fill-2, var(--color-fill-1));
+  color: var(--color-ink-2);
+}
+
+.attachment[data-orientation='horizontal'] .media {
+  width: 40px;
+  height: 40px;
+}
+
+.attachment[data-orientation='horizontal'][data-size='sm'] .media {
+  width: 32px;
+  height: 32px;
+}
+
+.attachment[data-orientation='horizontal'][data-size='xs'] .media {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+}
+
+.attachment[data-orientation='vertical'] .media {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+.attachment[data-state='error'] .media {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  color: var(--color-danger);
+}
+
+.media[data-variant='image'] {
+  opacity: 0.65;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+
+.attachment[data-state='done'] .media[data-variant='image'],
+.attachment[data-state='idle'] .media[data-variant='image'] {
+  opacity: 1;
+}
+
+.media[data-variant='image'] img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Content */
+.content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.attachment[data-orientation='vertical'] .content {
+  padding-inline: 2px;
+}
+
+.title {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink);
+  font-weight: var(--weight-medium);
+}
+
+.attachment[data-state='uploading'] .title,
+.attachment[data-state='processing'] .title {
+  background: linear-gradient(
+    90deg,
+    var(--color-ink-2) 0%,
+    var(--color-ink) 50%,
+    var(--color-ink-2) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: attachment-shimmer var(--duration-ambient) linear infinite;
+}
+
+.description {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink-2);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.attachment[data-state='error'] .description,
+.attachment[data-level] .description {
+  white-space: normal;
+  color: var(--color-danger);
+}
+
+/* Actions */
+.actions {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+}
+
+.attachment[data-orientation='vertical'] .actions {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-ink-3);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.attachment[data-orientation='vertical'] .action {
+  background: color-mix(in srgb, var(--color-surface) 78%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: var(--color-ink);
+}
+
+.action[data-size='icon-xs'] {
+  width: 24px;
+  height: 24px;
+}
+
+.action[data-size='icon-sm'] {
+  width: 28px;
+  height: 28px;
+}
+
+@media (hover: hover) {
+  .action:hover {
+    background: var(--color-hover);
+    color: var(--color-ink);
+  }
+}
+
+.action:focus-visible,
+.trigger:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Full-card trigger sitting below actions */
+.trigger {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+/* Snapping horizontal scroll row with progressive edge fade */
+.group {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--space-1);
+  scrollbar-width: none;
+  padding: var(--space-1);
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--fade-left, 0px),
+    #000 calc(100% - var(--fade-right, 0px)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--fade-left, 0px),
+    #000 calc(100% - var(--fade-right, 0px)),
+    transparent 100%
+  );
+}
+
+.group::-webkit-scrollbar {
+  display: none;
+}
+
+.group > [data-slot='attachment'] {
+  scroll-snap-align: start;
+}

@@ -1,3 +1,6 @@
+import {JsonValueSchema} from '@praxis/protocol';
+import {protectAnswer,secretMetadata,savedValues,querySavedValues,saveVariable,saveSecret} from './saved-secrets.js';
+import { searchChats } from './search.js';
 import {registerAccountDeletion} from './account-routes.js';
 import {AccountDeleteSchema} from '@praxis/protocol';
 import {randomUUID} from 'node:crypto';
@@ -66,8 +69,9 @@ export function createApp(options:AppOptions){
  app.get('/v1/bootstrap',async c=>{c.header('Cache-Control','private, no-store');return c.json(await service.bootstrap(c.get('userId')));});
  app.get('/v1/chats',async c=>{const query=PageQuerySchema.parse(c.req.query());let rows=await service.list<Chat>(c.get('userId'),'chat');if(query.q)rows=rows.filter(x=>x.title.toLowerCase().includes(query.q!.toLowerCase()));rows.sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.updatedAt.localeCompare(a.updatedAt)||a.id.localeCompare(b.id));return c.json(page(rows,query,`chats:${query.q??''}`));});
  app.post('/v1/chats',async c=>{const input=await body(c,ChatInputSchema);const now=service.now();const id=input.id??randomUUID();if(await service.adapters.store.get(c.get('userId'),'chat',id))throw new ApiError(409,'exists','Chat ID already exists');const chat=ChatSchema.parse({...input,type:'chat',id,createdAt:now,updatedAt:now});await service.write(c.get('userId'),'chat',id,chat);return c.json(chat,201);});
+ app.get('/v1/search',async c=>{const query=PageQuerySchema.parse(c.req.query());c.header('Cache-Control','private, no-store');return c.json(page(await searchChats(service,c.get('userId'),query.q??''),query,`search:${query.q??''}`));});
  app.get('/v1/chats/:id',async c=>c.json(await service.require<Chat>(c.get('userId'),'chat',c.req.param('id'))));
- app.patch('/v1/chats/:id',async c=>{const chat=await service.require<Chat>(c.get('userId'),'chat',c.req.param('id'));const input=await body(c,ChatPatchSchema);const result=ChatSchema.parse({...chat,...input,type:'chat',id:chat.id,updatedAt:service.now()});await service.write(c.get('userId'),'chat',chat.id,result);return c.json(result);});
+ app.patch('/v1/chats/:id',async c=>{const id=c.req.param('id');await service.require<Chat>(c.get('userId'),'chat',id);const input=await body(c,ChatPatchSchema);const result=await service.updateChat(c.get('userId'),id,chat=>ChatSchema.parse({...chat,...input,...(input.title!==undefined?{titleRevision:crypto.randomUUID()}:{}),type:'chat',id,updatedAt:service.now()}));return c.json(result);});
  app.delete('/v1/chats/:id',async c=>{const user=c.get('userId'),id=c.req.param('id');const chat=await service.require<Chat>(user,'chat',id);if(chat.activeRunId)await service.cancel(user,chat.activeRunId);await service.remove(user,'chat',id);for(const m of await service.list<Message>(user,'message',id))await service.remove(user,'message',m.id);return c.json({type:'ok'});});
  app.get('/v1/chats/:id/messages',async c=>{const id=c.req.param('id'),user=c.get('userId');await service.require(user,'chat',id);const rows=(await service.list<Message>(user,'message',id)).sort((a,b)=>(a.sequence??0)-(b.sequence??0)||a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id));return c.json(page(rows,PageQuerySchema.parse(c.req.query()),`messages:${id}`));});
  app.post('/v1/runs',async c=>{const input=await body(c,StartRunSchema);input.idempotencyKey??=c.req.header('Idempotency-Key');if(!service.local&&input.script)throw new ApiError(400,'local_only','Scripted runs are local only');return c.json(await service.start(c.get('userId'),input),202);});
@@ -75,7 +79,50 @@ export function createApp(options:AppOptions){
  app.get('/v1/runs/:id/snapshot',async c=>c.json(RunSnapshotSchema.parse(await service.require(c.get('userId'),'snapshot',c.req.param('id')))));
  app.post('/v1/runs/:id/cancel',async c=>{await body(c,z.object({type:z.literal('run.cancel')}));return c.json(await service.cancel(c.get('userId'),c.req.param('id')),202);});
  app.post('/v1/runs/:id/approvals',async c=>c.json(await service.decision(c.get('userId'),c.req.param('id'),await body(c,ApprovalDecisionSchema)),202));
- app.post('/v1/runs/:id/elicitations',async c=>c.json(await service.decision(c.get('userId'),c.req.param('id'),await body(c,ElicitationResponseSchema)),202));
+ const savedContext=(user:string)=>featureContext(service,user,{encryptionKey:options.encryptionKey});
+ app.get('/v1/saved-values',async c=>{c.header('Cache-Control','private, no-store');const q=z.object({query:z.string().max(500).optional(),kind:z.enum(['secret','variable']).optional(),since:z.iso.datetime({offset:true}).optional(),cursor:z.string().max(4000).optional(),limit:z.coerce.number().int().min(1).max(200).default(50)}).parse(c.req.query());return c.json(await querySavedValues(savedContext(c.get('userId')),q));});
+ app.post('/v1/saved-values',async c=>{
+  const user=c.get('userId'),input=await body(c,z.object({name:z.string().trim().min(1).max(100),kind:z.enum(['secret','variable']),value:JsonValueSchema}).strict());
+  const ctx=savedContext(user);
+  if(input.kind==='secret'){
+   if(typeof input.value!=='string'||!input.value)throw new ApiError(400,'invalid_value','Enter a secret value.');
+   const reference=await saveSecret(ctx,input.name,input.value,true,'');
+   return c.json((await savedValues(ctx)).find(v=>v.id===reference.slice(9,-2)),201);
+  }
+  const id=await saveVariable(ctx,input.name,input.value);return c.json((await savedValues(ctx)).find(v=>v.id===id),201);
+ });
+ app.patch('/v1/saved-values/:id',async c=>{
+  const user=c.get('userId'),id=c.req.param('id'),input=await body(c,z.object({name:z.string().trim().min(1).max(100).optional(),value:JsonValueSchema.optional()}).strict().refine(v=>v.name!==undefined||v.value!==undefined));
+  const secret=await service.adapters.store.get(user,'savedSecret',id);
+  const kind=secret&&!secret.deleted&&secret.value.saved===true?'savedSecret':'savedVariable';
+  const row=await service.require<JsonObject>(user,kind,id);
+  if(input.value!==undefined){
+   if(Buffer.byteLength(JSON.stringify(input.value))>64_000)throw new ApiError(413,'value_too_large','Saved values must be smaller than 64 KB.');
+   if(kind==='savedSecret'){
+    if(typeof input.value!=='string'||!input.value)throw new ApiError(400,'invalid_value','Enter a secret value.');
+    await service.adapters.store.put(user,'savedSecretValue',id,{cipher:seal(input.value,user,'saved:'+id,options.encryptionKey)});
+   }else row.value=input.value;
+  }
+  if(input.name!==undefined)row.name=input.name;
+  await service.write(user,kind,id,row);return c.json({type:'ok'});
+ });
+ app.delete('/v1/saved-values/:id',async c=>{
+  const user=c.get('userId'),id=c.req.param('id'),secret=await service.adapters.store.get(user,'savedSecret',id);
+  const kind=secret&&!secret.deleted&&secret.value.saved===true?'savedSecret':'savedVariable';
+  await service.remove(user,kind,id);if(kind==='savedSecret')await service.adapters.store.delete(user,'savedSecretValue',id);return c.json({type:'ok'});
+ });
+ app.get('/v1/saved-secrets',async c=>c.json({items:await secretMetadata(featureContext(service,c.get('userId'),{encryptionKey:options.encryptionKey}))}));
+ app.patch('/v1/saved-secrets/:id',async c=>{const u=c.get('userId'),id=c.req.param('id'),row=await service.require<JsonObject>(u,'savedSecret',id);const input=await body(c,z.object({name:z.string().trim().min(1).max(100)}));await service.write(u,'savedSecret',id,{...row,name:input.name});return c.json({type:'ok'});});
+ app.delete('/v1/saved-secrets/:id',async c=>{const u=c.get('userId'),id=c.req.param('id');await service.remove(u,'savedSecret',id);await service.adapters.store.delete(u,'savedSecretValue',id);return c.json({type:'ok'});});
+ app.post('/v1/runs/:id/elicitations',async c=>{
+  const user=c.get('userId'),id=c.req.param('id'),answer=await body(c,ElicitationResponseSchema);
+  if(answer.action==='accept'&&answer.content){
+   const snapshot=await service.require<import('@praxis/protocol').RunSnapshot>(user,'snapshot',id);
+   const pending=snapshot.pendingElicitations.find(e=>e.id===answer.elicitationId);
+   if(pending)answer.content=await protectAnswer(featureContext(service,user,{encryptionKey:options.encryptionKey}),snapshot.run.chatId,pending.schema,answer.content);
+  }
+  return c.json(await service.decision(user,id,answer),202);
+ });
  app.get('/v1/runs/:id/events',async c=>{
   const user=c.get('userId'),runId=c.req.param('id');await service.require<Run>(user,'run',runId);let after=eventCursor(c);
   const first=await service.adapters.events.read(user,`run:${runId}`,after,100);if(first.length&&first[0]!.id>after+1)throw new ApiError(409,'cursor_expired','Fetch the run snapshot before reconnecting');
@@ -94,7 +141,7 @@ export function createApp(options:AppOptions){
  app.delete('/v1/providers/:id',async c=>{const user=c.get('userId'),id=c.req.param('id');await service.remove(user,'provider',id);await service.adapters.store.delete(user,'providerSecret',id);return c.json({type:'ok'});});
  async function saveProviderSecret(user:string,id:string,input:z.infer<typeof ProviderInputSchema>){const existing=await service.adapters.store.get(user,'providerSecret',id);const value={...existing?.value};if(input.apiKey)value.apiKey=seal(input.apiKey,user,`provider:${id}:key`,options.encryptionKey);if(input.extraHeaders)value.extraHeaders=seal(JSON.stringify(input.extraHeaders),user,`provider:${id}:headers`,options.encryptionKey);await service.put(user,'providerSecret',id,value);}
  app.post('/v1/providers/:id/test',async c=>{const input=await body(c,z.object({type:z.literal('provider.test'),modelId:z.string().min(1).max(500).optional()}));const user=c.get('userId'),id=c.req.param('id');if(input.modelId){await service.providers!.requireConsent(user,id);return c.json(await service.providers!.probe(user,id,input.modelId));}const models=await service.providers!.refresh(user,id);return c.json({type:'provider.test.result',ok:true,models});});
- app.post('/v1/providers/:id/refresh-models',async c=>{await body(c,z.object({type:z.literal('models.refresh')}));const models=await service.providers!.refresh(c.get('userId'),c.req.param('id'));return c.json({type:'page',items:models.slice(0,100),nextCursor:null});});
+ app.post('/v1/providers/:id/refresh-models',async c=>{await body(c,z.object({type:z.literal('models.refresh')}));const models=await service.providers!.refresh(c.get('userId'),c.req.param('id'));return c.json({type:'page',items:models,nextCursor:null});});
  app.post('/v1/chats/:id/truncate',async c=>{const input=await body(c,ChatTruncateSchema);return c.json(await service.truncate(c.get('userId'),c.req.param('id'),input.clientTurnId));});
  app.get('/v1/models',async c=>{const query=PageQuerySchema.parse(c.req.query());let models=await service.list<Model>(c.get('userId'),'model');const provider=c.req.query('providerId');if(provider)models=models.filter(m=>m.providerId===provider);if(query.q)models=models.filter(m=>`${m.displayName} ${m.id}`.toLowerCase().includes(query.q!.toLowerCase()));if(c.req.query('pinned')==='true')models=models.filter(m=>m.pinned);if(c.req.query('favorite')==='true')models=models.filter(m=>m.favorite);models.sort((a,b)=>Number(b.pinned)-Number(a.pinned)||a.displayName.localeCompare(b.displayName)||a.id.localeCompare(b.id));return c.json(page(models,query,`models:${provider??''}:${query.q??''}:${c.req.query('pinned')??''}:${c.req.query('favorite')??''}`));});
  app.patch('/v1/models/preferences',async c=>{const input=await body(c,ModelPreferenceSchema);const id=`${input.providerId}:${input.modelId}`,user=c.get('userId');const model=await service.require<Model>(user,'model',id);if(input.pinned!==undefined)model.pinned=input.pinned;if(input.favorite!==undefined)model.favorite=input.favorite;await service.write(user,'model',id,model);return c.json(model);});

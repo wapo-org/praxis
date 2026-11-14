@@ -33,7 +33,7 @@ export interface FeatureContext {userId:string;store:Store;kv:KV;fetch:typeof fe
  egress:typeof fetch;
  local:boolean;encryptionKey?:string}
 export interface FeatureTool {
- name:string;description:string;inputSchema:JsonObject;
+ originalName?:string;name:string;description:string;inputSchema:JsonObject;
  source:{type:'builtin'|'skill'|'javascript'|'mcp'|'server';serverId?:string;serverName?:string};
  traits:('readOnly'|'destructive'|'idempotent'|'openWorld'|'sandboxed')[];
  /** Hidden tools are not offered to the model; they are reachable through nested callTool (e.g. the MCP gateway). */

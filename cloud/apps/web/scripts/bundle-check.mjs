@@ -10,3 +10,7 @@ for (const marker of ['devAuth', '/v1/auth/dev', 'Liquid Glass Optical Lab', 'ap
   assert.equal(text.includes(marker), false, `Production bundle contains ${marker}`);
 }
 console.log(`PASS: lab/dev-auth absent; ${chunks.reduce((n, chunk) => n + chunk.length, 0)} JS bytes, ${chunks.reduce((n, chunk) => n + gzipSync(chunk).length, 0)} gzip bytes`);
+const entryIndex = names.findIndex(name => /^index-/.test(name));
+assert.ok(entryIndex >= 0, 'Expected a Vite entry chunk');
+assert.ok(chunks[entryIndex].length <= 450_000, `Entry JS exceeds 450 kB: ${chunks[entryIndex].length}`);
+console.log(`PASS: initial entry ${chunks[entryIndex].length} raw bytes (limit 450000); authenticated and routed chunks reported separately above`);

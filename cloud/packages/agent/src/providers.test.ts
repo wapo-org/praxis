@@ -79,6 +79,13 @@ describe('request transforms and raw replay',()=>{
     expect(JSON.stringify(buildProviderRequest('openAIChat',r,{replayReasoning:false}))).not.toContain('reasoning_details');
   });
   it('clamps effort down on ties and drops known unsupported effort',()=>{expect(clampEffort('high',['medium','max'])).toBe('medium');expect(clampEffort('high',[])).toBeUndefined();expect(clampEffort('high',undefined)).toBe('high');});
+  it('forwards temperature when set and safe with adaptive/reasoning effort settings',()=>{
+    const chat=buildProviderRequest('openAIChat',{...request(),temperature:0});expect(chat.temperature).toBe(0);
+    const anthNoEffort=buildProviderRequest('anthropicMessages',{...request(),capabilities:{...caps,reasoningEffort:false},temperature:0});expect(anthNoEffort.temperature).toBe(0);
+    const anthWithEffort=buildProviderRequest('anthropicMessages',{...request(),temperature:0});expect(anthWithEffort.temperature).toBeUndefined();
+    const respNone=buildProviderRequest('openAIResponses',{...request(),effort:'none',temperature:0});expect(respNone.temperature).toBe(0);
+    const respHigh=buildProviderRequest('openAIResponses',{...request(),effort:'high',temperature:0});expect(respHigh.temperature).toBeUndefined();
+  });
 });
 describe('injected HTTP provider and models',()=>{
   it.each(['anthropicMessages','openAIChat','openAIResponses'] as ProviderFlavor[])('calls %s endpoint with configured auth',async flavor=>{
@@ -103,4 +110,14 @@ describe('injected HTTP provider and models',()=>{
   it('normalizes known full URLs, rejects embedded secrets, classifies feature rejections first',()=>{
     expect(providerURL('https://example.invalid/v1/chat/completions','models').pathname).toBe('/v1/models');expect(()=>providerURL('https://key@example.invalid','models')).toThrow();expect(classifyProviderError('Tools are not supported',500).kind).toBe('tools');expect(classifyProviderError('Image input not supported',500).kind).toBe('images');expect(classifyProviderError('Invalid reasoning_effort',400).kind).toBe('effort');
   });
+});
+
+it('keeps attachment notes as user data when app-authored notes use mid-chat system messages',()=>{
+  const r=request();r.capabilities={...r.capabilities,midConversationSystem:true};
+  r.messages=[message('user',[{type:'note',text:'Mode: Execute'},{type:'note',attachmentId:'zip-1',mediaType:'application/zip',text:'[Attached file: “data.zip”. Read with fs.]'},{type:'text',text:'Inspect it'}])];
+  const body=buildProviderRequest('openAIChat',r);const messages=body.messages as JsonObject[];
+  expect(messages.some(m=>m.role==='system'&&m.content==='Mode: Execute')).toBe(true);
+  expect(JSON.stringify(messages.filter(m=>m.role==='system'))).not.toContain('data.zip');
+  expect(JSON.stringify(messages.filter(m=>m.role==='user'))).toContain('[Attached file: “data.zip”');
+  expect(r.messages[0]!.parts[1]).toMatchObject({type:'note',attachmentId:'zip-1'});
 });

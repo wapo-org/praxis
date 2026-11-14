@@ -1,6 +1,12 @@
 import type { Attachment, Message } from '@praxis/protocol';
 import React from 'react';
+import { Copy, Check } from '../../lib/icons';
+import { AttachmentGroup } from '../ui/attachment';
+import actionStyles from './AgentMessageView.module.css';
+import { bindSendFlightTarget, isSendFlightTarget } from './chatMotion';
 import { MessageAttachment } from './MessageAttachment';
+import { visibleUserText } from './attachmentInfo';
+import styles from './UserBubble.module.css';
 
 export interface UserBubbleProps {
   message: Message;
@@ -8,36 +14,33 @@ export interface UserBubbleProps {
 }
 
 export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById }) => {
+  const [copied, setCopied] = React.useState(false);
   const [lightboxUrl, setLightboxUrl] = React.useState<string | null>(null);
 
   const textParts = message.parts.filter((p) => p.type === 'text');
-  const mediaParts = message.parts.filter((p) => p.type === 'image' || p.type === 'document');
+  // Files are parts with an attachment: images, inline documents, and file-only notes (the model reads the
+  // note's text; the person sees the file).
+  const mediaParts = message.parts.filter((p) => !!p.attachmentId && (p.type === 'image' || p.type === 'document' || p.type === 'note'));
 
-  const combinedText = textParts.map((p) => (p.type === 'text' ? (p.text ?? '') : '')).join('\n');
+  const joined = visibleUserText(textParts.map((p) => p.text ?? '').join('\n'));
+  // The old composer sent this placeholder with attachment-only messages; the chips say it now.
+  const combinedText = joined === 'Attached files' && mediaParts.length > 0 ? '' : joined;
+  const turnKey = message.clientTurnId ?? message.id;
+
+  const bubbleRef = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      if (el) bindSendFlightTarget(el, turnKey, combinedText);
+    },
+    [turnKey, combinedText],
+  );
+
+  if (!combinedText && mediaParts.length === 0) return null;
 
   return (
     <>
-      <div
-        data-testid="user-message-bubble"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'flex-end',
-          marginBottom: 18,
-          animation: 'praxisBubbleIn 260ms cubic-bezier(0.22, 1, 0.36, 1) both',
-        }}
-      >
-        {mediaParts.length > 0 && (
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 8,
-              justifyContent: 'flex-end',
-              marginBottom: combinedText ? 8 : 0,
-              maxWidth: '78%',
-            }}
-          >
+      <div data-testid="user-message-bubble" data-message-key={`m:${turnKey}`} className={styles.turn}>
+        {mediaParts.length > 0 ? (
+          <AttachmentGroup className={styles.media} data-with-text={!!combinedText}>
             {mediaParts.map((part, index) => (
               <MessageAttachment
                 key={`${part.attachmentId}-${index}`}
@@ -46,61 +49,21 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
                 onPreview={setLightboxUrl}
               />
             ))}
-          </div>
-        )}
-
-        {combinedText && (
-          <div
-            style={{
-              maxWidth: '78%',
-              padding: '12px 16px',
-              borderRadius: '20px 20px 8px 20px',
-              background: 'var(--paper-fill-1)',
-              border: '0.5px solid var(--paper-hairline)',
-              color: 'var(--paper-ink)',
-              fontSize: 17,
-              lineHeight: '24px',
-              letterSpacing: '-0.25px',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              boxShadow: '0 2px 8px rgba(18, 17, 15, 0.03)',
-            }}
-          >
+          </AttachmentGroup>
+        ) : null}
+        {combinedText ? (
+          <div ref={bubbleRef} data-user-bubble="" className={styles.bubble} style={isSendFlightTarget(turnKey,combinedText)?{visibility:'hidden',opacity:0}:undefined}>
             {combinedText}
           </div>
-        )}
+        ) : null}
+        {combinedText ? <button type="button" className={`${actionStyles.action} ${styles.copy}`} data-testid="user-copy-button" aria-label={copied ? 'Copied' : 'Copy message'} onClick={async () => { await navigator.clipboard.writeText(combinedText); setCopied(true); setTimeout(() => setCopied(false), 1600); }}>{copied ? <Check size={16}/> : <Copy size={16}/>}</button> : null}
       </div>
 
-      {lightboxUrl && (
-        <div
-          role="dialog"
-          aria-label="Image preview"
-          onClick={() => setLightboxUrl(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 250,
-            background: 'rgba(12, 12, 11, 0.78)',
-            backdropFilter: 'blur(12px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            cursor: 'zoom-out',
-          }}
-        >
-          <img
-            src={lightboxUrl}
-            alt="Full size attachment"
-            style={{
-              maxWidth: '92vw',
-              maxHeight: '88vh',
-              borderRadius: 16,
-              boxShadow: '0 24px 64px rgba(0,0,0,0.45)',
-            }}
-          />
+      {lightboxUrl ? (
+        <div role="dialog" aria-label="Image preview" className={styles.lightbox} onClick={() => setLightboxUrl(null)}>
+          <img src={lightboxUrl} alt="Full size attachment" />
         </div>
-      )}
+      ) : null}
     </>
   );
 };

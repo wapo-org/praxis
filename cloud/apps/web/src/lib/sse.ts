@@ -35,13 +35,14 @@ export function subscribeRunEvents(
       try {
         const base = client.getBaseUrl();
         const url = `${base}/v1/runs/${encodeURIComponent(runId)}/events?after=${lastEventId}`;
+        const token = await client.freshToken();
         const res = await fetch(url, {
           method: 'GET',
           credentials: 'include',
           headers: {
             Accept: 'text/event-stream',
-            ...(client.getBearerToken()
-              ? { Authorization: `Bearer ${client.getBearerToken()}` }
+            ...(token
+              ? { Authorization: `Bearer ${token}` }
               : {}),
             'Last-Event-ID': String(lastEventId),
           },

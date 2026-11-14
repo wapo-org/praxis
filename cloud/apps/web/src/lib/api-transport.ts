@@ -49,6 +49,11 @@ export interface ApiClientConfig {
 
 export class ApiTransport {
   onUnauthorized?: () => void;
+  tokenProvider?: () => Promise<string | null>;
+  async freshToken(): Promise<string> {
+    if (this.tokenProvider) this.bearerToken = await this.tokenProvider() ?? '';
+    return this.bearerToken;
+  }
   private baseUrl: string;
   private bearerToken: string;
 
@@ -106,6 +111,7 @@ export class ApiTransport {
     path: string,
     init?: RequestInit & { headers?: Record<string, string> },
   ): Promise<T> {
+    await this.freshToken();
     const headers: Record<string, string> = {
       ...(init?.body && typeof init.body === 'string'
         ? { 'Content-Type': 'application/json' }
@@ -134,7 +140,8 @@ export class ApiTransport {
         if (err.message) message = err.message;
         if (err.requestId) requestId = err.requestId;
       } catch {}
-      if (res.status === 404) message = `Not available: ${path}`;
+      if (res.status === 404 && path === '/v1/runs') message = 'This chat or its model is no longer available after the server restarted. Refresh the page, choose an available model, and start a new chat.';
+      else if (res.status === 404) message = 'This item is no longer available. Refresh the page and try again.';
       throw new PraxisApiError(res.status, code, message, requestId);
     }
 

@@ -1,60 +1,115 @@
-import { GlassSurface } from '@praxis/glass';
-import { Edit, FlaskConical, History, Settings } from '../../lib/icons';
+import {TitleText} from './TitleText';
+import { GlassSurface, PANEL, popIn, usePreset, usePress, type GlassSurfaceProps } from '@praxis/glass';
+import { AnimatePresence, motion } from 'framer-motion';
+import type React from 'react';
+import { displayTitle } from '../../lib/chatTitle';
+import { Edit, History, PanelLeft, Settings } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
+import { useIsNarrow } from '../shell/useIsNarrow';
+import { useContentShift } from '../shell/useContentShift';
+import styles from './ChatHeader.module.css';
 
-export function ChatHeader({ onOpenGlassLab }: { onOpenGlassLab?: () => void }) {
-  const {
-    activeChat,
-    models,
-    selectedModelId,
-    selectedProviderId,
-    setActiveSheet,
-    startNewConversation,
-  } = usePraxisStore();
-  const model = models.find((m) => m.id === selectedModelId && m.providerId === selectedProviderId);
+/** The navbar: floating glass over the full-bleed messages, a title pill and small action clusters. */
+export function ChatHeader() {
+  const store = usePraxisStore();
+  const narrow = useIsNarrow();
+  const shift = useContentShift();
+  const pressProps = usePress();
+  const pop = usePreset(popIn);
+  const model = store.models.find(
+    (m) => m.id === store.selectedModelId && m.providerId === store.selectedProviderId,
+  );
   return (
-    <header className="chat-header" data-testid="chat-top-bar">
-      <GlassSurface radius={999} className="chat-header-circle">
-        <button
-          aria-label="History"
-          data-testid="nav-history-button"
-          onClick={() => setActiveSheet('history')}
-        >
-          <History size={21} />
-        </button>
-      </GlassSurface>
-      <button
-        className="chat-header-title"
-        data-testid="nav-chat-title-pill"
-        onClick={() => setActiveSheet('settings')}
-        aria-label="Chat and model settings"
-      >
-        <strong>{activeChat?.title || 'New chat'}</strong>
-        <span>{model?.displayName || 'Select model'}</span>
-      </button>
-      <GlassSurface radius={999} className="chat-header-circle">
-        <button
-          aria-label="New chat"
-          data-testid="nav-new-chat-button"
-          onClick={() => startNewConversation()}
-        >
-          <Edit size={21} />
-        </button>
-      </GlassSurface>
-      <div className="chat-header-desktop">
-        {onOpenGlassLab && (
-          <button onClick={onOpenGlassLab}>
-            <FlaskConical size={16} /> Lab
-          </button>
+    <header className={styles.bar} data-testid="chat-top-bar">
+      <div className={styles.side}>
+        <AnimatePresence initial={false}>
+          {narrow ? (
+            <Cluster key="history" {...pop}>
+              {/* History is the floating sidebar panel on narrow screens. */}
+              <BarButton label="History" testId="nav-history-button" onClick={() => store.setDesktopSidebarOpen(true)}>
+                <History size={18} />
+              </BarButton>
+            </Cluster>
+          ) : !store.desktopSidebarOpen ? (
+            <Cluster key="sidebar" {...pop}>
+              <BarButton label="Open sidebar" testId="nav-sidebar-button" onClick={() => store.setDesktopSidebarOpen(true)}>
+                <PanelLeft size={18} />
+              </BarButton>
+            </Cluster>
+          ) : null}
+        </AnimatePresence>
+      </div>
+
+      <motion.div className={styles.center} initial={false} animate={{ x: shift }} transition={PANEL}>
+        {/* No box (K-ref/13): the title and model sit on the stretched blur. */}
+        <div className={styles.titlePill}>
+          <motion.button
+            type="button"
+            className={styles.title}
+            data-testid="nav-chat-title-pill"
+            onClick={() => store.setActiveSheet('settings')}
+            aria-label="Chat and model settings"
+            {...pressProps}
+          >
+            <span className={styles.titleText}>{<TitleText title={displayTitle(store.activeChat ? store.activeChat.title || 'New chat' : store.draftTitle)}/>}</span>
+            <span className={styles.model}>{model?.displayName || 'Select model'}</span>
+          </motion.button>
+        </div>
+      </motion.div>
+
+      <div className={`${styles.side} ${styles.end}`}>
+        {narrow ? (
+          <Cluster>
+            <BarButton label="New chat" testId="nav-new-chat-button" onClick={() => store.startNewConversation()}>
+              <Edit size={18} />
+            </BarButton>
+          </Cluster>
+        ) : (
+          <Cluster>
+            <BarButton label="New chat" testId="nav-new-chat-desktop" onClick={() => store.startNewConversation()}>
+              <Edit size={18} />
+            </BarButton>
+            <BarButton label="Settings" testId="nav-settings-button" onClick={() => store.setActiveSheet('settings')}>
+              <Settings size={18} />
+            </BarButton>
+          </Cluster>
         )}
-        <button
-          data-testid="nav-settings-button"
-          aria-label="Settings"
-          onClick={() => setActiveSheet('settings')}
-        >
-          <Settings size={19} />
-        </button>
       </div>
     </header>
+  );
+}
+
+function Cluster({ children, ...motionProps }: { children: React.ReactNode } & GlassSurfaceProps) {
+  return (
+    <GlassSurface material="regular" shape="capsule" className={styles.cluster} {...motionProps}>
+      {children}
+    </GlassSurface>
+  );
+}
+
+function BarButton({
+  label,
+  testId,
+  onClick,
+  children,
+}: {
+  label: string;
+  testId: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const pressProps = usePress();
+  return (
+    <motion.button
+      type="button"
+      className={styles.button}
+      aria-label={label}
+      title={label}
+      data-testid={testId}
+      onClick={onClick}
+      {...pressProps}
+    >
+      {children}
+    </motion.button>
   );
 }

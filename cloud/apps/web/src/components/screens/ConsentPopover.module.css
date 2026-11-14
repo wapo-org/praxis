@@ -1,0 +1,104 @@
+/* Anchored consent popover: 360 x 480 at most, no scrim, no modal trap. */
+.anchor {
+  position: fixed;
+  z-index: 90;
+  width: min(var(--popover-width), calc(100vw - var(--space-6)));
+  transform-origin: 50% 100%;
+}
+
+.panel {
+  overflow: hidden;
+  outline: none;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: var(--consent-max, var(--popover-max-height));
+  padding: var(--space-4);
+}
+
+/* Only the details scroll; Allow/Cancel stay pinned and visible. When they must scroll they end on padding,
+   and a soft edge fades the cut line only while more lies below (L-ref/14). */
+.scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.scroll[data-overflow] {
+  padding-bottom: var(--space-4);
+}
+.scroll[data-more-below] {
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - var(--space-8)), transparent);
+  mask-image: linear-gradient(to bottom, black calc(100% - var(--space-8)), transparent);
+}
+.actions {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+
+.heading {
+  margin: 0;
+  color: var(--color-ink);
+  font: var(--weight-semibold) var(--text-lg) / var(--leading-lg) var(--font-sans);
+  letter-spacing: var(--tracking-tight);
+}
+
+.host {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.intro {
+  margin: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.list {
+  flex-shrink: 0;
+}
+
+.row {
+  align-items: flex-start;
+  padding-block: var(--space-2);
+  --group-divider-inset: calc(var(--space-3) + var(--icon-md) + var(--space-3));
+}
+
+.rowIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding-top: 2px;
+  color: var(--color-ink-2);
+}
+
+.rowCopy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  color: var(--color-ink);
+}
+
+.detail {
+  font-weight: var(--weight-regular);
+  color: var(--color-ink-2);
+}
+
+.footnote {
+  margin: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}

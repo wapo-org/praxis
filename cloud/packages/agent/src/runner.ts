@@ -1,3 +1,4 @@
+import {toolDisplay} from './tool-display.js';
 import { z } from 'zod';
 import {
   ApprovalDecisionSchema,ElicitationResponseSchema,JsonObjectSchema,JsonValueSchema,
@@ -20,6 +21,7 @@ export class ExecutionFenced extends Error {constructor(){super('Execution fence
 class Cancelled extends Error {}
 export class ResumeConflict extends Error {}
 export class ProviderFailure extends Error {
+  status?:number;
   constructor(message:string,public readonly kind:'retryable'|'tools'|'images'|'effort'|'context'|'fatal'='fatal',public readonly retryAfterMs?:number){super(message);}
 }
 const terminal=(run:Run)=>['completed','cancelled','failed'].includes(run.status);
@@ -45,6 +47,7 @@ export class AgentRunner {
   private async emit(cp:AgentCheckpoint,event:RunEventPayload) {
     const id=await this.options.ports.emit(cp.userId,cp.run.id,RunEventPayloadSchema.parse(event));
     if(typeof id==='number')cp.run.lastEventId=id;
+    if(event.type==='tool.started')cp.lastToolCallId=event.activity.id;
   }
   private message(cp:AgentCheckpoint,role:Message['role'],parts:MessagePart[]):Message {
     const now=this.now();return {type:'message',id:this.id(),chatId:cp.chat.id,runId:cp.run.id,...(cp.run.clientTurnId?{clientTurnId:cp.run.clientTurnId}:{}),role,parts,createdAt:now,updatedAt:now};
@@ -66,7 +69,9 @@ export class AgentRunner {
     const i=RunInputSchema.parse(input);
     if(i.run.chatId!==i.chat.id||i.messages.some(m=>m.chatId!==i.chat.id))throw new Error('Chat scope mismatch');
     if(terminal(i.run))throw new Error('Cannot start a terminal run');
-    const setup=i.chat.setup??i.setup??{type:'conversation.setup' as const,system:'You are Praxis, a helpful assistant.',tools:[...this.tools.values()].filter(t=>!t.hidden).map(t=>t.spec),skillCatalog:'',connectorIds:i.chat.connectorIds,createdAt:this.now()};
+    let setup=i.chat.setup??i.setup??{type:'conversation.setup' as const,system:'You are Praxis, a helpful assistant.',tools:[...this.tools.values()].filter(t=>!t.hidden).map(t=>t.spec),skillCatalog:'',connectorIds:i.chat.connectorIds,createdAt:this.now()};
+    const added=[...this.tools.values()].filter(t=>(t.spec.source.type==='mcp'||t.spec.name==='ask_user')&&!t.hidden&&!t.unavailableReason&&!setup.tools.some(s=>s.name===t.spec.name));
+    if(added.length)setup={...setup,tools:[...setup.tools,...added.map(t=>t.spec)]};
     const cp=CheckpointSchema.parse({
       version:1,userId:i.userId,run:{...i.run,status:'running'},chat:{...i.chat,setup},setup,
       messages:i.messages,modelId:i.modelId??i.chat.modelId??'scripted',effort:i.effort??i.chat.effort,
@@ -84,8 +89,8 @@ export class AgentRunner {
       if(p.type==='toolResult'&&p.callId)results.add(p.callId);
     }
     const dangling=[...calls].filter(([id])=>!results.has(id));
-    if(dangling.length)await this.commit(cp,this.message(cp,'user',dangling.map(([callId,p])=>({type:'toolResult',callId,name:p.name,isError:true,content:[{type:'text',text:'Tool execution was interrupted.'}]}))));
-    await this.save(cp);return cp;
+    if(dangling.length){await this.commit(cp,this.message(cp,'user',dangling.map(([callId,p])=>({type:'toolResult',callId,name:p.name,isError:true,content:[{type:'text',text:'Tool execution was interrupted.'}]}))));await this.save(cp);}
+    return cp;
   }
   async run(input:RunInput,maxSteps=1000):Promise<AgentCheckpoint>{return this.advance(await this.create(input),maxSteps);}
   async advance(checkpoint:AgentCheckpoint,maxSteps=1000):Promise<AgentCheckpoint>{
@@ -145,7 +150,7 @@ export class AgentRunner {
       await this.emit(cp,{type:'approval.resolved',approvalId:id,callId:approval.callId,decision:reply.decision});
     }else {
       if(cp.elicitation?.id!==id)throw new ResumeConflict('Elicitation is no longer pending');
-      if(reply.action==='accept')z.fromJSONSchema(cp.elicitation.schema).parse(reply.content??{});
+      if(reply.action==='accept'){const schema=JSON.parse(JSON.stringify(cp.elicitation.schema));for(const v of Object.values(schema.properties??{}) as Record<string,unknown>[])if(v.format==='password'||v['x-sensitive']===true){for(const key of Object.keys(v))delete v[key];v.type='string';}z.fromJSONSchema(schema).parse(reply.content??{});}
       delete cp.elicitation;
       await this.emit(cp,{type:'elicitation.resolved',elicitationId:id,action:reply.action});
     }
@@ -183,8 +188,13 @@ export class AgentRunner {
       if(tail[0]?.role==='user')tail[0].parts.unshift(preface);else tail.unshift(this.message(cp,'user',[preface]));
       messages=tail;
     }
-    return {model:cp.modelId,system:cp.setup.system+(cp.setup.skillCatalog?`\n\n${cp.setup.skillCatalog}`:''),messages,
-      tools:cp.capabilities.tools?cp.setup.tools:[],capabilities:cp.capabilities,
+    let system=cp.setup.system;
+    if(this.options.toolNotes!==undefined) {
+      system=system.replace(/\n\nConnected tools:\n[\s\S]*?(?=\n\n|$)/,'');
+      if(this.options.toolNotes.length)system+='\n\nConnected tools:\n'+this.options.toolNotes.map(n=>'- '+n).join('\n');
+    }
+    return {model:cp.modelId,system:system+(cp.setup.skillCatalog?`\n\n${cp.setup.skillCatalog}`:''),messages,
+      tools:cp.capabilities.tools?cp.setup.tools.filter(spec=>spec.source.type!=='mcp'||(this.tools.has(spec.name)&&!this.tools.get(spec.name)!.unavailableReason)):[],capabilities:cp.capabilities,
       maxTokens:Math.min(cp.maxTokens,cp.modelMaxTokens??Infinity),effort:cp.effort,supportedEfforts:cp.supportedEfforts,
       webSearch:cp.webSearch&&cp.capabilities.serverWebSearch};
   }
@@ -237,26 +247,45 @@ export class AgentRunner {
       try {
         response=await this.controlled(cp,async signal=>{
           let completed:ProviderResponse|undefined;
+          const reasoningMeta = new Map<string,{blockId:string;startedAt:string;finishedAt?:string;durationMs?:number;afterToolCallId?:string}>();
+          const closed = new Set<string>();
+          const textIds:string[]=[];
           for await(const raw of this.options.provider.stream(req,signal)) {
             await this.checkCancel(cp);if(signal.aborted)throw new Cancelled();
             const e=ProviderEventSchema.parse(raw);
             bytes+=canonical(e).length;if(bytes>16_000_000)throw new Error('Provider response exceeds buffer limit');
-            if(e.type==='completed'){completed=ProviderResponseSchema.parse(e.response);continue;}
+            if(e.type==='completed'){if(!completed)completed=ProviderResponseSchema.parse(e.response);continue;}
             const blockId=`${cp.run.id}.${cp.iteration}.${attempt}.${e.index}`;
-            if(e.type==='text'||e.type==='reasoning') {
-              if(!blocks.includes(blockId))blocks.push(blockId);if(e.type==='reasoning')reasoningBlocks.add(blockId);
-              await this.emit(cp,{type:e.type==='text'?'text.delta':'reasoning.delta',blockId,text:e.text});
+            if(e.type==='text') {
+              if(!textIds.includes(blockId))textIds.push(blockId);
+              if(!blocks.includes(blockId))blocks.push(blockId);
+              await this.emit(cp,{type:'text.delta',blockId,text:e.text,...(e.annotations?.length?{annotations:e.annotations}:{})});
+            }else if(e.type==='reasoning') {
+              if(!blocks.includes(blockId))blocks.push(blockId);reasoningBlocks.add(blockId);
+              if(!reasoningMeta.has(blockId))reasoningMeta.set(blockId,{blockId,startedAt:this.now(),afterToolCallId:cp.lastToolCallId??Object.keys(cp.calls).at(-1)});
+              await this.emit(cp,{type:'reasoning.delta',blockId,text:e.text,...(e.shape?{shape:e.shape}:{}),...(e.redacted?{redacted:true}:{})});
             }else if(e.type==='tool') {
+              if(e.server)continue;
               calls.set(e.index,{id:e.id,name:e.name});callIds.push(e.id);
               const spec=cp.setup.tools.find(t=>t.name===e.name);
               await this.emit(cp,{type:'tool.started',activity:this.activity(e.id,e.name,spec)});
             }else if(e.type==='arguments') {
               const call=calls.get(e.index);if(call)await this.emit(cp,{type:'tool.arguments.delta',callId:call.id,json:e.json});
             }else if(e.type==='blockEnd') {
-              if(blocks.includes(blockId))await this.emit(cp,{type:reasoningBlocks.has(blockId)?'reasoning.finished':'text.finished',blockId});
+              if(blocks.includes(blockId)&&!closed.has(blockId)){
+                closed.add(blockId);
+                const meta=reasoningMeta.get(blockId);if(meta){meta.finishedAt=this.now();meta.durationMs=Math.max(0,Date.parse(meta.finishedAt)-Date.parse(meta.startedAt));}
+                if(reasoningBlocks.has(blockId)) {
+                  await this.emit(cp,{type:'reasoning.finished',blockId,...(e.shape?{shape:e.shape}:{}),...(e.redacted?{redacted:true}:{})});
+                }else {
+                  await this.emit(cp,{type:'text.finished',blockId});
+                }
+              }
             }
           }
           if(!completed)throw new ProviderFailure('Provider stream ended without a completed response','retryable');
+          const meta=[...reasoningMeta.values()];let reasoningIndex=0,textIndex=0;
+          completed.parts=completed.parts.map(p=>p.type==='reasoning'?{...p,...meta[reasoningIndex++]}:p.type==='text'?{...p,blockId:textIds[textIndex++]}:p);
           return completed;
         },this.options.streamTimeoutMs??120000);
         if(response.stop==='maxTokens'&&response.parts.some(p=>p.type==='toolCall')&&!expanded&&req.maxTokens<(cp.modelMaxTokens??Infinity)) {
@@ -317,8 +346,9 @@ export class AgentRunner {
   }
 
   private activity(id:string,name:string,spec?:ToolSpec,parentCallId?:string,args?:JsonValue) {
-    return {type:'tool.activity' as const,id,name,source:spec?.source??{type:'builtin' as const},
-      presentation:{type:'tool.presentation' as const,category:'other' as const,runningTitle:`Running ${name}`,finishedTitle:name},
+    const display=toolDisplay(name,spec,args);
+    return {display,type:'tool.activity' as const,id,name,source:spec?.source??{type:'builtin' as const},
+      presentation:{type:'tool.presentation' as const,category:'other' as const,runningTitle:display.title,finishedTitle:display.title},
       ...(args!==undefined?{arguments:args}:{}),...(parentCallId?{parentCallId}:{})};
   }
   private async invoke(cp:AgentCheckpoint,call:PendingCall,nested=false):Promise<ToolResult> {

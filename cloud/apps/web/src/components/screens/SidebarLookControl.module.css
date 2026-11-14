@@ -1,0 +1,51 @@
+/* Modelled on the palette panel in sidebar-design.html: 28 px round swatches, the chosen one ringed. */
+.look {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.field {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.field legend {
+  margin-bottom: var(--space-2);
+  padding: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.swatch {
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid var(--color-hairline-strong);
+  border-radius: 50%;
+  background: var(--swatch);
+  cursor: pointer;
+}
+
+/* The source rings the chosen swatch in ink; a gap of page colour keeps the ring visible on dark swatches. */
+.swatch[aria-checked='true'] {
+  box-shadow:
+    0 0 0 2px var(--color-paper),
+    0 0 0 4px var(--color-ink);
+}
+
+.swatch:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}

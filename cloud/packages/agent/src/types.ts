@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import {
   ApprovalSchema, CapabilitiesSchema, ChatSchema, ConversationSetupSchema, ElicitationSchema,
-  IdSchema, JsonObjectSchema, JsonValueSchema, MessagePartSchema, MessageSchema, RunSchema,
-  UsageSchema, type Capabilities, type JsonObject, type JsonValue, type Message,
+  IdSchema, JsonObjectSchema, JsonValueSchema, MessagePartSchema, MessageSchema, ReasoningShapeSchema, RunSchema,
+  StreamAnnotationSchema, UsageSchema, type Capabilities, type JsonObject, type JsonValue, type Message,
   type Mode, type ProviderFlavor, type RunEventPayload, type ToolSpec,
 } from '@praxis/protocol';
 
@@ -10,7 +10,8 @@ export const ProviderRequestSchema = z.object({
   model: IdSchema, system: z.string(), messages: z.array(MessageSchema),
   tools: z.array(z.lazy(() => ConversationSetupSchema.shape.tools.element)),
   capabilities: CapabilitiesSchema, maxTokens: z.number().int().positive(),
-  effort: z.string().optional(), supportedEfforts: z.array(z.string()).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  titleReasoning:z.enum(['none','minimal','low']).optional(),effort: z.string().optional(), supportedEfforts: z.array(z.string()).optional(),
   webSearch: z.boolean().default(false),
 });
 export type ProviderRequest = z.infer<typeof ProviderRequestSchema>;
@@ -22,11 +23,11 @@ export const ProviderResponseSchema = z.object({
 });
 export type ProviderResponse = z.infer<typeof ProviderResponseSchema>;
 export const ProviderEventSchema = z.discriminatedUnion('type', [
-  z.object({type:z.literal('text'),index:z.number().int().nonnegative(),text:z.string()}),
-  z.object({type:z.literal('reasoning'),index:z.number().int().nonnegative(),text:z.string()}),
-  z.object({type:z.literal('tool'),index:z.number().int().nonnegative(),id:IdSchema,name:z.string()}),
+  z.object({type:z.literal('text'),index:z.number().int().nonnegative(),text:z.string(),annotations:z.array(StreamAnnotationSchema).optional()}),
+  z.object({type:z.literal('reasoning'),index:z.number().int().nonnegative(),text:z.string(),shape:ReasoningShapeSchema.optional(),redacted:z.boolean().optional()}),
+  z.object({type:z.literal('tool'),index:z.number().int().nonnegative(),id:IdSchema,name:z.string(),server:z.boolean().optional()}),
   z.object({type:z.literal('arguments'),index:z.number().int().nonnegative(),json:z.string()}),
-  z.object({type:z.literal('blockEnd'),index:z.number().int().nonnegative()}),
+  z.object({type:z.literal('blockEnd'),index:z.number().int().nonnegative(),shape:ReasoningShapeSchema.optional(),redacted:z.boolean().optional()}),
   z.object({type:z.literal('completed'),response:ProviderResponseSchema}),
 ]);
 export type ProviderEvent = z.infer<typeof ProviderEventSchema>;
@@ -74,6 +75,7 @@ export const CheckpointSchema = z.object({
   effort:z.string().optional(),supportedEfforts:z.array(z.string()).optional(),webSearch:z.boolean().default(false),
   capabilities:CapabilitiesSchema,policy:PolicySchema,
   hiddenTools:ConversationSetupSchema.shape.tools.default([]),
+  lastToolCallId:IdSchema.optional(),
   phase:z.enum(['model','tools','terminal']),iteration:z.number().int().nonnegative(),
   pending:z.array(PendingCallSchema),
   /** `started` is persisted before a tool executes; a replay that finds it without a result knows the call was interrupted. */
@@ -114,6 +116,8 @@ export interface AgentPorts {
 export interface AgentRunnerOptions {
   provider:ModelProvider;tools?:AgentTool[];ports:AgentPorts;
   maxResultCharacters?:number;toolTimeoutMs?:number;streamTimeoutMs?:number;
+  /** Current server-authored connector advertisements; replaces the frozen connector section. */
+  toolNotes?:string[];
   contextWindow?:number;compactAt?:number;
   shouldYield?:()=>boolean;
 }

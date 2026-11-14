@@ -1,15 +1,10 @@
-import {
-  GlassCard,
-  GlassDropdown,
-  GlassIconButton,
-  MOTION,
-  ProgressiveBlurScrim,
-} from '@praxis/glass';
-import { motion } from 'framer-motion';
+import { GlassDropdown, ScrollBlur } from '@praxis/glass';
 import React from 'react';
-import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight } from '../../lib/icons';
-import './screens.css';
+import { ChevronLeft, ChevronRight, ChevronsUpDown } from '../../lib/icons';
+import { Switch } from '../ui/controls';
+import { Button } from '../ui/Button';
+import { fieldClass, Select as FieldSelect } from '../ui/fields';
+import styles from './Screen.module.css';
 
 export function useScreenTask() {
   const [busy, setBusy] = React.useState(false);
@@ -34,33 +29,24 @@ export function useScreenTask() {
 
 export function TaskError({ error }: { error: string | null }) {
   return error ? (
-    <p className="screen-error" role="alert">
+    <p className={styles.error} role="alert">
       {error}
     </p>
   ) : null;
 }
 
+/** Settings' button: the shared Button (components/ui/Button), `tone` naming its variant. */
 export function ScreenButton({
   children,
   tone = 'secondary',
-  className = '',
   ...props
-}: Omit<
-  React.ButtonHTMLAttributes<HTMLButtonElement>,
-  'onAnimationStart' | 'onDrag' | 'onDragEnd' | 'onDragStart'
-> & {
-  tone?: 'primary' | 'secondary' | 'destructive';
+}: Omit<React.ComponentProps<typeof Button>, 'variant'> & {
+  tone?: 'primary' | 'secondary' | 'destructive' | 'quiet';
 }) {
   return (
-    <motion.button
-      type="button"
-      whileTap={{ scale: 0.97, opacity: 0.84 }}
-      transition={MOTION.press}
-      className={`screen-button screen-button--${tone} ${className}`}
-      {...props}
-    >
+    <Button variant={tone} data-tone={tone} {...props}>
       {children}
-    </motion.button>
+    </Button>
   );
 }
 
@@ -75,28 +61,19 @@ export function Section({
 }) {
   const id = React.useId();
   return (
-    <section className="screen-section" aria-labelledby={id}>
-      <h2 id={id} className="screen-section-title">
+    <section className={styles.section} aria-labelledby={id}>
+      <h2 id={id} className={styles.sectionTitle}>
         {title}
       </h2>
       {children}
-      {hint ? <p className="screen-footnote">{hint}</p> : null}
+      {hint ? <p className={styles.footnote}>{hint}</p> : null}
     </section>
   );
 }
 
+/** Grouped rows: an opaque card on the sheet. Content is never glass. */
 export function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <GlassCard
-      className="screen-card"
-      style={{
-        background: 'var(--paper-card)',
-        border: '1px solid var(--paper-hairline)',
-      }}
-    >
-      {children}
-    </GlassCard>
-  );
+  return <div className={styles.card}>{children}</div>;
 }
 
 export function NavRow({
@@ -105,22 +82,31 @@ export function NavRow({
   detail,
   value,
   onClick,
+  testId,
 }: {
   icon?: React.ReactNode;
   title: string;
   detail?: string;
   value?: React.ReactNode;
   onClick: () => void;
+  testId?: string;
 }) {
   return (
-    <button type="button" className="screen-row screen-nav-row" onClick={onClick}>
-      {icon ? <span className="screen-row-icon">{icon}</span> : null}
-      <span className="screen-row-copy">
+    <button
+      type="button"
+      className={`${styles.row} ${styles.navRow}`}
+      data-testid={testId}
+      onClick={onClick}
+    >
+      {icon ? <span className={styles.rowIcon}>{icon}</span> : null}
+      <span className={styles.rowCopy}>
         <span>{title}</span>
-        {detail ? <span className="screen-detail">{detail}</span> : null}
+        {detail ? <span className={styles.detail}>{detail}</span> : null}
       </span>
-      {value !== undefined ? <span className="screen-row-value">{value}</span> : null}
-      <ChevronRight size={16} aria-hidden="true" />
+      {value !== undefined ? <span className={styles.rowValue}>{value}</span> : null}
+      <span className={styles.chevron}>
+        <ChevronRight size={16} aria-hidden="true" />
+      </span>
     </button>
   );
 }
@@ -139,23 +125,19 @@ export function Toggle({
   detail?: string;
 }) {
   return (
-    <label className="screen-row screen-toggle-row">
-      <span className="screen-row-copy">
+    <label className={styles.row}>
+      <span className={styles.rowCopy}>
         <span>{label}</span>
-        {detail ? <span className="screen-detail">{detail}</span> : null}
+        {detail ? <span className={styles.detail}>{detail}</span> : null}
       </span>
-      <input
-        className="screen-toggle"
-        type="checkbox"
-        role="switch"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-      />
+      <Switch checked={checked} disabled={disabled} onChange={onChange} />
     </label>
   );
 }
 
+const TEXT_INPUTS = new Set(['checkbox', 'radio', 'file', 'hidden', 'range', 'color']);
+
+/** A labelled field. A bare <input>, <textarea>, or <Select> child becomes the shared pill field (components/ui/fields). */
 export function Field({
   label,
   hint,
@@ -165,12 +147,44 @@ export function Field({
   hint?: string;
   children: React.ReactNode;
 }) {
+  const labelId = React.useId();
+  const dressed = React.Children.map(children, (child) => {
+    if (!React.isValidElement<{ className?: string; type?: string; 'aria-label'?: string; 'aria-labelledby'?: string }>(child)) return child;
+    const own = child.props.className ?? '';
+    const mono = own.split(' ').includes(styles.mono!) ? fieldClass.mono : '';
+    if (child.type === 'textarea') return React.cloneElement(child, { className: [fieldClass.textarea, mono, own].filter(Boolean).join(' ') });
+    if (child.type === 'input' && !TEXT_INPUTS.has(child.props.type ?? 'text'))
+      return React.cloneElement(child, { className: [fieldClass.input, mono, own].filter(Boolean).join(' ') });
+    if (child.type === FieldSelect && !child.props['aria-label'] && !child.props['aria-labelledby'])
+      return React.cloneElement(child, { 'aria-labelledby': labelId });
+    return child;
+  });
   return (
-    <label className="screen-field">
-      <span>{label}</span>
-      {children}
-      {hint ? <span className="screen-footnote">{hint}</span> : null}
+    <label className={styles.field}>
+      <span id={labelId}>{label}</span>
+      {dressed}
+      {hint ? <span className={styles.footnote}>{hint}</span> : null}
     </label>
+  );
+}
+
+/** Shared select field backed by GlassDropdown. */
+export const Select = FieldSelect;
+
+/** One-of-many choice when the options can overflow a segmented control. */
+export function ChoiceChip({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className={styles.chip} aria-pressed={active} onClick={onClick}>
+      {children}
+    </button>
   );
 }
 
@@ -186,23 +200,19 @@ export function ScreenHeader({
   trailing?: React.ReactNode;
 }) {
   return (
-    <header className="screen-header">
-      <div className="screen-header-side">
-        {onBack ? (
-          <GlassIconButton label="Back" onClick={onBack}>
-            <ChevronLeft size={20} />
-          </GlassIconButton>
-        ) : null}
+    <header className={styles.header}>
+      <div className={styles.headerSide}>
+        {onBack ? <BackButton onClick={onBack} /> : null}
       </div>
-      <h1 className="screen-title">{title}</h1>
-      <div className="screen-header-side screen-header-side--end">
+      <h1 className={styles.title}>{title}</h1>
+      <div className={`${styles.headerSide} ${styles.headerEnd}`}>
         {trailing ??
           (onClose ? (
             <button
               type="button"
               aria-label={`Close ${title.toLowerCase()}`}
               onClick={onClose}
-              className="screen-text-button"
+              className={styles.textButton}
             >
               Done
             </button>
@@ -212,119 +222,87 @@ export function ScreenHeader({
   );
 }
 
+export function BackButton({
+  onClick,
+  className = '',
+  ...rest
+}: { onClick: () => void; className?: string } & React.HTMLAttributes<HTMLButtonElement> & {
+    'data-section-root'?: string;
+  }) {
+  return (
+    <button
+      type="button"
+      className={`${styles.iconButton} ${className}`.trim()}
+      aria-label="Back"
+      title="Back"
+      onClick={onClick}
+      {...rest}
+    >
+      <ChevronLeft size={20} />
+    </button>
+  );
+}
+
 export function ScreenBody({ children }: { children: React.ReactNode }) {
   return (
-    <div className="screen-scroll-frame">
-      <div className="screen-body">{children}</div>
-      <ProgressiveBlurScrim edge="top" height={12} />
-      <ProgressiveBlurScrim edge="bottom" height={24} />
+    <div className={styles.frame}>
+      <ScrollBlur height="100%">
+        <div className={styles.body}>{children}</div>
+      </ScrollBlur>
     </div>
   );
 }
 
-/** Keep the current non-portaling dropdown API above the sheet's scroll viewport. */
+/** Menu opened from a settings row: the content portals to the document root
+ * (GlassDropdown `portal`), so it is never clipped by a scroll container,
+ * an ancestor's overflow, or another glass surface's backdrop root. */
 export function ScreenMenu({
   label,
   children,
   icon,
-  contextOnly = false,
+  plain = false,
 }: {
-  contextOnly?: boolean;
+  /** Render the trigger as an inline value + chevron (form rows), not a glass capsule. */
+  plain?: boolean;
   label: string;
   children: React.ReactNode;
   icon: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [position, setPosition] = React.useState({ left: 0, top: 0 });
   const trigger = React.useRef<HTMLButtonElement>(null);
-  const content = React.useRef<HTMLDivElement>(null);
-  const target = trigger.current?.closest<HTMLElement>('.screen-shell');
-  React.useLayoutEffect(() => {
-    if (!open || !target || !trigger.current) return;
-    const measure = () => {
-      const anchor = trigger.current!.getBoundingClientRect();
-      const shell = target.getBoundingClientRect();
-      const height = content.current?.offsetHeight || 160;
-      const width = content.current?.offsetWidth || 200;
-      const below = anchor.bottom - shell.top + 8;
-      setPosition({
-        left: Math.max(8, Math.min(anchor.right - shell.left - width, shell.width - width - 8)),
-        top: Math.max(
-          8,
-          Math.min(
-            below + height <= shell.height - 8 ? below : anchor.top - shell.top - height - 8,
-            shell.height - height - 8,
-          ),
-        ),
-      });
-    };
-    measure();
+  React.useEffect(() => {
+    if (!open) return;
     const onOutside = (event: PointerEvent) => {
-      if (
-        event.target instanceof Node &&
-        !trigger.current?.contains(event.target) &&
-        !content.current?.contains(event.target)
-      )
-        setOpen(false);
+      // A press inside the menu is the menu's: it must stay open until the row has its click.
+      if (!(event.target instanceof Element) || trigger.current?.contains(event.target) || event.target.closest('.praxis-glass-dropdown-content')) return;
+      setOpen(false);
     };
     document.addEventListener('pointerdown', onOutside);
-    target.addEventListener('scroll', measure, true);
-    window.addEventListener('resize', measure);
-    return () => {
-      document.removeEventListener('pointerdown', onOutside);
-      target.removeEventListener('scroll', measure, true);
-      window.removeEventListener('resize', measure);
-    };
-  }, [open, target]);
+    return () => document.removeEventListener('pointerdown', onOutside);
+  }, [open]);
   return (
-    <GlassDropdown open={open} onOpenChange={setOpen} dismissOnOutsideClick={false} align="end">
+    <GlassDropdown open={open} onOpenChange={setOpen} dismissOnOutsideClick={false} align="end" portal>
       <GlassDropdown.Trigger
-        asChild={contextOnly}
+        asChild={plain}
         ref={trigger}
         aria-label={label}
         hideChevron
-        tabIndex={contextOnly ? -1 : undefined}
-        style={
-          contextOnly
-            ? {
-                opacity: 0,
-                pointerEvents: 'none',
-                width: 1,
-                height: 1,
-                padding: 0,
-              }
-            : undefined
-        }
       >
-        {contextOnly ? <button type="button">{icon}</button> : icon}
+        {plain ? (
+          <button type="button" className={styles.menuValue} aria-label={label}>
+            {icon}
+            <ChevronsUpDown size={16} aria-hidden="true" />
+          </button>
+        ) : (
+          icon
+        )}
       </GlassDropdown.Trigger>
-      {open && target
-        ? createPortal(
-            <GlassDropdown.Content
-              ref={content}
-              minWidth={200}
-              maxHeight={240}
-              style={{
-                position: 'absolute',
-                insetInlineStart: 'auto',
-                insetInlineEnd: 'auto',
-                bottom: 'auto',
-                left: position.left,
-                top: position.top,
-                marginLeft: 0,
-                zIndex: 60,
-              }}
-            >
-              {children}
-            </GlassDropdown.Content>,
-            target,
-          )
-        : null}
+      <GlassDropdown.Content minWidth={200} maxHeight={240}>
+        {children}
+      </GlassDropdown.Content>
     </GlassDropdown>
   );
 }
-
-export { SheetDialog } from './SheetDialog';
 
 export function requireHttpUrl(value: string): string {
   const url = new URL(value.trim());

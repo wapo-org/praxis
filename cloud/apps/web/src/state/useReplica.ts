@@ -1,6 +1,10 @@
+import {useAccountSync} from '../sync/useAccountSync';
 import React from 'react';
+import { fromWireMode } from '../lib/modes';
+import { decideSelection, writeStoredSelection } from './modelSelection';
 import { apiClient } from '../lib/api';
-import { saveReplica, type LocalReplicaSnapshot } from '../lib/idb';
+import { readReplicaSync, saveReplica, type LocalReplicaSnapshot } from '../lib/idb';
+import { mergeFetchedMessages } from './reconcileMessages';
 
 import type { PraxisState } from './usePraxisState';
 import type { useRunState } from './useRunState';
@@ -13,6 +17,7 @@ export function useReplica(
   }: ReturnType<typeof useRunStreams> &
     Pick<ReturnType<typeof useRunState>, 'applySnapshotToLiveRun'>,
 ) {
+  useAccountSync(state, {attachRunStream, applySnapshotToLiveRun});
   const {
     replicaKey,
     setHydrated,
@@ -41,6 +46,7 @@ export function useReplica(
     syncCursor,
     setSyncCursor,
     setSelectedProviderId,
+    selectedProviderId,
     selectedModelId,
     setSelectedModelId,
     setSelectedEffort,
@@ -49,6 +55,7 @@ export function useReplica(
   const persistState = React.useCallback(
     (nextPartial?: Partial<LocalReplicaSnapshot>) => {
       const snap: LocalReplicaSnapshot = {
+        bootstrap: readReplicaSync()?.bootstrap,
         chats,
         messagesByChat,
         providers,
@@ -78,17 +85,21 @@ export function useReplica(
     ],
   );
 
+  React.useEffect(() => { persistState(); }, [persistState]);
+
   const refreshAll = React.useCallback(async () => {
     setSyncing(true);
     try {
       const boot = await apiClient.bootstrap();
-      setChats(boot.chats);
+      setChats((prev) => {
+        const creating = state.creatingChatPromisesRef.current;
+        const optimistic = prev.filter((c) => creating.has(c.id) && !boot.chats.some((b) => b.id === c.id));
+        return [...optimistic, ...boot.chats];
+      });
       setProviders(boot.providers);
       setModels(boot.models);
-      if (!selectedModelId && boot.models[0]) {
-        setSelectedModelId(boot.models[0].id);
-        setSelectedProviderId(boot.models[0].providerId);
-      }
+      // No reset here: the selection resolver below decides, now that the list is complete (WP-K2b).
+      state.setCatalogReady(true);
       setConnectors(boot.connectors);
       setSkills(boot.skills);
       if (boot.consents) setConsents(boot.consents);
@@ -115,14 +126,17 @@ export function useReplica(
         replicaKey.current,
       );
 
-      const firstChatId = activeChatId;
+      const firstChatId = state.activeChatIdRef.current ?? activeChatId;
       if (firstChatId && !activeChatId) {
         setActiveChatId(firstChatId);
       }
-      if (firstChatId) {
+      if (firstChatId && !state.creatingChatPromisesRef.current.has(firstChatId)) {
         const msgPage = await apiClient.listMessages(firstChatId);
         setMessagesByChat((prev) => {
-          const next = { ...prev, [firstChatId]: msgPage.items };
+          const next = {
+            ...prev,
+            [firstChatId]: mergeFetchedMessages(prev[firstChatId] ?? [], msgPage.items),
+          };
           void saveReplica(
             {
               bootstrap: boot,
@@ -158,18 +172,48 @@ export function useReplica(
     } catch (err) {
       setErrorBanner(err instanceof Error ? err.message : 'Unable to load account');
       setHydrated(true);
+      // Offline or failing: the cached list is all there will be.
+      state.setCatalogReady(true);
     } finally {
       setSyncing(false);
     }
   }, [activeChatId, applySnapshotToLiveRun, attachRunStream]);
 
   const routeChat = chats.find((value) => value.id === activeChatId);
+  // WP-K2b: the selection changes on its own only when the open chat changes (to that chat's model) or when
+  // the selected model is no longer available, and the latter only once the full list has loaded. A valid
+  // choice, or one whose save is still pending, is never replaced.
+  const decidedChat = React.useRef<string | null | undefined>(undefined);
+  const lastChatModel = React.useRef<string | undefined>(undefined);
   React.useEffect(() => {
-    if (routeChat?.providerId) setSelectedProviderId(routeChat.providerId);
-    if (routeChat?.modelId) setSelectedModelId(routeChat.modelId);
-  }, [activeChatId, routeChat?.providerId, routeChat?.modelId]);
+    const chatKey = activeChatId ?? null;
+    const chatModel = routeChat?.providerId && routeChat.modelId ? { providerId: routeChat.providerId, modelId: routeChat.modelId } : undefined;
+    const chatModelKey = chatModel ? `${chatModel.providerId}/${chatModel.modelId}` : undefined;
+    const pending = state.pendingPickRef.current;
+    // The open chat's model changed elsewhere (another device): follow it, unless our own pick is in flight.
+    const remoteChange = decidedChat.current === chatKey && chatModelKey !== lastChatModel.current && !(pending && pending.chatId === activeChatId);
+    lastChatModel.current = chatModelKey;
+    const decision = decideSelection({
+      chatChanged: decidedChat.current !== chatKey || remoteChange,
+      chatModel,
+      current: { providerId: selectedProviderId, modelId: selectedModelId },
+      models,
+      providers,
+      ready: state.catalogReady,
+    });
+    if (decision.kind === 'wait') return;
+    decidedChat.current = chatKey;
+    if (decision.kind === 'select') {
+      setSelectedProviderId(decision.ref.providerId);
+      setSelectedModelId(decision.ref.modelId);
+      if (decision.notice) setErrorBanner(decision.notice);
+    }
+  }, [activeChatId, routeChat?.providerId, routeChat?.modelId, models, providers, state.catalogReady, selectedProviderId, selectedModelId]);
   React.useEffect(() => {
-    if (routeChat?.mode) setSelectedMode(routeChat.mode);
+    writeStoredSelection(replicaKey.current, { providerId: selectedProviderId, modelId: selectedModelId });
+  }, [selectedProviderId, selectedModelId]);
+  React.useEffect(() => {
+    if (routeChat?.mode) setSelectedMode(fromWireMode(routeChat.mode)); // a stored plan reads as Auto
   }, [activeChatId, routeChat?.mode]);
   React.useEffect(() => {
     if (routeChat?.effort) setSelectedEffort(routeChat.effort);

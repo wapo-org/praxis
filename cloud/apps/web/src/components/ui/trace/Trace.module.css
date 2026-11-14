@@ -1,0 +1,253 @@
+.trace {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.trace > a:has(> [data-slot='trace-line']),
+.trace > button:has(> [data-slot='trace-line']) {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  text-decoration: none;
+  color: inherit;
+  outline: none;
+}
+
+.trace > a:has(> [data-slot='trace-line']):focus-visible,
+.trace > button:has(> [data-slot='trace-line']):focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.line {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  min-height: var(--space-6);
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-md) / 1.625 var(--font-sans);
+  transition: color var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
+  user-select: none;
+}
+
+a .line,
+button .line {
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  a:hover .line,
+  button:hover .line {
+    color: var(--color-ink);
+  }
+}
+
+.line[data-status='error'],
+a:hover .line[data-status='error'],
+button:hover .line[data-status='error'] {
+  color: var(--color-danger);
+}
+
+.line[data-status='pending'] {
+  opacity: 0.6;
+}
+
+.icon {
+  position: relative;
+  top: var(--work-icon-drop, 0.06em);
+  display: inline-flex;
+  width: var(--space-4);
+  height: var(--space-4);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon svg {
+  pointer-events: none;
+  width: var(--space-4);
+  height: var(--space-4);
+}
+
+[data-slot='trace-title'] ~ .icon,
+[data-slot='trace-description'] ~ .icon {
+  margin-inline-start: calc(-1 * var(--space-1));
+}
+
+.title,
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.description {
+  flex-shrink: 0;
+  color: var(--color-ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.line[data-status='error'] .description {
+  color: var(--color-danger);
+}
+
+@keyframes trace-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.line[data-status='running'] > .title {
+  background: linear-gradient(
+    90deg,
+    var(--color-ink-2) 0%,
+    var(--color-ink) 50%,
+    var(--color-ink-2) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: trace-shimmer var(--duration-ambient) linear infinite;
+}
+
+.collapsible {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+.collapsibleTrigger {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-md) / 1.625 var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+
+@media (hover: hover) {
+  .collapsibleTrigger:hover {
+    color: var(--color-ink);
+  }
+}
+
+.collapsibleTrigger:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.collapsibleTrigger:has([data-status='error']) {
+  color: var(--color-danger);
+}
+
+.chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-ink-3);
+  transition: transform var(--duration-base) var(--ease-standard);
+}
+
+.collapsibleTrigger:has([data-status='error']) > .chevron {
+  color: var(--color-danger);
+}
+
+.collapsibleTrigger[aria-expanded='true'] > .chevron {
+  transform: rotate(90deg);
+}
+
+.collapsibleContent {
+  display: grid;
+  grid-template-rows: 0fr;
+  width: 100%;
+  min-width: 0;
+  transition: grid-template-rows var(--duration-base) var(--ease-standard);
+}
+
+.collapsibleContent[data-open='true'] {
+  grid-template-rows: 1fr;
+}
+
+.collapsibleContentInner {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-standard);
+}
+
+.collapsibleContent[data-open='true'] > .collapsibleContentInner {
+  opacity: 1;
+}
+
+.collapsibleContent[data-open='true'][data-settled='true'] > .collapsibleContentInner {
+  overflow: visible;
+}
+
+.collapsibleContent[data-open='false'][data-settled='true'] > .collapsibleContentInner {
+  visibility: hidden;
+}
+
+.contentBody {
+  min-width: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-md) / 1.625 var(--font-sans);
+  overflow-wrap: anywhere;
+}
+
+.rail {
+  margin-top: var(--space-2);
+  margin-bottom: var(--space-1);
+  margin-inline-start: calc(var(--space-2) - 1px);
+  border-inline-start: 1px solid var(--color-hairline-strong);
+  padding-inline: var(--space-4) 0;
+}
+
+.noRail {
+  padding-top: var(--space-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .line,
+  .collapsibleTrigger,
+  .chevron,
+  .collapsibleContent,
+  .collapsibleContentInner {
+    transition: none;
+  }
+
+  .line[data-status='running'] > .title,
+  .line[data-status='running'] :global(.praxis-shimmer-text) {
+    animation: none !important;
+    background: none !important;
+    -webkit-background-clip: border-box !important;
+    background-clip: border-box !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+}

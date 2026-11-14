@@ -1,0 +1,40 @@
+# Provider Stream Inventory & Normalisation (`@praxis/agent` / `@praxis/protocol`)
+
+Praxis normalises every model provider stream in `packages/agent/src/streams.ts` (`parseSSE`, `decodeAnthropic`, `decodeOpenAIChat`, `decodeOpenAIResponses`) and `packages/agent/src/runner.ts` into a single internal `ProviderEvent` / `RunEventPayload` / `MessagePart` model in `@praxis/protocol`.
+
+## 1. Provider & Adapter Stream Matrix
+
+| Wire Flavor / Adapter | Representative Providers | Text Deltas | Reasoning Shapes (`a`–`e`) | Interleaving & Multi-Block | Tool Calls | Annotations, Usage & Errors |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **`anthropicMessages`** (`POST /v1/messages`, `decodeAnthropic`) | Anthropic Claude (Opus, Sonnet, Haiku), Vertex/Bedrock Anthropic proxies | `content_block_start` (`type: "text"`), `content_block_delta` (`type: "text_delta"`), multiple indexed text blocks | **(b)** `**Title**` sections inside thinking<br>**(c)** `thinking` + `thinking_delta` + `signature_delta`<br>**(d)** `redacted_thinking` (`data` payload, no readable text)<br>**(e)** Non-thinking turns | Multiple indexed `thinking`, `redacted_thinking`, `text`, and `tool_use` blocks per turn; cross-iteration tool loops | `tool_use` + `input_json_delta` partial JSON; `server_tool_use` (`web_search`, `web_fetch`) + `web_search_tool_result` | `citations_delta` (`web_search_result_location`), `stop_reason: "refusal"` / `"pause_turn"` / `"max_tokens"`, `message_delta` usage, `type: "error"` mid-stream |
+| **`openAIChat`** (`POST /v1/chat/completions`, `decodeOpenAIChat`) | OpenAI Chat, DeepSeek R1, Qwen QwQ, OpenRouter, Gemini OpenAI-compat, xAI, Groq, Together, vLLM, Ollama | `choices[0].delta.content` string chunks; empty keep-alive deltas ignored | **(a)** `delta.reasoning_title` / `thought_title` / `step_title` or short status-line sequences<br>**(b)** `delta.reasoning_summary` / `thought_summary`, `reasoning_details` (`reasoning.summary`), or `**Title**` blocks<br>**(c)** `delta.reasoning_content`, `delta.reasoning`, `reasoning_details` (`reasoning.text`), or inline `<think>…</think>` in `delta.content` (split-safe across chunks)<br>**(d)** `reasoning_details` (`reasoning.encrypted`)<br>**(e)** Standard chat models / `effort: "none"` | Chronological segmentation: reasoning closes (`blockEnd`) as soon as text or tool calls start; additional reasoning after text opens a new indexed block | `delta.tool_calls` (indexed or unindexed slots), parallel calls, streamed `function.arguments` strings or objects | `delta.annotations` (`url_citation`), `delta.refusal`, `delta.images`, usage-only final chunk (`choices: []`), `finish_reason: "length"` / `"content_filter"` / `"error"`, mid-stream `error` object |
+| **`openAIResponses`** (`POST /v1/responses`, `decodeOpenAIResponses`) | OpenAI o-series / GPT-5 Responses API, Azure Responses | `response.output_text.delta` + `response.output_text.done` across `output_index` & `content_index` | **(a)** Short step-label summaries<br>**(b)** `response.reasoning_summary_text.delta` (`summary_text`)<br>**(c)** `response.reasoning_text.delta` (`reasoning_text`)<br>**(d)** `output_item` (`type: "reasoning"`) with `encrypted_content` and empty `summary`<br>**(e)** Non-reasoning models / `effort: "none"` | Multiple `reasoning`, `function_call`, and `message` output items in one response (`output_index`), plus multi-iteration tool turns | `response.output_item.added` (`function_call`) + `response.function_call_arguments.delta`, parallel calls, server `web_search` | `response.output_text.annotation.added`, `refusal` content items, `response.incomplete` (`max_output_tokens`), `response.failed` mid-stream errors, cached token usage |
+| **`scripted` / `streamSim`** (`createScriptedProvider`, `dev:local` & `/lab/stream`) | Local development, Playwright E2E, `/lab/stream` simulator | Configurable chunk sizes (`1 char`, `1 token`, `word`, `sentence`, `2 KB`, `whole`), speeds (`2`–`1500 tok/s`, stalls, jitter, `0 ms`), markdown & UTF-8/emoji/RTL splits | All five shapes (`titles`, `summary`, `raw`, `redacted`, `none`) deterministically generated | Reasoning → tool call → tool result → reasoning → text; reasoning after text started; multiple blocks per turn | Scripted builtin, MCP, sandboxed JS, and vision tool calls with approval & elicitation parking | Empty deltas, duplicate final events, mid-stream failure, cancellation, mid-stream reload/snapshot resume |
+
+## 2. Normalised Internal Event Model
+
+Every provider adapter emits `ProviderEvent` items which `AgentRunner` validates and forwards as durable `RunEventPayload` events and `RunSnapshot` state:
+
+1. **Reasoning Blocks (`reasoning.delta` / `reasoning.finished` / `MessagePart[type="reasoning"]`)**:
+   - `blockId`: stable per run, iteration, attempt, and block index (`${runId}.${iteration}.${attempt}.${index}`).
+   - `shape`: `'titles' | 'summary' | 'raw' | 'redacted' | 'none'` (classified by `classifyReasoningShape` in `packages/agent/src/streams.ts`).
+   - `redacted`: `true` when reasoning occurred with opaque/encrypted payload and no readable text (`text: ""`).
+   - `startedAt`, `finishedAt`, `durationMs`: recorded in `RunSnapshot` and client run state so the UI transitions from live `"Reasoning…"` to `"Reasoned for Ns"`.
+   - `afterToolCallId`: recorded when a reasoning block starts after one or more tool calls in the same turn, allowing the UI to interleave multiple reasoning blocks in exact order between tool rows.
+2. **Text Blocks (`text.delta` / `text.finished` / `MessagePart[type="text"]`)**:
+   - Empty deltas (`""`) without annotations are dropped at the decoder boundary.
+   - `annotations`: normalised `StreamAnnotation[]` (`citation`, `refusal`, `image`).
+   - Duplicate `blockEnd` or duplicate terminal frames (`message_stop`, `response.completed`, `[DONE]`) are deduplicated.
+3. **Tool Calls (`tool.started` / `tool.arguments.delta` / `tool.ready` / `tool.running` / `tool.finished`)**:
+   - Parallel tool calls receive distinct stable slots even when a provider omits `index`.
+   - Server-managed tools (`server_tool_use` / `web_search_tool_result`) are preserved in `raw` provider payloads for multi-turn replay without fabricating client tool calls.
+
+## Scope and verification
+
+The shipping presets in `ProviderEditor.tsx` are Anthropic (Messages), OpenAI (Responses), Groq (Chat), OpenRouter (Chat), and Custom (Chat by default, with selectable flavor). Custom endpoints include OpenAI Chat, DeepSeek, Qwen, Gemini OpenAI compatibility, xAI, Together, vLLM and Ollama **when they implement one of these wire flavors**. Native Gemini, AWS SigV4 Bedrock and Vertex OAuth transports are not implemented; these names in the table describe compatible gateways, not additional native adapters.
+
+Run the local simulator at `/lab/stream` after local-dev sign-in. Its token clock approximates one token as four UTF-16 code units; it is deterministic, not a provider tokenizer. `short` is for the speed/chunk Cartesian matrix; `torture` contains fences, tables, links, lists, math delimiters, emoji, combining marks, CJK and RTL. `torture` and `encoding` splits deliberately separate surrogate halves in JSON deltas. Existing inline math remains literal text; no LaTeX renderer was introduced.
+
+`h2-capture.mjs` records headed requestAnimationFrame intervals (including scheduling gaps), not just JavaScript callback execution time. A p95 over 10.2ms is a failed 120Hz gate. Captures and numeric results belong in the external H2 artifact directory, not the production bundle. Run browser gate groups sequentially: account deletion checks mutate the same local user as browser specs.
+
+Refusal deltas in Chat and Responses retain their readable text as well as the typed refusal annotation and terminal outcome. Responses image-generation snapshots and Anthropic-compatible image blocks are preserved as image annotations during streaming and image message parts at completion; no image-generation request or provider call is made by the fixture tests.

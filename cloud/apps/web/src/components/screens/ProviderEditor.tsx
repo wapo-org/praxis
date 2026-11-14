@@ -11,12 +11,14 @@ import {
   Field,
   requireHttpUrl,
   ScreenBody,
+  Select,
   ScreenButton,
   ScreenMenu,
   Section,
   TaskError,
   useScreenTask,
 } from './ScreenUI';
+import styles from './Screen.module.css';
 const PRESETS: Array<{
   name: string;
   flavor: Provider['flavor'];
@@ -110,22 +112,22 @@ export function ProviderEditor() {
   return (
     <ScreenBody>
       <form
-        className="screen-form"
+        className={styles.form}
         id="provider-editor-form"
         onSubmit={(event) => {
           event.preventDefault();
           void task.run(async () => {
             await persist();
-            store.setActiveSheet('settings');
+            store.setActiveSheet('providers');
           });
         }}
       >
         <TaskError error={task.error} />
         <Section title="Connection">
           <Card>
-            <div className="screen-row">
-              <span style={{ flex: 1 }}>Preset</span>
-              <ScreenMenu label="Provider preset" icon={preset || 'Saved provider'}>
+            <div className={styles.row}>
+              <span className={styles.rowCopy}>Preset</span>
+              <ScreenMenu plain label="Provider preset" icon={preset || 'Saved provider'}>
                 {PRESETS.map((item) => (
                   <GlassDropdown.Item
                     key={item.name}
@@ -155,14 +157,14 @@ export function ProviderEditor() {
           />
         </Field>
         <Field label="Flavor">
-          <select
+          <Select
             value={flavor}
             onChange={(event) => setFlavor(event.target.value as Provider['flavor'])}
           >
             <option value="anthropicMessages">Anthropic Messages</option>
             <option value="openAIChat">OpenAI Chat Completions</option>
             <option value="openAIResponses">OpenAI Responses</option>
-          </select>
+          </Select>
         </Field>
         <Field label="Base URL">
           <input
@@ -217,10 +219,10 @@ export function ProviderEditor() {
           hint="Header values are write-only. Adding headers replaces the saved custom headers."
         >
           {provider?.headerNames?.length ? (
-            <p className="screen-footnote">Saved header names: {provider.headerNames.join(', ')}</p>
+            <p className={styles.footnote}>Saved header names: {provider.headerNames.join(', ')}</p>
           ) : null}
           {headers.map((header, index) => (
-            <div className="screen-header-fields" key={index}>
+            <div className={styles.headerFields} key={index}>
               <Field label={`Header ${index + 1} name`}>
                 <input
                   value={header.key}
@@ -256,7 +258,7 @@ export function ProviderEditor() {
                   setHeaders((previous) => previous.filter((_, i) => i !== index));
                 }}
               >
-                <Trash2 size={15} />
+                <Trash2 size={16} />
               </ScreenButton>
             </div>
           ))}
@@ -266,7 +268,7 @@ export function ProviderEditor() {
               setHeaders((previous) => [...previous, { key: '', value: '' }]);
             }}
           >
-            <Plus size={15} />
+            <Plus size={16} />
             Add header
           </ScreenButton>
           {provider?.headerNames?.length && !headersEdited ? (
@@ -282,7 +284,7 @@ export function ProviderEditor() {
           ) : null}
         </Section>
         {defaultModel.trim() ? (
-          <label className="screen-detail">
+          <label className={styles.detail}>
             <input
               type="checkbox"
               checked={allowProbe}
@@ -307,6 +309,8 @@ export function ProviderEditor() {
               const result = defaultModel.trim()
                 ? await apiClient.testProvider(saved.id, defaultModel.trim())
                 : discovery;
+              const detected = result.models.find(m=>m.id===defaultModel.trim()) ?? discovery.models.find(m=>m.id===defaultModel.trim());
+              if (detected) setCapabilities({...detected.capabilities, ...(result.probe ? {tools:result.probe.tools,vision:result.probe.vision,reasoningEffort:result.probe.reasoningEfforts.length>0} : {})});
               if (!result.ok)
                 throw new Error(
                   result.error
@@ -335,7 +339,7 @@ export function ProviderEditor() {
           {task.busy ? 'Working…' : 'Test connection'}
         </ScreenButton>
         {message ? (
-          <p className="screen-success" role="status">
+          <p className={styles.success} role="status">
             {message}
           </p>
         ) : null}
@@ -353,7 +357,7 @@ export function ProviderEditor() {
             onClick={() => {
               void task.run(async () => {
                 await store.removeProvider(savedId);
-                store.setActiveSheet('settings');
+                store.setActiveSheet('providers');
               });
             }}
           >

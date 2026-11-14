@@ -37,15 +37,27 @@ it('renders GFM strikethrough and SVG icons', () => {
 it('matches the native light/dark palette and monochrome primary action aliases', () => {
   // Relative to this file, so it passes from the cloud root and from the web workspace alike.
   const swift = readFileSync(join(__dirname, '../../../../PraxisChat/PraxisChat/DesignSystem/Tokens.swift'), 'utf8');
-  const css = readFileSync(join(__dirname, 'styles/theme.css'), 'utf8');
+  const css = readFileSync(join(__dirname, 'styles/tokens.css'), 'utf8').toLowerCase();
+  const block = (selector: string) => css.slice(css.indexOf(`${selector} {`), css.indexOf('\n}', css.indexOf(`${selector} {`)));
+  const light = block("[data-theme='light']");
+  const dark = block("[data-theme='dark']");
   const native = [...swift.matchAll(/static let (\w+) = c\(0x([\dA-F]+), 0x([\dA-F]+)\)/g)];
   expect(native.length).toBe(13);
-  for (const [, name, light, dark] of native) {
-    const token = name!.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`).replace(/(\d)/g, '-$1');
-    expect(css.toLowerCase()).toContain(`--paper-${token}: #${light!.toLowerCase()}`);
-    expect(css.toLowerCase()).toContain(`--paper-${token}: #${dark!.toLowerCase()}`);
+  // Web token names for the native colours; hairline/pressed/tile are translucent or aliased on web (DESIGN.md).
+  const web: Record<string, string> = {
+    canvas: '--color-paper', card: '--color-surface', ink: '--color-ink', secondaryInk: '--color-ink-2',
+    mutedInk: '--color-ink-3', fill1: '--color-fill-1', fill2: '--color-fill-2',
+    success: '--color-success', destructive: '--color-danger',
+  };
+  for (const [, name, l, d] of native) {
+    const token = web[name!];
+    if (!token) continue;
+    expect(light).toContain(`${token}: #${l!.toLowerCase()};`);
+    expect(dark).toContain(`${token}: #${d!.toLowerCase()};`);
   }
-  expect(css).toContain('--paper-accent: var(--paper-ink)');
+  expect(light).toContain('--color-accent: #15140f;');
+  expect(dark).toContain('--color-accent: #f1efe9;');
+  expect(css).toContain('--paper-accent: var(--color-accent)');
 });
 it('debounces server model search, loads cursors, and ignores stale responses', async () => {
   vi.useFakeTimers();
@@ -86,7 +98,7 @@ it('shows iOS tray order and sends the supported Web search toggle to the API', 
   await act(async () => { store.cacheModels([model('hosted')]); store.setSelectedModel('p', 'hosted'); store.setPlusTrayOpen(true); });
   const groups = [...node.querySelectorAll('[role="group"]')];
   expect(groups.map(g => g.getAttribute('aria-label'))).toEqual(['Mode', 'Reasoning effort']);
-  expect([...node.querySelectorAll('.tray-media button')].map(n => n.textContent)).toEqual(['Photos', 'Camera', 'Files', 'Screenshot']);
+  expect([...node.querySelectorAll('[data-testid^="tray-tile-"]')].map(n => n.textContent)).toEqual(['Photos', 'Camera', 'Files', 'Screenshot']);
   await act(async () => node.querySelector<HTMLInputElement>('[aria-label="Web search"]')!.click());
   await act(async () => store.sendMessage('Question'));
   expect(start).toHaveBeenCalledWith(expect.objectContaining({ webSearch: true }));

@@ -5,6 +5,9 @@ import type {AdapterBundle, FeatureContext} from './contracts.js';
 import {createExecutionDriver, type ContinuationScheduler, type ExecutionFeatures, type RunLease} from './execution.js';
 import {ContinuationAuthError} from './adapters/qstash.js';
 import {ApiService} from './service.js';
+import type {Embedder} from './embedding.js';
+import {SearchIndexer, type VectorIndex} from './search-index.js';
+import {loadChatDocs} from './search.js';
 
 /** Feature modules plugged in by the entry point (MCP, tools). */
 export interface FeatureModule {
@@ -38,6 +41,8 @@ export interface PraxisDeps {
   continuation?: {path: string; verify: (request: Request) => Promise<{userId: string; runId: string}>};
   /** Test hook for slice budgets. */
   clock?: () => number;
+  /** Semantic search: an embedder and where its vectors live. Absent = lexical search only. */
+  search?: {embedder: Embedder; vectors: VectorIndex; debounceMs?: number};
   /** Feature modules, or a factory that receives the service (modules need provider resolution). */
   modules?: FeatureModule[] | ((service: ApiService) => FeatureModule[]);
   log?: (record: {requestId: string; method: string; path: string; status: number; durationMs: number}) => void;
@@ -47,6 +52,12 @@ export interface PraxisDeps {
 export function createPraxisApp(deps: PraxisDeps) {
   const service = new ApiService(deps.adapters, deps.local);
   if (deps.defer) service.defer = deps.defer;
+  if (deps.search)
+    service.search = new SearchIndexer({
+      ...deps.search,
+      load: (userId, chatId) => loadChatDocs(service, userId, chatId),
+      defer: work => (service.defer ? service.defer(work) : void work),
+    });
   const modules = typeof deps.modules === 'function' ? deps.modules(service) : (deps.modules ?? []);
   const features = mergeExecutionFeatures(modules.flatMap(m => (m.execution ? [m.execution] : [])));
   const driver = createExecutionDriver({
@@ -97,6 +108,7 @@ export function createPraxisApp(deps: PraxisDeps) {
 
 function mergeExecutionFeatures(list: ExecutionFeatures[]): ExecutionFeatures {
   return {
+    refreshCatalog:list.some(f=>f.refreshCatalog),
     tools: async (ctx, input) => (await Promise.all(list.map(f => f.tools?.(ctx, input) ?? []))).flat(),
     agentTools: async (ctx, input) => (await Promise.all(list.map(f => f.agentTools?.(ctx, input) ?? []))).flat(),
     skills: async ctx => (await Promise.all(list.map(f => f.skills?.(ctx) ?? []))).flat(),

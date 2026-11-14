@@ -1,0 +1,100 @@
+/* The morph's layers. Values come from tokens.css; the motion is in engine.ts. */
+
+/* The glass's own clip: rows are cut by the rim while they arrive. Only while moving,
+   so a cascading submenu can leave the glass at rest. */
+[data-morphing='true'] {
+  overflow: hidden !important;
+}
+
+.body {
+  position: relative;
+  transform-origin: 50% 50%;
+}
+
+.sharp {
+  width: 100%;
+}
+
+/* A fixed blur on a static copy, crossfaded with the sharp rows: the radius never animates.
+   Chromium swaps this for the bend filter; the padding keeps the copy on the rows. */
+.blurred {
+  position: absolute;
+  inset: 0;
+  padding: inherit;
+  opacity: 0;
+  pointer-events: none;
+  filter: blur(var(--glass-morph-blur));
+  will-change: opacity;
+}
+.blurred > * {
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+/* The glass while it moves: more transparent than the menu it becomes. */
+.transit,
+.flash,
+.rim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  corner-shape: inherit;
+  clip-path: var(--glass-squircle, none);
+  pointer-events: none;
+}
+.transit,
+.flash {
+  opacity: 0;
+}
+
+/* Path engines draw this line as a stroke of the clip's path at rest (glass.module.css .outline). */
+[data-glass-path='true']:not([data-morph-round='true']) > .rim {
+  box-shadow: none;
+}
+
+/* The glass's one crisp line: through the whole morph, the lens handover and at rest, so it never pops. */
+.rim {
+  --morph-rim: 1px;
+  box-shadow:
+    inset 0 0 0 var(--morph-rim) var(--glass-morph-rim),
+    inset 0 0 0 calc(var(--morph-rim) * 2) var(--glass-morph-rim-light);
+  opacity: var(--glass-fade, 1);
+}
+
+.transit {
+  z-index: -2; /* under the real lens, which fades in over it */
+  background-color: var(--glass-morph-tint);
+  background-image: linear-gradient(160deg, rgba(255, 255, 255, var(--glass-sheen-a)) 0%, rgba(255, 255, 255, 0) 52%);
+  box-shadow:
+    inset 0 2px 16px rgba(0, 0, 0, calc(0.14 * var(--glass-inner))),
+    inset 0 -2px 16px rgba(255, 255, 255, calc(0.2 * var(--glass-inner))),
+    inset 0 0 0 1px rgba(255, 255, 255, calc(0.4 * var(--glass-rim))),
+    inset 0 0 0 1px rgba(15, 15, 20, calc(0.07 * var(--glass-border)));
+  -webkit-backdrop-filter: blur(var(--glass-morph-backdrop));
+  backdrop-filter: blur(var(--glass-morph-backdrop));
+}
+
+/* The source lifting toward near-opaque, before it turns into glass. */
+.flash {
+  background-color: var(--glass-morph-flash);
+}
+
+/* The button's glyph, leaving as the source lifts and returning as it lands. */
+.glyph {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  pointer-events: none;
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .transit {
+    background-color: var(--glass-fallback);
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}

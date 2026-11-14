@@ -8,13 +8,72 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Fonts load without blocking first paint; display=swap keeps text visible meanwhile. -->
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap"
-      rel="stylesheet"
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap"
+      />
+    </noscript>
     <script>
       performance.mark('praxis:boot-start');
       try {
+        // Sidebar palette (src/lib/sidebarPalette.ts, kept in step by its test).
+        const root = document.documentElement;
+        const pal = {
+          graphite: ['#16181b', '#3d4147', 1, '#8ea0b3'],
+          midnight: ['#101c33', '#2f4570', 1, '#4b7fd6'],
+          forest: ['#12261d', '#2f5a45', 1, '#44a877'],
+          plum: ['#261530', '#5a3a6b', 1, '#a866d4'],
+          sand: ['#ede7da', '#cfc5b0', 0, '#dfd1af'],
+          paper: ['#fafaf9', '#d6d7e0', 0, '#e2e3eb'],
+        };
+        const lightTones = {
+          sand: ['#f5f0e5', '#ede5d5', '#e5dcc9', 'rgb(225 214 192/14%)', '#8c8578', 65, 38, 16, 4],
+          paper: ['#ffffff', '#f7f7fa', '#efeff4', 'rgb(232 234 242/14%)', '#8e90a0', 75, 45, 18, 5],
+        };
+        let palId = 'graphite';
+        try {
+          const savedPal = localStorage.getItem('praxis-sidebar-palette');
+          if (Object.prototype.hasOwnProperty.call(pal, savedPal)) palId = savedPal;
+        } catch {}
+        const [base, border, dark, acc] = pal[palId];
+        const rb = 'color-mix(in srgb,' + acc + ' 10%,#000)';
+        const hot = 'color-mix(in srgb,' + acc + ' 100%,' + rb + ')';
+        const mid = 'color-mix(in srgb,' + acc + ' 40%,' + rb + ')';
+        const lt = !dark ? lightTones[palId] : null;
+        const lMid = lt ? 'color-mix(in srgb,' + acc + ' 45%,#ffffff)' : '';
+        const lLo = lt ? 'color-mix(in srgb,' + border + ' 72%,' + lt[4] + ')' : '';
+        const vars = {
+          '--sb-bg': lt
+            ? 'linear-gradient(to bottom,' + lt[0] + ' 0%,' + lt[1] + ' 45%,color-mix(in srgb,' + lt[2] + ' 90%,transparent) 100%)'
+            : 'linear-gradient(to bottom,rgb(255 255 255/20%) 0%,rgb(255 255 255/12%) 2%,rgb(255 255 255/6%) 5%,rgb(255 255 255/2%) 9%,transparent 14%,transparent 100%),linear-gradient(to bottom,' + base + ' 0%,' + base + ' 45%,color-mix(in srgb,' + base + ' 40%,transparent) 100%)',
+          '--sb-gloss': lt
+            ? 'linear-gradient(to bottom,rgb(255 255 255/' + lt[5] + '%) 0%,rgb(255 255 255/' + lt[6] + '%) 2%,rgb(255 255 255/' + lt[7] + '%) 6%,rgb(255 255 255/' + lt[8] + '%) 11%,transparent 18%,' + lt[3] + ' 100%)'
+            : 'linear-gradient(to bottom,rgb(255 255 255/20%) 0%,rgb(255 255 255/12%) 2%,rgb(255 255 255/6%) 5%,rgb(255 255 255/2%) 9%,transparent 14%,rgb(0 0 0/12%) 100%)',
+          '--sb-ring': lt
+            ? 'conic-gradient(from 45deg at 50% 50%,#ffffff 0deg,' + lMid + ' 35deg,' + lLo + ' 110deg,' + lLo + ' 250deg,' + lMid + ' 325deg,#ffffff 360deg)'
+            : 'conic-gradient(from 45deg at 50% 50%,' + hot + ' 0deg,' + mid + ' 35deg,' + rb + ' 110deg,' + rb + ' 250deg,' + mid + ' 325deg,' + hot + ' 360deg)',
+          '--sb-shadow': lt
+            ? 'inset 0 1.5px 1px rgb(255 255 255/92%),inset 0 -1px 1px rgb(21 20 15/6%),0 12px 30px rgb(21 20 15/11%),0 2px 6px rgb(21 20 15/7%)'
+            : 'inset 0 1px 2px rgb(255 255 255/30%)',
+          '--sb-base': base,
+          '--sb-border': border,
+          '--sb-accent': acc,
+          '--sb-ink': dark ? '#f2f1ed' : '#1c1c1c',
+          '--sb-mute': dark ? '#b5b4b0' : '#44423c',
+          '--sb-hl': dark ? 'rgba(255,255,255,0.12)' : 'rgba(21,20,15,0.06)',
+          '--sb-line': dark ? 'rgba(255,255,255,0.1)' : 'rgba(21,20,15,0.1)',
+          '--sb-active': dark ? 'rgba(255,255,255,0.12)' : 'rgba(21,20,15,0.09)',
+        };
+        root.dataset.sidebarPalette = palId;
+        for (const name in vars) root.style.setProperty(name, vars[name]);
         const savedTheme = localStorage.getItem('praxis-theme') || 'system';
         const resolved =
           savedTheme === 'system'

@@ -27,7 +27,20 @@ describe('attachments reach the model (parity: AttachmentMedia)', () => {
     expect(JSON.stringify(content)).toContain('[Attached file: “data.zip”. Read them with `fs` in run_javascript.]');
     const stored: Message[] = (await (await f.req(`/v1/chats/${chat.id}/messages`)).json()).items;
     expect(JSON.stringify(stored[0])).not.toContain(Buffer.from(image).toString('base64')); // bytes are never persisted in history
-    expect(stored[0]!.parts.filter(p => p.attachmentId).map(p => p.type)).toEqual(['image', 'document', 'document']);
+    // The zip is a structured note (model input), never text in the user's visible bubble (WP-J2).
+    expect(stored[0]!.parts.filter(p => p.attachmentId).map(p => p.type)).toEqual(['image', 'document', 'document', 'note']);
+    expect(stored[0]!.parts.filter(p => p.type === 'text').map(p => p.text)).toEqual(['Look']);
+  });
+
+  it('preserves a structured file note through prompt assembly while JavaScript fs reads its attachment bytes',async()=>{
+    const f=setup([toolCall('run_javascript',{code:"return {names:await fs.list(),bytes:Array.from(await fs.readBytes('data.zip'))}"})]);
+    const chat=await f.chat();const id=await f.upload(chat.id,'data.zip','application/zip',new Uint8Array([80,75,3,4]));
+    const result=await f.run(chat.id,'Inspect this archive',[id]);expect(result.run.outcome).toBe('completed');expect(result.pendingApprovals).toHaveLength(0);
+    const stored:Message[]=(await(await f.req(`/v1/chats/${chat.id}/messages`)).json()).items;
+    expect(stored[0]!.parts).toContainEqual(expect.objectContaining({type:'note',attachmentId:id,text:expect.stringContaining('[Attached file: “data.zip”')}));
+    expect(stored[0]!.parts.filter(p=>p.type==='text').map(p=>p.text)).toEqual(['Inspect this archive']);
+    const first=JSON.stringify(f.fake.requests[0]);expect(first).toContain('[Attached file: “data.zip”');expect(first).toContain('Never ask permission or confirmation');
+    const resumed=JSON.stringify(f.fake.requests[1].messages);expect(resumed).toContain('data.zip');expect(resumed).toContain('80,75,3,4');
   });
 
   it('re-encodes oversized images like the app (max 2000 px side) and sends nothing for a blind model', async () => {
@@ -53,15 +66,15 @@ describe('chat titles (parity: ConversationTitle)', () => {
     const f = setup();
     const a = await f.chat();
     await f.run(a.id, '   Plan   a trip\nto Lisbon with a very long description that goes on and on');
-    expect((await (await f.req(`/v1/chats/${a.id}`)).json()).title).toBe('Plan a trip to Lisbon with a very long des');
+    expect((await (await f.req(`/v1/chats/${a.id}`)).json()).title).toBe('Plan Trip Lisbon Very Long');
     await f.run(a.id, 'Second message');
-    expect((await (await f.req(`/v1/chats/${a.id}`)).json()).title).toBe('Plan a trip to Lisbon with a very long des');
+    expect((await (await f.req(`/v1/chats/${a.id}`)).json()).title).toBe('Plan Trip Lisbon Very Long');
 
     const b = await f.chat();
     await f.run(b.id, '', [await f.upload(b.id, 'x.png', 'image/png', await png(2, 2))]);
     expect((await (await f.req(`/v1/chats/${b.id}`)).json()).title).toBe('Photo');
     await f.run(b.id, 'What is this?');
-    expect((await (await f.req(`/v1/chats/${b.id}`)).json()).title).toBe('What is this?');
+    expect((await (await f.req(`/v1/chats/${b.id}`)).json()).title).toBe('What');
   });
 });
 

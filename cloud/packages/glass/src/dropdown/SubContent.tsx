@@ -1,9 +1,12 @@
-import { AnimatePresence, motion } from 'framer-motion';
+import {placeSubmenu} from './positioning';
+import styles from './dropdown.module.css';
+import { AnimatePresence } from 'framer-motion';
 import React from 'react';
-import { GlassSurface } from '../GlassSurface';
-import type { GlassMaterialControls } from '../glass-store';
+import { GlassMorph } from '../morph/GlassMorph';
+import type { GlassMaterialControls } from '../GlassSurface';
 import type { PanelHighlightContextValue } from './context';
 import {
+  assignForwardedRef,
   DepthContext,
   PanelHighlightContext,
   SUB_CONTENT_MARKER,
@@ -24,18 +27,38 @@ const SubContent = React.forwardRef<HTMLDivElement, SubContentProps>(
   function SubContent({ children, style, ...rest }, forwardedRef) {
     const ctx = useGlassDropdownContext('SubContent');
     const sub = React.useContext(SubContext);
+    const shell=React.useRef<HTMLDivElement|null>(null);
+    const [placement,setPlacement]=React.useState<React.CSSProperties|null>(null);
+    const setShell=React.useCallback((node:HTMLDivElement|null)=>{shell.current=node;assignForwardedRef(forwardedRef,node);},[forwardedRef]);
+    React.useLayoutEffect(()=>{
+      if(!sub?.isOpen||ctx.submenuMode!=='cascade')return;
+      const el=shell.current,trigger=sub.getSubTriggerEl();
+      if(!el||!trigger)return;
+      const update=()=>{
+        const placed=placeSubmenu(trigger.getBoundingClientRect(),el.offsetWidth,el.scrollHeight,window.innerWidth,window.innerHeight);
+        const parent=el.offsetParent?.getBoundingClientRect();
+        const surface=el.querySelector<HTMLElement>('[data-glass-surface]');
+        const css=surface?getComputedStyle(surface):null;
+        const padding=css?(parseFloat(css.paddingTop)||0)+(parseFloat(css.paddingBottom)||0):0;
+        el.style.setProperty('--submenu-list-height',Math.max(0,placed.maxHeight-padding)+'px');
+        setPlacement({left:placed.left-(parent?.left??0),right:'auto',top:placed.top-(parent?.top??0),width:placed.width,minWidth:0,maxWidth:'calc(100vw - 16px)',maxHeight:placed.maxHeight,visibility:'visible'});
+      };
+      update();
+      const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(update);
+      observer?.observe(el);observer?.observe(trigger);
+      window.addEventListener('resize',update);window.addEventListener('scroll',update,true);
+      return()=>{observer?.disconnect();window.removeEventListener('resize',update);window.removeEventListener('scroll',update,true);};
+    },[sub?.isOpen,sub?.getSubTriggerEl,ctx.submenuMode]);
     const [highlightedId, setHighlightedId] = React.useState<string | null>(
       null,
     );
-    const scopeId = React.useId();
 
     const highlightCtx = React.useMemo<PanelHighlightContextValue>(
       () => ({
         highlightedId,
         setHighlightedId,
-        layoutScopeId: `sub-${scopeId}`,
       }),
-      [highlightedId, scopeId],
+      [highlightedId],
     );
 
     if (!sub || ctx.submenuMode !== 'cascade') return null;
@@ -45,55 +68,26 @@ const SubContent = React.forwardRef<HTMLDivElement, SubContentProps>(
         {sub.isOpen ? (
           <DepthContext.Provider value={sub.depth + 1}>
             <PanelHighlightContext.Provider value={highlightCtx}>
-              <motion.div
-                ref={forwardedRef}
-                role="menu"
-                aria-label={
-                  typeof sub.label === 'string' ? sub.label : 'Submenu'
-                }
-                initial={{
-                  opacity: 0,
-                  scale: 0.62,
-                  x: sub.openSide === 'right' ? -10 : 10,
+              <GlassMorph
+                source={sub.getSubTriggerEl}
+                material={ctx.materialControls.material ?? 'thick'}
+                stretch="edge"
+                className={styles.surface}
+                shellRef={setShell}
+                ready={!!placement}
+                shellProps={{
+                  ...rest,
+                  role: 'menu',
+                  'aria-label': typeof sub.label === 'string' ? sub.label : 'Submenu',
+                  className: `${styles.subContent} ${sub.openSide === 'right' ? styles.subRight : styles.subLeft}`,
+                  style:{...style,...(placement??{visibility:'hidden'})},
+                  onPointerLeave: () => setHighlightedId(null),
                 }}
-                animate={{ opacity: 1, scale: 1, x: 0 }}
-                exit={{
-                  opacity: 0,
-                  scale: 0.78,
-                  transition: { duration: 0.12 },
-                }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 460,
-                  damping: 28,
-                  mass: 0.8,
-                }}
-                style={{
-                  position: 'absolute',
-                  zIndex: 60,
-                  minWidth: 224,
-                  top: -6,
-                  ...(sub.openSide === 'right'
-                    ? { left: 'calc(100% + 8px)' }
-                    : { right: 'calc(100% + 8px)' }),
-                  ...style,
-                }}
-                onPointerLeave={() => setHighlightedId(null)}
-                {...rest}
               >
-                <GlassSurface
-                  shape="free"
-                  radius={22}
-                  {...ctx.materialControls}
-                  style={{ padding: 6 }}
-                >
-                  <div
-                    style={{ display: 'flex', flexDirection: 'column', gap: 2 }}
-                  >
+                  <div className={styles.list} style={{maxHeight:'var(--submenu-list-height, calc(100vh - 32px))',overflowY:'auto',scrollbarWidth:'none'}}>
                     {children}
                   </div>
-                </GlassSurface>
-              </motion.div>
+              </GlassMorph>
             </PanelHighlightContext.Provider>
           </DepthContext.Provider>
         ) : null}

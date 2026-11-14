@@ -30,6 +30,9 @@ export interface ActiveToolStep {
   progressLines: string[];
   statusText?: string;
   completion?: ToolCompletion;
+  startedAt?: string;
+  finishedAt?: string;
+  timelineOrder?: number;
 }
 
 export interface ActiveElicitation {
@@ -46,8 +49,8 @@ export interface ActiveElicitation {
 export interface LiveRunState {
   run: Run;
   lastEventId: number;
-  textBlocks: Array<{ id: string; text: string; finished: boolean }>;
-  reasoningBlocks: Array<{ id: string; text: string; finished: boolean }>;
+  textBlocks: Array<{ id: string; text: string; finished: boolean; timelineOrder?: number }>;
+  reasoningBlocks: import('../components/chat/ReasoningView').ReasoningBlock[];
   toolSteps: ActiveToolStep[];
   pendingApprovals: Approval[];
   pendingElicitations: ActiveElicitation[];
@@ -68,6 +71,9 @@ export interface LiveRunState {
 }
 
 export type ActiveSheet =
+  | 'general'
+  | 'account'
+  | 'developer'
   | null
   | 'history'
   | 'settings'
@@ -82,7 +88,8 @@ export type ActiveSheet =
   | 'skill-browser'
   | 'image-reader'
   | 'voice-settings'
-  | 'consents';
+  | 'consents'
+  | 'saved-values';
 
 export interface PendingConsentPrompt {
   host: string;
@@ -98,6 +105,8 @@ export interface PraxisStoreContextValue {
   syncing: boolean;
   errorBanner: string | null;
   clearErrorBanner: () => void;
+  /** Shows a failure in the app's error banner (for work that finishes after its surface has closed). */
+  reportError: (message: string) => void;
 
   // Theme
   themeMode: ThemeMode;
@@ -109,6 +118,9 @@ export interface PraxisStoreContextValue {
   setActiveSheet: (sheet: ActiveSheet) => void;
   restoreRoute: (chatId: string | null, sheet: ActiveSheet, providerId?: string | null) => void;
   startNewConversation: () => void;
+  /** The random two-word name the next new chat gets (design v2). */
+  draftTitle: string;
+  pendingChatSwitchRef: { current: string | null };
   editingProviderId: string | null;
   setEditingProviderId: (id: string | null) => void;
   desktopSidebarOpen: boolean;
@@ -142,10 +154,11 @@ export interface PraxisStoreContextValue {
   setWebSearch: (value: boolean) => void;
   cacheModels: (items: Model[]) => void;
   selectedEffort: string;
-  selectedMode: 'ask' | 'plan' | 'build' | 'auto';
+  /** Auto, Ask or Execute (lib/modes.ts maps them to the wire's auto/ask/build). */
+  selectedMode: import('../lib/modes').Mode;
   setSelectedModel: (providerId: string, modelId: string) => void;
   setSelectedEffort: (effort: string) => void;
-  setSelectedMode: (mode: 'ask' | 'plan' | 'build' | 'auto') => void;
+  setSelectedMode: (mode: import('../lib/modes').Mode) => void;
 
   // Live Run State per Chat
   liveRunsByChat: Record<string, LiveRunState>;
@@ -157,7 +170,7 @@ export interface PraxisStoreContextValue {
 
   // Actions
   selectChat: (chatId: string) => Promise<void>;
-  createNewChat: (title?: string) => Promise<Chat>;
+  createNewChat: (title?: string, id?: string) => Promise<Chat>;
   renameChat: (chatId: string, title: string) => Promise<void>;
   togglePinChat: (chatId: string) => Promise<void>;
   deleteChats: (chatIds: string[]) => Promise<void>;
@@ -166,7 +179,8 @@ export interface PraxisStoreContextValue {
   sendMessage: (
     text: string,
     options?: {
-      attachmentIds?: string[];
+      regenerateMessageId?: string;
+        attachmentIds?: string[];
       script?:
         | 'text'
         | 'tools'
@@ -216,6 +230,7 @@ export interface PraxisStoreContextValue {
   updateConnector: (
     connectorId: string,
     patch: {
+      token?: string;
       enabled?: boolean;
       trusted?: boolean;
       name?: string;

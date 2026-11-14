@@ -99,6 +99,7 @@ describe('@praxis/web client flows against Lead A local API', () => {
   });
 
   it('handles approval and nestedApproval pause + resume via client.submitApproval', async () => {
+    await client.patchChat('welcome', {mode:'auto'});
     for (const script of ['approval', 'nestedApproval'] as const) {
       const run = await client.startRun({
         chatId: 'welcome',

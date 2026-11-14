@@ -1,8 +1,11 @@
 import type { Attachment, MessagePart } from '@praxis/protocol';
 import React from 'react';
 import { apiClient } from '../../lib/api';
-import { FileText, Paperclip } from '../../lib/icons';
 import { safeLink } from '../../lib/links';
+import { formatBytes } from './attachmentInfo';
+import { AttachmentChip, AttachmentThumb } from './AttachmentChip';
+
+/** One attachment on a sent message: images vertical with preview, files horizontal with type · size. */
 export function MessageAttachment({
   part,
   attachment,
@@ -35,53 +38,23 @@ export function MessageAttachment({
   }, [attachment, part.attachmentId]);
   const att = attachment ?? loaded;
   const url = safeLink(att?.url);
-  const image = part.type === 'image' && url && /^https?:/.test(url);
-  if (image)
-    return (
-      <button
-        type="button"
-        onClick={() => onPreview(url)}
-        style={{
-          padding: 0,
-          border: '1px solid var(--paper-hairline)',
-          borderRadius: 14,
-          overflow: 'hidden',
-          background: 'var(--paper-fill-1)',
-        }}
-      >
-        <img
-          src={url}
-          alt={att?.name || 'Attached image'}
-          style={{
-            maxWidth: 180,
-            maxHeight: 160,
-            display: 'block',
-            objectFit: 'cover',
-          }}
-        />
-      </button>
-    );
+  const mediaType = att?.mediaType ?? part.mediaType ?? 'application/octet-stream';
+  if (part.type === 'image' && url && /^https?:/.test(url)) {
+    const imageName = att?.name || 'Attached image';
+    const meta = ['Image', att?.size !== undefined ? formatBytes(att.size) : ''].filter(Boolean).join(' · ');
+    return <AttachmentThumb src={url} name={imageName} meta={meta} onOpen={() => onPreview(url)} />;
+  }
+  const name = unavailable ? 'Attachment unavailable' : (att?.name ?? (part.type === 'image' ? 'Image' : 'File'));
   return (
-    <div
-      data-testid="document-attachment-chip"
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 7,
-        padding: '9px 12px',
-        borderRadius: 12,
-        background: 'var(--paper-fill-1)',
-        border: '1px solid var(--paper-hairline)',
-        color: 'var(--paper-ink)',
-        fontSize: 13,
-      }}
-    >
-      {part.type === 'document' ? <FileText size={17} /> : <Paperclip size={17} />}
-      <span>
-        {unavailable
-          ? 'Attachment unavailable'
-          : (att?.name ?? (part.type === 'document' ? 'Document' : 'Attachment'))}
-      </span>
-    </div>
+    <AttachmentChip
+      testId="document-attachment-chip"
+      orientation="horizontal"
+      name={name}
+      mediaType={mediaType}
+      size={att?.size}
+      href={url && /^https?:/.test(url) ? url : undefined}
+      state={!att ? (unavailable ? 'error' : 'uploading') : 'done'}
+      status={att ? undefined : unavailable ? 'Removed or not accessible' : 'Loading…'}
+    />
   );
 }

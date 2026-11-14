@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {CapabilitiesSchema,IdSchema,JsonObjectSchema,ModelSchema,ProviderFlavorSchema,type Capabilities,type JsonObject,type Model} from '@praxis/protocol';
-import type {ModelProvider,ProviderRequest,ProviderEvent} from './types.js';
+import type {ModelProvider,ProviderRequest,ProviderEvent,ProviderResponse} from './types.js';
 import {ProviderFailure} from './runner.js';
 import {buildProviderRequest,array,number,object,string,type RequestOptions} from './wire.js';
 import {classifyProviderError,decodeAnthropic,decodeOpenAIChat,decodeOpenAIResponses,parseSSE} from './streams.js';
@@ -15,7 +15,7 @@ export const HTTPProviderConfigSchema=z.object({
   maxEventBytes:z.number().int().positive().max(16_000_000).default(1_000_000),
 });
 export type HTTPProviderConfig=z.input<typeof HTTPProviderConfigSchema>;
-export interface HTTPProvider extends ModelProvider {listModels(signal?:AbortSignal):Promise<Model[]>}
+export interface HTTPProvider extends ModelProvider {complete(input:ProviderRequest,signal:AbortSignal):Promise<ProviderResponse>;listModels(signal?:AbortSignal):Promise<Model[]>}
 /** baseUrl is endpoint root (including a custom prefix), or a full known generation URL. */
 export function providerURL(baseUrl:string,path:string):URL {
   const url=new URL(baseUrl);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw new Error('Provider URL must be HTTP(S) without embedded credentials');
@@ -43,9 +43,12 @@ export function createHTTPProvider(config:HTTPProviderConfig,fetcher:typeof fetc
     try{response=await fetcher(url,{...init,redirect:'error'});}catch(error){if(init.signal?.aborted)throw error;throw new ProviderFailure('Provider network request failed','retryable');}
     if(!response.ok) {
       const text=await readBounded(response,64_000),json=(()=>{try{return object(JSON.parse(text));}catch{return {};}})(),error=object(json.error);
-      const message=redact(string(error.message)||string(json.message)||text||`Provider HTTP ${response.status}`);
+      const raw=string(object(error.metadata).raw);
+      const upstream=(()=>{try{const parsed=object(JSON.parse(raw));return string(object(parsed.error).message)||string(parsed.message)||raw;}catch{return raw;}})();
+      const summary=string(error.message)||string(json.message);
+      const message=redact([summary,upstream].filter(Boolean).join(': ')||text||`Provider HTTP ${response.status}`);
       const retry=response.headers.get('retry-after');const delay=retry?Math.max(0,Number.isFinite(Number(retry))?Number(retry)*1000:Date.parse(retry)-Date.now()):undefined;
-      throw classifyProviderError(message,response.status,delay&&Number.isFinite(delay)?delay:undefined);
+      const failure=classifyProviderError(message,response.status,delay&&Number.isFinite(delay)?delay:undefined);failure.status=response.status;throw failure;
     }
     return response;
   }
@@ -63,6 +66,21 @@ export function createHTTPProvider(config:HTTPProviderConfig,fetcher:typeof fetc
         if(error instanceof ProviderFailure)throw new ProviderFailure(redact(error.message),error.kind,error.retryAfterMs);
         if(signal.aborted)throw error;throw new ProviderFailure('Provider sent malformed stream data');
       }
+    },
+    async complete(input,signal) {
+      if(c.maxTokensField==='omit')throw new ProviderFailure('This provider does not support a bounded title completion.');
+      const body=buildProviderRequest(c.flavor,input,c as RequestOptions);
+      body.stream=false;
+      if(input.titleReasoning&&c.flavor==='openAIChat'&&new URL(c.baseUrl).hostname==='openrouter.ai'){delete body.reasoning_effort;body.reasoning={effort:input.titleReasoning,exclude:true};}
+      delete body.stream_options;
+      const path=c.flavor==='anthropicMessages'?'messages':c.flavor==='openAIChat'?'chat/completions':'responses';
+      const h=headers();h.set('accept','application/json');
+      const response=await request(providerURL(c.baseUrl,path),{method:'POST',headers:h,body:JSON.stringify(body),signal});
+      const json=object(JSON.parse(await readBounded(response,64000))),usage=object(json.usage);
+      const text=c.flavor==='openAIChat'?string(object(object(array(json.choices)[0]).message).content):
+        c.flavor==='anthropicMessages'?array(json.content).map(v=>string(object(v).text)).join(''):
+        array(json.output).flatMap(v=>array(object(v).content)).map(v=>string(object(v).text)).join('');
+      return {parts:[{type:'text',text}],stop:'endTurn',usage:{type:'usage',inputTokens:number(usage.prompt_tokens)||number(usage.input_tokens),outputTokens:number(usage.completion_tokens)||number(usage.output_tokens),cacheReadTokens:0,cacheWriteTokens:0}};
     },
     async listModels(signal=AbortSignal.timeout(30000)):Promise<Model[]> {
       let cursor:string|undefined;const seen=new Set<string>(),models=new Map<string,Model>();
@@ -97,5 +115,9 @@ export function parseModelMetadata(raw:unknown,providerId:string,defaults:Capabi
   else if(params.length||capList.length)efforts=[];
   const capabilities=CapabilitiesSchema.parse({...defaults,...(images!==undefined?{vision:images}:{}),...(tools!==undefined?{tools}:{}),...(efforts!==undefined?{reasoningEffort:efforts.length>0}:{})});
   const context=number(m.context_window)||number(m.max_input_tokens)||number(m.context_length)||number(object(m.top_provider).context_length),maxOutput=number(m.max_output_tokens)||number(m.max_tokens)||number(object(m.top_provider).max_completion_tokens);
-  return ModelSchema.parse({type:'model',id:m.id??m.key??m.name,providerId,displayName:string(m.display_name)||string(m.name)||string(m.id)||string(m.key),capabilities,reasoningEfforts:efforts??(capabilities.reasoningEffort?['low','medium','high']:[]),pinned:false,favorite:false,...(context>0?{contextWindow:context}:{}),...(maxOutput>0?{maxOutputTokens:maxOutput}:{})});
+  const prices=object(m.pricing);
+  const inputPrice=typeof prices.prompt==='string'||typeof prices.prompt==='number'?Number(prices.prompt):NaN;
+  const outputPrice=typeof prices.completion==='string'||typeof prices.completion==='number'?Number(prices.completion):NaN;
+  const pricing=Number.isFinite(inputPrice)&&inputPrice>=0&&Number.isFinite(outputPrice)&&outputPrice>=0?{prompt:inputPrice,completion:outputPrice}:undefined;
+  return ModelSchema.parse({...(pricing?{pricing}:{}),...(Array.isArray(architecture.output_modalities)?{outputModalities:architecture.output_modalities}:{}),...(typeof reasoning.mandatory==='boolean'?{reasoningMandatory:reasoning.mandatory}:{}),type:'model',id:m.id??m.key??m.name,providerId,displayName:string(m.display_name)||string(m.name)||string(m.id)||string(m.key),capabilities,reasoningEfforts:efforts??(capabilities.reasoningEffort?['low','medium','high']:[]),pinned:false,favorite:false,...(context>0?{contextWindow:context}:{}),...(maxOutput>0?{maxOutputTokens:maxOutput}:{})});
 }

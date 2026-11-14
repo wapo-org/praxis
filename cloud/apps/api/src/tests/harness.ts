@@ -8,14 +8,17 @@ import {createPraxisApp} from '../server.js';
 /** Local app + fake OpenAI-compatible provider shared by the parity and review-fix suites. */
 export function fakeOpenAI(turns: string[][]) {
   const requests: any[] = [];
+  const titleRequests:any[]=[];
   const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
     if (!String(input instanceof Request ? input.url : input).includes('llm.example.test')) return fetch(input, init);
     if (String(input).endsWith('/models')) return Response.json({data: [{id: 'm'}]});
-    requests.push(JSON.parse(String(init?.body)));
+    const body=JSON.parse(String(init?.body));
+    if(body.stream===false){titleRequests.push(body);return Response.json({choices:[{message:{content:''}}],usage:{prompt_tokens:20,completion_tokens:0}});}
+    requests.push(body);
     const frames = turns[requests.length - 1] ?? [delta({content: 'ok'}), delta({}, 'stop')];
     return new Response(frames.map(f => `data: ${f}\n\n`).join('') + 'data: [DONE]\n\n', {headers: {'content-type': 'text/event-stream'}});
   }) as typeof fetch;
-  return {fetcher, requests};
+  return {fetcher, requests,titleRequests};
 }
 export const delta = (d: object, finish: string | null = null) => JSON.stringify({choices: [{index: 0, delta: d, finish_reason: finish}]});
 export const toolCall = (name: string, args: object) => [delta({tool_calls: [{index: 0, id: `call_${name}`, type: 'function', function: {name, arguments: JSON.stringify(args)}}]}), delta({}, 'tool_calls')];

@@ -13,6 +13,7 @@ import {
   useScreenTask,
 } from './ScreenUI.js';
 import { useSkillUpdates } from './useSkillUpdates';
+import styles from './Screen.module.css';
 
 function SkillEditor({ skill, onClose }: { skill: Skill; onClose: () => void }) {
   const { saveSkill } = usePraxisStore();
@@ -22,7 +23,7 @@ function SkillEditor({ skill, onClose }: { skill: Skill; onClose: () => void }) 
   const [document, setDocument] = React.useState(skill.document);
   return (
     <form
-      className="screen-form screen-list-detail"
+      className={`${styles.form} ${styles.listDetail}`}
       onSubmit={(event) => {
         event.preventDefault();
         void task.run(async () => {
@@ -56,7 +57,7 @@ function SkillEditor({ skill, onClose }: { skill: Skill; onClose: () => void }) 
       </Field>
       <Field label="SKILL.md">
         <textarea
-          className="screen-mono"
+          className={styles.mono}
           rows={14}
           maxLength={500000}
           required
@@ -65,7 +66,7 @@ function SkillEditor({ skill, onClose }: { skill: Skill; onClose: () => void }) 
           onChange={(event) => setDocument(event.target.value)}
         />
       </Field>
-      <div className="screen-actions">
+      <div className={styles.actions}>
         <ScreenButton
           type="submit"
           tone="primary"
@@ -91,7 +92,7 @@ export function SkillsScreen() {
       <TaskError error={task.error} />
       <TaskError error={updates.error} />
       {store.skills.some((s) => s.registryId) ? (
-        <div className="screen-actions">
+        <div className={styles.actions}>
           <ScreenButton disabled={updates.busy} onClick={() => void updates.check()}>
             {updates.busy ? 'Checking for updates…' : 'Check for updates'}
           </ScreenButton>
@@ -104,7 +105,7 @@ export function SkillsScreen() {
         {store.skills.length ? (
           <Card>
             {store.skills.map((skill) => (
-              <div className="screen-list-item" key={skill.id}>
+              <div className={styles.listItem} key={skill.id}>
                 <Toggle
                   label={skill.name}
                   detail={skill.description}
@@ -117,11 +118,11 @@ export function SkillsScreen() {
                 {editing === skill.id ? (
                   <SkillEditor skill={skill} onClose={() => setEditing(null)} />
                 ) : (
-                  <div className="screen-list-detail">
-                    <div className="screen-actions">
+                  <div className={styles.listDetail}>
+                    <div className={styles.actions}>
                       {updates.items.some((u) => u.skillId === skill.id) ? (
                         <>
-                          <span className="screen-badge">Update available</span>
+                          <span className={styles.badge}>Update available</span>
                           <ScreenButton
                             disabled={updates.busy}
                             onClick={() => void updates.apply(skill.id)}
@@ -144,7 +145,7 @@ export function SkillsScreen() {
                           void task.run(() => store.removeSkill(skill.id));
                         }}
                       >
-                        <Trash2 size={15} />
+                        <Trash2 size={16} />
                         Delete
                       </ScreenButton>
                     </div>
@@ -154,22 +155,22 @@ export function SkillsScreen() {
             ))}
           </Card>
         ) : (
-          <p className="screen-empty">
+          <p className={styles.empty}>
             No skills yet. Import a SKILL.md document or browse a skill registry.
           </p>
         )}
       </Section>
-      <div className="screen-actions">
+      <div className={styles.actions}>
         <ScreenButton onClick={() => store.setActiveSheet('skill-import')}>
-          <Download size={17} />
+          <Download size={18} />
           Import skill
         </ScreenButton>
         <ScreenButton onClick={() => store.setActiveSheet('skill-browser')}>
-          <Grid2X2 size={17} />
+          <Grid2X2 size={18} />
           Browse skills
         </ScreenButton>
       </div>
-      <p className="screen-footnote">
+      <p className={styles.footnote}>
         A skill is a set of instructions (SKILL.md) the agent can load when a task needs it. Review
         its instructions before enabling it.
       </p>

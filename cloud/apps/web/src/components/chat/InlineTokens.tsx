@@ -1,4 +1,5 @@
 import React from 'react';
+import styles from './InlineTokens.module.css';
 import { FileText } from '../../lib/icons';
 import { safeLink } from '../../lib/links';
 
@@ -21,9 +22,31 @@ export function renderInlineTokens(
   let match: RegExpExecArray | null;
   let keyIdx = 0;
 
+  // Bare URLs in prose become links (K-ref/06); trailing sentence punctuation stays text.
+  const pushText = (text: string) => {
+    const url = /https?:\/\/[^\s<>"'`]+/g;
+    let at = 0;
+    let m: RegExpExecArray | null;
+    while ((m = url.exec(text)) !== null) {
+      let href = m[0];
+      const trail = /[.,;:!?)\]]+$/.exec(href)?.[0] ?? '';
+      if (trail && !(trail.startsWith(')') && href.includes('('))) href = href.slice(0, -trail.length);
+      const safe = safeLink(href);
+      if (!safe) continue;
+      if (m.index > at) nodes.push(text.slice(at, m.index));
+      nodes.push(
+        <a key={`url-${keyIdx++}`} href={safe} target="_blank" rel="noopener noreferrer" data-testid="inline-url" className={styles.link}>
+          {href}
+        </a>,
+      );
+      at = m.index + href.length;
+    }
+    if (at < text.length) nodes.push(text.slice(at));
+  };
+
   while ((match = tokenRegex.exec(str)) !== null) {
     if (match.index > lastIndex) {
-      nodes.push(str.slice(lastIndex, match.index));
+      pushText(str.slice(lastIndex, match.index));
     }
 
     if (match[2] !== undefined && match[3] !== undefined) {
@@ -49,26 +72,10 @@ export function renderInlineTokens(
                 detail: url,
               })
             }
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '1px 8px',
-              margin: '0 2px',
-              borderRadius: 7,
-              background: 'var(--paper-fill-1)',
-              border: '0.5px solid var(--paper-hairline)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 13.5,
-              lineHeight: '20px',
-              color: 'var(--paper-ink)',
-              cursor: 'pointer',
-              verticalAlign: 'baseline',
-              whiteSpace: 'nowrap',
-            }}
+            className={styles.token}
           >
-            <span aria-hidden="true" style={{ fontSize: 11, color: 'var(--paper-accent)' }}>
-              <FileText size={13} />
+            <span aria-hidden="true" className={styles.token}>
+              <FileText size={16} />
             </span>
             <span>{label}</span>
           </button>,
@@ -79,27 +86,12 @@ export function renderInlineTokens(
             key={`link-${keyIdx++}`}
             href={safeLink(url)}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             data-testid="inline-link-chip"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '1px 9px',
-              margin: '0 2px',
-              borderRadius: 999,
-              background: 'var(--paper-fill-1)',
-              border: '0.5px solid var(--paper-hairline)',
-              fontSize: 14,
-              lineHeight: '20px',
-              color: 'var(--paper-ink)',
-              textDecoration: 'none',
-              verticalAlign: 'baseline',
-              whiteSpace: 'nowrap',
-            }}
+            className={styles.token}
           >
-            <span style={{ fontWeight: 500 }}>{label}</span>
-            <span style={{ fontSize: 11.5, color: 'var(--paper-ink-3)' }}>{domain} ↗</span>
+            <span className={styles.token}>{label}</span>
+            <span className={styles.token}>{domain} ↗</span>
           </a>,
         );
       } else {
@@ -107,53 +99,9 @@ export function renderInlineTokens(
       }
     } else if (match[4] !== undefined) {
       const codeContent = match[4];
-      const isFileRef = FILE_PATH_PATTERN.test(codeContent);
-      nodes.push(
-        <button
-          key={`code-${keyIdx++}`}
-          type="button"
-          data-testid={isFileRef ? 'inline-file-chip' : 'inline-code-pill'}
-          onClick={() =>
-            setInspectedChip({
-              kind: isFileRef ? 'file' : 'code',
-              label: codeContent,
-              detail: isFileRef
-                ? `Workspace file reference: ${codeContent}`
-                : `Symbol / code snippet: ${codeContent}`,
-            })
-          }
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: '2px 7px',
-            margin: '0 1.5px',
-            borderRadius: 6,
-            background: 'var(--paper-fill-1)',
-            border: '0.5px solid var(--paper-hairline)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 14,
-            lineHeight: '20px',
-            color: 'var(--paper-ink)',
-            cursor: 'pointer',
-            verticalAlign: 'baseline',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {isFileRef && (
-            <span aria-hidden="true" style={{ fontSize: 11, color: 'var(--paper-accent)' }}>
-              <FileText size={13} />
-            </span>
-          )}
-          <span>{codeContent}</span>
-        </button>,
-      );
+      nodes.push(<code key={`code-${keyIdx++}`} data-testid="inline-code-pill" className={styles.token}>{codeContent}</code>);
     } else if (match[5] !== undefined) {
-      nodes.push(
-        <strong key={`bold-${keyIdx++}`} style={{ fontWeight: 600 }}>
-          {match[5]}
-        </strong>,
-      );
+      nodes.push(<strong key={`bold-${keyIdx++}`}>{match[5]}</strong>);
     } else if (match[6] !== undefined) {
       nodes.push(<em key={`em-${keyIdx++}`}>{match[6]}</em>);
     } else if (match[7] !== undefined) {
@@ -164,7 +112,7 @@ export function renderInlineTokens(
   }
 
   if (lastIndex < str.length) {
-    nodes.push(str.slice(lastIndex));
+    pushText(str.slice(lastIndex));
   }
 
   return nodes;

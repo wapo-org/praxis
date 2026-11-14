@@ -1,18 +1,22 @@
-import type {MessagePart} from '@praxis/protocol';
+import {ATTACHMENT_LIMITS, type MessagePart} from '@praxis/protocol';
 
 /**
  * Port of the app's AttachmentMedia.build / AttachmentMedia.text and ConversationTitle.
  * The transcript keeps attachment references; bytes are swapped in when a provider request is built.
  */
-export const MAX_INLINE_TEXT_BYTES = 200_000;
-export const MAX_DOCUMENT_BYTES = 10 << 20;
+export const MAX_INLINE_TEXT_BYTES = ATTACHMENT_LIMITS.inlineTextBytes;
+export const MAX_DOCUMENT_BYTES = ATTACHMENT_LIMITS.inlineDocumentBytes;
 
 export interface AttachmentRow {id: string; name: string; mediaType: string; size: number; hiddenFromCode?: boolean}
 
 const isImage = (type: string) => type.startsWith('image/');
 export const isText = (type: string) => type.startsWith('text/') || ['application/json', 'application/xml', 'application/x-yaml', 'application/yaml', 'application/csv'].includes(type);
 
-/** Images → image parts; PDFs ≤ 10 MB and text ≤ 200 KB → document parts; everything else is named in a text line for `fs`. */
+/**
+ * Images → image parts; PDFs ≤ 10 MB and text ≤ 200 KB → document parts; everything else → one `note` part per
+ * file that names it for `fs`. The note carries the attachment ID, so the transcript shows the file as an
+ * attachment and the model reads the note; the user's own text part stays exactly what they typed.
+ */
 export function attachmentParts(rows: AttachmentRow[], text: string): MessagePart[] {
   const parts: MessagePart[] = [];
   const fileOnly: AttachmentRow[] = [];
@@ -22,20 +26,16 @@ export function attachmentParts(rows: AttachmentRow[], text: string): MessagePar
       parts.push({type: 'document', attachmentId: row.id, mediaType: row.mediaType});
     else fileOnly.push(row);
   }
-  const body = withFileOnlyNote(text, fileOnly);
-  if (body) parts.push({type: 'text', text: body});
+  for (const row of fileOnly) parts.push({type: 'note', attachmentId: row.id, mediaType: row.mediaType, text: fileOnlyNote(row)});
+  if (text) parts.push({type: 'text', text});
   return parts;
 }
 
-function withFileOnlyNote(text: string, fileOnly: AttachmentRow[]): string {
-  if (!fileOnly.length) return text;
-  const names = (list: AttachmentRow[]) => list.map(f => `“${f.name}”`).join(', ');
-  const readable = fileOnly.filter(f => !f.hiddenFromCode), hidden = fileOnly.filter(f => f.hiddenFromCode);
-  const lines: string[] = [];
-  if (readable.length) lines.push(`[Attached file${readable.length === 1 ? '' : 's'}: ${names(readable)}. Read them with \`fs\` in run_javascript.]`);
-  if (hidden.length) lines.push(`[Attached file${hidden.length === 1 ? '' : 's'} hidden from code by the user: ${names(hidden)}.]`);
-  const note = lines.join('\n');
-  return text ? `${text}\n\n${note}` : note;
+/** The model-facing line for a file it can only reach through `fs` (or not at all, when hidden from code). */
+export function fileOnlyNote(row: AttachmentRow): string {
+  return row.hiddenFromCode
+    ? `[Attached file hidden from code by the user: “${row.name}”.]`
+    : `[Attached file: “${row.name}”. Read them with \`fs\` in run_javascript.]`;
 }
 
 export const TITLE_PLACEHOLDER = 'New chat';
@@ -52,7 +52,10 @@ export function attachmentTitle(rows: AttachmentRow[]): string | undefined {
 }
 
 export function makeTitle(text: string, rows: AttachmentRow[]): string | undefined {
-  const collapsed = text.split(/\s+/).filter(Boolean).join(' ');
+  const filler=new Set('a an the please can could would will you i me my help with to for of and or how do does want need that this these those is are be it its as on in into from about some any just then' .split(' '));
+  const request=text.replace(/^(?:\s*(?:can you|could you|would you|please|help me|show me|how to|run|write|start|create|generate|give me|tell me)\b[\s,:]*)+/i,'');
+  const words=[...new Set((request.match(/[\p{L}\p{N}]+/gu)??[]).filter(w=>!filler.has(w.toLowerCase())))].slice(0,5);
+  const collapsed=words.map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
   return collapsed ? collapsed.slice(0, MAX_TITLE) : attachmentTitle(rows);
 }
 

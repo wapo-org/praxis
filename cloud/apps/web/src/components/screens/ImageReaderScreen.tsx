@@ -1,6 +1,5 @@
 import React from 'react';
 import { Check, Eye } from '../../lib/icons';
-import { GlassChip } from '@praxis/glass';
 import type { Model } from '@praxis/protocol';
 import { usePraxisStore } from '../../state/store.js';
 import {
@@ -11,6 +10,8 @@ import {
   Toggle,
   useScreenTask,
 } from './ScreenUI.js';
+import { ChoiceChip } from './ScreenUI';
+import styles from './Screen.module.css';
 
 export function ImageReaderScreen() {
   const store = usePraxisStore();
@@ -47,7 +48,7 @@ export function ImageReaderScreen() {
   };
   return (
     <ScreenBody>
-      <p className="screen-intro">
+      <p className={styles.intro}>
         When the chat model can’t see images, the agent asks this model
         questions about an image and gets text answers back.
       </p>
@@ -76,21 +77,20 @@ export function ImageReaderScreen() {
       {store.providers.length ? (
         <>
           <Section title="Provider">
-            <div className="screen-pill-row">
+            <div className={styles.pillRow}>
               {store.providers.map((provider) => (
-                <GlassChip
+                <ChoiceChip
                   key={provider.id}
                   active={activeProvider === provider.id}
-                  aria-pressed={activeProvider === provider.id}
                   onClick={() => setProviderId(provider.id)}
                 >
                   {provider.name}
-                </GlassChip>
+                </ChoiceChip>
               ))}
             </div>
           </Section>
           <input
-            className="screen-search"
+            className={styles.search}
             type="search"
             aria-label="Search vision models"
             placeholder="Search models…"
@@ -122,7 +122,7 @@ export function ImageReaderScreen() {
                   {candidates.map((model) => (
                     <button
                       type="button"
-                      className="screen-row screen-nav-row"
+                      className={`${styles.row} ${styles.navRow}`}
                       key={model.id}
                       disabled={task.busy}
                       aria-pressed={
@@ -133,14 +133,14 @@ export function ImageReaderScreen() {
                       onClick={() => choose(model)}
                     >
                       <Eye size={16} aria-hidden="true" />
-                      <span className="screen-row-copy">
+                      <span className={styles.rowCopy}>
                         <span>{model.displayName}</span>
-                        <span className="screen-detail">{model.id}</span>
+                        <span className={styles.detail}>{model.id}</span>
                       </span>
                       {enabled &&
                       vision?.providerId === model.providerId &&
                       vision.modelId === model.id ? (
-                        <Check size={17} aria-label="Selected" />
+                        <Check size={16} aria-label="Selected" />
                       ) : null}
                     </button>
                   ))}
@@ -149,14 +149,14 @@ export function ImageReaderScreen() {
             );
           })}
           {!models.length ? (
-            <p className="screen-empty">
+            <p className={styles.empty}>
               No image-reading models found. Refresh this provider’s models in
               Settings or try another provider.
             </p>
           ) : null}
         </>
       ) : (
-        <p className="screen-empty">
+        <p className={styles.empty}>
           Add a provider in Settings to choose an image-reading model.
         </p>
       )}

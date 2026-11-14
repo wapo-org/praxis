@@ -1,0 +1,222 @@
+/*
+ * Adapted from T3 Code WorkLog, TimelineWorkEntryRow, TimelineToolActivityIcon,
+ * TimelineWorkGroupRows and MessagesTimeline (T3 Tools Inc.).
+ * MIT License — Copyright (c) 2026 T3 Tools Inc.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  margin-bottom: var(--space-2);
+  font-family: var(--font-sans);
+  width: 100%;
+  min-width: 0;
+}
+
+.groupBar {
+  width: 100%;
+  padding: var(--space-1) calc(var(--space-1) / 2) var(--space-2) 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-hairline) 60%, transparent);
+}
+
+.header {
+  max-width: 100%;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.headerLine {
+  max-width: 100%;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  flex-shrink: 0;
+}
+
+.headerLine > :global(.tabular-nums) {
+  flex-shrink: 0;
+  white-space: pre;
+  margin-inline-start: calc(-1 * var(--space-2));
+}
+
+.detail {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink-3);
+  text-decoration: none;
+}
+
+.steps {
+  padding: var(--space-1) 0;
+}
+
+.vision,
+.compaction {
+  padding: var(--space-1) 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  white-space: pre-wrap;
+}
+
+.card {
+  width: 100%;
+  margin-top: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-fill-1) 55%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-ink);
+  font: var(--weight-semibold) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.cardSource {
+  flex-shrink: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}
+
+.cardReason {
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.cardArgs {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-fill-1);
+  color: var(--color-ink);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.cardButton {
+  min-height: var(--control-md);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  font: var(--weight-semibold) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  cursor: pointer;
+}
+
+.cardButton[data-tone='primary'] {
+  border: 0;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.cardButton[data-tone='secondary'] {
+  border: 1px solid var(--color-hairline-strong);
+  background: transparent;
+  color: var(--color-ink);
+}
+
+.cardButton[data-tone='danger'] {
+  border: 1px solid var(--color-hairline-strong);
+  background: transparent;
+  color: var(--color-danger);
+}
+
+.cardField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-xs) / var(--leading-xs) var(--font-sans);
+}
+
+.cardFieldName {
+  color: var(--color-ink);
+  font-weight: var(--weight-medium);
+}
+
+.cardFieldHint {
+  color: var(--color-ink-3);
+}
+
+.cardInput {
+  min-height: var(--control-md);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.cardInput:focus-visible,
+.cardButton:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.cardLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-ink);
+  font: var(--weight-semibold) var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.cardFields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.outcome {
+  margin: 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-md) var(--font-sans);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

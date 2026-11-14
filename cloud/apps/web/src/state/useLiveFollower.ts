@@ -2,6 +2,7 @@ import { ChatSchema, RunSchema, type UserEvent } from '@praxis/protocol';
 import React from 'react';
 import { apiClient } from '../lib/api';
 import { subscribeUserEvents } from '../lib/user-events';
+import { mergeFetchedMessages } from './reconcileMessages';
 import type { PraxisState } from './usePraxisState';
 import type { useRunState } from './useRunState';
 import type { useRunStreams } from './useRunStreams';
@@ -30,7 +31,10 @@ export function useLiveFollower(
       const { run } = snapshot;
       if ((run.clientTurnId && localTurnIdsRef.current.has(run.clientTurnId)) || activeRunUnsubMapRef.current.has(run.id)) return;
       const page = await apiClient.listMessages(run.chatId);
-      setMessagesByChat((prev) => ({ ...prev, [run.chatId]: page.items }));
+      setMessagesByChat((prev) => ({
+        ...prev,
+        [run.chatId]: mergeFetchedMessages(prev[run.chatId] ?? [], page.items),
+      }));
       handlers.current.applySnapshotToLiveRun(snapshot);
       if (!terminal(run.status)) handlers.current.attachRunStream(run, snapshot.lastEventId);
     } catch {

@@ -1,0 +1,58 @@
+/* Grouped rows (WP-L2 §1, DESIGN.md "Lists"). Rows next to each other are one translucent squircle: the outer
+   corners round, the joins between rows are flat with a soft inset hairline, and the hover and press fills are
+   clipped by the group, so the end rows' fills are rounded too. A lone row is the same squircle. */
+.group {
+  --group-fill: color-mix(in srgb, var(--color-ink) 4.5%, transparent);
+  --group-fill-hover: color-mix(in srgb, var(--color-ink) 3%, transparent);
+  --group-fill-press: color-mix(in srgb, var(--color-ink) 6%, transparent);
+  --group-divider-inset: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 22px;
+  corner-shape: squircle;
+  background: var(--group-fill);
+  isolation: isolate;
+}
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--control-lg);
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
+  text-align: start;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+/* The join: a soft hairline inset from the leading edge, never touching the group's sides. */
+.row + .row::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto var(--group-divider-inset);
+  height: 1px;
+  background: var(--color-divider);
+  transform: scaleY(var(--divider-scale, 0.5));
+  transform-origin: top;
+  pointer-events: none;
+}
+.interactive {
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .interactive:not(:active):hover {
+    background: var(--group-fill-hover);
+  }
+}
+.interactive:active {
+  background: var(--group-fill-press);
+}
+.interactive:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}

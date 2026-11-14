@@ -1,13 +1,15 @@
+import {executionSecrets} from '../../saved-secrets.js';
 import type {ToolsState} from './ports.js';
 import {getQuickJS,type QuickJSDeferredPromise,type QuickJSHandle} from 'quickjs-emscripten';
 import {z} from 'zod';
 import {JsonValueSchema,type JsonValue} from '@praxis/protocol';
 import type {FeatureContext,FeatureTool} from '../../contracts.js';
 import {ApiError} from '../../service.js';
+import {requireConsent} from '../mcp/shared.js';
 import {publicFetch} from './http.js';
 export type ToolExecution=Parameters<FeatureTool['execute']>[1]&{signal?:AbortSignal;callId?:string};
 export interface SandboxFiles {list():Promise<string[]>;read(name:string):Promise<Uint8Array>}
-const Code=z.object({code:z.string().max(200000),timeout_ms:z.number().int().min(1).max(30000).default(5000)});
+const Code=z.object({env:z.record(z.string(),z.string()).default({}),code:z.string().max(200000),timeout_ms:z.number().int().min(1).max(30000).default(5000)});
 const FetchInput=z.object({url:z.string().url(),method:z.enum(['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS']).default('GET'),headers:z.record(z.string(),z.string()).default({}),body:z.string().max(1000000).optional()});
 /** WASM gets JSON/strings only. No Node functions/objects, module loader, or filesystem leak into it. */
 export async function runSandbox(args:JsonValue,ctx:FeatureContext,execution:ToolExecution,files:SandboxFiles,toolNames:string[],toolState?:ToolsState){
@@ -28,6 +30,7 @@ export async function runSandbox(args:JsonValue,ctx:FeatureContext,execution:Too
     if(++fetches>16)throw new Error('Fetch call limit exceeded');const request=FetchInput.parse(data);
     if(execution.mode==='plan'&&!['GET','HEAD'].includes(request.method))throw new ApiError(403,'method_denied','Plan mode permits GET and HEAD only');
     const forbidden=['authorization','cookie','host','connection','proxy-authorization','transfer-encoding'];if(Object.keys(request.headers).some(h=>forbidden.includes(h.toLowerCase())))throw new Error('Credential and routing headers are not allowed');
+    try { await requireConsent(ctx,{url:request.url} as import('@praxis/protocol').Connector,execution); } catch(error) {hostFailure=error;throw error;}
     const {response,bytes}=await publicFetch(ctx,request.url,{method:request.method,headers:request.headers,body:['GET','HEAD'].includes(request.method)?undefined:request.body,signal},true,1000000);
     result={status:response.status,statusText:response.statusText,url:request.url,headers:[...response.headers.entries()],body:new TextDecoder().decode(bytes)};
    }else if(op==='fs.list')result=await files.list();
@@ -46,7 +49,9 @@ export async function runSandbox(args:JsonValue,ctx:FeatureContext,execution:Too
  vm.setProp(vm.global,'__host',bridge);bridge.dispose();
  let handle:QuickJSHandle|undefined;
  const timeout=setTimeout(()=>controller.abort(),input.timeout_ms);timeout.unref();
+ const secretBoundary=await executionSecrets(ctx,execution.chatId);
  const prelude=`
+ const env=Object.freeze(${JSON.stringify(input.env)});
  const __rpc=async(op,data)=>{const r=JSON.parse(await __host(op,JSON.stringify(data)));if(!r.ok)throw new Error(r.error);return r.value;};
  const __logs=[];let __logBytes=0;const console=Object.fromEntries(['log','info','warn','error','debug'].map(level=>[level,(...a)=>{if(__logs.length>=100)return;const text=a.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ').slice(0,4000);if((__logBytes+=text.length)<=32000)__logs.push({level,text});}]));
  const __kv=new Map(Object.entries(${JSON.stringify(initial)}));const kv={get:k=>__kv.get(String(k))??null,set:(k,v)=>{k=String(k);if(k.length>200)throw new Error('KV key too long');const n=new Map(__kv);n.set(k,v);if(n.size>256||JSON.stringify(Object.fromEntries(n)).length>262144)throw new Error('KV quota exceeded');__kv.set(k,JSON.parse(JSON.stringify(v)));},delete:k=>__kv.delete(String(k)),keys:()=>[...__kv.keys()].sort()};
@@ -62,7 +67,7 @@ export async function runSandbox(args:JsonValue,ctx:FeatureContext,execution:Too
    if(Date.now()>=deadline||signal.aborted)return {console:[],error:{name:execution.signal?.aborted?'AbortError':'TimeoutError',message:'Execution cancelled or timed out'},ms:Date.now()-started};
    const jobs=runtime.executePendingJobs(100);if(jobs.error){const error=vm.dump(jobs.error);jobs.error.dispose();return {console:[],error:{name:'JavaScriptError',message:safeError(error)},ms:Date.now()-started};}
    const state=vm.getPromiseState(handle);
-   if(state.type==='fulfilled'){const raw=vm.getString(state.value);state.value.dispose();if(Buffer.byteLength(raw)>400000)throw new Error('Result exceeds limit');const output=z.object({console:z.array(z.object({level:z.string(),text:z.string()})),result:JsonValueSchema,kv:z.record(z.string(),JsonValueSchema)}).parse(JSON.parse(raw));if(Buffer.byteLength(JSON.stringify(output.kv))>262144)throw new Error('KV quota exceeded');if(toolState)await toolState.put(ctx.userId,'javascriptKV',execution.chatId,{data:output.kv});else await ctx.store.put(ctx.userId,'javascriptKV',execution.chatId,{data:output.kv});return {console:output.console,result:output.result,ms:Date.now()-started};}
+   if(state.type==='fulfilled'){const raw=vm.getString(state.value);state.value.dispose();if(Buffer.byteLength(raw)>400000)throw new Error('Result exceeds limit');const output=z.object({console:z.array(z.object({level:z.string(),text:z.string()})),result:JsonValueSchema,kv:z.record(z.string(),JsonValueSchema)}).parse(JSON.parse(raw));if(Buffer.byteLength(JSON.stringify(output.kv))>262144)throw new Error('KV quota exceeded');const safeKV=secretBoundary.redact(output.kv);if(toolState)await toolState.put(ctx.userId,'javascriptKV',execution.chatId,{data:safeKV});else await ctx.store.put(ctx.userId,'javascriptKV',execution.chatId,{data:safeKV});return {console:output.console,result:output.result,ms:Date.now()-started};}
    if(state.type==='rejected'){const error=vm.dump(state.error);state.error.dispose();return {console:[],error:{name:'JavaScriptError',message:safeError(error)},ms:Date.now()-started};}
    if(!runtime.hasPendingJob()&&!pending.size)return {console:[],error:{name:'UnsettledPromise',message:'Script returned a promise that cannot settle'},ms:Date.now()-started};
    await new Promise<void>(resolve=>{const t=setTimeout(resolve,1);if(signal.aborted){clearTimeout(t);resolve();}});

@@ -4,6 +4,8 @@ test.beforeEach(async ({ page }) => {
   const auth = await page.request.post('/v1/auth/dev', { data: { type: 'auth.dev', userId: 'dropdown-check' } });
   expect(auth.ok()).toBeTruthy();
   await page.goto('/lab/glass?dropdown');
+  await page.getByTestId('position-top-start').waitFor();
+  await page.evaluate(() => document.fonts.ready);
 });
 
 test('measures, flips, shifts and sizes at nine viewport anchors', async ({
@@ -55,7 +57,7 @@ test('focus, disabled skipping, navigation, typeahead, selection, Escape and Tab
   await page.keyboard.press('Home');
   await page.keyboard.press('PageDown');
   await expect(
-    page.getByRole('menuitem', { name: 'Recent Notes' }),
+    page.getByRole('menuitem', { name: 'Recent chats' }),
   ).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(
@@ -222,7 +224,8 @@ test('translucent frosted material guarantees AA over every background luminance
       };
     });
   await expect(page.getByRole('menu')).toHaveCSS('filter', 'none');
-  expect(result.tint.replace(/\s/g, '')).toBe('rgba(250,249,246,.74)');
+  const [tr, tg, tb, ta] = result.tint.match(/[\d.]+/g)!.map(Number) as [number, number, number, number];
+  expect(ta).toBeGreaterThanOrEqual(0.7);
   const luminance = (rgb: number[]) =>
     rgb
       .map((v) => v / 255)
@@ -237,7 +240,7 @@ test('translucent frosted material guarantees AA over every background luminance
     );
     for (const underlying of [0, 255]) {
       const background = luminance(
-        [250, 249, 246].map((v) => v * 0.74 + underlying * 0.26),
+        [tr, tg, tb].map((v) => v * ta + underlying * (1 - ta)),
       );
       expect((background + 0.05) / (text + 0.05)).toBeGreaterThanOrEqual(4.5);
     }
@@ -249,12 +252,14 @@ test('submenu header rises in one sheet, expands and reverses; reduced motion ne
 }, info) => {
   await page.getByTestId('position-top-end').click();
   const menu = page.getByRole('menu');
+  // Geometry is only meaningful once the glass has landed: the morph leaves nothing inline at rest.
+  await expect.poll(() => menu.evaluate((el: HTMLElement) => el.style.transform)).toBe('');
   const old = await menu.boundingBox();
-  const recent = page.getByRole('menuitem', { name: 'Recent Notes' });
+  const recent = page.getByRole('menuitem', { name: 'Recent chats' });
   const row = await recent.boundingBox();
   await recent.click();
   await expect(page.getByRole('menuitem')).toHaveCount(6);
-  const header = page.getByRole('menuitem', { name: 'Recent Notes' });
+  const header = page.getByRole('menuitem', { name: 'Recent chats' });
   await expect(async () =>
     expect((await header.boundingBox())!.y).toBeLessThan(row!.y),
   ).toPass();
@@ -311,11 +316,11 @@ test('native mouse drag selects exactly once and suppressed release click cannot
   await expect(page.getByRole('menu')).toHaveCount(0);
 });
 
-test('reference replica captures stay on-screen inside the lab card', async ({
+test('menu motion captures stay on-screen inside the lab card', async ({
   page,
 }, info) => {
   await page.goto('/lab/glass');
-  const trigger = page.getByTestId('apple-notes-menu-trigger');
+  const trigger = page.getByTestId('motion-preview-trigger');
   await trigger.scrollIntoViewIfNeeded();
   await trigger.click();
   const id = await trigger.getAttribute('aria-controls');
@@ -325,14 +330,118 @@ test('reference replica captures stay on-screen inside the lab card', async ({
   await page.screenshot({
     path: shot(info, `IMG_7752-replica-${info.project.name}.png`),
   });
-  await page.getByTestId('recent-notes-subtrigger').click();
+  await page.getByTestId('recent-chats-subtrigger').click();
   await expect(
-    page.getByRole('menuitem', { name: 'Recent Notes', exact: true }),
+    page.getByRole('menuitem', { name: 'Recent chats', exact: true }),
   ).toHaveCount(1);
   await expect(
-    page.getByRole('menuitem', { name: 'Recent Notes', exact: true }),
+    page.getByRole('menuitem', { name: 'Recent chats', exact: true }),
   ).toHaveAttribute('aria-expanded', 'true');
   await page.screenshot({
     path: shot(info, `IMG_7774-replica-${info.project.name}.png`),
   });
+});
+
+test('a cascade near a narrow viewport edge flips, shifts and keeps its final item visible',async({page})=>{
+ await page.setViewportSize({width:402,height:450});
+ await page.goto('/lab/glass?morph');
+ await page.getByTestId('nested-cascade').click();
+ await page.getByRole('menuitem',{name:'Save as',exact:true}).click();
+ const last=page.getByRole('menuitem',{name:'Save as HTML',exact:true});
+ await expect(last).toBeVisible();
+ await expect(async()=>{
+  const menu=await last.locator('xpath=ancestor::*[@role="menu"][1]').boundingBox();
+  expect(menu!.x).toBeGreaterThanOrEqual(7.5);
+  expect(menu!.x+menu!.width).toBeLessThanOrEqual(394.5);
+  expect(menu!.y).toBeGreaterThanOrEqual(7.5);
+  expect(menu!.y+menu!.height).toBeLessThanOrEqual(442.5);
+ }).toPass();
+});
+
+// L-ref/13: an in-place submenu resize is monotonic. The list cap was measured from the exiting panel's list, so
+// the new list and the glass alternated between two heights every frame while the old panel faded out.
+test('an in-place submenu grows monotonically: no frame steps back toward the old size', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 900 });
+  await page.goto('/lab/glass');
+  const trigger = page.getByTestId('motion-preview-trigger');
+  await trigger.scrollIntoViewIfNeeded();
+  await trigger.click();
+  await page.waitForTimeout(700);
+  await page.evaluate(() => {
+    const log: number[] = ((window as any).__heights = []);
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () => {
+      const s = document.querySelector('.praxis-glass-dropdown-content [data-glass-surface]');
+      if (s) log.push(s.getBoundingClientRect().height);
+    };
+    const loop = () => { ch.port2.postMessage(0); if (log.length < 60) requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  });
+  await page.getByTestId('recent-chats-subtrigger').click();
+  await page.waitForFunction(() => (window as any).__heights.length >= 60);
+  const heights: number[] = await page.evaluate(() => (window as any).__heights);
+  const from = heights[0]!, to = heights.at(-1)!;
+  expect(to).toBeGreaterThan(from + 100);
+  let peak = from, backstep = 0;
+  for (const h of heights) { backstep = Math.max(backstep, peak - h); peak = Math.max(peak, h); }
+  expect(backstep).toBeLessThan(0.5);
+  const layout = await page.evaluate(() => (document.querySelector('[data-dropdown-panel]:not([inert])') as HTMLElement).offsetHeight);
+  expect(layout).toBeGreaterThan(0);
+});
+
+// L-ref/11: the text trigger is one surface. The button paints no fill of its own and fills its capsule exactly;
+// the open state darkens the capsule's own layer.
+test('a text trigger is one surface, open or closed', async ({ page }) => {
+  for (const url of ['/lab/glass?dropdown', '/lab/glass']) {
+    await page.goto(url);
+    const trigger = page.getByTestId('position-top-start');
+    await trigger.scrollIntoViewIfNeeded();
+    const read = () => trigger.evaluate((button) => {
+      const surface = button.parentElement!;
+      const solid = surface.querySelector(':scope > [data-glass-solid]')!;
+      const b = button.getBoundingClientRect(), s = surface.getBoundingClientRect();
+      return { fill: getComputedStyle(button).backgroundColor, solid: getComputedStyle(solid).backgroundColor, dw: s.width - b.width, dh: s.height - b.height };
+    });
+    const closed = await read();
+    await trigger.click();
+    await expect(trigger).toHaveAttribute('data-state', 'open');
+    const open = await read();
+    for (const state of [closed, open]) {
+      expect(state.fill).toBe('rgba(0, 0, 0, 0)');
+      expect(Math.abs(state.dw)).toBeLessThan(0.5);
+      expect(Math.abs(state.dh)).toBeLessThan(0.5);
+    }
+    expect(open.solid).not.toBe(closed.solid);
+    await page.keyboard.press('Escape');
+  }
+});
+
+// L-ref/12: without corner-shape (Safari 26) the rings were inset box-shadows on the circle under the squircle
+// clip, which shaved them where each corner starts to round. They are strokes of the clip's own path now.
+test('without corner-shape the menu lines are strokes of the clip path', async ({ page }) => {
+  await page.addInitScript(() => {
+    const supports = CSS.supports.bind(CSS);
+    CSS.supports = ((a: string, b?: string) => (String(a).includes('corner-shape') ? false : b === undefined ? supports(a) : supports(a, b))) as typeof CSS.supports;
+    document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '*{corner-shape: round !important}'; document.head.append(s); });
+  });
+  await page.goto('/lab/glass?dropdown');
+  await page.getByTestId('position-top-start').click();
+  const surface = page.locator('.praxis-glass-dropdown-content [data-glass-surface]').first();
+  await expect(surface).toHaveAttribute('data-glass-path', 'true');
+  await expect(async () => {
+    const state = await surface.evaluate((el) => {
+      const outline = el.querySelector(':scope > [data-glass-outline]')!;
+      const clip = getComputedStyle(el.querySelector(':scope > [data-glass-lens]')!).clipPath;
+      const edge = outline.querySelector('path[data-inset="0.5"]')!.getAttribute('d') ?? '';
+      return {
+        shown: getComputedStyle(outline).display,
+        rim: getComputedStyle(el.querySelector(':scope > [data-glass-rim]')!).boxShadow,
+        lens: getComputedStyle(el.querySelector(':scope > [data-glass-lens]')!).boxShadow.split('inset').length - 1,
+        clip: clip.startsWith('path('),
+        edge: edge.length > 100,
+        round: el.dataset.morphRound ?? null,
+      };
+    });
+    expect(state).toEqual({ shown: 'block', rim: 'none', lens: 2, clip: true, edge: true, round: null });
+  }).toPass();
 });

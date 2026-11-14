@@ -1,7 +1,7 @@
-import { motion } from 'framer-motion';
-import { Check } from 'lucide-react';
+import { Check } from '../icons';
 import React from 'react';
 import { PanelHighlightContext, useGlassDropdownContext } from './context';
+import styles from './dropdown.module.css';
 export interface ItemProps extends Omit<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
   'onSelect'
@@ -40,6 +40,7 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
     onClick,
     onPointerEnter,
     onPointerUp,
+    className = '',
     style,
     ...otherProps
   },
@@ -59,19 +60,9 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
     }
   };
 
-  const textClampStyle: React.CSSProperties =
-    lines === 1
-      ? { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
-      : {
-          display: '-webkit-box',
-          WebkitLineClamp: lines,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-          whiteSpace: 'normal',
-        };
 
   return (
-    <div style={{ position: 'relative', width: '100%' }}>
+    <div className={styles.itemWrap}>
       <button
         ref={ref}
         type="button"
@@ -82,6 +73,7 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
         aria-disabled={disabled || undefined}
         data-highlighted={isHighlighted || undefined}
         data-tone={tone}
+        data-trailing-action={trailingAction ? true : undefined}
         onPointerUp={onPointerUp}
         onPointerEnter={(e) => {
           onPointerEnter?.(e);
@@ -94,206 +86,53 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
           onClick?.(e);
           if (!e.defaultPrevented && !disabled) activate();
         }}
-        style={{
-          position: 'relative',
-          display: 'flex',
-          width: '100%',
-          alignItems: 'center',
-          minHeight: lines > 1 ? lines * 22 + 20 : 40,
-          gap: '10px',
-          borderRadius: '14px',
-          padding: lines > 1 ? '10px 12px' : '8.5px 12px',
-          border: 'none',
-          background: 'transparent',
-          color: isDestructive
-            ? 'var(--paper-destructive)'
-            : 'var(--paper-ink)',
-          fontFamily: 'var(--font-sans)',
-          fontSize: '17px',
-          fontWeight: 500,
-          lineHeight: '22px',
-          textAlign: 'start',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          opacity: disabled ? 0.4 : 1,
-          userSelect: 'none',
-          outline: 'none',
-          ...(trailingAction ? { paddingInlineEnd: 44 } : {}),
-          ...style,
-        }}
+        className={`${styles.item} ${className}`.trim()}
+        style={style}
         {...otherProps}
       >
-        {/* Fluid glass-native highlight pill */}
-        {isHighlighted && !disabled ? (
-          <motion.span
-            layoutId={`${panelHighlight?.layoutScopeId ?? 'menu'}-highlight`}
-            aria-hidden="true"
-            transition={{
-              type: 'spring',
-              stiffness: 520,
-              damping: 36,
-              mass: 0.7,
-            }}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              borderRadius: '14px',
-              backgroundColor: isDestructive
-                ? 'rgba(179, 56, 46, 0.12)'
-                : 'var(--dropdown-highlight, rgba(21, 20, 15, 0.075))',
-              pointerEvents: 'none',
-              zIndex: 0,
-            }}
-          />
-        ) : null}
 
         {/* Leading icon or checkmark slot */}
         {icon ? (
-          <span
-            aria-hidden="true"
-            style={{
-              position: 'relative',
-              zIndex: 1,
-              display: 'inline-flex',
-              width: 16,
-              height: 16,
-              flexShrink: 0,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginTop: 0,
-              color: isDestructive
-                ? 'var(--paper-destructive)'
-                : 'var(--paper-secondary-ink)',
-            }}
-          >
+          <span aria-hidden="true" className={styles.slot}>
             {icon}
           </span>
         ) : selected !== undefined || inset ? (
-          <span
-            aria-hidden="true"
-            style={{
-              position: 'relative',
-              zIndex: 1,
-              display: 'inline-flex',
-              width: 16,
-              height: 16,
-              flexShrink: 0,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {selected ? <Check size={14} strokeWidth={2.25} /> : null}
+          <span aria-hidden="true" className={`${styles.slot} ${styles.check}`}>
+            {selected ? <Check size={16} /> : null}
           </span>
         ) : null}
 
         {/* Label & subtitle */}
-        <span
-          style={{
-            position: 'relative',
-            zIndex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            flex: 1,
-            minWidth: 0,
-          }}
-        >
-          <span style={textClampStyle}>{children}</span>
-          {subtitle ? (
-            <span
-              style={{
-                fontSize: '13px',
-                fontWeight: 400,
-                lineHeight: '17px',
-                color: isDestructive
-                  ? 'var(--paper-destructive)'
-                  : 'var(--paper-secondary-ink)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {subtitle}
-            </span>
-          ) : null}
+        <span className={styles.copy}>
+          <span
+            className={lines === 1 ? styles.truncate : styles.clamp}
+            style={lines === 1 ? undefined : { WebkitLineClamp: lines }}
+          >
+            {children}
+          </span>
+          {subtitle ? <span className={styles.subtitle}>{subtitle}</span> : null}
         </span>
 
         {/* Trailing checkmark when leading slot has an icon */}
         {icon && selected ? (
-          <span
-            aria-hidden="true"
-            style={{
-              position: 'relative',
-              zIndex: 1,
-              display: 'inline-flex',
-              marginInlineStart: 'auto',
-              color: 'var(--paper-ink)',
-            }}
-          >
-            <Check size={14} strokeWidth={2.25} />
+          <span aria-hidden="true" className={`${styles.trailingIcon} ${styles.check}`}>
+            <Check size={16} />
           </span>
         ) : null}
 
-        {/* Badge / DotMeter */}
         {badge !== undefined && badge !== null ? (
-          <span
-            style={{
-              position: 'relative',
-              zIndex: 1,
-              flexShrink: 0,
-              marginInlineStart: icon && selected ? '6px' : 'auto',
-            }}
-          >
-            {badge}
-          </span>
+          <span className={`${styles.meta} ${styles.badge}`}>{badge}</span>
         ) : null}
-
-        {/* Shortcut */}
-        {shortcut ? (
-          <span
-            style={{
-              position: 'relative',
-              zIndex: 1,
-              flexShrink: 0,
-              fontFamily: 'var(--font-mono)',
-              fontSize: '11px',
-              color: 'var(--paper-muted-ink)',
-              marginInlineStart: badge !== undefined ? '6px' : 'auto',
-            }}
-          >
-            {shortcut}
-          </span>
-        ) : null}
-
-        {/* Trailing icon */}
+        {shortcut ? <span className={styles.meta}>{shortcut}</span> : null}
         {trailingIcon ? (
-          <span
-            aria-hidden="true"
-            style={{
-              position: 'relative',
-              zIndex: 1,
-              display: 'inline-flex',
-              color: isDestructive
-                ? 'var(--paper-destructive)'
-                : 'var(--paper-secondary-ink)',
-            }}
-          >
+          <span aria-hidden="true" className={styles.trailingIcon}>
             {trailingIcon}
           </span>
         ) : null}
       </button>
       {/* Trailing interactive action (e.g. pin star button) */}
       {trailingAction ? (
-        <span
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: 'absolute',
-            right: 8,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            zIndex: 2,
-            display: 'inline-flex',
-            alignItems: 'center',
-          }}
-        >
+        <span onClick={(e) => e.stopPropagation()} className={styles.trailingAction}>
           {trailingAction}
         </span>
       ) : null}

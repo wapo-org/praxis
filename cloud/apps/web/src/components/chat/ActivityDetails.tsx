@@ -1,6 +1,61 @@
-import { Check, Clock, X } from '../../lib/icons';
-
+/*
+ * Adapted from T3 Code WorkLog, TimelineWorkEntryRow, TimelineToolActivityIcon,
+ * TimelineWorkGroupRows and MessagesTimeline (T3 Tools Inc.).
+ * MIT License — Copyright (c) 2026 T3 Tools Inc.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+import { ThoughtRow, hasThought, type ReasoningBlock } from './ReasoningView';
+import { workEntry } from './WorkEntry.logic';
+import { ToolGlyph, workLogStyles as log } from './WorkLog';
+import { ToolInspector } from './ToolInspector';
+import {
+  Trace,
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceDescription,
+  TraceIcon,
+  TraceLine,
+  TraceTitle,
+} from '../ui/trace';
+import styles from './Activity.module.css';
 import type { AgentActivityViewProps } from './activityTypes';
+import type { ActiveToolStep } from '../../state/types';
+
+type Entry = { kind: 'thought'; block: ReasoningBlock } | { kind: 'tool'; step: ActiveToolStep };
+
+/** Thoughts and calls in the order they happened: a thought follows the call it came after. */
+export function workEntries(
+  toolSteps: ActiveToolStep[],
+  reasoningBlocks: ReasoningBlock[],
+): Entry[] {
+  const thoughts = reasoningBlocks.filter((b) => hasThought(b) || (!b.finished && !b.redacted));
+  const ids = new Set(toolSteps.map((s) => s.callId));
+  const after = (id?: string) =>
+    thoughts.filter((b) => b.afterToolCallId === id).map((block) => ({ kind: 'thought' as const, block }));
+  return [
+    ...thoughts.filter((b) => !b.afterToolCallId).map((block) => ({ kind: 'thought' as const, block })),
+    ...toolSteps.flatMap((step) => [{ kind: 'tool' as const, step }, ...after(step.callId)]),
+    ...thoughts
+      .filter((b) => b.afterToolCallId && !ids.has(b.afterToolCallId))
+      .map((block) => ({ kind: 'thought' as const, block })),
+  ];
+}
+
 export function ActivityDetails({
   reasoningBlocks = [],
   visionActivities = [],
@@ -8,328 +63,130 @@ export function ActivityDetails({
   toolSteps,
   openStepIds,
   copiedStepId,
-  toggleStepDetail,
+  setStepOpen,
   copyText,
+  onThoughtToggle,
 }: Pick<
   AgentActivityViewProps,
   'reasoningBlocks' | 'visionActivities' | 'compactions' | 'toolSteps'
 > & {
-  openStepIds: Record<string, boolean>;
+  openStepIds: Record<string, boolean | undefined>;
   copiedStepId: string | null;
-  toggleStepDetail: (id: string) => void;
+  setStepOpen: (id: string, open: boolean) => void;
   copyText: (id: string, text: string) => void;
+  onThoughtToggle?: () => void;
 }) {
   return (
-    <div
-      data-testid="agent-activity-steps"
-      style={{
-        width: '100%',
-        borderRadius: 16,
-        background: 'var(--paper-surface)',
-        border: '0.5px solid var(--paper-hairline)',
-        padding: 12,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 8,
-        boxShadow: '0 4px 18px rgba(18, 17, 15, 0.04)',
-      }}
-    >
-      {reasoningBlocks.map((block) => (
-        <div
-          key={block.id}
-          data-testid="agent-reasoning-block"
-          style={{
-            padding: '8px 10px',
-            borderRadius: 10,
-            background: 'var(--paper-fill-1)',
-            fontSize: 13,
-            lineHeight: '19px',
-            color: 'var(--paper-ink-2)',
-          }}
-        >
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.4px',
-              color: 'var(--paper-ink-3)',
-              marginBottom: 4,
-            }}
-          >
-            Reasoning {block.finished ? '' : '· streaming'}
-          </div>
-          <div style={{ whiteSpace: 'pre-wrap' }}>{block.text}</div>
-        </div>
-      ))}
-
+    <Trace data-testid="agent-activity-steps" className={styles.steps}>
       {visionActivities.map((v) => (
-        <div
-          key={v.id}
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
-            padding: '8px 10px',
-            borderRadius: 10,
-            background: 'var(--paper-fill-1)',
-            fontSize: 13,
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontWeight: 500,
-            }}
-          >
-            <span>👁</span>
-            <span>
-              Image reader ({v.modelId ?? 'vision'}): {v.phase}
-            </span>
+        <div key={v.id} className={styles.vision}>
+          <div>
+            Image reader ({v.modelId ?? 'vision'}): {v.phase}
           </div>
-          {v.answer && (
-            <div
-              style={{
-                color: 'var(--paper-ink-2)',
-                fontSize: 12,
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {v.answer}
-            </div>
-          )}
+          {v.answer ? <div>{v.answer}</div> : null}
         </div>
       ))}
 
       {compactions.map((c) => (
-        <div
-          key={c.id}
-          style={{
-            padding: '8px 10px',
-            borderRadius: 10,
-            background: 'var(--paper-fill-1)',
-            fontSize: 12.5,
-            color: 'var(--paper-ink-2)',
-          }}
-        >
+        <div key={c.id} className={styles.compaction}>
           <strong>Context compaction ({c.phase}):</strong>{' '}
           {c.summary ?? 'Summarizing earlier conversation turns...'}
         </div>
       ))}
 
-      {toolSteps.map((step) => {
-        const isStepOpen = Boolean(openStepIds[step.callId]);
-        const isError =
-          step.completion?.status === 'failed' || step.completion?.status === 'denied';
-        const isDone = Boolean(step.completion) && !step.running;
-
-        const formattedArgs =
-          step.argumentsJson ||
-          (step.activity.arguments ? JSON.stringify(step.activity.arguments, null, 2) : '{}');
-        const outputText = step.completion?.preview || step.completion?.summary || '';
-        const stepSummary = step.running
-          ? step.statusText || step.activity.presentation?.runningTitle
-          : step.activity.presentation?.finishedTitle || step.completion?.summary;
+      {workEntries(toolSteps, reasoningBlocks).map((item) => {
+        if (item.kind === 'thought') {
+          return (
+            <ThoughtRow
+              key={`t:${item.block.id}`}
+              block={item.block}
+              onToggle={onThoughtToggle}
+            />
+          );
+        }
+        const step = item.step;
+        const entry = workEntry(step);
+        const isStepOpen = openStepIds[step.callId] ?? step.running;
+        const rowStatus =
+          entry.failed || entry.warning ? 'error' : step.running ? 'running' : undefined;
 
         return (
           <div
             key={step.callId}
             data-testid={`tool-step-${step.callId}`}
-            style={{
-              borderRadius: 12,
-              border: '0.5px solid var(--paper-hairline)',
-              background: 'var(--paper-canvas)',
-              overflow: 'hidden',
-            }}
+            className={log.row}
           >
-            <button
-              type="button"
-              data-testid={`tool-step-header-${step.callId}`}
-              onClick={() => toggleStepDetail(step.callId)}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 10,
-                padding: '9px 12px',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                textAlign: 'left',
-                color: 'var(--paper-ink)',
-                fontSize: 13,
-                lineHeight: '18px',
-              }}
+            <TraceCollapsible
+              open={isStepOpen}
+              onOpenChange={(next) => setStepOpen(step.callId, next)}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  minWidth: 0,
-                }}
+              <TraceCollapsibleTrigger
+                data-testid={`tool-step-header-${step.callId}`}
+                aria-controls={`tool-detail-${step.callId}`}
+                className={log.button}
               >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    fontSize: 12,
-                    color: isError
-                      ? 'var(--paper-danger)'
-                      : isDone
-                        ? 'var(--paper-accent)'
-                        : 'var(--paper-ink-2)',
-                  }}
-                >
-                  {step.running ? (
-                    <Clock size={14} />
-                  ) : isError ? (
-                    <X size={14} />
-                  ) : (
-                    <Check size={14} />
-                  )}
-                </span>
-                <span
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: 'var(--paper-ink)',
-                  }}
-                >
-                  {step.activity.name}
-                </span>
-                {stepSummary && (
-                  <span
-                    style={{
-                      color: 'var(--paper-ink-2)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
+                <TraceLine status={rowStatus}>
+                  <TraceIcon
+                    aria-hidden={entry.failed || entry.warning ? undefined : 'true'}
+                    className={log.icon}
                   >
-                    — {stepSummary}
-                  </span>
-                )}
-              </div>
-              <span
-                style={{
-                  fontSize: 11,
-                  color: 'var(--paper-ink-3)',
-                  flexShrink: 0,
-                }}
-              >
-                {isStepOpen ? 'Hide' : 'Details'}
-              </span>
-            </button>
+                    <ToolGlyph
+                      kind={entry.icon}
+                      display={entry.displayIcon}
+                      failed={entry.failed}
+                      warning={entry.warning}
+                    />
+                  </TraceIcon>
+                  <TraceTitle>
+                    {entry.title}
+                    {entry.preview ? (
+                      <>
+                        {entry.connector}
+                        <span className={`${log.preview} ${entry.mono ? log.mono : ''}`}>
+                          {entry.quoted ? '“' : ''}
+                          {entry.preview}
+                          {entry.quoted ? '”' : ''}
+                        </span>
+                      </>
+                    ) : null}
+                    {entry.answer ? <span className={log.answer}> → {entry.answer}</span> : null}
+                  </TraceTitle>
+                  {entry.description || entry.failed || entry.warning ? (
+                    <TraceDescription>
+                      {entry.description ? <span>{entry.description}</span> : null}
+                      {entry.description && (entry.failed || entry.warning) ? (
+                        <span> · </span>
+                      ) : null}
+                      {entry.failed || entry.warning ? (
+                        <span className={entry.warning ? log.warning : log.failure}>
+                          {entry.warning ? 'Denied' : 'Failed'}
+                        </span>
+                      ) : null}
+                    </TraceDescription>
+                  ) : null}
+                </TraceLine>
+              </TraceCollapsibleTrigger>
 
-            {/* Level 2: Monospace JSON Input + Progress + Output Detail */}
-            {isStepOpen && (
-              <div
-                data-testid={`tool-step-detail-${step.callId}`}
-                style={{
-                  borderTop: '0.5px solid var(--paper-hairline)',
-                  padding: '10px 12px',
-                  background: 'var(--paper-surface-2)',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 11,
-                  lineHeight: '16px',
-                  color: 'var(--paper-ink-2)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginBottom: 4,
-                    }}
-                  >
-                    <span style={{ fontWeight: 600, color: 'var(--paper-ink-3)' }}>INPUT</span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        copyText(step.callId, `${formattedArgs}\n\n${outputText}`.trim())
-                      }
-                      style={{
-                        border: '0.5px solid var(--paper-hairline)',
-                        background: 'var(--paper-surface)',
-                        borderRadius: 6,
-                        padding: '2px 7px',
-                        fontSize: 10.5,
-                        color: 'var(--paper-ink-2)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {copiedStepId === step.callId ? 'Copied' : 'Copy'}
-                    </button>
-                  </div>
-                  <pre
-                    style={{
-                      margin: 0,
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                      maxHeight: 160,
-                      overflowY: 'auto',
-                    }}
-                  >
-                    {formattedArgs}
-                  </pre>
+              <TraceCollapsibleContent id={`tool-detail-${step.callId}`} keepMounted>
+                <div data-testid={`tool-step-detail-${step.callId}`} className={log.details}>
+                  <ToolInspector
+                    id={step.callId}
+                    technical={entry.technical}
+                    connectorName={entry.connectorName}
+                    failed={entry.failed}
+                    warning={entry.warning}
+                    input={entry.input}
+                    progress={entry.progress}
+                    output={entry.output}
+                    copiedId={copiedStepId}
+                    copyText={copyText}
+                  />
                 </div>
-
-                {step.progressLines.length > 0 && (
-                  <div>
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        color: 'var(--paper-ink-3)',
-                        marginBottom: 4,
-                      }}
-                    >
-                      PROGRESS
-                    </div>
-                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
-                      {step.progressLines.join('\n')}
-                    </pre>
-                  </div>
-                )}
-
-                {outputText && (
-                  <div>
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        color: isError ? 'var(--paper-danger)' : 'var(--paper-ink-3)',
-                        marginBottom: 4,
-                      }}
-                    >
-                      {isError ? 'ERROR' : 'OUTPUT'}
-                    </div>
-                    <pre
-                      style={{
-                        margin: 0,
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        maxHeight: 200,
-                        overflowY: 'auto',
-                        color: isError ? 'var(--paper-danger)' : 'var(--paper-ink)',
-                      }}
-                    >
-                      {outputText}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            )}
+              </TraceCollapsibleContent>
+            </TraceCollapsible>
           </div>
         );
       })}
-    </div>
+    </Trace>
   );
 }

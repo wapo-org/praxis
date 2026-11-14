@@ -1,0 +1,21 @@
+.notFound {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+  color: var(--color-ink);
+  background: var(--color-paper);
+}
+.notFound h1 {
+  font: var(--weight-medium) var(--text-2xl) / var(--leading-2xl) var(--font-display);
+}
+.notFound button {
+  min-height: var(--control-md);
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font: inherit;
+  cursor: pointer;
+}

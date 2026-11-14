@@ -9,7 +9,9 @@ const env = (): Record<string, string> => ({
   PRAXIS_API_URL: 'https://api.praxis.test',
   PRAXIS_WEB_ORIGINS: 'https://app.praxis.test',
   PRAXIS_ENCRYPTION_KEYS: `${randomBytes(32).toString('base64')},${randomBytes(32).toString('base64')}`,
-  BETTER_AUTH_SECRET: 'b'.repeat(40),
+  CLERK_PUBLISHABLE_KEY: 'pk_test_ZmFrZS5jbGVyay5hY2NvdW50cy5kZXYk',
+  CLERK_SECRET_KEY: 'sk_test_fake_not_a_key',
+  CLERK_JWT_KEY: 'fake-public-key',
   CONVEX_URL: 'https://example-123.convex.cloud',
   PRAXIS_CONVEX_SERVER_TOKEN: 's'.repeat(40),
   UPSTASH_REDIS_REST_URL: 'https://example.upstash.io',
@@ -26,11 +28,11 @@ describe('production startup', () => {
     try { readProductionEnv({}); } catch (e) { message = (e as Error).message; }
     for (const name of PRODUCTION_ENV) expect(message).toContain(`${name} is missing`);
     expect(message).toContain('PRAXIS_ENCRYPTION_KEYS is missing');
-    const bad = {...env(), PRAXIS_API_URL: 'http://api.praxis.test', PRAXIS_ENCRYPTION_KEYS: `${randomBytes(32).toString('base64')},short`, BETTER_AUTH_SECRET: 'tiny'};
-    expect(() => readProductionEnv(bad)).toThrow(/PRAXIS_API_URL must be an https URL[\s\S]*PRAXIS_ENCRYPTION_KEYS must list base64 keys of exactly 32 random bytes each[\s\S]*BETTER_AUTH_SECRET must be at least 32 characters/);
+    const bad = {...env(), PRAXIS_API_URL: 'http://api.praxis.test', PRAXIS_ENCRYPTION_KEYS: `${randomBytes(32).toString('base64')},short`, PRAXIS_CONVEX_SERVER_TOKEN: 'tiny'};
+    expect(() => readProductionEnv(bad)).toThrow(/PRAXIS_API_URL must be an https URL[\s\S]*PRAXIS_ENCRYPTION_KEYS must list base64 keys of exactly 32 random bytes each[\s\S]*PRAXIS_CONVEX_SERVER_TOKEN must be at least 32 characters/);
   });
 
-  it('composes with Convex/Upstash/QStash/Better Auth without touching the network, and serves health + the signed continuation route', async () => {
+  it('composes with Convex/Upstash/QStash/Clerk without touching the network, and serves health + the signed continuation route', async () => {
     const {app, service} = createProductionApp(env());
     expect(service.local).toBe(false);
     expect(await (await app.request('/health')).json()).toMatchObject({mode: 'production'});

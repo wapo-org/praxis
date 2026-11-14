@@ -7,6 +7,7 @@ import {createProductionApp} from '../src/production.js';
  * adapters for the local bundle smoke test and is refused whenever VERCEL or NODE_ENV=production is set.
  */
 async function build() {
+  if (process.env.PRAXIS_LOCAL_DATA_DIR !== undefined) throw new Error("PRAXIS_LOCAL_DATA_DIR is only supported by dev:local, never Vercel");
   if (process.env.PRAXIS_LOCAL_SMOKE === '1') {
     if (process.env.VERCEL || process.env.NODE_ENV === 'production') throw new Error('PRAXIS_LOCAL_SMOKE is not allowed in production');
     const {createSmokeApp} = await import('../src/smoke.js');

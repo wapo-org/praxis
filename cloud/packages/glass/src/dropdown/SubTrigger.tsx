@@ -1,3 +1,4 @@
+import styles from './dropdown.module.css';
 import { SubmenuChevron } from './SubmenuChevron';
 export interface SubTriggerProps extends Omit<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
@@ -11,7 +12,6 @@ export interface SubTriggerProps extends Omit<
   children?: React.ReactNode;
 }
 
-import { motion } from 'framer-motion';
 import React from 'react';
 import {
   assignForwardedRef,
@@ -62,9 +62,8 @@ const SubTrigger = React.forwardRef<HTMLButtonElement, SubTriggerProps>(
     };
 
     return (
-      <motion.button
+      <button
         ref={setRef}
-        layoutId={`${ctx.menuId}-sub-header-${sub.subId}`}
         type="button"
         role="menuitem"
         data-dropdown-item-id={itemId}
@@ -99,125 +98,28 @@ const SubTrigger = React.forwardRef<HTMLButtonElement, SubTriggerProps>(
             openSubmenu();
           }
         }}
-        style={{
-          position: 'relative',
-          display: 'flex',
-          width: '100%',
-          alignItems: 'center',
-          gap: '10px',
-          borderRadius: '14px',
-          minHeight: 40,
-          padding: '9px 12px',
-          border: 'none',
-          background: 'transparent',
-          color: 'var(--paper-ink)',
-          fontFamily: 'var(--font-sans)',
-          fontSize: '17px',
-          fontWeight: 500,
-          lineHeight: '22px',
-          textAlign: 'start',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          opacity: disabled ? 0.4 : 1,
-          userSelect: 'none',
-          outline: 'none',
-          ...style,
-        }}
+        data-highlighted={isHighlighted || undefined}
+        className={styles.item}
+        style={style}
         {...rest}
       >
-        {isHighlighted && !disabled ? (
-          <motion.span
-            layoutId={`${panelHighlight?.layoutScopeId ?? 'menu'}-highlight`}
-            aria-hidden="true"
-            transition={{
-              type: 'spring',
-              stiffness: 520,
-              damping: 36,
-              mass: 0.7,
-            }}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              borderRadius: '14px',
-              backgroundColor:
-                'var(--dropdown-highlight, rgba(21, 20, 15, 0.075))',
-              pointerEvents: 'none',
-              zIndex: 0,
-            }}
-          />
-        ) : null}
 
-        {inset ? (
-          <span style={{ width: 16, height: 16, flexShrink: 0 }} />
-        ) : null}
+        {inset ? <span aria-hidden="true" className={styles.slot} /> : null}
         {icon ? (
-          <span
-            aria-hidden="true"
-            style={{
-              position: 'relative',
-              zIndex: 1,
-              display: 'inline-flex',
-              width: 16,
-              height: 16,
-              flexShrink: 0,
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--paper-secondary-ink)',
-            }}
-          >
+          <span aria-hidden="true" className={styles.slot}>
             {icon}
           </span>
         ) : null}
 
-        <span
-          style={{
-            position: 'relative',
-            zIndex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            flex: 1,
-            minWidth: 0,
-          }}
-        >
-          <span
-            style={{
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {children}
-          </span>
-          {subtitle ? (
-            <span
-              style={{
-                fontSize: '13px',
-                color: 'var(--paper-secondary-ink)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {subtitle}
-            </span>
-          ) : null}
+        <span className={styles.copy}>
+          <span className={styles.truncate}>{children}</span>
+          {subtitle ? <span className={styles.subtitle}>{subtitle}</span> : null}
         </span>
 
-        {value !== undefined && value !== null ? (
-          <span
-            style={{
-              position: 'relative',
-              zIndex: 1,
-              fontSize: '12px',
-              color: 'var(--paper-secondary-ink)',
-              marginInlineStart: 'auto',
-            }}
-          >
-            {value}
-          </span>
-        ) : null}
+        {value !== undefined && value !== null ? <span className={styles.meta}>{value}</span> : null}
 
         <SubmenuChevron id={sub.subId} expanded={false} />
-      </motion.button>
+      </button>
     );
   },
 );

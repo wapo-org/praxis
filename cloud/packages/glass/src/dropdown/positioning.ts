@@ -55,25 +55,40 @@ export function usePositioning(
     if (!menu || !trigger) return;
     const update = () => {
       const rect = trigger.getBoundingClientRect();
-      const result = placeMenu(
-        rect,
+      const box = ctx.boundary?.()?.getBoundingClientRect();
+      const offsetX = box?.left ?? 0;
+      const offsetY = box?.top ?? 0;
+      const placed = placeMenu(
+        new DOMRect(rect.left - offsetX, rect.top - offsetY, rect.width, rect.height),
         menu.offsetWidth || minWidth,
         menu.scrollHeight,
-        window.innerWidth,
-        window.innerHeight,
+        box?.width ?? window.innerWidth,
+        box?.height ?? window.innerHeight,
         ctx.side,
         ctx.align,
         ctx.sideOffset,
       );
+      const result = { ...placed, left: placed.left + offsetX, top: placed.top + offsetY };
       const parent = ctx.portal
         ? undefined
         : menu.offsetParent?.getBoundingClientRect();
+      // The live panel's list. While a submenu swaps in place the exiting panel (inert, popped out of the flow)
+      // is still in the DOM first; measuring its list fed the menu's height back into the new list's cap, so the
+      // list and the glass alternated between two heights every frame (L-ref/13).
+      const viewport=
+        menu.querySelector<HTMLElement>('[data-dropdown-panel]:not([inert]) [data-slot="scroll-blur-viewport"]') ??
+        menu.querySelector<HTMLElement>('[data-slot="scroll-blur-viewport"]');
+      const fixedHeight=viewport?Math.max(0,menu.offsetHeight-viewport.offsetHeight):0;
+      menu.style.setProperty('--menu-list-height',Math.max(0,result.maxHeight-fixedHeight)+'px');
       setSide(result.side);
       setPosition({
         left: result.left - (parent?.left ?? 0),
         top: result.top - (parent?.top ?? 0),
         width: result.width,
         maxHeight: result.maxHeight,
+        // Scroll only when the menu is taller than the space; otherwise stay visible so the glass shadow is not clipped.
+        // A cascading menu's submenu lives outside the box and must not count, or clip.
+        overflowY: 'visible',
         visibility: 'visible',
         transformOrigin: `${rect.left + rect.width / 2 - result.left}px ${result.side === 'top' ? 'bottom' : 'top'}`,
       });
@@ -92,6 +107,7 @@ export function usePositioning(
     };
   }, [
     ctx.portal,
+    ctx.submenuMode,
     ctx.open,
     ctx.side,
     ctx.align,
@@ -100,6 +116,16 @@ export function usePositioning(
     minWidth,
     ctx.getContentEl,
     ctx.getTriggerEl,
+    ctx.boundary,
   ]);
   return { position, resolvedSide };
+}
+
+/** Cascades prefer the right edge, flip left, then shift inside the viewport. */
+export function placeSubmenu(trigger:DOMRect,width:number,height:number,vw:number,vh:number,gap=8) {
+ const w=Math.min(width,Math.max(0,vw-16)),h=Math.min(height,Math.max(0,vh-16));
+ const right=trigger.right+gap;
+ const side=right+w<=vw-8?'right':'left';
+ const ideal=side==='right'?right:trigger.left-gap-w;
+ return {left:Math.max(8,Math.min(ideal,vw-8-w)),top:Math.max(8,Math.min(trigger.top-8,vh-8-h)),width:w,maxHeight:Math.max(0,vh-16),side};
 }

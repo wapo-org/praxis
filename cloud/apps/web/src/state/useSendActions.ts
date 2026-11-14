@@ -1,22 +1,24 @@
-import type { Message } from '@praxis/protocol';
+import { runErrorCopy } from '../lib/runErrorCopy';
+import type { Chat, Message } from '@praxis/protocol';
 import React from 'react';
+import { toWireMode } from '../lib/modes';
 import { apiClient } from '../lib/api';
 
-import type { useChatActions } from './useChatActions';
+import type { LiveRunState } from './types';
 import type { PraxisState } from './usePraxisState';
 import type { useRunStreams } from './useRunStreams';
 export function useSendActions(
   state: PraxisState,
   {
-    createNewChat,
     attachRunStream,
-  }: Pick<ReturnType<typeof useChatActions>, 'createNewChat'> & ReturnType<typeof useRunStreams>,
+  }: ReturnType<typeof useRunStreams>,
 ) {
   const {
+    onNavigate,
     setErrorBanner,
-    chats,
     setChats,
     activeChatId,
+    setActiveChatId,
     setMessagesByChat,
     models,
     attachmentsById,
@@ -25,13 +27,36 @@ export function useSendActions(
     webSearch,
     selectedEffort,
     selectedMode,
+    catalogReady,
     liveRunsByChat,
     setLiveRunsByChat,
   } = state;
+  // The model list loads after the page does. A message sent before the selection resolves waits for it (the
+  // optimistic bubble and run show at once); sending '' as the model made the server reject the new chat.
+  const modelRef = React.useRef({ providerId: selectedProviderId, modelId: selectedModelId, catalogReady });
+  modelRef.current = { providerId: selectedProviderId, modelId: selectedModelId, catalogReady };
+  const resolveModel = React.useCallback(
+    () =>
+      new Promise<{ providerId?: string; modelId?: string }>((resolve) => {
+        const start = Date.now();
+        let readySince = 0;
+        const tick = () => {
+          const pick = modelRef.current;
+          if (pick.providerId && pick.modelId) return resolve({ providerId: pick.providerId, modelId: pick.modelId });
+          // Once the list has loaded, the selection settles within a render or two; none means there is no model.
+          if (pick.catalogReady) readySince ||= Date.now();
+          if ((readySince && Date.now() - readySince > 150) || Date.now() - start > 10_000) return resolve({});
+          setTimeout(tick, 50);
+        };
+        tick();
+      }),
+    [],
+  );
   const executeSendMessage = React.useCallback(
     async (
       text: string,
       options?: {
+        regenerateMessageId?: string;
         attachmentIds?: string[];
         script?:
           | 'text'
@@ -46,15 +71,55 @@ export function useSendActions(
       },
     ) => {
       setErrorBanner(null);
-      let targetChatId = activeChatId;
+      state.pendingChatSwitchRef.current = null;
+      let targetChatId = state.activeChatIdRef.current ?? activeChatId;
+      const nowIso = new Date().toISOString();
+      let createChatPromise: Promise<Chat> | null = null;
+      let generatedChatId: string | null = null;
+
       if (!targetChatId) {
-        const created = await createNewChat('New chat');
-        targetChatId = created.id;
+        const generatedId = crypto.randomUUID();
+        generatedChatId = generatedId;
+        targetChatId = generatedId;
+        const wireMode = toWireMode(selectedMode);
+        const optimisticChat: Chat = {
+          type: 'chat',
+          id: generatedId,
+          title: 'New chat',
+          pinned: false,
+          mode: wireMode,
+          connectorIds: [],
+          disabledConnectorIds: [],
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          providerId: selectedProviderId || undefined,
+          modelId: selectedModelId || undefined,
+          effort: selectedEffort || undefined,
+        };
+        state.setDraftTitle('New chat');
+        state.activeChatIdRef.current = generatedId;
+        setActiveChatId(generatedId);
+        setChats((prev) => [optimisticChat, ...prev.filter((c) => c.id !== generatedId)]);
+        onNavigate?.(`/c/${encodeURIComponent(generatedId)}`);
+
+        createChatPromise = resolveModel().then((pick) =>
+          apiClient.createChat({
+            id: generatedId,
+            title: 'New chat',
+            mode: wireMode,
+            providerId: pick.providerId,
+            modelId: pick.modelId,
+            effort: selectedEffort || undefined,
+          }),
+        );
+        state.creatingChatPromisesRef.current.set(
+          generatedId,
+          createChatPromise.then(() => undefined, () => undefined),
+        );
       }
 
       const clientTurnId = `turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       state.localTurnIdsRef.current.add(clientTurnId);
-      const nowIso = new Date().toISOString();
       const optimisticUserMsg: Message = {
         type: 'message',
         id: `optimistic-${clientTurnId}`,
@@ -74,9 +139,42 @@ export function useSendActions(
         updatedAt: nowIso,
       };
 
+      const optimisticRunId = `optimistic-run-${clientTurnId}`;
+      const optimisticLiveRun: LiveRunState = {
+        run: {
+          type: 'run',
+          id: optimisticRunId,
+          chatId: targetChatId,
+          clientTurnId,
+          status: 'queued',
+          promptStartedAt: options?.regenerateMessageId ? nowIso : undefined,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          lastEventId: 0,
+        },
+        lastEventId: 0,
+        textBlocks: [],
+        reasoningBlocks: [],
+        toolSteps: [],
+        pendingApprovals: [],
+        pendingElicitations: [],
+        visionActivities: [],
+        compactions: [],
+      };
+
+      const originalMessages = state.messagesByChat[targetChatId] ?? [];
       setMessagesByChat((prev) => ({
         ...prev,
-        [targetChatId!]: [...(prev[targetChatId!] ?? []), optimisticUserMsg],
+        [targetChatId!]: options?.regenerateMessageId
+          ? (prev[targetChatId!] ?? []).slice(
+              0,
+              (prev[targetChatId!] ?? []).findIndex((m) => m.id === options.regenerateMessageId),
+            )
+          : [...(prev[targetChatId!] ?? []), optimisticUserMsg],
+      }));
+      setLiveRunsByChat((prev) => ({
+        ...prev,
+        [targetChatId!]: optimisticLiveRun,
       }));
 
       // Infer script in local mode from prompt keywords if not explicitly provided
@@ -100,16 +198,53 @@ export function useSendActions(
         if (typeof performance !== 'undefined') {
           performance.mark('praxis:run-start');
         }
+        if (createChatPromise && generatedChatId) {
+          try {
+            const created = await createChatPromise;
+            if (created.id !== generatedChatId) {
+              const oldId = generatedChatId;
+              targetChatId = created.id;
+              if (state.activeChatIdRef.current === oldId) {
+                state.activeChatIdRef.current = created.id;
+                setActiveChatId(created.id);
+                onNavigate?.(`/c/${encodeURIComponent(created.id)}`);
+              }
+              setMessagesByChat((prev) => {
+                const { [oldId]: moved = [], ...rest } = prev;
+                return {
+                  ...rest,
+                  [created.id]: moved.map((m) => (m.chatId === oldId ? { ...m, chatId: created.id } : m)),
+                };
+              });
+              setLiveRunsByChat((prev) => {
+                const moved = prev[oldId];
+                if (!moved) return prev;
+                const { [oldId]: _, ...rest } = prev;
+                return {
+                  ...rest,
+                  [created.id]: { ...moved, run: { ...moved.run, chatId: created.id } },
+                };
+              });
+              setChats((prev) => [created, ...prev.filter((c) => c.id !== oldId && c.id !== created.id)]);
+            } else {
+              setChats((prev) => [created, ...prev.filter((c) => c.id !== created.id)]);
+            }
+          } finally {
+            state.creatingChatPromisesRef.current.delete(generatedChatId);
+          }
+        }
+        const pick = await resolveModel();
         const run = await apiClient.startRun({
+          regenerateMessageId: options?.regenerateMessageId,
           chatId: targetChatId,
           text,
-          providerId: selectedProviderId,
-          modelId: selectedModelId,
-          mode: selectedMode,
+          providerId: pick.providerId,
+          modelId: pick.modelId,
+          mode: toWireMode(selectedMode),
           effort: selectedEffort,
           webSearch:
             webSearch &&
-            !!models.find((m) => m.id === selectedModelId && m.providerId === selectedProviderId)
+            !!models.find((m) => m.id === pick.modelId && m.providerId === pick.providerId)
               ?.capabilities.serverWebSearch,
           attachmentIds: options?.attachmentIds ?? [],
           clientTurnId,
@@ -117,20 +252,45 @@ export function useSendActions(
           script: inferredScript,
         });
 
-        setLiveRunsByChat((prev) => ({
-          ...prev,
-          [targetChatId!]: {
-            run,
-            lastEventId: 0,
-            textBlocks: [],
-            reasoningBlocks: [],
-            toolSteps: [],
-            pendingApprovals: [],
-            pendingElicitations: [],
-            visionActivities: [],
-            compactions: [],
-          },
-        }));
+        if (state.cancelledTurnIdsRef.current.delete(clientTurnId)) {
+          setLiveRunsByChat((prev) => {
+            const current = prev[targetChatId!];
+            if (!current || current.run.id !== optimisticRunId) return prev;
+            return {
+              ...prev,
+              [targetChatId!]: { ...current, run: { ...run, status: 'cancelled' } },
+            };
+          });
+          void apiClient.cancelRun(run.id).catch(() => {});
+          void apiClient
+            .getChat(targetChatId)
+            .then((chat) =>
+              setChats((prev) => prev.map((value) => (value.id === chat.id ? chat : value))),
+            )
+            .catch(() => {});
+          return;
+        }
+
+        setLiveRunsByChat((prev) => {
+          const current = prev[targetChatId!];
+          if (current && current.run.id === optimisticRunId) {
+            return { ...prev, [targetChatId!]: { ...current, run } };
+          }
+          return {
+            ...prev,
+            [targetChatId!]: {
+              run,
+              lastEventId: 0,
+              textBlocks: [],
+              reasoningBlocks: [],
+              toolSteps: [],
+              pendingApprovals: [],
+              pendingElicitations: [],
+              visionActivities: [],
+              compactions: [],
+            },
+          };
+        });
 
         void apiClient
           .getChat(targetChatId)
@@ -142,14 +302,23 @@ export function useSendActions(
           );
         attachRunStream(run, 0);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Failed to start run';
+        if (options?.regenerateMessageId) {
+          setMessagesByChat((prev) => ({ ...prev, [targetChatId!]: originalMessages }));
+        }
+        setLiveRunsByChat((prev) => {
+          const current = prev[targetChatId!];
+          if (!current || current.run.id !== optimisticRunId) return prev;
+          const next = { ...prev };
+          delete next[targetChatId!];
+          return next;
+        });
+        const msg = runErrorCopy(err);
         setErrorBanner(msg);
       }
     },
     [
       activeChatId,
-      createNewChat,
-      chats,
+      onNavigate,
       attachmentsById,
       selectedProviderId,
       selectedModelId,
@@ -158,13 +327,29 @@ export function useSendActions(
       webSearch,
       models,
       attachRunStream,
+      resolveModel,
     ],
   );
 
   const cancelActiveRun = React.useCallback(async () => {
-    if (!activeChatId) return;
-    const live = liveRunsByChat[activeChatId];
+    const chatId = state.activeChatIdRef.current ?? activeChatId;
+    if (!chatId) return;
+    const live = liveRunsByChat[chatId];
     if (!live) return;
+    if (live.run.id.startsWith('optimistic-run-')) {
+      if (live.run.clientTurnId) {
+        state.cancelledTurnIdsRef.current.add(live.run.clientTurnId);
+      }
+      setLiveRunsByChat((prev) => {
+        const current = prev[chatId];
+        if (!current || current.run.id !== live.run.id) return prev;
+        return {
+          ...prev,
+          [chatId]: { ...current, run: { ...current.run, status: 'cancelled' } },
+        };
+      });
+      return;
+    }
     await apiClient.cancelRun(live.run.id);
   }, [activeChatId, liveRunsByChat]);
 

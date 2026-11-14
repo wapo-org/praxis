@@ -35,6 +35,18 @@ export default defineSchema({
     .index('model_user', ['model', 'data.userId'])
     .index('model_identifier', ['model', 'data.identifier'])
     .index('model_value', ['model','data.value']),
+  // Semantic search: one vector per chat title or message chunk (convex/search.ts). `scope` = owner + embedder.
+  embeddings: defineTable({
+    userId: v.string(),
+    scope: v.string(),
+    itemId: v.string(),
+    chatId: v.string(),
+    text: v.string(),
+    vector: v.array(v.float64()),
+  })
+    .index('owner', ['userId'])
+    .index('scope_item', ['scope', 'itemId'])
+    .vectorIndex('by_vector', { vectorField: 'vector', dimensions: 384, filterFields: ['scope'] }),
   // Owner-bound Convex file storage (attachments). A ticket is created before bytes arrive.
   files: defineTable({
     userId: v.string(),

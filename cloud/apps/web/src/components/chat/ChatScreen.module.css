@@ -1,0 +1,173 @@
+.screen {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Transparent: messages scroll behind the floating sidebar / composer. */
+  background: transparent;
+  /* Its own stack, so the run background (z-index −1) sits above the page's paper and below the chat. */
+  isolation: isolate;
+}
+
+.viewport {
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-anchor: none;
+  padding: calc(var(--topbar-height) + var(--space-6)) var(--space-6)
+    calc(var(--space-16) * 2 + var(--space-8));
+  scrollbar-gutter: stable both-edges;
+}
+
+.column {
+  width: 100%;
+  max-width: var(--reading-width);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.column[data-empty='true'] {
+  min-height: 100%;
+  justify-content: center;
+}
+
+.assistantTurn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* A tool turn followed by its answer: 20 px total with the activity row's own spacing. */
+.assistantTurn + .assistantTurn {
+  margin-top: var(--space-2);
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-sm) / var(--leading-md) var(--font-sans);
+}
+
+.error button {
+  flex-shrink: 0;
+  height: var(--control-sm);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: var(--weight-semibold) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  cursor: pointer;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-bottom: var(--space-16);
+}
+
+.greeting {
+  margin: 0;
+  color: var(--color-ink);
+  font: var(--weight-semibold) var(--text-2xl) / var(--leading-2xl) var(--font-display);
+  letter-spacing: var(--tracking-display);
+}
+
+.lede {
+  margin: var(--space-2) 0 0;
+  color: var(--color-ink-2);
+  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
+}
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  max-width: 560px;
+  margin-top: var(--space-8);
+}
+
+.suggestion {
+  height: var(--control-md);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-full);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .suggestion:hover {
+    background: var(--color-hover);
+  }
+}
+
+.suggestion:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.jump {
+  position: absolute;
+  inset-inline: 0;
+  bottom: calc(var(--space-16) + var(--space-8));
+  /* Below the dock, so an open tray covers it. */
+  z-index: 18;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.jump > * {
+  pointer-events: auto;
+}
+
+.dock {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 20;
+  padding: 0 var(--space-6) var(--space-5);
+  pointer-events: none;
+}
+
+@media (max-width: 1023px) {
+  .viewport {
+    padding-inline: var(--space-5);
+  }
+  .dock {
+    padding: 0 var(--space-4) var(--space-4);
+  }
+}
+
+/* Fixed overlay: fading never changes the message column's layout. */
+.jump { opacity:1; visibility:visible; transition:opacity var(--duration-fast) var(--ease-standard), visibility var(--duration-fast) step-start; }
+.jump[data-visible='false'] { opacity:0; visibility:hidden; transition-timing-function:var(--ease-standard),step-end; }
+.jump[data-visible='false'] > * { pointer-events:none; }
+
+/* The blur bands' lane: the column plus the viewport's padding on each side, shifted with the column. */
+.scrimLane {
+  position: absolute;
+  inset-block: 0;
+  inset-inline: 0;
+  margin-inline: auto;
+  max-width: calc(var(--column-width) + var(--space-6) * 2);
+  z-index: 15;
+  pointer-events: none;
+}
+
+/* One scroll writer (useStreamAnchor): the browser's own scroll anchoring would be a second one. */
+.viewport { overflow-anchor: none; }

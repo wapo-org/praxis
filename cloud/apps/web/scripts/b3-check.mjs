@@ -15,7 +15,7 @@ try {
   const page = await context.newPage();
   await login(page, `wp-b3-desktop-${Date.now()}`);
   await page.getByRole('complementary', { name: 'Conversation history' }).waitFor();
-  assert.equal(await page.locator('.screen-sidebar').isVisible(), true);
+  assert.equal(await page.getByTestId('app-sidebar').isVisible(), true);
   assert.equal(new URL(page.url()).pathname, '/');
   const input = page.getByTestId('composer-input');
   await input.fill('Desktop keyboard check');
@@ -27,18 +27,30 @@ try {
   const chatPath = new URL(page.url()).pathname;
   await page.getByTestId('assistant-turn').first().waitFor();
   await page.reload(); await page.getByTestId('chat-top-bar').waitFor();
-  await page.getByTestId('nav-chat-title-pill').getByText('Desktop keyboard check', { exact: true }).waitFor();
+  // Design v2: the chat keeps its random two-word name; the first message no longer titles it.
+  const named = page.getByTestId('nav-chat-title-pill').getByText('Desktop keyboard check', { exact:true }).first();
+  await named.waitFor();
+  const chatName = await named.textContent();
+  assert.equal(chatName,'Desktop keyboard check');
   const chatBounds = await page.getByTestId('composer-dock').boundingBox();
-  assert(chatBounds.width <= 442 && chatBounds.x >= 280);
+  assert(chatBounds.width <= 720); // 720 px column; the sidebar floats over the full-bleed layer
+  const sidebarBounds = await page.getByTestId('app-sidebar').boundingBox();
+  assert(sidebarBounds.x < 20 && sidebarBounds.y < 20); // floating: detached from the edges
   await page.getByTestId('nav-settings-button').click(); await page.waitForURL('**/settings');
-  const dialog = page.getByRole('dialog', { name: 'Settings', exact: true }); await dialog.waitFor();
-  const bounds = await dialog.boundingBox(); assert(bounds.x > 280 && bounds.width <= 640);
-  await dialog.getByRole('button', { name: 'Add provider', exact: true }).click(); await page.waitForURL('**/settings/providers/new');
-  await page.reload(); await page.getByRole('dialog', { name: 'Provider', exact: true }).waitFor();
+  // Settings is a routed page now: no dialog chrome, no redundant page h1, content in the main area.
+  const settings = page.getByTestId('settings-page'); await settings.waitFor();
+  assert.equal(await page.getByRole('dialog', { name: 'Settings', exact: true }).count(), 0);
+  const bounds = await settings.boundingBox(); assert(bounds.height <= 900); // full-bleed; content sits in the column beside the floating nav
+  const heading = await settings.getByRole('heading').first().boundingBox(); assert(heading.width <= 720 && heading.x > sidebarBounds.x + sidebarBounds.width);
+  await page.getByRole('button', { name: 'Models & providers', exact: true }).click(); await page.waitForURL('**/settings/providers');
+  await page.getByRole('button', { name: 'Add provider', exact: true }).click(); await page.waitForURL('**/settings/providers/new');
+  await page.reload(); await page.getByRole('heading', { name: 'Connection', exact: true }).waitFor();
   assert.equal(await page.getByRole('switch').count(), 12);
-  await page.goBack(); await page.getByRole('dialog', { name: 'Settings', exact: true }).waitFor();
-  await page.goForward(); await page.getByRole('dialog', { name: 'Provider', exact: true }).waitFor();
-  await page.keyboard.press('Escape'); await page.waitForURL('**/');
+  await page.goBack(); await page.getByRole('button', { name: 'Add provider', exact: true }).waitFor();
+  await page.goForward(); await page.getByRole('heading', { name: 'Connection', exact: true }).waitFor();
+  // The editor shows Save, not Done; go back to the list, then Close settings returns to the chat.
+  await page.goBack(); await page.waitForURL('**/settings/providers');
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click(); await page.waitForURL('**/');
   const saved = await page.evaluate(async () => {
     const { apiClient } = await import('/src/lib/api.ts');
     return apiClient.createProvider({ name: 'Restored provider', flavor: 'openAIChat', baseUrl: 'https://example.invalid/v1', defaultModel: 'restored-model' });
@@ -48,13 +60,14 @@ try {
   assert.equal(await page.getByRole('textbox', { name: 'Name', exact: true }).inputValue(), 'Restored provider');
   await page.goto(`${base}/settings/providers/missing`); await page.getByText('Provider not found.', { exact: true }).waitFor();
   await page.goto(`${base}${chatPath}`); await page.getByTestId('chat-top-bar').waitFor();
-  await page.keyboard.press('Meta+k');
-  await page.getByRole('dialog', { name: 'Chats', exact: true }).waitFor();
-  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Search conversations' && !!document.activeElement?.closest('[role="dialog"]'));
+  // WP-G3C: Meta-K opens the floating search and focuses it, independently of history.
+  await page.keyboard.press('ControlOrMeta+k');
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Search conversations' && !!document.activeElement?.closest('[data-testid="search-palette"]'));
+  assert.equal(await page.getByRole('dialog', { name: 'Chats', exact: true }).count(), 0);
   await page.keyboard.press('Escape'); await page.waitForURL(`**${chatPath}`);
   // Selecting a sidebar row must update the chat route.
-  await page.getByTestId('nav-new-chat-button').click(); await page.waitForURL(`${base}/`);
-  await page.locator('.screen-sidebar .screen-history-select').filter({ hasText: 'Desktop keyboard check' }).click();
+  await page.getByTestId('sidebar-new-chat').click(); await page.waitForURL(`${base}/`);
+  await page.locator('[data-testid="app-sidebar"] [data-sidebar-row-select]').filter({ hasText: chatName }).click();
   await page.waitForURL(`**${chatPath}`);
   // Server-only results and cursor loading, beyond bootstrap's first model page.
   const template = await page.evaluate(async () => { const { apiClient } = await import('/src/lib/api.ts'); return (await apiClient.bootstrap()).models[0]; });
@@ -69,8 +82,14 @@ try {
   await page.getByRole('option', { name: 'Load more models', exact: true }).click();
   await page.getByRole('option', { name: /Cursor model/ }).waitFor();
   assert(queries.some(q => q.q === 'remote')); assert(queries.some(q => q.cursor === 'next'));
-  await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
-  await page.getByTestId('nav-new-chat-button').click();
+  await page.keyboard.press('Escape'); await page.getByRole('listbox', { name: 'Models' }).waitFor({ state: 'detached' });
+  assert.equal(await page.getByTestId('tray-model-picker-trigger').getAttribute('aria-expanded'), 'false', 'Esc leaves the list and keeps the tray open');
+  await page.keyboard.press('Escape'); await page.getByTestId('plus-tray').waitFor({ state: 'detached' });
+  await page.getByTestId('sidebar-new-chat').click();
+  await page.getByTestId('composer-plus-button').click();
+  await page.getByTestId('tray-mode-auto').click();
+  await page.keyboard.press('Escape');
+  await page.getByTestId('plus-tray').waitFor({state:'detached'});
   await page.getByTestId('starter-chip-2').click();
   await page.getByRole('button', { name: 'Allow Once', exact: true }).waitFor();
   assert.equal(await page.getByTestId('assistant-turn').count(), 0, 'Pending run must have a single live activity disclosure');
@@ -81,15 +100,18 @@ try {
   });
   await page.goto(`${base}/c/${restoredChat.id}`); await page.getByTestId('nav-chat-title-pill').getByText('Route options', { exact: true }).waitFor();
   await page.getByTestId('composer-plus-button').click();
-  assert.equal(await page.getByTestId('tray-mode-plan').getAttribute('aria-pressed'), 'true');
-  assert.equal(await page.getByRole('group', { name: 'Reasoning effort' }).getByRole('button', { name: 'high', exact: true }).getAttribute('aria-pressed'), 'true');
+  // A chat stored in the retired Plan mode opens in Auto (WP-I1); there is no Plan or Build button.
+  assert.equal(await page.getByTestId('tray-mode-auto').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.getByTestId('tray-mode-plan').count(), 0);
+  assert.equal(await page.getByTestId('tray-mode-build').count(), 0);
+  assert.equal(await page.getByRole('group', { name: 'Reasoning effort' }).getByRole('button', { name: 'High', exact: true }).getAttribute('aria-pressed'), 'true');
   await context.close();
   const touch = await browser.newContext({ viewport: { width: 402, height: 874 }, colorScheme: 'dark', isMobile: true, hasTouch: true });
   const mobile = await touch.newPage(); await login(mobile, `wp-b3-touch-${Date.now()}`);
-  assert.equal(await mobile.locator('.screen-sidebar').count(), 0);
+  assert.equal(await mobile.locator('[data-testid="app-sidebar"]').count(), 0);
   assert.equal(await mobile.locator('html').getAttribute('data-theme'), 'dark');
   const mobileInput = mobile.getByTestId('composer-input'); await mobileInput.fill('Touch newline'); await mobileInput.press('Enter');
   assert.equal(await mobileInput.inputValue(), 'Touch newline\n'); assert.equal(new URL(mobile.url()).pathname, '/');
   await touch.close();
-  console.log('PASS: chat/settings deep links + reload + back/forward; desktop sidebar + reading width + centered dialogs; Enter/Shift+Enter/touch Return/IME; system dark default; single live activity; Meta-K/Esc; debounced server model search + pagination');
+  console.log('PASS: chat/settings deep links + reload + back/forward; floating sidebar + reading width + settings as a page; Enter/Shift+Enter/touch Return/IME; system dark default; single live activity; Meta-K/Esc; debounced server model search + pagination');
 } finally { await browser.close(); }

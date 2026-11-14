@@ -25,6 +25,17 @@ export function skillTools(ctx: FeatureContext, storage?: ToolsStorage): Feature
   return [
     ...skillAuthoringTools(ctx, storage),
     {
+      name:'ask_user',
+      description:'Ask the user any question in every mode, including Execute. Provide message and a JSON Schema of fields. For credentials set format: password or x-sensitive: true on the field; the answer contains an opaque secret reference. Wait for their answer; never search for a question tool.',
+      inputSchema:{type:'object',properties:{message:{type:'string'},schema:{type:'object'}},required:['message','schema']},
+      source:{type:'builtin'},traits:['readOnly'],
+      async execute(args,run) {
+        const request=z.object({message:z.string(),schema:z.record(z.string(),z.json())}).parse(args);
+        if(!run.elicit)throw new Error('Questions are unavailable; retry this turn.');
+        return await run.elicit(request) as JsonValue;
+      },
+    },
+    {
       name: 'load_skill',
       description: "Load a skill's full instructions. Call this before starting a task that matches one of the skills listed in the system prompt, then follow the instructions it returns.",
       inputSchema: {type: 'object', properties: {name: {type: 'string', description: 'Skill name exactly as listed, e.g. "pdf-processing"'}}, required: ['name']},
@@ -100,7 +111,7 @@ export function javascriptTool(ctx: FeatureContext, input: {attachmentIds: strin
   return {
     name: 'run_javascript',
     description: 'Run JavaScript in an isolated QuickJS sandbox (no Node, no DOM). Use it for calculations, data processing and parsing attached files (fs.list(), fs.readText(name), fs.readBytes(name)). fetch(url, init) reaches the network (GET/HEAD only in plan mode); kv.get/kv.set persist small JSON values for this chat; tools.<name>(args) or callTool(name, args) calls other tools. Return a value or console.log the result. Default timeout 5 s, max 30 s; 16 MB memory.',
-    inputSchema: {type: 'object', properties: {code: {type: 'string', description: 'JavaScript source; top-level await is allowed'}, timeout_ms: {type: 'integer', description: 'Time limit in milliseconds (default 5000, max 30000)'}}, required: ['code']},
+    inputSchema: {type: 'object', properties: {env:{type:'object',additionalProperties:{type:'string'},description:'Environment variables, available as env.NAME. Pass opaque secret references here; never paste credentials into code.'},code: {type: 'string', description: 'JavaScript source; top-level await is allowed'}, timeout_ms: {type: 'integer', description: 'Time limit in milliseconds (default 5000, max 30000)'}}, required: ['code']},
     source: {type: 'builtin'},
     traits: ['sandboxed', 'openWorld'],
     async execute(args: JsonValue, execution) {

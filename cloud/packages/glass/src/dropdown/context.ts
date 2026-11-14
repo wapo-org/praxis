@@ -1,5 +1,5 @@
 import React from 'react';
-import type { GlassMaterialControls } from '../glass-store';
+import type { GlassMaterialControls } from '../GlassSurface';
 export type GlassDropdownAlign = 'start' | 'center' | 'end';
 export type GlassDropdownSide = 'top' | 'bottom' | 'auto';
 export type GlassDropdownSubmenuMode = 'morph' | 'cascade';
@@ -14,6 +14,7 @@ export interface SubLevelInfo {
 
 export interface GlassDropdownContextValue {
   portal: boolean;
+  boundary?: () => HTMLElement | null;
   searchable: boolean;
   open: boolean;
   setOpen: (next: boolean) => void;
@@ -60,7 +61,6 @@ export function useGlassDropdownContext(
 export interface PanelHighlightContextValue {
   highlightedId: string | null;
   setHighlightedId: (id: string | null) => void;
-  layoutScopeId: string;
 }
 
 export const PanelHighlightContext =

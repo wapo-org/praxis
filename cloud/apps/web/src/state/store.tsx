@@ -54,6 +54,7 @@ export function PraxisStoreProvider({
     activeLiveRun,
     refreshAll: replica.refreshAll,
     clearErrorBanner: () => state.setErrorBanner(null),
+    reportError: (message: string) => state.setErrorBanner(message),
   };
   return <PraxisStoreContext.Provider value={value}>{children}</PraxisStoreContext.Provider>;
 }

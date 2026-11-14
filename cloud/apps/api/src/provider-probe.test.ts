@@ -16,3 +16,7 @@ it('seeds learned rejections and clears stale rejections after a successful expl
  await new ApiProviders(service,undefined,wire()).probe('u','p','m');expect((await service.adapters.store.get('u','modelLearning','p:m'))?.value).toMatchObject({efforts:{levels:['low','high']}});expect((await service.adapters.store.get('u','modelLearning','p:m'))?.value.tools).toBeUndefined();
 });
 it('does not learn capability failures from auth errors or incomplete streams',async()=>{for(const response of [Response.json({error:{message:'bad key'}},{status:401}),new Response('data: [DONE]\n\n')]){const p=createHTTPProvider({baseUrl:'https://example.com',flavor:'openAIChat',capabilities},async()=>response);await expect(probeProvider(p,model)).rejects.toThrow();}});
+it('includes upstream OpenRouter metadata error text with credentials redacted',async()=>{
+ const p=createHTTPProvider({baseUrl:'https://openrouter.ai/api/v1',apiKey:'fixture-secret',flavor:'openAIChat',capabilities},async()=>Response.json({error:{message:'Provider returned error',metadata:{raw:JSON.stringify({error:{message:'Unsupported max_tokens for fixture-secret'}})}}},{status:400}));
+ await expect(probeProvider(p,model)).rejects.toThrow('Provider returned error: Unsupported max_tokens for [redacted]');
+});

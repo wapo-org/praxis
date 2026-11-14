@@ -89,7 +89,7 @@ it('propagates unavailable routes instead of fabricating successful entities', a
   for (const operation of operations)
     await expect(operation()).rejects.toMatchObject({
       status: 404,
-      message: expect.stringContaining('Not available:'),
+      message: expect.stringContaining('no longer available'),
     });
 });
 it('drops unknown and invalid stream payloads; accepts valid protocol events', () => {
@@ -150,7 +150,7 @@ it('gates private UI, signs in through API, and removes it on any 401', async ()
   );
   expect(node.textContent).not.toContain('Private chat');
   const button = [...node.querySelectorAll('button')].find((b) =>
-    b.textContent?.includes('Continue'),
+    b.textContent === 'Continue as local dev user',
   )!;
   await act(async () => button.click());
   expect(request).toHaveBeenCalledWith('/v1/auth/dev', expect.anything());
@@ -166,9 +166,9 @@ it('gates private UI, signs in through API, and removes it on any 401', async ()
       .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
   );
   expect(request).toHaveBeenCalledWith(
-    '/v1/auth/sign-in',
+    '/v1/auth/dev',
     expect.objectContaining({
-      body: JSON.stringify({ type: 'auth.input', email: '', password: '' }),
+      body: JSON.stringify({ type: 'auth.dev', userId: 'local-user' }),
     }),
   );
   expect(node.textContent).toContain('Private chat');

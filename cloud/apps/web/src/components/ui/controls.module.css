@@ -1,0 +1,94 @@
+/* Shared form controls for the tray and Settings. Spatial motion is springs in controls.tsx. */
+.segmented {
+  position: relative;
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  padding: 2px;
+  border-radius: var(--radius-full);
+  background: var(--color-fill-1);
+}
+.thumb {
+  position: absolute;
+  inset-block: 2px;
+  inset-inline-start: 2px;
+  width: calc((100% - 4px) / var(--segment-count));
+  border-radius: var(--radius-full);
+  background: var(--color-fill-2);
+}
+.segment {
+  position: relative;
+  height: calc(var(--control-md) - 4px);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-ink-2);
+  font: var(--weight-medium) var(--text-sm) / var(--leading-sm) var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+.segment[aria-pressed='true'] {
+  color: var(--color-ink);
+}
+.segment:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+@media (hover: hover) {
+  .segment:hover {
+    color: var(--color-ink);
+  }
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  width: var(--space-10);
+  height: var(--space-6);
+  border-radius: var(--radius-full);
+  background: var(--color-fill-2);
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.switch[data-checked='true'] {
+  background: var(--color-accent);
+}
+.switch[data-disabled] {
+  opacity: 0.4;
+}
+.switchInput {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: inherit;
+  opacity: 0;
+  appearance: none;
+  cursor: pointer;
+}
+.switchInput:disabled {
+  cursor: default;
+}
+.switch:has(.switchInput:focus-visible) {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: var(--space-5);
+  height: var(--space-5);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-1);
+  pointer-events: none;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.switch[data-checked='true'] .knob {
+  background: var(--color-on-accent);
+}

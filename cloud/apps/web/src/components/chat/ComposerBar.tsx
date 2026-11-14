@@ -1,6 +1,13 @@
+import { SNAP, usePress } from '@praxis/glass';
+import { motion } from 'framer-motion';
 import React from 'react';
-import { ArrowUp, Camera, Mic, Plus, Square } from '../../lib/icons';
+import { ArrowUp, Mic, Plus, Square } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
+import styles from './ComposerBar.module.css';
+
+const MAX_INPUT_HEIGHT = 200;
+
+/** + / textarea / mic-or-send-or-stop, per the iOS composer. */
 export function ComposerBar({
   inputRef,
   text,
@@ -8,10 +15,10 @@ export function ComposerBar({
   onKeyDown,
   recording,
   transcribing,
-  onCamera,
   onToggleVoice,
   onSend,
   attachmentCount,
+  voiceSupported = true,
 }: {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   text: string;
@@ -19,167 +26,114 @@ export function ComposerBar({
   onKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement>;
   recording: boolean;
   transcribing: boolean;
-  onCamera: () => void;
   onToggleVoice: () => void;
   onSend: () => void;
   attachmentCount: number;
+  /** No Web Speech API (Firefox): no mic; the send button holds the slot. */
+  voiceSupported?: boolean;
 }) {
   const { plusTrayOpen, setPlusTrayOpen, inlineModelSearchActive, activeLiveRun, cancelActiveRun } =
     usePraxisStore();
+  const pressProps = usePress();
   const isRunning =
-    activeLiveRun &&
-    ['running', 'awaitingApproval', 'awaitingElicitation'].includes(activeLiveRun.run.status);
+    activeLiveRun && ['queued', 'running', 'awaitingApproval', 'awaitingElicitation'].includes(activeLiveRun.run.status);
+  const hasInput = text.length > 0 || attachmentCount > 0;
+  const canSend = !!text.trim() || attachmentCount > 0;
+  const showMic = voiceSupported && !isRunning && (!hasInput || recording || transcribing);
+
+  // Auto-grow: measure once per text change, never per frame.
+  React.useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`;
+  }, [text, inputRef]);
+
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'flex-end',
-        gap: 8,
-      }}
-    >
-      {/* Plus / Tray Toggle Button */}
-      <button
+    <div className={styles.bar}>
+      <motion.button
         type="button"
+        className={`${styles.round} ${styles.secondary}`}
         aria-label="Open attachments and controls"
+        aria-expanded={plusTrayOpen}
         data-testid="composer-plus-button"
         onClick={() => setPlusTrayOpen(!plusTrayOpen)}
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: '50%',
-          border: '0.5px solid var(--paper-hairline)',
-          background: 'var(--paper-ink)',
-          color: 'var(--paper-canvas)',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 20,
-          fontWeight: 400,
-          cursor: 'pointer',
-          flexShrink: 0,
-          transform: plusTrayOpen ? 'rotate(45deg)' : 'rotate(0deg)',
-          transition: 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1)',
-        }}
+        {...pressProps}
       >
-        <Plus size={20} />
-      </button>
+        <motion.span className={styles.plusIcon} initial={false} animate={{ rotate: plusTrayOpen ? 45 : 0 }} transition={SNAP}>
+          <Plus size={20} />
+        </motion.span>
+      </motion.button>
 
-      {/* Auto-growing Textarea */}
       <textarea
         ref={inputRef}
         rows={1}
+        className={styles.input}
         data-testid="composer-input"
         aria-label={inlineModelSearchActive ? 'Search models' : 'Message Praxis'}
         placeholder={
           inlineModelSearchActive
-            ? 'Type to filter models...'
+            ? 'Type to filter models…'
             : recording
-              ? 'Listening... tap mic to finish'
+              ? 'Listening…'
               : transcribing
-                ? 'Transcribing voice...'
-                : 'Plan, ask, build…'
+                ? 'Transcribing voice…'
+                : 'Ask or execute…'
         }
         value={text}
         onChange={(e) => onTextChange(e.target.value)}
         onKeyDown={onKeyDown}
-        style={{
-          flex: 1,
-          minHeight: 36,
-          maxHeight: 160,
-          padding: '7px 4px',
-          border: 'none',
-          outline: 'none',
-          resize: 'none',
-          background: 'transparent',
-          color: 'var(--paper-ink)',
-          fontFamily: 'var(--font-sans)',
-          fontSize: 16,
-          lineHeight: '22px',
-        }}
       />
 
-      <button type="button" className="composer-camera" aria-label="Camera" onClick={onCamera}>
-        <Camera size={21} />
-      </button>
-      {/* Voice Input Button */}
-      <button
-        type="button"
-        aria-label={recording ? 'Stop voice recording' : 'Voice input'}
-        data-testid="composer-voice-button"
-        data-recording={recording || undefined}
-        onClick={onToggleVoice}
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: '50%',
-          border: '0.5px solid var(--paper-hairline)',
-          background: recording ? 'var(--paper-danger)' : 'var(--paper-fill-1)',
-          color: recording ? '#FFFFFF' : 'var(--paper-ink-2)',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 15,
-          cursor: 'pointer',
-          flexShrink: 0,
-        }}
-      >
-        <Mic size={19} />
-      </button>
-
-      {/* Send or Stop Button */}
-      {isRunning ? (
-        <button
-          type="button"
-          aria-label="Stop generating"
-          data-testid="composer-stop-button"
-          onClick={() => void cancelActiveRun()}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: '50%',
-            border: 'none',
-            background: 'var(--paper-ink)',
-            color: 'var(--paper-canvas)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 13,
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
-        >
-          <Square size={15} fill="currentColor" />
-        </button>
-      ) : (
-        <button
-          type="button"
-          aria-label="Send message"
-          data-testid="composer-send-button"
-          hidden={!text.trim() && attachmentCount === 0}
-          disabled={!text.trim() && attachmentCount === 0}
-          onClick={onSend}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: '50%',
-            border: 'none',
-            background:
-              text.trim() || attachmentCount > 0 ? 'var(--paper-ink)' : 'var(--paper-fill-2)',
-            color:
-              text.trim() || attachmentCount > 0 ? 'var(--paper-canvas)' : 'var(--paper-ink-3)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 16,
-            fontWeight: 600,
-            cursor: text.trim() || attachmentCount > 0 ? 'pointer' : 'default',
-            flexShrink: 0,
-            transition: 'background 150ms ease, transform 150ms ease',
-          }}
-        >
-          <ArrowUp size={20} />
-        </button>
-      )}
+      <div className={styles.trailingSlot}>
+        {isRunning ? (
+          <motion.button
+            type="button"
+            className={`${styles.round} ${styles.primary} ${styles.slotButton}`}
+            aria-label="Stop generating"
+            data-testid="composer-stop-button"
+            onClick={() => void cancelActiveRun()}
+            {...pressProps}
+          >
+            <Square size={16} fill="currentColor" />
+          </motion.button>
+        ) : (
+          <>
+            {voiceSupported ? (
+            <motion.button
+              type="button"
+              className={`${styles.round} ${styles.secondary} ${styles.slotButton}`}
+              aria-label={recording ? 'Stop voice input' : 'Voice input'}
+              aria-pressed={recording}
+              aria-hidden={!showMic || undefined}
+              tabIndex={showMic ? 0 : -1}
+              disabled={!showMic}
+              data-testid="composer-voice-button"
+              data-recording={recording || undefined}
+              data-hidden={!showMic ? 'true' : undefined}
+              onClick={onToggleVoice}
+              {...pressProps}
+            >
+              {recording ? <Square size={16} fill="currentColor" /> : <Mic size={18} />}
+            </motion.button>
+            ) : null}
+            <motion.button
+              type="button"
+              className={`${styles.round} ${styles.primary} ${styles.slotButton}`}
+              aria-label="Send message"
+              aria-hidden={showMic || undefined}
+              tabIndex={showMic ? -1 : 0}
+              disabled={showMic || !canSend}
+              data-testid="composer-send-button"
+              data-hidden={showMic ? 'true' : undefined}
+              onClick={onSend}
+              {...pressProps}
+            >
+              <ArrowUp size={20} />
+            </motion.button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

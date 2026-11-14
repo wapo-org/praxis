@@ -9,12 +9,15 @@ import {unseal} from './secrets.js';
 export class ApiProviders{
  constructor(private service:ApiService,private key:string|undefined,private fetcher:typeof fetch=fetch){}
  async resolve(userId:string,providerId:string):Promise<{profile:Provider;provider:HTTPProvider;secrets:string[]}>{
-  const profile=await this.service.require<Provider>(userId,'provider',providerId);const encrypted=await this.service.adapters.store.get(userId,'providerSecret',providerId);
+  const [profile,encrypted]=await Promise.all([
+   this.service.require<Provider>(userId,'provider',providerId),
+   this.service.adapters.store.get(userId,'providerSecret',providerId),
+  ]);
   let apiKey='',extraHeaders:Record<string,string>={};
   if(encrypted?.value.apiKey||encrypted?.value.extraHeaders){if(!this.key)throw new ApiError(503,'encryption_unconfigured','Secret storage is not configured');try{if(typeof encrypted.value.apiKey==='string')apiKey=unseal(encrypted.value.apiKey,userId,`provider:${providerId}:key`,this.key);if(typeof encrypted.value.extraHeaders==='string')extraHeaders=JSON.parse(unseal(encrypted.value.extraHeaders,userId,`provider:${providerId}:headers`,this.key));}catch{throw new ApiError(503,'secret_unavailable','Provider credentials could not be read');}}
   return {profile,secrets:[apiKey,...Object.values(extraHeaders)],provider:createHTTPProvider({flavor:profile.flavor,baseUrl:profile.baseUrl,apiKey,providerId,capabilities:profile.capabilities,extraHeaders,...profile.requestOptions},this.fetcher)};
  }
- async requireConsent(userId:string,providerId:string){const profile=await this.service.require<Provider>(userId,'provider',providerId);const host=new URL(profile.baseUrl).host.toLowerCase();const consent=await this.service.adapters.store.get(userId,'consent',host);if(consent?.value.allowed!==true)throw new ApiError(403,'consent_required',`Allow sharing AI data with ${host} before starting this run`);}
+ async requireConsent(userId:string,providerId:string,knownProfile?:Provider){const profile=knownProfile??await this.service.require<Provider>(userId,'provider',providerId);const host=new URL(profile.baseUrl).host.toLowerCase();const consent=await this.service.adapters.store.get(userId,'consent',host);if(consent?.value.allowed!==true)throw new ApiError(403,'consent_required',`Allow sharing AI data with ${host} before starting this run`);}
  async probe(userId:string,providerId:string,modelId:string){
   await this.probeBudget(userId,providerId);
   const {provider,secrets}=await this.resolve(userId,providerId);

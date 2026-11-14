@@ -1,11 +1,13 @@
 import { motion } from 'framer-motion';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown } from '../icons';
 import React from 'react';
 import { closeAndFocusNext } from './focus';
 import { GlassSurface } from '../GlassSurface';
-import type { GlassMaterialControls } from '../glass-store';
+import type { GlassMaterialControls } from '../GlassSurface';
 import { assignForwardedRef, useGlassDropdownContext } from './context';
+import styles from './dropdown.module.css';
 import { useMenuReducedMotion } from './motion';
+import { SNAP, TRANSITION } from '../motion';
 export interface TriggerProps
   extends
     Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'value'>,
@@ -27,14 +29,6 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
       children,
       className = '',
       material,
-      intensity,
-      refraction,
-      frost,
-      finish,
-      backdrop,
-      stretchable = false,
-      bounce = true,
-      spotlight = true,
       onClick,
       onPointerDown,
       onKeyDown,
@@ -46,6 +40,10 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
     const ctx = useGlassDropdownContext('Trigger');
     const pointerOpened = React.useRef(false);
     const reduced = useMenuReducedMotion();
+    const childProps = asChild && React.isValidElement(children)
+      ? (children.props as Record<string, unknown>)
+      : null;
+    const isDisabled = Boolean(otherProps.disabled || childProps?.disabled);
 
     const setRef = React.useCallback(
       (node: HTMLButtonElement | null) => {
@@ -57,7 +55,7 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
 
     const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
       onPointerDown?.(e);
-      if (e.defaultPrevented || otherProps.disabled || e.button !== 0) return;
+      if (e.defaultPrevented || isDisabled || e.button !== 0) return;
       e.preventDefault();
       ctx.focusTrigger();
       pointerOpened.current = !ctx.open;
@@ -67,7 +65,7 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
 
     const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
       onClick?.(e);
-      if (e.defaultPrevented) return;
+      if (e.defaultPrevented || isDisabled) return;
       ctx.endScrub();
       if (!pointerOpened.current) ctx.setOpen(!ctx.open);
       pointerOpened.current = false;
@@ -75,10 +73,10 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
       onKeyDown?.(e);
-      if (e.defaultPrevented) return;
+      if (e.defaultPrevented || isDisabled) return;
       ctx.pointerOpening.current = false;
       if (e.key === 'Tab' && ctx.open) { e.preventDefault(); closeAndFocusNext(ctx, e.shiftKey); return; }
-      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         ctx.endScrub();
         ctx.setOpen(true);
@@ -90,25 +88,31 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
         if (ctx.open) focusFirst(); else requestAnimationFrame(focusFirst);
       } else if (e.key === 'Escape' && ctx.open) {
         e.preventDefault();
+        e.stopPropagation();
         if (ctx.activeSubPath.length) ctx.popSub(); else ctx.setOpen(false);
       }
     };
 
     if (asChild && React.isValidElement(children)) {
+      const childRef = childProps?.ref as React.Ref<HTMLButtonElement> | undefined;
       return React.cloneElement(
         children as React.ReactElement<Record<string, unknown>>,
         {
           style: {
             touchAction: 'none',
-            ...(children.props as { style?: React.CSSProperties }).style,
+            ...(childProps?.style as React.CSSProperties | undefined),
             ...style,
           },
-          ref: setRef,
+          ref: (node: HTMLButtonElement | null) => {
+            setRef(node);
+            if (childRef) assignForwardedRef(childRef, node);
+          },
           id: ctx.triggerId,
           'aria-haspopup': ctx.searchable ? 'listbox' : 'menu',
           'aria-expanded': ctx.open,
           'aria-controls': ctx.open ? ctx.menuId : undefined,
           'data-state': ctx.open ? 'open' : 'closed',
+          'data-press-opens': '',
           onPointerDown: handlePointerDown,
           onClick: handleClick,
           onKeyDown: handleKeyDown,
@@ -117,28 +121,12 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
     }
 
     return (
-      <motion.div
-        animate={{ scale: !reduced && ctx.open ? 0.965 : 1 }}
-        transition={
-          reduced
-            ? { duration: 0 }
-            : { type: 'spring', stiffness: 520, damping: 32 }
-        }
-        style={{ display: 'inline-flex', maxWidth: '100%' }}
-      >
+      <div className={styles.triggerWrap}>
         <GlassSurface
           shape="capsule"
+          lens={false}
           material={material ?? ctx.materialControls.material ?? 'regular'}
-          intensity={intensity ?? ctx.materialControls.intensity}
-          refraction={refraction ?? ctx.materialControls.refraction}
-          frost={frost ?? ctx.materialControls.frost}
-          finish={finish ?? ctx.materialControls.finish}
-          backdrop={backdrop ?? ctx.materialControls.backdrop}
-          stretchable={stretchable}
-          bounce={bounce}
-          spotlight={spotlight}
-          className={className}
-          style={{ display: 'inline-flex', maxWidth: '100%' }}
+          className={`${styles.triggerSurface} ${className}`.trim()}
         >
           <button
             ref={setRef}
@@ -148,79 +136,37 @@ const Trigger = React.forwardRef<HTMLButtonElement, TriggerProps>(
             aria-expanded={ctx.open}
             aria-controls={ctx.open ? ctx.menuId : undefined}
             data-state={ctx.open ? 'open' : 'closed'}
+            data-press-opens=""
             onPointerDown={handlePointerDown}
             onClick={handleClick}
             onKeyDown={handleKeyDown}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '7px 13px',
-              borderRadius: '9999px',
-              border: 'none',
-              background: ctx.open ? 'rgba(21,20,15,0.06)' : 'transparent',
-              color: 'var(--paper-ink)',
-              fontFamily: 'var(--font-sans)',
-              fontSize: '13px',
-              fontWeight: 600,
-              lineHeight: '16px',
-              cursor: 'pointer',
-              userSelect: 'none',
-              touchAction: 'none',
-              outline: 'none',
-              ...style,
-            }}
+            className={styles.trigger}
+            style={style}
             {...otherProps}
           >
             {icon ? (
-              <span
-                aria-hidden="true"
-                style={{
-                  display: 'inline-flex',
-                  color: 'var(--paper-secondary-ink)',
-                }}
-              >
+              <span aria-hidden="true" className={styles.triggerIcon}>
                 {icon}
               </span>
             ) : null}
-            <span
-              style={{
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {children}
-            </span>
+            <span className={styles.truncate}>{children}</span>
             {value !== undefined && value !== null ? (
-              <span
-                style={{
-                  borderRadius: '9999px',
-                  background: 'var(--paper-fill-2)',
-                  padding: '2px 8px',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '11px',
-                  fontWeight: 500,
-                  color: 'var(--paper-secondary-ink)',
-                }}
-              >
-                {value}
-              </span>
+              <span className={styles.triggerValue}>{value}</span>
             ) : null}
             {!hideChevron ? (
-              <ChevronDown
+              <motion.span
                 aria-hidden="true"
-                size={14}
-                style={{
-                  color: 'var(--paper-muted-ink)',
-                  transform: ctx.open ? 'rotate(180deg)' : 'rotate(0deg)',
-                  transition: 'transform 180ms ease',
-                }}
-              />
+                className={styles.triggerChevron}
+                initial={false}
+                animate={{ rotate: ctx.open ? 180 : 0 }}
+                transition={reduced ? TRANSITION.none : SNAP}
+              >
+                <ChevronDown size={16} />
+              </motion.span>
             ) : null}
           </button>
         </GlassSurface>
-      </motion.div>
+      </div>
     );
   },
 );

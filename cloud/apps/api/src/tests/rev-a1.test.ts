@@ -76,7 +76,7 @@ describe('REV-A1 P1 execution.ts:260 — nested approval through an adapted tool
     const writer = tool('writer', ['destructive'], async () => { writes++; return 'written'; }, {type: 'mcp', serverId: 'untrusted', serverName: 'Remote'});
     const outer = tool('outer', ['readOnly'], async (_args, ctx) => ctx.callTool!('writer', {}));
     const f = setup([toolCall('outer'), done], {tools: async () => [outer, writer]});
-    const chat = await f.chat('build');
+    const chat = await f.chat('auto');
     const run = await (await f.req('/v1/runs', {type: 'run.start', chatId: chat.id, text: 'go'})).json();
     await f.service.drain();
     const parked = await f.snapshot(run.id);
