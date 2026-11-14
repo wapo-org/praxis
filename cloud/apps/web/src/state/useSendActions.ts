@@ -27,9 +27,31 @@ export function useSendActions(
     webSearch,
     selectedEffort,
     selectedMode,
+    catalogReady,
     liveRunsByChat,
     setLiveRunsByChat,
   } = state;
+  // The model list loads after the page does. A message sent before the selection resolves waits for it (the
+  // optimistic bubble and run show at once); sending '' as the model made the server reject the new chat.
+  const modelRef = React.useRef({ providerId: selectedProviderId, modelId: selectedModelId, catalogReady });
+  modelRef.current = { providerId: selectedProviderId, modelId: selectedModelId, catalogReady };
+  const resolveModel = React.useCallback(
+    () =>
+      new Promise<{ providerId?: string; modelId?: string }>((resolve) => {
+        const start = Date.now();
+        let readySince = 0;
+        const tick = () => {
+          const pick = modelRef.current;
+          if (pick.providerId && pick.modelId) return resolve({ providerId: pick.providerId, modelId: pick.modelId });
+          // Once the list has loaded, the selection settles within a render or two; none means there is no model.
+          if (pick.catalogReady) readySince ||= Date.now();
+          if ((readySince && Date.now() - readySince > 150) || Date.now() - start > 10_000) return resolve({});
+          setTimeout(tick, 50);
+        };
+        tick();
+      }),
+    [],
+  );
   const executeSendMessage = React.useCallback(
     async (
       text: string,
@@ -80,14 +102,16 @@ export function useSendActions(
         setChats((prev) => [optimisticChat, ...prev.filter((c) => c.id !== generatedId)]);
         onNavigate?.(`/c/${encodeURIComponent(generatedId)}`);
 
-        createChatPromise = apiClient.createChat({
-          id: generatedId,
-          title: 'New chat',
-          mode: wireMode,
-          providerId: selectedProviderId,
-          modelId: selectedModelId,
-          effort: selectedEffort,
-        });
+        createChatPromise = resolveModel().then((pick) =>
+          apiClient.createChat({
+            id: generatedId,
+            title: 'New chat',
+            mode: wireMode,
+            providerId: pick.providerId,
+            modelId: pick.modelId,
+            effort: selectedEffort || undefined,
+          }),
+        );
         state.creatingChatPromisesRef.current.set(
           generatedId,
           createChatPromise.then(() => undefined, () => undefined),
@@ -209,17 +233,18 @@ export function useSendActions(
             state.creatingChatPromisesRef.current.delete(generatedChatId);
           }
         }
+        const pick = await resolveModel();
         const run = await apiClient.startRun({
           regenerateMessageId: options?.regenerateMessageId,
           chatId: targetChatId,
           text,
-          providerId: selectedProviderId,
-          modelId: selectedModelId,
+          providerId: pick.providerId,
+          modelId: pick.modelId,
           mode: toWireMode(selectedMode),
           effort: selectedEffort,
           webSearch:
             webSearch &&
-            !!models.find((m) => m.id === selectedModelId && m.providerId === selectedProviderId)
+            !!models.find((m) => m.id === pick.modelId && m.providerId === pick.providerId)
               ?.capabilities.serverWebSearch,
           attachmentIds: options?.attachmentIds ?? [],
           clientTurnId,
@@ -302,6 +327,7 @@ export function useSendActions(
       webSearch,
       models,
       attachRunStream,
+      resolveModel,
     ],
   );
 

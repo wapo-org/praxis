@@ -66,3 +66,17 @@ test('real-shaped disclosures stay fixed at bottom, above and while streaming',a
  await closed.first().evaluate(el=>el.scrollIntoView({block:'center'}));await measure(closed.first(),'streaming');
  await page.getByTestId('composer-stop-button').click();
 });
+test('a message sent before the model list loads waits for the model instead of failing the new chat',async({page})=>{
+ await page.route(/\/v1\/bootstrap/,async route=>{await new Promise(r=>setTimeout(r,2500));await route.continue();});
+ const chatPosts:{status:number;body:string}[]=[];const runBodies:string[]=[];
+ page.on('response',r=>{if(/\/v1\/chats$/.test(r.url())&&r.request().method()==='POST')chatPosts.push({status:r.status(),body:r.request().postData()??''});});
+ page.on('request',r=>{if(/\/v1\/runs$/.test(r.url())&&r.method()==='POST')runBodies.push(r.postData()??'');});
+ await page.goto('/');await page.getByRole('button',{name:'Continue as local dev user'}).click();await page.getByTestId('chat-top-bar').waitFor();
+ await page.getByTestId('composer-input').fill('Sent before models');await page.getByTestId('composer-input').press('Enter');
+ await expect(page.getByTestId('user-message-bubble').last()).toContainText('Sent before models');
+ await page.getByTestId('turn-retry-button').last().waitFor({timeout:30000});
+ expect(chatPosts).toHaveLength(1);expect(chatPosts[0]!.status).toBe(201);
+ expect(JSON.parse(chatPosts[0]!.body).providerId).toBeTruthy();
+ expect(JSON.parse(runBodies[0]!).modelId).toBeTruthy();
+ await expect(page.getByText('no longer available')).toHaveCount(0);
+});
