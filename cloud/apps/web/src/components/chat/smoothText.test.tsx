@@ -21,7 +21,7 @@ it('reveals bursts in words, keeps draining after stream end, and resets on a ch
   expect(text.startsWith(midway)).toBe(true);expect(/\s$/.test(midway)).toBe(true);
   act(()=>root.render(<Probe text={text} streaming={false} id="a"/>));
   expect(element.textContent).toBe(midway);
-  act(()=>vi.advanceTimersByTime(1200));expect(element.textContent).toBe(text);
+  act(()=>vi.advanceTimersByTime(2200));expect(element.textContent).toBe(text);
   act(()=>root.render(<Probe text="Next chat" streaming id="b"/>));expect(element.textContent).toBe('');
 });
 it('keeps fenced code lines and graphemes intact',()=>{
@@ -61,4 +61,19 @@ it('drains an unfinished last word when its text block finishes before the run',
   expect(element.textContent).toBe('Ready ');
   act(()=>root.render(<Probe streaming={false}/>));act(()=>vi.advanceTimersByTime(100));
   expect(element.textContent).toBe('Ready now.');
+});
+
+it('plays a whole answer that arrives in one burst at run end over about two seconds (real gateway shape)',()=>{
+  vi.useFakeTimers();
+  vi.stubGlobal('requestAnimationFrame',(fn:FrameRequestCallback)=>setTimeout(()=>fn(performance.now()),16));
+  vi.stubGlobal('cancelAnimationFrame',clearTimeout);
+  const element=document.createElement('div'),root=createRoot(element);mounts.push(root);
+  function Probe({text,streaming}:{text:string;streaming:boolean}){return <>{useSmoothText(text,streaming,'burst')}</>;}
+  const answer='Tea began in southwest China as a medicinal drink. '.repeat(33); // ~1,650 chars, as measured from Muse Spark
+  act(()=>root.render(<Probe text="" streaming/>));
+  act(()=>root.render(<Probe text={answer} streaming={false}/>));
+  act(()=>vi.advanceTimersByTime(1000));
+  const half=element.textContent!.length;
+  expect(half).toBeGreaterThan(answer.length*0.3);expect(half).toBeLessThan(answer.length*0.75);
+  act(()=>vi.advanceTimersByTime(1300));expect(element.textContent).toBe(answer);
 });
