@@ -1,3 +1,4 @@
+import {pool, redisCooldownStore, type CredentialLogEvent} from '@praxis/credentials';
 import {accountEraser} from './account-deletion.js';
 import {createConvexRPC} from './adapters/convex.js';
 import {createAuth, parseOrigins} from './adapters/auth.js';
@@ -6,6 +7,7 @@ import {createQStashScheduler, createQStashVerifier} from './adapters/qstash.js'
 import {createSafeFetch} from './adapters/security.js';
 import {createRateLimiter, createUpstashAdapters} from './adapters/upstash.js';
 import {createConvexToolsStorage} from './features/tools/convex-storage.js';
+import {GROQ_POOL} from './features/tools/transcribe.js';
 import {featureModules} from './modules.js';
 import {createPraxisApp, jsonLog} from './server.js';
 
@@ -27,12 +29,25 @@ export type ProductionEnv = Record<(typeof PRODUCTION_ENV)[number], string> & {P
 
 export const CONTINUATION_PATH = '/internal/continue';
 
+/**
+ * Platform-paid credentials that may have numbered siblings (`NAME_2`, `NAME_3`, … with no gaps), read by
+ * `@praxis/credentials`. All are optional. A multi-part credential lists every variable of one slot.
+ */
+export const PLATFORM_POOLS: readonly PoolSpec[] = [{service: 'groq', names: GROQ_POOL}];
+export interface PoolSpec {service: string; names: string | readonly string[]}
+export interface ReadEnvOptions {pools?: readonly PoolSpec[]; warn?: (message: string) => void}
+
+const readPool = (spec: PoolSpec, env: Record<string, string | undefined>) => (typeof spec.names === 'string' ? pool(spec.names, env, {service: spec.service}) : pool(spec.names, env, {service: spec.service}));
+const warnJson = (message: string) => console.warn(JSON.stringify({type: 'startup.warning', message}));
+/** Pool events carry the service name and slot numbers only. */
+const credentialLog = (event: CredentialLogEvent) => console.warn(JSON.stringify({type: 'credentials', ...event}));
+
 /** The keyring: PRAXIS_ENCRYPTION_KEYS (current first, then previous keys) or the legacy single PRAXIS_ENCRYPTION_KEY. */
 export function encryptionKeyring(env: Record<string, string | undefined>): string | undefined {
   return (env.PRAXIS_ENCRYPTION_KEYS ?? env.PRAXIS_ENCRYPTION_KEY)?.trim() || undefined;
 }
 
-export function readProductionEnv(env: Record<string, string | undefined>): ProductionEnv {
+export function readProductionEnv(env: Record<string, string | undefined>, options: ReadEnvOptions = {}): ProductionEnv {
   const problems: string[] = [];
   for (const name of PRODUCTION_ENV) if (!env[name]?.trim()) problems.push(`${name} is missing`);
   const https = (name: string) => {
@@ -58,7 +73,17 @@ export function readProductionEnv(env: Record<string, string | undefined>): Prod
       problems.push('PRAXIS_WEB_ORIGINS must be a comma-separated list of https origins');
     }
   }
+  // Credential pools: a half-defined multi-part slot stops startup; slots after a numbering gap are ignored with a warning.
+  const warnings: string[] = [];
+  for (const spec of options.pools ?? PLATFORM_POOLS) {
+    try {
+      warnings.push(...readPool(spec, env).warnings);
+    } catch (error) {
+      problems.push((error as Error).message);
+    }
+  }
   if (problems.length) throw new Error(`Praxis API cannot start in production:\n- ${problems.join('\n- ')}\nSee cloud/DEPLOY.md.`);
+  for (const warning of warnings) (options.warn ?? warnJson)(warning);
   return env as ProductionEnv;
 }
 
@@ -98,6 +123,7 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
     log: jsonLog,
     modules: service => featureModules(service, {
       storage,
+      platformVoice: {pool: pool(GROQ_POOL, rawEnv, {service: 'groq'}), cooldowns: redisCooldownStore(upstash.redis), log: credentialLog},
       mcp: {publicOrigin: origin, webReturnOrigins: webOrigins, safeFetch: egress, consumeOAuthState: key => upstash.consumeOnce(key), lease: upstash.lease},
     }),
   });

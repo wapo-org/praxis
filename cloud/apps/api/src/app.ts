@@ -1,4 +1,5 @@
 import {registerAccountDeletion} from './account-routes.js';
+import {platformVoice} from './features/tools/transcribe.js';
 import {AccountDeleteSchema} from '@praxis/protocol';
 import {randomUUID} from 'node:crypto';
 import {Hono,type Context} from 'hono';
@@ -102,7 +103,7 @@ export function createApp(options:AppOptions){
  app.post('/v1/consents',async c=>{const input=await body(c,ConsentSchema);const consent={...input,host:input.host.toLowerCase(),updatedAt:service.now()};await service.write(c.get('userId'),'consent',consent.host,consent);return c.json(consent);});
  app.get('/v1/preferences',async c=>c.json(await preferences(c.get('userId'))));
  app.patch('/v1/preferences',async c=>{const user=c.get('userId'),input=await body(c,PreferencesInputSchema);const current=await preferences(user);if(input.vision)current.vision={...current.vision,...input.vision};if(input.voice){const {apiKey,...publicPrefs}=input.voice;current.voice={...current.voice,...publicPrefs};if(apiKey){await service.put(user,'voiceSecret','current',{key:seal(apiKey,user,'voice',options.encryptionKey)});current.voice.configured=true;}}current.updatedAt=service.now();await service.write(user,'preferences','current',current,'consent');return c.json(current);});
- async function preferences(user:string){const existing=await service.adapters.store.get(user,'preferences','current');return PreferencesSchema.parse(existing?.value??{type:'preferences',vision:{},voice:{configured:!!process.env.GROQ_API_KEY},updatedAt:service.now()});}
+ async function preferences(user:string){const existing=await service.adapters.store.get(user,'preferences','current');return PreferencesSchema.parse(existing?.value??{type:'preferences',vision:{},voice:{configured:platformVoice().pool.slots.length>0},updatedAt:service.now()});}
  app.get('/v1/runs/:runId/outputs/:id',async c=>{await service.require(c.get('userId'),'run',c.req.param('runId'));const output=await service.require<JsonObject>(c.get('userId'),'output',c.req.param('id'));if(output.runId!==c.req.param('runId'))throw new ApiError(404,'not_found','Output not found');const offset=z.coerce.number().int().nonnegative().parse(c.req.query('offset')??0),limit=z.coerce.number().int().min(1).max(100000).parse(c.req.query('limit')??16000);const text=String(output.text??'');return c.json({type:'tool.output',id:c.req.param('id'),text:text.slice(offset,offset+limit),offset,nextOffset:offset+limit<text.length?offset+limit:null});});
  registerSyncRoutes(app,service);
  options.mount?.(app,async request=>{const owner=requestOwners.get(request);const pathname=new URL(request.url).pathname;if(!owner&&!publicPaths.includes(pathname))throw new ApiError(401,'unauthorized','Sign in to continue');return featureContext(service,owner??'',{...(owner?{}:{unpinned:true}),...(options.fetcher?{fetch:options.fetcher}:{}),...(options.encryptionKey?{encryptionKey:options.encryptionKey}:{})});});

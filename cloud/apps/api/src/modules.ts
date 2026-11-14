@@ -5,7 +5,7 @@ import {createImageReaderTool, type AgentTool, type ModelProvider} from '@praxis
 import {PreferencesSchema, type Chat, type MessagePart, type Model} from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from './contracts.js';
 import {connectorTurnNotes, createMcpGateway, createMcpRoutes, getMcpTools, type McpOptions} from './features/mcp/index.js';
-import {createLocalToolsStorage, createToolsRoutes, type ToolsStorage} from './features/tools/index.js';
+import {createLocalToolsStorage, createToolsRoutes, type PlatformVoice, type ToolsStorage} from './features/tools/index.js';
 import {rehydrateAttachment} from './features/tools/media.js';
 import {javascriptTool, listSkillsForCatalog, skillTools} from './features/tools/builtin.js';
 import type {FeatureModule} from './server.js';
@@ -15,6 +15,8 @@ export interface ModuleOptions {
   /** Attachment storage (Convex files in production). Local dev uses the in-process fixture. */
   storage?: ToolsStorage;
   mcp?: McpOptions;
+  /** Pooled platform Groq keys with a shared cool-down store (Redis in production). */
+  platformVoice?: PlatformVoice;
 }
 
 /** MCP connectors + builtin tools (skills, JavaScript) + vision fallback, sharing one storage instance. */
@@ -29,7 +31,7 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
       routes: contextFor => {
         const app = new Hono();
         app.route('/', createMcpRoutes(contextFor, mcp));
-        app.route('/', createToolsRoutes(contextFor, {...(storage ? {storage} : {})}));
+        app.route('/', createToolsRoutes(contextFor, {...(storage ? {storage} : {}), ...(options.platformVoice ? {platformVoice: options.platformVoice} : {})}));
         return app;
       },
       execution: {

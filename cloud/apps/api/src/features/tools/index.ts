@@ -11,7 +11,7 @@ import {importSkill} from './import.js';
 import {transcribe} from './transcribe.js';
 import {createLocalToolsStorage} from './local-storage.js';
 import type {ToolsPorts} from './ports.js';
-export type {ToolsStorage,ToolsPorts,VisionProvider,UploadInput} from './ports.js';
+export type {PlatformVoice,ToolsStorage,ToolsPorts,VisionProvider,UploadInput} from './ports.js';
 export {createLocalToolsStorage} from './local-storage.js';
 export {parseSkillDocument} from './skills.js';
 export function createToolsRoutes(context:(req:Request)=>Promise<FeatureContext>,ports:ToolsPorts={}):Hono{

@@ -1,3 +1,4 @@
+import type {CooldownStore,CredentialLog,CredentialPool} from '@praxis/credentials';
 import type {Attachment,JsonObject} from '@praxis/protocol';
 import type {FeatureContext} from '../../contracts.js';
 export interface UploadInput {name:string;mediaType:string;size:number;chatId?:string}
@@ -23,10 +24,13 @@ export interface VisionProvider {
  host:string;
  read(input:{userId:string;attachment:Attachment;bytes:Uint8Array;question:string;region?:{x:number;y:number;width:number;height:number}}):Promise<string>;
 }
+export interface PlatformVoice {pool:CredentialPool<string>;cooldowns:CooldownStore;log?:CredentialLog}
 export interface ToolsPorts {
  storage?:ToolsStorage;
  vision?:VisionProvider;
  voiceKey?:(ctx:FeatureContext)=>Promise<string|undefined>;
+ /** Platform Groq keys (GROQ_API_KEY, GROQ_API_KEY_2, …) with their cool-down store. Default: process.env and an in-process store. */
+ platformVoice?:PlatformVoice;
  /** Notify the root service/cache/event layer after a public resource mutation. */
  changed?:(ctx:FeatureContext,kind:string,id:string,value:JsonObject|null)=>Promise<void>;
 }
