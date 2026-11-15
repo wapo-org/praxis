@@ -4,7 +4,7 @@ import type {ApiService} from './service.js';
 import {createSafeFetch} from './adapters/security.js';
 
 /** Kinds clients see; feature writes to them invalidate bootstrap and announce a user change. */
-const PUBLIC_KINDS = new Set(['chat', 'connector', 'skill', 'registry', 'attachment', 'consent', 'provider', 'model', 'preferences']);
+const PUBLIC_KINDS = new Set(['chat', 'connector', 'skill', 'registry', 'attachment', 'consent', 'modelPreference', 'preferences']);
 
 /**
  * Owner-scoped feature context. The store is wrapped so feature modules (MCP, tools) that write rows

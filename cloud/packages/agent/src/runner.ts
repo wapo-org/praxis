@@ -2,7 +2,7 @@ import { z } from 'zod';
 import {
   ApprovalDecisionSchema,ElicitationResponseSchema,JsonObjectSchema,JsonValueSchema,
   ElicitationSchema,RunEventPayloadSchema,TimestampSchema,ToolSpecSchema,
-  type JsonValue,type Message,type MessagePart,type Run,type RunEventPayload,type ToolSpec,
+  type JsonValue,type Message,type MessagePart,type Run,type RunErrorCode,type RunEventPayload,type ToolSpec,type Usage,
 } from '@praxis/protocol';
 import {
   CheckpointSchema,ProviderEventSchema,ProviderResponseSchema,RunInputSchema,ToolResultSchema,textResult,MAX_RESULT_CHARACTERS,
@@ -10,7 +10,6 @@ import {
   type ProviderResponse,type RunInput,type ToolResult,
 } from './types.js';
 import {alwaysAllowKey,canonical,decideTool,fingerprint} from './policy.js';
-import {clampEffort,parseEffortRejection} from './wire.js';
 
 class Park extends Error {}
 /** Loop control flow (park for approval/elicitation, cancel). Tool adapters must rethrow these, never turn them into tool results. */
@@ -20,9 +19,18 @@ export class ExecutionFenced extends Error {constructor(){super('Execution fence
 class Cancelled extends Error {}
 export class ResumeConflict extends Error {}
 export class ProviderFailure extends Error {
-  constructor(message:string,public readonly kind:'retryable'|'tools'|'images'|'effort'|'context'|'fatal'='fatal',public readonly retryAfterMs?:number){super(message);}
+  constructor(message:string,public readonly kind:'retryable'|'tools'|'images'|'effort'|'context'|'keyInvalid'|'creditExhausted'|'fatal'='fatal',public readonly retryAfterMs?:number){super(message);}
 }
 const terminal=(run:Run)=>['completed','cancelled','failed'].includes(run.status);
+/** The typed run error for a provider failure the user has to act on (reconnect, top up). */
+export function runErrorCode(error:unknown):RunErrorCode|undefined {
+  if(!(error instanceof ProviderFailure))return undefined;
+  return error.kind==='keyInvalid'?'model_key_invalid':error.kind==='creditExhausted'?'model_credit_exhausted':undefined;
+}
+function addUsage(total:Usage,part:Usage):void {
+  for(const k of ['inputTokens','outputTokens','cacheReadTokens','cacheWriteTokens'] as const)total[k]+=part[k];
+  if(part.cost!==undefined)total.cost=(total.cost??0)+part.cost;
+}
 const emptyUsage=()=>({type:'usage' as const,inputTokens:0,outputTokens:0,cacheReadTokens:0,cacheWriteTokens:0});
 
 /** Pure state machine. A scheduler must ensure only one worker holds a run at a time. */
@@ -114,7 +122,7 @@ export class AgentRunner {
       if(error instanceof ExecutionFenced)throw error;
       if(error instanceof Park){await this.save(cp);return cp;}
       if(error instanceof Cancelled)await this.finish(cp,'cancelled');
-      else await this.finish(cp,'failed',error instanceof Error?error.message:'Agent execution failed');
+      else await this.finish(cp,'failed',error instanceof Error?error.message:'Agent execution failed',runErrorCode(error));
     }
     await this.save(cp);return cp;
   }
@@ -170,11 +178,12 @@ export class AgentRunner {
   private markFinished(cp:AgentCheckpoint,outcome:NonNullable<Run['outcome']>) {
     cp.phase='terminal';cp.run.status=outcome==='failed'?'failed':outcome==='cancelled'?'cancelled':'completed';cp.run.outcome=outcome;
   }
-  private async finish(cp:AgentCheckpoint,outcome:NonNullable<Run['outcome']>,message?:string) {
+  private async finish(cp:AgentCheckpoint,outcome:NonNullable<Run['outcome']>,message?:string,code?:RunErrorCode) {
     this.markFinished(cp,outcome);
     if(message)cp.run.error=message;
+    if(code)cp.run.errorCode=code;
     delete cp.approval;delete cp.elicitation;
-    await this.save(cp);await this.emit(cp,{type:'run.finished',outcome,...(message?{message}:{})});await this.save(cp);
+    await this.save(cp);await this.emit(cp,{type:'run.finished',outcome,...(message?{message}:{}),...(code?{code}:{})});await this.save(cp);
   }
   private async request(cp:AgentCheckpoint):Promise<ProviderRequest> {
     let messages=structuredClone(cp.messages);
@@ -205,7 +214,7 @@ export class AgentRunner {
       if(!complete||complete.stop!=='endTurn')throw new Error('Provider could not finish the compaction summary');
       summary=complete.parts.filter(p=>p.type==='text').map(p=>p.text??'').join('');
       if(!summary.trim()||summary.length>1000000)throw new Error('Invalid compaction summary');
-      for(const k of ['inputTokens','outputTokens','cacheReadTokens','cacheWriteTokens'] as const)cp.usage[k]+=complete.usage[k];
+      addUsage(cp.usage,complete.usage);
     }
     return summary;
   }
@@ -273,11 +282,7 @@ export class AgentRunner {
         let retry=false,delay=0;
         if(error.kind==='tools'&&cp.capabilities.tools){cp.capabilities.tools=false;retry=true;}
         else if(error.kind==='images'&&cp.capabilities.vision){cp.capabilities.vision=false;retry=true;}
-        else if(error.kind==='effort'&&cp.effort){
-          const learned=parseEffortRejection(error.message);
-          const next=clampEffort(cp.effort,learned);cp.supportedEfforts=learned;
-          if(next&&next!==clampEffort(cp.effort,req.supportedEfforts))cp.effort=next;else delete cp.effort;retry=true;
-        }
+        else if(error.kind==='effort'&&cp.effort){delete cp.effort;retry=true;}
         else if(error.kind==='context'&&!compacted){compacted=await this.compact(cp);retry=compacted;}
         else if(error.kind==='retryable'&&attempt<cp.maxRetries){retry=true;delay=Math.min(error.retryAfterMs??1000*2**attempt,60000);}
         if(!retry)throw error;
@@ -288,7 +293,7 @@ export class AgentRunner {
       }
     }
     if(!accepted||!response)throw new Error('Provider retry budget exhausted');
-    for(const k of ['inputTokens','outputTokens','cacheReadTokens','cacheWriteTokens'] as const)cp.usage[k]+=response.usage[k];
+    addUsage(cp.usage,response.usage);
     await this.emit(cp,{type:'usage',usage:cp.usage});
     await this.emit(cp,{type:'context.measured',inputTokens:response.usage.inputTokens+response.usage.cacheReadTokens+response.usage.cacheWriteTokens,messageCount:cp.messages.length,modelId:cp.modelId});
     if(response.stop==='refusal'){await this.finish(cp,'refused');return;}

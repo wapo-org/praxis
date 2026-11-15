@@ -1,4 +1,5 @@
-import type { Capabilities, Provider, Skill } from '@praxis/protocol';
+import { type Provider } from '../lib/legacy-providers';
+import type { Capabilities, Skill } from '@praxis/protocol';
 import React from 'react';
 import { apiClient } from '../lib/api';
 

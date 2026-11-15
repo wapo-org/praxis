@@ -2,7 +2,8 @@ import {cropImage, cropImageReaderTool} from './features/tools/image-crop.js';
 import {connectorToolNotes} from './features/tools/tool-notes.js';
 import {Hono} from 'hono';
 import {createImageReaderTool, type AgentTool, type ModelProvider} from '@praxis/agent';
-import {PreferencesSchema, type Chat, type MessagePart, type Model} from '@praxis/protocol';
+import {PreferencesSchema, type Chat, type MessagePart} from '@praxis/protocol';
+import {isScripted} from './openrouter/index.js';
 import type {FeatureContext, FeatureTool} from './contracts.js';
 import {connectorTurnNotes, createMcpGateway, createMcpRoutes, getMcpTools, type McpOptions} from './features/mcp/index.js';
 import {createLocalToolsStorage, createToolsRoutes, type PlatformVoice, type ToolsStorage} from './features/tools/index.js';
@@ -84,10 +85,11 @@ export async function visionTools(service: ApiService, ctx: FeatureContext, chat
   const prefsRow = await ctx.store.get(ctx.userId, 'preferences', 'current');
   if (!prefsRow || prefsRow.deleted) return [];
   const vision = PreferencesSchema.parse(prefsRow.value).vision;
-  if (!vision.enabled || !vision.providerId || !vision.modelId || !storage) return [];
-  const chatModel = chat.providerId && chat.modelId ? await ctx.store.get(ctx.userId, 'model', `${chat.providerId}:${chat.modelId}`) : null;
-  if (chatModel && !chatModel.deleted && (chatModel.value as unknown as Model).capabilities.vision) return [];
-  const provider = await readerProvider(service, ctx.userId, vision.providerId, vision.modelId);
+  if (!vision.enabled || !vision.modelId || !storage) return [];
+  // Offered only when the chat's own model can't take images, by its catalogue entry (never by name).
+  const chatModel = chat.modelId && !isScripted(chat.modelId) ? await service.models?.catalog.find(chat.modelId).catch(() => undefined) : undefined;
+  if (chatModel?.capabilities.images) return [];
+  const provider = await readerProvider(service, ctx.userId, vision.modelId);
   if (!provider) return [];
   return [
     cropImageReaderTool(createImageReaderTool({
@@ -106,21 +108,15 @@ export async function visionTools(service: ApiService, ctx: FeatureContext, chat
   ];
 }
 
-async function readerProvider(service: ApiService, userId: string, providerId: string, modelId: string): Promise<ModelProvider | null> {
-  if (providerId === 'scripted') return service.local ? scriptedReader() : null;
-  if (!service.providers) return null;
-  await service.providers.requireConsent(userId, providerId);
-  const {provider} = await service.providers.resolve(userId, providerId);
-  const model = await service.adapters.store.get(userId, 'model', `${providerId}:${modelId}`);
-  if (!model || model.deleted) return provider;
-  return {flavor: provider.flavor, capabilities: (model.value as unknown as Model).capabilities, stream: (req, signal) => provider.stream(req, signal)};
+async function readerProvider(service: ApiService, userId: string, modelId: string): Promise<ModelProvider | null> {
+  if (isScripted(modelId)) return service.local ? scriptedReader() : null;
+  return (await service.models?.auxiliary(userId, modelId).catch(() => null)) ?? null;
 }
 
 /** Local dev reader for the scripted provider: deterministic, describes the request instead of the pixels. */
 function scriptedReader(): ModelProvider {
   const capabilities = {type: 'capabilities' as const, tools: false, parallelToolCalls: false, vision: true, documents: false, imagesInToolResults: false, reasoningEffort: false, streamUsage: false, explicitPromptCaching: false, serverWebSearch: false, midConversationSystem: false, serverCompaction: false, toolSearch: false};
   return {
-    flavor: 'openAIChat',
     capabilities,
     async *stream(request) {
       const question = request.messages.at(-1)?.parts.find(p => p.type === 'text')?.text ?? '';

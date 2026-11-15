@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
+import { ModelSchema } from './lib/legacy-providers';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { CapabilitiesSchema, ModelSchema } from '@praxis/protocol';
+import { CapabilitiesSchema, } from '@praxis/protocol';
 import { apiClient } from './lib/api';
 import { parseRoute, pathForSheet, sheetPaths } from './lib/navigation';
 import { useModelSearch } from './lib/useModelSearch';

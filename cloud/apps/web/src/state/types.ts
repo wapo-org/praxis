@@ -1,3 +1,4 @@
+import { type Model, type Provider } from '../lib/legacy-providers';
 import type { ResolvedTheme, ThemeMode } from '@praxis/glass';
 import type {
   Approval,
@@ -6,8 +7,6 @@ import type {
   Chat,
   Connector,
   Message,
-  Model,
-  Provider,
   Run,
   Skill,
   Usage,

@@ -1,5 +1,6 @@
 import type {JsonObject} from '@praxis/protocol';
 import type {Store} from './contracts.js';
+import {MODEL_KEY_RESOURCE, SEALED_FIELD} from './openrouter/keys.js';
 import {parseKeyring, seal, sealedWithCurrent, unseal} from './secrets.js';
 
 /**
@@ -8,7 +9,7 @@ import {parseKeyring, seal, sealedWithCurrent, unseal} from './secrets.js';
  * is not rotated: keep the previous key in the ring for at least that long.
  */
 export const SECRET_KINDS: Record<string, (id: string, field: string) => string | null> = {
-  providerSecret: (id, field) => (field === 'apiKey' ? `provider:${id}:key` : field === 'extraHeaders' ? `provider:${id}:headers` : null),
+  modelKey: (_id, field) => (field === SEALED_FIELD ? MODEL_KEY_RESOURCE : null),
   voiceSecret: (_id, field) => (field === 'key' ? 'voice' : null),
   mcpSecret: (id, field) => `mcp:${id}:${field}`,
 };

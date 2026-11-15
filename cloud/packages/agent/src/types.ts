@@ -3,7 +3,7 @@ import {
   ApprovalSchema, CapabilitiesSchema, ChatSchema, ConversationSetupSchema, ElicitationSchema,
   IdSchema, JsonObjectSchema, JsonValueSchema, MessagePartSchema, MessageSchema, RunSchema,
   UsageSchema, type Capabilities, type JsonObject, type JsonValue, type Message,
-  type Mode, type ProviderFlavor, type RunEventPayload, type ToolSpec,
+  type Mode, type RunEventPayload, type ToolSpec,
 } from '@praxis/protocol';
 
 export const ProviderRequestSchema = z.object({
@@ -31,7 +31,6 @@ export const ProviderEventSchema = z.discriminatedUnion('type', [
 ]);
 export type ProviderEvent = z.infer<typeof ProviderEventSchema>;
 export interface ModelProvider {
-  readonly flavor: ProviderFlavor;
   readonly capabilities: Capabilities;
   stream(request:ProviderRequest,signal:AbortSignal):AsyncIterable<ProviderEvent>;
 }

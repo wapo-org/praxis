@@ -1,14 +1,14 @@
+import { type Model, type Provider, ProviderTestResultSchema } from './legacy-providers';
+import type { LegacyBootstrap } from './legacy-providers';
 import type {
   Attachment,
   Bootstrap,
   Capabilities,
   Chat,
-  Model,
-  Provider,
   Run,
   RunSnapshot,
 } from '@praxis/protocol';
-import { ProviderTestResultSchema, SyncResponseSchema } from '@praxis/protocol';
+import { SyncResponseSchema } from '@praxis/protocol';
 import { FeatureApiClient } from './api-features';
 import {
   PraxisApiError,
@@ -22,8 +22,10 @@ import { localUploadPath } from './hosts';
 export * from './api-transport';
 export class PraxisApiClient extends FeatureApiClient {
   // Bootstrap & Auth
-  async bootstrap(): Promise<Bootstrap> {
-    return this.request<Bootstrap>('/v1/bootstrap');
+  async bootstrap(): Promise<LegacyBootstrap> {
+    // Phase A bridge: the server no longer sends providers or models (see legacy-providers.ts).
+    const boot = await this.request<Bootstrap & Partial<LegacyBootstrap>>('/v1/bootstrap');
+    return { ...boot, providers: boot.providers ?? [], models: boot.models ?? [] };
   }
 
   // Chats & Messages

@@ -12,7 +12,7 @@ Local only: `POST /v1/auth/dev` accepts `{type:"auth.dev",userId?:string}` and r
 
 ## Bootstrap and local replicas
 
-`GET /v1/bootstrap` returns `bootstrap`: protocolVersion,user,chats,providers,models,connectors,skills,activeRuns,syncCursor,syncRoot,serverTime. Latest 50 chats and first model page only; paginate for the rest. Clients paint their saved replica first. `GET /v1/events` is a user-level resumable SSE stream of `user.event` envelopes (entity,entityId,operation,value?,syncCursor). On a change, reconcile the affected row or sync. Disconnections do not cancel runs.
+`GET /v1/bootstrap` returns `bootstrap`: protocolVersion,user,chats,modelKey?,modelPreferences,connectors,skills,activeRuns,syncCursor,syncRoot,serverTime. Latest 50 chats and first model page only; paginate for the rest. Clients paint their saved replica first. `GET /v1/events` is a user-level resumable SSE stream of `user.event` envelopes (entity,entityId,operation,value?,syncCursor). On a change, reconcile the affected row or sync. Disconnections do not cancel runs.
 
 ## Chats, messages and runs
 
@@ -30,12 +30,19 @@ Local only: `POST /v1/auth/dev` accepts `{type:"auth.dev",userId?:string}` and r
 
 Events cover iteration.started; text.delta/finished; reasoning.delta/finished; tool.started/arguments.delta/ready/running/progress/finished; approval.requested/resolved; elicitation.requested/resolved; attempt.discarded; retrying; usage; compaction; context.measured; messages.committed; policy.updated; vision.activity; run.started/parked/finished. See exact schema. `tool.finished.completion` carries summary,preview,status,content?,outputRef?. Compaction produces a request-time summary, preserving original messages. Provider-native raw payload lives on committed assistant messages for replay, including reasoning signatures.
 
-## Providers and models
+## Model key and models (OpenRouter)
 
-- `GET /v1/providers` → `page<provider>`. `POST` (`provider.input`) → provider. `GET/PATCH/DELETE /v1/providers/:id`. PATCH uses provider.input; apiKey omitted preserves existing key. Secret values are write-only; reads expose maskedKey only. Provider URL + flavor + capabilities determine behavior, not its name.
-- `POST /v1/providers/:id/test` (`{type:"provider.test"}`) → `{type:"provider.test.result",ok,models}`. `POST /v1/providers/:id/refresh-models` (`{type:"models.refresh"}`) → page<model>.
-- `GET /v1/models?providerId=&q=&cursor=&limit=50&pinned=&favorite=` → page<model>, filtered and searched server-side. Models expose reasoningEfforts (empty = no dial), capability flags, contextWindow?,maxOutputTokens?,pinned,favorite.
-- `PATCH /v1/models/preferences` (`model.preference`,providerId,modelId,pinned?,favorite?) → model.
+OpenRouter is the only model provider. Each user connects their own key; connecting it is the consent. The key is sealed server-side and is never returned, logged or put in an event.
+
+- `GET /v1/model-key` → `modelKey` (maskedKey = last 4 characters, label?, connectedAt, lastError?, limit?, limitRemaining?; null limit = no limit) or 404 `not_found`.
+- `POST /v1/model-key` → `modelKey`. Body is `{method:"paste",apiKey}` or `{method:"pkce",code,codeVerifier}` (optional `type:"modelKey.connect"`). The server validates a pasted key against OpenRouter's key info, or exchanges the PKCE code. 400 `model_key_rejected` carries OpenRouter's message; 502 `openrouter_unavailable` when OpenRouter can't be reached.
+- `POST /v1/model-key/check` → `modelKey` with refreshed label, limit and limitRemaining. A key OpenRouter no longer accepts comes back with `lastError` set (still 200).
+- `DELETE /v1/model-key` → ok.
+- PKCE (web): send the user to `https://openrouter.ai/auth?callback_url=<https callback>&code_challenge=<S256>&code_challenge_method=S256`, then post the returned `code` with the verifier. OpenRouter accepts only https callbacks (and localhost); no custom schemes.
+- `GET /v1/models?q=&cursor=&limit=50&pinned=&favorite=` → page<`catalogModel` + pinned,favorite,recommended>. The shared OpenRouter catalogue (cached 1 h; the last good copy is served if a refresh fails; 503 `catalog_unavailable` only when there has never been one). `q` searches id and name. Entries: id,name,contextLength,maxOutput?,pricing{prompt,completion} (USD per token, strings),capabilities{tools,reasoning,images}. Order: pinned, then `RECOMMENDED_MODELS`, then name.
+- `PATCH /v1/models/preferences` (`model.preference`,modelId,pinned?,favorite?) → `modelPreference` (modelId,pinned,favorite).
+- Runs: `run.start` takes `modelId` (a catalogue id; `DEFAULT_MODEL_ID` when absent). With no key `POST /v1/runs` fails with 400 `model_key_missing`. A chosen model that left the catalogue falls back to the default and `run.note` says so. A run that OpenRouter stops ends `failed` with `run.errorCode` and `run.finished.code`: `model_key_invalid` (401; the key record gets `lastError`), `model_credit_exhausted` (402) or `model_key_missing`. `usage.cost` (USD, summed over the run) comes from OpenRouter's usage accounting.
+- `providerId` on chat, run.start and vision preferences is ignored and will be removed.
 
 ## Connectors, consent and skills
 

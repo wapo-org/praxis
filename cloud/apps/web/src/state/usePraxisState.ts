@@ -1,11 +1,10 @@
+import { type Model, type Provider } from '../lib/legacy-providers';
 import type { ResolvedTheme, ThemeMode } from '@praxis/glass';
 import type {
   Attachment,
   Chat,
   Connector,
   Message,
-  Model,
-  Provider,
   Skill,
 } from '@praxis/protocol';
 import React from 'react';

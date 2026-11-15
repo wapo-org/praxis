@@ -3,18 +3,17 @@ import {
   type AgentCheckpoint, type AgentPorts, type AgentTool, type ModelProvider, type Script, type ToolResult,
 } from '@praxis/agent';
 import {
-  JsonValueSchema, RunEventPayloadSchema, type JsonObject,
-  type Chat, type ConversationSetup, type JsonValue, type Message, type MessagePart, type Model, type Run, type StartRun,
+  JsonValueSchema, REASONING_EFFORTS, RunEventPayloadSchema,
+  type CatalogModel, type Chat, type ConversationSetup, type JsonValue, type Message, type MessagePart, type Run, type StartRun,
 } from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from './contracts.js';
 import {buildSystemPrompt, skillCatalogSection, turnNotes, type CatalogSkill} from './conversation.js';
 import {featureContext} from './features.js';
 import {ApiError, type ApiService, type ExecutionDriver, type RunDecision} from './service.js';
-import {learnedFor, recordLearning} from './learning.js';
+import {isScripted} from './openrouter/index.js';
 import {withMedia, type ModelCapabilities} from './media-provider.js';
 import {readToolOutputTool} from './read-tool-output.js';
 
-export {LEARNED_LIFETIME_MS} from './learning.js';
 export {withMedia} from './media-provider.js';
 export {readToolOutputTool} from './read-tool-output.js';
 
@@ -128,7 +127,8 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     } finally {
       await lease.release(key, token);
     }
-    if (cp) await recordLearning(service, userId, cp, clock()).catch(() => undefined);
+    // A 401 from OpenRouter marks the key, so every client shows the reconnect state.
+    if (cp?.run.errorCode === 'model_key_invalid') await service.models?.keys.markInvalid(userId, cp.run.error ?? '').catch(() => undefined);
     // Schedule the next slice only after releasing the lease, or it would find the run still owned.
     if (cp) await settle(userId, cp);
   }
@@ -155,35 +155,17 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     ...(options.encryptionKey ? {encryptionKey: options.encryptionKey} : {}),
   });
 
-  async function resolveProvider(userId: string, chat: Chat, request: RunRequest): Promise<{provider: ModelProvider; script?: Script; model?: Model}> {
+  async function resolveProvider(userId: string, chat: Chat, request: RunRequest): Promise<{provider: ModelProvider; script?: Script; model?: CatalogModel; note?: string}> {
     if (request.script) {
       if (!service.local) throw new ApiError(400, 'local_only', 'Scripted runs are local only');
       return {provider: scriptedProvider(request.script), script: request.script};
     }
-    // Local dev keeps M1 behaviour: a chat without a provider runs the scripted provider.
-    const providerId = request.providerId ?? chat.providerId ?? (service.local ? 'scripted' : undefined);
-    if (!providerId) throw new ApiError(400, 'provider_required', 'Choose a model provider for this chat');
-    if (providerId === 'scripted') {
-      if (!service.local) throw new ApiError(400, 'local_only', 'Scripted runs are local only');
-      return {provider: scriptedProvider('text'), script: 'text'};
-    }
-    if (!service.providers) throw new ApiError(503, 'providers_unavailable', 'Providers are not configured');
-    await service.providers.requireConsent(userId, providerId);
-    const {provider} = await service.providers.resolve(userId, providerId);
     const modelId = request.modelId ?? chat.modelId;
-    const model = modelId
-      ? await service.adapters.store.get(userId, 'model', `${providerId}:${modelId}`).then(r => (r && !r.deleted ? (r.value as unknown as Model) : undefined))
-      : undefined;
-    if (!model) return {provider};
-    // Capabilities gate features per model, never by provider name; rejections learned from the provider narrow them.
-    const learned = await learnedFor(service, userId, providerId, model.id, clock());
-    const capabilities = {...model.capabilities, ...(learned.images ? {vision: false} : {}), ...(learned.tools ? {tools: false} : {})};
-    const scoped: ModelProvider = {
-      flavor: provider.flavor,
-      capabilities,
-      stream: (req, signal) => provider.stream(req, signal),
-    };
-    return {provider: scoped, model: learned.efforts ? {...model, reasoningEfforts: learned.efforts} : model};
+    // Local dev keeps M1 behaviour: a chat without a model, or on a scripted model, runs the scripted provider.
+    if (service.local && (!modelId || isScripted(modelId))) return {provider: scriptedProvider('text'), script: 'text'};
+    if (!service.models) throw new ApiError(503, 'models_unavailable', 'Models are not configured');
+    // The user's key is unsealed here, held by this slice's provider only, and never checkpointed.
+    return service.models.forRun(userId, modelId);
   }
 
   async function agentTools(userId: string, chat: Chat, run: Run, request: RunRequest, script?: Script): Promise<AgentTool[]> {
@@ -211,9 +193,9 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       tools,
       ports: script ? {...slicePorts(fence), summarize: localSummary} : slicePorts(fence),
       shouldYield: () => clock() - started > budgetMs,
-      ...(script === 'compaction' ? {contextWindow: 1024} : model?.contextWindow ? {contextWindow: model.contextWindow} : {}),
+      ...(script === 'compaction' ? {contextWindow: 1024} : model ? {contextWindow: model.contextLength} : {}),
     } as ConstructorParameters<typeof AgentRunner>[0]);
-    return {runner, tools, model, script};
+    return {runner, tools, model, script, note: resolved.note};
   }
 
   async function freezeSetup(userId: string, chat: Chat, tools: AgentTool[]): Promise<ConversationSetup | undefined> {
@@ -261,18 +243,19 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       const stored: RunRequest = {...request, attachmentIds: request.attachmentIds ?? []};
       await service.put(userId, 'runRequest', run.id, stored);
       await exclusive(userId, run.id, async fence => {
-      const {runner, tools, model} = await runnerFor(userId, chat, run, stored, fence);
+      const {runner, tools, model, note} = await runnerFor(userId, chat, run, stored, fence);
+      if (note) run.note = note;
       const setup = await freezeSetup(userId, chat, tools);
       const effort = request.effort ?? chat.effort;
-      const modelId = request.modelId ?? chat.modelId;
+      const modelId = model?.id ?? request.modelId ?? chat.modelId;
       const cp = await runner.run({
         userId, run, messages,
         chat: {...chat, mode: request.mode ?? chat.mode},
         ...(setup ? {setup} : {}),
         ...(modelId ? {modelId} : {}),
         ...(effort ? {effort} : {}),
-        ...(model?.reasoningEfforts.length ? {supportedEfforts: model.reasoningEfforts} : {}),
-        ...(model?.maxOutputTokens ? {modelMaxTokens: model.maxOutputTokens} : {}),
+        ...(model?.capabilities.reasoning ? {supportedEfforts: [...REASONING_EFFORTS]} : {}),
+        ...(model?.maxOutput ? {modelMaxTokens: model.maxOutput} : {}),
         webSearch: request.webSearch,
         policy: {trustedSources: await trustedSources(userId), alwaysAllow: []},
       });

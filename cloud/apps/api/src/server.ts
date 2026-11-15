@@ -38,7 +38,7 @@ export interface PraxisDeps {
   continuation?: {path: string; verify: (request: Request) => Promise<{userId: string; runId: string}>};
   /** Test hook for slice budgets. */
   clock?: () => number;
-  /** Feature modules, or a factory that receives the service (modules need provider resolution). */
+  /** Feature modules, or a factory that receives the service (modules need the service). */
   modules?: FeatureModule[] | ((service: ApiService) => FeatureModule[]);
   log?: (record: {requestId: string; method: string; path: string; status: number; durationMs: number}) => void;
 }
@@ -64,6 +64,7 @@ export function createPraxisApp(deps: PraxisDeps) {
     service,
     ...(deps.encryptionKey ? {encryptionKey: deps.encryptionKey} : {}),
     ...(deps.fetcher ? {fetcher: deps.fetcher} : {}),
+    ...(deps.clock ? {clock: deps.clock} : {}),
     ...(deps.allowedOrigins ? {allowedOrigins: deps.allowedOrigins} : {}),
     ...(deps.resolveSession ? {resolveSession: deps.resolveSession} : {}),
     ...(deps.authHandler ? {authHandler: deps.authHandler} : {}),

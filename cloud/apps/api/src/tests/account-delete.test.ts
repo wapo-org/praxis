@@ -73,8 +73,8 @@ it('deletes every owned table, blob, Redis key and session; preserves another us
       'connector',
       'skill',
       'checkpoint',
-      'modelLearning',
-      'providerSecret',
+      'modelPreference',
+      'modelKey',
       'consent',
     ])
       await rpc.mutation('store:put', { userId: u, kind, id: kind, value: { private: u } });

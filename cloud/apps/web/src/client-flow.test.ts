@@ -44,10 +44,12 @@ describe('@praxis/web client flows against Lead A local API', () => {
     });
   });
 
-  it('bootstraps seeded welcome chat, providers, models, preferences, and consents', async () => {
+  it('bootstraps the seeded welcome chat on the scripted model, with no model key yet', async () => {
     const boot = await client.bootstrap();
     expect(boot.chats.some((c) => c.id === 'welcome')).toBe(true);
-    expect(boot.models.some((m) => m.id === 'scripted')).toBe(true);
+    expect(boot.chats.find((c) => c.id === 'welcome')?.modelId).toBe('scripted');
+    expect(boot.modelKey).toBeUndefined();
+    expect(boot.modelPreferences).toEqual([]);
     expect(boot.preferences?.vision).toBeDefined();
     expect(boot.preferences?.voice).toBeDefined();
   });

@@ -49,13 +49,15 @@ describe('request logging', () => {
   it('logs method, path, status and duration only: no query string, headers or body', async () => {
     const lines: string[] = [];
     const spy = vi.spyOn(console, 'info').mockImplementation((line: string) => { lines.push(line); });
-    const {app} = createPraxisApp({adapters: createLocalAdapters(), local: true, encryptionKey: randomBytes(32).toString('base64'), log: jsonLog});
+    const openRouter = (async () => Response.json({data: {label: 'sk-or-v1-ver...key', limit: null, limit_remaining: null}})) as typeof fetch;
+    const {app} = createPraxisApp({adapters: createLocalAdapters(), local: true, encryptionKey: randomBytes(32).toString('base64'), log: jsonLog, fetcher: openRouter});
     await app.request('/v1/bootstrap?token=sk-live-secret', {headers: {Authorization: 'Bearer dev-local', Cookie: 'praxis_session=abc'}});
-    await app.request('/v1/providers', {method: 'POST', headers: {Authorization: 'Bearer dev-local', 'Content-Type': 'application/json'}, body: JSON.stringify({type: 'provider.input', name: 'P', flavor: 'openAIChat', baseUrl: 'https://p.example/v1', apiKey: 'sk-very-secret-key'})});
+    const connected = await app.request('/v1/model-key', {method: 'POST', headers: {Authorization: 'Bearer dev-local', 'Content-Type': 'application/json'}, body: JSON.stringify({method: 'paste', apiKey: 'sk-or-v1-very-secret-key'})});
+    expect(connected.status).toBe(200);
     spy.mockRestore();
     const all = lines.join('\n');
     expect(all).toContain('"path":"/v1/bootstrap"');
-    for (const secret of ['sk-live-secret', 'dev-local', 'praxis_session', 'sk-very-secret-key', 'token=']) expect(all).not.toContain(secret);
+    for (const secret of ['sk-live-secret', 'dev-local', 'praxis_session', 'sk-or-v1-very-secret-key', 'very-secret', 'token=']) expect(all).not.toContain(secret);
   });
 });
 

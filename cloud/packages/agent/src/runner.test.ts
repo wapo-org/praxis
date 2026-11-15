@@ -4,7 +4,7 @@ import {AgentRunner,createScriptedRunner,createScriptedProvider,scriptedTools,al
 const time='2026-10-29T12:00:00.000Z';
 function input():RunInput{return {userId:'u',run:{type:'run',id:'r',chatId:'c',status:'queued',createdAt:time,updatedAt:time,lastEventId:0},chat:{type:'chat',id:'c',title:'Chat',pinned:false,mode:'build',connectorIds:[],disabledConnectorIds:[],createdAt:time,updatedAt:time},messages:[{type:'message',id:'m',chatId:'c',runId:'r',role:'user',parts:[{type:'text',text:'Hello'}],createdAt:time,updatedAt:time}]};}
 function harness(){let saved:AgentCheckpoint|undefined,cancel=false,id=0;const events:RunEventPayload[]=[];const ports:AgentPorts={save:async(user,cp)=>{expect(user).toBe('u');saved=structuredClone(cp);},emit:async(user,run,e)=>{expect(user).toBe('u');expect(run).toBe('r');RunEventPayloadSchema.parse(e);events.push(structuredClone(e));return events.length;},isCancelled:async()=>cancel,now:()=>time,id:()=>`id-${++id}`,sleep:async()=>{}};return {ports,events,get saved(){return saved;},cancel(){cancel=true;}};}
-const custom=(stream:ModelProvider['stream']):ModelProvider=>({flavor:'openAIChat',capabilities:CapabilitiesSchema.parse({}),stream});
+const custom=(stream:ModelProvider['stream']):ModelProvider=>({capabilities:CapabilitiesSchema.parse({}),stream});
 describe('scripted durable loop',()=>{
   it.each(['text','tools','long','vision'] as const)('runs %s, preserves the input prefix and emits terminal',async script=>{
     const h=harness(),i=input();const cp=await createScriptedRunner(h.ports,script).run(i);
@@ -127,10 +127,24 @@ describe('durability and provider fallback regressions',()=>{
     const provider=custom(async function*(r,s){if(r.system.startsWith('Summarize')){summaries++;yield {type:'completed',response:{parts:[{type:'text',text:'Provider summary'}],stop:'endTurn',usage:{type:'usage',inputTokens:10,outputTokens:4,cacheReadTokens:0,cacheWriteTokens:0}}};}else yield* base.stream(r,s);});
     const cp=await new AgentRunner({ports:h.ports,provider,contextWindow:1000}).run(i);expect(summaries).toBeGreaterThan(0);expect(cp.compaction?.summary).toBe('Provider summary');expect(cp.messages[0]).toEqual(i.messages[0]);
   });
-  it('learns effort options from a rejection then retries with a supported effort',async()=>{
+  it('drops a rejected effort and retries without it',async()=>{
     const h=harness(),i=input();i.effort='max';const requests:ProviderRequest[]=[];const base=createScriptedProvider();
-    const provider=custom(async function*(r,s){requests.push(structuredClone(r));if(requests.length===1)throw new ProviderFailure("Unsupported reasoning_effort 'max'. Supported: low, medium, high.",'effort');yield* base.stream(r,s);});
-    const cp=await new AgentRunner({ports:h.ports,provider}).run(i);expect(cp.run.status).toBe('completed');expect(requests[1]?.effort).toBe('high');expect(cp.supportedEfforts).toEqual(['low','medium','high']);
+    const provider=custom(async function*(r,s){requests.push(structuredClone(r));if(requests.length===1)throw new ProviderFailure("Unsupported reasoning.effort 'max'.",'effort');yield* base.stream(r,s);});
+    const cp=await new AgentRunner({ports:h.ports,provider}).run(i);expect(cp.run.status).toBe('completed');expect(requests[0]?.effort).toBe('max');expect(requests[1]?.effort).toBeUndefined();
+  });
+  it.each([['keyInvalid','model_key_invalid'],['creditExhausted','model_credit_exhausted']] as const)('ends the run with a typed error on %s and never retries it',async(kind,code)=>{
+    const h=harness();let calls=0;const provider=custom(async function*(){calls++;throw new ProviderFailure('OpenRouter said no',kind);});
+    const cp=await new AgentRunner({ports:h.ports,provider}).run(input());expect(calls).toBe(1);expect(cp.run.status).toBe('failed');expect(cp.run.errorCode).toBe(code);expect(cp.run.error).toBe('OpenRouter said no');
+    expect(h.events.at(-1)).toEqual({type:'run.finished',outcome:'failed',message:'OpenRouter said no',code});
+  });
+  it('leaves other failures untyped',async()=>{
+    const h=harness();const cp=await new AgentRunner({ports:h.ports,provider:custom(async function*(){throw new ProviderFailure('Model not found');})}).run(input());expect(cp.run.status).toBe('failed');expect(cp.run.errorCode).toBeUndefined();
+  });
+  it('sums OpenRouter cost across the turns of a run',async()=>{
+    const h=harness();let turn=0;const usage=(cost:number)=>({type:'usage' as const,inputTokens:10,outputTokens:5,cacheReadTokens:0,cacheWriteTokens:0,cost});
+    const provider=custom(async function*(){turn++;yield {type:'completed',response:turn===1?{parts:[{type:'toolCall',callId:'c1',name:'local_echo',arguments:'{}'}],stop:'toolUse',usage:usage(0.002)}:{parts:[{type:'text',text:'Done'}],stop:'endTurn',usage:usage(0.0005)}};});
+    const cp=await new AgentRunner({ports:h.ports,provider,tools:scriptedTools()}).run(input());expect(cp.run.status).toBe('completed');expect(cp.usage.cost).toBeCloseTo(0.0025,10);expect(cp.usage.inputTokens).toBe(20);
+    expect(h.events.filter(e=>e.type==='usage').at(-1)).toMatchObject({usage:{cost:expect.closeTo(0.0025,10)}});
   });
   it('discards truncated calls, retries within the model maximum, and never executes partial arguments',async()=>{
     const h=harness(),tools=scriptedTools(),requests:ProviderRequest[]=[];let ran=0;tools[0]!.execute=async()=>{ran++;return textResult('ran');};const base=createScriptedProvider('tools');

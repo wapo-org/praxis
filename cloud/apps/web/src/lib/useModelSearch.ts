@@ -1,5 +1,6 @@
+import { ModelSchema, type Model } from './legacy-providers';
 import React from 'react';
-import { ModelSchema, type Model } from '@praxis/protocol';
+
 import { apiClient } from './api';
 
 const PAGE_SIZE = 50;

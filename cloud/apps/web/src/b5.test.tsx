@@ -1,3 +1,5 @@
+import { type Provider } from './lib/legacy-providers';
+import type { LegacyBootstrap } from './lib/legacy-providers';
 import { snapshotProgress } from './lib/toolProgress';
 // @vitest-environment jsdom
 import {
@@ -5,7 +7,6 @@ import {
   ToolActivitySchema,
   type Bootstrap,
   type Message,
-  type Provider,
 } from '@praxis/protocol';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -35,12 +36,13 @@ const provider = (baseUrl: string): Provider => ({
   capabilities: CapabilitiesSchema.parse({}),
   updatedAt: now,
 });
-const bootstrap = (providers: Provider[] = []): Bootstrap => ({
+const bootstrap = (providers: Provider[] = []): LegacyBootstrap => ({
   type: 'bootstrap',
   protocolVersion: 1,
   user: { type: 'user', id: 'A', name: 'User A' },
   chats: [],
   models: [],
+  modelPreferences: [],
   providers,
   connectors: [],
   skills: [],
@@ -73,7 +75,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
-async function storeWith(boot: Bootstrap) {
+async function storeWith(boot: LegacyBootstrap) {
   vi.spyOn(apiClient, 'bootstrap').mockResolvedValue(boot);
   let store!: ReturnType<typeof usePraxisStore>;
   function Probe() {

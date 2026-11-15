@@ -1,5 +1,6 @@
+import { type Model } from '../../lib/legacy-providers';
 import { ScrollBlur } from '@praxis/glass';
-import type { Model } from '@praxis/protocol';
+
 import React from 'react';
 import { Check, ChevronLeft, Eye, Globe, Search, Star, Wrench, X, Zap } from '../../lib/icons';
 import { useModelSearch } from '../../lib/useModelSearch';

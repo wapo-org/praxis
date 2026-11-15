@@ -1,6 +1,7 @@
+import { type Provider } from '../../lib/legacy-providers';
 import { providerConsentHost } from '../../lib/hosts';
 import { GlassDropdown } from '@praxis/glass';
-import { CapabilitiesSchema, type Provider } from '@praxis/protocol';
+import { CapabilitiesSchema, } from '@praxis/protocol';
 import React from 'react';
 import { apiClient } from '../../lib/api';
 import { Plus, Trash2 } from '../../lib/icons';

@@ -1,10 +1,9 @@
+import { type Model, type Provider } from './legacy-providers';
 import type {
   Bootstrap,
   Chat,
   Connector,
   Message,
-  Model,
-  Provider,
   Skill,
 } from '@praxis/protocol';
 import type { Consent, Preferences, Registry } from './api';

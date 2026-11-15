@@ -1,6 +1,7 @@
+import { type Model } from '../../lib/legacy-providers';
 import React from 'react';
 import { Check, Eye } from '../../lib/icons';
-import type { Model } from '@praxis/protocol';
+
 import { usePraxisStore } from '../../state/store.js';
 import {
   Card,

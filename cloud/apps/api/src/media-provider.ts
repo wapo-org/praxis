@@ -28,7 +28,6 @@ export function withMedia(provider: ModelProvider, resolve: (part: MessagePart, 
     return cache.get(key)!;
   };
   return {
-    flavor: provider.flavor,
     capabilities: provider.capabilities,
     async *stream(request, signal) {
       const flat = request.messages.flatMap((m, mi) => m.parts.map((p, pi) => ({mi, pi, p})));

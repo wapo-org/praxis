@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import type { Model } from '@praxis/protocol';
+
+import { type Model } from '../../lib/legacy-providers';
 import { CapabilitiesSchema } from '@praxis/protocol';
 import React from 'react';
 import { act } from 'react';

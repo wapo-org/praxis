@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import type { Chat, Connector, Model, Provider, Skill } from '@praxis/protocol';
+import { type Model, type Provider } from '../../lib/legacy-providers';
+import type { Chat, Connector, Skill } from '@praxis/protocol';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';

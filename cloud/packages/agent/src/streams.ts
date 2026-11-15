@@ -1,4 +1,4 @@
-import {JsonObjectSchema,type JsonObject,type MessagePart,type ProviderFlavor,type Usage} from '@praxis/protocol';
+import {JsonObjectSchema,type JsonObject,type MessagePart,type Usage} from '@praxis/protocol';
 import {ProviderFailure} from './runner.js';
 import {type ProviderEvent,type ProviderResponse} from './types.js';
 import {array,number,object,string} from './wire.js';
@@ -28,21 +28,30 @@ export async function* parseSSE(body:ReadableStream<Uint8Array>,signal?:AbortSig
   }finally {await reader.cancel().catch(()=>{});reader.releaseLock();}
 }
 const zero=():Usage=>({type:'usage',inputTokens:0,outputTokens:0,cacheReadTokens:0,cacheWriteTokens:0});
+/** 401 = the user's key is rejected; 402 = their credit is spent. Neither is retried or degraded. */
 export function classifyProviderError(message:string,status=400,retryAfterMs?:number):ProviderFailure {
+  if(status===401)return new ProviderFailure(message,'keyInvalid');
+  if(status===402)return new ProviderFailure(message,'creditExhausted');
   const lower=message.toLowerCase();
   const rejection=/not support|does not support|unsupported|not allowed|unrecognized|unknown parameter|invalid/;
   const kind=/(?:image|vision|multimodal)/.test(lower)&&rejection.test(lower)?'images':
     /no endpoints found that support tool use/.test(lower)||/(?:tools?|tool_choice|function calling)/.test(lower)&&rejection.test(lower)?'tools':
-    /(?:reasoning_effort|reasoning effort|output_config\.effort|adaptive thinking)/.test(lower)&&(rejection.test(lower)||/must be|should be/.test(lower))?'effort':
+    /(?:reasoning_effort|reasoning effort|reasoning\.effort)/.test(lower)&&(rejection.test(lower)||/must be|should be/.test(lower))?'effort':
     /context[_ ]?(length|window)|prompt.{0,8}too long|too many (input )?tokens|maximum context|request_too_large/.test(lower)||status===413?'context':
     [408,409,429].includes(status)||status>=500?'retryable':'fatal';
   return new ProviderFailure(message,kind,retryAfterMs);
 }
+/** OpenRouter's error text, with the upstream provider's own message when it adds one. */
+export function errorMessage(error:JsonObject,fallback:string):string {
+  const message=string(error.message)||fallback,upstream=object(error.metadata).raw;
+  return typeof upstream==='string'&&upstream&&!message.includes(upstream)?`${message}: ${upstream.slice(0,1000)}`:message;
+}
+/** Mid-stream errors arrive as a chunk with a top-level `error` whose `code` is the HTTP status. */
 function streamError(json:JsonObject):void {
   if(json.error||json.type==='error') {
-    const error=object(json.error),message=string(error.message)||string(json.message)||'Provider stream error';
-    const kind=string(error.type)||string(json.code);
-    throw classifyProviderError(message,/overload|api_error|rate_limit|server_error|timeout/.test(kind)?500:400);
+    const error=object(json.error),message=errorMessage(error,string(json.message)||'Provider stream error');
+    const kind=string(error.type)||string(json.code),code=number(error.code);
+    throw classifyProviderError(message,code>=400?code:/overload|api_error|rate_limit|server_error|timeout/.test(kind)?500:400);
   }
 }
 function stop(reason:string,hasTools=false):ProviderResponse['stop'] {
@@ -52,58 +61,32 @@ function stop(reason:string,hasTools=false):ProviderResponse['stop'] {
   if(reason==='pause_turn')return 'pauseTurn';
   return hasTools?'toolUse':'endTurn';
 }
-function usage(raw:unknown,flavor:ProviderFlavor):Usage {
-  const u=object(raw),cached=number(object(u.prompt_tokens_details).cached_tokens)||number(object(u.input_tokens_details).cached_tokens)||number(u.cache_read_input_tokens)||number(u.prompt_cache_hit_tokens);
-  const input=number(u.input_tokens)||number(u.prompt_tokens),output=number(u.output_tokens)||number(u.completion_tokens);
-  return {type:'usage',inputTokens:flavor==='anthropicMessages'?input:Math.max(0,input-cached),outputTokens:output,cacheReadTokens:cached,cacheWriteTokens:number(u.cache_creation_input_tokens)};
+function usage(raw:unknown):Usage {
+  const u=object(raw),details=object(u.prompt_tokens_details),cached=number(details.cached_tokens);
+  const input=number(u.prompt_tokens),written=number(details.cache_write_tokens);
+  return {type:'usage',inputTokens:Math.max(0,input-cached-written),outputTokens:number(u.completion_tokens),cacheReadTokens:cached,cacheWriteTokens:written,...(typeof u.cost==='number'&&u.cost>=0?{cost:u.cost}:{})};
 }
-export async function* decodeAnthropic(frames:AsyncIterable<SSEFrame>):AsyncGenerator<ProviderEvent> {
-  const blocks=new Map<number,JsonObject>(),args=new Map<number,string>();let raw:JsonObject={},u=zero(),reason='',done=false;
-  for await(const frame of frames) {
-    if(!frame.data||frame.data==='[DONE]')continue;const e=JsonObjectSchema.parse(JSON.parse(frame.data));streamError(e);
-    const type=string(e.type)||frame.event,index=number(e.index);
-    if(type==='message_start'){raw=object(e.message);u=usage(raw.usage,'anthropicMessages');}
-    else if(type==='content_block_start') {
-      const block=structuredClone(object(e.content_block));blocks.set(index,block);
-      if(block.type==='tool_use')yield {type:'tool',index,id:string(block.id),name:string(block.name)};
-      else if(block.type==='text'&&block.text)yield {type:'text',index,text:string(block.text)};
-      else if(block.type==='thinking'&&block.thinking)yield {type:'reasoning',index,text:string(block.thinking)};
-    }else if(type==='content_block_delta') {
-      const block=blocks.get(index);if(!block)throw new ProviderFailure('Delta references missing content block');const delta=object(e.delta);
-      if(delta.type==='text_delta'){const t=string(delta.text);block.text=string(block.text)+t;yield {type:'text',index,text:t};}
-      else if(delta.type==='thinking_delta'){const t=string(delta.thinking);block.thinking=string(block.thinking)+t;yield {type:'reasoning',index,text:t};}
-      else if(delta.type==='signature_delta')block.signature=string(block.signature)+string(delta.signature);
-      else if(delta.type==='input_json_delta') {
-        const json=string(delta.partial_json);args.set(index,(args.get(index)??'')+json);
-        if(block.type==='tool_use')yield {type:'arguments',index,json};
-      }
-    }else if(type==='content_block_stop') {
-      const block=blocks.get(index),json=args.get(index);if(block&&json){try{block.input=JSON.parse(json);}catch{block.input={};}}
-      yield {type:'blockEnd',index};
-    }else if(type==='message_delta') {
-      reason=string(object(e.delta).stop_reason)||reason;
-      const updated=object(e.usage);u={...u,...(typeof updated.output_tokens==='number'?{outputTokens:updated.output_tokens}:{}),...(typeof updated.input_tokens==='number'?{inputTokens:updated.input_tokens}:{})};
-    }else if(type==='message_stop'){done=true;break;}
+/** Streamed `reasoning_details` fragments, merged per index so the blocks can be sent back unchanged on the next turn. */
+function mergeReasoningDetails(into:JsonObject[],fragments:unknown[]):void {
+  for(const raw of fragments) {
+    const f=object(raw),index=typeof f.index==='number'?f.index:into.length?into.length-1:0;
+    const slot=into[index]??={};
+    for(const [key,value] of Object.entries(f)) {
+      if(['text','summary','data'].includes(key)&&typeof value==='string')slot[key]=string(slot[key])+value;
+      else if(value!==null&&value!==undefined)slot[key]=value;
+    }
   }
-  if(!done)throw new ProviderFailure('Anthropic stream ended before message_stop','retryable');
-  const parts:MessagePart[]=[];
-  for(const [index,b] of [...blocks].sort(([a],[b])=>a-b)) {
-    if(b.type==='text')parts.push({type:'text',text:string(b.text)});
-    else if(b.type==='thinking')parts.push({type:'reasoning',text:string(b.thinking),signature:string(b.signature)});
-    else if(b.type==='tool_use')parts.push({type:'toolCall',callId:string(b.id),name:string(b.name),arguments:args.get(index)||JSON.stringify(b.input??{})});
-  }
-  raw={...raw,content:[...blocks].sort(([a],[b])=>a-b).map(([,b])=>b),stop_reason:reason,usage:{input_tokens:u.inputTokens,output_tokens:u.outputTokens,cache_read_input_tokens:u.cacheReadTokens,cache_creation_input_tokens:u.cacheWriteTokens}};
-  yield {type:'completed',response:{parts,stop:stop(reason,parts.some(p=>p.type==='toolCall')),usage:u,raw:{type:'provider.payload',flavor:'anthropicMessages',data:raw}}};
 }
 interface Slot {id:string;name:string;args:string;started:boolean}
 export async function* decodeOpenAIChat(frames:AsyncIterable<SSEFrame>):AsyncGenerator<ProviderEvent> {
-  let text='',reasoning='',reasoningField='reasoning_content',reason='',done=false,u=zero(),refusal='';
+  let text='',reasoning='',reasoningField='reasoning',reason='',done=false,u=zero(),refusal='';const details:JsonObject[]=[];
   const slots:Slot[]=[],slotForIndex=new Map<number,number>();
   for await(const frame of frames) {
     if(frame.data==='[DONE]'){done=true;break;}if(!frame.data)continue;
-    const e=JsonObjectSchema.parse(JSON.parse(frame.data));streamError(e);if(e.usage)u=usage(e.usage,'openAIChat');
+    const e=JsonObjectSchema.parse(JSON.parse(frame.data));streamError(e);if(e.usage)u=usage(e.usage);
     const choice=object(array(e.choices)[0]),delta=object(choice.delta);if(choice.finish_reason){reason=string(choice.finish_reason);if(reason==='error')throw new ProviderFailure('Provider stopped with an error','retryable');}
-    for(const field of ['reasoning_content','reasoning'])if(typeof delta[field]==='string'){const t=string(delta[field]);reasoning+=t;reasoningField=field;yield {type:'reasoning',index:0,text:t};break;}
+    for(const field of ['reasoning','reasoning_content'])if(typeof delta[field]==='string'){const t=string(delta[field]);reasoning+=t;reasoningField=field;yield {type:'reasoning',index:0,text:t};break;}
+    mergeReasoningDetails(details,array(delta.reasoning_details));
     if(typeof delta.content==='string'){const t=delta.content;text+=t;yield {type:'text',index:1,text:t};}
     refusal+=string(delta.refusal);
     for(const fragment of array(delta.tool_calls)) {
@@ -126,40 +109,7 @@ export async function* decodeOpenAIChat(frames:AsyncIterable<SSEFrame>):AsyncGen
   const calls=slots.filter(s=>s.started);if(!calls.length&&!text&&!reasoning&&/tool_calls|function_call/.test(reason))throw new ProviderFailure('Provider promised tools without naming one');
   const parts:MessagePart[]=[];if(reasoning){parts.push({type:'reasoning',text:reasoning});yield {type:'blockEnd',index:0};}if(text){parts.push({type:'text',text});yield {type:'blockEnd',index:1};}
   parts.push(...calls.map(s=>({type:'toolCall' as const,callId:s.id,name:s.name,arguments:s.args||'{}'})));
-  const raw:JsonObject={role:'assistant',content:text||null};if(reasoning)raw[reasoningField]=reasoning;
+  const raw:JsonObject={role:'assistant',content:text||null};if(details.length)raw.reasoning_details=details.filter(Boolean);else if(reasoning)raw[reasoningField]=reasoning;
   if(calls.length)raw.tool_calls=calls.map(s=>({id:s.id,type:'function',function:{name:s.name,arguments:s.args||'{}'}}));
-  yield {type:'completed',response:{parts,stop:refusal?'refusal':stop(reason,!!calls.length),usage:u,raw:{type:'provider.payload',flavor:'openAIChat',data:raw}}};
-}
-export async function* decodeOpenAIResponses(frames:AsyncIterable<SSEFrame>):AsyncGenerator<ProviderEvent> {
-  const items=new Map<number,JsonObject>(),doneItems=new Map<number,JsonObject>(),indices=new Map<string,number>();let nextIndex=0,response:JsonObject|undefined;
-  const blockIndex=(key:string)=>{if(!indices.has(key))indices.set(key,nextIndex++);return indices.get(key)!;};
-  for await(const frame of frames) {
-    if(!frame.data||frame.data==='[DONE]')continue;const e=JsonObjectSchema.parse(JSON.parse(frame.data));streamError(e);
-    const type=string(e.type)||frame.event,output=number(e.output_index),content=number(e.content_index);
-    if(type==='response.output_item.added') {
-      const item=structuredClone(object(e.item));items.set(output,item);
-      if(item.type==='function_call')yield {type:'tool',index:blockIndex(`tool.${output}`),id:string(item.call_id)||string(item.id),name:string(item.name)};
-    }else if(type==='response.output_item.done'){const item=structuredClone(object(e.item));items.set(output,item);doneItems.set(output,item);}
-    else if(type==='response.output_text.delta')yield {type:'text',index:blockIndex(`text.${output}.${content}`),text:string(e.delta)};
-    else if(type==='response.reasoning_summary_text.delta'||type==='response.reasoning_text.delta')yield {type:'reasoning',index:blockIndex(`reasoning.${output}.${number(e.summary_index)}`),text:string(e.delta)};
-    else if(type==='response.function_call_arguments.delta') {
-      const item=items.get(output);if(item)item.arguments=string(item.arguments)+string(e.delta);
-      yield {type:'arguments',index:blockIndex(`tool.${output}`),json:string(e.delta)};
-    }else if(/response\.(output_text|reasoning_summary_text|reasoning_text)\.done/.test(type))yield {type:'blockEnd',index:blockIndex(type.includes('reasoning')?`reasoning.${output}.${number(e.summary_index)}`:`text.${output}.${content}`)};
-    else if(type==='response.completed'||type==='response.incomplete'){response=object(e.response);break;}
-    else if(type==='response.failed') {
-      const error=object(object(e.response).error);throw classifyProviderError(string(error.message)||'Response failed',/server|rate|timeout/.test(string(error.code))?500:400);
-    }
-  }
-  if(!response)throw new ProviderFailure('Responses stream ended before completion','retryable');
-  const outputs=array(response.output).length?array(response.output):[...items].sort(([a],[b])=>a-b).map(([,b])=>b);
-  // Prefer completed item snapshots for encrypted reasoning; added snapshots may be partial.
-  const completed=outputs.map((item,i)=>doneItems.get(i)??object(item));
-  const parts:MessagePart[]=[];let refused=false;
-  for(const b of completed) {
-    if(b.type==='function_call')parts.push({type:'toolCall',callId:string(b.call_id)||string(b.id),name:string(b.name),arguments:string(b.arguments)||'{}'});
-    else if(b.type==='message')for(const raw of array(b.content)){const p=object(raw);if(p.type==='output_text')parts.push({type:'text',text:string(p.text)});if(p.type==='refusal')refused=true;}
-    else if(b.type==='reasoning')parts.push({type:'reasoning',text:array(b.summary).map(s=>string(object(s).text)).join('\n')});
-  }
-  yield {type:'completed',response:{parts,stop:refused?'refusal':stop(string(object(response.incomplete_details).reason),parts.some(p=>p.type==='toolCall')),usage:usage(response.usage,'openAIResponses'),raw:{type:'provider.payload',flavor:'openAIResponses',data:completed}}};
+  yield {type:'completed',response:{parts,stop:refusal?'refusal':stop(reason,!!calls.length),usage:u,raw:{type:'provider.payload',data:raw}}};
 }

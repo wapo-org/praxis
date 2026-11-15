@@ -5,7 +5,6 @@ import {MAX_RESULT_CHARACTERS, type AgentCheckpoint, type ModelProvider, type Pr
 import {CapabilitiesSchema, type MessagePart} from '@praxis/protocol';
 import {createLocalAdapters} from '../local-memory.js';
 import {ApiService} from '../service.js';
-import {LEARNED_LIFETIME_MS, learnedFor, recordLearning} from '../learning.js';
 import {MEDIA_CONCURRENCY, withMedia} from '../media-provider.js';
 import {MAX_READ_CHARACTERS, readToolOutputTool} from '../read-tool-output.js';
 import {MAX_INPUT_PIXELS, rehydrateAttachment} from '../features/tools/media.js';
@@ -18,20 +17,6 @@ import {png, setup} from './harness.js';
 const caps = CapabilitiesSchema.parse({vision: true, documents: true, tools: true});
 const request = (parts: MessagePart[]) => ({model: 'm', system: '', messages: [{type: 'message', id: 'm', chatId: 'c', role: 'user', parts, createdAt: '', updatedAt: ''}], tools: [], capabilities: caps, webSearch: false}) as unknown as ProviderRequest;
 const userText = (f: ReturnType<typeof setup>, i: number) => JSON.stringify(f.fake.requests[i].messages.filter((m: any) => m.role === 'user'));
-
-describe('REV-R1 P1 1: learned rejections lapse and are learned again', () => {
-  it('re-records an expired image/tool/effort rejection instead of keeping the stale timestamp', async () => {
-    const service = new ApiService(createLocalAdapters(), true);
-    await service.adapters.store.put('u', 'model', 'p:m', {type: 'model', id: 'm', providerId: 'p', displayName: 'M', capabilities: caps, reasoningEfforts: ['low', 'high'], pinned: false, favorite: false});
-    const now = 10 * LEARNED_LIFETIME_MS, stale = now - LEARNED_LIFETIME_MS - 1;
-    await service.adapters.store.put('u', 'modelLearning', 'p:m', {images: stale, tools: stale, efforts: {levels: ['low'], at: stale}});
-    expect(await learnedFor(service, 'u', 'p', 'm', now)).toEqual({images: false, tools: false, efforts: undefined});
-    const cp = {chat: {providerId: 'p'}, modelId: 'm', capabilities: {...caps, vision: false, tools: false}, supportedEfforts: ['low']} as unknown as AgentCheckpoint;
-    await recordLearning(service, 'u', cp, now);
-    expect((await service.adapters.store.get('u', 'modelLearning', 'p:m'))?.value).toEqual({images: now, tools: now, efforts: {levels: ['low'], at: now}});
-    expect(await learnedFor(service, 'u', 'p', 'm', now + 1)).toEqual({images: true, tools: true, efforts: ['low']});
-  });
-});
 
 describe('REV-R1 P1 2/3: attachments never break a conversation', () => {
   it('a PDF for a model without documents gets a clear note; a broken image becomes a note and later turns still work', async () => {
@@ -51,7 +36,7 @@ describe('REV-R1 P1 2/3: attachments never break a conversation', () => {
 
   it('a deleted attachment or failing storage read degrades to a note instead of failing the request', async () => {
     const seen: ProviderRequest[] = [];
-    const base: ModelProvider = {flavor: 'openAIChat', capabilities: caps, async *stream(req) { seen.push(req); }};
+    const base: ModelProvider = {capabilities: caps, async *stream(req) { seen.push(req); }};
     const provider = withMedia(base, async () => { throw new Error('File not found'); });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const parts: MessagePart[] = [{type: 'image', attachmentId: 'a'}];
@@ -73,7 +58,7 @@ describe('REV-R1 P1 4: image memory', () => {
 
   it('resolves attachments with bounded concurrency', async () => {
     let active = 0, peak = 0;
-    const provider = withMedia({flavor: 'openAIChat', capabilities: caps, async *stream() {}}, async part => {
+    const provider = withMedia({capabilities: caps, async *stream() {}}, async part => {
       active++; peak = Math.max(peak, active); await new Promise(r => setTimeout(r, 5)); active--; return {...part, data: 'x'};
     });
     const parts: MessagePart[] = Array.from({length: 8}, (_, i) => ({type: 'image', attachmentId: `a${i}`}));
@@ -104,29 +89,6 @@ describe('REV-R1 P2: read_tool_output stays under the spill threshold', () => {
     const text = String(result.content[0]!.text);
     expect(text.length).toBeLessThanOrEqual(MAX_RESULT_CHARACTERS);
     expect(text).toContain(`characters 0–${MAX_READ_CHARACTERS} of 100000`);
-  });
-});
-
-describe('REV-R1 P2: provider probe failures and budget', () => {
-  it('returns ok:false with a typed, redacted error, and limits probes per provider', async () => {
-    const key = 'sk-live-SECRET-123456';
-    const fetcher = (async (input: RequestInfo | URL) => String(input).endsWith('/models')
-      ? Response.json({data: [{id: 'm'}]})
-      : Response.json({error: {message: `Invalid API key ${key}`}}, {status: 401})) as typeof fetch;
-    const {app} = createPraxisApp({adapters: createLocalAdapters(), local: true, encryptionKey: randomBytes(32).toString('base64'), fetcher, modules: localModules('http://127.0.0.1:8787')});
-    const req = async (path: string, body: unknown) => app.request(path, {method: 'POST', headers: {Authorization: 'Bearer dev-local', 'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-    const provider = await (await req('/v1/providers', {type: 'provider.input', name: 'F', flavor: 'openAIChat', baseUrl: 'https://llm.example.test/v1', apiKey: key, capabilities: {tools: true}})).json();
-    await req('/v1/consents', {type: 'consent', host: 'llm.example.test', allowed: true});
-    await req(`/v1/providers/${provider.id}/refresh-models`, {type: 'models.refresh'});
-    const probe = () => req(`/v1/providers/${provider.id}/test`, {type: 'provider.test', modelId: 'm'});
-    const first = await probe();
-    expect(first.status).toBe(200);
-    const body = await first.json();
-    expect(body).toMatchObject({type: 'provider.test.result', ok: false, error: {code: 'provider_error'}});
-    expect(JSON.stringify(body)).not.toContain(key);
-    expect(body.error.message).toContain('[redacted]');
-    await probe(); await probe();
-    expect((await probe()).status).toBe(429);
   });
 });
 

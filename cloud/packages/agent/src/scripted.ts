@@ -4,7 +4,7 @@ import {textResult,type AgentPorts,type AgentTool,type ModelProvider,type Provid
 export type Script=NonNullable<import('@praxis/protocol').StartRun['script']>;
 export function createScriptedProvider(script:Script='text'):ModelProvider {
   StartRunSchema.shape.script.parse(script);
-  return {flavor:'openAIChat',capabilities:CapabilitiesSchema.parse({tools:true,vision:true,reasoningEffort:true}),
+  return {capabilities:CapabilitiesSchema.parse({tools:true,vision:true,reasoningEffort:true}),
     async *stream(request:ProviderRequest,signal:AbortSignal):AsyncGenerator<ProviderEvent> {
       if(signal.aborted)throw new Error('Aborted');
       yield {type:'reasoning',index:100,text:'Checking the scripted scenario.'};yield {type:'blockEnd',index:100};

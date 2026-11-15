@@ -37,9 +37,9 @@ describe('versioned encryption keys', () => {
 });
 
 describe('re-encryption for rotation', () => {
-  it('re-seals provider, voice and MCP secrets with the new key; unopenable values are counted, not dropped', async () => {
+  it('re-seals the model key, voice and MCP secrets with the new key; unopenable values are counted, not dropped', async () => {
     const {store} = createLocalAdapters();
-    await store.put('u1', 'providerSecret', 'p1', {apiKey: seal('sk-1', 'u1', 'provider:p1:key', A), extraHeaders: seal('{"X":"y"}', 'u1', 'provider:p1:headers', A)});
+    await store.put('u1', 'modelKey', 'current', {type: 'modelKey', maskedKey: '••••sk-1', sealed: seal('sk-or-1', 'u1', 'modelKey', A)});
     await store.put('u1', 'voiceSecret', 'current', {key: legacySeal('gsk', 'u1', 'voice', A)});
     await store.put('u2', 'mcpSecret', 'c1', {token: seal('"t"', 'u2', 'mcp:c1:token', A), tokens: seal('{}', 'u2', 'mcp:c1:tokens', C)});
     const ring = `${B},${A}`;
@@ -49,7 +49,9 @@ describe('re-encryption for rotation', () => {
 
     const stats = await reencryptAll(store, ['u1', 'u2'], ring);
     expect(stats).toMatchObject({owners: 2, rows: 3, rewritten: 3, failed: 1});
-    expect(unseal(String((await store.get('u1', 'providerSecret', 'p1'))!.value.apiKey), 'u1', 'provider:p1:key', B)).toBe('sk-1');
+    const key = (await store.get('u1', 'modelKey', 'current'))!.value;
+    expect(unseal(String(key.sealed), 'u1', 'modelKey', B)).toBe('sk-or-1');
+    expect(key.maskedKey).toBe('••••sk-1'); // only the sealed field is touched
     expect(unseal(String((await store.get('u1', 'voiceSecret', 'current'))!.value.key), 'u1', 'voice', B)).toBe('gsk');
     const mcp = (await store.get('u2', 'mcpSecret', 'c1'))!.value;
     expect(unseal(String(mcp.token), 'u2', 'mcp:c1:token', B)).toBe('"t"');
@@ -59,7 +61,7 @@ describe('re-encryption for rotation', () => {
   it('enumerates every owner from Convex for the rotation script', async () => {
     const store = storeFromRPC(convexHarness().rpc);
     await store.put('alice', 'chat', 'c', {x: 1});
-    await store.put('bob', 'providerSecret', 'p', {apiKey: seal('k', 'bob', 'provider:p:key', A)});
+    await store.put('bob', 'modelKey', 'current', {sealed: seal('k', 'bob', 'modelKey', A)});
     const owners: string[] = [];
     for await (const o of store.owners()) owners.push(o);
     expect(owners.sort()).toEqual(['alice', 'bob']);
@@ -69,24 +71,24 @@ describe('re-encryption for rotation', () => {
 describe('REV-A2 rotation races', () => {
   it.each(['update', 'delete'])('preserves a concurrent credential %s and remains idempotent', async action => {
     const {store} = createLocalAdapters();
-    await store.put('u', 'providerSecret', 'p', {apiKey: seal('old', 'u', 'provider:p:key', A)});
+    await store.put('u', 'modelKey', 'current', {sealed: seal('old', 'u', 'modelKey', A)});
     const list = store.list.bind(store);
     let intercepted = false;
     store.list = async (...args) => {
       const snapshot = await list(...args);
-      if (!intercepted && args[1] === 'providerSecret') {
+      if (!intercepted && args[1] === 'modelKey') {
         intercepted = true;
-        if (action === 'delete') await store.delete('u', 'providerSecret', 'p');
-        else await store.put('u', 'providerSecret', 'p', {apiKey: seal('new', 'u', 'provider:p:key', A)});
+        if (action === 'delete') await store.delete('u', 'modelKey', 'current');
+        else await store.put('u', 'modelKey', 'current', {sealed: seal('new', 'u', 'modelKey', A)});
       }
       return snapshot;
     };
     const stats = await reencryptAll(store, ['u'], `${B},${A}`);
     expect(intercepted).toBe(true);
     expect(stats.failed).toBe(0);
-    const row = (await store.get('u', 'providerSecret', 'p'))!;
+    const row = (await store.get('u', 'modelKey', 'current'))!;
     if (action === 'delete') expect(row.deleted).toBe(true);
-    else expect(unseal(String(row.value.apiKey), 'u', 'provider:p:key', B)).toBe('new');
+    else expect(unseal(String(row.value.sealed), 'u', 'modelKey', B)).toBe('new');
     expect(await reencryptAll(store, ['u'], `${B},${A}`)).toMatchObject({rewritten: 0, failed: 0});
   });
 });
