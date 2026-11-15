@@ -3,17 +3,7 @@ import SwiftUI
 import UIKit
 @testable import PraxisChat
 
-/// The composer kept the sent text on device ("sometimes after sending a
-/// message text stays in the composer"). Cause: clearing the binding only
-/// reaches SwiftUI's text view on its next update, and a keyboard edit
-/// landing before that (a committed candidate or marked text, an
-/// autocorrect replacement, a late keystroke) copied the view's stale text
-/// — the whole sent message — back into the binding.
-///
-/// These host a real vertical `TextField` (SwiftUI's `UITextView`
-/// subclass), "send" the way the composer does, then play each keyboard
-/// edit before SwiftUI's update. Without `clearFocusedTextView()` every
-/// case below ends with the sent text back in the field.
+/// Guards clearFocusedTextView() against UIKit keyboard edits copying stale text back pre-update.
 @MainActor
 final class ComposerMarkedTextTests: XCTestCase {
     @Observable final class Model { var text = "" }
@@ -41,7 +31,6 @@ final class ComposerMarkedTextTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(seconds))
     }
 
-    /// A focused field holding `typed`, with `marked` as uncommitted input.
     private func makeField(typed: String, marked: String? = nil) throws -> (Model, UITextView) {
         let model = Model()
         let host = UIHostingController(rootView: Field(model: model))
@@ -62,7 +51,6 @@ final class ComposerMarkedTextTests: XCTestCase {
         return (model, textView)
     }
 
-    /// What `ComposerView.send()` does once the store has taken the text.
     private func send(_ model: Model) {
         model.text = ""
         ComposerInput.clearFocusedTextView()

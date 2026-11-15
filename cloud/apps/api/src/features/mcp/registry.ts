@@ -19,11 +19,11 @@ export async function searchRegistry(ctx:FeatureContext,query:Record<string,stri
   for(const remote of entry.server.remotes){
    if(!['streamable-http','sse'].includes(remote.type))continue;
    try{
-    // Templates remain visible for clients to fill before POST /connectors; creation owns validation and health checks.
+    // Keep template URLs visible for client substitution; POST /connectors validates them.
     remoteUrl(remote.url.replace(/\{[^{}]+\}/g,'x'),false);
     const input=ConnectorInputSchema.parse({type:'connector.input',name:(entry.server.title||entry.server.name).slice(0,MAX_NAME),url:remote.url,transport:remote.type==='sse'?'sse':'streamableHttp',enabled:true});
     items.push({type:'connector.registry.entry',id:entry.server.name,description:(entry.server.description??'').slice(0,MAX_DESCRIPTION),input,headerNames:remote.headers.map(h=>h.name),requiresConfiguration:/\{[^{}]+\}/.test(remote.url)||remote.headers.length>0});
-   }catch{/* Unusable/non-public remote entries are excluded. */}
+   }catch{/* Ignore invalid remote entries. */}
   }
  }
  const result={type:'page',items,nextCursor:listing.metadata?.nextCursor||null};await ctx.kv.set(key,result,600);return result;

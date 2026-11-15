@@ -8,9 +8,6 @@ import AgentMCP
 import AgentTestSupport
 @testable import PraxisChat
 
-/// Per-model reasoning effort: settings resolution and learning, the
-/// snap-to-supported-levels on model change, and the engine's resend
-/// clamped (or without the parameter) after a rejection.
 @MainActor
 final class EffortLevelsAppTests: XCTestCase {
     private var directory: URL!
@@ -189,7 +186,6 @@ final class EffortLevelsAppTests: XCTestCase {
         store.send(text: "hi")
         await waitUntil { !store.isRunning }
 
-        // One rejected request with the parameter, then the same run without it.
         XCTAssertEqual(chat.requests.count, 2)
         XCTAssertEqual(chat.requests.first?.json?["reasoning_effort"], "high", "unknown is tried")
         XCTAssertNil(chat.requests.last?.json?["reasoning_effort"], "the resend drops the parameter")
@@ -200,7 +196,6 @@ final class EffortLevelsAppTests: XCTestCase {
                                  "a step says the model answered without effort")
         XCTAssertTrue(note.finalSummary.contains("doesn't take a reasoning effort"), note.finalSummary)
 
-        // Learned and persisted: the next send drops the parameter from the start.
         XCTAssertEqual(settings.effortWireValues(profileID: profile.id, model: Self.plain), [])
         XCTAssertEqual(self.settings().effortWireValues(profileID: profile.id, model: Self.plain), [],
                        "survives a relaunch")

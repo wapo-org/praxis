@@ -2,41 +2,29 @@ import Foundation
 import Photos
 import SwiftUI
 
-/// The plus tray's photo strip (item 9): the user's most recent library
-/// photos instead of placeholder tiles. Mocks survive only behind
-/// `-PraxisMockGallery YES` (UI tests and previews).
+/// Recent library photo strip; mocks appear only when -PraxisMockGallery YES is set.
 @Observable
 @MainActor
 final class PhotoGallery {
-    /// One strip tile: a library photo, or a mock under the mock gate.
     struct Item: Identifiable {
-        /// Ephemeral key (a load's UUIDs are fresh each tray open);
-        /// selection clears whenever the strip reloads.
+        /// Ephemeral per-load UUID so selection resets whenever the strip reloads.
         let id: UUID
         let name: String
         var thumbnail: UIImage?
-        /// The library asset; nil for mocks.
         let asset: PHAsset?
-        /// The mock attachment; nil for library photos.
         let mock: Attachment?
     }
 
-    /// What the strip may show, from the Photos authorization.
     enum Access: Equatable {
-        /// Not loaded yet.
         case unknown
         case loading
-        /// Library photos; `limited` adds a "Manage" tile.
         case library(limited: Bool)
-        /// A single "Allow Photos access" tile.
         case denied
     }
 
-    /// A full-res attach in flight ("Adding 2/5…").
     struct Adding: Equatable {
         var done: Int
         var total: Int
-        /// The current file's iCloud download fraction, 0…1.
         var fraction: Double
     }
 
@@ -61,9 +49,7 @@ final class PhotoGallery {
         PHPhotoLibrary.shared().unregisterChangeObserver(changeObserver)
     }
 
-    /// Loads once per tray open (a fresh gallery each time, so new shots
-    /// appear). Asks for Photos access on first open only: afterwards the
-    /// status is determined and no prompt appears.
+    /// Loads once per tray open; prompts for Photos access only while status is .notDetermined.
     func loadIfNeeded() async {
         guard !loaded else { return }
         loaded = true
@@ -87,7 +73,6 @@ final class PhotoGallery {
         }
     }
 
-    /// Maps a Photos authorization to what the strip shows. Pure, for tests.
     static func access(for status: PHAuthorizationStatus) -> Access {
         switch status {
         case .authorized: return .library(limited: false)
@@ -96,8 +81,6 @@ final class PhotoGallery {
         }
     }
 
-    /// The mock strip (UI tests, previews): the 12 rendered swatches with
-    /// decoded thumbnails, so the strip renders one way for both sources.
     static func mockItems() -> [Item] {
         MockData.sampleScreenshots().map { attachment in
             Item(id: attachment.id, name: attachment.name,
@@ -106,9 +89,7 @@ final class PhotoGallery {
         }
     }
 
-    /// The ~30 most recent images, newest first, with 64pt @3x thumbs.
-    /// `fetchAssets` is lazy (cheap on the main actor); thumbnails and
-    /// full bytes stream in through the image manager.
+    /// PHAsset.fetchAssets is lazy on MainActor; thumbnails stream asynchronously via image manager.
     private func fetch(limited: Bool) {
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
@@ -125,8 +106,6 @@ final class PhotoGallery {
         for item in fresh { requestThumbnail(for: item) }
     }
 
-    /// Opportunistic delivery: a fast degraded thumb first, the crisp one
-    /// when ready (each callback re-renders just its tile).
     private func requestThumbnail(for item: Item) {
         guard let asset = item.asset else { return }
         let options = PHImageRequestOptions()
@@ -146,10 +125,7 @@ final class PhotoGallery {
         items[index].thumbnail = image
     }
 
-    /// Full bytes for the chosen tiles, in strip order: mock tiles copy
-    /// their staged bytes, library photos download (iCloud allowed, with
-    /// progress) as the original file. Each attach gets a fresh id, so
-    /// adding the same photo twice never duplicates composer-strip ids.
+    /// Exports chosen tiles in strip order with fresh IDs so re-attaching never collides.
     func fullAttachments(for ids: Set<UUID>) async -> [Attachment] {
         let chosen = items.filter { ids.contains($0.id) }
         adding = Adding(done: 0, total: chosen.count, fraction: 0)
@@ -165,10 +141,7 @@ final class PhotoGallery {
         return out
     }
 
-    /// The "Screenshot" quick tile: the newest shot in the screenshots
-    /// album (mock gate: the first mock tile), attached directly — the
-    /// strip itself is the mixed recent library, so its first tile is
-    /// usually not a screenshot at all.
+    /// Queries the screenshots album directly since the recent strip holds mixed photos.
     func latestScreenshot() async -> Attachment? {
         if UserDefaults.standard.bool(forKey: "PraxisMockGallery") {
             guard let first = MockData.sampleScreenshots().first,
@@ -195,7 +168,6 @@ final class PhotoGallery {
         return await fullData(for: asset)
     }
 
-    /// Original file bytes for one asset (iCloud allowed, with progress).
     private func fullData(for asset: PHAsset) async -> Data? {
         return await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
@@ -211,8 +183,6 @@ final class PhotoGallery {
         }
     }
 
-    /// Limited access: let the user pick more photos from the system sheet.
-    /// The change observer reloads the strip when they confirm.
     func presentLimitedPicker() {
         guard let window = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
@@ -222,15 +192,11 @@ final class PhotoGallery {
         PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: root)
     }
 
-    /// Denied access: the Settings app, where Photos can be re-allowed.
     func openSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
     }
 
-    /// The library changed under us (new shot, limited-set edit): reload
-    /// on the next pass. The prompt never re-fires — the status is
-    /// determined by now.
     private func handleLibraryChange() {
         guard !UserDefaults.standard.bool(forKey: "PraxisMockGallery") else { return }
         loaded = false
@@ -239,8 +205,7 @@ final class PhotoGallery {
     }
 }
 
-/// Forwards library changes onto the gallery. The closure hops to the
-/// main actor; nothing here touches gallery state directly.
+/// Forwards PHPhotoLibrary changes via MainActor hop; never touches gallery state directly.
 private final class ChangeObserver: NSObject, PHPhotoLibraryChangeObserver, @unchecked Sendable {
     var onChange: (@Sendable () -> Void)?
 

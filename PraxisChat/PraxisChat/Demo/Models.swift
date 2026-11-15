@@ -17,12 +17,9 @@ enum ChatMode: String, CaseIterable, Identifiable, Codable {
         case .build: return "Build something..."
         }
     }
-    /// The runtime's mode: same four cases, the policy table lives there.
     var agentMode: AgentMode { AgentMode(rawValue: rawValue) ?? .auto }
 }
 
-/// The effort dial is the runtime's `Effort`; the app adds presentation
-/// and the demo engine's pacing.
 extension Effort: @retroactive Identifiable {
     public var id: String { rawValue }
     var title: String { rawValue.capitalized }
@@ -53,13 +50,8 @@ struct AIModel: Identifiable, Equatable {
     let tagline: String
     let speed: Int        // 1...5 dots
     let intelligence: Int // 1...5 dots
-    /// Streaming speed multiplier (spec §10: model scales streaming speed).
     let streamMultiplier: Double
-    /// Reasoning levels the tray offers for this model. Nil = unknown (all
-    /// four); empty = no reasoning (the control hides). Live models resolve
-    /// this from the provider (`ChatStore.supportedEfforts`); the demo
-    /// catalogue hard-codes interesting cases. (`var`: a `let` with a
-    /// default is left out of the memberwise initializer.)
+    /// Nil means all four levels, empty means none (hides control); var stays in memberwise init.
     var effortLevels: [Effort]? = nil
 }
 
@@ -75,28 +67,20 @@ struct Connector: Identifiable, Equatable {
 
 // MARK: Attachments
 
-/// A reference to an attachment. The bytes live in `AttachmentStore`
-/// (memory while in the composer, on disk once sent), so turns, previews
-/// and persisted conversations carry only the id.
+/// Reference to bytes in AttachmentStore (memory in composer, disk once sent); models hold ID.
 struct Attachment: Identifiable, Equatable, Hashable, Codable, Sendable {
     var id: UUID
     var kind: Kind
     var name: String
-    /// True when image bytes were stored under `id`.
     var hasImage: Bool
     /// MIME type of a picked file (nil for photos: sniffed from the bytes).
     var mediaType: String?
-    /// The user hid this file from code ("Hide from code"): JS `fs`
-    /// neither lists nor reads it, in any turn. The model still sees an
-    /// image or document sent inline with its message. Persisted with
-    /// the conversation; absent on disk = available.
+    /// Hides file from JS fs across turns while model still sees inline attachment; persisted.
     var isHiddenFromCode = false
     enum Kind: String, Equatable, Hashable, Codable, Sendable { case photo, file, screenshot, camera }
 
     private enum CodingKeys: String, CodingKey { case id, kind, name, hasImage, mediaType, isHiddenFromCode }
 
-    /// `fileData`: a picked file's bytes, staged like image bytes so the
-    /// live engine can send them (documents) or expose them to JS `fs`.
     init(id: UUID = UUID(), kind: Kind, name: String, imageData: Data? = nil, fileData: Data? = nil,
          mediaType: String? = nil, store: AttachmentStore = .shared) {
         self.id = id
@@ -149,8 +133,7 @@ enum StepKind: String, Equatable, Codable {
     }
 }
 
-/// Micro-trace under a step. `kind` is the runtime's `TraceKind`; image
-/// traces reference the turn attachment whose thumbnail they show.
+/// Image traces reference the turn attachment whose thumbnail they show.
 struct Trace: Identifiable, Equatable, Codable {
     var id = UUID()
     var kind: TraceKind
@@ -162,15 +145,12 @@ struct CommandData: Identifiable, Equatable, Codable {
     var id = UUID()
     var code: String
     var language: String?
-    /// Live tail of the output, at most `maxLines` (older lines are counted
-    /// in `droppedLineCount`, never kept in the transcript model).
+    /// Tail capped at maxLines; older lines are counted in droppedLineCount, never stored.
     var lines: [String] = []
     var droppedLineCount = 0
-    /// Return value / result preview reported when the tool finished.
     var result: String?
     var exitCode: Int?
-    /// When execution started; the running timer reads this, so a card
-    /// recreated mid-run (scroll recycling, chat switch) keeps counting.
+    /// Running timer reads this so cards recreated on scroll or chat switch keep counting.
     var startedAt: Date?
     var duration: TimeInterval = 0
     var isRunning: Bool = false
@@ -190,23 +170,18 @@ struct CommandData: Identifiable, Equatable, Codable {
     }
 }
 
-/// An approval card waiting on the user (rendered inside the step).
 struct PendingApproval: Equatable, Codable {
-    /// Approval request id (the tool call id, or `parent/…` for a call
-    /// made from inside code).
+    /// Tool call id, or parent/... for a call made from inside code.
     var requestID: String
     var title: String
     var reason: String
     var toolName: String
     var sourceName: String?
-    /// Pretty-printed arguments, shown in full.
     var arguments: String
-    /// The model-issued call (a JS run) this call came from, when it was
-    /// made from inside code. The card then renders in that run's step.
+    /// Enclosing JS run call ID when invoked from code; card renders in that step.
     var parentCallID: String? = nil
 }
 
-/// The connector a step needs the user to sign in to.
 struct StepSignIn: Equatable, Codable, Hashable {
     var serverID: String
     var serverName: String
@@ -214,7 +189,6 @@ struct StepSignIn: Equatable, Codable, Hashable {
 
 struct Step: Identifiable, Equatable, Codable {
     enum Status: String, Codable {
-        /// Arguments still streaming / waiting to run.
         case pending
         case awaitingApproval
         case running
@@ -229,49 +203,34 @@ struct Step: Identifiable, Equatable, Codable {
     var finalSummary: String
     var status: Status = .succeeded
     var startedAt: Date?
-    /// Live tail of the step's traces, at most `maxTraces` (older traces
-    /// are counted in `droppedTraceCount`, never kept in the transcript
-    /// model). Same shape as `CommandData`'s capped output lines.
+    /// Capped at maxTraces; older traces are counted in droppedTraceCount, never stored.
     var traces: [Trace] = []
-    /// Older traces dropped to stay bounded (same shape as
-    /// `CommandData.droppedLineCount`).
     var droppedTraceCount: Int {
         get { storedDroppedTraceCount ?? 0 }
         set { storedDroppedTraceCount = newValue == 0 ? nil : newValue }
     }
-    /// Storage for `droppedTraceCount`: optional so older conversation
-    /// files still decode (internal only to keep the memberwise init internal).
+    /// Optional so older conversation files decode; internal to keep memberwise init internal.
     var storedDroppedTraceCount: Int? = nil
     var command: CommandData?
     var approval: PendingApproval?
-    /// Approvals for calls made from inside this step's code (JS code
-    /// mode); several can wait at once.
+    /// Approvals for calls made from inside this step's JS code; several can wait at once.
     var codeApprovals: [PendingApproval] {
         get { pendingCodeApprovals ?? [] }
         set { pendingCodeApprovals = newValue.isEmpty ? nil : newValue }
     }
-    /// Storage for `codeApprovals`: optional so older conversation files
-    /// still decode (internal only to keep the memberwise init internal).
+    /// Optional so older conversation files decode; internal to keep memberwise init internal.
     var pendingCodeApprovals: [PendingApproval]? = nil
-    /// A connector refused this step for missing credentials; the
-    /// activity offers "Sign in to <server>". Optional: older files decode.
+    /// Optional so older files decode; set when a connector refuses for missing credentials.
     var signIn: StepSignIn? = nil
 
-    // How the line reads (see `StepPresentation`). All optional so older
-    // conversation files still decode; a step without them falls back to
-    // its summaries.
+    // Presentation fields below are optional so older files decode, falling back to summaries.
     /// Who did it ("Exa", "GitHub"); nil for built-in tools.
     var source: String? = nil
-    /// The tool's own title without the source ("Web search").
     var title: String? = nil
-    /// The call's key argument (a query, URL, path), one line.
     var detail: String? = nil
-    /// The call's input, pretty-printed.
     var arguments: String? = nil
-    /// What the tool returned (a preview), or what a thought reasoned.
     var result: String? = nil
-    /// The user opened this line's details (rows are recreated while
-    /// scrolling, so the choice lives in the model, not in view state).
+    /// Stored in the model rather than view state because lazy rows are recreated on scroll.
     var detailsOpen: Bool? = nil
 
     var isWaitingOnUser: Bool { approval != nil || pendingCodeApprovals != nil }
@@ -287,7 +246,6 @@ struct Step: Identifiable, Equatable, Codable {
 
     var totalTraceCount: Int { droppedTraceCount + traces.count }
 
-    /// Appends one trace, keeping only the newest `maxTraces`.
     mutating func appendTrace(_ trace: Trace) {
         traces.append(trace)
         let overflow = traces.count - Self.maxTraces
@@ -317,10 +275,8 @@ struct ActivityData: Identifiable, Equatable, Codable {
 
 enum Block: Identifiable, Equatable, Codable {
     case activity(ActivityData)
-    /// While `isStreaming`, the text lives in the block's `LiveText`;
-    /// `source` is written once the block closes.
+    /// While isStreaming, text lives in LiveText; source is written only once the block closes.
     case markdown(id: UUID, source: String, isStreaming: Bool)
-    /// Older history was condensed for the model here (a thin divider row).
     case compaction(CompactionMarker)
     var id: UUID {
         switch self {
@@ -331,17 +287,13 @@ enum Block: Identifiable, Equatable, Codable {
     }
 }
 
-/// Where a context compaction happened in the thread, with what the
-/// model now remembers of everything before it. Persisted with the turn,
-/// summary included, so each marker shows its own summary after relaunch
-/// (the conversation keeps only the latest `ContextCompaction`).
+/// Persisted per turn with its summary so older markers keep theirs after relaunch.
 struct CompactionMarker: Identifiable, Equatable, Codable {
     var id = UUID()
-    /// The run's compaction id (`AgentEvent.compaction`).
     var key: String
     var state: State
     var summary: String = ""
-    /// Estimated prompt size before and after (0 = unknown).
+    /// Estimated prompt size before compaction (0 = unknown).
     var tokensBefore = 0
     var tokensAfter = 0
     var date = Date()
@@ -353,18 +305,15 @@ struct CompactionMarker: Identifiable, Equatable, Codable {
     }
 }
 
-/// How a finished run ended, when that's worth a note under the answer.
 enum TurnOutcome: Equatable, Codable {
     case completed
     case stopped
-    /// The system expired the run's background time; the turn keeps its
-    /// partial answer and a Continue button resumes from the transcript.
+    /// System expired background time; turn keeps partial answer and offers Continue to resume.
     case pausedBackground
     case truncated
     case maxIterations
     case refused(String?)
     case failed(String)
-    /// Live run with no provider configured: the note links to Settings.
     case needsProvider
 
     init(_ outcome: RunOutcome) {
@@ -379,7 +328,6 @@ enum TurnOutcome: Equatable, Codable {
         }
     }
 
-    /// Quiet one-line note; nil when the run simply finished.
     var note: String? {
         switch self {
         case .completed: return nil
@@ -404,13 +352,10 @@ struct Turn: Identifiable, Equatable, Codable {
     var isFinished: Bool = false
     var outcome: TurnOutcome?
     var feedback: Feedback = .none
-    /// Model that produced this turn.
     var modelID: String?
-    /// Provider-neutral messages for this turn: the user message, then
-    /// everything the run committed. The next request replays these.
+    /// Provider-neutral committed messages for this turn; replayed on the next request.
     var transcript: [Message] = []
-    /// Engine that ran the turn. Live runs only replay live turns: demo
-    /// replies are scripted text no real model should see.
+    /// Live runs only replay live turns; demo replies are scripted text no real model sees.
     var engine: EngineKind?
     /// Durable server run identity; cloud recovery replays its wire journal.
     var cloudRunID: String?
@@ -421,9 +366,7 @@ struct Turn: Identifiable, Equatable, Codable {
     enum Feedback: String, Equatable, Codable { case none, up, down }
 }
 
-/// A reference type so the transcript observes `turns` per conversation:
-/// a streamed token invalidates only the views reading this thread's
-/// turns — not the toolbar, the composer, or every other conversation.
+/// Reference type so token streaming only invalidates views observing this thread's turns.
 @Observable
 final class Conversation: Identifiable {
     let id: UUID
@@ -431,24 +374,15 @@ final class Conversation: Identifiable {
     var updatedAt: Date
     var turns: [Turn]
     var isPinned: Bool
-    /// What the live engine froze at the first send (system prompt, tool
-    /// list). Every later run reuses it; nil until then.
+    /// System prompt and tool list frozen on first send and reused on later runs; nil until sent.
     var setup: ConversationSetup?
-    /// Connectors enabled for this conversation; nil = the installed
-    /// servers that are on. Only consulted when the setup is frozen.
+    /// Nil means all enabled installed servers; only consulted once when setup freezes.
     var connectorIDs: [String]?
-    /// Frozen connectors the user turned off in this chat only. Their
-    /// tools stay in the frozen list (the prefix can't change) but the
-    /// runtime refuses to run them (`RunRequest.disabledServerIDs`).
+    /// Per-chat disabled frozen connectors; tools stay in frozen prefix, runtime refuses calls.
     var disabledServerIDs: Set<String>
-    /// The latest context compaction: later live requests send its
-    /// summary in place of the history it covers. The turns keep the
-    /// full transcript; the runtime ignores the record once the history
-    /// it summarizes is cut (retry, edit).
+    /// Latest compaction summary sent instead of covered history; ignored if history is cut.
     var compaction: ContextCompaction?
-    /// The prompt size the provider last reported, tied to the transcript
-    /// prefix it measured: the next run budgets its first request from it
-    /// (plus estimates for newer messages) instead of a byte count.
+    /// Last provider-reported prompt size for its prefix; next run budgets from it + new deltas.
     var contextMeasurement: ContextMeasurement?
     var cloudChatID: String?
 
@@ -469,7 +403,6 @@ final class Conversation: Identifiable {
         self.compaction = compaction
     }
 
-    /// Value snapshot for persistence.
     var record: ConversationRecord {
         ConversationRecord(id: id, title: title, updatedAt: updatedAt, isPinned: isPinned, turns: turns,
                            setup: setup, connectorIDs: connectorIDs, disabledServerIDs: disabledServerIDs,
@@ -484,15 +417,7 @@ final class Conversation: Identifiable {
     }
 }
 
-/// What a conversation file holds on disk.
-///
-/// Version 2 added `setup` and `connectorIDs`; version-1 files decode
-/// with neither. `disabledServerIDs` is optional on disk (absent = none
-/// off), so it needed no version bump; nor did `compaction` (absent =
-/// none; one written by a newer build is dropped, not fatal), nor
-/// `contextMeasurement` (same rules), nor attachments' `isHiddenFromCode`. A setup written by a newer build fails to decode (the
-/// runtime refuses to rebuild a prefix with older rules), and with it
-/// the record — it's skipped at load like any unreadable file.
+/// Optional fields default on decode (newer compaction dropped); newer setup fails and skips.
 struct ConversationRecord: Codable, Sendable, Equatable {
     static let currentVersion = 2
 
@@ -542,8 +467,7 @@ struct ConversationRecord: Codable, Sendable, Equatable {
         setup = try c.decodeIfPresent(ConversationSetup.self, forKey: .setup)
         connectorIDs = try c.decodeIfPresent([String].self, forKey: .connectorIDs)
         disabledServerIDs = Set(try c.decodeIfPresent([String].self, forKey: .disabledServerIDs) ?? [])
-        // Optional and disposable: an unreadable record just means the
-        // next long request compacts again.
+        // Disposable: decode failure just triggers fresh compaction on the next long request.
         compaction = (try? c.decodeIfPresent(ContextCompaction.self, forKey: .compaction)) ?? nil
         // Disposable too: without it the next run just estimates.
         contextMeasurement = (try? c.decodeIfPresent(ContextMeasurement.self, forKey: .contextMeasurement)) ?? nil

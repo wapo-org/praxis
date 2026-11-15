@@ -55,7 +55,6 @@ export function useRunState(state: PraxisState) {
         const existing = prev[chatId] ?? [];
         const byId = new Map<string, Message>();
         for (const m of existing) {
-          // Replace optimistic turn if clientTurnId matches
           const committedMatch = event.messages.find(
             (cm) => cm.clientTurnId && cm.clientTurnId === m.clientTurnId && cm.role === m.role,
           );

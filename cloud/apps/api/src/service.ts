@@ -9,7 +9,7 @@ export class ApiError extends Error{constructor(public status:number,public code
 export type RunDecision={type:'approval.decision';approvalId:string;decision:'allowOnce'|'allowAlways'|'deny'}|{type:'elicitation.response';elicitationId:string;action:'accept'|'decline'|'cancel';content?:JsonObject};
 export interface ExecutionDriver{
  validate?(userId:string,chat:Chat,input:StartRun):Promise<void>;
- /** Context notes (mode/effort, new skills) for the new user turn; see conversation.ts. */
+ /** Generates extra context notes for the next user turn. */
  notes?(userId:string,chat:Chat,input:StartRun,previous:Message[]):Promise<string[]>;
  start(userId:string,run:Run,chat:Chat,messages:Message[],request:StartRun):Promise<void>;
  resume(userId:string,runId:string,decision:RunDecision):Promise<void>;
@@ -19,7 +19,7 @@ export class ApiService{
  driver?:ExecutionDriver;
  /** OpenRouter with each user's own key (set by createApp). */
  models?:OpenRouterModels;
- /** Keeps background work alive past the response (Vercel waitUntil). Local runs need nothing. */
+ /** Keeps background work alive past HTTP response (Vercel waitUntil). */
  defer?:(work:Promise<unknown>)=>void;
  private locks=new Map<string,Promise<unknown>>();
  private work=new Set<Promise<unknown>>();
@@ -73,7 +73,7 @@ export class ApiService{
   chat.activeRunId=run.id;chat.updatedAt=now;await this.write(userId,'chat',chat.id,chat);
   this.enqueue(userId,run.id,()=>this.driver!.start(userId,run,chat,messages,input));return run;
  });}
- /** Port of the app's ConversationTitle: the first message names the chat (or its attachments do, until words arrive). */
+ /** Names untitled chats from first message text or attachments. */
  private async titleFor(userId:string,chat:Chat,text:string,attachments:AttachmentRow[],previous:Message[]){
   const first=previous.find(m=>m.role==='user');let firstTurn:{text:string;attachments:AttachmentRow[]}|undefined;
   if(first){const ids=first.parts.flatMap(p=>p.attachmentId?[p.attachmentId]:[]);const rows:AttachmentRow[]=[];for(const id of ids){const r=await this.adapters.store.get(userId,'attachment',id);if(r&&!r.deleted)rows.push(attachmentRow(id,r.value));}firstTurn={text:first.parts.filter(p=>p.type==='text').map(p=>p.text??'').join(' ').replace(/\[Attached file[\s\S]*$/,'').trim(),attachments:rows};}
@@ -85,7 +85,7 @@ export class ApiService{
    const code=error instanceof ApiError?RunErrorCodeSchema.safeParse(error.code).data:undefined,message=code?(error as ApiError).message:'Run execution failed';
    run.status='failed';run.outcome='failed';run.error=message;if(code)run.errorCode=code;await this.put(userId,'run',runId,run);await this.emit(userId,runId,{type:'run.finished',outcome:'failed',message,...(code?{code}:{})});}}).catch(error=>{this.onBackgroundError(runId,error);}).finally(()=>this.work.delete(work));this.work.add(work);this.defer?.(work);
  }
- /** Background work never rejects unobserved (that would kill the process); failures of the failure path are logged without payloads. */
+ /** Never leave background rejections unhandled; log failures without payloads. */
  onBackgroundError=(runId:string,error:unknown)=>{console.error(JSON.stringify({type:'background_error',runId,error:error instanceof Error?error.name+': '+error.message.slice(0,300):'unknown'}));};
  async drain(){await Promise.all([...this.work]);}
  async emit(userId:string,runId:string,event:RunEventPayload){

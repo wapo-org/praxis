@@ -4,7 +4,7 @@ import {body, page} from '../route-helpers.js';
 import {ApiError} from '../service.js';
 import type {OpenRouterModels} from './index.js';
 
-/** `/v1/model-key*` and `/v1/models*`. Session auth, rate limits and origin checks come from the `/v1/*` middleware. */
+/** `/v1/model-key*` and `/v1/models*`; auth and limits come from `/v1/*`. */
 export function registerModelRoutes(app: Hono<{Variables: {userId: string; requestId: string}}>, models: OpenRouterModels) {
   app.get('/v1/model-key', async c => {
     const key = await models.keys.get(c.get('userId'));

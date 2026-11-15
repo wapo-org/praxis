@@ -1,8 +1,7 @@
 import Foundation
 import AgentCore
 
-/// Serial event-to-presentation adapter. The server remains authoritative for
-/// replay and compaction; AgentCore values are used only by the existing UI.
+/// Maps events serially; server stays authoritative for replay and compaction.
 actor CloudEventMapper {
     private let request: ChatRunRequest
     private var transcript: [Message]
@@ -52,9 +51,7 @@ actor CloudEventMapper {
             case "failed": return [.compaction(id: id, .failed(reason ?? "Cloud compaction failed."))]
             default:
                 let covered = through.flatMap { messageIDs.firstIndex(of: $0).map { request.history.count + $0 + 1 } } ?? 0
-                // A server prefix id cannot be converted to an AgentCore prefix
-                // fingerprint after relaunch. Keep it displayable and explicitly
-                // inapplicable to the sunset native runtime (covered == 0).
+                // Server prefix ID cannot map to native fingerprint after relaunch; covered stays 0.
                 let record = ContextCompaction(summary: summary ?? "", coveredMessages: covered,
                     fingerprint: covered > 0 ? ContextCompaction.fingerprint(transcript.prefix(covered)) : "cloud:" + (through ?? id),
                     model: request.modelID, tokensBefore: before ?? 0, tokensAfter: after ?? 0)

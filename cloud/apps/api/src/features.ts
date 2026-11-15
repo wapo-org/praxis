@@ -6,15 +6,11 @@ import {createSafeFetch} from './adapters/security.js';
 /** Kinds clients see; feature writes to them invalidate bootstrap and announce a user change. */
 const PUBLIC_KINDS = new Set(['chat', 'connector', 'skill', 'registry', 'attachment', 'consent', 'modelPreference', 'preferences']);
 
-/**
- * Owner-scoped feature context. The store is wrapped so feature modules (MCP, tools) that write rows
- * directly still invalidate the bootstrap cache and fan out `user.change` events like the core routes do.
- * Every call is pinned to `userId`; a feature can't read or write another owner's rows through it.
- */
+/** Pins feature store/reads to userId and invalidates bootstrap/events on public-kind writes. */
 export function featureContext(service: ApiService, userId: string, options: {fetch?: typeof fetch; egress?: typeof fetch; encryptionKey?: string; unpinned?: boolean} = {}): FeatureContext {
   const inner = service.adapters.store;
   const pin = (requested: string) => {
-    // Unpinned only for public routes (OAuth callback), which bind the owner from a verified, single-use state record.
+    // Unpinned only on OAuth callbacks after state verification binds the owner.
     if (!options.unpinned && requested !== userId) throw new Error('Feature store access outside the authenticated owner');
   };
   const store: Store = {

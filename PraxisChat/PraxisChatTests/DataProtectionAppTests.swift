@@ -2,9 +2,7 @@ import XCTest
 import AgentCore
 @testable import PraxisChat
 
-/// R3-M2: conversations, the index, attachments and sidecars are written
-/// with Data Protection (complete-until-first-unlock), like the other app
-/// files; R3-M4: a persist racing a remove can't resurrect the file.
+/// Verifies Data Protection writes and that persist/remove races never resurrect deleted files.
 @MainActor
 final class DataProtectionAppTests: XCTestCase {
     private var directory: URL!
@@ -18,14 +16,7 @@ final class DataProtectionAppTests: XCTestCase {
     }
 
     // MARK: R3-M2 — Data Protection
-    //
-    // Pinned at the source level: the simulator doesn't record protection
-    // attributes (verified: files written with the option read back nil
-    // there, while the same API records them in a macOS-native probe),
-    // so attribute assertions can't observe the fix. Every `.atomic`
-    // write in the stores must carry the protection class instead, and
-    // the directories get the matching class. Confirm the attributes on
-    // a real device.
+    // Checks protection flags in source because iOS Simulator ignores file protection attributes.
 
     private func persistenceSource(_ name: String) throws -> String {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
@@ -50,8 +41,7 @@ final class DataProtectionAppTests: XCTestCase {
         try assertDataProtection(in: persistenceSource("AttachmentStore.swift"))
     }
 
-    /// Review fix F5: cached part transcripts are user content, protected
-    /// like the audio they came from.
+    /// Part transcript caches contain user content and must carry the same Data Protection class.
     func testPartCacheWritesCarryDataProtection() throws {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("PraxisChat/Services/Voice/AudioSegmenter.swift", isDirectory: false)
@@ -66,9 +56,7 @@ final class DataProtectionAppTests: XCTestCase {
         attachments.stage(Data([1, 2, 3]), id: id)
         attachments.persist([id])
         attachments.remove([id])
-        // remove() is a barrier: everything queued before it has landed
-        // (and been deleted). Poll past the window where a detached
-        // writer used to resurrect the file.
+        // Polls past the old async writer window to confirm remove() acts as a deletion barrier.
         for _ in 0..<20 {
             XCTAssertFalse(FileManager.default.fileExists(atPath: attachments.url(for: id).path), "no resurrection")
             try? await Task.sleep(for: .milliseconds(50))
@@ -91,7 +79,6 @@ final class DataProtectionAppTests: XCTestCase {
                        "no late write resurrects the file")
         XCTAssertFalse(attachments.contains(id))
 
-        // And the store still works after the churn.
         attachments.stage(Data([42]), id: id)
         attachments.persist([id])
         await waitUntil { FileManager.default.fileExists(atPath: attachments.url(for: id).path) }

@@ -2,18 +2,11 @@ import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
 
-/// Chat screen (spec §5): glass toolbar, transcript under progressive
-/// scrims, composer in `safeAreaBar`, jump-to-latest, plus tray overlay.
-///
-/// Render isolation: this view only owns presentation state. Scroll
-/// geometry lives in `TranscriptView` and streamed tokens are observed per
-/// conversation, so neither scrolling nor streaming re-renders the toolbar,
-/// the composer or the tray.
+/// Owns only presentation state; scroll geometry and streaming stay isolated from chrome.
 struct ChatScreen: View {
     @Environment(ChatStore.self) private var store
     @Namespace private var glassNS
     @State private var sendLaunch = SendLaunch()
-    // `-PraxisOpenTray YES` (screenshots): launch with the tray open.
     @State private var trayOpen = UserDefaults.standard.bool(forKey: "PraxisOpenTray")
     @State private var trayPage: TrayPage = .main
     @State private var showHistory = false
@@ -29,16 +22,12 @@ struct ChatScreen: View {
     @State private var screenCorners = ScreenCorners()
     @State private var screenHeight: CGFloat = 800
     @State private var keyboardUp = false
-    /// Height the closed composer occupies above the bottom safe area; the
-    /// transcript reserves exactly this, whether or not the tray is open.
     @State private var composerReserve: CGFloat = 72
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
     private var conversation: Conversation? { store.selected }
 
-    /// The tray grows to its content up to ~60% of the screen, then
-    /// scrolls inside the card.
     private var maxTrayHeight: CGFloat { min(540, max(260, screenHeight * 0.6)) }
 
     var body: some View {
@@ -51,13 +40,7 @@ struct ChatScreen: View {
                 TranscriptView(conversation: conversation, trayOpen: trayOpen,
                                bottomReserve: composerReserve, onChipAction: handleChip)
 
-                // The top edge is the system's own progressive blur: the
-                // transcript's `.scrollEdgeEffectStyle(.soft, for: .top)`
-                // blurs text scrolling under the toolbar (title + model
-                // name). The bottom needs a custom scrim: the composer dock
-                // floats in this ZStack instead of a bar, so the system
-                // effect can't see it. Full strength under the composer,
-                // feathering out ~50pt past it. No visible edge.
+                // Custom bottom scrim needed because ZStack-floating composer isn't seen by scrollEdgeEffect.
                 VStack {
                     Spacer()
                     ProgressiveBlurScrim(edge: .bottom, length: 150, hold: 0.36)
@@ -65,8 +48,6 @@ struct ChatScreen: View {
                 .ignoresSafeArea(edges: .bottom)
                 .allowsHitTesting(false)
 
-                // Open tray behaves like a menu: a tap or drag anywhere on
-                // the transcript closes it.
                 if trayOpen {
                     Color.clear
                         .contentShape(Rectangle())
@@ -76,10 +57,7 @@ struct ChatScreen: View {
                         .accessibilityHidden(true)
                 }
 
-                // The dock floats over the transcript instead of living in a
-                // safe-area bar: the open tray must grow past the composer
-                // row and stay hit-testable, and a bar only hit-tests (and
-                // exposes to accessibility) what fits inside its own frame.
+                // Floats in ZStack because safeAreaBar clips hit-testing and accessibility to its own frame.
                 ComposerDock(trayOpen: trayOpen, trayPage: $trayPage,
                              showPhotos: $showPhotos, showFiles: $showFiles, showCamera: $showCamera,
                              viewerAttachment: $viewerAttachment, reserve: $composerReserve,
@@ -89,9 +67,7 @@ struct ChatScreen: View {
                              setTray: { open, page, haptic in setTray(open, page: page, haptic: haptic) })
                     .zIndex(2)
 
-                // Voice banners float in the ZStack like the dock (a
-                // safeAreaBar would clip their tap targets): the cross-chat
-                // recording pill, then the recovery banner.
+                // Floats in ZStack because safeAreaBar would clip voice banner tap targets.
                 if let voice = store.voice {
                     VStack(spacing: 8) {
                         if let pill = voice.pillRecording {
@@ -127,8 +103,7 @@ struct ChatScreen: View {
                     .praxisGlass(in: Circle())
                     .accessibilityLabel("History")
                 }
-                // Our glass circle only: the bar's shared glass would
-                // wrap it in a second ring.
+                // Our glass circle only; the bar's shared glass would wrap it in a second ring.
                 .sharedBackgroundVisibility(.hidden)
                 ToolbarItem(placement: .principal) {
                     Button {
@@ -183,9 +158,7 @@ struct ChatScreen: View {
             }
             .photosPicker(isPresented: $showPhotos, selection: $photoItems, matching: .images)
             .onChange(of: photoItems) { _, items in
-                // The items are captured by value for the load; the picker's
-                // own selection clears at once so it never carries over to
-                // another chat (or a second open in this one).
+                // Clear picker selection immediately after capturing items so it never leaks across chats.
                 guard !items.isEmpty else { return }
                 photoItems = []
                 loadPhotos(items)
@@ -222,9 +195,7 @@ struct ChatScreen: View {
                 PhotoViewer(attachment: att)
                     .navigationTransition(.zoom(sourceID: att.id, in: glassNS))
             }
-            // Deep link from the Live Activity / notifications (§3.6).
-            // In-markdown integration tiles never reach here: the
-            // OpenURLAction override below returns .handled for them.
+            // Handles Live Activity/notification links; markdown tiles are intercepted by OpenURLAction.
             .onOpenURL { url in
                 if let id = Self.chatDeepLinkConversationID(from: url) {
                     store.select(id)
@@ -233,23 +204,18 @@ struct ChatScreen: View {
         }
     }
 
-    /// The first queued MCP elicitation. The sheet resolves its own
-    /// request (swiping it away cancels it), so the setter has nothing to
-    /// do — by the time it runs, `current` may already be the next one.
+    /// Setter is a no-op because the sheet resolves itself and current may already be the next item.
     private var elicitationBinding: Binding<ElicitationCenter.Pending?> {
         let center = store.elicitationCenter
         return Binding(get: { center?.current }, set: { _ in })
     }
 
-    /// A live send held for AI-data consent. Dismissing the sheet any
-    /// way other than Allow declines (the draft comes back).
+    /// Non-Allow dismissal declines consent and restores the held draft.
     private var consentBinding: Binding<ConsentRequest?> {
         Binding(get: { store.pendingConsent }, set: { if $0 == nil { store.resolveConsent(allow: false) } })
     }
 
-    /// A picked file with its bytes (capped; picker URLs are
-    /// security-scoped), so the live engine can send it as a document
-    /// or expose it to JS `fs`.
+    /// Reads security-scoped picker URL (size-capped) for document sending or JS fs exposure.
     private static func fileAttachment(_ url: URL) -> Attachment {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
@@ -259,9 +225,7 @@ struct ChatScreen: View {
         return Attachment(kind: .file, name: url.lastPathComponent, fileData: data, mediaType: type)
     }
 
-    /// Deep-link conversation id: `praxis-app://chat/<uuid>`.
-    /// Anything else — other hosts, bad UUIDs, other schemes —
-    /// returns nil and is ignored. Internal for unit tests.
+    /// Parses praxis-app://chat/<uuid>, returning nil for all other URLs; internal for tests.
     static func chatDeepLinkConversationID(from url: URL) -> UUID? {
         guard url.scheme?.lowercased() == "praxis-app",
               url.host()?.lowercased() == "chat",
@@ -269,10 +233,7 @@ struct ChatScreen: View {
         return UUID(uuidString: first)
     }
 
-    /// Single entry point for opening/closing the tray, so the haptic,
-    /// spring and page reset are identical from every trigger. The page
-    /// resets on open, never during the close (that flashed the main page
-    /// into a collapsing card).
+    /// Resets trayPage only on open; resetting on close flashes the main page during collapse.
     private func setTray(_ open: Bool, page: TrayPage = .main, haptic: Bool = true) {
         guard open != trayOpen else { return }
         if open { trayPage = page }
@@ -281,9 +242,7 @@ struct ChatScreen: View {
     }
 
     private func loadPhotos(_ items: [PhotosPickerItem]) {
-        // The target chat is captured up front: a transfer finishing after
-        // a chat switch deposits into that chat's stashed draft instead of
-        // the new chat's composer (and leaves the new chat's tray alone).
+        // Capture target chat before async load so a chat switch deposits into its stashed draft.
         let target = store.selectedID
         Task {
             var fresh: [Attachment] = []
@@ -318,13 +277,7 @@ struct ChatScreen: View {
 
 // MARK: Composer dock
 
-/// One glass card that morphs: composer when closed, tray content +
-/// composer row when open — never two cards, and the composer row keeps
-/// its identity (focus, recording state) across the morph.
-///
-/// The transcript only ever reserves the closed composer's height. The
-/// open tray grows upward over the transcript instead of resizing its
-/// safe area, which used to re-lay out the whole thread on open/close.
+/// Single morphing card preserving composer identity; open tray overlays without thread reflow.
 private struct ComposerDock: View {
     @Environment(ChatStore.self) private var store
     let trayOpen: Bool
@@ -347,13 +300,8 @@ private struct ComposerDock: View {
 
     // MARK: Placement — concentric with the screen corners
 
-    /// The card's 28pt corners share their centre with the display
-    /// corner, so the gap is equal along the sides, bottom and curve.
     private var inset: CGFloat { screenCorners.concentricInset(for: Praxis.composerRadius) }
 
-    /// The bottom safe area already lifts the card by the home-indicator
-    /// inset; pad or drop the remainder so the visible bottom gap equals
-    /// the side inset. Over the keyboard it simply floats 8pt above.
     private var bottomPadding: CGFloat {
         keyboardUp ? 8 : max(0, inset - screenCorners.bottomInset)
     }
@@ -391,8 +339,6 @@ private struct ComposerDock: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowHeight = $0 }
             }
             .praxisGlass(in: cardShape, interactive: !trayOpen)
-            // Pulling the tray down squishes the card toward the composer
-            // row — the dismiss gesture feels physical before it commits.
             .scaleEffect(reduceMotion ? 1 : 1 - min(pull, 160) / 2600, anchor: .bottom)
             .padding(.horizontal, inset)
             .padding(.bottom, bottomPadding)
@@ -403,17 +349,12 @@ private struct ComposerDock: View {
         }
     }
 
-    /// No animation transaction: rows inserted or re-laid out by the
-    /// send must not animate (they slid and flew). Only the new bubble
-    /// moves, rising from the field (`sendRise`); the composer's own
-    /// morphs (send → stop, strip collapsing) carry their own animations.
+    /// Runs without an animation transaction so inserted rows don't slide; sendRise handles bubble.
     private func send() {
         sendLaunch?.arm(turnID: store.nextTurnID)
         store.send(text: store.draft)
     }
 
-    /// Return in model search: picks the top result, like tapping its
-    /// row. The query clears; the page stays open and the draft is intact.
     private func submitModelSearch() {
         guard let top = ModelSearch.filter(store.availableModels, query: store.modelQuery).first else { return }
         store.haptics.fire(.selection)
@@ -424,31 +365,17 @@ private struct ComposerDock: View {
 
 // MARK: Transcript
 
-/// Owns everything scroll-related so 120Hz geometry updates stay local.
-/// Geometry is reduced to two booleans before it touches state: the
-/// action only runs when a threshold is crossed, not on every frame.
-///
-/// Rows are blocks, not turns: the user bubble, each activity, each
-/// markdown block (paragraph, list, code…), the note and the action row
-/// are separate lazy rows. Whole-turn rows were 1–2K pt tall, and the
-/// lazy stack's estimates for the ones it hadn't drawn swung by hundreds
-/// of points — enough to land a send's scroll mid-thread and to slide
-/// rows over each other while it corrected.
+/// Isolates 120Hz scroll state and splits turns into block rows so LazyVStack estimates hold.
 private struct TranscriptView: View {
     @Environment(ChatStore.self) private var store
     let conversation: Conversation?
     let trayOpen: Bool
-    /// Space the floating composer covers at the bottom.
     let bottomReserve: CGFloat
     var onChipAction: (ChipAction) -> Void
-    /// Following the bottom. Only the reader's own scrolling turns this
-    /// off: a block row landing at once (a whole paragraph, a collapsing
-    /// activity) can momentarily put the bottom far away, and that must
-    /// not count as "scrolled up".
+    /// Only user scrolling clears this; sudden row height jumps must not count as scrolled up.
     @State private var isAtBottom = true
     @State private var userScrolling = false
-    /// When following last re-pinned: at most a few per second, so a
-    /// lazy re-estimate after a pin can't bounce the two forever.
+    /// Throttles re-pins to prevent LazyVStack height re-estimates from bouncing endlessly.
     @State private var lastRepin = Date.distantPast
     @State private var showJump = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -458,8 +385,6 @@ private struct TranscriptView: View {
         var farFromBottom: Bool
     }
 
-    /// The thread's last turn and whether it runs: a run starting there
-    /// (send, resend, retry) brings the thread home.
     private struct Tail: Equatable {
         var turnID: UUID?
         var isRunning: Bool
@@ -475,16 +400,10 @@ private struct TranscriptView: View {
                                 TranscriptRowView(row: row, onChipAction: onChipAction)
                                     .equatable()
                                     .padding(.top, row.top)
-                                    // No row transitions: a sent bubble rises as a
-                                    // render effect (`sendRise`) and streamed rows
-                                    // fade as one (`appearFade`). Removals are
-                                    // instant: a fading row ghosted under the rows
-                                    // sliding up over it.
+                                    // Identity transition avoids ghosting removed rows under rows sliding up over them.
                                     .transition(.identity)
                             }
-                            // The true end of the content (it replaces the old
-                            // bottom padding): scrolling to it can never land
-                            // short of the real bottom and get snapped back.
+                            // Replaces bottom padding so scrolling to this ID reaches the true end without snapping back.
                             Color.clear.frame(height: 32).id("transcript-bottom")
                         }
                         .padding(.horizontal, Praxis.margin)
@@ -498,10 +417,7 @@ private struct TranscriptView: View {
                     }
                 }
             }
-            // The empty state lives over the scroll view, never inside its
-            // content: as content it stacked under the first turn while it
-            // faded, inflating the height so the new bubble dipped and
-            // the old title ghosted through it.
+            // Overlay avoids stacking empty state under the first turn and distorting bubble scroll/fade.
             .overlay {
                 if conversation?.turns.isEmpty ?? true {
                     EmptyStateView()
@@ -509,15 +425,11 @@ private struct TranscriptView: View {
                                                 removal: .opacity.animation(Motion.exit)))
                 }
             }
-            // A fresh scroll view per conversation: switching chats lands
-            // at the bottom of the new thread, not at the old offset.
+            // Resets scroll position per conversation so switching chats lands at the bottom.
             .id(conversation?.id)
             .transition(.opacity)
             .safeAreaPadding(.bottom, bottomReserve)
-            // Following the stream is the scroll view's own job: content
-            // growth keeps the bottom pinned while the reader is there, and
-            // keeps the text still (top anchor) once they scroll up. No
-            // per-chunk scrollTo — those fought the anchor and jiggled.
+            // ScrollView anchors bottom growth while pinned and top on scroll-up; avoids per-chunk scrollTo.
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.bottom, for: .alignment)
             .defaultScrollAnchor(isAtBottom ? .bottom : .top, for: .sizeChanges)
@@ -533,7 +445,6 @@ private struct TranscriptView: View {
                 } else if userScrolling {
                     isAtBottom = false
                 } else if isAtBottom, Date().timeIntervalSince(lastRepin) > 0.25 {
-                    // Content outran the bottom anchor while following.
                     lastRepin = Date()
                     pinToBottom(proxy)
                     return
@@ -560,9 +471,7 @@ private struct TranscriptView: View {
         }
     }
 
-    /// Lands on the bottom at once, outside the send's animation: an
-    /// animated scroll through rows the lazy stack hasn't measured chased
-    /// a moving target and showed older turns on the way.
+    /// Jumps un-animated; animated scroll chases unmeasured LazyVStack estimates past old turns.
     private func pinToBottom(_ proxy: ScrollViewProxy) {
         isAtBottom = true
         var transaction = Transaction(animation: nil)
@@ -616,7 +525,6 @@ extension URL: @retroactive Identifiable {
     public var id: String { absoluteString }
 }
 
-/// Suggestion capsules (Thin glass, §5): tapping one sends it.
 private struct FlowSuggestions: View {
     @Environment(ChatStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -626,8 +534,6 @@ private struct FlowSuggestions: View {
         VStack(spacing: 10) {
             ForEach(Array(MockData.suggestions.enumerated()), id: \.element) { index, suggestion in
                 Button {
-                    // The empty state fades on its own; the first bubble
-                    // just lands (no transaction to fly rows around).
                     store.send(text: suggestion)
                 } label: {
                     Text(suggestion)
@@ -640,7 +546,6 @@ private struct FlowSuggestions: View {
                 .buttonStyle(PressScaleStyle())
                 .praxisGlass(in: Capsule())
                 .accessibilityLabel(suggestion)
-                // Capsules cascade in when the empty state appears.
                 .opacity(appeared ? 1 : 0)
                 .offset(y: appeared || reduceMotion ? 0 : 10)
                 .animation(reduceMotion ? Motion.reduced : Motion.pop.delay(0.05 + Double(index) * 0.04),
@@ -651,10 +556,7 @@ private struct FlowSuggestions: View {
     }
 }
 
-/// One lazy transcript row. Ids are stable across streaming, finishing
-/// and relaunch: a markdown block's rows are keyed by the block and the
-/// paragraph's position in it, whether they render from the live text or
-/// the cached parse.
+/// Row IDs stay stable across streaming, close, and relaunch by keying on block and index.
 private struct TranscriptRow: Identifiable, Equatable {
     enum ID: Hashable {
         case user(UUID), activity(UUID), text(UUID, Int), note(UUID), actions(UUID), compaction(UUID)
@@ -671,16 +573,12 @@ private struct TranscriptRow: Identifiable, Equatable {
     }
 
     let id: ID
-    /// Gap above the row: a turn gap before each bubble, the in-turn
-    /// rhythm everywhere else.
     let top: CGFloat
     let content: Content
-    /// Rows of the newest turn fade in when they appear; older turns'
-    /// rows are history being scrolled back into view.
+    /// Only newest turn rows fade in; older history rows appear immediately when scrolled into view.
     let fades: Bool
 
-    /// Equal when what the row draws is equal: a streamed token or a
-    /// sibling's change re-renders no other row.
+    /// Compares only rendered row inputs so token streaming never re-renders sibling rows.
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         guard lhs.id == rhs.id, lhs.top == rhs.top, lhs.fades == rhs.fades else { return false }
         switch (lhs.content, rhs.content) {
@@ -703,8 +601,7 @@ private struct TranscriptRow: Identifiable, Equatable {
         }
     }
 
-    /// The thread as rows. Reads each live block's `blockCount` (not its
-    /// text), so streaming re-runs this once per new paragraph.
+    /// Reads each LiveText's blockCount rather than text so streaming re-runs once per paragraph.
     @MainActor
     static func rows(for conv: Conversation, store: ChatStore) -> [TranscriptRow] {
         var rows: [TranscriptRow] = []
@@ -722,9 +619,7 @@ private struct TranscriptRow: Identifiable, Equatable {
                 case .compaction(let marker):
                     rows.append(TranscriptRow(id: .compaction(marker.id), top: gap, content: .compaction(marker), fades: fades))
                 case .markdown(let id, let source, let isStreaming):
-                    // Streamed blocks keep rendering from their LiveText
-                    // after they close, so finishing never swaps the rows
-                    // (or replays the reveal).
+                    // Closed blocks keep rendering from LiveText so finishing never swaps views or replays fade.
                     if let live = store.liveText(for: id) {
                         for index in 0..<live.blockCount {
                             rows.append(TranscriptRow(id: .text(id, index), top: gap,
@@ -752,9 +647,7 @@ private struct TranscriptRow: Identifiable, Equatable {
     }
 }
 
-/// One row: bubble, activity, markdown block, outcome note or the quiet
-/// action row (§5/§8/§9). Equatable on the row: the closure never compares
-/// equal, which used to re-render every visible row on every streamed token.
+/// Equatable ignores action closures so token streaming doesn't re-render every visible row.
 private struct TranscriptRowView: View, Equatable {
     @Environment(ChatStore.self) private var store
     let row: TranscriptRow
@@ -773,8 +666,6 @@ private struct TranscriptRowView: View, Equatable {
         case .user(let turn):
             UserBubble(turn: turn,
                        onEdit: { withAnimation(Motion.reflow) { store.edit(turnID: turn.id) } },
-                       // Not animated, like a send: the new turn's rows
-                       // land at once and the thread jumps to them.
                        onResend: { store.resend(turnID: turn.id) },
                        riseFrom: sendLaunch?.origin(for: turn.id))
         case .activity(let turnID, let activity):
@@ -785,8 +676,6 @@ private struct TranscriptRowView: View, Equatable {
                 }
             } onCommandToggle: { stepID, expanded in
                 store.haptics.fire(.selection)
-                // One transaction for the card, its row's clip and
-                // every row below, so they move as one.
                 withAnimation(reduceMotion ? Motion.reduced : Motion.reflow) {
                     store.setCommandExpanded(turnID: turnID, stepID: stepID, expanded: expanded)
                 }
@@ -825,9 +714,7 @@ private struct TranscriptRowView: View, Equatable {
                     Text(note)
                         .font(Type.inter(13, .caption))
                         .foregroundStyle(Praxis.mutedInk)
-                    // A background-paused last turn offers Continue (plan
-                    // §2.7); the gate lives in the row so the Equatable
-                    // diff sees it change.
+                    // Continue gate lives in TranscriptRow so Equatable diffs detect when the last turn pauses.
                     if canContinue, let selectedID = store.selectedID {
                         Button { store.continueRun(conversationID: selectedID) } label: {
                             Text("Continue")
@@ -864,7 +751,6 @@ private struct TranscriptRowView: View, Equatable {
     }
 }
 
-/// Full-screen photo viewer (§11 zoom transition destination).
 struct PhotoViewer: View {
     let attachment: Attachment
     var body: some View {

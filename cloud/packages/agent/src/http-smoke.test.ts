@@ -15,7 +15,7 @@ it('runs a complete model→tool→model turn through real HTTP on the chat comp
   });
   await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(8788,'127.0.0.1',resolve);});
   try{
-    // The provider only ever calls the pinned OpenRouter URL; the test fetch carries that request to the local server.
+    // Redirects the pinned OpenRouter URL to the local test server.
     const toLocal=((url,init)=>fetch(String(url).replace(new URL(OPENROUTER_API_BASE).origin,'http://127.0.0.1:8788'),init)) as typeof fetch;
     const provider=createOpenRouterProvider({apiKey:'local-only',capabilities:CapabilitiesSchema.parse({tools:true})},toLocal);let last:AgentCheckpoint|undefined;let eventId=0;
     const runner=new AgentRunner({provider,tools:scriptedTools(),ports:{save:async(user,cp)=>{expect(user).toBe('http-user');last=structuredClone(cp);},emit:async()=>++eventId,isCancelled:async()=>false}});

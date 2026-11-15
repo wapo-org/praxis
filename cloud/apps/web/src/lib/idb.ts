@@ -54,7 +54,6 @@ export async function setReplicaIdentity(origin: string, userId: string): Promis
   const key = JSON.stringify([apiOrigin, userId]);
   if (scope?.key === key) return;
   if (scope) await clearReplica();
-  // The marker contains identity only; no chats, messages or credentials.
   const marker = `praxis-replica-owner:${apiOrigin}`;
   const previous = localStorage.getItem(marker);
   if (previous && previous !== key) await remove(previous);
@@ -115,7 +114,7 @@ export async function saveReplica(snapshot: LocalReplicaSnapshot, expectedKey = 
   await queue;
 }
 
-/** After account deletion: drop every replica on this device (all origins and users) and the owner markers. */
+/** Drops all replicas and owner markers on account deletion. */
 export async function wipeReplicaStorage(): Promise<void> {
   await clearReplica();
   for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -129,7 +128,7 @@ export async function wipeReplicaStorage(): Promise<void> {
       const req = indexedDB.deleteDatabase(name);
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error ?? Error('Could not clear local data'));
-      // Another tab still has it open: the browser finishes the deletion when that tab closes it.
+      // Other tabs holding DB open will complete deletion on close.
       req.onblocked = () => resolve();
     });
 }

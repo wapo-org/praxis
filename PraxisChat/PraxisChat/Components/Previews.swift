@@ -1,7 +1,5 @@
 import SwiftUI
 
-// Component previews: light / dark / each state (spec §2).
-
 #Preview("Composer — idle (light)") {
     ZStack {
         Praxis.canvas.ignoresSafeArea()

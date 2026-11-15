@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Builds one `Text` from attributed runs, attaching layout markers via
-/// `customAttribute` — the channel `Text.Layout` exposes to renderers.
+/// Attaches layout markers via customAttribute for Text.Layout renderers.
 func chipText(_ attributed: AttributedString) -> Text {
     var result: Text?
     for segment in PraxisMarkdown.chipSegments(in: attributed) {
@@ -14,10 +13,7 @@ func chipText(_ attributed: AttributedString) -> Text {
     return result ?? Text("")
 }
 
-/// Long-read agent message: no bubble, no avatar, prose on canvas (§8).
-/// Block identities are stable; finished blocks never re-animate (§10).
-/// Equatable on content, so streaming into one message never re-renders
-/// the finished messages above it. Finished messages parse once (cached).
+/// Equatable parsed message view; stable block IDs avoid re-renders on stream.
 struct AgentMessageView: View, Equatable {
     let source: String
     let isStreaming: Bool
@@ -33,9 +29,7 @@ struct AgentMessageView: View, Equatable {
     }
 }
 
-/// One finished markdown block as its own transcript row: long answers
-/// are many small lazy rows instead of one tall one, so the transcript's
-/// height estimates for rows it hasn't drawn stay close to the truth.
+/// Renders one block per lazy row so transcript height estimates stay accurate.
 struct MarkdownRowView: View, Equatable {
     let item: MDBlockItem
     let selectable: Bool
@@ -52,10 +46,7 @@ struct MarkdownRowView: View, Equatable {
     }
 }
 
-/// One block of a message still streaming (or just finished streaming):
-/// reads its `LiveText`, so tokens re-render the rows of that message and
-/// nothing else. The reveal front is the LiveText's; each row clamps it to
-/// its own range, so only the row under the front animates.
+/// Observes LiveText per streaming row so only the active row animates.
 struct LiveMarkdownRowView: View, Equatable {
     let live: LiveText
     let index: Int
@@ -72,13 +63,10 @@ struct LiveMarkdownRowView: View, Equatable {
         if blocks.indices.contains(index) {
             let item = blocks[index]
             let motion = live.motion
-            // Only the row the front is crossing ticks (30 Hz, until the
-            // front settles); the others draw once per chunk at most.
+            // Only ticks 30 Hz timeline while the reveal front crosses rows.
             let moving = !reduceMotion && live.isRevealing
                 && motion.touches(item.fadeStart, item.fadeEnd + ChipTextRenderer.fadeSpan)
             TimelineView(.animation(minimumInterval: RevealMotion.frameInterval, paused: !moving)) { context in
-                // Paused, the front is wherever it rests (an untouched row
-                // clamps any point of the motion to the same value).
                 let front = moving ? motion.value(at: context.date) : motion.to
                 MarkdownBlockView(item: item,
                                   revealed: clampedReveal(front, for: item, reduceMotion: reduceMotion),
@@ -89,7 +77,6 @@ struct LiveMarkdownRowView: View, Equatable {
     }
 }
 
-/// The block column shared by finished and live messages.
 private struct MarkdownBlocksView: View {
     let document: MDDocument
     let revealed: Double
@@ -114,19 +101,13 @@ private struct MarkdownBlocksView: View {
     }
 }
 
-/// Per-block reveal: blocks the front has passed hold a constant "fully
-/// shown" value and blocks it hasn't reached hold their start, so only the
-/// block under the front animates (and redraws) per frame. Finite on both
-/// sides: a block that grows again animates from where it was, never from
-/// infinity.
+/// Clamps reveal range per block so only the active row animates.
 private func clampedReveal(_ revealed: Double, for item: MDBlockItem, reduceMotion: Bool) -> Double {
     guard revealed.isFinite, !reduceMotion else { return .infinity }
     return min(max(revealed, item.fadeStart), item.fadeEnd + ChipTextRenderer.fadeSpan)
 }
 
-/// One block. Equatable on (block revision, its clamped reveal, whether
-/// selection is on): finished paragraphs skip `body` entirely while the
-/// stream continues below them.
+/// Equatable per block so finished paragraphs skip body during streaming.
 struct MarkdownBlockView: View, Equatable {
     let item: MDBlockItem
     let revealed: Double
@@ -143,17 +124,13 @@ struct MarkdownBlockView: View, Equatable {
     }
 }
 
-/// Draws one block, and — through `AnyView`, the only way a view can
-/// contain itself — the blocks nested in it: a list item's sub-list or
-/// code fence, a quote's list, a table inside a list.
+/// Uses AnyView to permit recursive nested block layouts.
 private struct MarkdownBlockContent: View {
     let block: MDBlock
     let renderer: ChipTextRenderer
     let selectable: Bool
     var onLink: (URL) -> Void
-    /// Inside a quote prose is 15pt with looser leading.
     var inQuote = false
-    /// List nesting, for the bullet glyph.
     var depth = 0
 
     var body: some View {
@@ -209,8 +186,6 @@ private struct MarkdownBlockContent: View {
                                      inQuote: inQuote ?? self.inQuote, depth: depth))
     }
 
-    /// "3." for ordered items (from the list's own start), a bullet that
-    /// changes with depth, or a checkbox for task items.
     @ViewBuilder
     private func marker(ordered: Bool, number: Int, checked: Bool?) -> some View {
         let size: CGFloat = inQuote ? 15 : 17
@@ -227,9 +202,7 @@ private struct MarkdownBlockContent: View {
         }
     }
 
-    /// One structure for streaming and finished prose: flipping
-    /// `selectable` only enables the selection mirror, it never swaps the
-    /// text view (which used to pop any words the reveal hadn't reached).
+    /// Keeps single text structure so enabling selection never resets reveal.
     @ViewBuilder
     private func paragraph(_ text: AttributedString) -> some View {
         if inQuote {
@@ -248,28 +221,14 @@ private struct MarkdownBlockContent: View {
     }
 }
 
-/// A GFM table (§8 surfaces): fill-1 header, hairline rules, 12pt radius
-/// like a code block. Narrow tables span the column; a table wider than
-/// it (long cells wrap at `TableGrid.maxColumnWidth` first) scrolls
-/// sideways with feathered edges, never squeezing cells to one word a
-/// line. Cells reveal with the stream like any other text.
-///
-/// One horizontal scroll view, not a `ViewThatFits`: fitting tried every
-/// branch and re-measured every cell for every proposal. The grid gets
-/// the measured column width as its minimum instead, and only a grid
-/// wider than that scrolls.
+/// Single horizontal ScrollView avoids ViewThatFits re-measure thrash.
 struct MarkdownTableView: View {
     let table: MDTable
     let renderer: ChipTextRenderer
-    /// The column width, measured on the outer container; the grid below
-    /// spans at least this, so narrow tables look as they did unrolled.
     @State private var containerWidth: CGFloat = 0
-    /// The grid's own width; wider than the container means sideways scroll.
     @State private var contentWidth: CGFloat = 0
 
-    /// The grid overflows the column: scrolling and the feathered edge are
-    /// on. Both only mask and gesture the same frames, so flipping them
-    /// never re-measures and the two widths below settle, never oscillate.
+    /// Masks and gestures share the same frame so scroll toggling never oscillates.
     private var scrolls: Bool {
         containerWidth > 0 && contentWidth > containerWidth + 0.5
     }
@@ -283,8 +242,6 @@ struct MarkdownTableView: View {
             .accessibilityLabel("Table, \(table.columnCount) columns, \(table.rows.count) rows")
     }
 
-    /// The feathered edge only when the grid overflows: narrow tables keep
-    /// the crisp corners they had unrolled.
     @ViewBuilder
     private var tableBody: some View {
         if scrolls {
@@ -326,7 +283,6 @@ struct MarkdownTableView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: Alignment(horizontal: alignment.horizontal, vertical: .top))
             .background(row < 0 ? Praxis.fill1 : Color.clear)
             .overlay(alignment: .bottom) {
-                // Rules between rows; the border closes the last one.
                 if row < table.rows.count - 1 {
                     Rectangle().fill(Praxis.hairline).frame(height: 1)
                 }
@@ -343,24 +299,15 @@ private extension MDAlignment {
     }
 }
 
-/// Lays cells out row-major in columns sized to their content. Asked for
-/// its ideal width (how a horizontal scroll view asks) it answers with
-/// every column at its natural width, capped at `maxColumnWidth`,
-/// stretched to `minWidth` when narrower; given a wider proposal it
-/// fills it, growing the columns that wrapped first. Each row is as tall
-/// as its tallest cell, and every cell in it is offered that height, so
-/// backgrounds and rules line up.
+/// Caches column widths and equalizes row heights across cells.
 struct TableGrid: Layout {
     let columns: Int
-    /// The column width the table spans when its cells are narrower.
     var minWidth: CGFloat = 0
     static let maxColumnWidth: CGFloat = 220
 
     struct Cache {
         var natural: [CGFloat] = []
-        /// The last width served, with its answer: sizing and placing ask
-        /// repeatedly for the same width, and only a new width (or new
-        /// cells, which reset the cache) re-measures.
+        /// Caches layout for last width since sizing and placing query repeatedly.
         var key: CGFloat = -.infinity
         var widths: [CGFloat] = []
         var heights: [CGFloat] = []
@@ -399,9 +346,6 @@ struct TableGrid: Layout {
         }
     }
 
-    /// Columns and rows for a width, cached: the served width is the
-    /// proposal floored at `minWidth` (an unspecified proposal with no
-    /// minimum sizes the capped naturals, as before).
     private func layout(proposal: CGFloat?, subviews: Subviews, cache: inout Cache) -> ([CGFloat], [CGFloat]) {
         let finite = proposal.flatMap { $0.isFinite ? $0 : nil } ?? 0
         let key = max(finite, minWidth)
@@ -428,10 +372,7 @@ struct TableGrid: Layout {
         }
     }
 
-    /// Column widths for a proposal: natural widths capped at
-    /// `maxColumnWidth` when the proposal is nil or too narrow (the table
-    /// then scrolls); otherwise the space left over goes first to columns
-    /// the cap made wrap, then evenly to all.
+    /// Caps columns to scroll overflow; expands wrapped columns first with extra space.
     static func columnWidths(natural: [CGFloat], proposed: CGFloat?) -> [CGFloat] {
         var widths = natural.map { min($0, maxColumnWidth) }
         guard let proposed, proposed.isFinite, !widths.isEmpty else { return widths }
@@ -456,7 +397,6 @@ enum ChipAction {
     case copied(String)
     case link(URL)
 
-    /// Routes a chip link (custom schemes) to the screen's handler.
     @MainActor
     static func handle(_ url: URL, _ onChipAction: (ChipAction) -> Void) {
         switch url.scheme {
@@ -478,8 +418,6 @@ enum ChipAction {
     }
 }
 
-/// Code block (§8): fill-1, hairline, 12pt radius, mono 13/20, horizontal
-/// scroll with feathered edges, language label + glass Copy capsule.
 struct CodeBlockView: View {
     let language: String?
     let code: String
@@ -522,8 +460,7 @@ struct CodeBlockView: View {
             .padding(.horizontal, 12)
             .padding(.top, 8)
 
-            // Feathered edges via an alpha mask: two live blur views per
-            // code block made every transcript scroll pay for them.
+            // Alpha-mask edges replace live blur views that slowed scrolling.
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(code)
                     .font(Type.mono(13, .footnote))
@@ -538,8 +475,6 @@ struct CodeBlockView: View {
     }
 }
 
-/// Quiet action row under a finished message (§8): 44pt targets, muted,
-/// glass circle only while pressed.
 struct MessageActionRow: View {
     let onCopy: () -> Void
     let onRetry: () -> Void

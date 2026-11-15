@@ -1,10 +1,6 @@
 import type {ConversationSetup, Message, MessagePart, Mode, ToolSpec} from '@praxis/protocol';
 
-/**
- * Port of AgentCore `SystemPrompt`, AgentSkills `SkillCatalog` and AgentRuntime `TurnNotes`.
- * The system prompt is frozen per conversation (no dates or names); mode/effort and later skill
- * additions reach the model as `note` parts on the new user message, never as history edits.
- */
+/** System prompt is frozen per chat; mode, effort, and skill additions travel as user-turn notes. */
 export interface CatalogSkill {name: string; description: string}
 
 export function buildSystemPrompt(sections: {assistantName?: string; instructions?: string; skills?: CatalogSkill[]; toolNotes?: string[]}): string {
@@ -74,7 +70,7 @@ function announcedSkills(note: string): string[] {
   });
 }
 
-/** Notes for the next user turn: the mode note when it differs from the last one announced, then new skills. */
+/** Emits next-turn mode note on change, followed by newly added skills. */
 export function turnNotes(input: {mode: Mode; effort?: string; previous: Message[]; setup?: ConversationSetup; skills: CatalogSkill[]}): string[] {
   const userNotes = input.previous
     .filter(m => m.role === 'user')
@@ -101,7 +97,6 @@ function includesSkills(tools: ToolSpec[]): boolean {
   return tools.some(t => t.name === 'load_skill');
 }
 
-/** Skill names listed in a frozen catalog section. */
 export function catalogNames(catalog: string): string[] {
   const start = catalog.indexOf('<available_skills>');
   const end = catalog.indexOf('</available_skills>');

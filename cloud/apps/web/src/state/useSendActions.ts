@@ -79,7 +79,6 @@ export function useSendActions(
         [targetChatId!]: [...(prev[targetChatId!] ?? []), optimisticUserMsg],
       }));
 
-      // Infer script in local mode from prompt keywords if not explicitly provided
       let inferredScript = options?.script;
       if (!inferredScript && selectedProviderId === 'scripted') {
         const lower = text.toLowerCase();

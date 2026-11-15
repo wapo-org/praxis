@@ -9,7 +9,7 @@ import {
 } from './ScreenUI';
 import styles from './Screen.module.css';
 
-/** Destructive confirmation for DELETE /v1/account: the API needs the password unless the session is fresh. */
+/** API requires password unless the current session is fresh. */
 export function DeleteAccountSheet({
   server,
   onDelete,

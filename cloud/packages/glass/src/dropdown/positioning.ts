@@ -78,7 +78,7 @@ export function usePositioning(
         top: result.top - (parent?.top ?? 0),
         width: result.width,
         maxHeight: result.maxHeight,
-        // Scroll only when the menu is taller than the space; otherwise stay visible so the glass shadow is not clipped.
+        // Only enable scroll when exceeding maxHeight so glass shadow isn't clipped.
         overflowY: menu.scrollHeight > result.maxHeight + 1 ? 'auto' : 'visible',
         visibility: 'visible',
         transformOrigin: `${rect.left + rect.width / 2 - result.left}px ${result.side === 'top' ? 'bottom' : 'top'}`,

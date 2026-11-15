@@ -21,6 +21,6 @@ export function parseRoute(path: string): { chatId?: string; sheet: ActiveSheet;
     if (sheet) return { sheet, valid: true };
     const provider = /^\/settings\/providers\/([^/]+)$/.exec(path);
     if (provider) return { sheet: 'provider-editor', providerId: provider[1] === 'new' ? null : decodeURIComponent(provider[1]!), valid: true };
-  } catch { /* Bad URL encoding is an unknown route. */ }
+  } catch { /* Unknown route. */ }
   return { sheet: null, valid: false };
 }

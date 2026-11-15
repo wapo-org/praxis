@@ -7,10 +7,7 @@ const PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 250;
 const key = (m: Pick<Model, 'providerId' | 'id'>) => `${m.providerId}\u0000${m.id}`;
 
-/**
- * Server-backed model catalog. The list never empties while a request is in flight: `seed` is shown
- * until the first page arrives, and the previous results stay up while a new query is loading.
- */
+/** Retains seed or previous results while searches are in flight. */
 export function useModelSearch(query: string, enabled: boolean, seed?: readonly Model[]) {
   const [items, setItems] = React.useState<Model[]>([]);
   const [cursor, setCursor] = React.useState<string | null>(null);
@@ -64,7 +61,7 @@ export function useModelSearch(query: string, enabled: boolean, seed?: readonly 
       generation.current++;
     };
   }, [query, enabled, revision]);
-  /** Apply a change to one model in place, so toggling a pin never resets the loaded pages. */
+  /** Updates one model in place without resetting loaded pages. */
   const patch = React.useCallback((updated: Pick<Model, 'providerId' | 'id'> & Partial<Model>) => {
     setItems((previous) =>
       previous.map((m) => (key(m) === key(updated) ? { ...m, ...updated } : m)),

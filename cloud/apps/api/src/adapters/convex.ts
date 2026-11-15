@@ -29,9 +29,8 @@ export function createConvexRPC(options: ConvexOptions): ConvexRPC {
   };
 }
 
-/** Store plus the compare-and-set write used for checkpoint versions. */
 export interface ConvexStore extends Store {
-  /** Writes only if the current revision equals `expectedRevision` (0 = absent). Returns null on conflict. */
+  /** CAS write against expectedRevision (0 = absent); returns null on conflict. */
   putIfRevision(
     userId: string,
     kind: string,
@@ -40,7 +39,6 @@ export interface ConvexStore extends Store {
     expectedRevision: number,
     options?: ListOptions,
   ): Promise<StoredRecord | null>;
-  /** Every owner with stored rows (maintenance scripts such as key rotation). */
   owners(): AsyncIterable<string>;
 }
 

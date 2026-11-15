@@ -106,7 +106,7 @@ describe('background work never rejects unobserved', () => {
     const unhandled: unknown[] = [];
     const onUnhandled = (reason: unknown) => unhandled.push(reason);
     process.on('unhandledRejection', onUnhandled);
-    // The task fails and the failure path cannot find the run either; emit then throws inside the catch handler.
+    // Forces failure path inside catch handler when run is missing.
     await service.adapters.store.put('u', 'run', 'r1', {type: 'run', id: 'r1', chatId: 'c', status: 'running', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lastEventId: 0});
     service.emit = async () => { throw new Error('event store down'); };
     service.enqueue('u', 'r1', async () => { throw new Error('task failed'); });

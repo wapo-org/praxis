@@ -95,18 +95,15 @@ export interface PendingConsentPrompt {
 }
 
 export interface PraxisStoreContextValue {
-  // Hydration & Perf
   hydrated: boolean;
   syncing: boolean;
   errorBanner: string | null;
   clearErrorBanner: () => void;
 
-  // Theme
   themeMode: ThemeMode;
   resolvedTheme: ResolvedTheme;
   setThemeMode: (mode: ThemeMode) => void;
 
-  // Navigation & Sheets
   activeSheet: ActiveSheet;
   setActiveSheet: (sheet: ActiveSheet) => void;
   restoreRoute: (chatId: string | null, sheet: ActiveSheet, providerId?: string | null) => void;
@@ -120,7 +117,6 @@ export interface PraxisStoreContextValue {
   inlineModelSearchActive: boolean;
   setInlineModelSearchActive: (active: boolean) => void;
 
-  // Core Entities
   chats: Chat[];
   activeChatId: string | null;
   activeChat: Chat | null;
@@ -137,7 +133,6 @@ export interface PraxisStoreContextValue {
   preferences: Preferences | null;
   attachmentsById: Record<string, Attachment>;
 
-  // Selected Composer Controls
   selectedProviderId: string;
   selectedModelId: string;
   webSearch: boolean;
@@ -149,15 +144,12 @@ export interface PraxisStoreContextValue {
   setSelectedEffort: (effort: string) => void;
   setSelectedMode: (mode: 'ask' | 'plan' | 'build' | 'auto') => void;
 
-  // Live Run State per Chat
   liveRunsByChat: Record<string, LiveRunState>;
   activeLiveRun: LiveRunState | null;
 
-  // Consent Prompt
   pendingConsentPrompt: PendingConsentPrompt | null;
   setPendingConsentPrompt: (prompt: PendingConsentPrompt | null) => void;
 
-  // Actions
   selectChat: (chatId: string) => Promise<void>;
   createNewChat: (title?: string) => Promise<Chat>;
   renameChat: (chatId: string, title: string) => Promise<void>;

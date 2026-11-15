@@ -1,12 +1,5 @@
 import Foundation
 
-/// Setup copy for servers whose sign-in can't register Praxis by itself
-/// (no Dynamic Client Registration): the user creates an OAuth client and
-/// pastes its ID. Nothing is hosted: the redirect is an app scheme that
-/// `ASWebAuthenticationSession` catches.
-///
-/// Google gets its exact console steps: an iOS-type client whose redirect
-/// is the reversed client ID (`com.googleusercontent.apps.<id>:/oauthredirect`).
 struct OAuthClientGuide {
     static let defaultRedirect = "praxischat://oauth/callback"
     private static let googleSuffix = ".apps.googleusercontent.com"
@@ -18,7 +11,6 @@ struct OAuthClientGuide {
 
     static var bundleID: String { Bundle.main.bundleIdentifier ?? "com.praxis.chat" }
 
-    /// Google iOS client ID → its redirect; nil for anything else.
     static func redirect(forClientID id: String) -> String? {
         guard id.hasSuffix(googleSuffix) else { return nil }
         let prefix = id.dropLast(googleSuffix.count)
@@ -26,7 +18,6 @@ struct OAuthClientGuide {
         return "com.googleusercontent.apps.\(prefix):/oauthredirect"
     }
 
-    /// "a b, c\nd" → ["a", "b", "c", "d"]; nil when empty.
     static func scopes(from text: String) -> [String]? {
         let list = text.split(whereSeparator: { $0 == " " || $0 == "," || $0.isNewline }).map(String.init)
         return list.isEmpty ? nil : list
@@ -40,7 +31,6 @@ struct OAuthClientGuide {
         return "\(who) let apps register themselves for sign-in. Create an OAuth app once in its developer settings, then enter its client ID here."
     }
 
-    /// Markdown-capable steps.
     var steps: [String] {
         if isGoogle {
             return [
@@ -58,8 +48,6 @@ struct OAuthClientGuide {
         ]
     }
 
-    /// - Parameter narrowed: the prefill is a least-privilege subset of
-    ///   what the server lists (`MCPSignInOffer.recommendedScopes`).
     func footnote(narrowed: Bool) -> String {
         if isGoogle && narrowed {
             return "Prefilled with the least access Google's Gmail MCP guide uses: gmail.readonly (read and search) and gmail.compose (drafts). Add more below only if a tool needs them — gmail.metadata makes Gmail refuse searches. Tokens stay in this iPhone's Keychain."
@@ -70,20 +58,15 @@ struct OAuthClientGuide {
         return "Scopes are prefilled with what the server asks for; remove ones you don't want to grant. Tokens stay in this iPhone's Keychain."
     }
 
-    /// The scopes to prefill: the least-privilege recommendation when
-    /// there is one, else everything advertised.
     static func prefill(recommended: [String], advertised: [String]) -> [String] {
         recommended.isEmpty ? advertised : recommended
     }
 
-    /// Advertised scopes the field doesn't hold yet, in the server's order.
     static func unrequested(_ advertised: [String], field text: String) -> [String] {
         let held = Set(scopes(from: text) ?? [])
         return advertised.filter { !held.contains($0) }
     }
 
-    /// "https://www.googleapis.com/auth/gmail.modify" → "gmail.modify";
-    /// "https://mail.google.com/" → "mail.google.com"; others unchanged.
     static func shortName(_ scope: String) -> String {
         guard let url = URL(string: scope), url.scheme == "https" || url.scheme == "http", let host = url.host() else { return scope }
         let last = url.lastPathComponent

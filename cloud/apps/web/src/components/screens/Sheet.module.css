@@ -1,4 +1,3 @@
-/* Modal chrome shared by every sheet. Thick glass, scale on the parent, opacity on the glass. */
 .overlay {
   position: fixed;
   inset: 0;
@@ -36,7 +35,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  /* Forms stay legible: only the edge of a sheet shows the glass, never ghosted text behind it. */
+  /* Keep forms opaque so underlying content never ghosts through glass. */
   background: color-mix(in srgb, var(--color-paper) 96%, transparent);
   outline: none;
 }

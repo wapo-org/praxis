@@ -4,12 +4,7 @@ import AgentMCP
 import AgentTestSupport
 @testable import PraxisChat
 
-/// Final `voice` integration (VOICE_PLAN §10): the production wiring —
-/// `GroqVoiceSettings.makeTranscriber` behind `LiveGroqTranscriber` — proved
-/// end to end with a scripted transport. The load-bearing behaviour is the
-/// consent allow-path: a grant AFTER controller creation must take effect on
-/// the retry (a stale snapshot would loop the consent sheet forever).
-/// No Groq key here; none requested.
+/// Consent granted after controller init must apply on retry so the consent sheet never loops.
 @MainActor
 final class VoiceWiringTests: XCTestCase {
     private var directory: URL!
@@ -24,7 +19,6 @@ final class VoiceWiringTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    /// A real 2 s WAV (hand-written header), same shape as voice-groq's.
     private func writeWAV() throws -> URL {
         let sampleRate = 16000
         let count = 2 * sampleRate
@@ -41,9 +35,6 @@ final class VoiceWiringTests: XCTestCase {
         return url
     }
 
-    /// Deny-then-grant through the live factory: the first call throws
-    /// `.consentRequired` (audio kept, no request sent); after the grant the
-    /// retry uploads and stitches — proving the snapshot is fresh per call.
     func testLiveFactoryHonorsGrantOnRetry() async throws {
         let file = try writeWAV()
         let fileName = "\(UUID().uuidString).m4a"
@@ -80,8 +71,6 @@ final class VoiceWiringTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
     }
 
-    /// A model change in Settings reaches the very next upload (no restart,
-    /// no stale snapshot).
     func testLiveFactoryPicksUpModelChange() async throws {
         let file = try writeWAV()
         try secrets.setSecret("gsk-test", for: GroqVoiceSettings.keychainAccount)
@@ -108,8 +97,6 @@ final class VoiceWiringTests: XCTestCase {
         XCTAssertFalse(bodies[1].contains("whisper-large-v3-turbo"))
     }
 
-    /// `production()` wires the real settings (not the unconfigured stub)
-    /// when no DEBUG transcript seam is set.
     func testProductionUsesLiveSettings() {
         XCTAssertNil(UserDefaults.standard.string(forKey: "PraxisFakeTranscript"),
                      "precondition: no fake-transcript seam in unit tests")

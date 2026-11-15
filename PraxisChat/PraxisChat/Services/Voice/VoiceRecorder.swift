@@ -1,52 +1,36 @@
 import Foundation
 import AVFoundation
 
-/// Events a recording engine reports to the controller. The engine never
-/// decides policy (pause vs stop vs message) — it reports, the controller
-/// acts, so fakes can drive the same state machine in tests.
+/// Engine reports raw events without policy decisions so controller state can be test-driven.
 enum VoiceRecorderEvent: Sendable, Equatable {
-    /// Interruption began (call, Siri, alarm): controller pauses + persists.
     case interrupted
-    /// Interruption ended. The controller does NOT auto-resume (the user
-    /// may be mid-call); it offers resume.
     case interruptionEnded
-    /// The input vanished (e.g. unplugged headset mic, route lost): pause
-    /// with "Microphone disconnected — tap to resume", keep the file.
     case routeLost
-    /// An input is available again after a loss.
     case routeRestored
-    /// The recorder failed (disk full, encode error): stop, keep the file.
     case failed(message: String)
 }
 
-/// The surface `VoiceInputController` needs from audio input. Production
-/// is `AVAudioVoiceRecorder`; tests inject a fake; UI tests use the DEBUG
-/// `SimulatedVoiceRecorder` via `-PraxisFakeRecording`. All main-actor:
-/// AVAudioRecorder is driven from one thread only.
+/// Main-actor audio input abstraction because AVAudioRecorder must be driven from one thread.
 @MainActor
 protocol VoiceRecorderEngine: AnyObject {
     var isRecording: Bool { get }
     var isPaused: Bool { get }
-    /// Seconds of audio captured (pauses excluded), for elapsed time.
+    /// Captured audio duration in seconds, excluding paused time.
     var currentTime: TimeInterval { get }
-    /// 0…1 level after `updateMeters()`, for the meter.
+    /// Normalized 0...1 input level refreshed by updateMeters().
     var level: Float { get }
     var eventHandler: (@MainActor (VoiceRecorderEvent) -> Void)? { get set }
 
-    /// Mic permission. Real engine asks AVAudioSession; fakes answer.
     func requestPermission() async -> Bool
-    /// Starts recording straight to `fileURL` (AAC 16 kHz mono ~32 kbps).
+    /// Streams AAC 16 kHz mono (~32 kbps) directly to fileURL.
     func start(fileURL: URL) throws
     func pause()
     func resume() throws
     func stop()
-    /// Refreshes `level` (and `currentTime`); the controller polls ~10/s.
     func updateMeters()
 }
 
-/// `AVAudioRecorder` wrapper (VOICE_PLAN.md §2): session, interruptions,
-/// routes, metering. Writes DIRECTLY to the final `.m4a` — the file on
-/// disk is the crash-safe truth; the sidecar only describes it.
+/// AVAudioRecorder wrapper streaming directly to final .m4a so disk audio is crash-safe truth.
 @MainActor
 final class AVAudioVoiceRecorder: NSObject, VoiceRecorderEngine, AVAudioRecorderDelegate {
     private(set) var isRecording = false
@@ -57,12 +41,10 @@ final class AVAudioVoiceRecorder: NSObject, VoiceRecorderEngine, AVAudioRecorder
     var currentTime: TimeInterval { recorder?.currentTime ?? 0 }
 
     private var recorder: AVAudioRecorder?
-    /// Set once in init (before publication), read in deinit; removal is
-    /// thread-safe, so no isolation needed.
+    /// Written in init and removed in deinit (thread-safe), justifying nonisolated(unsafe).
     private nonisolated(unsafe) var observers: [NSObjectProtocol] = []
 
-    /// AAC 16 kHz mono ~32 kbps → ~14 MB/hour (plan §2). The server
-    /// downsamples to 16 kHz mono anyway, so nothing is lost.
+    /// AAC 16 kHz mono (~32 kbps, ~14 MB/hr) matches server downsampling with minimal size.
     private static func audioSettings() -> [String: Any] {
         [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
@@ -79,8 +61,7 @@ final class AVAudioVoiceRecorder: NSObject, VoiceRecorderEngine, AVAudioRecorder
         observers = [
             center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) {
                 [weak self] note in
-                // Notification isn't Sendable: pull the reason out here
-                // (main queue already) and hop with a plain value.
+                // Extracts Sendable integer before Task hop because Notification is non-Sendable.
                 let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
                 Task { @MainActor [weak self] in self?.handleInterruption(rawValue: raw) }
             },
@@ -93,8 +74,7 @@ final class AVAudioVoiceRecorder: NSObject, VoiceRecorderEngine, AVAudioRecorder
     }
 
     deinit {
-        // Tokens hold weak self and removal is thread-safe; the recorder
-        // lives as long as the controller anyway (app lifetime).
+        // Captures observers for thread-safe removal in deinit without crossing actor isolation.
         let captured = observers
         for token in captured { NotificationCenter.default.removeObserver(token) }
     }
@@ -140,8 +120,7 @@ final class AVAudioVoiceRecorder: NSObject, VoiceRecorderEngine, AVAudioRecorder
 
     func resume() throws {
         guard isRecording, isPaused else { return }
-        // The route may have changed while paused (AirPods case): wake
-        // the session again so recording restarts on the current input.
+        // Reactivates AVAudioSession so route changes during pause (e.g., AirPods) take effect.
         try AVAudioSession.sharedInstance().setActive(true, options: [])
         guard recorder?.record() == true else {
             throw VoiceRecorderStartError.couldNotStart
@@ -165,8 +144,7 @@ final class AVAudioVoiceRecorder: NSObject, VoiceRecorderEngine, AVAudioRecorder
             return
         }
         recorder.updateMeters()
-        // averagePower: silence ≈ -50 dB … loud ≈ 0 dB. Clamp + curve so
-        // speech sits mid-meter instead of pinned.
+        // Maps averagePower (-50 dB silence to 0 dB peak) on a curve so speech stays mid-meter.
         let power = recorder.averagePower(forChannel: 0)
         let clamped = max(0, min(1, (power + 50) / 50))
         level = pow(clamped, 1.5)
@@ -194,8 +172,7 @@ final class AVAudioVoiceRecorder: NSObject, VoiceRecorderEngine, AVAudioRecorder
               let reason = AVAudioSession.RouteChangeReason(rawValue: raw) else { return }
         switch reason {
         case .oldDeviceUnavailable:
-            // Keep recording when the new route still has an input
-            // (device switch); pause only when no input remains.
+            // Keeps recording across input device switches; pauses only when no audio input remains.
             let inputs = AVAudioSession.sharedInstance().currentRoute.inputs
             if inputs.isEmpty {
                 eventHandler?(.routeLost)
@@ -224,16 +201,13 @@ final class AVAudioVoiceRecorder: NSObject, VoiceRecorderEngine, AVAudioRecorder
     }
 }
 
-/// `start`/`resume` failures. Never carries paths or session internals.
+/// Start/resume error type that never exposes file paths or audio session internals.
 enum VoiceRecorderStartError: Error, Sendable {
     case couldNotStart
 }
 
 #if DEBUG
-/// No-mic engine for UI tests (`-PraxisFakeRecording <path>`, plan §9).
-/// Behaves like a live recording — elapsed ticks, the meter swings — but
-/// captures nothing; `stop()` stages the bundled audio file as the result.
-/// Permission is always granted, so tests never see a system prompt.
+/// No-mic UI test engine (-PraxisFakeRecording) that auto-grants mic and stages a fixture on stop.
 @MainActor
 final class SimulatedVoiceRecorder: VoiceRecorderEngine {
     private(set) var isRecording = false
@@ -241,15 +215,12 @@ final class SimulatedVoiceRecorder: VoiceRecorderEngine {
     private(set) var level: Float = 0
     var eventHandler: (@MainActor (VoiceRecorderEvent) -> Void)?
 
-    /// The fixture to stage on stop (nil → a silent placeholder file).
+    /// Audio fixture staged on stop, or nil to generate a silent placeholder file.
     let fixtureURL: URL?
     private var startedAt: Date?
     private var accumulated: TimeInterval
     private var tick: Timer?
 
-    /// - `startOffset`: `-PraxisFakeElapsed` — begin with this much
-    ///   elapsed already (cancel-confirm tests need > 10 s without
-    ///   waiting 10 s).
     init(fixtureURL: URL?, startOffset: TimeInterval = 0) {
         self.fixtureURL = fixtureURL
         self.accumulated = max(0, startOffset)
@@ -265,7 +236,6 @@ final class SimulatedVoiceRecorder: VoiceRecorderEngine {
     func start(fileURL: URL) throws {
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)
-        // Reserve the file: a real recording is already on disk while it runs.
         try? FileManager.default.removeItem(at: fileURL)
         _ = FileManager.default.createFile(atPath: fileURL.path, contents: Data())
         pendingURL = fileURL
@@ -299,7 +269,6 @@ final class SimulatedVoiceRecorder: VoiceRecorderEngine {
         level = 0
         tick?.invalidate()
         tick = nil
-        // Stage the fixture as the recorded audio.
         if let staged = pendingURL {
             try? FileManager.default.removeItem(at: staged)
             if let fixtureURL, FileManager.default.fileExists(atPath: fixtureURL.path) {

@@ -32,7 +32,6 @@ export interface ContentProps
     GlassMaterialControls {
   maxHeight?: number;
   minWidth?: number;
-  /** Rubber-band pull while scrubbing (transform only). */
   stretchable?: boolean;
   children?: React.ReactNode;
 }
@@ -113,7 +112,6 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
       ? morphState.trail[morphState.trail.length - 1]
       : null;
 
-  // Separate top sticky ActionGrid / Search from scrollable list when at root level
   const topPinnedNodes: React.ReactNode[] = [];
   const scrollableNodes: React.ReactNode[] = [];
 
@@ -156,7 +154,6 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                   }
                 }}
                 /* Keep CSS filter off this ancestor: even blur(0) blocks backdrop sampling. */
-                /* IMG_7745–IMG_7752 Unfurl Pop Motion */
                 initial={reduced ? false : { scale: popIn.initial.scale }}
                 animate={{ scale: 1 }}
                 exit={reduced ? undefined : { scale: popIn.exit.scale, transition: TRANSITION.fast }}
@@ -189,7 +186,6 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                   transition={reduced ? TRANSITION.fast : TRANSITION.base}
                   style={{ overflow: ctx.submenuMode === 'cascade' ? 'visible' : 'hidden' }}
                 >
-                  {/* Layout-spring height container (IMG_7769–IMG_7774 submenu morph) */}
                   <motion.div
                     layout={reduced ? false : 'size'}
                     transition={SPRING}
@@ -231,13 +227,10 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                         transition={reduced ? TRANSITION.none : SPRING}
                         className={styles.panel}
                       >
-                        {/* Elevated Submenu Sticky Header (IMG_7773–IMG_7774: "Recent Notes ⌄") */}
                         <MorphHeader level={activeMorphLevel ?? null} />
 
-                        {/* Top pinned ActionGrid & Search */}
                         {topPinnedNodes}
 
-                        {/* Scrollable items with progressive blur edge scrims */}
                         <ScrollBlur maxHeight={maxHeight} scrimHeight={16}>
                           <DepthContext.Provider
                             value={morphState.trail.length}

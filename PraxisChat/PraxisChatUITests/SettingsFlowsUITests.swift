@@ -1,9 +1,5 @@
 import XCTest
 
-/// Settings flows added with the live runtime: connectors (add-by-URL
-/// validation, pasted configs that would run a local process), the
-/// skills screen, and the AI-data consent sheet on a first live send.
-/// All hermetic: nothing here reaches the network.
 final class SettingsFlowsUITests: XCTestCase {
     var app: XCUIApplication!
 
@@ -34,7 +30,6 @@ final class SettingsFlowsUITests: XCTestCase {
         add(attachment)
     }
 
-    /// History → ⋯ → Settings.
     private func openSettings() {
         el(.button, "History").tap()
         let options = el(.button, "History options")
@@ -57,13 +52,11 @@ final class SettingsFlowsUITests: XCTestCase {
         el(.button, "Add by URL").tap()
         XCTAssertTrue(app.navigationBars["Add by URL"].waitForExistence(timeout: 10))
 
-        // Nothing typed.
         el(.button, "Continue").tap()
         let error = app.staticTexts["addConnectorError"]
         XCTAssertTrue(error.waitForExistence(timeout: 5))
         XCTAssertEqual(error.label, "Enter the server's URL.")
 
-        // Plain http to a public host is refused (https only).
         let field = app.textFields["Server URL"]
         field.tap()
         field.typeText("http://mcp.example.com/mcp")
@@ -71,7 +64,6 @@ final class SettingsFlowsUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["addConnectorError"].label.contains("https"), app.staticTexts["addConnectorError"].label)
         shot("partb-01-add-url-https-only")
 
-        // A credential choice needs a value before it can go on.
         el(.button, "Bearer token").tap()
         XCTAssertTrue(app.secureTextFields["Token"].waitForExistence(timeout: 5))
         field.tap()
@@ -115,8 +107,7 @@ final class SettingsFlowsUITests: XCTestCase {
 
     // MARK: Consent
 
-    /// A keyless profile at an unresolvable host (`.invalid` never
-    /// resolves): consent must stop the send before any request.
+    /// Uses an unresolvable .invalid host to prove consent blocks sending before any request.
     func testConsentSheetOnFirstLiveSendAndDeclineRestoresTheDraft() {
         launch(["-PraxisNativeLoopEnabled", "YES", "-PraxisEngine", "live", "-PraxisTestProviderURL", "https://praxis-consent.invalid/v1"])
         el(.button, "New chat").tap()
@@ -139,7 +130,6 @@ final class SettingsFlowsUITests: XCTestCase {
         XCTAssertEqual(restored.value as? String, "Hello consent", "the draft is still there")
         XCTAssertFalse(elContains(.any, "You said: Hello consent").exists)
 
-        // Not remembered as allowed: sending again asks again.
         el(.button, "Send message").tap()
         XCTAssertTrue(app.staticTexts["consentTitle"].waitForExistence(timeout: 10))
         el(.button, "Don't allow").tap()

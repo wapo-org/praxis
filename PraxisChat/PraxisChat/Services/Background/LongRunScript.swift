@@ -2,12 +2,7 @@ import Foundation
 import AgentCore
 
 extension ScriptedChatEngine {
-    /// Multi-minute run for background tests: `-PraxisEngine scripted`
-    /// plus `-PraxisLongRun YES` (see `ChatStore.forLaunch`). Three tool
-    /// steps with long waits, a streamed text block, then an approval
-    /// that holds the run until it is decided or stopped. Deterministic:
-    /// every wait observes cancellation through the normal path, so
-    /// pausing or stopping mid-script settles like a real run.
+    /// UI test long run (-PraxisEngine scripted -PraxisLongRun YES); observes normal cancellation.
     static func longRun(pause: Duration = .seconds(20)) -> ScriptedChatEngine {
         ScriptedChatEngine { request in
             let tag = String(request.conversationID.uuidString.prefix(4))
@@ -38,9 +33,7 @@ extension ScriptedChatEngine {
                             content: [.text("\(tool.finished): ok")]))]),
                     ])),
                 ]
-                // One streamed answer block after the first tool, so a
-                // pause lands on mixed partial state (an open tool step
-                // plus finished text).
+                // Emit text after first tool so pause tests hit mixed partial state (open step + text).
                 if index == 0 {
                     steps += [
                         .event(.textDelta(blockID: "lr-draft", text: "First findings: ")),

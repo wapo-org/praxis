@@ -1,13 +1,9 @@
 import SwiftUI
 import AgentMCP
 
-/// The tray's "Prompts" page: prompts offered by the chat's connectors
-/// (MCP `prompts/list`). Picking one fetches it (`prompts/get`, after
-/// asking for its arguments) and puts its text in the composer.
 struct ConnectorPromptsPage: View {
     @Environment(ChatStore.self) private var store
     var onBack: () -> Void
-    /// The prompt is in the composer: close the tray.
     var onInserted: () -> Void
 
     @State private var picked: Picked?

@@ -13,14 +13,11 @@ import type {FeatureModule} from './server.js';
 import type {ApiService} from './service.js';
 
 export interface ModuleOptions {
-  /** Attachment storage (Convex files in production). Local dev uses the in-process fixture. */
   storage?: ToolsStorage;
   mcp?: McpOptions;
-  /** Pooled platform Groq keys with a shared cool-down store (Redis in production). */
   platformVoice?: PlatformVoice;
 }
 
-/** MCP connectors + builtin tools (skills, JavaScript) + vision fallback, sharing one storage instance. */
 export function featureModules(service: ApiService, options: ModuleOptions = {}): FeatureModule[] {
   const storage = options.storage;
   const mcp = options.mcp ?? {};
@@ -53,18 +50,15 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
   ];
 }
 
-/** Above this many connector tools the gateway trio replaces direct tools (AgentRuntime gatewayThreshold). */
+/** Tool count threshold to switch to the hidden gateway trio. */
 export const GATEWAY_THRESHOLD = 30;
 
-/**
- * The gateway decision is frozen with the conversation (like ConversationSetup.gatewayThreshold): a chat that
- * started with the gateway keeps it, one that started with direct tools keeps those, whatever the count later.
- */
+/** Gateway vs direct-tool mode stays frozen on the chat for its lifetime. */
 export function withGateway(chat: Chat, connectors: FeatureTool[]): FeatureTool[] {
   const frozen = chat.setup?.tools.map(t => t.name);
   const gateway = frozen ? frozen.includes('mcp_call_tool') : connectors.length > GATEWAY_THRESHOLD;
   if (!gateway) return connectors;
-  // The catalog is frozen too: connectors added later aren't searchable or callable here (direct tools behave the same).
+  // Catalog stays frozen on the chat; later connectors aren't added.
   const hidden = chat.setup?.hiddenTools?.map(t => t.name);
   const catalog = hidden ? connectors.filter(t => hidden.includes(t.name)) : connectors;
   return [...createMcpGateway(catalog), ...catalog.map(t => ({...t, hidden: true}))];
@@ -77,10 +71,7 @@ export function localModules(baseUrl: string): (service: ApiService) => FeatureM
   });
 }
 
-/**
- * `look_at_image` is offered when the user's vision preference names a reader model and the chat's own
- * model can't take images (capability flag, never a provider name), matching the Swift runtime.
- */
+/** Offers look_at_image only when a vision reader is set and chat model lacks vision. */
 export async function visionTools(service: ApiService, ctx: FeatureContext, chat: Chat, storage: ToolsStorage | undefined): Promise<AgentTool[]> {
   const prefsRow = await ctx.store.get(ctx.userId, 'preferences', 'current');
   if (!prefsRow || prefsRow.deleted) return [];
@@ -113,7 +104,7 @@ async function readerProvider(service: ApiService, userId: string, modelId: stri
   return (await service.models?.auxiliary(userId, modelId).catch(() => null)) ?? null;
 }
 
-/** Local dev reader for the scripted provider: deterministic, describes the request instead of the pixels. */
+/** Deterministic dev vision reader describing the request. */
 function scriptedReader(): ModelProvider {
   const capabilities = {type: 'capabilities' as const, tools: false, parallelToolCalls: false, vision: true, documents: false, imagesInToolResults: false, reasoningEffort: false, streamUsage: false, explicitPromptCaching: false, serverWebSearch: false, midConversationSystem: false, serverCompaction: false, toolSearch: false};
   return {

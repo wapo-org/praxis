@@ -8,7 +8,6 @@ import { MoreHorizontal, PanelLeft, Pencil, Pin, Search, Settings, Edit, Trash2 
 import { usePraxisStore } from '../../state/store';
 import styles from './Sidebar.module.css';
 
-/** Desktop sidebar (≥1024 px, 260 px, collapsible): new chat, search, chats by date, account. */
 export function Sidebar() {
   const store = usePraxisStore();
   const account = useAccount();

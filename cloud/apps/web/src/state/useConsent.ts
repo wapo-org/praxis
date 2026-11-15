@@ -33,7 +33,6 @@ export function useConsent(
           | 'vision';
       },
     ) => {
-      // Check if selected provider is a non-local external host that needs consent
       const provider = providers.find((p) => p.id === selectedProviderId);
       if (provider && provider.id !== 'scripted') {
         try {

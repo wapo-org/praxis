@@ -1,5 +1,4 @@
-// WP-D1 performance budget (Chromium, production build served by `vite preview` with the local API):
-// long tasks while opening a menu and scrolling a 200-message chat, and idle per-frame JS.
+// Benchmarks menu/scroll long tasks and idle frame JS against vite preview.
 import { chromium } from '@playwright/test';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -45,7 +44,6 @@ const rendered = await page.getByTestId('user-message-bubble').count();
 const window_ = (name) => page.evaluate((n) => { window.__mark = window.__longTasks.length; return n; }, name);
 const taken = () => page.evaluate(() => window.__longTasks.slice(window.__mark));
 
-// 1. Scroll the whole chat top→bottom→top with wheel input.
 await window_('scroll');
 await page.mouse.move(820, 450);
 for (let i = 0; i < 60; i++) { await page.mouse.wheel(0, -600); await page.waitForTimeout(16); }
@@ -59,7 +57,6 @@ const frames = await page.evaluate(async () => {
   return { p50: deltas[Math.floor(deltas.length / 2)], p95: deltas[Math.floor(deltas.length * 0.95)] };
 });
 
-// 2. Open and close a menu five times (sidebar row actions).
 await window_('menu');
 const row = page.locator('[data-testid="app-sidebar"] .screen-history-row').first();
 for (let i = 0; i < 5; i++) {
@@ -72,7 +69,6 @@ for (let i = 0; i < 5; i++) {
 }
 const menuTasks = await taken();
 
-// 3. Composer tray and a 500-model list, paged like the real API: open, scroll to the end, back, close.
 const catalog = Array.from({ length: 500 }, (_, i) => ({
   type: 'model', id: `perf-${i}`, providerId: 'scripted', displayName: `Perf model ${String(i + 1).padStart(3, '0')}`, tagline: 'A realistic tagline for this model',
   capabilities: { type: 'capabilities', tools: true, parallelToolCalls: true, vision: i % 2 === 0, documents: false, imagesInToolResults: false, reasoningEffort: i % 3 === 0, streamUsage: true, explicitPromptCaching: false, serverWebSearch: i % 4 === 0, midConversationSystem: false, serverCompaction: false, toolSearch: false },
@@ -122,7 +118,6 @@ await page.keyboard.press('Escape');
 await page.keyboard.press('Escape');
 await page.unroute('**/v1/models?**');
 
-// 4. Idle: count script callbacks per frame for 2 s (rAF loops would show up as scripting time).
 const idle = await page.evaluate(async () => {
   let callbacks = 0;
   const raf = window.requestAnimationFrame;

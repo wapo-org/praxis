@@ -9,7 +9,6 @@ import {createPraxisApp} from '../server.js';
 const API = 'http://localhost:8791';
 const WEB = 'http://localhost:5173';
 
-/** Production-mode API (no dev auth) with Better Auth and the Store on the executable Convex database. */
 function setup() {
   const {rpc} = convexHarness();
   const memory = createLocalAdapters();
@@ -32,7 +31,7 @@ describe('Better Auth end to end through the API', () => {
   it('iOS bearer and web cookie sessions: sign-up, sign-in, protected routes, CSRF origin check, sign-out revocation, isolation', async () => {
     const {call} = setup();
     expect((await call('/v1/bootstrap')).status).toBe(401);
-    expect((await call('/v1/auth/dev', {body: {type: 'auth.dev'}})).status).toBe(404); // dev auth does not exist here
+    expect((await call('/v1/auth/dev', {body: {type: 'auth.dev'}})).status).toBe(404);
 
     // iOS: no Origin header; uses the bearer token from the response body.
     const signUp = await call('/v1/auth/sign-up', {body: input('ios@example.com')});
@@ -58,11 +57,9 @@ describe('Better Auth end to end through the API', () => {
     expect((await call('/v1/chats', {headers: {...cookie, origin: WEB}, body: {type: 'chat.input', title: 'From web'}})).status).toBe(201);
     expect((await call('/v1/chats', {headers: {...cookie, origin: 'https://evil.test'}, body: {type: 'chat.input', title: 'CSRF'}})).status).toBe(403);
 
-    // Another user cannot see the first user's rows.
     const other = await (await call('/v1/auth/sign-up', {body: input('other@example.com')})).json();
     expect((await call(`/v1/chats/${chat.id}`, {headers: {authorization: `Bearer ${other.bearerToken}`}})).status).toBe(404);
 
-    // Sign-out revokes exactly that session (and its cached lookup).
     expect((await call('/v1/auth/sign-out', {headers: bearer, method: 'POST', body: {}})).status).toBe(200);
     expect((await call('/v1/bootstrap', {headers: bearer})).status).toBe(401);
     expect((await call('/v1/bootstrap', {headers: cookie})).status).toBe(200);

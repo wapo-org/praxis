@@ -150,7 +150,6 @@ describe('@praxis/web client flows against Lead A local API', () => {
     expect(prefs.vision.modelId).toBe('scripted-vision');
     expect(prefs.voice.model).toBe('whisper-large-v3-turbo');
 
-    // This core-only API fixture has no MCP/skills modules mounted.
     await expect(client.createConnector({ name: 'Unavailable', url: 'https://invalid.invalid' }))
       .rejects.toMatchObject({ status: 404 });
     await expect(client.createSkill({ name: 'Unavailable', description: '', document: '' }))
@@ -168,7 +167,6 @@ describe('@praxis/web client flows against Lead A local API', () => {
     const origFetch = globalThis.fetch;
 
     try {
-      // 1. Third-party Convex signed POST upload URL -> no Authorization header sent to uploadUrl
       globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         calls.push({ url, init });
@@ -222,7 +220,6 @@ describe('@praxis/web client flows against Lead A local API', () => {
       const completeCall = calls.find((c) => c.url.endsWith('/v1/uploads/complete'));
       expect(JSON.parse(String(completeCall?.init?.body)).storageId).toBe('kg2convexstorage99');
 
-      // 2. API-origin upload URL with default method -> uses PUT and sends Bearer token
       calls.length = 0;
       globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -263,7 +260,6 @@ describe('@praxis/web client flows against Lead A local API', () => {
         'Bearer dev-local',
       );
 
-      // 3. Failed upload -> rejects with PraxisApiError instead of fabricating storageId
       globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         if (url.endsWith('/v1/uploads')) {

@@ -2,8 +2,7 @@ import XCTest
 import AgentCore
 @testable import PraxisChat
 
-/// One JSON file per conversation plus an index, written at commit
-/// points; demo threads seeded only on first launch.
+/// One JSON file per conversation plus index written at commit; demos seed on first launch.
 @MainActor
 final class PersistenceTests: XCTestCase {
     private var directory: URL!
@@ -91,8 +90,7 @@ final class PersistenceTests: XCTestCase {
     }
 
     func testFlushWaitsForWritesEnqueuedWhileDraining() async {
-        // Saves still arriving while flush runs must land before it
-        // returns: tearDown deletes the directory next.
+        // Saves arriving during flush must land before return because tearDown deletes the directory.
         let persistence = ConversationStore(directory: directory.appendingPathComponent("Conversations"))
         let records = (0..<10).map { _ in ConversationRecord(id: UUID(), title: "T", updatedAt: Date(), isPinned: false, turns: []) }
         persistence.save(records[0])
@@ -109,10 +107,7 @@ final class PersistenceTests: XCTestCase {
     }
 
     func testWriteToAnUnusableDirectoryDoesNotCrash() async throws {
-        // A queued write racing a deleted directory used to hit
-        // assertionFailure in Debug and kill the test host. Pointing the
-        // store somewhere no directory can exist reproduces the failure
-        // deterministically: the write must be dropped, not crash.
+        // A queued write racing a deleted directory must be dropped cleanly, not hit assertionFailure.
         let blocker = directory.appendingPathComponent("blocker")
         try "x".write(to: blocker, atomically: true, encoding: .utf8)
         let persistence = ConversationStore(directory: blocker.appendingPathComponent("Conversations"))

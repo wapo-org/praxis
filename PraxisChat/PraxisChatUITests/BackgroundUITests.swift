@@ -1,12 +1,6 @@
 import XCTest
 
-/// Background pause and Continue (BACKGROUND_PLAN.md §7.1): a scripted
-/// long run is backgrounded, pauses through the fallback expiry seam
-/// with no lost content, and resumes from the transcript on Continue.
-///
-/// In the simulator `BGTaskScheduler.submit` always fails
-/// (`.unavailable`), so this exercises the `beginBackgroundTask`
-/// fallback path; the continued task itself needs a real device.
+/// Simulator BGTaskScheduler always fails (.unavailable), testing beginBackgroundTask fallback.
 final class BackgroundUITests: XCTestCase {
     var app: XCUIApplication!
 
@@ -51,18 +45,14 @@ final class BackgroundUITests: XCTestCase {
         field.typeText("start the long run")
         el(.button, "Send message").tap()
 
-        // The long run is in flight (first tool streams at once).
         XCTAssertTrue(el(.button, "Stop generating").waitForExistence(timeout: 15)
                       || el(.staticText, "Currently working…").waitForExistence(timeout: 15),
                       "the long run should start")
 
-        // Home: the fallback task opens, and the expiry seam pauses the
-        // run seconds later through the real expiry path.
         XCUIDevice.shared.press(.home)
         Thread.sleep(forTimeInterval: 8)
         app.activate()
 
-        // Back: the turn kept its partial work and offers Continue.
         XCTAssertTrue(el(.staticText, "Paused in background").waitForExistence(timeout: 20),
                       "expiry should pause the turn, not lose it")
         XCTAssertTrue(elContains(.staticText, "Stopped after").waitForExistence(timeout: 10),
@@ -73,8 +63,6 @@ final class BackgroundUITests: XCTestCase {
         XCTAssertTrue(cont.waitForExistence(timeout: 10))
         cont.tap()
 
-        // The Continued run replays the paused transcript: the old note
-        // and partial work stay, and a new run starts.
         XCTAssertTrue(el(.button, "Stop generating").waitForExistence(timeout: 15)
                       || el(.staticText, "Currently working…").waitForExistence(timeout: 15),
                       "Continue should start a fresh run")
@@ -84,7 +72,6 @@ final class BackgroundUITests: XCTestCase {
                       "no partial content lost across Continue")
         shot("continued-run")
 
-        // Settle: stop the (minutes-long) scripted run, don't wait it out.
         if el(.button, "Stop generating").exists { el(.button, "Stop generating").tap() }
         XCTAssertTrue(el(.button, "Record voice message").waitForExistence(timeout: 15),
                       "stopping the continued run should settle the composer back to mic")

@@ -42,7 +42,6 @@ it('dev:local: after DELETE /v1/account the dev user gets 401, then a fresh dev 
   expect(
     (await call('/v1/chats', 'POST', fresh, { type: 'chat.input', title: 'After' })).status,
   ).toBe(201);
-  // Deleting the recreated account works the same way again.
   expect((await call('/v1/account', 'DELETE', fresh, {})).status).toBe(200);
   expect((await call('/v1/bootstrap', 'GET', fresh)).status).toBe(401);
 });

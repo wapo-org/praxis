@@ -17,13 +17,11 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
   while (i < lines.length) {
     const line = lines[i] ?? '';
 
-    // Empty line
     if (!line.trim()) {
       i++;
       continue;
     }
 
-    // Fenced code block
     const fenceMatch = line.match(/^```(\S*)\s*$/);
     if (fenceMatch) {
       const lang = fenceMatch[1] || 'text';
@@ -40,14 +38,12 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
       continue;
     }
 
-    // Horizontal rule
     if (/^(---|\*\*\*|___)\s*$/.test(line.trim())) {
       blocks.push({ type: 'hr' });
       i++;
       continue;
     }
 
-    // Heading
     const headingMatch = line.match(/^(#{1,4})\s+(.+)$/);
     if (headingMatch) {
       blocks.push({
@@ -59,7 +55,6 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
       continue;
     }
 
-    // GFM Table
     if (
       line.includes('|') &&
       i + 1 < lines.length &&
@@ -74,7 +69,7 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
           .map((cell) => cell.trim());
 
       const headers = parseRow(line);
-      i += 2; // skip header and separator
+      i += 2;
       const rows: string[][] = [];
       while (i < lines.length && lines[i]!.includes('|') && lines[i]!.trim() !== '') {
         rows.push(parseRow(lines[i]!));
@@ -84,7 +79,6 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
       continue;
     }
 
-    // Blockquote
     if (line.trim().startsWith('>')) {
       const quoteLines: string[] = [];
       while (i < lines.length && lines[i]!.trim().startsWith('>')) {
@@ -95,7 +89,6 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
       continue;
     }
 
-    // Unordered or task list
     if (/^\s*[-*+]\s+/.test(line)) {
       const items: Array<{ checked?: boolean; text: string }> = [];
       while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i]!)) {
@@ -115,7 +108,6 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
       continue;
     }
 
-    // Ordered list
     if (/^\s*\d+\.\s+/.test(line)) {
       const items: Array<{ checked?: boolean; text: string }> = [];
       while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i]!)) {
@@ -127,7 +119,6 @@ export function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
       continue;
     }
 
-    // Paragraph
     const paraLines: string[] = [];
     while (
       i < lines.length &&

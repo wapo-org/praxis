@@ -2,9 +2,6 @@ import Photos
 import XCTest
 @testable import PraxisChat
 
-/// The tray's photo strip: authorization mapping, the mock strip behind
-/// `-PraxisMockGallery`, and mock attach (the PhotoKit paths need a
-/// library, so they are covered by screenshots, not unit tests).
 @MainActor
 final class PhotoGalleryTests: XCTestCase {
     func testAccessMapping() {

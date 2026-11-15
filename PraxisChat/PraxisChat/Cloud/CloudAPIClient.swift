@@ -22,8 +22,7 @@ struct CloudServerConfiguration: Sendable, Equatable {
     }
 
     static func forLaunch(defaults: UserDefaults = .standard, bundle: Bundle = .main) throws -> Self {
-        // A release build supplies PraxisCloudServerURL through Info.plist/build
-        // configuration. The reserved .invalid fallback fails closed until set.
+        // Release sets PraxisCloudServerURL; .invalid fails closed until set.
         var raw = bundle.object(forInfoDictionaryKey: "PraxisCloudServerURL") as? String ?? "https://cloud.praxis.invalid"
         #if DEBUG
         if let override = defaults.string(forKey: "PraxisCloudServerURL"), !override.isEmpty { raw = override }
@@ -62,7 +61,7 @@ enum CloudAPIError: Error, LocalizedError, Sendable {
     }
 }
 
-/// Stateless and injectable; services, uploads and SSE all share this session.
+/// Shared stateless session for services, uploads, and SSE.
 struct CloudAPIClient: Sendable {
     let configuration: CloudServerConfiguration
     let session: URLSession
@@ -159,7 +158,6 @@ struct CloudAPIClient: Sendable {
         try await tokens.setToken(nil, for: configuration.origin)
     }
 
-    /// Erases the account server-side, then drops the revoked credential.
     func deleteAccount(password: String?) async throws {
         struct Request: Encodable { let type = "account.delete"; let password: String? }
         struct Response: Decodable, Sendable { let type: String }

@@ -8,11 +8,7 @@ import AgentMCP
 import AgentTestSupport
 @testable import PraxisChat
 
-/// The tools sibling of the image-input bug: an OpenRouter model whose tool
-/// support the app doesn't know gets a request with tools and the run dies
-/// with "HTTP 404: No endpoints found that support tool use". Now unknown
-/// support is tried with tools, and a rejection is learned, persisted and
-/// answered by resending once without tools.
+/// Unknown tool support tries tools, persists rejections on HTTP 404, and retries without tools.
 @MainActor
 final class ToolSupportFallbackAppTests: XCTestCase {
     private var directory: URL!
@@ -93,7 +89,6 @@ final class ToolSupportFallbackAppTests: XCTestCase {
         store.send(text: "Why is Paris nice?")
         await waitUntil { !store.isRunning }
 
-        // One rejected request with tools, then the same run as plain chat.
         XCTAssertEqual(chat.requests.count, 2)
         XCTAssertNotNil(chat.requests.first?.json?["tools"], "the first request sent tools")
         XCTAssertNil(chat.requests.last?.json?["tools"], "the resend declares no tools")
@@ -110,7 +105,6 @@ final class ToolSupportFallbackAppTests: XCTestCase {
         XCTAssertTrue(conv.setup?.toolSpecs.isEmpty == false,
                       "the frozen setup keeps its tools for tool-capable models")
 
-        // Learned and persisted: the next send goes without tools from the start.
         XCTAssertEqual(settings.toolSupport(profileID: profile.id, model: Self.plain), .unsupported)
         XCTAssertEqual(self.settings().toolSupport(profileID: profile.id, model: Self.plain), .unsupported,
                        "survives a relaunch")
@@ -177,7 +171,6 @@ final class ToolSupportFallbackAppTests: XCTestCase {
         XCTAssertEqual(settings.toolSupport(profileID: profile.id, model: Self.plain), .supported,
                        "the model gained tool support")
 
-        // A rejection that contradicts a tool-capable list stays until it lapses.
         settings.markToolsUnsupported(profileID: profile.id, model: Self.plain, now: now)
         settings.store([ModelInfo(id: Self.plain, supportsTools: true)], for: profile.id)
         XCTAssertEqual(settings.toolSupport(profileID: profile.id, model: Self.plain, now: now), .unsupported)

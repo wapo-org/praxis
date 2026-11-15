@@ -1,15 +1,12 @@
 import XCTest
 
-/// Sending in a long thread keeps the thread at the bottom: the new bubble
-/// shows where the conversation ends and older turns never scroll into
-/// view (a send used to land several turns up, mid-thread).
+/// Sending in a long thread must keep the viewport anchored at the bottom on the new bubble.
 final class TranscriptScrollUITests: XCTestCase {
     var app: XCUIApplication!
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        // A seeded long thread: tall answers, then short failed turns.
         app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES", "-PraxisLongThread", "YES"]
         app.launch()
         XCTAssertTrue(app.buttons["History"].waitForExistence(timeout: 15))
@@ -26,7 +23,6 @@ final class TranscriptScrollUITests: XCTestCase {
         return app.textFields["Message"]
     }
 
-    /// On screen between the top of the window and the composer.
     private func isOnScreen(_ element: XCUIElement) -> Bool {
         guard element.exists else { return false }
         let frame = element.frame
@@ -35,7 +31,6 @@ final class TranscriptScrollUITests: XCTestCase {
     }
 
     func testSendInLongThreadStaysAtBottom() {
-        // Launch lands on the newest turn.
         let lastOld = bubble("what")
         XCTAssertTrue(lastOld.waitForExistence(timeout: 10))
         XCTAssertTrue(isOnScreen(lastOld), "a long thread should open at its bottom")
@@ -48,9 +43,6 @@ final class TranscriptScrollUITests: XCTestCase {
         let sent = bubble("what's happening")
         let older = bubble("try creating new doc saying hello world")
         XCTAssertTrue(sent.waitForExistence(timeout: 5), "the sent text should become a bubble")
-        // Sample through the send flight and the first streamed rows: the
-        // new bubble stays in view and the thread never jumps up to an
-        // older turn.
         let deadline = Date().addingTimeInterval(1.6)
         var samples = 0
         while Date() < deadline {
@@ -69,8 +61,7 @@ final class TranscriptScrollUITests: XCTestCase {
     }
 
     func testScrolledUpReaderIsNotYanked() throws {
-        // Keep this native rendering regression deterministic: the minutes-long
-        // scripted stream cannot finish before the reader scrolls under load.
+        // Uses a minutes-long scripted stream so streaming cannot finish before scrolling under load.
         app.terminate()
         app.launchArguments = ["-PraxisEngine", "scripted", "-PraxisLongRun", "YES", "-PraxisResetData", "YES", "-PraxisLongThread", "YES"]
         app.launch()
@@ -81,13 +72,11 @@ final class TranscriptScrollUITests: XCTestCase {
         app.buttons["Send message"].tap()
         XCTAssertTrue(bubble("what's happening").waitForExistence(timeout: 5))
 
-        // Dismiss the keyboard, then scroll well up while the run streams.
         let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
         if app.keyboards.firstMatch.exists {
             top.press(forDuration: 0.3, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78)),
                       withVelocity: .slow, thenHoldForDuration: 0.2)
         }
-        // Scroll up until "Jump to latest" offers, to an overall deadline.
         let jump = app.buttons["Jump to latest"]
         let scrollDeadline = Date().addingTimeInterval(20)
         var drags = 0
@@ -102,10 +91,8 @@ final class TranscriptScrollUITests: XCTestCase {
         }
         XCTAssertTrue(found, "scrolling up should offer Jump to latest (after \(drags) drags)")
         XCTAssertTrue(app.buttons["Stop generating"].exists, "The scripted run must still be active while scrolled up")
-        // The stream keeps growing below; the reader stays where they are.
         Thread.sleep(forTimeInterval: 4)
-        // Poll briefly: one snapshot query can time out under load even
-        // while Jump to latest sits on screen.
+        // Poll briefly because a single snapshot query can time out under load while button is visible.
         var stillThere = false
         let assertDeadline = Date().addingTimeInterval(5)
         while !stillThere, Date() < assertDeadline {

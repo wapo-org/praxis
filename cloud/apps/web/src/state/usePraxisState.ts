@@ -66,7 +66,6 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     setThemeMode(themeMode);
   }, [themeMode, setThemeMode]);
 
-  // Sheets & Layout
   const [activeSheet, setActiveSheetState] = React.useState<ActiveSheet>(null);
   const [editingProviderId, setEditingProviderIdState] = React.useState<string | null>(null);
   const providerIdRef = React.useRef(editingProviderId);
@@ -78,7 +77,7 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   const [plusTrayOpen, setPlusTrayOpen] = React.useState<boolean>(false);
   const [inlineModelSearchActive, setInlineModelSearchActive] = React.useState<boolean>(false);
 
-  // Entities initialized from synchronous replica cache first (<16ms paint)
+  // Hydrate synchronously from replica cache before first paint.
   const [chats, setChats] = React.useState<Chat[]>(() => initialCache?.chats ?? []);
   const [activeChatId, setActiveChatId] = React.useState<string | null>(null);
   const [messagesByChat, setMessagesByChat] = React.useState<Record<string, Message[]>>(
@@ -104,7 +103,6 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   const [attachmentsById, setAttachmentsById] = React.useState<Record<string, Attachment>>({});
   const [syncCursor, setSyncCursor] = React.useState<string>(() => initialCache?.syncCursor ?? '0');
 
-  // Selected composer controls
   const [selectedProviderId, setSelectedProviderId] = React.useState<string>('');
   const [selectedModelId, setSelectedModelId] = React.useState<string>('');
   const [webSearch, setWebSearch] = React.useState(false);
@@ -149,12 +147,11 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
         .catch((err) => setErrorBanner(err instanceof Error ? err.message : 'Unable to open chat'));
   };
   const activeRunUnsubMapRef = React.useRef<Map<string, () => void>>(new Map());
-  /** clientTurnIds this tab started: their runs are attached by the send path, not by the user-event follower. */
+  /** Runs started by this tab skip the cross-client follower. */
   const localTurnIdsRef = React.useRef<Set<string>>(new Set());
-  /** Newest user-event id from bootstrap; the live follower subscribes after it (null until bootstrapped). */
+  /** Bootstrap cursor where live user-event subscription starts. */
   const [eventCursor, setEventCursor] = React.useState<number | null>(null);
 
-  // Mark first paint on initial mount
   React.useLayoutEffect(() => {
     if (typeof performance !== 'undefined') {
       performance.mark('praxis:first-paint');
@@ -164,7 +161,6 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     }
   }, []);
 
-  // Persist replica on state changes
   return {
     onNavigate,
     replicaKey,

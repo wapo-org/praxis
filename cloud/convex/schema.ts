@@ -1,7 +1,7 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
-/** One generic owner-scoped row. `parentId` is an optional secondary index (e.g. a message's chatId). */
+/** Generic owner-scoped row with optional parentId index. */
 const row = {
   userId: v.string(),
   kind: v.string(),
@@ -18,15 +18,12 @@ export default defineSchema({
     .index('owner_skill', ['userId','skillId']),
   toolState: defineTable({userId:v.string(),kind:v.string(),id:v.string(),value:v.any()})
     .index('owner_kind_id', ['userId','kind','id']),
-  // Current state of every record, including tombstones.
   records: defineTable(row)
     .index('owner_kind_id', ['userId', 'kind', 'id'])
     .index('owner_kind_parent', ['userId', 'kind', 'parentId']),
-  // Immutable revision log; the sync cursor is a per-owner revision, never wall-clock time.
+  // Immutable revision log keyed by per-owner sequence, never wall-clock.
   changes: defineTable(row).index('owner_revision', ['userId', 'revision']),
-  // Per-owner monotonic revision counter.
   sequences: defineTable({ userId: v.string(), value: v.number() }).index('owner', ['userId']),
-  // Better Auth models (user, session, account, verification, rateLimit) behind the server credential.
   authDocuments: defineTable({ model: v.string(), id: v.string(), data: v.any() })
     .index('model', ['model'])
     .index('model_id', ['model', 'id'])
@@ -35,7 +32,6 @@ export default defineSchema({
     .index('model_user', ['model', 'data.userId'])
     .index('model_identifier', ['model', 'data.identifier'])
     .index('model_value', ['model','data.value']),
-  // Owner-bound Convex file storage (attachments). A ticket is created before bytes arrive.
   files: defineTable({
     userId: v.string(),
     ticket: v.string(),

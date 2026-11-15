@@ -7,7 +7,6 @@ import { z } from 'zod';
 import type { KV } from '../contracts.js';
 import { createConvexRPC, type ConvexRPC } from './convex.js';
 
-/** What `createApp({authHandler, resolveSession})` takes. */
 export interface PraxisAuth {
   handler(request: Request): Promise<Response>;
   confirmDeletion(request:Request,password?:string):Promise<{userId:string;sessionId:string}|null>;
@@ -15,15 +14,15 @@ export interface PraxisAuth {
 }
 
 export interface AuthOptions {
-  /** Public API origin, e.g. https://api.example.com. HTTPS is required except for localhost. */
+  /** Public API origin; HTTPS required outside localhost. */
   baseURL: string;
-  /** BETTER_AUTH_SECRET, at least 32 characters. */
+  /** Secret for Better Auth (min 32 chars). */
   secret: string;
-  /** Exact web origins allowed to call auth routes with an Origin header. */
+  /** Exact web origins permitted to send an Origin header on auth routes. */
   trustedOrigins: string[];
-  /** `none` when the web app and API are on different sites (requires HTTPS). Default `lax`. */
+  /** Set to 'none' (requires HTTPS) for cross-site web/API; defaults to 'lax'. */
   cookieSameSite?: 'lax' | 'strict' | 'none';
-  /** Optional hot session cache; entries never outlive the session and expire within `cacheSeconds`. */
+  /** Hot session cache bounded to session expiry and cacheSeconds. */
   cache?: KV;
   cacheSeconds?: number;
   ownership?: {activate(userId:string):Promise<void>;isActive(userId:string):Promise<boolean>};
@@ -38,7 +37,7 @@ const AuthEnvSchema = z.object({
   PRAXIS_COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).optional(),
 });
 
-/** Production Better Auth on Convex. Throws (fails closed) when configuration is incomplete. */
+/** Production Better Auth on Convex; fails closed if configuration is incomplete. */
 export function createAuth(env: Record<string, string | undefined>, cache?: KV, ownership?:AuthOptions['ownership']): PraxisAuth {
   const e = AuthEnvSchema.parse(env);
   const rpc = createConvexRPC({ url: e.CONVEX_URL, serverToken: e.PRAXIS_CONVEX_SERVER_TOKEN });
@@ -63,7 +62,7 @@ export function parseOrigins(value: string): string[] {
     });
 }
 
-/** Better Auth custom adapter forwarding each operation to the server-only Convex functions in convex/auth.ts. */
+/** Forwards Better Auth operations to server-only functions in convex/auth.ts. */
 export function convexAuthDatabase(rpc: ConvexRPC) {
   const call = (operation: string, input: unknown) => {
     const args = { operation, input: JSON.parse(JSON.stringify(input)) };
@@ -136,7 +135,7 @@ export function authFromRPC(rpc: ConvexRPC, options: AuthOptions): PraxisAuth {
     expiresAt: new Date(s.session.expiresAt).toISOString(),
   });
 
-  /** The raw credential (bearer or session cookie), hashed: tokens never appear in cache keys. */
+  /** Hash credentials before caching so raw tokens never become cache keys. */
   const credentialKey = (headers: Headers) => {
     const bearerValue = headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
     const cookie = headers
@@ -176,7 +175,7 @@ export function authFromRPC(rpc: ConvexRPC, options: AuthOptions): PraxisAuth {
     if (await revoked(result.sessionId)) return null;
     const ttl = Math.min(cacheSeconds, Math.floor((Date.parse(result.expiresAt) - Date.now()) / 1000));
     if (options.cache && ttl >= 1) {
-      // A deletion that froze the account after the check above makes the owner write fail: that is a 401, not a 500.
+      // Post-freeze owner write failures mean deleted account (401), not 500.
       try { await options.cache.set(key, result, ttl, result.user.id); }
       catch (e) { if (options.ownership && !await options.ownership.isActive(result.user.id)) return null; throw e; }
     }
@@ -189,7 +188,7 @@ export function authFromRPC(rpc: ConvexRPC, options: AuthOptions): PraxisAuth {
       return error(404, 'not_found', 'Auth route not found');
     }
     if (request.method !== 'POST') return error(405, 'method_not_allowed', 'Use POST');
-    // Native clients send no Origin; browsers must come from an allowlisted web origin (login CSRF).
+    // Native clients omit Origin; browsers must match an allowlisted origin against CSRF.
     const origin = request.headers.get('origin');
     if (origin !== null && !trusted.has(origin)) return error(403, 'origin_rejected', 'Origin is not allowed');
 

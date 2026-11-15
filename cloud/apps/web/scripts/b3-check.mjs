@@ -29,7 +29,7 @@ try {
   await page.reload(); await page.getByTestId('chat-top-bar').waitFor();
   await page.getByTestId('nav-chat-title-pill').getByText('Desktop keyboard check', { exact: true }).waitFor();
   const chatBounds = await page.getByTestId('composer-dock').boundingBox();
-  assert(chatBounds.width <= 720 && chatBounds.x >= 260); // WP-D1: 720 px column beside the 260 px sidebar
+  assert(chatBounds.width <= 720 && chatBounds.x >= 260);
   await page.getByTestId('nav-settings-button').click(); await page.waitForURL('**/settings');
   const dialog = page.getByRole('dialog', { name: 'Settings', exact: true }); await dialog.waitFor();
   const bounds = await dialog.boundingBox(); assert(bounds.x > 260 && bounds.width <= 720 && bounds.height <= 560);
@@ -49,16 +49,14 @@ try {
   assert.equal(await page.getByRole('textbox', { name: 'Name', exact: true }).inputValue(), 'Restored provider');
   await page.goto(`${base}/settings/providers/missing`); await page.getByText('Provider not found.', { exact: true }).waitFor();
   await page.goto(`${base}${chatPath}`); await page.getByTestId('chat-top-bar').waitFor();
-  // WP-D1: with the desktop sidebar open, Meta-K focuses its search field instead of opening the Chats sheet.
+  // Desktop Meta-K focuses sidebar search rather than opening the sheet.
   await page.keyboard.press('Meta+k');
   await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Search conversations' && !!document.activeElement?.closest('[data-testid="app-sidebar"]'));
   assert.equal(await page.getByRole('dialog', { name: 'Chats', exact: true }).count(), 0);
   await page.keyboard.press('Escape'); await page.waitForURL(`**${chatPath}`);
-  // Selecting a sidebar row must update the chat route.
   await page.getByTestId('sidebar-new-chat').click(); await page.waitForURL(`${base}/`);
   await page.locator('.screen-sidebar .screen-history-select').filter({ hasText: 'Desktop keyboard check' }).click();
   await page.waitForURL(`**${chatPath}`);
-  // Server-only results and cursor loading, beyond bootstrap's first model page.
   const template = await page.evaluate(async () => { const { apiClient } = await import('/src/lib/api.ts'); return (await apiClient.bootstrap()).models[0]; });
   const queries = [];
   await page.route('**/v1/models?**', async route => {

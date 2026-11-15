@@ -3,21 +3,13 @@ import Observation
 import AgentCore
 import AgentSkills
 
-/// The app's skills: imported ones in Application Support (no bundled
-/// directory yet). New conversations freeze the catalog at first send;
-/// skills imported later are announced to running conversations by the
-/// runtime's turn notes.
-///
-/// Part B's UI binds to `skills` / `problems` and calls `importSkill(from:)`
-/// (a document-picker or share-sheet URL) and `remove(_:)`.
+/// New chats freeze skills at first send; later imports are announced via runtime turn notes.
 @MainActor
 @Observable
 final class SkillLibrary {
     private(set) var skills: [Skill] = []
     private(set) var problems: [SkillLoadProblem] = []
-    /// Registries the user added; `registries` puts the built-in ones first.
     private(set) var customRegistries: [SkillRegistry] = []
-    /// Installed registry skills with newer content, by skill name.
     private(set) var updates: [String: RegistryUpdate] = [:]
     private(set) var checkingUpdates = false
 
@@ -51,11 +43,7 @@ final class SkillLibrary {
         await refresh()
     }
 
-    /// Imports a folder or `.zip` / `.skill` archive. Picker URLs are
-    /// security-scoped: access is held only for the copy.
-    /// A lone `SKILL.md` (no folder) is wrapped in a temporary folder
-    /// named after its frontmatter `name`, which is what the importer
-    /// expects.
+    /// Holds security-scoped URL access only for copy; wraps lone SKILL.md in frontmatter-named dir.
     @discardableResult
     func importSkill(from url: URL) async throws -> SkillImportReport {
         let scoped = url.startAccessingSecurityScopedResource()
@@ -76,7 +64,6 @@ final class SkillLibrary {
         return report
     }
 
-    /// `name:` from a SKILL.md's frontmatter, if it's a safe folder name.
     static func frontmatterName(in data: Data) -> String? {
         let text = String(decoding: data.prefix(8 * 1024), as: UTF8.self)
         var lines = text.split(separator: "\n", omittingEmptySubsequences: false).map {
@@ -111,13 +98,11 @@ final class SkillLibrary {
 
     // MARK: Agent-made skills
 
-    /// The editable fields of a skill (Skills → Edit).
     func draft(for name: String) async throws -> SkillDraft {
         try await store.draft(for: name)
     }
 
-    /// Saves the user's edit of an agent-made skill, with the same rules
-    /// as when the agent writes one. Reference files are kept.
+    /// Validates edits with agent skill-write rules while preserving existing reference files.
     @discardableResult
     func saveEdit(_ draft: SkillDraft) async throws -> SkillImportReport {
         let report = try await store.saveAgentSkill(draft, replace: true)
@@ -127,9 +112,6 @@ final class SkillLibrary {
 
     // MARK: Registries
 
-    /// Adds a GitHub repo (`owner/repo`, a repo or folder URL) or an Agent
-    /// Skills discovery index (a site or `index.json` URL). Checks it can
-    /// be listed before saving it.
     @discardableResult
     func addRegistry(_ text: String) async throws -> SkillRegistry {
         let source = try SkillRegistrySource.parse(text)
@@ -165,9 +147,6 @@ final class SkillLibrary {
         return report
     }
 
-    /// Compares installed registry skills with their registries' current
-    /// listings (cached ones while fresh, so it's cheap on open). Returns
-    /// registries that couldn't be checked.
     @discardableResult
     func checkForUpdates(refresh: Bool = false) async -> [String] {
         guard !checkingUpdates else { return [] }

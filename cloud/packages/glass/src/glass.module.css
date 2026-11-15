@@ -1,6 +1,4 @@
-/* CSS-only liquid glass. No JS per frame, no re-capture: the browser composites
-   backdrop-filter on the GPU. Never animate the blur radius; animate transform/opacity only.
-   Recipe values are tokens (apps/web/src/styles/tokens.css → --glass-*). */
+/* Never animate backdrop blur radius; animate transform and opacity only. */
 
 .glass {
   position: relative;
@@ -15,7 +13,6 @@
     var(--glass-shadow);
 }
 
-/* Specular rim: a 1 px gradient border, cut out with a mask so only the edge paints. */
 .glass::before {
   content: '';
   position: absolute;

@@ -35,7 +35,6 @@ const NAV: Array<{ sheet: Section; title: string; Icon: typeof Settings; devOnly
   { sheet: 'developer', title: 'Developer', Icon: FlaskConical, devOnly: true },
 ];
 
-/** Every page: which section it belongs to, what its back button returns to, and how deep it sits. */
 const PAGES: Record<Exclude<SettingsSheet, 'settings'>, { title: string; section: Section; parent?: SettingsSheet }> = {
   general: { title: 'General', section: 'general' },
   'voice-settings': { title: 'Voice input', section: 'general', parent: 'general' },
@@ -97,10 +96,7 @@ function PageContent({ sheet, onOpenGlassLab }: { sheet: SettingsSheet; onOpenGl
   }
 }
 
-/**
- * The Settings surface. The bare /settings route shows General beside the rail on desktop and the
- * section list on narrow screens; which one is visible is CSS only (see the module's breakpoints).
- */
+/** Desktop shows rail + pane; narrow shows stacked nav via CSS breakpoints. */
 export function SettingsModal({
   sheet,
   onOpenGlassLab,

@@ -1,4 +1,3 @@
-/* Composer tray: a popover anchored to the + button on desktop, an iOS-style sheet on narrow screens. */
 .anchor {
   position: absolute;
   bottom: calc(100% + var(--space-2));

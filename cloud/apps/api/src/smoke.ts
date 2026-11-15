@@ -3,7 +3,7 @@ import {createLocalAdapters} from './local-memory.js';
 import {localModules} from './modules.js';
 import {createPraxisApp} from './server.js';
 
-/** Bundle smoke only: the bundled handler with memory adapters and dev auth. createApp refuses local mode on Vercel. */
+/** Local bundle smoke test only; createApp refuses local mode on Vercel. */
 export function createSmokeApp() {
   if (process.env.VERCEL || process.env.NODE_ENV === 'production') throw new Error('Smoke app is not allowed in production');
   const port = Number(process.env.PORT ?? 8787);

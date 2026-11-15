@@ -1,30 +1,20 @@
 import SwiftUI
 
-/// The composer (spec §6). One glass capsule morphing through idle /
-/// typing / attachments / recording / streaming — never a swap.
-/// Buttons stay pinned to the bottom line; radius stays concentric.
 struct ComposerView: View {
     @Environment(ChatStore.self) private var store
     var trayOpen: Bool
     var namespace: Namespace.ID
-    /// Opening/closing goes through the owner so haptics, spring and page
-    /// reset are the same from every trigger.
+    /// Routed through owner so haptics, spring, and page reset stay consistent.
     var onToggleTray: () -> Void = {}
     var onSend: () -> Void
     var onAttachmentTap: (Attachment) -> Void = { _ in }
     var onCamera: () -> Void = {}
-    /// False when the composer row lives inside the morphed tray
-    /// card, which supplies the shared glass instead.
+    /// False inside expanded tray card so parent glass wraps both.
     var showsGlass: Bool = true
-    /// True while the tray's Model page is open: the field becomes the
-    /// model search (bound to `store.modelQuery`, the draft untouched)
-    /// and the send button hides. Recording keeps precedence (voice).
     var isModelSearch: Bool = false
-    /// Return in search mode: the owner selects the top result.
     var onModelSearchSubmit: () -> Void = {}
 
     @FocusState private var focused: Bool
-    /// The text just sent, for a short while: see `send()`.
     @State private var lastSend: (text: String, at: Date)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.sendLaunch) private var sendLaunch
@@ -32,7 +22,6 @@ struct ComposerView: View {
     private var hasText: Bool { !store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var canSend: Bool { hasText || !store.attachments.isEmpty }
     private var isStreaming: Bool { store.isRunning }
-    /// Voice input state (nil in previews: the mic then does nothing).
     private var voice: VoiceInputController? { store.voice }
     private var voiceShowsUI: Bool { voice?.showsRecordingUI == true }
 
@@ -83,8 +72,6 @@ struct ComposerView: View {
                 .contentShape(Circle())
         }
         .buttonStyle(PressScaleStyle())
-        // Solid ink, not glass: the composer field stays glass, its
-        // satellite buttons read as solid black/white (item 10).
         .background(Praxis.ink, in: Circle())
         .accessibilityLabel(trayOpen ? "Close add menu" : "Add photos, files and more")
     }
@@ -106,7 +93,6 @@ struct ComposerView: View {
                 .focused($focused)
                 .submitLabel(.send)
                 .frame(minHeight: 38)
-                // Where a sent bubble rises from.
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sendLaunch?.track($0) }
                 .padding(.leading, 6)
                 // Animate the field only when a line wraps, not per keystroke.
@@ -119,10 +105,7 @@ struct ComposerView: View {
 
     // MARK: Model search (tray Model page open)
 
-    /// The field rebound as the model search: single line, no
-    /// autocorrection (model ids), Return picks the top result. A
-    /// separate branch from the draft field, so the two never share a
-    /// text view.
+    /// Separate view from draft so search text never shares TextField state.
     private var searchField: some View {
         TextField("Search models", text: Binding(get: { store.modelQuery }, set: { store.modelQuery = $0 }))
             .font(Type.inter(17))
@@ -138,20 +121,10 @@ struct ComposerView: View {
 
     // MARK: Sending
 
-    /// Sends, then makes sure the field is really empty.
-    ///
-    /// Clearing `draft` alone loses a race with the keyboard: the binding's
-    /// "" only reaches the text view on SwiftUI's next update, and any edit
-    /// the keyboard makes before that — committing a candidate or marked
-    /// text, an autocorrect replacement, a late keystroke — makes SwiftUI
-    /// copy the view's text (still the whole sent message) back into
-    /// `draft`. The update then finds the two agreeing and clears nothing.
-    /// Emptying the text view in the same turn as the send leaves nothing
-    /// stale for such an edit to copy back.
+    /// Clears UITextView directly on send to avoid keyboard autocommit race.
     private func send() {
         let text = store.draft
         onSend()
-        // Held for consent (or nothing to send): the draft stays.
         guard store.draft.isEmpty, !text.isEmpty else { return }
         lastSend = (text, Date())
         ComposerInput.clearFocusedTextView()
@@ -160,9 +133,7 @@ struct ComposerView: View {
         #endif
     }
 
-    /// Backstop for the same race: the keyboard committing the old text
-    /// right after a send. A user can't retype most of a message in under
-    /// a second, so a draft that reappears that fast is the sent text.
+    /// Rejects late keyboard recommit of just-sent text inside race window.
     private func rejectRecommit(_ text: String) {
         guard let sent = lastSend, !text.isEmpty else { return }
         guard Date().timeIntervalSince(sent.at) < 1 else { lastSend = nil; return }
@@ -190,9 +161,6 @@ struct ComposerView: View {
 
     private var trailingButton: some View {
         HStack(spacing: 8) {
-            // Camera sits left of the mic while idle; once typing
-            // starts it fades out to the right as send takes over.
-            // Search mode shows neither camera nor mic.
             if !isStreaming && !canSend && !voiceShowsUI && !isModelSearch {
                 cameraButton
                     .transition(reduceMotion ? .opacity : .asymmetric(
@@ -203,8 +171,6 @@ struct ComposerView: View {
         }
     }
 
-    /// Coarse line count driving the growth animation: changes when the
-    /// draft wraps or gains a newline, not on every character.
     private var lineEstimate: Int {
         store.draft.reduce(into: 1) { if $1 == "\n" { $0 += 1 } } + store.draft.count / 34
     }
@@ -223,9 +189,6 @@ struct ComposerView: View {
                 .tint(Praxis.ink)
                 .accessibilityLabel("Stop generating")
             } else if isModelSearch {
-                // Search mode: no send, no mic — a clear button while
-                // there's a query, else a spacer holding the row shape.
-                // (Stop above still wins while streaming.)
                 if !store.modelQuery.isEmpty {
                     Button { store.modelQuery = "" } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -263,8 +226,6 @@ struct ComposerView: View {
                 .frame(width: 38, height: 38)
                 .tint(Praxis.destructive)
                 .accessibilityLabel("Stop recording")
-                // Review, transcribing and notices own their actions in the
-                // middle; nothing trails them.
             } else if !voiceShowsUI {
                 Button { voice?.micTapped() } label: {
                     Image(systemName: "mic")
@@ -322,40 +283,30 @@ struct ComposerView: View {
     }
 
     // MARK: Recording — VoiceInputController owns it (see
-    // Services/Voice/); the mic button above only calls into it.
 }
 
-/// The UIKit text view behind the focused composer field (SwiftUI's
-/// vertical `TextField` is a `UITextView` subclass while it's focused).
 @MainActor
 enum ComposerInput {
     fileprivate static weak var reported: UIResponder?
 
-    /// The current first responder, if any.
     static func firstResponder() -> UIResponder? {
         reported = nil
         UIApplication.shared.sendAction(#selector(UIResponder.praxisReportFirstResponder), to: nil, from: nil, for: nil)
         return reported
     }
 
-    /// Empties the first responder's text if it's a text view, dropping
-    /// any marked text (composition, inline prediction) with it. The
-    /// field's binding is already "" by then, so the two agree at once.
+    /// Clears first-responder UITextView and drops marked composition text.
     static func clearFocusedTextView() {
         guard let textView = firstResponder() as? UITextView,
               textView.markedTextRange != nil || !textView.text.isEmpty else { return }
-        // Replacing the text ends the composition without committing it
-        // (`unmarkText()` would commit it and echo it back through the
-        // delegate into the draft).
+        // Assigning empty text drops composition instead of committing like unmarkText.
         textView.text = ""
     }
 }
 
 #if DEBUG
 extension ComposerInput {
-    /// UI tests (`-PraxisSimulateKeyboardCommit YES`): play the edit a
-    /// device keyboard makes right after a send — committing its
-    /// candidate — inside the race window, before SwiftUI's next update.
+    /// Replays post-send keyboard candidate commit for UI tests.
     static func simulateKeyboardEditIfTesting() {
         guard UserDefaults.standard.bool(forKey: "PraxisSimulateKeyboardCommit"),
               let textView = firstResponder() as? UITextView else { return }

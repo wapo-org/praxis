@@ -5,7 +5,7 @@ export type JsonValue = z.infer<typeof JsonValueSchema>;
 export const JsonObjectSchema = z.record(z.string(), JsonValueSchema);
 export type JsonObject = z.infer<typeof JsonObjectSchema>;
 export const IdSchema = z.string().min(1).max(200);
-export const TimestampSchema = z.iso.datetime({ offset: false }); // ISO-8601 UTC, e.g. 2026-10-29T14:00:00.000Z
+export const TimestampSchema = z.iso.datetime({ offset: false });
 export const ModeSchema = z.enum(['ask', 'plan', 'build', 'auto']);
 export type Mode = z.infer<typeof ModeSchema>;
 export const CapabilitiesSchema = z.object({
@@ -49,7 +49,7 @@ export const ModelPreferenceSchema = z.object({type:z.literal('model.preference'
 export const ModelPreferenceRecordSchema = z.object({type:z.literal('modelPreference'), modelId:IdSchema, pinned:z.boolean(), favorite:z.boolean()});
 export type ModelPreferenceRecord = z.infer<typeof ModelPreferenceRecordSchema>;
 export const DEFAULT_MODEL_ID = 'anthropic/claude-sonnet-5.5';
-/** Curated short list shown above the full catalogue, in this order. Entries missing from the catalogue are skipped. */
+/** Curated short list ordered above the catalogue; missing IDs are skipped. */
 export const RECOMMENDED_MODELS = ['anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5', 'anthropic/claude-haiku-5.5', 'openai/gpt-5.6-sol', 'google/gemini-3.8-flash', 'deepseek/deepseek-v4.1-flash'] as const;
 /** Effort levels offered for models whose catalogue entry supports reasoning. */
 export const REASONING_EFFORTS = ['low', 'medium', 'high'] as const;
@@ -139,7 +139,7 @@ export const RunEventSchema = z.object({type:z.literal('run.event'),id:z.number(
 export type RunEvent = z.infer<typeof RunEventSchema>;
 export const ConnectorStatusSchema = z.enum(['connected','unreachable','needs_auth','needs_reauth','error']);
 export type ConnectorStatus = z.infer<typeof ConnectorStatusSchema>;
-/** status/lastCheckedAt/statusCode: result of the last MCP handshake (absent = never checked). Clients show status, not authStatus alone. */
+/** Last handshake status; UI renders status rather than authStatus alone. */
 export const ConnectorSchema = z.object({type:z.literal('connector'),status:ConnectorStatusSchema.optional(),lastCheckedAt:TimestampSchema.optional(),statusCode:z.string().optional(),error:z.string().optional(),toolCount:z.number().int().optional(),promptsCount:z.number().int().optional(),hasNewTools:z.boolean().optional(),headerNames:z.array(z.string()).optional(),id:IdSchema,name:z.string(),url:z.string().url(),transport:z.enum(['streamableHttp','sse']),enabled:z.boolean(),trusted:z.boolean(),disabledTools:z.array(z.string()),authStatus:z.enum(['none','required','connected']),updatedAt:TimestampSchema});
 export type Connector = z.infer<typeof ConnectorSchema>;
 export const ConnectorInputSchema = z.object({type:z.literal('connector.input'),name:z.string().min(1).max(100),url:z.string().url(),transport:z.enum(['streamableHttp','sse']).default('streamableHttp'),enabled:z.boolean().default(true),trusted:z.boolean().default(false),disabledTools:z.array(z.string()).default([]),extraHeaders:z.record(z.string(),z.string()).optional(),token:z.string().optional()});
@@ -175,7 +175,7 @@ export const ENDPOINTS = {
  bootstrap:'/v1/bootstrap',chats:'/v1/chats',runs:'/v1/runs',events:'/v1/events',providers:'/v1/providers',modelKey:'/v1/model-key',models:'/v1/models',connectors:'/v1/connectors',skills:'/v1/skills',registries:'/v1/skill-registries',uploads:'/v1/uploads',transcribe:'/v1/transcribe',sync:'/v1/sync',
 } as const;
 
-// Additive client-review fields, v1. Snapshot is authoritative even after stream retention.
+// Additive v1 fields; snapshot stays authoritative past stream retention.
 export const RunBlockSchema = z.object({type:z.enum(['text','reasoning']),id:IdSchema,text:z.string(),finished:z.boolean()});
 export const RunToolStateSchema = z.object({type:z.literal('tool.state'),activity:ToolActivitySchema,argumentsJson:z.string(),running:z.boolean(),completion:ToolCompletionSchema.optional(),progress:z.array(JsonObjectSchema)});
 export const RunSnapshotSchema = z.object({type:z.literal('run.snapshot'),run:RunSchema,lastEventId:z.number().int().nonnegative(),blocks:z.array(RunBlockSchema),tools:z.array(RunToolStateSchema),pendingApprovals:z.array(ApprovalSchema),pendingElicitations:z.array(ElicitationSchema),usage:UsageSchema.optional(),messages:z.array(MessageSchema)});

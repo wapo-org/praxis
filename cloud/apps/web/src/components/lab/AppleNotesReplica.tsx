@@ -24,7 +24,6 @@ const RECENT_NOTES_ITEMS = [
   },
 ];
 export function AppleNotesReplica() {
-  // 1. Apple Notes 35-Frame Reference Replica state (IMG_7744 – IMG_7778)
   const [notesMenuOpen, setNotesMenuOpen] = React.useState(false);
   const [notesSubPath, setNotesSubPath] = React.useState<string[]>([]);
   const [notePinned, setNotePinned] = React.useState(false);
@@ -49,7 +48,6 @@ export function AppleNotesReplica() {
               overflow: 'hidden',
             }}
           >
-            {/* Simulated Apple Notes Top Toolbar + Underlying Note Prose */}
             <div>
               <div className="apple-notes-toolbar"
                 style={{
@@ -115,7 +113,6 @@ export function AppleNotesReplica() {
                     </GlassDropdown.Trigger>
 
                     <GlassDropdown.Content minWidth={240} maxHeight={460}>
-                      {/* Top 3-column Quick-Action Tile Row (IMG_7749: Scan | Pin Note | Lock) */}
                       <GlassDropdown.ActionGrid columns={3}>
                         <GlassDropdown.TileItem
                           icon={<ScanLine size={16} />}
@@ -147,7 +144,6 @@ export function AppleNotesReplica() {
                         </GlassDropdown.TileItem>
                       </GlassDropdown.ActionGrid>
 
-                      {/* Primary Action List */}
                       <GlassDropdown.Item
                         icon={<Search size={16} />}
                         onSelect={() => setLastNotesAction('Find in Note')}
@@ -162,7 +158,6 @@ export function AppleNotesReplica() {
                         Move Note
                       </GlassDropdown.Item>
 
-                      {/* Expandable In-Place Morph Submenu (IMG_7769–IMG_7774: Recent Notes › -> Recent Notes ⌄) */}
                       <GlassDropdown.Sub
                         id="recent-notes"
                         label="Recent Notes"
@@ -190,7 +185,6 @@ export function AppleNotesReplica() {
                         </GlassDropdown.SubContent>
                       </GlassDropdown.Sub>
 
-                      {/* Math Results Submenu */}
                       <GlassDropdown.Sub
                         id="math-results"
                         label="Math Results"
@@ -253,8 +247,6 @@ export function AppleNotesReplica() {
                         </GlassDropdown.SubContent>
                       </GlassDropdown.Sub>
 
-
-                      {/* Destructive Footer Section */}
                       <GlassDropdown.Item
                         tone="destructive"
                         icon={<Trash2 size={16} />}
@@ -267,7 +259,6 @@ export function AppleNotesReplica() {
                 </div>
               </div>
 
-              {/* Underlying Note Editorial Text from IMG_7744 ("protests through history is primarily brutal and...") */}
               <div
                 style={{
                   padding: '18px',

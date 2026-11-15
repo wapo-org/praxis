@@ -1,10 +1,7 @@
 import React from 'react';
 import styles from './scrim.module.css';
 
-/**
- * ProgressiveBlurScrim — static stacked backdrop-blur bands under the top bar and above the composer
- * (port of PraxisChat DesignSystem/ProgressiveBlurScrim.swift). Pure CSS; nothing runs per frame.
- */
+/** Static CSS backdrop-blur bands mirroring PraxisChat ProgressiveBlurScrim.swift. */
 export interface ProgressiveBlurScrimProps extends React.HTMLAttributes<HTMLDivElement> {
   edge: 'top' | 'bottom';
   height?: number;
@@ -46,7 +43,6 @@ export interface ScrollBlurProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
   height?: string | number;
   maxHeight?: string | number;
-  /** Fade size in px at a scrolled edge. */
   scrimHeight?: number;
   viewportRef?: React.Ref<HTMLDivElement>;
   onViewportScroll?: React.UIEventHandler<HTMLDivElement>;
@@ -57,7 +53,6 @@ function toCssSize(value: string | number | undefined): string | undefined {
   return typeof value === 'number' ? `${value}px` : value;
 }
 
-/** A scroll viewport whose edges fade out only once scrolled (CSS scroll-driven mask, no JS). */
 export function ScrollBlur({
   children,
   height,

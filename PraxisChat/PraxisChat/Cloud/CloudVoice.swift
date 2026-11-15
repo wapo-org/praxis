@@ -1,7 +1,6 @@
 import Foundation
 
-/// Keeps the existing recorder/recovery/segmentation pipeline. Only the upload
-/// changes: session-authenticated cloud API, never a device Groq/provider key.
+/// Uploads audio through session-authenticated cloud API with local pipeline.
 struct CloudVoiceTranscriber: Transcriber {
     var client: CloudAPIClient
     var model: String

@@ -225,7 +225,6 @@ export function ActivityDetails({
               </span>
             </button>
 
-            {/* Level 2: Monospace JSON Input + Progress + Output Detail */}
             {isStepOpen && (
               <div
                 data-testid={`tool-step-detail-${step.callId}`}

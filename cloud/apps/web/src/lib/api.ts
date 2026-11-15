@@ -21,14 +21,12 @@ import { safeMessage } from './links';
 import { localUploadPath } from './hosts';
 export * from './api-transport';
 export class PraxisApiClient extends FeatureApiClient {
-  // Bootstrap & Auth
   async bootstrap(): Promise<LegacyBootstrap> {
-    // Phase A bridge: the server no longer sends providers or models (see legacy-providers.ts).
+    // Phase A bridge: server omits providers/models (see legacy-providers.ts).
     const boot = await this.request<Bootstrap & Partial<LegacyBootstrap>>('/v1/bootstrap');
     return { ...boot, providers: boot.providers ?? [], models: boot.models ?? [] };
   }
 
-  // Chats & Messages
   async listChats(params?: {
     q?: string;
     cursor?: string;
@@ -117,7 +115,6 @@ export class PraxisApiClient extends FeatureApiClient {
     return { ...page, items: page.items.map(safeMessage) };
   }
 
-  // Runs & Interactive Loop
   async startRun(input: {
     chatId: string;
     text: string;
@@ -209,7 +206,6 @@ export class PraxisApiClient extends FeatureApiClient {
     );
   }
 
-  // Providers & Models
   async listProviders(): Promise<PageResult<Provider>> {
     return this.request<PageResult<Provider>>('/v1/providers?limit=100');
   }
@@ -301,7 +297,6 @@ export class PraxisApiClient extends FeatureApiClient {
     });
   }
 
-  // Consents & Preferences
   async listConsents(): Promise<PageResult<Consent>> {
     return this.request<PageResult<Consent>>('/v1/consents?limit=100');
   }
@@ -327,7 +322,6 @@ export class PraxisApiClient extends FeatureApiClient {
     });
   }
 
-  // Uploads & Voice Transcription
   async uploadAttachment(file: File, chatId?: string): Promise<Attachment> {
     const req = await this.request<{
       type: 'upload.url';
@@ -436,7 +430,6 @@ export class PraxisApiClient extends FeatureApiClient {
     });
   }
 
-  // Delta Sync
   async syncPull(cursor = '0') {
     const raw = await this.request<unknown>(`/v1/sync/pull?cursor=${encodeURIComponent(cursor)}`);
     return SyncResponseSchema.parse(raw);

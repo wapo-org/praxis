@@ -110,7 +110,6 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
         width: '100%',
       }}
     >
-      {/* Level 0: Folded / Expandable Pill Header */}
       <div
         role="button"
         tabIndex={0}
@@ -172,7 +171,6 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
         </span>
       </div>
 
-      {/* Level 1 & Level 2: Expanded Steps + Reasoning + Vision + Compaction */}
       {expanded && (
         <ActivityDetails
           reasoningBlocks={reasoningBlocks}
@@ -186,14 +184,12 @@ export const AgentActivityView: React.FC<AgentActivityViewProps> = ({
         />
       )}
 
-      {/* Inline Pending Tool Approval Cards */}
       <ApprovalCards
         pendingApprovals={pendingApprovals}
         runId={runId}
         onResolveApproval={onResolveApproval}
       />
 
-      {/* Inline Pending Elicitation Form Cards */}
       <ElicitationCards
         pendingElicitations={pendingElicitations}
         runId={runId}

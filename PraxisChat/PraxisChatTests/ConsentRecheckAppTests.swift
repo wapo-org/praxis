@@ -7,9 +7,7 @@ import AgentRuntime
 import AgentTestSupport
 @testable import PraxisChat
 
-/// The consent backstop in `LiveChatEngine` (R3-M1, R3-L1): no keyed
-/// request goes out before `mayShare` allows it, and a mid-run revoke
-/// stops the run before its next provider request.
+/// Verifies LiveChatEngine blocks keyed requests without mayShare and stops on mid-run revoke.
 @MainActor
 final class ConsentRecheckAppTests: XCTestCase {
     private var directory: URL!
@@ -77,8 +75,7 @@ final class ConsentRecheckAppTests: XCTestCase {
         var engine = LiveChatEngine(runtime: services.runtime, resolve: { model in await settings.selection(model: model) },
                                     makeProvider: { endpoint, _ in OpenAIChatProvider(endpoint: endpoint, transport: chat) },
                                     attachments: attachments, usesBackgroundTasks: false)
-        // Revoked once the first provider request has gone out: everything
-        // after it must stop.
+        // Simulates revoking consent immediately after the first provider request goes out.
         engine.mayShare = { _ in chat.requests.isEmpty }
         engine.onToolsRejected = { selection in
             await settings.markToolsUnsupported(profileID: selection.profileID, model: selection.model)
@@ -104,13 +101,13 @@ final class ConsentRecheckAppTests: XCTestCase {
                        "unknown support is what triggers the pre-check")
         let host = AIDataConsent.host(of: profile.endpoint.baseURL)
         let consent = AIDataConsent(fileURL: nil)
-        consent.grant(host, providerName: "OpenRouter") // the store's send proceeds...
+        consent.grant(host, providerName: "OpenRouter")
         let services = services(settings, consent: consent)
         let chat = ScriptedTransport(replies: [])
         var engine = LiveChatEngine(runtime: services.runtime, resolve: { model in await settings.selection(model: model) },
                                     makeProvider: { endpoint, _ in OpenAIChatProvider(endpoint: endpoint, transport: chat) },
                                     attachments: attachments, usesBackgroundTasks: false)
-        engine.mayShare = { _ in false } // ...but the engine's backstop says no
+        engine.mayShare = { _ in false }
         engine.prepareForImages = { model in await settings.refreshForImages(model: model) }
         let store = store(engine: engine, services: services)
         let png = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).pngData { ctx in

@@ -6,13 +6,12 @@ export interface SlotState extends Cooldown {
   slot: number;
 }
 
-/** Slot numbers and the service name only. Never a credential. */
+/** Log slot numbers and service name only; never credentials. */
 export type CredentialLogEvent =
   | {event: 'credential.cooldown'; service: string; slot: number; reason: CooldownReason; until: number}
   | {event: 'credential.unavailable'; service: string; slots: number[]; retryAt: number | null};
 export type CredentialLog = (event: CredentialLogEvent) => void;
 
-/** No slot of the service can serve the call right now. `retryAt` is the earliest moment one may again. */
 export class CredentialsUnavailableError extends Error {
   readonly name = 'CredentialsUnavailableError';
   readonly retryAt: Date | null;
@@ -22,7 +21,6 @@ export class CredentialsUnavailableError extends Error {
   }
 }
 
-/** Thrown by `fn` to report an unavailable credential when there is no response value to classify. */
 export class CredentialSignalError extends Error {
   readonly name = 'CredentialSignalError';
   constructor(readonly signal: Exclude<CredentialSignal, {kind: 'ok'}>) {
@@ -31,7 +29,6 @@ export class CredentialSignalError extends Error {
 }
 
 export interface WithCredentialOptions<T> {
-  /** Reads the result of `fn`. Default: HTTP responses go through `classifyHttp`, anything else is `ok`. */
   classify?: (value: T) => CredentialSignal | Promise<CredentialSignal>;
   log?: CredentialLog;
   now?: () => number;
@@ -43,11 +40,7 @@ function defaultClassify(value: unknown, now: () => number): CredentialSignal {
   return {kind: 'ok'};
 }
 
-/**
- * Failover for stateless services: runs `fn` with the lowest-numbered healthy slot. On an unavailable signal
- * the slot is marked cooling and the next one is tried, each slot at most once. Returns the value and the slot
- * that served it. Other errors thrown by `fn` pass through unchanged. A store that fails is treated as "healthy".
- */
+/** Runs fn across healthy slots in order, cooling unavailable slots and failing open on store error. */
 export async function withCredential<C, T>(pool: CredentialPool<C>, store: CooldownStore, fn: (credential: C, slot: number) => Promise<T>, options: WithCredentialOptions<T> = {}): Promise<{value: T; slot: number}> {
   const now = options.now ?? Date.now;
   if (!pool.slots.length) throw new CredentialsUnavailableError(pool.service, [], 'unconfigured');

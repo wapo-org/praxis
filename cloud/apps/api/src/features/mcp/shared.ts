@@ -8,15 +8,15 @@ import { seal, unseal } from '../../secrets.js';
 import type { ElicitRequest, ElicitResult } from '@modelcontextprotocol/sdk/types.js';
 
 export interface McpOptions {
-  /** Canonical externally reachable API origin. Never derived from Host headers. */
+  /** Canonical external API origin; never derive from Host headers. */
   publicOrigin?: string;
   webReturnOrigins?: string[];
-  /** Production network port: MUST pin resolved public IPs, preserve TLS host, and reject redirects. */
+  /** Must pin resolved public IPs, preserve TLS host, and reject redirects. */
   safeFetch?: typeof fetch;
-  /** Atomic Redis GETDEL (or equivalent). Required for production OAuth callbacks. */
+  /** Atomic Redis GETDEL required for production OAuth callbacks. */
   consumeOAuthState?: (key: string) => Promise<OAuthState | null>;
-  /** Resolve via the run's consent/elicitation mechanism; absence declines, never accepts. */
-  /** Distributed lease (Redis in production) so one instance refreshes a connector's OAuth tokens at a time. */
+  /** Resolves via run consent/elicitation; absence fails closed. */
+  /** Distributed lease so only one instance refreshes OAuth tokens. */
   lease?: { acquire(key: string, ttlMs: number, ownerId?: string): Promise<string | null>; release(key: string, token: string): Promise<void> };
   elicit?: (request: ElicitRequest['params'], context: { userId: string; connectorId: string; connectorName: string; chatId?: string; runId?: string }) => Promise<ElicitResult>;
 }
@@ -41,7 +41,7 @@ export async function saveConnector(ctx: FeatureContext, value: Connector) {
   await ctx.store.put(ctx.userId, 'connector', next.id, next as JsonObject);
   return next;
 }
-/** Existing authStatus=required is the public needs-reauth state; error carries the machine reason. */
+/** Keeps authStatus=required as public state while error holds machine reason. */
 export async function requireReauth(ctx: FeatureContext, value: Connector): Promise<never> {
   const live = await connector(ctx, value.id);
   await saveConnector(ctx, {...live, authStatus: 'required', error: 'needs_reauth'});
@@ -59,14 +59,14 @@ export async function writeSecret(ctx: FeatureContext, id: string, slot: string,
   const encrypted = seal(JSON.stringify(value), ctx.userId, `mcp:${id}:${slot}`, ctx.encryptionKey);
   await ctx.store.put(ctx.userId, secretKind, id, { ...(row?.deleted ? {} : row?.value), [slot]: encrypted });
 }
-/** Consent key for a remote URL: host plus any non-default port, the same key provider and tool consent use. */
+/** Consent key includes non-default port, matching provider/tool consent. */
 export const consentHost = (url: string) => new URL(url).host.toLowerCase();
 
 export async function requireConsent(ctx: FeatureContext, value: Connector) {
   const url = new URL(value.url);
   const host = consentHost(value.url), legacy = url.hostname.toLowerCase();
   const exact = await ctx.store.get(ctx.userId, 'consent', host);
-  // Records saved before WP-W3 were keyed by hostname only; they still count, unless a host:port record decides.
+  // Fall back to legacy hostname-only consent keys unless host:port decides.
   const consent = exact && !exact.deleted ? exact : host === legacy ? undefined : await ctx.store.get(ctx.userId, 'consent', legacy);
   if (!consent || consent.deleted || consent.value.allowed !== true) throw new McpError(403, 'consent_required', `AI data consent is required for ${host}`);
 }

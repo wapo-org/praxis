@@ -1,8 +1,4 @@
-/**
- * WP-PRA59 Phase A bridge. The server and protocol no longer have providers or per-user model rows
- * (OpenRouter with the user's own key is the only provider). The web screens that still use these
- * shapes are replaced in Phase B, which deletes this file. Nothing new may import it.
- */
+/** Temporary WP-PRA59 Phase A web bridge; deleted in Phase B. */
 import { z } from "zod";
 import {
   CapabilitiesSchema,
@@ -80,5 +76,5 @@ export const ProviderTestResultSchema = z.object({
   error: ProviderProbeErrorSchema.optional(),
   message: z.string().optional(),
 });
-/** The bootstrap as the Phase A web still reads it. The server no longer sends these two lists; the client fills them in empty. */
+/** Phase A web bootstrap shape; client fills removed provider/model arrays empty. */
 export type LegacyBootstrap = Bootstrap & { providers: Provider[]; models: Model[] };

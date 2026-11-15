@@ -76,8 +76,7 @@ extension CloudCatalogSkillInput: Identifiable {
     var id: String { name }
 }
 
-/// Security-scoped access ends before the data leaves this function. Only a
-/// bounded UTF-8 document is sent to the API; no local filesystem path leaks.
+/// Releases security-scoped bookmark before upload; sends document only.
 enum CloudSettingsSkillImport {
     static func read(_ url: URL) throws -> CloudCatalogSkillInput {
         let access = url.startAccessingSecurityScopedResource()
@@ -86,8 +85,7 @@ enum CloudSettingsSkillImport {
         guard values.isRegularFile == true, let size = values.fileSize, size <= 500_000 else { throw CloudSettingsError.invalidSkill }
         let bytes = try Data(contentsOf: url, options: .mappedIfSafe)
         guard bytes.count <= 500_000, let document = String(data: bytes, encoding: .utf8), !document.isEmpty else { throw CloudSettingsError.invalidSkill }
-        // The API performs authoritative SKILL.md validation. The filename is
-        // only an editable suggested name, never a path on the cloud server.
+        // Server validates SKILL.md; filename is only a suggested display name.
         return CloudCatalogSkillInput(name: url.deletingPathExtension().lastPathComponent, description: "", document: document)
     }
 }

@@ -3,12 +3,7 @@ import type { GenericId as Id } from 'convex/values';
 import { mutation, query, type QueryCtx } from './functions.js';
 import { bounded, requireServer } from './access.js';
 
-/**
- * Owner-bound file storage. The API opens a ticket (owner, name, type, exact size) and hands the client a
- * one-time Convex HTTP upload URL; bytes go straight to Convex storage, never through a function argument.
- * The API then claims the returned storageId for that ticket: Convex's own `_storage` metadata must match
- * the ticket's size and type, and a storageId can be claimed once, by its upload owner.
- */
+/** Owner-bound storage: tickets constrain upload size/type and one-time storageId claims. */
 export const MAX_BYTES = 25_000_000;
 
 function owned(ctx: QueryCtx, userId: string, storageId: string) {
@@ -56,21 +51,20 @@ export const createTicket = mutation({
   },
 });
 
-/** The capability URL only accepts bytes for this owner's existing ticket. Raw storage URLs stay private. */
+/** Capability URL accepts bytes only for this owner's existing ticket. */
 export const generateUploadUrl = mutation({
   args: { serverToken: v.string(), userId: v.string(), ticket: v.string() },
   handler: async (ctx, a) => {
     await requireServer(a.serverToken);
     const row = await ticketRow(ctx, a.userId, a.ticket);
     if (!row || row.status !== 'pending' || row.expiresAt <= Date.now()) throw new ConvexError('Upload ticket unavailable');
-    // CONVEX_SITE_URL is provided by Convex to every deployment (HTTP actions origin, incl. custom domains).
     const site = process.env.CONVEX_SITE_URL;
     if (!site) throw new ConvexError('HTTP actions URL unavailable');
     return new URL(`/uploads/${a.ticket}`, site).href;
   },
 });
 
-/** Binds an uploaded blob to the owner's matching pending ticket. Idempotent for the same owner and file. */
+/** Binds uploaded blob to matching owner ticket; idempotent for same owner/file. */
 export const claim = mutation({
   args: {
     serverToken: v.string(),
@@ -89,7 +83,7 @@ export const claim = mutation({
     const same = (row: { name: string; mediaType: string; size: number; chatId?: string }) =>
       row.name === a.name && row.mediaType === a.mediaType && row.size === a.size && row.chatId === a.chatId;
     const ticket = await ctx.db.query('files').withIndex('storage', q => q.eq('storageId', storageId)).unique();
-    // Only the upload HTTP action can bind a blob to a ticket. Knowing a storageId is never ownership.
+    // Knowing a storageId is not ownership; only upload action binds ticket.
     if (!ticket || ticket.userId !== a.userId || !same(ticket)) return {ok: false};
     if (ticket.status === 'ready') return {ok: true};
     if (ticket.status !== 'uploaded' || ticket.expiresAt <= Date.now()) return {ok: false};
@@ -144,7 +138,7 @@ export const remove = mutation({
   },
 });
 
-/** Deletes expired owner-bound upload rows and blobs; never guesses ownership of stray storage ids. */
+/** Deletes expired owner tickets and blobs without guessing stray ids. */
 export const sweep = mutation({
   args: { serverToken: v.string() },
   handler: async (ctx, a) => {

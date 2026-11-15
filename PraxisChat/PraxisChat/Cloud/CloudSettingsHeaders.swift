@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Header names may be returned by the API; header values are write-only,
-/// short-lived editor drafts, cleared when the editor disappears or saves.
+/// Header values stay write-only in memory and clear on close or save.
 struct CloudSettingsHeaderDraft: Identifiable {
     var id = UUID()
     var name = ""

@@ -6,7 +6,7 @@ import { apiClient } from '../../lib/api';
 import styles from './Screen.module.css';
 export function SkillImport() {
   const store = usePraxisStore();
-  // Separate tasks: an archive failure must not show up on (or block) the manual form, and vice versa.
+  // Separate tasks isolate archive errors from the manual form.
   const archive = useScreenTask();
   const task = useScreenTask();
   const [report, setReport] = React.useState('');

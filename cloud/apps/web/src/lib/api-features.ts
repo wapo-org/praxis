@@ -2,7 +2,6 @@ import type { Connector, Skill } from '@praxis/protocol';
 import { type PageResult, type Registry, type RegistryEntry, type ToolSpec } from './api-transport';
 import { ExtendedFeatureApiClient } from './api-x1';
 export class FeatureApiClient extends ExtendedFeatureApiClient {
-  // Connectors (MCP)
   async listConnectors(): Promise<PageResult<Connector>> {
     return await this.request<PageResult<Connector>>('/v1/connectors?limit=100');
   }
@@ -77,7 +76,6 @@ export class FeatureApiClient extends ExtendedFeatureApiClient {
     );
   }
 
-  // Skills & Skill Registries
   async listSkills(): Promise<PageResult<Skill>> {
     return await this.request<PageResult<Skill>>('/v1/skills?limit=100');
   }

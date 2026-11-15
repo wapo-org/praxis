@@ -25,7 +25,7 @@ export const begin = mutation({
     return null;
   },
 });
-/** Each mutation is bounded and retries safely. Blobs and file tickets disappear in the same transaction. */
+/** Bounded retryable purge erasing rows, blobs, and file tickets atomically. */
 export const purge = mutation({
   args: {
     serverToken: v.string(),
@@ -68,7 +68,7 @@ export const purge = mutation({
       .query('authDocuments')
       .withIndex('model_id', (q) => q.eq('model', 'user').eq('id', a.userId))
       .unique();
-    // The sweep position lives on the user row (kept until the last batch), so a retried request continues the sweep.
+    // Cursor lives on the user row so retried batches resume.
     const sweep = (user?.data.deletion ?? {}) as { blobCursor?: string; blobsDone?: boolean };
     if (!a.blobsDone && !sweep.blobsDone) {
       const page = await ctx.db.system
@@ -82,7 +82,7 @@ export const purge = mutation({
       if (user) await ctx.db.patch(user._id, { data: { ...user.data, deletion } });
       if (!page.isDone) return { done: false, blobCursor: page.continueCursor };
     }
-    // Retain the user row until the last batch so its email remains available for verification cleanup.
+    // Retain user row until final batch so email stays available for verification cleanup.
     const email = user?.data.email;
     const owned = new Map();
     for (const model of ['session', 'account', 'verification', 'rateLimit']) {

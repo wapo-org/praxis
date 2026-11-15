@@ -1,4 +1,3 @@
-/* Settings screens: one row height, one card, one field, one button scale. Tokens only. */
 .frame {
   position: relative;
   flex: 1;
@@ -325,7 +324,6 @@
   gap: var(--space-3);
 }
 
-/* Screen header (nested sheets outside the Settings modal). */
 .header {
   position: relative;
   z-index: 30;

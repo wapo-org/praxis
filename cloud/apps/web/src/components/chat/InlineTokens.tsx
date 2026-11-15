@@ -15,7 +15,6 @@ export function renderInlineTokens(
   setInspectedChip: (value: ChipInspection) => void,
 ): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
-  // Match markdown links [text](url), inline code `code`, bold **bold**, italic *italic*
   const tokenRegex = /(\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*|~~([^~]+)~~)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -35,7 +34,6 @@ export function renderInlineTokens(
       } catch {
         domain = url;
       }
-      // LinkRef chip or FileRef if file://
       if (url.startsWith('file://') || FILE_PATH_PATTERN.test(label)) {
         nodes.push(
           <button

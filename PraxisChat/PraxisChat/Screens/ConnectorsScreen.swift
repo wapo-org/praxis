@@ -2,8 +2,6 @@ import SwiftUI
 import AgentCore
 import AgentMCP
 
-/// Settings → Connectors: installed remote MCP servers with their state,
-/// and the three ways to add one (URL, pasted config, the registry).
 struct ConnectorsScreen: View {
     let library: ConnectorLibrary
     @Binding var path: [SettingsSheet.Route]
@@ -87,9 +85,7 @@ struct ConnectorsScreen: View {
         .accessibilityLabel(title)
     }
 
-    /// Fills in state for servers not checked yet this session. OAuth
-    /// servers are left alone: a check could pop a sign-in sheet the
-    /// user didn't ask for; their detail screen has the button.
+    /// Skips OAuth servers so background checks never pop an unrequested sign-in sheet.
     private func checkUnknown() async {
         let pending = library.servers.filter { server in
             guard server.enabled, library.state(of: server.id) == .notChecked else { return false }
@@ -98,14 +94,12 @@ struct ConnectorsScreen: View {
             case .oauth, .manualOAuth: return false
             }
         }
-        // In parallel; each result lands in the library as it arrives.
         let connectors = library
         let tasks = pending.map { server in Task { _ = try? await connectors.review(server.id) } }
         for task in tasks { await task.value }
     }
 }
 
-/// One installed server: name, host, state and flags.
 struct ConnectorRow: View {
     let server: MCPServerConfig
     let state: ConnectorState
@@ -138,14 +132,12 @@ struct ConnectorRow: View {
     }
 }
 
-/// What the UI says about a server, from the library's last results.
 enum ConnectorState: Equatable {
     case off
     case needsSignIn(MCPAuthRequirement)
     case error(String)
     case connected(toolCount: Int)
-    /// Works anonymously, but advertises sign-in (RFC 9728): some or all
-    /// tools may refuse until the user signs in.
+    /// Anonymous listing works (RFC 9728), but some tools may refuse until the user signs in.
     case signInAvailable(toolCount: Int, MCPAuthRequirement)
     case notChecked
 
@@ -189,8 +181,6 @@ extension ConnectorLibrary {
 
 // MARK: Detail
 
-/// One server: state and sign-in, the enable and trust switches (with
-/// what trust changes), name, tools, headers / OAuth client, removal.
 struct ConnectorDetailScreen: View {
     let library: ConnectorLibrary
     let serverID: String
@@ -238,8 +228,7 @@ struct ConnectorDetailScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: load)
         .task {
-            // Plain servers can be listed without any UI; OAuth ones wait
-            // for a tap so a sign-in sheet never appears unasked.
+            // Auto-lists plain servers only; OAuth servers wait for user tap to avoid unasked sign-in.
             guard let server, library.tools[serverID] == nil, library.authRequirements[serverID] == nil else { return }
             if case .none = server.auth { await refresh() } else if case .headers = server.auth { await refresh() }
         }
@@ -493,9 +482,7 @@ struct ConnectorDetailScreen: View {
         }
     }
 
-    /// Sign-in through `ASWebAuthenticationSession` (the library's OAuth
-    /// presenter). A server that answered 401 to a plain config switches
-    /// to OAuth first.
+    /// Switches a 401 plain config to OAuth before presenting ASWebAuthenticationSession.
     private func signIn(automatic: Bool, force: Bool = false) async {
         busy = "Signing in…"
         actionError = nil
@@ -534,15 +521,13 @@ struct ConnectorDetailScreen: View {
     }
 }
 
-/// What trusting a server changes, in plain words (from `ToolPolicy`'s
-/// table: untrusted MCP tools count as destructive whatever they claim).
+/// Untrusted MCP tools count as destructive in ToolPolicy regardless of server annotations.
 enum TrustExplanation {
     static let text = "Trusting a server means Praxis believes what it says about its own tools. Tools it marks read-only then run without asking in Plan, Build and Auto, and tools it marks as safe run without asking in Auto. Untrusted, every tool counts as one that can change or delete things: it asks first in Build and Auto and is blocked in Ask and Plan. Only trust servers you know."
 }
 
 // MARK: Shared pieces
 
-/// Tools as a server listed them, with the hints it gave.
 struct ToolList: View {
     let tools: [MCPToolDefinition]
 
@@ -577,8 +562,7 @@ struct ToolList: View {
     }
 }
 
-/// An editable header row. Secret values are never shown again: an
-/// empty field on a saved secret keeps it.
+/// Saved secret header values are never shown again; an empty field preserves the secret.
 struct HeaderDraft: Identifiable, Equatable {
     let id = UUID()
     var name: String
@@ -654,20 +638,14 @@ struct HeadersEditor: View {
     }
 }
 
-/// Client ID (+ optional secret, redirect and scopes) for servers whose
-/// sign-in has no automatic app registration, with step-by-step setup
-/// for the provider (Google gets its exact console steps).
 struct ManualOAuthFields: View {
     @Binding var clientID: String
     @Binding var clientSecret: String
     @Binding var redirectURI: String
-    /// Space-separated.
     @Binding var scopes: String
     var issuer: String?
-    /// What the server's metadata lists.
     var advertisedScopes: [String] = []
-    /// The least-privilege subset that prefills `scopes`
-    /// (`MCPSignInOffer.recommendedScopes`); empty = all advertised.
+    /// Least-privilege scope subset prefilling scopes; empty means use all advertisedScopes.
     var recommendedScopes: [String] = []
 
     var body: some View {
@@ -741,8 +719,7 @@ struct ManualOAuthFields: View {
         .onChange(of: clientID) { old, new in deriveRedirect(from: new, previous: old) }
     }
 
-    /// Google iOS clients redirect to their reversed client ID: fill it in
-    /// (and keep following the client ID while the user hasn't edited it).
+    /// Derives Google iOS reversed-client-ID redirect while the user hasn't edited it.
     private func deriveRedirect(from id: String, previous: String?) {
         let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
         let derived = OAuthClientGuide.redirect(forClientID: trimmed)
@@ -753,8 +730,6 @@ struct ManualOAuthFields: View {
     }
 }
 
-/// Scopes the server lists that sign-in won't ask for: tap one to add it
-/// (widening is a deliberate choice; least privilege is the default).
 private struct MoreScopesList: View {
     let scopes: [String]
     let add: ([String]) -> Void
@@ -795,7 +770,6 @@ private struct MoreScopesList: View {
     }
 }
 
-/// Full-width capsule action in the Settings look.
 struct SettingsActionButton: View {
     let title: String
     var prominent = false

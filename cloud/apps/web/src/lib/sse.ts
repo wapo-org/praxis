@@ -9,14 +9,7 @@ export interface RunStreamHandlers {
   onComplete?: () => void;
 }
 
-/**
- * Connects to `GET /v1/runs/:id/events` using fetch streaming with:
- * - `Authorization: Bearer <token>`
- * - `Last-Event-ID: <cursor>`
- * - Automatic 409 `cursor_expired` recovery via `GET /v1/runs/:id/snapshot`
- * - Automatic reconnect with backoff on transient network drops
- * - Performance marks (`praxis:sse-first-token`)
- */
+/** Streams /v1/runs/:id/events with Last-Event-ID, 409 snapshot recovery, and backoff. */
 export function subscribeRunEvents(
   client: PraxisApiClient,
   runId: string,
@@ -53,7 +46,6 @@ export function subscribeRunEvents(
           return;
         }
         if (res.status === 409) {
-          // Cursor expired: recover authoritative snapshot and resume after snapshot.lastEventId
           const snapshot = await client.getRunSnapshot(runId);
           lastEventId = snapshot.lastEventId;
           handlers.onSnapshotRecovered?.(snapshot);
@@ -120,13 +112,12 @@ export function subscribeRunEvents(
                   }
                 }
               } catch {
-                // Ignore malformed keepalive or partial lines
+                // Ignore partial or keepalive lines.
               }
             }
           }
         }
 
-        // Stream closed cleanly; check if run is terminal
         const run = await client.getRun(runId);
         if (
           ['completed', 'cancelled', 'failed'].includes(run.status) &&

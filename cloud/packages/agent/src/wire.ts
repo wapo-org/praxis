@@ -21,10 +21,7 @@ function omitted(p:MessagePart,req:ProviderRequest):string {
   const offered=req.capabilities.tools&&req.tools.some(t=>t.name==='look_at_image');
   return `[${p.type} ${p.attachmentId??''} omitted${offered?'; use look_at_image to inspect it':''}]`;
 }
-/**
- * The one wire format: OpenRouter's OpenAI-compatible chat completions request.
- * Usage accounting is always requested, so the final stream chunk carries tokens and cost.
- */
+/** OpenRouter OpenAI-chat wire request with usage accounting always enabled. */
 export function buildProviderRequest(raw:ProviderRequest):JsonObject {
   const req=ProviderRequestSchema.parse(raw),c=req.capabilities;
   const system=req.system+(!c.tools?'\n[Tool use is unavailable for this request. Do not call tools.]':'');

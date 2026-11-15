@@ -6,7 +6,6 @@ import { Edit, History, PanelLeft, Settings } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import styles from './ChatHeader.module.css';
 
-/** Top bar: subtle centred title + model, and small glass clusters of actions. */
 export function ChatHeader() {
   const store = usePraxisStore();
   const model = store.models.find(

@@ -49,7 +49,6 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
         paddingBottom: '80px',
       }}
     >
-      {/* Top Sticky Floating Header */}
       <header
         className="glass-lab-header"
         style={{
@@ -94,7 +93,6 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
           </div>
         </div>
 
-        {/* Theme switcher */}
         <div
           style={{
             display: 'flex',
@@ -127,7 +125,6 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
       >
 
         <DropdownPositions compact />
-        {/* Two-column showcase: Apple Notes 35-Frame Replica & 500-Model Virtualized Picker */}
         <div
           style={{
             display: 'grid',
@@ -136,14 +133,11 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
             alignItems: 'start',
           }}
         >
-          {/* 2. Apple Notes 35-Frame Reference Replica Dropdown (IMG_7744 – IMG_7778) */}
           <AppleNotesReplica />
 
-          {/* 3. 500-Model Virtualized Picker Demo */}
           <VirtualModelPicker />
         </div>
 
-        {/* 4. ProgressiveBlurScrim Scroll Container Demo (Side-by-Side Comparison) */}
         <ScrimComparison />
       </main>
     </div>

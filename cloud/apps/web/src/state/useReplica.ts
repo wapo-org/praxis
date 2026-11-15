@@ -144,7 +144,6 @@ export function useReplica(
         });
       }
 
-      // Re-attach any active runs reported in bootstrap
       for (const run of boot.activeRuns) {
         try {
           const snap = await apiClient.getRunSnapshot(run.id);
@@ -175,7 +174,6 @@ export function useReplica(
     if (routeChat?.effort) setSelectedEffort(routeChat.effort);
   }, [activeChatId, routeChat?.effort]);
 
-  // The account gate loads only the verified user’s replica before mounting.
   React.useEffect(() => {
     void refreshAll();
   }, []);

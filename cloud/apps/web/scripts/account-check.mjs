@@ -16,7 +16,7 @@ try {
   }, { suffix, title });
   await page.reload();
   await page.getByTestId('chat-top-bar').waitFor();
-  if (await page.getByTestId('nav-history-button').isVisible()) await page.getByTestId('nav-history-button').click(); // desktop (WP-D1): chats live in the sidebar
+  if (await page.getByTestId('nav-history-button').isVisible()) await page.getByTestId('nav-history-button').click();
   await page.getByText(title, { exact: true }).first().waitFor();
   await page.evaluate(async suffix => {
     const { apiClient } = await import('/src/lib/api.ts');
@@ -29,7 +29,7 @@ try {
   }, title);
   await page.goto(`${BASE}/`);
   await page.getByTestId('chat-top-bar').waitFor();
-  if (await page.getByTestId('nav-history-button').isVisible()) await page.getByTestId('nav-history-button').click(); // desktop (WP-D1): chats live in the sidebar
+  if (await page.getByTestId('nav-history-button').isVisible()) await page.getByTestId('nav-history-button').click();
   assert.equal(await page.getByText(title, { exact: true }).count(), 0);
   assert.equal(await page.evaluate(() => window.sawUserA), false);
   await page.goto(`${BASE}/settings/account`);

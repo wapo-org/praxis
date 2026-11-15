@@ -1,20 +1,12 @@
 import Foundation
 import Observation
 
-/// Which provider hosts the user has allowed to receive chat data
-/// (App Review 5.1.2(i): name who gets personal data and ask first).
-/// Keyed by host (with a non-default port), not by profile: two profiles
-/// pointing at the same server share one decision, and editing a
-/// profile's base URL to a new host asks again.
-///
-/// One small JSON file in Application Support, so `-PraxisResetData`
-/// clears it with everything else. Revoked in Settings.
+/// App Review 5.1.2(i) consent keyed by host(+port), not profile, so URL changes re-prompt.
 @MainActor
 @Observable
 final class AIDataConsent {
     struct Grant: Codable, Hashable, Identifiable {
         var host: String
-        /// The profile name at the time, for the Settings list.
         var providerName: String
         var grantedAt: Date
         var id: String { host }
@@ -37,8 +29,7 @@ final class AIDataConsent {
         }
     }
 
-    /// `api.anthropic.com`, `192.168.1.20:1234`. Lowercased; the scheme
-    /// is ignored (http vs https to one host is the same recipient).
+    /// Lowercased host(+non-default port), ignoring scheme since http/https share recipient.
     nonisolated static func host(of url: URL) -> String {
         let host = url.host()?.lowercased() ?? url.absoluteString.lowercased()
         return url.port.map { "\(host):\($0)" } ?? host
@@ -74,24 +65,19 @@ final class AIDataConsent {
     }
 }
 
-/// A live send held until the user answers the consent sheet.
 struct ConsentRequest: Identifiable, Equatable {
     enum Action: Equatable {
-        /// The composer's text and attachments, restored on decline.
         case send(text: String, attachments: [Attachment])
         case retry(UUID)
-        /// A held voice transcription: allowing grants the host and retries
-        /// it; declining keeps the audio queued. (voice-groq)
+        /// Allowing grants host and retries transcription; declining keeps audio queued.
         case transcribe(recordingID: UUID)
     }
 
     let id = UUID()
     var host: String
     var providerName: String
-    /// Connectors on in this chat: what they return goes to the model too.
     var connectorNames: [String]
-    /// The chat the held send belongs to: the answer returns there even if
-    /// the selection moved while the sheet was up.
+    /// Target chat for held send; reply routes here even if selection moved during sheet.
     var conversationID: UUID
     var action: Action
 }

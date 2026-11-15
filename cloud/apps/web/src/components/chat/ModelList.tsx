@@ -7,7 +7,7 @@ import { useModelSearch } from '../../lib/useModelSearch';
 import { usePraxisStore } from '../../state/store';
 import styles from './ModelList.module.css';
 
-/** Rows are fixed-height so the window is plain arithmetic; these mirror the CSS tokens. */
+/** Fixed row heights for O(1) window arithmetic; mirrors CSS tokens. */
 export const MODEL_ROW_HEIGHT = 56; // --row-model
 const LABEL_ROW_HEIGHT = 32; // --space-8
 const MORE_ROW_HEIGHT = 44; // --control-lg
@@ -22,7 +22,7 @@ export type ModelListRow =
   | { kind: 'model'; key: string; model: Model; height: number; top: number }
   | { kind: 'more'; key: string; height: number; top: number };
 
-/** Pinned first, then the rest of the catalog. A section with no models has no header. */
+/** Pinned models first; empty sections omit headers. */
 export function buildModelRows(items: Model[], searching: boolean, hasMore: boolean): ModelListRow[] {
   const rows: ModelListRow[] = [];
   let top = 0;
@@ -52,7 +52,6 @@ export function buildModelRows(items: Model[], searching: boolean, hasMore: bool
   return rows;
 }
 
-/** Index of the first row whose bottom edge is below `offset`. */
 function firstRowAt(rows: ModelListRow[], offset: number) {
   let low = 0;
   let high = rows.length - 1;
@@ -136,7 +135,6 @@ const ModelRow = React.memo(function ModelRow({
   );
 });
 
-/** The tray's second page: search plus a windowed list, smooth with thousands of models. */
 export function ModelList({ onBack, autoFocus = true }: { onBack: () => void; autoFocus?: boolean }) {
   const store = usePraxisStore();
   const [query, setQuery] = React.useState('');

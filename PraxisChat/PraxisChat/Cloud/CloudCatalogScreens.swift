@@ -25,8 +25,7 @@ struct CloudCatalogModelsScreen: View {
     }
 }
 
-/// Shared by settings and the tray. At most one server page is initially
-/// rendered; a button fetches the next cursor, keeping large catalogs cheap.
+/// Paginated cursor list keeps initial render cheap for large catalogs.
 struct CloudCatalogModelList: View {
     let services: CloudServices
     var selectedID: String

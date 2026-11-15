@@ -6,11 +6,6 @@ import AgentMCP
 import AgentTestSupport
 @testable import PraxisChat
 
-/// Voice-groq (VOICE_PLAN §9): model-list STT filter + manual fallback,
-/// silence-boundary scan, stitch joining/overlap strip, error mapping incl.
-/// 413-halving and retry-after, queue resume, and the consent branch.
-/// Network behaviour is scripted (`ScriptedTransport`); there is no Groq key
-/// here and none is requested.
 @MainActor
 final class VoiceGroqTests: XCTestCase {
     private var directory: URL!
@@ -30,7 +25,6 @@ final class VoiceGroqTests: XCTestCase {
 
     // MARK: Fakes
 
-    /// Scriptable network: tests flip `usable` from another task.
     actor FakeNetwork: NetworkStatusReader {
         var usable: Bool
         var waitCalls = 0
@@ -93,12 +87,10 @@ final class VoiceGroqTests: XCTestCase {
         XCTAssertEqual(settings.cachedModels, ["whisper-large-v3", "whisper-large-v3-turbo"])
         XCTAssertNotNil(settings.modelsFetchedAt)
         XCTAssertNil(settings.lastRefreshError)
-        // Persisted: a fresh instance reads the same state (key via store).
         let reloaded = GroqVoiceSettings(fileURL: file, secrets: secrets)
         XCTAssertEqual(reloaded.cachedModels, settings.cachedModels)
         XCTAssertEqual(reloaded.selectedModelID, settings.selectedModelID)
         XCTAssertTrue(reloaded.isConfigured)
-        // The key went to the Keychain store, never the JSON.
         let json = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
         XCTAssertFalse(json.contains("gsk-test"))
     }
@@ -145,7 +137,6 @@ final class VoiceGroqTests: XCTestCase {
         XCTAssertEqual(HTTPResponseHead(status: 429, headers: ["retry-after": "2"]).retryAfter?.timeInterval, 2)
         XCTAssertEqual(HTTPResponseHead(status: 429, headers: ["retry-after-ms": "1500"]).retryAfter?.timeInterval, 1.5)
         XCTAssertNil(HTTPResponseHead(status: 429, headers: ["retry-after": "soon"]).retryAfter)
-        // Capped at 60 s so a huge value can't stall the queue.
         XCTAssertEqual(HTTPResponseHead(status: 429, headers: ["retry-after": "9999"]).retryAfter?.timeInterval, 60)
     }
 
@@ -154,7 +145,6 @@ final class VoiceGroqTests: XCTestCase {
         XCTAssertEqual(TranscriptionQueue.backoffDelay(attempt: 2, retryAfter: nil), 2)
         XCTAssertEqual(TranscriptionQueue.backoffDelay(attempt: 3, retryAfter: nil), 4)
         XCTAssertEqual(TranscriptionQueue.backoffDelay(attempt: 9, retryAfter: nil), 60)
-        // The server's retry-after wins over the curve.
         XCTAssertEqual(TranscriptionQueue.backoffDelay(attempt: 1, retryAfter: 12), 12)
         XCTAssertEqual(TranscriptionQueue.backoffDelay(attempt: 1, retryAfter: 999), 60)
     }
@@ -244,7 +234,6 @@ final class VoiceGroqTests: XCTestCase {
         let events = Mutex<[TranscriptionQueue.QueueEvent]>([])
         let queue = TranscriptionQueue(network: network, sleep: sleep.sleep)
         let calls = Counter()
-        // The network comes back mid-wait.
         Task {
             try? await Task.sleep(for: .milliseconds(30))
             await network.setUsable()
@@ -282,7 +271,6 @@ final class VoiceGroqTests: XCTestCase {
     }
 
     func testBestBoundaryFindsSilence() {
-        // Loud, quiet gap, loud: 0.5 s windows, nominal at 300 s.
         var energies = [Float](repeating: 0.8, count: 700)
         for i in 590..<610 { energies[i] = 0.01 }
         let found = AudioSegmenter.bestBoundary(energies: energies, windowDuration: 0.5, nominal: 300,
@@ -293,16 +281,13 @@ final class VoiceGroqTests: XCTestCase {
     func testBestBoundaryFallsBackToNominal() {
         XCTAssertEqual(AudioSegmenter.bestBoundary(energies: [], windowDuration: 0.5, nominal: 300,
                                                    searchRadius: 30, limits: 60..<600), 300)
-        // Nothing in range: clamped nominal.
         XCTAssertEqual(AudioSegmenter.bestBoundary(energies: [0.5], windowDuration: 0.5, nominal: 590,
                                                    searchRadius: 1, limits: 60..<600), 590, accuracy: 0.01)
     }
 
     func testNominalPartDuration() {
         XCTAssertEqual(AudioSegmenter.nominalPartDuration(fileBytes: 1 << 20, duration: 3600), 600)
-        // Dense file: 10 min would exceed 20 MB, so shrink (100 MB in 30 min → 6 min parts).
         XCTAssertEqual(AudioSegmenter.nominalPartDuration(fileBytes: 100 << 20, duration: 1800), 360, accuracy: 5)
-        // Absurd density floors at 1 min parts (413-halving takes it further).
         XCTAssertEqual(AudioSegmenter.nominalPartDuration(fileBytes: 2 << 30, duration: 3600), 60, accuracy: 5)
     }
 
@@ -312,7 +297,7 @@ final class VoiceGroqTests: XCTestCase {
             .init(start: 4, end: 9, text: "world"),
         ])
         let b = PartTranscript(text: "world again today", language: "en", segments: [
-            .init(start: 4, end: 9, text: "world"), // fully inside the overlap window: dropped
+            .init(start: 4, end: 9, text: "world"),
             .init(start: 9, end: 14, text: "again"),
             .init(start: 14, end: 15, text: "today."),
         ])
@@ -354,17 +339,13 @@ final class VoiceGroqTests: XCTestCase {
         XCTAssertEqual(loaded.count, 2)
         XCTAssertEqual(loaded[0]?.text, "hello")
         XCTAssertNil(loaded[1])
-        // A different plan (re-recorded file) invalidates everything.
         let other = SegmentationPlan(parts: [.init(audioRange: 0..<900)], overlapEnds: [nil], duration: 900)
         XCTAssertTrue(cache.load(matching: other, fileName: "r.m4a").allSatisfy { $0 == nil })
         cache.clear(fileName: "r.m4a")
         XCTAssertTrue(cache.load(matching: plan, fileName: "r.m4a").allSatisfy { $0 == nil })
     }
 
-    /// Review fix F5: clear removes cached transcripts (instance and the
-    /// static entry `RecordingStore.delete` uses). The protection class
-    /// itself is pinned at the source level in DataProtectionAppTests: the
-    /// simulator doesn't record protection attributes.
+    /// Simulator ignores file protection attributes, so DataProtectionAppTests pins them at source.
     func testPartCacheClearRemovesFiles() {
         let dir = directory.appendingPathComponent("parts")
         let cache = PartTranscriptCache(directory: dir)
@@ -417,9 +398,6 @@ final class VoiceGroqTests: XCTestCase {
 
     nonisolated static let verboseJSON = #"{"text":"hello world","language":"en","duration":2.0,"segments":[{"id":0,"start":0.0,"end":1.0,"text":"hello"},{"id":1,"start":1.0,"end":2.0,"text":"world"}]}"#
 
-    /// A real 2 s WAV (hand-written header): exercises plan → export →
-    /// upload → stitch against `ScriptedTransport`. The upload still uses
-    /// the `.m4a` file name Groq expects.
     private func writeWAV(seconds: Int = 2) throws -> URL {
         let sampleRate = 16000
         let count = seconds * sampleRate
@@ -527,7 +505,6 @@ final class VoiceGroqTests: XCTestCase {
             return XCTFail("wrong error \(error)")
         }
         XCTAssertEqual(unauth.requests.count, 1, "401 never retries")
-        // A 2 s part is below the halving floor: 413 surfaces as .tooLarge.
         let large = ScriptedTransport(replies: [
             .json(#"{"error":{"message":"too big"}}"#, status: 413),
         ])
@@ -545,8 +522,6 @@ final class VoiceGroqTests: XCTestCase {
                        "a 401 never clears the key")
     }
 
-    /// Review fix F3: a real 429 must flow through the retry queue (honour
-    /// retry-after), not fail past it.
     func testTranscribeRetries429ThenSucceeds() async throws {
         let file = try writeWAV()
         let sleep = SleepRecorder()
@@ -579,16 +554,13 @@ final class VoiceGroqTests: XCTestCase {
         XCTAssertEqual(sleep.all, [1, 2, 4, 8])
     }
 
-    /// Review fix F4: the queue's offline wait surfaces as
-    /// `.waitingForNetwork` on the transcriber's event handler.
     func testTranscribeForwardsWaitingForNetwork() async throws {
         let file = try writeWAV()
         let network = FakeNetwork(usable: false)
         let events = Mutex<[TranscriptionEvent]>([])
         let transport = ScriptedTransport { _, n in
             if n == 0 {
-                // Recover only after the outage is observed: a fixed timer from
-                // test start could fire before the first attempt under load.
+                // Wait until the outage is observed before recovering; a fixed timer can race under load.
                 Task {
                     try? await Task.sleep(for: .milliseconds(30))
                     await network.setUsable()

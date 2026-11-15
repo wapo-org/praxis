@@ -25,8 +25,7 @@ describe('sticky placement', () => {
       counts.set(slot, (counts.get(slot) ?? 0) + 1);
     }
     expect([...counts.keys()].sort()).toEqual([1, 2, 3, 4]);
-    // Independent hashing gives a binomial spread (sd ≈ 13.7 at n = 1000), so ±5% of 250 (±12.5) is under one
-    // sd and cannot hold for arbitrary ids; this fixed set lands within ±10%. The ±5% bound is asserted below.
+    // Independent hashing has ~13.7 sd at n=1000, so this fixed set only checks +-10%.
     for (const count of counts.values()) expect(Math.abs(count - 250)).toBeLessThanOrEqual(250 * 0.1);
   });
 
@@ -42,12 +41,11 @@ describe('sticky placement', () => {
     const stored = new Map(owners.map(o => [o, placeOwner(four, o, all(4))]));
     let moved = 0;
     for (const [owner, slot] of stored) {
-      // Existing owners: the stored slot is used as is, with no hashing.
       expect(await credentialFor(five, slot)).toEqual({MODAL_TOKEN_ID: `id-${slot}`, MODAL_TOKEN_SECRET: `secret-${slot}`});
       const fresh = placeOwner(five, owner, all(5));
       if (fresh !== slot) {
         moved++;
-        expect(fresh).toBe(5); // rendezvous hashing only ever moves a placement to the new slot
+        expect(fresh).toBe(5);
       }
     }
     expect(moved).toBeGreaterThan(150);

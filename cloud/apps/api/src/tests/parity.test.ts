@@ -22,11 +22,11 @@ describe('attachments reach the model (parity: AttachmentMedia)', () => {
     const content = f.fake.requests[0].messages.find((m: any) => m.role === 'user').content;
     const imagePart = content.find((p: any) => p.type === 'image_url');
     expect(imagePart.image_url.url).toBe(`data:image/png;base64,${Buffer.from(image).toString('base64')}`);
-    expect(content.filter((p: any) => p.type === 'file')).toHaveLength(1); // only the PDF; text files go as text
+    expect(content.filter((p: any) => p.type === 'file')).toHaveLength(1);
     expect(content).toContainEqual({type: 'text', text: '[File: “notes.txt”]\nhello notes'});
     expect(JSON.stringify(content)).toContain('[Attached file: “data.zip”. Read them with `fs` in run_javascript.]');
     const stored: Message[] = (await (await f.req(`/v1/chats/${chat.id}/messages`)).json()).items;
-    expect(JSON.stringify(stored[0])).not.toContain(Buffer.from(image).toString('base64')); // bytes are never persisted in history
+    expect(JSON.stringify(stored[0])).not.toContain(Buffer.from(image).toString('base64'));
     expect(stored[0]!.parts.filter(p => p.attachmentId).map(p => p.type)).toEqual(['image', 'document', 'document']);
   });
 
@@ -116,7 +116,7 @@ describe('MCP gateway above 30 connector tools (parity: MCPGateway / gatewayThre
     expect(calls).toEqual(['tool_7']);
     expect(JSON.stringify(fake.requests[1].messages)).toContain('result 7');
 
-    count = 5; // fewer tools later: this chat keeps the gateway it started with; a new chat gets direct tools
+    count = 5; // Frozen gateway decision holds for existing chats; new chats get direct tools.
     await run(chat.id);
     expect(fake.requests[2].tools.map((t: any) => t.function.name)).toContain('mcp_call_tool');
     const fresh = await newChat();
@@ -144,9 +144,9 @@ describe('capabilities come from the catalogue, not from learning', () => {
     const run = async () => { const r = await (await req('/v1/runs', {type: 'run.start', chatId: chat.id, text: 'hi'})).json(); await service.drain(); return RunSnapshotSchema.parse(await (await req(`/v1/runs/${r.id}/snapshot`)).json()); };
 
     expect((await run()).run.outcome).toBe('completed');
-    expect(rejections).toBe(1); // retried without tools inside the run
+    expect(rejections).toBe(1); // Retried without tools inside the run.
     expect((await run()).run.outcome).toBe('completed');
-    expect(rejections).toBe(2); // nothing is learned: the catalogue says tools, so the next run offers them again
+    expect(rejections).toBe(2); // Catalogue still lists tools; next run offers them again.
     expect(await service.adapters.store.list('local-user', 'modelLearning')).toEqual([]);
   });
 });

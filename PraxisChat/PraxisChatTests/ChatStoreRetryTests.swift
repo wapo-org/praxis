@@ -1,11 +1,9 @@
 import XCTest
 @testable import PraxisChat
 
-/// Retry semantics: retrying a turn rewinds the thread — every turn
-/// below the retried one is removed before the fresh run starts.
+/// Retrying a turn deletes all subsequent turns before starting the fresh run.
 @MainActor
 final class ChatStoreRetryTests: XCTestCase {
-    /// Seeded threads, the demo engine without pauses, nothing on disk.
     private func makeStore() -> ChatStore {
         ChatStore(engine: DemoAgentEngine(timeScale: 0))
     }
@@ -46,7 +44,6 @@ final class ChatStoreRetryTests: XCTestCase {
         await waitUntil { !store.isRunning }
         XCTAssertEqual(conv.turns[1].outcome, .completed)
         XCTAssertFalse(conv.turns[1].markdownSources.isEmpty)
-        // The retried user message follows the first turn's history.
         XCTAssertEqual(conv.turns[1].transcript.first?.role, .user)
     }
 

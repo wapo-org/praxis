@@ -21,7 +21,7 @@ async function body<T extends z.ZodType>(c: Context, schema: T): Promise<z.infer
   if (Buffer.byteLength(text) > 1_000_000) throw new McpError(413, 'too_large', 'Request is too large');
   try { return schema.parse(JSON.parse(text)); } catch (error) { if (error instanceof z.ZodError) throw error; throw new McpError(400, 'invalid_json', 'Expected JSON'); }
 }
-/** Mounted at /v1 after auth EXCEPT public OAuth callback + CIMD. Context provides adapters there with userId ''. */
+/** Mounted under /v1 after auth; public OAuth callback & CIMD get userId ''. */
 export function createMcpRoutes(context: (req: Request) => Promise<FeatureContext>, options: McpOptions = {}): Hono {
   const app = new Hono();
   app.onError((error, c) => {
@@ -68,7 +68,7 @@ export function createMcpRoutes(context: (req: Request) => Promise<FeatureContex
     if (input.token !== undefined) await writeSecret(ctx, id, 'token', input.token);
     if (input.extraHeaders) await writeSecret(ctx, id, 'headers', input.extraHeaders);
     const value = await saveConnector(ctx, ConnectorSchema.parse({ ...input, id, url, type: 'connector', headerNames: Object.keys(input.extraHeaders ?? {}), authStatus: input.token ? 'connected' : 'none', updatedAt: now() }));
-    // Creation always succeeds (the URL or sign-in can be fixed later); the status says what the handshake found.
+    // Always persists connector on create; probe result sets initial status.
     return c.json(await probeConnector(ctx, value, options), 201);
   });
   app.get('/connectors/:id', async c => c.json(await connector(await authenticated(c.req.raw), ParamId.parse(c.req.param('id')))));

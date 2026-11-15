@@ -7,7 +7,6 @@ import styles from './ComposerBar.module.css';
 
 const MAX_INPUT_HEIGHT = 200;
 
-/** + / textarea / camera / mic / send-or-stop, per the iOS composer. */
 export function ComposerBar({
   inputRef,
   text,

@@ -2,18 +2,13 @@ import type {CooldownReason} from './classify.js';
 
 export interface Cooldown {
   reason: CooldownReason;
-  /** Epoch milliseconds when the slot may be used again. */
   until: number;
 }
 
-/** Shared, disposable health state per (service, slot). Holds reasons and times, never key material. */
+/** Shared slot health store; never stores key material. */
 export interface CooldownStore {
-  /** The active cool-down of a slot, or null when it is healthy. */
   get(service: string, slot: number): Promise<Cooldown | null>;
-  /**
-   * Marks a slot cooling. Idempotent: while a cool-down is active, further marks change nothing.
-   * Resolves true only for the call that created the cool-down.
-   */
+  /** Idempotently sets cooldown; resolves true only for the winning caller. */
   mark(service: string, slot: number, cooldown: Cooldown): Promise<boolean>;
 }
 
@@ -21,7 +16,6 @@ const REASONS: readonly string[] = ['invalid', 'exhausted', 'rateLimited', 'serv
 
 export const cooldownKey = (service: string, slot: number, prefix = '') => `${prefix}pool:${service}:${slot}:cooldown`;
 
-/** In-process store: tests, local development, and the fallback behaviour when Redis is unreachable. */
 export function memoryCooldownStore(now: () => number = Date.now): CooldownStore {
   const entries = new Map<string, Cooldown>();
   const active = (key: string) => {
@@ -40,7 +34,6 @@ export function memoryCooldownStore(now: () => number = Date.now): CooldownStore
   };
 }
 
-/** The two commands the Redis store needs. The Upstash client and the API's fake Redis both fit. */
 export interface RedisLike {
   get(key: string): Promise<unknown>;
   set(key: string, value: string, options: {px: number; nx: true}): Promise<unknown>;
@@ -61,11 +54,7 @@ function parse(raw: unknown): Cooldown | null {
   return {reason: reason as CooldownReason, until};
 }
 
-/**
- * Redis store: `pool:<service>:<slot>:cooldown` = `{"reason","until"}` with a TTL of the cool-down length,
- * written with NX so concurrent marks produce one cool-down. Fails open: when Redis errors, every slot reads
- * as healthy and marks are dropped, so calls keep failing over in-process.
- */
+/** NX TTL cooldown store; fails open so calls fail over in-process on Redis error. */
 export function redisCooldownStore(redis: RedisLike, options: {prefix?: string; now?: () => number; onError?: (operation: 'get' | 'mark') => void} = {}): CooldownStore {
   const now = options.now ?? Date.now;
   const key = (service: string, slot: number) => cooldownKey(service, slot, options.prefix);

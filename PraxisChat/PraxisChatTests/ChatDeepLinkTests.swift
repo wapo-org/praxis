@@ -1,9 +1,7 @@
 import XCTest
 @testable import PraxisChat
 
-/// Deep-link parsing (§3.6): only `praxis-app://chat/<uuid>`
-/// selects a conversation; everything else is ignored so the
-/// in-markdown integration tiles keep their in-app handling.
+/// Only praxis-app://chat/<uuid> selects a chat; other links pass through for in-app tiles.
 final class ChatDeepLinkTests: XCTestCase {
     private let id = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
 

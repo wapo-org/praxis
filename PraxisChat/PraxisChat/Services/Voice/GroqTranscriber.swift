@@ -2,38 +2,33 @@ import Foundation
 import AgentCore
 import AgentMCP
 
-// MARK: - FROZEN voice interfaces (VOICE_PLAN §7, voice-groq owns this file)
+// MARK: - Frozen voice interfaces
 
-/// One transcription result. Segment times are absolute (offset by part
-/// start for multi-part recordings).
+/// Transcription result with absolute segment timestamps (offset by part start).
 struct VoiceTranscript: Sendable {
     var text: String
     var language: String?
-    /// (absoluteStart, absoluteEnd, text) per verbose_json segment.
     var segments: [(start: TimeInterval, end: TimeInterval, text: String)]
 }
 
 enum VoiceTranscriptionError: Error, Sendable {
     case missingKey
     case consentRequired(host: String)
-    case unauthorized // 401: "Check your Groq API key"
-    case tooLarge // 413 after re-split: keep audio + Retry
+    case unauthorized
+    case tooLarge // Emitted only after part re-split fails; audio is retained for retry.
     case rateLimited(retryAfter: TimeInterval?)
     case offline
-    case server(message: String) // 5xx / decode failures, safe to show
+    case server(message: String) // 5xx or decode failures; message is sanitized for UI display.
     case cancelled
 }
 
 protocol Transcriber: Sendable {
-    /// Transcribes `file` (a complete .m4a). Progress: (fraction, part, parts).
-    /// Throws `VoiceTranscriptionError`. Never logs audio, keys, or transcripts.
+    /// Never logs audio, API keys, or transcripts.
     func transcribe(file: URL, fileName: String,
                     progress: @Sendable @escaping (Double, Int, Int) -> Void) async throws -> VoiceTranscript
 }
 
-/// Map a Groq HTTP failure to a `VoiceTranscriptionError`. Pure: no I/O,
-/// safe to unit test. `retryAfter` comes from `HTTPResponseHead.retryAfter`
-/// (seconds or HTTP-date, capped at 60 s).
+/// Maps HTTP status and capped Retry-After (max 60 s, seconds or HTTP-date) to an error.
 func mapGroqError(status: Int, retryAfter: TimeInterval? = nil, message: String? = nil) -> VoiceTranscriptionError {
     switch status {
     case 401: return .unauthorized
@@ -48,11 +43,10 @@ func mapGroqError(status: Int, retryAfter: TimeInterval? = nil, message: String?
 
 // MARK: - Events
 
-/// Lifecycle callbacks for the controller (drives sidecar state + Retry UI).
 enum TranscriptionEvent: Sendable {
-    /// No usable network: the controller should mark the recording `.queued`.
+    /// Signals unusable network so the controller persists the recording as .queued.
     case waitingForNetwork
-    /// Backoff before attempt `attempt` (1-based); `after` seconds.
+    /// Emitted before a 1-based retry attempt with the backoff delay in seconds.
     case retrying(attempt: Int, after: TimeInterval)
 }
 
@@ -64,24 +58,16 @@ struct GroqEndpoints {
 
 // MARK: - Transcriber
 
-/// Groq speech-to-text over an injected `HTTPTransport`. One call runs the
-/// whole pipeline: consent/key check → segment → sequential part uploads
-/// (tail-as-prompt, resume from cache) → stitch. Retries/backoff/offline
-/// come from the injected `TranscriptionQueue`.
-///
-/// All configuration is a snapshot taken at `init`: the controller builds a
-/// fresh transcriber per call from the current settings. The key itself is
-/// read per call from the `SecretStore`, never held or logged.
+/// Snapshots config at init (build per call); reads SecretStore key per call without storing it.
 struct GroqTranscriber: Transcriber {
     var transport: any HTTPTransport
     var secrets: any SecretStore
     var modelID: String
     var language: String?
-    /// Snapshot of `AIDataConsent.isGranted("api.groq.com")`, taken by the
-    /// controller on the main actor before this call.
+    /// Snapshot of api.groq.com AI data consent captured on the main actor before calling.
     var consentGranted: Bool
     var queue: TranscriptionQueue
-    /// Completed part transcripts, so Retry resumes instead of re-uploading.
+    /// Stores completed part transcripts so retries resume without re-uploading.
     var partCache: PartTranscriptCache
     var onEvent: (@Sendable (TranscriptionEvent) -> Void)?
 
@@ -125,7 +111,6 @@ struct GroqTranscriber: Transcriber {
                 prompt = AudioSegmenter.promptTail(done.text)
                 continue
             }
-            // Export to a temp file (removed right after its upload).
             let partURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("groq-part-\(UUID().uuidString).m4a")
             do {
@@ -156,18 +141,16 @@ struct GroqTranscriber: Transcriber {
         return VoiceTranscript(text: stitched.text, language: stitched.language, segments: stitched.segments)
     }
 
-    /// One part upload with 413 halve-and-retry (one halving level per part).
+    /// Uploads one part with at most one 413 halve-and-retry level.
     private func transcribePart(file partURL: URL, fileName: String, key: String, prompt: String?,
                                 range: Range<TimeInterval>, minDuration: TimeInterval) async throws -> PartTranscript {
         do {
             return try await upload(file: partURL, fileName: fileName, key: key, prompt: prompt)
         } catch VoiceTranscriptionError.tooLarge where range.upperBound - range.lowerBound > minDuration * 2 {
-            // Re-split the failing part smaller (halve, min 1 min) and retry
-            // each half once. A half that still fails keeps the audio + Retry.
+            // On 413, halves parts down to 1 min and retries each once, keeping audio on failure.
             let mid = (range.lowerBound + range.upperBound) / 2
             var halves: [PartTranscript] = []
-            // NB: `partURL` holds the already-exported part, so the halves
-            // are relative to the part start; shift back afterwards.
+            // Timestamps in partURL are relative to the part start and must be shifted back.
             for half in [range.lowerBound..<mid, mid..<range.upperBound] {
                 let relative = (half.lowerBound - range.lowerBound)..<(half.upperBound - range.lowerBound)
                 let url = FileManager.default.temporaryDirectory
@@ -185,7 +168,6 @@ struct GroqTranscriber: Transcriber {
         }
     }
 
-    /// Single multipart upload through the retry queue.
     private func upload(file partURL: URL, fileName: String, key: String, prompt: String?) async throws -> PartTranscript {
         let audio: Data
         do {
@@ -194,17 +176,14 @@ struct GroqTranscriber: Transcriber {
             throw VoiceTranscriptionError.server(message: "That recording can't be read.")
         }
         let body = multipartBody(audio: audio, fileName: fileName, model: modelID, language: language, prompt: prompt)
-        // Built inside the retry closure (retries rebuild it): only Sendable
-        // values cross into the operation.
+        // Captured as Sendable values so each retry rebuilds the request cleanly.
         let transport = transport
         let key = key
         let payload = body.data
         let contentType = "multipart/form-data; boundary=\(body.boundary)"
         let events = onEvent
 
-        // The HTTP mapping lives INSIDE the queue: the transport returns a
-        // head for any status and throws only below HTTP, so mapping past
-        // the queue would let 429/5xx skip the backoff policy entirely.
+        // Map HTTP status inside the queue so 429/5xx trigger backoff instead of escaping it.
         let (data, _): (Data, HTTPResponseHead)
         do {
             (data, _) = try await queue.run {
@@ -247,7 +226,6 @@ struct GroqTranscriber: Transcriber {
         }
     }
 
-    /// Provider/transport failures below HTTP: offline vs transient server.
     private static func mapProviderError(_ error: ProviderError) -> VoiceTranscriptionError {
         switch error {
         case .network: return .offline
@@ -269,9 +247,7 @@ struct GroqTranscriber: Transcriber {
         var error: Inner
     }
 
-    /// Multipart body per the Groq STT docs: `file`, `model`,
-    /// `response_format=verbose_json`, `timestamp_granularities[]=segment`,
-    /// optional `language` + `prompt`. Temperature stays 0 (omitted).
+    /// Builds Groq STT multipart body; temperature is omitted to keep the default 0.
     func multipartBody(audio: Data, fileName: String, model: String, language: String?,
                        prompt: String?) -> (boundary: String, data: Data) {
         let boundary = "PraxisVoice-\(UUID().uuidString)"
@@ -343,7 +319,6 @@ struct PartTranscript: Sendable, Codable {
         segments = (wire.segments ?? []).map { Segment(start: $0.start, end: $0.end, text: $0.text) }
     }
 
-    /// Offset every segment by the part's absolute start.
     func shifted(by offset: TimeInterval) -> PartTranscript {
         PartTranscript(text: text, language: language,
                        segments: segments.map { Segment(start: $0.start + offset, end: $0.end + offset, text: $0.text) })

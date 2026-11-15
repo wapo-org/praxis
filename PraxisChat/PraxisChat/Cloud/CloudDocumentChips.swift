@@ -1,8 +1,7 @@
 import Foundation
 import AgentCore
 
-/// Presentation-only server document references. They are not local bytes and
-/// never change the attachments uploaded by a retry or the native runtime.
+/// Display-only server document refs; never alter retries or native uploads.
 enum CloudDocumentChips {
     static func sameUserPresentation(_ lhs: Turn, _ rhs: Turn) -> Bool {
         lhs.id == rhs.id && lhs.userText == rhs.userText && visible(in: lhs) == visible(in: rhs)

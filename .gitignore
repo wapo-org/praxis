@@ -6,3 +6,4 @@ build/
 .build/
 .swiftpm/
 Package.resolved
+cloud/docs/function-maps/

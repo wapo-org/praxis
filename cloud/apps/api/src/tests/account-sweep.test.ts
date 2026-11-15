@@ -11,7 +11,7 @@ it('continues the global blob sweep across retried requests instead of restartin
     await ctx.storage.store(new Blob(['mine'], { type: `text/plain;${tag}` }));
   });
   await rpc.mutation('account:begin', { userId: 'u' });
-  // Every call is a fresh request that has lost its in-memory cursor; each must still make progress.
+  // Stateless calls without an in-memory cursor must still make progress.
   let calls = 0;
   while (!((await rpc.mutation('account:purge', { userId: 'u' })) as { done: boolean }).done)
     expect(++calls).toBeLessThan(6);

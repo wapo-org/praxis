@@ -6,7 +6,6 @@ import './lab.css';
 import { SYNTHETIC_500_MODELS } from './syntheticModels';
 export function VirtualModelPicker() {
   const material = 'thick' as const;
-  // 2. 500-Model Virtualized Picker state
   const [modelPickerOpen, setModelPickerOpen] = React.useState(false);
   const [modelSearch, setModelSearch] = React.useState('');
   const [selectedModelId, setSelectedModelId] = React.useState<string>('model-1');
@@ -167,7 +166,6 @@ export function VirtualModelPicker() {
           </GlassDropdown>
         </div>
 
-        {/* Active Model Summary Card + Inline Preview of Virtualization */}
         <GlassSurface
           shape="card"
           radius={18}
@@ -216,7 +214,6 @@ export function VirtualModelPicker() {
           </div>
         </GlassSurface>
 
-        {/* Always-visible interactive virtualized list benchmark box */}
         <div
           style={{
             borderRadius: '16px',

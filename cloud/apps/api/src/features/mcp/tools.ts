@@ -68,7 +68,7 @@ export async function discoverTools(
   return (await discoverCatalog(ctx, value, options)).tools;
 }
 
-/** Tools plus whether the server offers resources (from its initialize capabilities); cached briefly per connector. */
+/** Discovers tools and resource capability from initialize; briefly cached. */
 export async function discoverCatalog(
   ctx: FeatureContext,
   value: Connector,
@@ -153,7 +153,7 @@ export async function getMcpTools(
 
   const tools: FeatureTool[] = [];
   for (const value of values) {
-    // Recently failed or signed-out connectors are not offered (a turn note says why); no network call.
+    // Skip recently failed or signed-out connectors without network calls.
     if (skipWithoutContact(value)) continue;
     try {
       const { tools: definitions, resources } = await discoverCatalog(ctx, value, mcp);
@@ -182,7 +182,6 @@ export async function getMcpTools(
               async (client) =>
                 JsonValueSchema.parse(
                   await client.callTool({ name: definition.name, arguments: argumentsObject }, undefined, {
-                    // MCP progress notifications become tool.progress status lines (as the app shows them).
                     onprogress: (p) => {
                       if (!run.emit || !run.callId) return;
                       const text = p.message ?? (p.total ? `${p.progress}/${p.total}` : String(p.progress));
@@ -203,7 +202,7 @@ export async function getMcpTools(
   return tools;
 }
 
-/** Optional gateway. Its nested call ALWAYS re-enters the injected policy. Register the catalog as hidden tools. */
+/** Gateway nested calls always re-enter policy using hidden catalog tools. */
 export function createMcpGateway(catalog: FeatureTool[]): FeatureTool[] {
   const source = { type: 'builtin' as const };
   const resolve = (name: string) => {

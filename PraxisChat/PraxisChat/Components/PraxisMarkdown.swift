@@ -5,12 +5,9 @@ import Synchronization
 
 // MARK: Custom text attributes (drawn by ChipTextRenderer, §9.2)
 
-/// Layout-visible attribute values (read by `ChipTextRenderer` via
-/// `run[Marker.self]`); the Keys register them on `AttributedString`.
 struct PillMarker: TextAttribute {}
 struct TileMarker: TextAttribute { var monogram: String = "" }
-/// `index` is the run's character offset within the whole message, so the
-/// streaming reveal sweeps one continuous front across every paragraph.
+/// Whole-message character offset drives continuous streaming reveal.
 struct FadeMarker: TextAttribute { var index: Double = 0 }
 
 enum PillTextAttribute: AttributedStringKey {
@@ -29,8 +26,6 @@ enum ChipFadeAttribute: AttributedStringKey {
 }
 
 extension AttributeScopes {
-    /// Registers the chip attributes so they survive into `Text` layout
-    /// and can be read back by `ChipTextRenderer`.
     struct PraxisAttributes: AttributeScope {
         let praxisPill: PillTextAttribute
         let praxisTile: TileTextAttribute
@@ -44,7 +39,6 @@ enum MDBlock: Identifiable {
     case heading(level: Int, text: AttributedString)
     case paragraph(AttributedString)
     case list(ordered: Bool, start: Int, items: [MDListItem])
-    /// Paragraphs (at the quote's size) and whatever else the quote holds.
     case quote([MDBlock])
     case code(language: String?, code: String)
     case table(MDTable)
@@ -64,12 +58,8 @@ enum MDBlock: Identifiable {
     }
 }
 
-/// One list item: its first paragraph, an optional task-list checkbox,
-/// and whatever else the item holds (a nested list, a code fence, more
-/// paragraphs) — none of which may silently disappear.
 struct MDListItem {
     var text: AttributedString
-    /// `nil` = a plain item, otherwise a task-list item (`- [x]`).
     var checked: Bool?
     var children: [MDBlock] = []
 
@@ -80,14 +70,10 @@ struct MDListItem {
 
 enum MDAlignment: Equatable, Sendable { case leading, center, trailing }
 
-/// A GFM table: a header row, per-column alignment, inline-formatted
-/// cells. Rows are padded or trimmed to the header's width.
 struct MDTable {
     var alignments: [MDAlignment]
     var header: [AttributedString]
     var rows: [[AttributedString]]
-    /// Reveal offset where the last body row's text starts (a streaming
-    /// tail that drops its unfinished row stops the reveal there).
     var lastRowFadeStart: Double = 0
 
     var columnCount: Int { alignments.count }
@@ -98,7 +84,6 @@ struct MDTable {
             + "|\(alignments.map { "\($0)" }.joined())"
     }
 
-    /// The table without its last body row (nil when there is none).
     var droppingLastRow: MDTable? {
         guard !rows.isEmpty else { return nil }
         var copy = self
@@ -107,16 +92,12 @@ struct MDTable {
     }
 }
 
-/// One rendered block plus what the views need to skip work: its fade
-/// range (so the reveal can be clamped per block) and a revision that
-/// changes only when the block is re-parsed (so equality is O(1)).
+/// Carries fade range and revision counter for O(1) view equality.
 struct MDBlockItem: Identifiable, Equatable {
-    /// Position in the message. Streaming only appends blocks or grows
-    /// the last one, so positions are stable identities.
+    /// Block index stays stable since streaming only appends or grows the last.
     let id: Int
     let revision: Int
     let block: MDBlock
-    /// Fade offsets covered by this block: `fadeStart..<fadeEnd`.
     let fadeStart: Double
     let fadeEnd: Double
 
@@ -125,12 +106,7 @@ struct MDBlockItem: Identifiable, Equatable {
     }
 }
 
-/// Parses with apple/swift-markdown and renders blocks natively so
-/// typography and chips come out exact (spec §8). Chips are real inline
-/// runs: CodePill via `` `code` ``, FileRef via `praxis-file://` links,
-/// LinkRef via https links, integration tiles via `praxis-app://` links.
-/// Parsed message: blocks plus the reveal length (characters stamped with
-/// fade markers) the streaming reveal animates toward.
+/// Parses apple/swift-markdown into native runs with chip attributes.
 struct MDDocument {
     let blocks: [MDBlockItem]
     let revealLength: Double
@@ -138,9 +114,7 @@ struct MDDocument {
     static let empty = MDDocument(blocks: [], revealLength: 0)
 }
 
-/// Finished messages parse once, ever: scrolling a long answer back into
-/// view must never re-run the markdown parser. Streaming text is parsed
-/// incrementally by its `LiveText` instead.
+/// Finished messages parse once and cache so scrolling never reparses.
 @MainActor
 enum MarkdownCache {
     private static var documents: [String: MDDocument] = [:]
@@ -154,13 +128,9 @@ enum MarkdownCache {
     }
 }
 
-/// Streaming parse that keeps finished blocks. Every top-level block but
-/// the last is final once a later block has started, so each append
-/// re-parses only from the start of the last block: a long answer costs
-/// O(last block) per update instead of O(message).
+/// Reparses only from the last block start for O(last block) streaming cost.
 struct IncrementalMarkdown {
     private(set) var source = ""
-    /// UTF-8 offset of the first block that may still change.
     private var tailOffset = 0
     private var stable: [MDBlockItem] = []
     private var stableCursor = 0.0
@@ -182,9 +152,7 @@ struct IncrementalMarkdown {
         var cursor = stableCursor
         let children = PraxisMarkdown.children(of: Document(parsing: String(tail)), cursor: &cursor)
 
-        // Promote everything before the last child; the tail then starts
-        // at the last child's first line. A child without a source range
-        // simply stays in the tail (re-parsed again next time).
+        // Children without source ranges remain in the tail for reparse.
         var live = children[...]
         if children.count >= 2, let line = children.last?.line,
            let offset = Self.utf8Offset(ofLine: line, in: tail) {
@@ -199,7 +167,6 @@ struct IncrementalMarkdown {
         for child in live {
             if let item = child.item(id: blocks.count) { blocks.append(item) }
         }
-        // A table streams in row by row: hold back what isn't one yet.
         if let last = blocks.last, let held = Self.holdingBack(last, tail: source[source.utf8.index(source.utf8.startIndex, offsetBy: tailOffset)...]) {
             blocks.removeLast()
             if let item = held.item { blocks.append(item) }
@@ -208,10 +175,7 @@ struct IncrementalMarkdown {
         document = MDDocument(blocks: blocks, revealLength: cursor)
     }
 
-    /// The streaming tail block as it should show, when that isn't the
-    /// whole of it: a header row (a paragraph of `| … |` until its
-    /// delimiter row arrives) shows nothing; a table shows only the rows
-    /// that are complete. The reveal stops where the held-back text starts.
+    /// Holds incomplete table headers and trailing rows back from reveal.
     private static func holdingBack(_ item: MDBlockItem, tail: Substring)
         -> (item: MDBlockItem?, revealLength: Double)? {
         guard !tail.hasSuffix("\n") else { return nil }
@@ -228,7 +192,6 @@ struct IncrementalMarkdown {
         }
     }
 
-    /// UTF-8 offset of the first byte of 1-based `line` within `text`.
     private static func utf8Offset(ofLine line: Int, in text: Substring) -> Int? {
         guard line > 1 else { return 0 }
         var remaining = line - 1
@@ -245,8 +208,7 @@ struct IncrementalMarkdown {
 }
 
 enum PraxisMarkdown {
-    /// Revisions are unique per parse, so blocks from different parses
-    /// never compare equal and re-used blocks always do.
+    /// Unique revisions distinguish reparsed blocks from reused ones.
     private static let revisions = Atomic<Int>(0)
 
     static func parse(_ source: String) -> [MDBlock] {
@@ -263,8 +225,6 @@ enum PraxisMarkdown {
         return MDDocument(blocks: blocks, revealLength: cursor)
     }
 
-    /// A parsed top-level child: its block (nil for markup we don't
-    /// render), first source line and fade range.
     struct Child {
         let block: MDBlock?
         let line: Int?
@@ -288,11 +248,7 @@ enum PraxisMarkdown {
         return out
     }
 
-    /// One block-level node, at any depth (a list item's or a quote's
-    /// children come through here too). `base` is the prose size: 17 in
-    /// the message, 15 inside a quote. Nil only for markup with nothing
-    /// to read (an HTML comment, an empty `<br>`): anything else the
-    /// parser hands us renders, if only as its plain text.
+    /// Renders every block node except empty raw HTML, falling back to plain text.
     static func block(for markup: Markup, base: CGFloat, cursor: inout Double) -> MDBlock? {
         switch markup {
         case let h as Heading:
@@ -313,14 +269,11 @@ enum PraxisMarkdown {
         case is ThematicBreak:
             return .rule
         case let html as HTMLBlock:
-            // Raw HTML reads as its text: models wrap prose in `<p>`,
-            // `<details>`, `<center>`. Tags and comments alone show nothing.
             guard let text = htmlText(html.rawHTML) else { return nil }
             var s = styled(text, base: base, serif: false, bold: false, italic: false)
             stampFade(&s, cursor: &cursor)
             return .paragraph(s)
         default:
-            // Directives and other extensions: their source, as prose.
             let text = markup.format().trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return nil }
             var s = styled(text, base: base, serif: false, bold: false, italic: false)
@@ -329,9 +282,6 @@ enum PraxisMarkdown {
         }
     }
 
-    /// A list item: its first paragraph is the item's line; everything
-    /// after it (a nested list, a code fence, more paragraphs, a table)
-    /// renders under that line.
     private static func listItem(_ item: ListItem, base: CGFloat, cursor: inout Double) -> MDListItem {
         var children = Array(item.children)
         var text = AttributedString()
@@ -348,7 +298,6 @@ enum PraxisMarkdown {
                           children: children.compactMap { block(for: $0, base: base, cursor: &cursor) })
     }
 
-    /// A GFM table at the column count the delimiter row set; bold header.
     static func table(_ table: Markdown.Table, cursor: inout Double) -> MDTable {
         let alignments: [MDAlignment] = table.columnAlignments.map {
             switch $0 {
@@ -374,8 +323,6 @@ enum PraxisMarkdown {
                        header: header, rows: rows, lastRowFadeStart: lastRowFadeStart)
     }
 
-    /// HTML as the text it shows: tags and comments out, `<br>` as a line
-    /// break, the common entities decoded. Nil when nothing is left.
     static func htmlText(_ html: String) -> String? {
         var text = html.replacingOccurrences(of: #"<!--[\s\S]*?-->"#, with: "", options: .regularExpression)
         text = text.replacingOccurrences(of: #"<br\s*/?>"#, with: "\n", options: [.regularExpression, .caseInsensitive])
@@ -401,10 +348,7 @@ enum PraxisMarkdown {
         let fadeIndex: Double?
     }
 
-    /// Splits an attributed paragraph into per-run segments, classifying
-    /// chip runs. `AgentMessageView` turns each segment into a `Text`
-    /// carrying the matching `Text.customAttribute` marker, which is the
-    /// only channel `Text.Layout` runs expose to a `TextRenderer`.
+    /// Marks chip runs with customAttribute so Text.Layout exposes them.
     static func chipSegments(in attributed: AttributedString) -> [ChipSegment] {
         attributed.runs.map { run in
             let slice = AttributedString(attributed[run.range])
@@ -466,7 +410,6 @@ enum PraxisMarkdown {
         case let link as Markdown.Link:
             appendLink(title: link.plainText, destination: link.destination ?? "", into: &out, base: base, cursor: &wordIndex)
         case let image as Markdown.Image:
-            // No inline images in prose: the picture reads as a link to it.
             let alt = image.plainText
             appendLink(title: alt.isEmpty ? "Image" : alt, destination: image.source ?? "", into: &out, base: base, cursor: &wordIndex)
         case let strike as Strikethrough:
@@ -475,7 +418,6 @@ enum PraxisMarkdown {
             inner.strikethroughStyle = .single
             out += inner
         case let symbol as SymbolLink:
-            // ``Symbol`` (DocC): shown like inline code.
             var s = AttributedString(symbol.destination ?? "")
             s.font = Type.mono(base * 0.86, weight: .regular, .caption)
             s.foregroundColor = Praxis.ink
@@ -483,8 +425,6 @@ enum PraxisMarkdown {
             stampFade(&s, cursor: &wordIndex)
             out += s
         case let html as InlineHTML:
-            // `<br>` is how models break a line inside a table cell; other
-            // tags (`<sub>`, `<kbd>`) drop and their text reads as is.
             if html.rawHTML.range(of: #"^<br\s*/?>$"#, options: [.regularExpression, .caseInsensitive]) != nil {
                 out += AttributedString("\n")
             }
@@ -500,13 +440,12 @@ enum PraxisMarkdown {
     private static func appendLink(title: String, destination dest: String, into out: inout AttributedString,
                                    base: CGFloat, cursor: inout Double) {
         if dest.hasPrefix("praxis-file://") {
-            // FileRef (§9.2): 14pt file icon drawn as tile run + underlined mono name.
             let name = String(dest.dropFirst("praxis-file://".count)).removingPercentEncoding ?? title
             var icon = AttributedString(" ")
             icon[TileTextAttribute.self] = TileMarker(monogram: fileGlyph(for: name))
             icon.font = Type.inter(9, weight: .semibold, .caption2)
             icon.foregroundColor = Praxis.mutedInk
-            icon.tracking = 12 // 14pt glyph + ~6pt gap in layout advance
+            icon.tracking = 12
             stampFade(&icon, cursor: &cursor)
             out += icon
             var s = AttributedString(title.isEmpty ? name : title)
@@ -518,13 +457,12 @@ enum PraxisMarkdown {
             stampFade(&s, cursor: &cursor)
             out += s
         } else if dest.hasPrefix("praxis-app://") {
-            // IntegrationAvatar (§9.2): 16pt tile + monogram, then the name.
             let name = title.isEmpty ? String(dest.dropFirst("praxis-app://".count)) : title
             var tile = AttributedString(String(name.prefix(1)))
             tile[TileTextAttribute.self] = TileMarker(monogram: String(name.prefix(1)))
             tile.font = Type.inter(9, weight: .semibold, .caption2)
-            tile.foregroundColor = Color.clear // renderer centres the glyph
-            tile.tracking = 14 // reserve the full 16pt tile in the line
+            tile.foregroundColor = Color.clear
+            tile.tracking = 14
             stampFade(&tile, cursor: &cursor)
             out += tile
             var s = AttributedString(" \(name)")
@@ -533,14 +471,13 @@ enum PraxisMarkdown {
             stampFade(&s, cursor: &cursor)
             out += s
         } else if dest.hasPrefix("http") {
-            // LinkRef (§9.2): monogram tile + underlined title/domain.
             let host = URL(string: dest)?.host() ?? dest
             let label = title.isEmpty ? host : title
             var tile = AttributedString(String(label.prefix(1)).uppercased())
             tile[TileTextAttribute.self] = TileMarker(monogram: String(label.prefix(1)).uppercased())
             tile.font = Type.inter(9, weight: .semibold, .caption2)
-            tile.foregroundColor = Color.clear // renderer centres the glyph
-            tile.tracking = 14 // reserve the full 16pt tile in the line
+            tile.foregroundColor = Color.clear
+            tile.tracking = 14
             stampFade(&tile, cursor: &cursor)
             out += tile
             var s = AttributedString(" \(label)")
@@ -548,7 +485,6 @@ enum PraxisMarkdown {
             s.foregroundColor = Praxis.ink
             s.underlineStyle = SwiftUI.Text.LineStyle.single
             s.underlineColor = UIColor(Praxis.ink).withAlphaComponent(0.4)
-            // Route through the preview card instead of opening directly.
             let encoded = dest.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? dest
             s.link = URL(string: "praxis-link://\(encoded)")
             stampFade(&s, cursor: &cursor)
@@ -579,9 +515,7 @@ enum PraxisMarkdown {
         return s
     }
 
-    /// Character-offset stamp driving the streaming reveal (§10). The
-    /// renderer adds each glyph's offset within the run, so a long plain
-    /// run still reveals word by word instead of all at once.
+    /// Stamps character offset so long plain runs still reveal word by word.
     private static func stampFade(_ s: inout AttributedString, cursor: inout Double) {
         s[ChipFadeAttribute.self] = FadeMarker(index: cursor)
         cursor += Double(max(s.characters.count, 1))

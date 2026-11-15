@@ -2,28 +2,17 @@ import Foundation
 import Observation
 import SwiftUI
 
-/// The text of one streaming markdown block, observed only by the rows
-/// that render it: a streamed token re-renders that message and nothing
-/// else — not its turn, not the transcript (which only reads
-/// `blockCount`, so it re-renders once per new paragraph). Parsing
-/// happens here, once per update and incrementally; the reveal front
-/// lives and advances here too, so a row recreated mid-stream (scroll
-/// recycling, switching chats) picks up where the reveal was instead of
-/// fading the whole answer in again.
+/// Holds incremental parse and reveal state per block so streaming skips transcript diffs.
 @MainActor
 @Observable
 final class LiveText {
     let id: UUID
     private(set) var document = MDDocument.empty
     private(set) var isStreaming = true
-    /// Number of parsed blocks: the transcript's one row per block.
     private(set) var blockCount = 0
-    /// Reveal target in characters: the parsed length plus the fade span.
     private(set) var revealed: Double = 0
-    /// How the drawn front travels to `revealed`. Rows sample it on a
-    /// 30 Hz timeline instead of animating it every display frame.
+    /// Sampled on a 30 Hz timeline instead of every display frame.
     private(set) var motion = RevealMotion.idle
-    /// The front is still moving: rows' timelines run only while true.
     private(set) var isRevealing = false
     @ObservationIgnored private var settleTask: Task<Void, Never>?
 
@@ -42,12 +31,7 @@ final class LiveText {
         documentChanged()
     }
 
-    /// The block closed with its final source (trimmed). One full parse
-    /// (cached, so the block renders from it after eviction too) checks
-    /// the incremental result: markdown can restyle an earlier block
-    /// after the fact (a setext underline turns a paragraph into a
-    /// heading). When nothing differs the streamed blocks are kept, so
-    /// finished paragraphs don't redraw.
+    /// Reparses finished source once to catch cross-block restyling like setext headings.
     func finish(_ source: String) {
         let full = MarkdownCache.document(for: source)
         let same = full.blocks.count == document.blocks.count
@@ -65,8 +49,7 @@ final class LiveText {
         revealed = target
         if !isRevealing { isRevealing = true }
         guard settleTask == nil else { return }
-        // One sleeper per motion burst (not per chunk): it waits until the
-        // latest retarget has settled, then pauses the rows' timelines.
+        // Single debounced sleeper pauses row timelines after the reveal settles.
         settleTask = Task { [weak self] in
             while let wait = self?.motion.end.timeIntervalSinceNow, wait > 0 {
                 try? await Task.sleep(for: .seconds(wait))
@@ -77,14 +60,7 @@ final class LiveText {
     }
 }
 
-/// The streaming reveal's soft front: the critically damped spring the
-/// front used to be animated with (`.spring(response: 0.45,
-/// dampingFraction: 1)`), solved in closed form. It retargets on every
-/// chunk keeping its position and speed, so the front glides instead of
-/// stepping. As a `withAnimation` it redrew the paragraph under the front
-/// every display frame (60–120 Hz) for as long as text streamed; sampled
-/// by the rows' 30 Hz timeline it redraws along the same curve, and stops
-/// once the front settles.
+/// Closed-form critically damped spring sampled at 30 Hz so scrolling stays cheap.
 struct RevealMotion: Equatable {
     var from: Double
     var velocity: Double
@@ -92,9 +68,7 @@ struct RevealMotion: Equatable {
     var start: Date
 
     static let idle = RevealMotion(from: 0, velocity: 0, to: 0, start: .distantPast)
-    /// Natural frequency of a spring with a 0.45 s response.
     static let omega = 2 * Double.pi / 0.45
-    /// The rows' redraw interval while the front moves.
     static let frameInterval: TimeInterval = 1.0 / 30.0
     /// By then the remaining distance is < 0.02% of the jump: snap to it.
     static let settleTime: TimeInterval = 0.8
@@ -121,8 +95,6 @@ struct RevealMotion: Equatable {
         RevealMotion(from: value(at: date), velocity: speed(at: date), to: target, start: date)
     }
 
-    /// Whether the front crosses `range` on its way (rows outside it hold
-    /// a constant clamped value and need no timeline).
     func touches(_ lower: Double, _ upper: Double) -> Bool {
         min(from, to) < upper && max(from, to) > lower
     }

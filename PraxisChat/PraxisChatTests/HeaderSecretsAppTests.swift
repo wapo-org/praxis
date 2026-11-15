@@ -5,9 +5,7 @@ import AgentMCP
 import AgentTestSupport
 @testable import PraxisChat
 
-/// Provider extra headers with secret-like names (R3-L4): their values
-/// live in the Keychain like API keys, never in Providers.json. Plain
-/// headers (X-Title and the like) stay in the JSON as before.
+/// Secret-like extra header values live in Keychain, never Providers.json; plain headers stay.
 @MainActor
 final class HeaderSecretsAppTests: XCTestCase {
     private var directory: URL!
@@ -50,7 +48,6 @@ final class HeaderSecretsAppTests: XCTestCase {
         XCTAssertEqual(endpoint.extraHeaders["X-API-Key"], "k-123")
         XCTAssertEqual(endpoint.extraHeaders["X-Title"], "Praxis")
 
-        // Survives a relaunch, restored from the Keychain.
         let reloaded = self.settings()
         let reloadedEndpoint = try XCTUnwrap(reloaded.endpoint(for: profile.id))
         XCTAssertEqual(reloadedEndpoint.extraHeaders["Authorization"], "Bearer s3cr3t")
@@ -63,8 +60,7 @@ final class HeaderSecretsAppTests: XCTestCase {
     }
 
     func testPlaintextHeaderSecretsMigrateToTheKeychainOnLoad() throws {
-        // A Providers.json from before the fix: what `save()` writes, with
-        // a secret put back in the clear where the old code kept it.
+        // Simulates a legacy Providers.json containing a plaintext header secret to test migration.
         let settings = settings()
         var profile = profile()
         profile.endpoint.extraHeaders = ["Authorization": "", "X-Title": "Praxis"]
@@ -74,7 +70,7 @@ final class HeaderSecretsAppTests: XCTestCase {
         try written.replacingOccurrences(of: #""Authorization":"""#, with: #""Authorization":"Bearer old-secret""#)
             .write(to: file, atomically: true, encoding: .utf8)
 
-        let migrated = self.settings() // loading migrates
+        let migrated = self.settings()
         let json = try String(contentsOf: file, encoding: .utf8)
         XCTAssertFalse(json.contains("old-secret"), "migration blanks the value in the JSON")
         XCTAssertEqual(migrated.endpoint(for: profile.id)?.extraHeaders["Authorization"], "Bearer old-secret",
@@ -88,8 +84,7 @@ final class HeaderSecretsAppTests: XCTestCase {
         profile.endpoint.extraHeaders = ["Authorization": "Bearer abc", "X-Title": "Praxis"]
         try settings.save(profile, apiKey: "sk-or")
 
-        // Round-tripped through the editor: secret-like rows come back
-        // blank (the UI never shows the value), which keeps the secret.
+        // Blank secret-like header rows preserve the existing Keychain value instead of clearing it.
         var roundTripped = try XCTUnwrap(settings.profile(profile.id))
         XCTAssertEqual(roundTripped.endpoint.extraHeaders["Authorization"], "")
         roundTripped.endpoint.extraHeaders["X-Title"] = "Praxis 2"
@@ -98,7 +93,6 @@ final class HeaderSecretsAppTests: XCTestCase {
                        "a blanked row keeps its secret")
         XCTAssertEqual(settings.endpoint(for: profile.id)?.extraHeaders["X-Title"], "Praxis 2")
 
-        // Deleting the row forgets it.
         roundTripped.endpoint.extraHeaders.removeValue(forKey: "Authorization")
         try settings.save(roundTripped, apiKey: nil)
         XCTAssertNil(settings.endpoint(for: profile.id)?.extraHeaders["Authorization"])

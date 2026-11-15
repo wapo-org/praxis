@@ -15,7 +15,7 @@ const record = (value: unknown): Record<string, unknown> => (value && typeof val
 const positiveInt = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) && value >= 1 ? Math.floor(value) : undefined);
 const price = (value: unknown) => (typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '0');
 
-/** One OpenRouter model entry → a catalogue entry; null for entries that can't chat (no text output, no context size). */
+/** Maps one OpenRouter entry to a catalogue entry, or null if non-chat. */
 export function parseCatalogModel(raw: unknown): CatalogModel | null {
   const m = record(raw), architecture = record(m.architecture), top = record(m.top_provider), pricing = record(m.pricing);
   const contextLength = positiveInt(m.context_length) ?? positiveInt(top.context_length);
@@ -51,10 +51,7 @@ export function capabilitiesOf(model: CatalogModel): Capabilities {
   });
 }
 
-/**
- * The shared (not per-user) model catalogue. Fetched on demand, kept for an hour in the shared KV and in
- * this process. When a refresh fails, the last good copy keeps being served; there is no other source.
- */
+/** Shared 1h KV/memory model catalogue; serves stale snapshot if refresh fails. */
 export class ModelCatalog {
   private memory: Snapshot | undefined;
   private retryAt = 0;

@@ -2,7 +2,6 @@ import React from 'react';
 import type { ParsedBlock } from './markdownBlocks';
 import styles from './MarkdownContent.module.css';
 
-/** Editorial rendering of parsed assistant markdown. Typography comes from tokens. */
 export function MarkdownContent({
   blocks,
   renderInlineTokens,

@@ -1,16 +1,9 @@
 import SwiftUI
 
-/// Draws CodePill + IntegrationAvatar backgrounds behind inline runs and
-/// the streaming reveal (spec §9.2/§10): new glyphs fade from 0 with a
-/// 2pt rise and blur as the reveal front sweeps past — never a view per
-/// word, and no timeline: `revealedLength` is animatable, so the caller
-/// animates it toward the received length and SwiftUI interpolates.
+/// Draws chip backgrounds and streaming glyph fade via animatable revealedLength.
 struct ChipTextRenderer: TextRenderer {
-    /// Characters a glyph needs behind the front to be fully visible —
-    /// roughly three words of soft leading edge.
     static let fadeSpan: Double = 18
 
-    /// Glyphs whose offset is below this (minus the span) are fully visible.
     var revealedLength: Double = .infinity
     var animatableData: Double {
         get { revealedLength }
@@ -23,7 +16,6 @@ struct ChipTextRenderer: TextRenderer {
     }
 
     func draw(layout: Text.Layout, in ctx: inout GraphicsContext) {
-        // Chip backgrounds first, from each run's layout bounds + padding.
         for line in layout {
             for run in line {
                 let rect = run.typographicBounds.rect
@@ -39,7 +31,6 @@ struct ChipTextRenderer: TextRenderer {
                     ctx.fill(pill, with: .color(Praxis.fill1))
                 }
                 if let tile = run[TileMarker.self], tile.monogram.hasPrefix("file-") {
-                    // FileRef icon (§9.2): the Lucide glyph stroked at 14pt.
                     if let glyph = LucidePaths.path(for: tile.monogram) {
                         let s = 14.0 / 24.0
                         var iconCtx = ctx
@@ -57,7 +48,6 @@ struct ChipTextRenderer: TextRenderer {
                         width: size, height: size)
                     let tilePath = RoundedRectangle(cornerRadius: 4, style: .continuous).path(in: tileRect)
                     ctx.fill(tilePath, with: .color(Praxis.tile))
-                    // Centre the monogram optically (the source glyph is clear).
                     let glyph = ctx.resolve(
                         Text(tile.monogram)
                             .font(Type.inter(9, weight: .semibold, .caption2))
@@ -66,8 +56,7 @@ struct ChipTextRenderer: TextRenderer {
                 }
             }
         }
-        // Glyphs. Finished text draws whole runs; only glyphs inside the
-        // soft front pay for per-slice opacity, rise and blur.
+        // Skip fade per-slice work on settled glyphs outside the reveal front.
         for line in layout {
             for run in line {
                 guard let fade = run[FadeMarker.self], revealedLength.isFinite,
@@ -90,7 +79,6 @@ struct ChipTextRenderer: TextRenderer {
     }
 }
 
-/// Small glass "Copied" toast (§9.2).
 struct CopiedToast: View {
     var body: some View {
         HStack(spacing: 6) {

@@ -1,6 +1,5 @@
 import Foundation
 
-// Launch wiring is separate from transcript and run state.
 extension ChatStore {
     /// Cloud is the default; native execution requires the hidden opt-in.
     static func forLaunch() -> ChatStore {
@@ -14,8 +13,7 @@ extension ChatStore {
                 #if DEBUG
                 if let stub = CloudTestBackend.makeLaunchSessionIfEnabled() {
                     session = stub
-                    // Harness credentials are ephemeral; never read a real
-                    // Keychain entry or let it override this test session.
+                    // Ephemeral harness credentials must never read real Keychain entries.
                     tokens = CloudSessionStore(inMemory: true)
                 }
                 #endif
@@ -28,8 +26,7 @@ extension ChatStore {
                 return ChatStore(engine: CloudConfigurationErrorEngine(message: error.localizedDescription), conversations: [])
             }
         }
-        // SUNSET(native-loop): only explicit demo/scripted launches or the
-        // hidden native developer opt-in reach native service construction.
+        // Hidden opt-in keeps native services out of default cloud builds.
         let services = AgentServices.live()
         services.installTestProviderIfRequested()
         services.connectors.installMockConnectorIfRequested()
@@ -46,8 +43,6 @@ extension ChatStore {
                               services: services, picksEngineAutomatically: override == nil)
         store.background.installNotificationDelegate()
         store.background.appDidLaunch()
-        // Voice input (voice-rec; right after creation — voice-groq's seam
-        // sits before `return store`, so these hunks stay separate).
         let voice = VoiceInputController.production(chatStore: store, services: services)
         store.voice = voice
         store.voiceRetryTranscription = { [weak voice] id in
@@ -55,8 +50,7 @@ extension ChatStore {
         }
         services.pruneRuntimeState(keeping: store.conversations.map(\.id))
         #if DEBUG
-        // `-PraxisVoiceConsentDemo YES` (UI tests): present the voice
-        // transcription consent sheet standalone (no controller needed).
+        // UI test flag presenting standalone voice consent sheet.
         if UserDefaults.standard.bool(forKey: "PraxisVoiceConsentDemo"), let id = store.selectedID {
             store.pendingConsent = ConsentRequest(host: GroqEndpoints.host, providerName: "Groq",
                                                   connectorNames: [], conversationID: id,
@@ -66,7 +60,6 @@ extension ChatStore {
         return store
     }
 
-    /// Injectable construction shared by the launch path and wiring tests.
     static func makeCloudStore(client: CloudAPIClient, persistence: ConversationStore? = nil,
                                conversations: [Conversation]? = nil, replicaRoot: URL = AppDirectories.root) -> ChatStore {
         let cloud = CloudServices(client: client)
@@ -81,8 +74,7 @@ extension ChatStore {
         return store
     }
 
-    /// Called by the view that owns this store, not by a transient @State
-    /// initializer. Local restoration completes before session reconciliation.
+    /// Owned by caller instead of transient @State; loads local state before cloud.
     func prepareCloudSession() async {
         guard let cloudServices, !hasPreparedCloudSession else { return }
         hasPreparedCloudSession = true
