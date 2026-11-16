@@ -88,7 +88,7 @@ if (parts.includes('cards')) {
       for (const step of ['open', 'error', 'filled', 'submitted', 'declined', 'cancelled']) {
         if (name !== 'form-many' && ['error', 'filled'].includes(step)) continue;
         if (name !== 'form-many' && name !== 'form-one' && step !== 'open') continue;
-        const ok = await page.evaluate(async ({ elicitation, step }) => {
+        const ok = await page.evaluate(async ({ elicitation }) => {
           // The exact dep URLs the app uses (with Vite's ?v= hash), so the harness shares the app's React.
           const dep = async (from, name) => (await (await fetch(from)).text()).match(new RegExp(`"(/node_modules/\\.vite/deps/${name}\\.js[^"]*)"`))[1];
           const React = (await import(await dep('/src/main.tsx', 'react'))).default;
@@ -118,7 +118,7 @@ if (parts.includes('cards')) {
           root.render(React.createElement(Harness));
           await new Promise((r) => setTimeout(r, 120));
           return true;
-        }, { elicitation, step });
+        }, { elicitation });
         if (!ok) continue;
         const stage = page.locator('#i1-stage');
         const fill = async () => {

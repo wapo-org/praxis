@@ -1,16 +1,14 @@
 import { OpenRouterCard } from './OpenRouterCard';
 import { SidebarLookControl } from './SidebarLookControl';
-import { Eye, FlaskConical, Mic, Plus } from '../../lib/icons';
+import { Eye, FlaskConical, Mic } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store.js';
 import { SegmentedControl } from '../ui/controls';
 import { AccountSettings } from './AccountSettings';
 import styles from './Screen.module.css';
 import {
   Card,
-  hostLabel,
   NavRow,
   ScreenBody,
-  ScreenButton,
   Section,
   TaskError,
   Toggle,

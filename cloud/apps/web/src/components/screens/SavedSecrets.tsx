@@ -2,7 +2,7 @@ import React from 'react';
 import { apiClient, PraxisApiError, type SavedValue, type SavedValueQuery } from '../../lib/api';
 import { Plus, Search } from '../../lib/icons';
 import { Button } from '../ui/Button';
-import { Input, Select, Textarea } from '../ui/fields';
+import { Input, Select } from '../ui/fields';
 import { Modal, modalStyles } from '../ui/Modal';
 import { RowGroup, rowClass } from '../ui/RowGroup';
 import { ChoiceChip, Field, TaskError, useScreenTask } from './ScreenUI';

@@ -176,7 +176,6 @@ test('a sent message with an attachment never leaves the list, shows the file as
 /** A scripted SpeechRecognition: the test speaks through window.__speech. */
 async function mockSpeech(page: Page, mode: 'ok' | 'denied' | 'none') {
   await page.addInitScript((mode) => {
-    const w = window as unknown as Record<string, unknown>;
     const install = (value: unknown) => {
       for (const name of ['SpeechRecognition', 'webkitSpeechRecognition']) Object.defineProperty(window, name, { value, configurable: true, writable: true });
     };

@@ -60,7 +60,7 @@ export function savedTimeline(message: Message, steps: AgentActivityViewProps['t
       nodes.splice(nextInNodes, 0, node);
       continue;
     }
-    const prevInNodes = [...steps.slice(0, i)]
+    const prevInNodes = steps.slice(0, i)
       .reverse()
       .map((earlier) => nodes.findIndex((n) => n.step?.callId === earlier.callId))
       .find((idx) => idx >= 0);

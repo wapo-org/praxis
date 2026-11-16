@@ -49,7 +49,6 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
   const panelHighlight = React.useContext(PanelHighlightContext);
   const itemId = React.useId();
   const isHighlighted = panelHighlight?.highlightedId === itemId;
-  const isDestructive = tone === 'destructive';
 
   const activate = () => {
     if (disabled) return;

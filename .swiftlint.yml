@@ -1,0 +1,54 @@
+# Light on purpose: the iOS app is being rebuilt as a thin client (PRA-62). Correctness rules only, no style.
+# CI runs SwiftLint 0.65.1 from the repo root with --strict --baseline PraxisChat/.swiftlint-baseline.json,
+# so existing violations are absorbed and any new one fails.
+included:
+  - PraxisChat
+excluded:
+  - PraxisChat/PraxisChat/Resources
+  - PraxisChat/docs
+  - PraxisChat/scripts
+  - "**/.build"
+  - "**/DerivedData"
+  - "**/Generated"
+  - "**/*.generated.swift"
+
+only_rules:
+  # Crashes and undefined behaviour
+  - force_cast
+  - force_try
+  - unowned_variable_capture
+  - discouraged_direct_init
+  - compiler_protocol_init
+  - legacy_random
+  # Logic that cannot be what was meant
+  - duplicate_conditions
+  - duplicate_enum_cases
+  - duplicate_imports
+  - identical_operands
+  - reduce_boolean
+  - unused_enumerated
+  - unused_control_flow_label
+  - unhandled_throwing_task
+  - discarded_notification_center_observer
+  - ns_number_init_as_function_reference
+  - nsobject_prefer_isequal
+  # Lifecycle and retain cycles
+  - class_delegate_protocol
+  - overridden_super_call
+  - prohibited_super_call
+  # Tests that silently do nothing
+  - empty_xctest_method
+  - private_unit_test
+  # Suppressions must be narrow and still needed
+  - blanket_disable_command
+  - superfluous_disable_command
+  - invalid_swiftlint_command
+  - orphaned_doc_comment
+  # Mirrors AGENTS.md rule 3 (R3.file-length on the TypeScript side)
+  - file_length
+
+file_length:
+  warning: 400
+  ignore_comment_only_lines: true
+
+reporter: github-actions-logging

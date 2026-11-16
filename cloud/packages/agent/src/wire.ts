@@ -1,5 +1,4 @@
-import { z } from 'zod';
-import {JsonObjectSchema,type JsonObject,type JsonValue,type Message,type MessagePart} from '@praxis/protocol';
+import {type JsonObject,type JsonValue,type MessagePart} from '@praxis/protocol';
 import {ProviderRequestSchema,type ProviderRequest} from './types.js';
 export function object(value:unknown):JsonObject {return value&&typeof value==='object'&&!Array.isArray(value)?value as JsonObject:{};}
 export function array(value:unknown):JsonValue[]{return Array.isArray(value)?value:[];}

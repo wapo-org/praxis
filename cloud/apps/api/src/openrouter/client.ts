@@ -1,5 +1,6 @@
 import {OPENROUTER_API_BASE, readBounded, redactKey} from '@praxis/agent';
 import type {JsonObject} from '@praxis/protocol';
+import {SealedSecret} from '@praxis/types';
 
 /** Non-chat OpenRouter endpoints using the pinned base and guarded fetch. */
 export class OpenRouterError extends Error {
@@ -13,7 +14,7 @@ export interface KeyInfo {label?: string; limit: number | null; limitRemaining: 
 const TIMEOUT_MS = 15_000;
 const asObject = (value: unknown): JsonObject => (value && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : {});
 
-async function call(fetcher: typeof fetch, path: string, init: RequestInit, secret = ''): Promise<JsonObject> {
+async function call(fetcher: typeof fetch, path: string, init: RequestInit, secret?: SealedSecret): Promise<JsonObject> {
   let response: Response;
   try {
     response = await fetcher(`${OPENROUTER_API_BASE}${path}`, {...init, redirect: 'error', signal: AbortSignal.timeout(TIMEOUT_MS)});
@@ -34,8 +35,8 @@ async function call(fetcher: typeof fetch, path: string, init: RequestInit, secr
 const numberOrNull = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 
 /** `GET /key`: label, credit limit and remaining credit of the key itself. */
-export async function fetchKeyInfo(fetcher: typeof fetch, apiKey: string): Promise<KeyInfo> {
-  const data = asObject((await call(fetcher, '/key', {method: 'GET', headers: {authorization: `Bearer ${apiKey}`, accept: 'application/json'}}, apiKey)).data);
+export async function fetchKeyInfo(fetcher: typeof fetch, apiKey: SealedSecret): Promise<KeyInfo> {
+  const data = asObject((await call(fetcher, '/key', {method: 'GET', headers: {authorization: `Bearer ${apiKey.reveal()}`, accept: 'application/json'}}, apiKey)).data);
   return {
     ...(typeof data.label === 'string' && data.label ? {label: redactKey(data.label, apiKey).slice(0, 100)} : {}),
     limit: numberOrNull(data.limit),
@@ -44,14 +45,14 @@ export async function fetchKeyInfo(fetcher: typeof fetch, apiKey: string): Promi
 }
 
 /** `POST /auth/keys`: trades a single-use PKCE code and its verifier for a user-controlled key. */
-export async function exchangeCode(fetcher: typeof fetch, code: string, codeVerifier: string): Promise<string> {
+export async function exchangeCode(fetcher: typeof fetch, code: string, codeVerifier: string): Promise<SealedSecret> {
   const json = await call(fetcher, '/auth/keys', {
     method: 'POST',
     headers: {'content-type': 'application/json', accept: 'application/json'},
     body: JSON.stringify({code, code_verifier: codeVerifier, code_challenge_method: 'S256'}),
   });
   if (typeof json.key !== 'string' || !json.key) throw new OpenRouterError(502, 'OpenRouter returned no key');
-  return json.key;
+  return SealedSecret.of(json.key);
 }
 
 /** `GET /models`: the public model list. Sent without any key: the catalogue is shared, never a user's spend. */

@@ -5,7 +5,6 @@ export interface ModelRef {
   modelId: string;
 }
 
-const SCRIPTED = 'scripted';
 
 export const sameRef = (a?: ModelRef | null, b?: ModelRef | null) =>
   !!a && !!b && a.modelId === b.modelId;

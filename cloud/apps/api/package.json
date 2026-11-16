@@ -18,6 +18,7 @@
     "@praxis/credentials": "*",
     "@praxis/protocol": "*",
     "@praxis/sync": "*",
+    "@praxis/types": "*",
     "@upstash/qstash": "2.12.1",
     "@upstash/ratelimit": "2.2.0",
     "@upstash/redis": "1.40.0",

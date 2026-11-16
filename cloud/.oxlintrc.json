@@ -1,0 +1,45 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "promise", "vitest", "import"],
+  "categories": {
+    "correctness": "error"
+  },
+  "ignorePatterns": ["**/dist/**", "**/_generated/**", "apps/web/public/**", "apps/web/e2e/fixtures/**"],
+  "rules": {
+    "eqeqeq": ["error", "always", {"null": "ignore"}],
+    "no-eval": "error",
+    "no-var": "error",
+    "no-self-compare": "error",
+    "no-throw-literal": "error",
+    "no-unused-expressions": "error",
+    "preserve-caught-error": "error",
+    "radix": "error",
+    "vitest/valid-title": ["error", {"allowArguments": true}],
+
+    "no-unused-vars": ["error", {"argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "caughtErrorsIgnorePattern": "^_", "ignoreRestSiblings": true}],
+
+    "unicorn/no-new-array": "off",
+    "require-yield": "off",
+    "promise/no-callback-in-promise": "off",
+    "react/exhaustive-deps": "off",
+    "react/purity": "off",
+    "react/globals": "off",
+    "react/immutability": "off",
+    "react/refs": "off",
+    "react/set-state-in-effect": "off",
+    "vitest/no-conditional-tests": "off",
+    "vitest/no-disabled-tests": "off",
+    "vitest/valid-expect": "off",
+    "vitest/no-conditional-expect": "off",
+    "vitest/require-to-throw-message": "off",
+    "vitest/require-mock-type-parameters": "off"
+  },
+  "overrides": [
+    {
+      "files": ["apps/web/src/**"],
+      "rules": {
+        "no-console": ["error", {"allow": ["warn", "error"]}]
+      }
+    }
+  ]
+}

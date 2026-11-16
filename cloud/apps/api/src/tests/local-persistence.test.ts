@@ -9,7 +9,6 @@ import {featureContext} from '../features.js';
 import {executionSecrets} from '../saved-secrets.js';
 import {readProductionEnv} from '../production.js';
 import {fakeOpenRouter} from './harness.js';
-import {unseal} from '../secrets.js';
 const dirs:string[]=[];
 const directory=()=>{const dir=mkdtempSync(join(tmpdir(),'praxis-k1c-'));dirs.push(dir);return dir;};
 afterEach(()=>{for(const dir of dirs.splice(0))rmSync(dir,{recursive:true,force:true});});

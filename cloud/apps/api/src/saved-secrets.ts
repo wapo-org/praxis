@@ -76,7 +76,7 @@ export async function protectAnswer(ctx:FeatureContext,chatId:string,schema:Json
 export async function querySavedValues(ctx:FeatureContext,q:{query?:string;kind?:'secret'|'variable';since?:string;cursor?:string;limit:number}) {
  const scope=JSON.stringify([q.query??'',q.kind??'',q.since??'']);
  let after:{createdAt:string;id:string}|undefined;
- if(q.cursor)try{const c=JSON.parse(Buffer.from(q.cursor,'base64url').toString());if(c.scope!==scope||typeof c.createdAt!=='string'||typeof c.id!=='string')throw 0;after=c;}catch{throw new ApiError(400,'invalid_cursor','Invalid saved-values cursor');}
+ if(q.cursor)try{const c=JSON.parse(Buffer.from(q.cursor,'base64url').toString());if(c.scope!==scope||typeof c.createdAt!=='string'||typeof c.id!=='string')throw new Error('invalid cursor');after=c;}catch{throw new ApiError(400,'invalid_cursor','Invalid saved-values cursor');}
  const needle=q.query?.toLocaleLowerCase();
  const rows=(await savedValues(ctx)).filter(v=>(!q.kind||v.kind===q.kind)&&(!q.since||Date.parse(v.createdAt)>=Date.parse(q.since))&&(!needle||v.name.toLocaleLowerCase().includes(needle)||(v.kind==='variable'&&JSON.stringify(v.value).toLocaleLowerCase().includes(needle)))&&(!after||v.createdAt<after.createdAt||(v.createdAt===after.createdAt&&v.id>after.id)));
  const items=rows.slice(0,q.limit),last=items.at(-1);

@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import {CapabilitiesSchema} from '@praxis/protocol';
 import type { Chat, Connector, ModelListItem as Model, Skill } from '@praxis/protocol';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -8,7 +7,6 @@ import { apiClient } from '../../lib/api.js';
 import type { PraxisStoreContextValue } from '../../state/store.js';
 import { Sidebar } from '../shell/Sidebar.js';
 import { ConnectorsScreen, parseConnectorConfig } from './ConnectorsScreen.js';
-import { ConsentPopover } from './ConsentPopover.js';
 import { ImageReaderScreen } from './ImageReaderScreen.js';
 import { SidebarSettings } from '../shell/SidebarSettings';
 import { SettingsPage } from './SettingsPage.js';

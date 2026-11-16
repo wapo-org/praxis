@@ -31,8 +31,8 @@ export async function provider(page) {
 
 /** A chat on the fake upstream. `history` prompts are run to completion through the API first. */
 export async function chat(page, { model = 'l3-80-150', title = 'L3 probe', history = [] } = {}) {
-  const providerId = await provider(page);
-  const id = await page.evaluate(async ({ providerId, model, title, history }) => {
+  await provider(page);
+  const id = await page.evaluate(async ({ model, title, history }) => {
     const { apiClient } = await import('/src/lib/api.ts');
     const chat = await apiClient.createChat({ title, modelId: model });
     for (const text of history) {
@@ -44,7 +44,7 @@ export async function chat(page, { model = 'l3-80-150', title = 'L3 probe', hist
       }
     }
     return chat.id;
-  }, { providerId, model, title, history });
+  }, { model, title, history });
   await page.goto(`${BASE}/c/${id}`);
   await page.getByTestId('chat-top-bar').waitFor();
   await page.getByTestId('composer-input').waitFor();

@@ -33,7 +33,7 @@ export async function loadEnv(file = new URL('../.env.deploy', import.meta.url))
     source = await readFile(file, 'utf8');
   } catch (e) {
     if (e.code === 'ENOENT') return {};
-    throw Error('Cannot read deploy env file');
+    throw Error('Cannot read deploy env file', { cause: e });
   }
   const env = {};
   for (const [i, line] of source.split(/\r?\n/).entries()) {

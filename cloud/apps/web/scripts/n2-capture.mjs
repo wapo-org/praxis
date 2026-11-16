@@ -25,7 +25,6 @@ const WRAP_DOC=[
   para(5), para(6), para(7), para(8),
 ].join('\n\n');
 
-const LONG_BLOCK=[`${F}ts`,...Array.from({length:60},(_,i)=>`export const value${i} = computeSomething(${i}, 'label-${i}', { retries: ${i%5}, verbose: ${i%2===0} }); // line ${i+1}`),F].join('\n');
 
 async function open(){
   const type=which==='webkit'?webkit:chromium;

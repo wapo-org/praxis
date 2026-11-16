@@ -1,12 +1,12 @@
 import {connectorIcon} from '../../connector-icons.js';
-import {ensureBuiltins,builtin,builtinCatalog} from './builtins.js';
+import {ensureBuiltins} from './builtins.js';
 import {searchRegistry} from './registry.js';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { ConnectorInputSchema, ConnectorPatchSchema, ConnectorSchema, ConsentSchema, JsonObjectSchema, MCPPromptSchema, MCPResourceSchema } from '@praxis/protocol';
 import type { FeatureContext } from '../../contracts.js';
-import { catalogKey, discoverTools, settingsTools, toolSpec } from './tools.js';
+import { catalogKey, settingsTools, toolSpec } from './tools.js';
 import { withClient } from './client.js';
 import { clientMetadata, finishOAuth, startOAuth } from './oauth.js';
 import { connector, HeadersSchema, McpError, now, opaqueId, page, remoteUrl, grantConsent, requireConsent, saveConnector, secretKind, writeSecret, type McpOptions } from './shared.js';

@@ -4,7 +4,7 @@ export const TITLE_MAX_CHARS = 48;
 export const TITLE_MAX_WORDS = 6;
 
 const EXCLUDED_MODEL_RE =
-  /:free(?:$|:)|^openrouter\/(?:free|auto)$|(?:^|[\/-])(?:o[134](?:-|$)|.*reasoning|.*thinking|deepseek-r1|.*(?:embed|embedding|moderation|guard|safeguard|whisper|tts|audio|realtime|dall-e|imagen|flux|sora))/i;
+  /:free(?:$|:)|^openrouter\/(?:free|auto)$|(?:^|[/-])(?:o[134](?:-|$)|.*reasoning|.*thinking|deepseek-r1|.*(?:embed|embedding|moderation|guard|safeguard|whisper|tts|audio|realtime|dall-e|imagen|flux|sora))/i;
 
 const WEAK_MODEL_RE = /\b(?:0\.5b|1b|1\.5b|2b|3b|4b|7b|8b)\b|nemotron-nano/i;
 const FRONTIER_COMPACT_RE =

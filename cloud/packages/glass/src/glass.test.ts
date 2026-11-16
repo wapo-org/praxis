@@ -114,7 +114,7 @@ describe('the more transparent glass keeps AA over paper', () => {
 describe('every GlassSurface stretches', () => {
   const root = join(here, '../../..');
   const uses = [...files(join(root, 'apps/web/src')), ...files(here)].filter(
-    (file) => /\.tsx$/.test(file) && !/\.test\.|\/lab\//.test(file) && /<GlassSurface\b/.test(readFileSync(file, 'utf8')),
+    (file) => file.endsWith('.tsx') && !/\.test\.|\/lab\//.test(file) && /<GlassSurface\b/.test(readFileSync(file, 'utf8')),
   );
   it('knows every use, so a new one has to be looked at', () => {
     expect(uses.map((file) => file.slice(file.lastIndexOf('/') + 1)).sort()).toEqual([

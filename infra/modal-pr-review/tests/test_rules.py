@@ -18,7 +18,7 @@ def test_script_rules_match_agents_md_tags() -> None:
 
 
 def test_script_rules_match_check_rules_script() -> None:
-    script = (REPO_ROOT / "cloud/scripts/check-rules-checks.mjs").read_text(encoding="utf-8")
+    script = (REPO_ROOT / "cloud/scripts/check-rules-ast.mjs").read_text(encoding="utf-8")
     declared = set(re.findall(r"'(R\d\.[a-z0-9-]+)'", script))
     assert declared == {rule_id for rule_id in SCRIPT_RULE_IDS if rule_id.startswith("R")}
 

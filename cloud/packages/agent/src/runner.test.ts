@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {CapabilitiesSchema,RunEventPayloadSchema,type RunEventPayload,type ToolSpec,type Message} from '@praxis/protocol';
+import {CapabilitiesSchema,RunEventPayloadSchema,type RunEventPayload,type ToolSpec} from '@praxis/protocol';
 import {AgentRunner,createScriptedRunner,createScriptedProvider,scriptedTools,alwaysAllowKey,decideTool,textResult,ProviderFailure,CheckpointSchema,type AgentCheckpoint,type AgentPorts,type RunInput,type ModelProvider,type ProviderRequest} from './index.js';
 const time='2026-10-29T12:00:00.000Z';
 function input():RunInput{return {userId:'u',run:{type:'run',id:'r',chatId:'c',status:'queued',createdAt:time,updatedAt:time,lastEventId:0},chat:{type:'chat',id:'c',title:'Chat',pinned:false,mode:'auto',connectorIds:[],disabledConnectorIds:[],createdAt:time,updatedAt:time},messages:[{type:'message',id:'m',chatId:'c',runId:'r',role:'user',parts:[{type:'text',text:'Hello'}],createdAt:time,updatedAt:time}]};}

@@ -1,7 +1,9 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
+import {inspect} from 'node:util';
 import {CapabilitiesSchema,type JsonObject,type Message} from '@praxis/protocol';
 import {OPENROUTER_API_BASE,createOpenRouterProvider,parseSSE,decodeOpenAIChat,buildProviderRequest,clampEffort,classifyProviderError,redactKey,scriptedTools,type ProviderEvent,type ProviderRequest} from './index.js';
+import {SealedSecret} from '@praxis/types';
 import * as agent from './index.js';
 const time='2026-10-29T12:00:00.000Z';
 const caps=CapabilitiesSchema.parse({tools:true,vision:true,reasoningEffort:true});
@@ -53,7 +55,7 @@ describe('chat stream decoding',()=>{
     );
     const response=final(await collect(decodeOpenAIChat(parseSSE(bytes(stream)))));
     const details=[{type:'reasoning.text',index:0,text:'Think',format:'anthropic-claude-v1',signature:'sig-1'},{type:'reasoning.encrypted',index:1,data:'opaque',id:'r2'}];
-    expect((response.raw?.data as JsonObject).reasoning_details).toEqual(details);expect(response.parts[0]).toMatchObject({type:'reasoning',text:'Think',shape:'raw'});
+    expect((response.raw?.data as JsonObject|undefined)?.reasoning_details).toEqual(details);expect(response.parts[0]).toMatchObject({type:'reasoning',text:'Think',shape:'raw'});
     const req=request();req.messages.push({...message('assistant',response.parts),raw:response.raw},message('user',[{type:'toolResult',callId:'call1',content:[{type:'text',text:'ok'}]}]));
     const wire=buildProviderRequest(req).messages as JsonObject[];expect(wire[2]?.reasoning_details).toEqual(details);expect(wire[3]).toEqual({role:'tool',tool_call_id:'call1',content:'ok'});
   });
@@ -81,30 +83,36 @@ describe('request building',()=>{
 });
 
 describe('OpenRouter provider',()=>{
+  it('keeps the key out of a logged or serialised provider config',()=>{
+    const config={apiKey:SealedSecret.of('sk-or-v1-config-key'),capabilities:caps};
+    const printed=[JSON.stringify(config),inspect(config,{depth:null}),String(config.apiKey)].join('\n');
+    expect(printed).not.toContain('sk-or-v1-config-key');
+    expect(printed).toContain('[redacted]');
+  });
   it('posts to the pinned chat completions URL with the user key',async()=>{
     let called='',headers:Headers|undefined,body:JsonObject|undefined,redirect:string|undefined;
     const fetcher=(async(url,init)=>{called=String(url);headers=new Headers(init?.headers);body=JSON.parse(String(init?.body));redirect=init?.redirect;return new Response(bytes(fixture('openai_text.sse')),{headers:{'content-type':'text/event-stream'}});}) as typeof fetch;
-    const p=createOpenRouterProvider({apiKey:'sk-or-v1-user-key',capabilities:caps},fetcher);expect(final(await collect(p.stream(request(),signal()))).parts.length).toBeGreaterThan(0);
+    const p=createOpenRouterProvider({apiKey:SealedSecret.of('sk-or-v1-user-key'),capabilities:caps},fetcher);expect(final(await collect(p.stream(request(),signal()))).parts.length).toBeGreaterThan(0);
     expect(OPENROUTER_API_BASE).toBe('https://openrouter.ai/api/v1');expect(called).toBe('https://openrouter.ai/api/v1/chat/completions');
     expect(headers?.get('authorization')).toBe('Bearer sk-or-v1-user-key');expect(body?.stream).toBe(true);expect(body?.usage).toEqual({include:true});expect(redirect).toBe('error');
   });
   it.each([[401,'keyInvalid'],[402,'creditExhausted']] as const)('maps HTTP %d to %s and keeps OpenRouter\'s message',async(status,kind)=>{
-    const p=createOpenRouterProvider({apiKey:'sk-or-v1-user-key',capabilities:caps},(async()=>Response.json({error:{code:status,message:'OpenRouter says no'}},{status})) as typeof fetch);
+    const p=createOpenRouterProvider({apiKey:SealedSecret.of('sk-or-v1-user-key'),capabilities:caps},(async()=>Response.json({error:{code:status,message:'OpenRouter says no'}},{status})) as typeof fetch);
     await expect(collect(p.stream(request(),signal()))).rejects.toMatchObject({kind,message:'OpenRouter says no'});
   });
   it('surfaces the upstream reason from error metadata (data policy, moderation)',async()=>{
-    const p=createOpenRouterProvider({apiKey:'k',capabilities:caps},(async()=>Response.json({error:{code:404,message:'No endpoints found matching your data policy',metadata:{raw:'Enable prompt training'}}},{status:404})) as typeof fetch);
+    const p=createOpenRouterProvider({apiKey:SealedSecret.of('k'),capabilities:caps},(async()=>Response.json({error:{code:404,message:'No endpoints found matching your data policy',metadata:{raw:'Enable prompt training'}}},{status:404})) as typeof fetch);
     await expect(collect(p.stream(request(),signal()))).rejects.toMatchObject({kind:'fatal',message:'No endpoints found matching your data policy: Enable prompt training'});
   });
   it('redacts the key from errors and honours retry-after',async()=>{
-    const p=createOpenRouterProvider({apiKey:'sk-or-v1-do-not-leak',capabilities:caps},(async()=>new Response(JSON.stringify({error:{message:'Failure sk-or-v1-do-not-leak'}}),{status:429,headers:{'retry-after':'2'}})) as typeof fetch);
+    const p=createOpenRouterProvider({apiKey:SealedSecret.of('sk-or-v1-do-not-leak'),capabilities:caps},(async()=>new Response(JSON.stringify({error:{message:'Failure sk-or-v1-do-not-leak'}}),{status:429,headers:{'retry-after':'2'}})) as typeof fetch);
     await expect(collect(p.stream(request(),signal()))).rejects.toMatchObject({message:'Failure [redacted]',kind:'retryable',retryAfterMs:2000});
-    expect(redactKey('Authorization: Bearer abc.def and sk-or-v1-0123456789abcdef','other')).toBe('Authorization: Bearer [redacted] and [redacted]');
+    expect(redactKey('Authorization: Bearer abc.def and sk-or-v1-0123456789abcdef',SealedSecret.of('other'))).toBe('Authorization: Bearer [redacted] and [redacted]');
   });
   it('reports an unreachable OpenRouter as retryable and refuses to call without a key',async()=>{
-    const down=createOpenRouterProvider({apiKey:'k',capabilities:caps},(async()=>{throw new TypeError('fetch failed');}) as typeof fetch);
+    const down=createOpenRouterProvider({apiKey:SealedSecret.of('k'),capabilities:caps},(async()=>{throw new TypeError('fetch failed');}) as typeof fetch);
     await expect(collect(down.stream(request(),signal()))).rejects.toMatchObject({kind:'retryable'});
-    let called=false;const none=createOpenRouterProvider({apiKey:'',capabilities:caps},(async()=>{called=true;return new Response('');}) as typeof fetch);
+    let called=false;const none=createOpenRouterProvider({apiKey:SealedSecret.of(''),capabilities:caps},(async()=>{called=true;return new Response('');}) as typeof fetch);
     await expect(collect(none.stream(request(),signal()))).rejects.toMatchObject({kind:'keyInvalid'});expect(called).toBe(false);
   });
   it('classifies feature rejections before status, and 401/402 before text',()=>{

@@ -127,7 +127,7 @@ export function createRateLimiter(redis: Pick<Redis, 'eval'> & Partial<Redis>, o
   };
   return async (key: string) => {
     if (key.startsWith('account-delete:')) return fixed(key, 5, 3600);
-    if (key.startsWith('user:')) return fixed(key, options.requests ?? 120, Number.parseInt(options.window ?? '60 s'));
+    if (key.startsWith('user:')) return fixed(key, options.requests ?? 120, Number.parseInt(options.window ?? '60 s', 10));
     const result = await limiter.limit(opaque(key));
     return result.success ? {ok: true} : {ok: false, retryAfterSeconds: Math.max(1, Math.ceil((result.reset - Date.now()) / 1000))};
   };

@@ -249,7 +249,7 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
     try {
       await remove();
     } catch (e) {
-      if (local || !/HTTP 401$/.test(e.message)) throw e;
+      if (local || !e.message.endsWith('HTTP 401')) throw e;
       await signIn();
       await remove();
     }

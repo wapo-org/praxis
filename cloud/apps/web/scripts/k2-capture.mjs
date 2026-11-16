@@ -5,7 +5,6 @@ import { homedir } from 'node:os';
 const BASE = process.env.BASE ?? 'http://127.0.0.1:5232';
 const TAG = process.env.TAG ?? 'before';
 const OUT = process.env.OUT ?? `${homedir()}/.praxis-agent-state/cloud/design/K/K2`;
-const FX = process.env.FX ?? '/tmp/j2/fx';
 const ONLY = new Set((process.env.ONLY ?? 'activity,type,tray,blur,press').split(','));
 const SCHEMES = (process.env.SCHEME ?? 'light,dark').split(',');
 await mkdir(OUT, { recursive: true });

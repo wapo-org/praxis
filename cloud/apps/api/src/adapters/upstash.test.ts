@@ -18,7 +18,9 @@ if (live) {
   kvContract('KV contract: Upstash live', () => live().kv, {realTime: true});
   eventsContract('Events contract: Upstash live', () => live().events);
 } else {
-  describe.skip('Upstash live contract (set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN)', () => it('skipped', () => {}));
+  describe.skip('Upstash live contract (set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN)', () => {
+    it('needs live credentials', () => expect(live).toBeNull());
+  });
 }
 
 describe('Upstash adapter specifics', () => {

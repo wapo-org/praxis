@@ -6,7 +6,6 @@ import type {
   ModelKey,
   ModelListItem,
   ModelPreferenceRecord,
-  Capabilities,
   Chat,
   Run,
   RunSnapshot,

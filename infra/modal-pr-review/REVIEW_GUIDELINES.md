@@ -37,7 +37,7 @@ Script-owned ids are the `[R…]` tags in [`AGENTS.md`](../../AGENTS.md) plus `G
 | `R3.fail-closed` | HARD | security | Production path degrades instead of failing (exceptions: PRA-61 cooldowns, PRA-59 catalogue) |
 | `R4.boundary-parse` | HARD | abstractions | Untrusted input cast or trusted without a Zod / `Codable` parse |
 | `R4.illegal-states` | advisory | abstractions | Optional-field bag where a discriminated union fits |
-| `R4.adhoc-brand` | advisory | abstractions | Ad-hoc `TenantId` / `SealedSecret` (owned by PRA-36 / PRA-72) |
+| `R4.adhoc-brand` | advisory | abstractions | Ad-hoc `TenantId` / `SealedSecret` instead of the ones in `@praxis/types` |
 | `R5.owner-from-auth` | HARD | security | Owner id taken from client input instead of verified auth |
 | `R5.secret-leak` | HARD | security | Secret reaches a log, response, URL, Redis key or telemetry |
 | `R5.ssrf-egress` | HARD | security | User/model URL fetched without the SSRF-guarded `egress` fetch |

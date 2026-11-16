@@ -8,7 +8,6 @@ const ONLY = (process.env.ONLY ?? 'tray,consent,audit,secrets').split(',');
 const ENGINES = (process.env.ENGINES ?? 'chromium,webkit').split(',');
 mkdirSync(OUT, { recursive: true });
 const user = `l2-capture-${Date.now()}`;
-const auth = { Authorization: 'Bearer dev-local', 'content-type': 'application/json' };
 
 async function open(browser, scheme, path = '/', viewport = { width: 1280, height: 860 }) {
   const ctx = await browser.newContext({ viewport, deviceScaleFactor: 2, colorScheme: scheme });

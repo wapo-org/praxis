@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import type { Connector, ModelListItem } from '@praxis/protocol';
-import { CapabilitiesSchema } from '@praxis/protocol';
 import React from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -381,7 +380,6 @@ describe('shared search and dropdown actions', () => {
     expect(modes).toEqual(['Auto', 'Ask', 'Execute']); // WP-I1: Plan is gone, Build is Execute
     expect(efforts).toEqual(['Low', 'Medium', 'High']);
     await openList();
-    const modelNames = options();
     await act(async () => {
       store.setPlusTrayOpen(false);
       root.render(<PraxisStoreProvider><Probe /><SearchPalette open onClose={() => {}} /></PraxisStoreProvider>);

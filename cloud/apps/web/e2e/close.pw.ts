@@ -70,7 +70,7 @@ for (const how of ['Escape', 'an outside click', 'choosing a result'] as const) 
     const track = await closeTrack(page);
     const removed = track.find((f) => !f.present)!.t;
     // 120 ms of fade, then removal on the next frames. Headless frames here can be 60+ ms apart, so allow a few.
-    const frame = [...track.slice(1).map((f, i) => f.t - track[i]!.t)].sort((a, b) => a - b)[Math.floor((track.length - 1) / 2)]!;
+    const frame = track.slice(1).map((f, i) => f.t - track[i]!.t).sort((a, b) => a - b)[Math.floor((track.length - 1) / 2)]!;
     expect(removed).toBeLessThan(130 + 3 * Math.max(frame, 8));
     // From the first frame of the close it takes no pointer; after 100 ms no glyph is visible.
     expect(track.filter((f) => f.present && f.t > 20).some((f) => f.hits)).toBe(false);

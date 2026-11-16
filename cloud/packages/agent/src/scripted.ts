@@ -3,13 +3,11 @@ import {
   CapabilitiesSchema,
   StartRunSchema,
   type MessagePart,
-  type ReasoningShape,
   type StreamSimOptions,
   type ToolSpec,
 } from '@praxis/protocol';
 import { ProviderFailure, AgentRunner } from './runner.js';
-import { realShapeStream, realShapeTool } from './scripted-real.js';
-import { CODE_FEATURES_MARKDOWN } from './scripted-code.js';
+import { realShapeTool } from './scripted-real.js';
 import {
   textResult,
   type AgentPorts,
@@ -134,7 +132,7 @@ export function splitIntoSimulatedChunks(
 
 export function createScriptedProvider(
   script: Script = 'text',
-  simOptions?: StreamSimOptions,
+  _simOptions?: StreamSimOptions,
 ): ModelProvider {
   StartRunSchema.shape.script.parse(script);
   return {capabilities:CapabilitiesSchema.parse({tools:true,vision:true,reasoningEffort:true}),

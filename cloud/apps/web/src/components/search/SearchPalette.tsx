@@ -105,7 +105,8 @@ function Palette({ onClose }: { onClose: (then?: () => void) => void }) {
     const escape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
       event.preventDefault();
-      level ? back() : onClose();
+      if (level) back();
+      else onClose();
     };
     document.addEventListener('keydown', escape);
     return () => document.removeEventListener('keydown', escape);
@@ -150,7 +151,7 @@ function Palette({ onClose }: { onClose: (then?: () => void) => void }) {
         placeholder={level ? ACTIONS[level].label : 'Search chats and actions'} value={query}
         onChange={e => setQuery(e.target.value)} onKeyDown={e => {
           if (e.nativeEvent.isComposing) return;
-          if (e.key === 'Escape' || (e.key === 'Backspace' && !query && level)) { e.preventDefault(); e.stopPropagation(); level ? back() : onClose(); }
+          if (e.key === 'Escape' || (e.key === 'Backspace' && !query && level)) { e.preventDefault(); e.stopPropagation(); if (level) back(); else onClose(); }
           else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); setActive(a => Math.max(0, Math.min(visibleRows.length - 1, a + (e.key === 'ArrowDown' ? 1 : -1)))); }
           else if (e.key === 'Enter') { e.preventDefault(); void visibleRows[activeIndex]?.apply(); }
         }} />

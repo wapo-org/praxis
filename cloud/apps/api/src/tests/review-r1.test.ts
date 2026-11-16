@@ -1,7 +1,6 @@
 import {describe, expect, it, vi} from 'vitest';
-import {randomBytes} from 'node:crypto';
 import sharp from 'sharp';
-import {MAX_RESULT_CHARACTERS, type AgentCheckpoint, type ModelProvider, type ProviderRequest} from '@praxis/agent';
+import {MAX_RESULT_CHARACTERS, type ModelProvider, type ProviderRequest} from '@praxis/agent';
 import {CapabilitiesSchema, type MessagePart} from '@praxis/protocol';
 import {createLocalAdapters} from '../local-memory.js';
 import {ApiService} from '../service.js';
@@ -10,8 +9,6 @@ import {MAX_READ_CHARACTERS, readToolOutputTool} from '../read-tool-output.js';
 import {MAX_INPUT_PIXELS, rehydrateAttachment} from '../features/tools/media.js';
 import type {ToolsStorage} from '../features/tools/ports.js';
 import type {FeatureContext} from '../contracts.js';
-import {createPraxisApp} from '../server.js';
-import {localModules} from '../modules.js';
 import {png, setup} from './harness.js';
 
 const caps = CapabilitiesSchema.parse({vision: true, documents: true, tools: true});

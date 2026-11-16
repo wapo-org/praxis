@@ -1,4 +1,5 @@
 import {describe, expect, it, vi} from 'vitest';
+import {inspect} from 'node:util';
 import {randomBytes} from 'node:crypto';
 import {CatalogModelSchema, DEFAULT_MODEL_ID, ModelKeySchema, RECOMMENDED_MODELS, RunSnapshotSchema, type Run} from '@praxis/protocol';
 import {createLocalAdapters} from '../local-memory.js';
@@ -93,6 +94,10 @@ describe('connecting a key', () => {
     expect(unseal(String(row.value.sealed), 'local-user', 'modelKey', f.encryptionKey)).toBe(KEY_A);
     // The seal is bound to its owner: the same blob does not open as another user's.
     expect(() => unseal(String(row.value.sealed), 'someone-else', 'modelKey', f.encryptionKey)).toThrow();
+    // Unsealed, the key stays wrapped: only reveal() gives the value.
+    const unsealed = await f.service.models!.keys.reveal('local-user');
+    expect(unsealed.reveal()).toBe(KEY_A);
+    expect(`${unsealed} ${JSON.stringify({unsealed})} ${inspect({unsealed})}`).not.toContain(KEY_A);
     expect(await (await req('/v1/model-key')).json()).toEqual(record);
   });
 
@@ -254,7 +259,7 @@ describe('runs on the user\'s own key', () => {
     const f = setup(), a = await f.client('user-a'), b = await f.client('user-b');
     await a('/v1/model-key', {method: 'paste', apiKey: KEY_A});
     await b('/v1/model-key', {method: 'paste', apiKey: KEY_B});
-    f.or.state.chat = (body, authorization) => sse([delta({content: `for ${body.messages.at(-1).content}`}), delta({}, 'stop'), usageChunk({prompt_tokens: 1, completion_tokens: 1})]);
+    f.or.state.chat = (body, _authorization) => sse([delta({content: `for ${body.messages.at(-1).content}`}), delta({}, 'stop'), usageChunk({prompt_tokens: 1, completion_tokens: 1})]);
     expect((await f.turn(a, {text: 'from A'})).snapshot?.run.status).toBe('completed');
     expect((await f.turn(b, {text: 'from B'})).snapshot?.run.status).toBe('completed');
     expect((await f.turn(a, {text: 'from A again'})).snapshot?.run.status).toBe('completed');

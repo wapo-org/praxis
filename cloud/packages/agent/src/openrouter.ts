@@ -1,4 +1,5 @@
 import {JsonObjectSchema,UsageSchema,CapabilitiesSchema,type Capabilities} from '@praxis/protocol';
+import type {SealedSecret} from '@praxis/types';
 import type {ModelProvider,ProviderRequest,ProviderEvent} from './types.js';
 import {ProviderFailure} from './runner.js';
 import {buildProviderRequest,object} from './wire.js';
@@ -11,7 +12,7 @@ export const OPENROUTER_AUTH_URL='https://openrouter.ai/auth';
 
 export interface OpenRouterConfig {
   /** The user's own key, unsealed for this run only. */
-  apiKey:string;
+  apiKey:SealedSecret;
   /** From the model's catalogue entry. */
   capabilities:Capabilities;
   maxStreamBytes?:number;maxEventBytes?:number;
@@ -23,8 +24,9 @@ export async function readBounded(response:Response,max=4_000_000):Promise<strin
   finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
 }
 /** Removes the key (and any bearer token) from text that may reach a client, a log or a trace. */
-export function redactKey(text:string,apiKey:string):string {
-  if(apiKey)text=text.split(apiKey).join('[redacted]');
+export function redactKey(text:string,apiKey?:SealedSecret):string {
+  const key=apiKey?.reveal();
+  if(key)text=text.split(key).join('[redacted]');
   return text.replace(/Bearer\s+[^\s"']+/gi,'Bearer [redacted]').replace(/sk-or-[A-Za-z0-9_-]{8,}/g,'[redacted]').slice(0,4000);
 }
 
@@ -38,7 +40,7 @@ export function createOpenRouterProvider(config:OpenRouterConfig,fetcher:typeof 
     async complete(input, signal) {
       const body = {...buildProviderRequest(input), stream: false};
       const response = await fetcher(`${OPENROUTER_API_BASE}/chat/completions`, {
-        method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${config.apiKey}`},
+        method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${config.apiKey.reveal()}`},
         body: JSON.stringify(body), signal, redirect: 'error',
       });
       const json = JsonObjectSchema.parse(JSON.parse(await readBounded(response)));
@@ -52,8 +54,8 @@ export function createOpenRouterProvider(config:OpenRouterConfig,fetcher:typeof 
       })};
     },
     async *stream(input:ProviderRequest,signal:AbortSignal):AsyncGenerator<ProviderEvent> {
-      if(!config.apiKey)throw new ProviderFailure('No OpenRouter key is connected','keyInvalid');
-      const headers={'content-type':'application/json',accept:'text/event-stream',authorization:`Bearer ${config.apiKey}`,'x-title':'Praxis'};
+      if(!config.apiKey.reveal())throw new ProviderFailure('No OpenRouter key is connected','keyInvalid');
+      const headers={'content-type':'application/json',accept:'text/event-stream',authorization:`Bearer ${config.apiKey.reveal()}`,'x-title':'Praxis'};
       let response:Response;
       try{response=await fetcher(`${OPENROUTER_API_BASE}/chat/completions`,{method:'POST',headers,body:JSON.stringify(buildProviderRequest(input)),signal,redirect:'error'});}
       catch(error){if(signal.aborted)throw error;throw new ProviderFailure('OpenRouter could not be reached','retryable');}

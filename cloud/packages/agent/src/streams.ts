@@ -128,14 +128,6 @@ function normalizeCitation(raw:JsonObject):StreamAnnotation|undefined {
   };
 }
 
-function normalizeImage(raw:JsonObject):StreamAnnotation|undefined {
-  const source=object(raw.source),url=string(object(raw.image_url).url)||string(raw.image_url)||string(raw.url)||string(source.url);
-  const data=string(raw.result)||string(raw.data)||string(source.data);
-  if(!url&&!data)return;
-  const format=string(raw.output_format)||'png';
-  return {type:'image',mediaType:string(raw.media_type)||string(source.media_type)||`image/${format==='jpg'?'jpeg':format}`,...(url?{url}:{}),...(data?{data}:{})};
-}
-
 export async function* decodeOpenAIChat(frames:AsyncIterable<SSEFrame>):AsyncGenerator<ProviderEvent> {
   let text='',reasoning='',reasoningField='reasoning_content',reason='',done=false,u=zero(),refusal='';
   const rawReasoningDetails:JsonObject[]=[],imageParts:MessagePart[]=[];

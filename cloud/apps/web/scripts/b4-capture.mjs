@@ -1,4 +1,4 @@
-import { BASE, API } from './check-env.mjs';
+import { BASE } from './check-env.mjs';
 import { chromium, webkit } from '@playwright/test';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';

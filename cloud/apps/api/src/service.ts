@@ -139,7 +139,7 @@ export class ApiService{
    ]);
    const runChat=updated??chat;
    this.enqueue(userId,run.id,()=>withRunTiming(tracker,async()=>{tracker.mark('queueWaitMs');return this.driver!.start(userId,run,runChat,messages,input);}));
-   if(title&&!suggested&&runChat.title===title&&runChat.titleRevision===runChat.titleRevision&&this.driver?.title){
+   if(title&&!suggested&&runChat.title===title&&this.driver?.title){
     const expected=runChat.title,revision=runChat.titleRevision;
     const work=Promise.resolve().then(()=>withRunTiming(tracker,async()=>{
      const generated=await timedStep('titleGeneration',()=>this.driver!.title!(userId,runChat,input.text));if(!generated)return;
@@ -155,7 +155,7 @@ export class ApiService{
   const updated=await timedStep('chatUpdate',()=>this.updateChat(userId,chat.id,live=>({...live,...(title&&live.title===chat.title&&live.titleRevision===chat.titleRevision?{title:suggested||title}:{}),activeRunId:run.id,updatedAt:now})));
   const runChat=updated??chat;
   this.enqueue(userId,run.id,()=>withRunTiming(tracker,async()=>{tracker.mark('queueWaitMs');return this.driver!.start(userId,run,runChat,messages,input);}));
-  if(title&&!suggested&&runChat.title===title&&runChat.titleRevision===runChat.titleRevision&&this.driver?.title){
+  if(title&&!suggested&&runChat.title===title&&this.driver?.title){
    const expected=runChat.title,revision=runChat.titleRevision;
    const work=Promise.resolve().then(()=>withRunTiming(tracker,async()=>{
     const generated=await timedStep('titleGeneration',()=>this.driver!.title!(userId,runChat,titleText));if(!generated)return;
@@ -191,7 +191,7 @@ export class ApiService{
  }
  /** Never leave background rejections unhandled; log failures without payloads. */
  onBackgroundError=(runId:string,error:unknown)=>{console.error(JSON.stringify({type:'background_error',runId,error:error instanceof Error?error.name+': '+error.message.slice(0,300):'unknown'}));};
- async drain(){await Promise.all([...this.work]);}
+ async drain(){await Promise.all(this.work);}
  async emit(userId:string,runId:string,event:RunEventPayload){
   return this.exclusive(`event:${userId}:${runId}`,async()=>{
    if(event.type==='run.started')currentRunTiming()?.mark('runStartedMs');

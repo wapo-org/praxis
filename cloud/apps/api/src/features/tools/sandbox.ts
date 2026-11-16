@@ -14,7 +14,7 @@ const FetchInput=z.object({url:z.string().url(),method:z.enum(['GET','HEAD','POS
 /** WASM receives JSON/strings only; no Node objects, loader, or FS access. */
 export async function runSandbox(args:JsonValue,ctx:FeatureContext,execution:ToolExecution,files:SandboxFiles,toolNames:string[],toolState?:ToolsState){
  const input=Code.parse(args);if(execution.mode==='ask')throw new ApiError(403,'mode_denied','Running JavaScript is unavailable in Ask mode');
- const key=JSON.stringify(['tools','js-kv',ctx.userId,execution.chatId]);const saved=toolState?await toolState.get(ctx.userId,'javascriptKV',execution.chatId):null;const legacy=toolState?null:await ctx.store.get(ctx.userId,'javascriptKV',execution.chatId);const initial=saved?.data??(legacy&&!legacy.deleted?legacy.value.data??{}:{});
+ const saved=toolState?await toolState.get(ctx.userId,'javascriptKV',execution.chatId):null;const legacy=toolState?null:await ctx.store.get(ctx.userId,'javascriptKV',execution.chatId);const initial=saved?.data??(legacy&&!legacy.deleted?legacy.value.data??{}:{});
  const quickJS=await getQuickJS(),runtime=quickJS.newRuntime();runtime.setMemoryLimit(16*1024*1024);runtime.setMaxStackSize(512*1024);
  const started=Date.now(),deadline=started+input.timeout_ms;const controller=new AbortController();const signal=execution.signal?AbortSignal.any([execution.signal,controller.signal]):controller.signal;
  runtime.setInterruptHandler(()=>Date.now()>=deadline||signal.aborted);
