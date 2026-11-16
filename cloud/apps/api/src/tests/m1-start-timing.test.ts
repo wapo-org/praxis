@@ -1,17 +1,34 @@
+import {ChatSchema, ConnectorSchema, RunSchema} from '@praxis/protocol';
+import * as savedSecrets from '../saved-secrets.js';
 import { randomBytes } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPraxisApp } from '../server.js';
 import { createLocalAdapters } from '../local-memory.js';
 import { localModules } from '../modules.js';
 import { selectEmbedder } from '../embedding.js';
 import { memoryVectorIndex } from '../search-index.js';
 import { catalogKey } from '../features/mcp/tools.js';
-import { getRunTiming } from '../timing.js';
+import { RunTimingTracker, getRunTiming } from '../timing.js';
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const releases: (() => void)[] = [];
+function gate() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(done => {resolve = done;});
+  releases.push(resolve);
+  return {promise, resolve};
+}
+afterEach(() => {
+  releases.splice(0).forEach(release => release());
+  vi.restoreAllMocks();
+});
 
 describe('M1 run start timing and critical-path isolation', () => {
   it('records all timing steps and keeps variablesTouch, titleGeneration, and stale MCP SWR refresh off the provider request critical path', async () => {
+    const titleGate = gate(), mcpGate = gate(), touchGate = gate();
+    const titleStarted = gate(), mcpStarted = gate(), touchStarted = gate(), providerStarted = gate();
+    let active = false;
+    let titleFinished = false, touchFinished = false;
+    const marks = vi.spyOn(RunTimingTracker.prototype, 'mark');
     let mcpHits = 0;
     let fakeLlmCalls = 0;
     const fetcher: typeof fetch = async (input, init) => {
@@ -25,12 +42,15 @@ describe('M1 run start timing and critical-path isolation', () => {
         const req = JSON.parse(String(init?.body || '{}'));
         const isTitle = String(req.messages?.[0]?.content ?? '').includes('title generator');
         if (isTitle) {
-          await sleep(250);
+          titleStarted.resolve();
+          await titleGate.promise;
+          titleFinished = true;
           return Response.json({
             choices: [{ index: 0, message: { role: 'assistant', content: 'Deployment Region Check' }, finish_reason: 'stop' }],
             usage: { prompt_tokens: 10, completion_tokens: 4 },
           });
         }
+        providerStarted.resolve();
         const sse =
           `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: 'Done' }, finish_reason: null }] })}\n\n` +
           `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n` +
@@ -38,7 +58,10 @@ describe('M1 run start timing and critical-path isolation', () => {
         return new Response(sse, { headers: { 'content-type': 'text/event-stream' } });
       }
       mcpHits++;
-      await sleep(220);
+      if (active) {
+        mcpStarted.resolve();
+        await mcpGate.promise;
+      }
       if (init?.method === 'DELETE') return new Response(null, { status: 200 });
       const req = JSON.parse(String(init?.body || '{}'));
       if (req.method === 'notifications/initialized') return new Response(null, { status: 202 });
@@ -60,34 +83,10 @@ describe('M1 run start timing and critical-path isolation', () => {
     };
 
     const base = createLocalAdapters();
-    const storeRtt = 25;
-    const delayedStore = {
-      ...base.store,
-      get: async (...a: Parameters<typeof base.store.get>) => {
-        await sleep(storeRtt);
-        return base.store.get(...a);
-      },
-      list: async (...a: Parameters<typeof base.store.list>) => {
-        await sleep(storeRtt);
-        return base.store.list(...a);
-      },
-      put: async (...a: Parameters<typeof base.store.put>) => {
-        await sleep(storeRtt);
-        return base.store.put(...a);
-      },
-      putIfRevision: async (...a: Parameters<typeof base.store.putIfRevision>) => {
-        await sleep(storeRtt);
-        return base.store.putIfRevision(...a);
-      },
-      delete: async (...a: Parameters<typeof base.store.delete>) => {
-        await sleep(storeRtt);
-        return base.store.delete(...a);
-      },
-    };
 
     const embedder = await selectEmbedder({ PRAXIS_EMBEDDER: 'hash' }, true);
     const { app, service } = createPraxisApp({
-      adapters: { ...base, store: delayedStore },
+      adapters: base,
       local: true,
       encryptionKey: randomBytes(32).toString('base64'),
       fetcher,
@@ -104,17 +103,17 @@ describe('M1 run start timing and critical-path isolation', () => {
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
       if (!res.ok) throw new Error(`${method} ${path} ${res.status} ${await res.text()}`);
-      return res.json() as Promise<any>;
+      return res.json() as Promise<unknown>;
     };
 
     await call('/v1/consents', { type: 'consent', host: 'exa.mcp.test', allowed: true });
     await call('/v1/consents', { type: 'consent', host: 'llm.example.test', allowed: true });
-    const connector = await call('/v1/connectors', {
+    const connector = ConnectorSchema.parse(await call('/v1/connectors', {
       type: 'connector.input',
       name: 'Exa',
       url: 'https://exa.mcp.test/mcp',
       trusted: true,
-    });
+    }));
     await call('/v1/model-key', {method:'paste',apiKey:'sk-or-test-123456'});
     await call('/v1/saved-values', {
       name: 'deployment region',
@@ -143,21 +142,39 @@ describe('M1 run start timing and critical-path isolation', () => {
       'local-user',
     );
 
-    const chat = await call('/v1/chats', {
+    const chat = ChatSchema.parse(await call('/v1/chats', {
       type: 'chat.input',
       title: 'New chat',
       modelId: 'fake-model',
-    });
+    }));
 
+    const touchSavedValue = savedSecrets.touchSavedValue;
+    const touch = vi.spyOn(savedSecrets, 'touchSavedValue').mockImplementation(async (...args) => {
+      touchStarted.resolve();
+      await touchGate.promise;
+      await touchSavedValue(...args);
+      touchFinished = true;
+    });
+    active = true;
     const hitsBefore = mcpHits;
-    const run = await call('/v1/runs', {
+    const run = RunSchema.parse(await call('/v1/runs', {
       type: 'run.start',
       chatId: chat.id,
       text: 'check deployment region',
       clientTurnId: 'm1-timing-turn-1',
-    });
+    }));
 
+    await Promise.all([titleStarted.promise, mcpStarted.promise, touchStarted.promise, providerStarted.promise]);
+    expect(titleFinished).toBe(false);
+    expect(touchFinished).toBe(false);
+    expect(touch).toHaveBeenCalledTimes(1);
+    expect(mcpHits).toBeGreaterThan(hitsBefore);
+    titleGate.resolve();
+    mcpGate.resolve();
+    touchGate.resolve();
     await service.drain();
+    expect(titleFinished).toBe(true);
+    expect(touchFinished).toBe(true);
     const timing = getRunTiming(run.id);
     expect(timing).toBeDefined();
     expect(fakeLlmCalls).toBeGreaterThanOrEqual(1);
@@ -173,13 +190,10 @@ describe('M1 run start timing and critical-path isolation', () => {
     expect(steps.modelMetadata).toBeDefined();
     expect(steps.titleGeneration).toBeDefined();
 
-    // POST returned before background title generation and before long MCP/provider work.
-    expect(timing!.postResponseMs!).toBeLessThan(timing!.providerRequestMs!);
-    expect(steps.titleGeneration!.endMs).toBeGreaterThan(timing!.postResponseMs!);
-
-    expect(steps.mcpCatalog!.durationMs).toBeLessThan(150);
-    expect(mcpHits).toBeGreaterThan(hitsBefore);
-
-    expect(steps.variablesTouch!.startMs).toBeGreaterThanOrEqual(steps.variables!.endMs - 5);
+    const fields = marks.mock.calls.map(([field]) => field);
+    expect(fields).toContain('postResponseMs');
+    expect(fields).toContain('providerRequestMs');
+    expect(fields.indexOf('postResponseMs')).toBeLessThan(fields.indexOf('providerRequestMs'));
+    expect(steps.variablesTouch!.calls).toBe(1);
   });
 });

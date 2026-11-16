@@ -1,4 +1,4 @@
-import {afterAll, beforeAll, describe, expect, it} from 'vitest';
+import {afterAll, beforeAll, describe, expect, it, vi} from 'vitest';
 import {Hono} from 'hono';
 import {createServer, type Server} from 'node:http';
 import type {AddressInfo} from 'node:net';
@@ -13,22 +13,20 @@ import {fixtureServer} from './fixture.js';
 
 let remote: Awaited<ReturnType<typeof fixtureServer>>;
 let protectedRemote: Awaited<ReturnType<typeof fixtureServer>>;
-let hanging: Server, broken: Server;
-let hangingUrl = '', brokenUrl = '';
+let broken: Server;
+let brokenUrl = '';
 beforeAll(async () => {
   remote = await fixtureServer();
   protectedRemote = await fixtureServer();
   protectedRemote.protect();
-  hanging = createServer(() => { /* never answers */ });
   broken = createServer((_req, res) => { res.writeHead(500, {'content-type': 'text/plain'}); res.end('boom'); });
-  for (const s of [hanging, broken]) await new Promise<void>(r => s.listen(0, '127.0.0.1', r));
-  hangingUrl = `http://127.0.0.1:${(hanging.address() as AddressInfo).port}/mcp`;
+  for (const s of [broken]) await new Promise<void>(r => s.listen(0, '127.0.0.1', r));
   brokenUrl = `http://127.0.0.1:${(broken.address() as AddressInfo).port}/mcp`;
 });
 afterAll(async () => {
   await remote.close(); await protectedRemote.close();
-  hanging.closeAllConnections(); broken.closeAllConnections();
-  await Promise.all([hanging, broken].map(s => new Promise<void>(r => s.close(() => r()))));
+  broken.closeAllConnections();
+  await Promise.all([broken].map(s => new Promise<void>(r => s.close(() => r()))));
 });
 
 function setup() {
@@ -72,11 +70,26 @@ describe('connector health on create (REV-B13 P1)', () => {
   it('a server that answers with errors is error; one that never answers times out as unreachable', async () => {
     const s = setup();
     expect((await s.add(brokenUrl)).status).toBe('error');
-    const value = await saveConnector(s.ctx, {type: 'connector', id: 'hang', name: 'Hang', url: hangingUrl, transport: 'streamableHttp', enabled: true, trusted: false, disabledTools: [], authStatus: 'none', updatedAt: new Date().toISOString()});
-    const started = Date.now();
-    const checked = await probeConnector(s.ctx, value, {}, 200);
-    expect(checked).toMatchObject({status: 'unreachable', statusCode: 'probe_timeout'});
-    expect(Date.now() - started).toBeLessThan(2000);
+    const value = await saveConnector(s.ctx, {type: 'connector', id: 'hang', name: 'Hang', url: 'https://hanging.mcp.test/mcp', transport: 'streamableHttp', enabled: true, trusted: false, disabledTools: [], authStatus: 'none', updatedAt: new Date().toISOString()});
+    const timeoutMs = 200;
+    vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout']});
+    try {
+      const pendingFetch: typeof fetch = async () => new Promise<Response>(() => {});
+      let settled = false;
+      const pending = probeConnector({...s.ctx, fetch: pendingFetch, egress: pendingFetch}, value, {}, timeoutMs)
+        .then(checked => {
+          settled = true;
+          return checked;
+        });
+      await vi.advanceTimersByTimeAsync(timeoutMs - 1);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await pending).toMatchObject({status: 'unreachable', statusCode: 'probe_timeout'});
+      expect(settled).toBe(true);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
   it('explicit refresh and a URL change re-run the check', async () => {
     const s = setup();

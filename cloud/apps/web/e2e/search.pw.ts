@@ -134,28 +134,29 @@ test('choosing a chat closes the panel at once, even while its messages are stil
     items: [{ chat: { id: 'welcome', title: 'Welcome to Praxis Cloud' }, snippet: 'Welcome' }] } }));
   let release!: () => void;
   const slow = new Promise<void>((r) => { release = r; });
-  await page.route('**/v1/chats/welcome/messages**', async (route) => { await slow; await route.continue(); });
+  let entered!: () => void;
+  const requested = new Promise<void>(resolve => {entered = resolve;});
+  let responded = false;
+  await page.route('**/v1/chats/welcome/messages**', async route => {
+    entered();
+    await slow;
+    await route.continue();
+    responded = true;
+  });
   await page.keyboard.press('ControlOrMeta+k');
   const palette = page.getByTestId('search-palette');
   await palette.getByRole('combobox').fill('Welcome');
   const option = palette.getByRole('option', { name: /Welcome to Praxis Cloud/ });
   await option.waitFor();
-  const closedIn = await option.evaluate(async (el: HTMLElement) => {
-    const start = performance.now();
-    el.click();
-    return new Promise<number>((resolve) => {
-      const check = () => {
-        const p = document.querySelector('[data-testid="search-palette"]');
-        if (!p || p.getAttribute('data-state') === 'closing') resolve(performance.now() - start);
-        else requestAnimationFrame(check);
-      };
-      check();
-    });
-  });
-  expect(closedIn).toBeLessThan(50); // closing starts on the click, not after the fetch
-  await expect(palette).toHaveCount(0, { timeout: 1000 }); // and is gone with the usual close
+  try {
+    await option.click();
+    await requested;
+    await expect(palette).toHaveCount(0);
+    expect(responded).toBe(false);
+  } finally {
+    release();
+  }
   await expect(page).toHaveURL(/\/c\/welcome$/);
-  release();
 });
 test('the panel has the dropdowns\' material and subtle rim, light and dark (WP-I1)', async ({ page }) => {
   for (const theme of ['light', 'dark']) {

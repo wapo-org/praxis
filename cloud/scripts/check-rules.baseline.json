@@ -49,7 +49,6 @@
       "apps/web/src/components/ui/trace/Trace.tsx": 2
     },
     "R3.file-length": {
-      "apps/web/e2e/m1.pw.ts": 519,
       "apps/web/e2e/morph.pw.ts": 615,
       "apps/web/e2e/stretch.pw.ts": 442,
       "apps/web/src/components/chat/ElicitationCards.tsx": 440,
@@ -82,7 +81,6 @@
       "apps/api/src/tests/k1-evidence.ts": 1,
       "apps/api/src/tests/k1.test.ts": 4,
       "apps/api/src/tests/local-flow.test.ts": 4,
-      "apps/api/src/tests/m1-start-timing.test.ts": 1,
       "apps/api/src/tests/modules.test.ts": 4,
       "apps/api/src/tests/openrouter.test.ts": 10,
       "apps/api/src/tests/parity.test.ts": 9,
@@ -95,7 +93,6 @@
       "apps/web/e2e/l2.pw.ts": 1,
       "apps/web/e2e/n2.pw.ts": 7,
       "apps/web/e2e/saved-values.pw.ts": 6,
-      "apps/web/e2e/stream.pw.ts": 11,
       "apps/web/scripts/m1-start-probe.ts": 3,
       "convex/account.ts": 4,
       "convex/auth.ts": 1,

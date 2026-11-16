@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createMemoryAdapters } from './memory.js';
 import { authFromRPC, createAuth, parseOrigins } from './auth.js';
 import { convexHarness } from './testing/convex-harness.js';
@@ -131,15 +131,22 @@ describe('REV-A2 cross-credential session revocation', () => {
 
 
 it('HTTPS cookies have Secure/HttpOnly/SameSite and sign-in rotates an existing session; bearer expires', async () => {
-  const {auth} = fixture(true, 'https://api.example.test');
-  const signup = await auth.handler(post('sign-up', credentials));
-  const session = await signup.json();
-  const cookies = signup.headers.getSetCookie();
-  expect(cookies.some(c => /session_token=/.test(c) && /Secure/i.test(c) && /HttpOnly/i.test(c) && /SameSite=Lax/i.test(c))).toBe(true);
-  const cookie = cookies.map(c => c.split(';')[0]).join('; ');
-  const login = await auth.handler(post('sign-in', credentials, {cookie}));
-  expect((await login.json()).bearerToken).not.toBe(session.bearerToken);
-  const expiry = Date.parse(session.expiresAt);
-  expect(expiry - Date.now()).toBeGreaterThan(6 * 86400000);
-  expect(expiry - Date.now()).toBeLessThanOrEqual(7 * 86400000);
+  const SESSION_DAYS = 7;
+  const DAY_MS = 86_400_000;
+  vi.useFakeTimers({toFake: ['Date']});
+  vi.setSystemTime(new Date('2026-11-16T12:00:00.000Z'));
+  try {
+    const {auth} = fixture(true, 'https://api.example.test');
+    const signup = await auth.handler(post('sign-up', credentials));
+    const session = await signup.json();
+    const cookies = signup.headers.getSetCookie();
+    expect(cookies.some(c => /session_token=/.test(c) && /Secure/i.test(c) && /HttpOnly/i.test(c) && /SameSite=Lax/i.test(c))).toBe(true);
+    const cookie = cookies.map(c => c.split(';')[0]).join('; ');
+    const login = await auth.handler(post('sign-in', credentials, {cookie}));
+    expect((await login.json()).bearerToken).not.toBe(session.bearerToken);
+    const expiry = Date.parse(session.expiresAt);
+    expect(expiry - Date.now()).toBe(SESSION_DAYS * DAY_MS);
+  } finally {
+    vi.useRealTimers();
+  }
 });

@@ -53,7 +53,8 @@ const closeTrack = (page: Page) =>
   });
 
 for (const how of ['Escape', 'an outside click', 'choosing a result'] as const) {
-  test(`search closes in about 150 ms by ${how}, leaving no text, no blur and no hit target`, async ({ page }) => {
+  test(`search closes within virtual animation frames by ${how}, leaving no text, no blur and no hit target`, async ({ page }) => {
+    await page.clock.install();
     await signIn(page);
     await page.keyboard.press('ControlOrMeta+k');
     const palette = page.getByTestId('search-palette');
@@ -61,15 +62,16 @@ for (const how of ['Escape', 'an outside click', 'choosing a result'] as const) 
     await input.fill(how === 'choosing a result' ? 'new chat' : 'search the workspace');
     if (how === 'choosing a result') await expect(palette.getByRole('option').first()).toBeVisible();
     else await page.waitForTimeout(400);
+    await page.clock.pauseAt(await page.evaluate(() => Date.now()));
     await watchClose(page);
     if (how === 'Escape') await input.press('Escape');
     else if (how === 'an outside click') await page.mouse.click(1300, 760);
     else await palette.getByRole('option').first().click();
+    await page.clock.runFor(250);
     await expect(palette).toHaveCount(0);
-    await page.waitForTimeout(100);
     const track = await closeTrack(page);
     const removed = track.find((f) => !f.present)!.t;
-    // 120 ms of fade, then removal on the next frames. Headless frames here can be 60+ ms apart, so allow a few.
+    // Virtual frames preserve the animation deadline regardless of host scheduling.
     const frame = track.slice(1).map((f, i) => f.t - track[i]!.t).sort((a, b) => a - b)[Math.floor((track.length - 1) / 2)]!;
     expect(removed).toBeLessThan(130 + 3 * Math.max(frame, 8));
     // From the first frame of the close it takes no pointer; after 100 ms no glyph is visible.
