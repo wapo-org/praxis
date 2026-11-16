@@ -181,6 +181,10 @@ struct CloudChatEngine: ChatEngine {
         var request = URLRequest(url: upload.uploadUrl)
         request.httpMethod = "POST"; request.httpBody = bytes
         request.setValue(mediaType, forHTTPHeaderField: "Content-Type")
+        request.httpShouldHandleCookies = false
+        // Override any Authorization in the injectable session's default
+        // headers as well as avoiding the API client's bearer header.
+        request.setValue("", forHTTPHeaderField: "Authorization")
         // Signed URLs grant upload access. Never forward the session bearer.
         let (data, response) = try await client.session.data(for: request, delegate: CloudRedirectGuard())
         try CloudAPIClient.validate(response, data: data)

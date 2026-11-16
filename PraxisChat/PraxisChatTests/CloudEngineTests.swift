@@ -192,6 +192,45 @@ final class CloudEngineTests: XCTestCase {
         XCTAssertEqual(messages.last?.role, .assistant)
         XCTAssertTrue(messages.last?.text.contains("Hello cloud") == true)
     }
+    func testAttachmentUploadsBeforeRunAndIncludesPrivacyWithoutBearerAtStorage() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = AttachmentStore(directory: directory)
+        var attachment = Attachment(kind: .file, name: "private.txt", fileData: Data("attachment bytes".utf8), mediaType: "text/plain", store: store)
+        attachment.isHiddenFromCode = true
+        var request = request(); request.attachments = [attachment]
+        let order = Mutex<[String]>([])
+        let chatID = request.conversationID.uuidString
+        let client = try cloudNetClient(defaultHeaders: ["Authorization": "Bearer session-default"]) { request in
+            let path = request.url!.path
+            order.withLock { $0.append(path) }
+            switch path {
+            case "/v1/chats/" + chatID: return CloudNetReply("{\"id\":\"" + chatID + "\"}")
+            case "/v1/uploads": return CloudNetReply(#"{"uploadUrl":"https://storage.test/upload","expiresAt":"2027-01-01T00:00:00Z"}"#)
+            case "/upload":
+                XCTAssertEqual(request.url!.host(), "storage.test")
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "")
+                XCTAssertFalse(request.httpShouldHandleCookies)
+                XCTAssertEqual(cloudNetBody(request), Data("attachment bytes".utf8))
+                return CloudNetReply(#"{"storageId":"storage-id"}"#)
+            case "/v1/uploads/complete":
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer api-session")
+                let body = try JSONDecoder().decode(JSONValue.self, from: cloudNetBody(request))
+                XCTAssertEqual(body["hiddenFromCode"], .bool(true))
+                return CloudNetReply(#"{"id":"attachment-id"}"#)
+            case "/v1/runs":
+                let body = try JSONDecoder().decode(JSONValue.self, from: cloudNetBody(request))
+                XCTAssertEqual(body["attachmentIds"]?.arrayValue, [.string("attachment-id")])
+                return CloudNetReply("{\"id\":\"run\",\"chatId\":\"" + chatID + "\",\"status\":\"running\",\"lastEventId\":0}")
+            default: return CloudNetReply(sse: [cloudNetFrame(1, #"{"type":"run.finished","outcome":"completed"}"#, chat: chatID)])
+            }
+        }
+        try await client.tokens.setToken("api-session", for: client.configuration.origin)
+        let events = await collect(CloudChatEngine(client: client, attachments: store).run(request))
+        XCTAssertTrue(events.contains { if case .finished(.completed) = $0 { true } else { false } })
+        let paths = order.withLock { $0 }
+        XCTAssertLessThan(try XCTUnwrap(paths.firstIndex(of: "/v1/uploads/complete")), try XCTUnwrap(paths.firstIndex(of: "/v1/runs")))
+    }
     func testCloudSelectionDecodesProviderAndModelPair() throws {
         let pair = try JSONEncoder().encode(["provider", "model"])
         let selection = CloudChatEngine.modelSelection("cloud:" + pair.base64EncodedString())

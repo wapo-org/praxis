@@ -30,12 +30,12 @@ final class CloudNetURLProtocol: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 }
 
-func cloudNetClient(_ handler: @escaping CloudNetURLProtocol.Handler) throws -> CloudAPIClient {
+func cloudNetClient(defaultHeaders: [String: String] = [:], _ handler: @escaping CloudNetURLProtocol.Handler) throws -> CloudAPIClient {
     let key = UUID().uuidString
     CloudNetURLProtocol.handlers.withLock { $0[key] = handler }
     let config = URLSessionConfiguration.ephemeral
     config.protocolClasses = [CloudNetURLProtocol.self]
-    config.httpAdditionalHeaders = ["X-Cloud-Test": key]
+    config.httpAdditionalHeaders = defaultHeaders.merging(["X-Cloud-Test": key]) { _, new in new }
     return CloudAPIClient(configuration: try CloudServerConfiguration(baseURL: URL(string: "https://cloud.test")!),
                           session: URLSession(configuration: config), tokens: CloudSessionStore(inMemory: true))
 }
@@ -161,4 +161,18 @@ final class CloudTransportTests: XCTestCase {
         do { try await CloudSSEClient(client: client, initialBackoff: .milliseconds(1), maxReconnects: 1).consume(runID: "run", chatID: "chat") { _ in }; XCTFail("expected limit") }
         catch CloudAPIError.reconnectLimit {}
     }
+}
+
+func cloudNetBody(_ request: URLRequest) -> Data {
+    if let body = request.httpBody { return body }
+    guard let stream = request.httpBodyStream else { return Data() }
+    stream.open(); defer { stream.close() }
+    var result = Data()
+    var buffer = [UInt8](repeating: 0, count: 4096)
+    while stream.hasBytesAvailable {
+        let count = stream.read(&buffer, maxLength: buffer.count)
+        guard count > 0 else { break }
+        result.append(contentsOf: buffer.prefix(count))
+    }
+    return result
 }

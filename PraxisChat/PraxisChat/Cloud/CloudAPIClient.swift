@@ -37,6 +37,7 @@ struct CloudServerError: Decodable, Sendable {
     let code: String
     let message: String
     let requestId: String?
+    var retryAfter: TimeInterval? = nil
 }
 
 enum CloudAPIError: Error, LocalizedError, Sendable {
@@ -46,6 +47,7 @@ enum CloudAPIError: Error, LocalizedError, Sendable {
     case reconnectLimit
 
     var statusCode: Int? { if case .http(let status, _) = self { status } else { nil } }
+    var retryAfter: TimeInterval? { if case .http(_, let error) = self { error?.retryAfter } else { nil } }
     var code: String? { if case .http(_, let error) = self { error?.code } else { nil } }
     var errorDescription: String? {
         switch self {
@@ -109,8 +111,23 @@ struct CloudAPIClient: Sendable {
     static func validate(_ response: URLResponse, data: Data = Data()) throws {
         guard let http = response as? HTTPURLResponse else { throw CloudAPIError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
-            throw CloudAPIError.http(status: http.statusCode, error: try? JSONDecoder().decode(CloudServerError.self, from: data))
+            var detail = try? JSONDecoder().decode(CloudServerError.self, from: data)
+            if let raw = http.value(forHTTPHeaderField: "Retry-After"), let delay = retryAfter(raw) {
+                if detail == nil { detail = CloudServerError(code: "http_\(http.statusCode)", message: "Cloud request failed (\(http.statusCode)).", requestId: nil) }
+                detail?.retryAfter = delay
+            }
+            throw CloudAPIError.http(status: http.statusCode, error: detail)
         }
+    }
+
+    static func retryAfter(_ header: String, now: Date = Date()) -> TimeInterval? {
+        let value = header.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let seconds = TimeInterval(value), seconds.isFinite, seconds >= 0 { return seconds }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        return formatter.date(from: value).map { max(0, $0.timeIntervalSince(now)) }
     }
 
     func signIn(email: String, password: String) async throws -> CloudSession {
