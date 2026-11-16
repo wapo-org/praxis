@@ -94,3 +94,13 @@ actor CloudEventMapper {
         switch value { case .allowOnce: "allowOnce"; case .allowAlways: "allowAlways"; case .deny: "deny" }
     }
 }
+
+extension CloudEventMapper {
+    /// Use a new mapper with a new reducer for a replacement snapshot. The
+    /// caller retains snapshot.lastEventId and passes pendingEvents to resume.
+    func map(snapshot: CloudRunSnapshot) async throws -> [AgentEvent] {
+        var events: [AgentEvent] = []
+        for payload in try snapshot.presentationEvents() { events.append(contentsOf: await map(payload)) }
+        return events
+    }
+}
