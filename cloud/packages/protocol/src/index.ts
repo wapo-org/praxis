@@ -20,15 +20,16 @@ export const CapabilitiesSchema = z.object({
   serverCompaction: z.boolean().default(false), toolSearch: z.boolean().default(false),
 });
 export type Capabilities = z.infer<typeof CapabilitiesSchema>;
+export const ProviderRequestOptionsSchema = z.object({type:z.literal('provider.request-options').default('provider.request-options'),systemRole:z.enum(['system','developer']).optional(),maxTokensField:z.enum(['max_tokens','max_completion_tokens','omit']).optional(),replayReasoning:z.boolean().optional()});
 export const ProviderSchema = z.object({
   type: z.literal('provider'), id: IdSchema, name: z.string(), flavor: ProviderFlavorSchema,
   baseUrl: z.string().url(), maskedKey: z.string(), capabilities: CapabilitiesSchema,
-  updatedAt: TimestampSchema,defaultModel:z.string().optional(),headerNames:z.array(z.string()).optional(),
+  updatedAt: TimestampSchema,defaultModel:z.string().optional(),requestOptions:ProviderRequestOptionsSchema.optional(),headerNames:z.array(z.string()).optional(),
 });
 export type Provider = z.infer<typeof ProviderSchema>;
 export const ProviderInputSchema = z.object({
   type: z.literal('provider.input'), name: z.string().min(1).max(100), flavor: ProviderFlavorSchema,
-  baseUrl: z.string().url(),defaultModel:z.string().optional(), apiKey: z.string().min(1).optional(),
+  requestOptions:ProviderRequestOptionsSchema.optional(),baseUrl: z.string().url(),defaultModel:z.string().optional(), apiKey: z.string().min(1).optional(),
   capabilities: CapabilitiesSchema.optional(), extraHeaders: z.record(z.string(),z.string()).optional(),
 });
 export const ModelSchema = z.object({
@@ -56,7 +57,7 @@ export const MessageSchema = z.object({
   type:z.literal('message'),id:IdSchema,chatId:IdSchema,runId:IdSchema.optional(),clientTurnId:IdSchema.optional(),
   role:z.enum(['user','assistant']),parts:z.array(MessagePartSchema),
   raw:z.object({type:z.literal('provider.payload'),flavor:ProviderFlavorSchema,data:JsonValueSchema}).optional(),
-  createdAt:TimestampSchema,updatedAt:TimestampSchema,
+  createdAt:TimestampSchema,updatedAt:TimestampSchema,sequence:z.number().int().positive().optional(),
 });
 export type Message = z.infer<typeof MessageSchema>;
 export const ConversationSetupSchema = z.object({type:z.literal('conversation.setup'),system:z.string(),tools:z.array(ToolSpecSchema),skillCatalog:z.string(),connectorIds:z.array(IdSchema),createdAt:TimestampSchema});
@@ -130,8 +131,8 @@ export type Skill = z.infer<typeof SkillSchema>;
 export const SkillInputSchema = z.object({type:z.literal('skill.input'),name:z.string().min(1).max(100),description:z.string().max(2000),document:z.string().max(500000),enabled:z.boolean().default(true)});
 export const RegistrySchema = z.object({type:z.literal('skill.registry'),id:IdSchema,name:z.string(),url:z.string().url(),enabled:z.boolean()});
 export const RegistryInputSchema = z.object({type:z.literal('skill.registry.input'),name:z.string().min(1),url:z.string().url(),enabled:z.boolean().default(true)});
-export const UploadRequestSchema = z.object({type:z.literal('upload.request'),name:z.string().min(1),mediaType:z.string().min(1),size:z.number().int().positive().max(25000000),chatId:IdSchema.optional()});
-export const UploadCompleteSchema = z.object({type:z.literal('upload.complete'),storageId:IdSchema,name:z.string(),mediaType:z.string(),size:z.number().int().nonnegative(),chatId:IdSchema.optional()});
+export const UploadRequestSchema = z.object({type:z.literal('upload.request'),clientAttachmentId:IdSchema.optional(),name:z.string().min(1),mediaType:z.string().min(1),size:z.number().int().positive().max(25000000),chatId:IdSchema.optional()});
+export const UploadCompleteSchema = z.object({type:z.literal('upload.complete'),clientAttachmentId:IdSchema.optional(),hiddenFromCode:z.boolean().default(false),storageId:IdSchema,name:z.string(),mediaType:z.string(),size:z.number().int().nonnegative(),chatId:IdSchema.optional()});
 export const TranscriptionSchema = z.object({type:z.literal('transcription'),text:z.string(),language:z.string().optional(),segments:z.array(z.object({type:z.literal('transcription.segment'),start:z.number(),end:z.number(),text:z.string()}))});
 export const UserSchema = z.object({type:z.literal('user'),id:IdSchema,name:z.string(),email:z.string().optional()});
 export type User = z.infer<typeof UserSchema>;
@@ -160,7 +161,7 @@ export const RunToolStateSchema = z.object({type:z.literal('tool.state'),activit
 export const RunSnapshotSchema = z.object({type:z.literal('run.snapshot'),run:RunSchema,lastEventId:z.number().int().nonnegative(),blocks:z.array(RunBlockSchema),tools:z.array(RunToolStateSchema),pendingApprovals:z.array(ApprovalSchema),pendingElicitations:z.array(ElicitationSchema),usage:UsageSchema.optional(),messages:z.array(MessageSchema)});
 export type RunSnapshot = z.infer<typeof RunSnapshotSchema>;
 export const OAuthAuthorizationSchema = z.object({type:z.literal('oauth.authorization'),url:z.string().url(),state:z.string()});
-export const UploadUrlSchema = z.object({type:z.literal('upload.url'),uploadUrl:z.string().url(),expiresAt:TimestampSchema});
+export const UploadUrlSchema = z.object({type:z.literal('upload.url'),uploadUrl:z.string().url(),method:z.enum(['POST','PUT']).optional(),expiresAt:TimestampSchema});
 export const UploadReceiptSchema = z.object({type:z.literal('upload.receipt'),storageId:IdSchema});
 export const ProviderTestResultSchema = z.object({type:z.literal('provider.test.result'),ok:z.boolean(),models:z.array(ModelSchema),message:z.string().optional()});
 export const RegistryEntrySchema = z.object({type:z.literal('skill.registry.entry'),id:IdSchema,name:z.string(),description:z.string(),url:z.string().url().optional()});
@@ -168,3 +169,8 @@ export const MCPResourceSchema = z.object({type:z.literal('mcp.resource'),uri:z.
 export const MCPPromptSchema = z.object({type:z.literal('mcp.prompt'),name:z.string(),description:z.string().optional(),arguments:z.array(JsonObjectSchema).optional()});
 export const MCPResourceResultSchema = z.object({type:z.literal('mcp.resource.result'),contents:z.array(JsonObjectSchema)});
 export const MCPPromptResultSchema = z.object({type:z.literal('mcp.prompt.result'),description:z.string().optional(),messages:z.array(JsonObjectSchema)});
+
+export const ChatTruncateSchema = z.object({type:z.literal('chat.truncate'),clientTurnId:IdSchema});
+export const ChatTruncateResultSchema = z.object({type:z.literal('chat.truncated'),chat:ChatSchema,removedRunIds:z.array(IdSchema),removedMessageIds:z.array(IdSchema)});
+export const AttachmentPatchSchema = z.object({type:z.literal('attachment.patch'),hiddenFromCode:z.boolean()});
+export const TranscribeRequestSchema = z.object({type:z.literal('transcribe.request'),audioBase64:z.string().min(1).max(35000000),mediaType:z.string(),fileName:z.string().optional(),model:z.string().optional(),language:z.string().optional(),prompt:z.string().max(10000).optional()});
