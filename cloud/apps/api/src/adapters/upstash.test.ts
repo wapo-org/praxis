@@ -14,10 +14,14 @@ eventsContract('Events contract: Upstash adapter (offline fake client)', () => f
 const live = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
   ? () => createUpstashAdapters({url: process.env.UPSTASH_REDIS_REST_URL!, token: process.env.UPSTASH_REDIS_REST_TOKEN!, prefix: `praxis:test:${Date.now()}`})
   : null;
-describe.skipIf(!live)('Upstash live contract (set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN)', () => {
-  kvContract('KV contract: Upstash live', () => live!().kv, {realTime: true});
-  eventsContract('Events contract: Upstash live', () => live!().events);
-});
+if (live) {
+  kvContract('KV contract: Upstash live', () => live().kv, {realTime: true});
+  eventsContract('Events contract: Upstash live', () => live().events);
+} else {
+  describe.skip('Upstash live contract (set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN)', () => {
+    it('needs live credentials', () => expect(live).toBeNull());
+  });
+}
 
 describe('Upstash adapter specifics', () => {
   it('never puts user ids or channel names into Redis keys', async () => {

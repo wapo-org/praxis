@@ -1,0 +1,5 @@
+# Tests may force-unwrap fixtures and grow long; everything else from the root config still applies.
+disabled_rules:
+  - force_cast
+  - force_try
+  - file_length

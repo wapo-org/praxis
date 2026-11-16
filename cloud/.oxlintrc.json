@@ -27,6 +27,8 @@
     "react/immutability": "off",
     "react/refs": "off",
     "react/set-state-in-effect": "off",
+    "vitest/no-conditional-tests": "off",
+    "vitest/no-disabled-tests": "off",
     "vitest/valid-expect": "off",
     "vitest/no-conditional-expect": "off",
     "vitest/require-to-throw-message": "off",

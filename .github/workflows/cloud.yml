@@ -17,12 +17,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [typecheck, tests, web-build, api-build, comments, audit]
+        check: [typecheck, tests, lint, web-build, api-build, comments, audit]
         include:
           - check: typecheck
             command: npm --prefix cloud run typecheck
           - check: tests
             command: npm --prefix cloud test -- --reporter=default --reporter=json --outputFile=test-results.json
+          - check: lint
+            command: npm --prefix cloud run lint
           - check: web-build
             command: npm --prefix cloud run build -w @praxis/web
           - check: api-build
