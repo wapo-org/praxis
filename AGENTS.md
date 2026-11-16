@@ -11,6 +11,7 @@
   - `node cloud/scripts/comment-sweep.mjs check`
 - **Comment hygiene (`cloud/scripts/comment-sweep.mjs`):**
   - Keep comments to "why / invariant" (one sentence max, `<= 130` chars); avoid narrating what code does.
+  - A lone `//` line whose every word is already on the next code line (`// user id` above `const userId`) fails `check:rules`: delete it, or say why. `[R3.narrating-comment]`
 
 ## HARD Architectural Boundaries & Long-Term Maintainability
 

@@ -51,14 +51,6 @@ secondaryInk because the native token source defines no warning color.
 - `/`, `/c/:chatId`, `/chats`, `/settings`, and settings sub-pages restore from URLs; back/forward are checked.
 - Model search is debounced 250 ms against `/v1/models?q=&cursor=&limit=50`, includes pagination, and discards stale responses.
 
-## Reproduce
+## Evidence
 
-From the repository root with the API/web on the assigned ports:
-
-```
-BASE=http://127.0.0.1:5191 API=http://127.0.0.1:8817 ~/.praxis-agent-state/cloud/tools/slot.sh WP-B5 node cloud/apps/web/scripts/b3-check.mjs
-BASE=http://127.0.0.1:5191 API=http://127.0.0.1:8817 ~/.praxis-agent-state/cloud/tools/slot.sh WP-B5 node cloud/apps/web/scripts/parity-capture.mjs
-node cloud/apps/web/scripts/parity-links.mjs
-```
-
-The capture script writes 45 screenshots (15 views × 3 variants). Chromium verifies this screen matrix. WP-B4 separately verifies dropdown interaction and captures materials in Chromium and WebKit.
+The reference set is 45 screenshots (15 views × 3 variants). Chromium verifies this screen matrix. WP-B4 separately verifies dropdown interaction and captures materials in Chromium and WebKit.

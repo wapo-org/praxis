@@ -44,9 +44,9 @@ Offline/sleep recovery is independent of the ephemeral user-event retention.
 Chat order is pinned-first, then descending server updatedAt, as in the UI.
 
 PATCH /v1/sync/settings stores one accountSetting row per field: theme, palette,
-button, provider, model, effort. Last server commit wins within each field;
-unrelated fields never overwrite one another. localStorage remains the first
-paint cache; the durable server rows take over after catch-up.
+model, effort; any other field is rejected with 400. Last server commit wins
+within each field; unrelated fields never overwrite one another. localStorage
+remains the first paint cache; the durable server rows take over after catch-up.
 
 Offline chat creation, rename, pin, delete and settings edits use an account/API
 scoped localStorage outbox, replayed in FIFO order when online. Incoming chat

@@ -59,16 +59,15 @@ export async function pullChanges(service: ApiService, userId: string, after: nu
 }
 
 export function registerSyncRoutes(app: Hono<any>, service: ApiService) {
-  const Setting = z.object({ field: z.enum(['theme', 'palette', 'button', 'model', 'effort']), value: z.string().max(200) });
-  const RETIRED = new Set(['button', 'provider']);
+  const Setting = z.object({ field: z.enum(['theme', 'palette', 'model', 'effort']), value: z.string().max(200) });
   app.get('/v1/sync/settings', async c => {
     const rows = await service.adapters.store.list(c.get('userId'), 'accountSetting');
-    const items = rows.map(row => row.value as { field: string; value: string }).filter(value => !RETIRED.has(value.field));
+    const items = rows.map(row => row.value as { field: string; value: string });
     return c.json({ items });
   });
   app.patch('/v1/sync/settings', async c => {
     const input = Setting.parse(await c.req.json());
-    const stored = RETIRED.has(input.field) ? input : (await service.adapters.store.put(c.get('userId'), 'accountSetting', input.field, input)).value;
+    const stored = (await service.adapters.store.put(c.get('userId'), 'accountSetting', input.field, input)).value;
     return c.json(stored as typeof input);
   });
   // Finite streams suit serverless hosts. Reopening resumes the durable revision cursor, including after sleep.

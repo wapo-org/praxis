@@ -30,8 +30,6 @@ export type SidebarPaletteId = (typeof SIDEBAR_PALETTES)[number]['id'];
 export const DEFAULT_PALETTE: SidebarPaletteId = 'graphite';
 
 export const PALETTE_KEY = 'praxis-sidebar-palette';
-/** The removed button-colour option's old key: never read, cleared at startup. */
-export const LEGACY_BUTTON_KEY = 'praxis-button-color';
 const EVENT = 'praxis:sidebar-look';
 
 export const isPaletteId = (value: unknown): value is SidebarPaletteId =>
@@ -203,11 +201,6 @@ let syncing = false;
 export function syncSidebarLook() {
   if (syncing || typeof window === 'undefined') return;
   syncing = true;
-  try {
-    localStorage.removeItem(LEGACY_BUTTON_KEY);
-  } catch {
-    /* Storage denied: nothing reads the old value anyway. */
-  }
   window.addEventListener('storage', applyFromStorage);
 }
 

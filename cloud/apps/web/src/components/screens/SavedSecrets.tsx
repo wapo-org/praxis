@@ -379,6 +379,3 @@ function EditValue({ item, onClose, onChanged }: { item: SavedValue; onClose: ()
     </Modal>
   );
 }
-
-/** Compatibility for saved-secret previews and existing imports. */
-export const SavedSecrets = SavedValues;

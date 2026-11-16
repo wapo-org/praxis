@@ -93,7 +93,6 @@
       "apps/web/e2e/l2.pw.ts": 1,
       "apps/web/e2e/n2.pw.ts": 7,
       "apps/web/e2e/saved-values.pw.ts": 6,
-      "apps/web/scripts/m1-start-probe.ts": 3,
       "convex/account.ts": 4,
       "convex/auth.ts": 1,
       "convex/functions.ts": 4,
@@ -109,10 +108,6 @@
       "convex/search.ts": 4,
       "convex/store.ts": 7,
       "convex/tools.ts": 3
-    },
-    "R5.docs-commit": {
-      "apps/api/WP-J1-DESIGN.md": 1,
-      "apps/web/PERF.md": 1
     }
   }
 }

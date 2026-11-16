@@ -1,7 +1,7 @@
 import {createCipheriv, createDecipheriv, createHash, randomBytes} from 'node:crypto';
 import {ApiError} from './service.js';
 
-/** AES-256-GCM bound to (owner, resource) AAD; v2 keys pick key by 12-hex SHA-256 kid, v1 tries all. */
+/** AES-256-GCM bound to (owner, resource) AAD; the 12-hex SHA-256 kid picks the key. */
 export interface Keyring {current: {kid: string; key: Buffer}; all: {kid: string; key: Buffer}[]}
 
 export const keyId = (key: Buffer) => createHash('sha256').update(key).digest('hex').slice(0, 12);
@@ -39,17 +39,6 @@ export function unseal(value: string, userId: string, resource: string, key: str
     const match = ring.all.find(k => k.kid === kid);
     if (!match) throw new Error('Encryption key for this value is not configured');
     return open(match.key, iv, tag, data, userId, resource);
-  }
-  if (parts[0] === 'v1' && parts.length === 4) {
-    const [, iv, tag, data] = parts as [string, string, string, string];
-    for (const k of ring.all) {
-      try {
-        return open(k.key, iv, tag, data, userId, resource);
-      } catch {
-        // Try next keyring entry.
-      }
-    }
-    throw new Error('No configured encryption key opens this value');
   }
   throw new Error('Invalid encrypted value');
 }

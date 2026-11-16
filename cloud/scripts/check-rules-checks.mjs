@@ -12,12 +12,14 @@ import {
   scriptKind,
   walk,
 } from './check-rules-ast.mjs';
+import {narratingCommentLines} from './check-rules-comments.mjs';
 import {checkApiImportsAgent, checkTenantIdBoundary, checkWebEffects, isWebComponentFile} from './check-rules-boundaries.mjs';
 
 export {DISABLED_RULES, RULES, isSourceFile} from './check-rules-ast.mjs';
 export {checkDocFile} from './check-rules-boundaries.mjs';
 
 export const FILE_LENGTH_MAX = 400;
+const NARRATING_REMEDY = 'comment only repeats the next line: delete it, or say why (an invariant, a constraint, a trap)';
 
 const PROTOCOL_ALLOWED = ['zod'];
 const PROTOCOL_TEST_ALLOWED = ['zod', 'vitest'];
@@ -239,6 +241,9 @@ export function checkFile(file, text, enabled = []) {
     violations.push({ rule, path: file, line: lineOf(source, node), message });
   };
 
+  for (const line of narratingCommentLines(source, text)) {
+    violations.push({ rule: RULES.narratingComment, path: file, line, message: NARRATING_REMEDY });
+  }
   if (file.startsWith('packages/protocol/')) checkProtocolImports(file, source, report);
   if (file.startsWith('packages/agent/')) checkAgentImports(file, source, report);
   if (file.startsWith('apps/web/src/') && !TEST_FILE.test(file)) checkWebImports(file, source, report);
