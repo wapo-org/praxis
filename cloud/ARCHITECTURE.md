@@ -66,4 +66,12 @@ No accounts/projects are created or deployed by agents. Required credentials, ex
 
 - fflate: small in-memory streaming ZIP decoder for skill imports; declared and actual sizes, entry types, paths and counts are bounded before persistence. Tar parsing and bounded gzip use Node built-ins.
 
-Tool-boundary dependencies: `shell-quote` **1.12.0**, pinned, dependency-free pure JS token scanner for the restricted shell AST; `@types/shell-quote` **1.7.5** for compile-time declarations. `fast-check` **4.10.2**, pinned dev dependency, checks shell obfuscation and monotone taint properties; `npm run specs` runs the boundary suite (the independent PRA-75 formal models are not included here).
+Tool-boundary dependencies: `shell-quote` **1.12.0**, pinned, dependency-free pure JS token scanner for the restricted shell AST; `@types/shell-quote` **1.7.5** for compile-time declarations. `fast-check` **4.10.2**, pinned dev dependency, checks shell obfuscation and monotone taint properties; `npm test` runs the boundary suite.
+
+## Formal protocol checks
+
+`specs/` models the v2 Linear designs before their implementations exist; see
+`specs/contracts/README.md` for assumptions and the mapping to current code.
+Pinned dev dependencies: `@informalsystems/quint` runs protocol simulations without
+Java; `fast-check` generates checkpoint, API dedup/truncation and failover cases.
+Run `npm run specs` for models and `npm test` for implementation properties.

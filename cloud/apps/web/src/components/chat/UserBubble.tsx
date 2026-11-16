@@ -5,7 +5,6 @@ import { AttachmentGroup } from '../ui/attachment';
 import actionStyles from './AgentMessageView.module.css';
 import { bindSendFlightTarget, isSendFlightTarget } from './chatMotion';
 import { MessageAttachment } from './MessageAttachment';
-import { visibleUserText } from './attachmentInfo';
 import styles from './UserBubble.module.css';
 
 export interface UserBubbleProps {
@@ -20,8 +19,8 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
   const textParts = message.parts.filter((p) => p.type === 'text');
   const mediaParts = message.parts.filter((p) => !!p.attachmentId && (p.type === 'image' || p.type === 'document' || p.type === 'note'));
 
-  const joined = visibleUserText(textParts.map((p) => p.text ?? '').join('\n'));
-  // The old composer sent this placeholder with attachment-only messages; the chips say it now.
+  const joined = textParts.map((p) => p.text ?? '').join('\n');
+  // The composer sends this placeholder with attachment-only messages; the chips say it instead.
   const combinedText = joined === 'Attached files' && mediaParts.length > 0 ? '' : joined;
   const turnKey = message.clientTurnId ?? message.id;
 

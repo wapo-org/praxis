@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attachmentKind, attachmentLimit, formatBytes, visibleUserText } from './attachmentInfo';
+import { attachmentKind, attachmentLimit, formatBytes } from './attachmentInfo';
 import { reasoningLabel, reasoningSegments } from './ReasoningView';
 import { joinSpoken, speechErrorMessage } from './useSpeechInput';
 import { isClampedToCapsule } from '../../../../../packages/glass/src/squircle';
@@ -37,11 +37,6 @@ describe('attachments (WP-J2)', () => {
     expect(attachmentLimit({ name: 'small.zip', mediaType: 'application/zip', size: 400_000 })).toBeNull();
     expect(attachmentLimit({ name: 'paper.pdf', mediaType: 'application/pdf', size: 8_000_000 })).toBeNull();
     expect(attachmentLimit({ name: 'photo.jpg', mediaType: 'image/jpeg', size: 20_000_000 })).toBeNull();
-  });
-  it('never shows the model-facing note stored by older messages', () => {
-    expect(visibleUserText('what’s here\n\n[Attached file: “Chat screen draft.zip”. Read them with `fs` in run_javascript.]')).toBe('what’s here');
-    expect(visibleUserText('a\n\n[Attached files: “a.zip”, “b.zip”. Read them with `fs` in run_javascript.]\n[Attached file hidden from code by the user: “c.bin”.]')).toBe('a');
-    expect(visibleUserText('plain text')).toBe('plain text');
   });
 });
 

@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {CredentialsUnavailableError,memoryCooldownStore,pool,withCredential} from '@praxis/credentials';
+import {CredentialsUnavailableError,GROQ_POOL,memoryCooldownStore,pool,withCredential} from '@praxis/credentials';
 import {TranscriptionSchema} from '@praxis/protocol';
 import {SealedSecret} from '@praxis/types';
 import type {FeatureContext} from '../../contracts.js';
@@ -7,10 +7,11 @@ import {unseal} from '../../secrets.js';
 import {ApiError} from '../../service.js';
 import {readLimited} from './http.js';
 import type {PlatformVoice,ToolsPorts} from './ports.js';
-export const GROQ_POOL='GROQ_API_KEY';
 const localCooldowns=memoryCooldownStore();
 /** Read platform keys per call so env additions take effect immediately. */
-export const platformVoice=(env:Record<string,string|undefined>=process.env):PlatformVoice=>({pool:pool(GROQ_POOL,env,{service:'groq'}),cooldowns:localCooldowns});
+export function platformVoice(env: Record<string, string | undefined> = process.env): PlatformVoice {
+  return {pool: pool(GROQ_POOL.name, env, {service: GROQ_POOL.service}), cooldowns: localCooldowns};
+}
 const Options=z.object({model:z.enum(['whisper-large-v3','whisper-large-v3-turbo']).optional(),language:z.string().max(20).regex(/^[a-zA-Z-]*$/).optional(),prompt:z.string().max(10000).optional()});
 export async function transcribe(req:Request,ctx:FeatureContext,ports:ToolsPorts){
  const bytes=await readLimited(req.body,34000000);let audio:Blob;let name='audio.webm';let input:z.infer<typeof Options>;

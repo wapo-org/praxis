@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {createCipheriv, randomBytes} from 'node:crypto';
+import {randomBytes} from 'node:crypto';
 import {createLocalAdapters} from '../local-memory.js';
 import {reencryptAll} from '../reencrypt.js';
 import {keyId, seal, sealedWithCurrent, unseal} from '../secrets.js';
@@ -7,14 +7,6 @@ import {convexHarness} from '../adapters/testing/convex-harness.js';
 import {storeFromRPC} from '../adapters/convex.js';
 
 const A = randomBytes(32).toString('base64'), B = randomBytes(32).toString('base64'), C = randomBytes(32).toString('base64');
-
-/** The pre-versioning format (`v1.<iv>.<tag>.<data>`), as written before key ids existed. */
-function legacySeal(value: string, userId: string, resource: string, key: string) {
-  const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', Buffer.from(key, 'base64'), iv);
-  cipher.setAAD(Buffer.from(`${userId}\0${resource}`));
-  const data = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
-  return ['v1', iv.toString('base64'), cipher.getAuthTag().toString('base64'), data.toString('base64')].join('.');
-}
 
 describe('versioned encryption keys', () => {
   it('tags ciphertext with the current key id and decrypts across the ring', () => {
@@ -25,10 +17,9 @@ describe('versioned encryption keys', () => {
     expect(() => unseal(sealed, 'other', 'provider:p:key', A)).toThrow();
     expect(sealedWithCurrent(seal('x', 'u', 'r', `${B},${A}`), `${B},${A}`)).toBe(true);
   });
-  it('still opens legacy v1 values with any key in the ring', () => {
-    const legacy = legacySeal('old', 'u', 'voice', A);
-    expect(unseal(legacy, 'u', 'voice', `${B},${A}`)).toBe('old');
-    expect(() => unseal(legacy, 'u', 'voice', B)).toThrow();
+  it('rejects the unversioned format written before key ids existed', () => {
+    const [, , iv, tag, data] = seal('old', 'u', 'voice', A).split('.');
+    expect(() => unseal(['v1', iv, tag, data].join('.'), 'u', 'voice', A)).toThrow('Invalid encrypted value');
   });
   it('rejects malformed keyrings', () => {
     expect(() => seal('x', 'u', 'r', `${A},short`)).toThrow();
@@ -40,12 +31,12 @@ describe('re-encryption for rotation', () => {
   it('re-seals the model key, voice and MCP secrets with the new key; unopenable values are counted, not dropped', async () => {
     const {store} = createLocalAdapters();
     await store.put('u1', 'modelKey', 'current', {type: 'modelKey', maskedKey: '••••sk-1', sealed: seal('sk-or-1', 'u1', 'modelKey', A)});
-    await store.put('u1', 'voiceSecret', 'current', {key: legacySeal('gsk', 'u1', 'voice', A)});
+    await store.put('u1', 'voiceSecret', 'current', {key: seal('gsk', 'u1', 'voice', A)});
     await store.put('u2', 'mcpSecret', 'c1', {token: seal('"t"', 'u2', 'mcp:c1:token', A), tokens: seal('{}', 'u2', 'mcp:c1:tokens', C)});
     const ring = `${B},${A}`;
     const dry = await reencryptAll(store, ['u1', 'u2'], ring, true);
     expect(dry).toMatchObject({owners: 2, rewritten: 3, failed: 1});
-    expect((await store.get('u1', 'voiceSecret', 'current'))!.value.key).toMatch(/^v1\./);
+    expect(sealedWithCurrent(String((await store.get('u1', 'voiceSecret', 'current'))!.value.key), ring)).toBe(false);
 
     const stats = await reencryptAll(store, ['u1', 'u2'], ring);
     expect(stats).toMatchObject({owners: 2, rows: 3, rewritten: 3, failed: 1});

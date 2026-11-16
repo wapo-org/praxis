@@ -40,8 +40,3 @@ export function attachmentLimit(file: { name: string; mediaType: string; size: n
   if (file.size > codeReadBytes) return { level: 'warn', message: `Too large for Praxis to open. It reads files up to ${formatBytes(codeReadBytes)}.` };
   return null;
 }
-
-/** Messages stored before WP-J2 carried the model-facing note inside the user's text. Never show it. */
-export function visibleUserText(text: string): string {
-  return text.replace(/\n*\[Attached files?(?: hidden from code by the user)?: [^\n]*\]\s*$/gu, '').replace(/\n*\[Attached files?(?: hidden from code by the user)?: [^\n]*\]\s*$/gu, '');
-}

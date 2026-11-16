@@ -1,3 +1,4 @@
+import {cancellationKey} from './run-keys.js';
 import {createTitleGenerator} from './title-generation.js';
 export {TITLE_SYSTEM,formatTitleUserMessage} from './title-generation.js';
 import {adaptTool} from './execution-tools.js';
@@ -149,7 +150,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
 
   const ports: Omit<AgentPorts, 'save'> = {
     emit: async (userId, runId, event) => service.emit(userId, runId, event),
-    isCancelled: async (userId, runId) => !!(await service.adapters.kv.get(`cancel:${userId}:${runId}`)),
+    isCancelled: async (userId, runId) => !!(await service.adapters.kv.get(cancellationKey(userId, runId))),
     spill: async (userId, runId, callId, text) => {
       const id = crypto.randomUUID();
       const run = await service.require<Run>(userId, 'run', runId);
@@ -360,7 +361,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
 }
 
 function scriptedProvider(script: Script, simOptions?: StreamSimOptions): ModelProvider {
-  const base = createScriptedProvider(script, simOptions);
+  const base = createScriptedProvider(script);
   if (script !== 'long' && script !== 'streamSim') return base;
   return {
     ...base,

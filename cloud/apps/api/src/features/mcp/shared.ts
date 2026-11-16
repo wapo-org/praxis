@@ -70,11 +70,8 @@ export async function grantConsent(ctx: FeatureContext, url: string) {
 }
 
 export async function requireConsent(ctx: FeatureContext, value: Connector, run?: Parameters<import('../../contracts.js').FeatureTool['execute']>[1]) {
-  const url = new URL(value.url);
-  const host = consentHost(value.url), legacy = url.hostname.toLowerCase();
-  const exact = await ctx.store.get(ctx.userId, 'consent', host);
-  // Fall back to legacy hostname-only consent keys unless host:port decides.
-  const consent = exact && !exact.deleted ? exact : host === legacy ? undefined : await ctx.store.get(ctx.userId, 'consent', legacy);
+  const host = consentHost(value.url);
+  const consent = await ctx.store.get(ctx.userId, 'consent', host);
   if ((!consent || consent.deleted || consent.value.allowed !== true) && run?.elicit) {
     const reply=await run.elicit({message:`Allow ${host}`,schema:{type:'object',properties:{allow:{type:'boolean',title:`Allow sending data to ${host}`,default:true}},required:['allow']}});
     if(reply.action==='accept' && reply.content?.allow===true) {await grantConsent(ctx,value.url);return;}

@@ -26,7 +26,7 @@ export async function reencryptOwner(store: Store, userId: string, keyring: stri
         let changed = false, failed = 0;
         for (const [field, value] of Object.entries(row.value)) {
           const resource = resourceOf(row.id, field);
-          if (!resource || typeof value !== 'string' || !/^v[12]\./.test(value) || sealedWithCurrent(value, keyring)) continue;
+          if (!resource || typeof value !== 'string' || !value.startsWith('v2.') || sealedWithCurrent(value, keyring)) continue;
           try {
             next[field] = seal(unseal(value, userId, resource, keyring), userId, resource, keyring);
             changed = true;
