@@ -104,3 +104,14 @@ describe('injected HTTP provider and models',()=>{
     expect(providerURL('https://example.invalid/v1/chat/completions','models').pathname).toBe('/v1/models');expect(()=>providerURL('https://key@example.invalid','models')).toThrow();expect(classifyProviderError('Tools are not supported',500).kind).toBe('tools');expect(classifyProviderError('Image input not supported',500).kind).toBe('images');expect(classifyProviderError('Invalid reasoning_effort',400).kind).toBe('effort');
   });
 });
+
+it.each(['anthropicMessages','openAIChat','openAIResponses'] as ProviderFlavor[])('promotes tool images into usable image input for %s',flavor=>{
+  const r=request();r.messages.push(message('assistant',[{type:'toolCall',callId:'call',name:'echo',arguments:'{}'}]),message('user',[{type:'toolResult',callId:'call',content:[{type:'image',attachmentId:'img',mimeType:'image/jpeg',data:'image-bytes'}]}]));
+  const before=structuredClone(r),body=buildProviderRequest(flavor,r),encoded=JSON.stringify(body);
+  expect(encoded).toContain('image-bytes');expect(encoded).toContain(flavor==='anthropicMessages'?'image/jpeg':'data:image/jpeg;base64,');expect((encoded.match(/image-bytes/g)??[])).toHaveLength(1);expect(r).toEqual(before);
+});
+it('keeps streamed opaque Chat fields in the raw payload',async()=>{
+  const stream=sse({choices:[{delta:{content:'answer',reasoning_details:[{type:'reasoning.encrypted',data:'opaque'}]},finish_reason:'stop'}]});
+  const response=final(await collect(decodeOpenAIChat(parseSSE(bytes(stream)))));expect(JSON.stringify(response.raw?.data)).toContain('opaque');
+});
+it.each(["No endpoints found that support tool use","Unsupported parameter: tools","tool_choice is not supported"])('classifies compatible tool rejection: %s',message=>{expect(classifyProviderError(message,400).kind).toBe('tools');});

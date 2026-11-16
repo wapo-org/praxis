@@ -30,9 +30,10 @@ export async function* parseSSE(body:ReadableStream<Uint8Array>,signal?:AbortSig
 const zero=():Usage=>({type:'usage',inputTokens:0,outputTokens:0,cacheReadTokens:0,cacheWriteTokens:0});
 export function classifyProviderError(message:string,status=400,retryAfterMs?:number):ProviderFailure {
   const lower=message.toLowerCase();
-  const kind=/(image|vision|multimodal).*(not support|unsupported|not allowed|does not|cannot)|not support.*image/.test(lower)?'images':
-    /(?:tool|function)[ _-]?(?:use|call|calling|s)?.*(not support|unsupported|not allowed)|(?:not support|unsupported).*tool/.test(lower)?'tools':
-    /(?:reasoning_effort|reasoning effort|output_config.*effort|thinking|effort).*(invalid|unsupported|not support|not allowed|must be|should be)|(?:invalid|unsupported).*effort/.test(lower)?'effort':
+  const rejection=/not support|does not support|unsupported|not allowed|unrecognized|unknown parameter|invalid/;
+  const kind=/(?:image|vision|multimodal)/.test(lower)&&rejection.test(lower)?'images':
+    /no endpoints found that support tool use/.test(lower)||/(?:tools?|tool_choice|function calling)/.test(lower)&&rejection.test(lower)?'tools':
+    /(?:reasoning_effort|reasoning effort|output_config\.effort|adaptive thinking)/.test(lower)&&(rejection.test(lower)||/must be|should be/.test(lower))?'effort':
     /context[_ ]?(length|window)|prompt.{0,8}too long|too many (input )?tokens|maximum context|request_too_large/.test(lower)||status===413?'context':
     [408,409,429].includes(status)||status>=500?'retryable':'fatal';
   return new ProviderFailure(message,kind,retryAfterMs);
@@ -97,6 +98,7 @@ export async function* decodeAnthropic(frames:AsyncIterable<SSEFrame>):AsyncGene
 interface Slot {id:string;name:string;args:string;started:boolean}
 export async function* decodeOpenAIChat(frames:AsyncIterable<SSEFrame>):AsyncGenerator<ProviderEvent> {
   let text='',reasoning='',reasoningField='reasoning_content',reason='',done=false,u=zero(),refusal='';
+  const extras:JsonObject={};
   const slots:Slot[]=[],slotForIndex=new Map<number,number>();
   for await(const frame of frames) {
     if(frame.data==='[DONE]'){done=true;break;}if(!frame.data)continue;
@@ -105,6 +107,9 @@ export async function* decodeOpenAIChat(frames:AsyncIterable<SSEFrame>):AsyncGen
     for(const field of ['reasoning_content','reasoning'])if(typeof delta[field]==='string'){const t=string(delta[field]);reasoning+=t;reasoningField=field;yield {type:'reasoning',index:0,text:t};break;}
     if(typeof delta.content==='string'){const t=delta.content;text+=t;yield {type:'text',index:1,text:t};}
     refusal+=string(delta.refusal);
+    for(const [key,value] of Object.entries(delta))if(!['role','content','tool_calls','reasoning_content','reasoning','refusal'].includes(key)) {
+      if(Array.isArray(value))extras[key]=[...array(extras[key]),...value];else if(typeof value==='string')extras[key]=string(extras[key])+value;else extras[key]=value;
+    }
     for(const fragment of array(delta.tool_calls)) {
       const f=object(fragment),fn=object(f.function),id=string(f.id),name=string(fn.name);let slot:number|undefined;
       if(typeof f.index==='number') {
@@ -125,7 +130,7 @@ export async function* decodeOpenAIChat(frames:AsyncIterable<SSEFrame>):AsyncGen
   const calls=slots.filter(s=>s.started);if(!calls.length&&!text&&!reasoning&&/tool_calls|function_call/.test(reason))throw new ProviderFailure('Provider promised tools without naming one');
   const parts:MessagePart[]=[];if(reasoning){parts.push({type:'reasoning',text:reasoning});yield {type:'blockEnd',index:0};}if(text){parts.push({type:'text',text});yield {type:'blockEnd',index:1};}
   parts.push(...calls.map(s=>({type:'toolCall' as const,callId:s.id,name:s.name,arguments:s.args||'{}'})));
-  const raw:JsonObject={role:'assistant',content:text||null};if(reasoning)raw[reasoningField]=reasoning;
+  const raw:JsonObject={...extras,role:'assistant',content:text||null};if(reasoning)raw[reasoningField]=reasoning;
   if(calls.length)raw.tool_calls=calls.map(s=>({id:s.id,type:'function',function:{name:s.name,arguments:s.args||'{}'}}));
   yield {type:'completed',response:{parts,stop:refusal?'refusal':stop(reason,!!calls.length),usage:u,raw:{type:'provider.payload',flavor:'openAIChat',data:raw}}};
 }

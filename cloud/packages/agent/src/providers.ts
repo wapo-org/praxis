@@ -69,9 +69,10 @@ export function createHTTPProvider(config:HTTPProviderConfig,fetcher:typeof fetc
       for(let page=0;page<100;page++) {
         const url=providerURL(c.baseUrl,'models');if(c.flavor==='anthropicMessages'){url.searchParams.set('limit','100');if(cursor)url.searchParams.set('after_id',cursor);}
         const h=headers();h.set('accept','application/json');const response=await request(url,{method:'GET',headers:h,signal});
-        const json=JsonObjectSchema.parse(JSON.parse(await readBounded(response)));
+        const json=z.object({data:z.array(JsonObjectSchema),has_more:z.boolean().optional(),last_id:z.string().nullable().optional()}).parse(JSON.parse(await readBounded(response)));
         for(const raw of array(json.data)) {const model=parseModelMetadata(raw,c.providerId,c.capabilities);models.set(model.id,model);if(models.size>20000)throw new ProviderFailure('Provider model list exceeds limit');}
         if(c.flavor!=='anthropicMessages'||json.has_more!==true)break;
+        if(page===99)throw new ProviderFailure('Provider model pagination exceeds limit');
         cursor=string(json.last_id)||string(object(array(json.data).at(-1)).id);if(!cursor||seen.has(cursor))throw new ProviderFailure('Provider model pagination did not advance');seen.add(cursor);
       }
       return [...models.values()];
@@ -83,18 +84,19 @@ export function parseModelMetadata(raw:unknown,providerId:string,defaults:Capabi
   const inputModalities=array(architecture.input_modalities).map(string),capList=array(m.capabilities).map(string);
   const supported=(value:unknown)=>typeof value==='boolean'?value:typeof object(value).supported==='boolean'?object(value).supported as boolean:undefined;
   const images=supported(caps.image_input)??supported(caps.vision)??(inputModalities.length?inputModalities.includes('image'):undefined)??(capList.length?capList.includes('vision'):undefined);
-  const tools=supported(caps.tool_use)??supported(caps.tools)??(params.length?params.includes('tools'):undefined);
+  const tools=supported(caps.tool_use)??supported(caps.tools)??supported(caps.trained_for_tool_use)??(capList.length?capList.includes('tools'):undefined)??(params.length?params.includes('tools'):undefined);
   let efforts:string[]|undefined;
   const effort=object(caps.effort);
   if(reasoning.supported_efforts===null)efforts=['none','minimal','low','medium','high','xhigh','max'];
   else if(Array.isArray(reasoning.supported_efforts))efforts=reasoning.supported_efforts.map(string).filter(Boolean);
-  else if(Array.isArray(nativeReasoning.allowed_options))efforts=nativeReasoning.allowed_options.map(string).filter(x=>!['off','on','auto'].includes(x));
+  else if(Array.isArray(nativeReasoning.allowed_options))efforts=nativeReasoning.allowed_options.map(string).filter(Boolean);
   else if(effort.supported===false||nativeReasoning.supported===false)efforts=[];
   else if(effort.supported===true) {
     efforts=['low','medium','high','xhigh','max'].filter(e=>effort[e]===true||object(effort[e]).supported===true);
     if(!efforts.length)efforts=['low','medium','high'];
-  }else if(nativeReasoning.supported===true||params.includes('reasoning')||params.includes('reasoning_effort'))efforts=['low','medium','high'];
+  }else if(nativeReasoning.supported===true||supported(caps.thinking)===true||params.includes('reasoning')||params.includes('reasoning_effort')||capList.includes('thinking'))efforts=['low','medium','high'];
+  else if(params.length||capList.length)efforts=[];
   const capabilities=CapabilitiesSchema.parse({...defaults,...(images!==undefined?{vision:images}:{}),...(tools!==undefined?{tools}:{}),...(efforts!==undefined?{reasoningEffort:efforts.length>0}:{})});
   const context=number(m.context_window)||number(m.max_input_tokens)||number(m.context_length)||number(object(m.top_provider).context_length),maxOutput=number(m.max_output_tokens)||number(m.max_tokens)||number(object(m.top_provider).max_completion_tokens);
-  return ModelSchema.parse({type:'model',id:m.id,providerId,displayName:string(m.display_name)||string(m.name)||string(m.id),capabilities,reasoningEfforts:efforts??(capabilities.reasoningEffort?['low','medium','high']:[]),pinned:false,favorite:false,...(context>0?{contextWindow:context}:{}),...(maxOutput>0?{maxOutputTokens:maxOutput}:{})});
+  return ModelSchema.parse({type:'model',id:m.id??m.key??m.name,providerId,displayName:string(m.display_name)||string(m.name)||string(m.id)||string(m.key),capabilities,reasoningEfforts:efforts??(capabilities.reasoningEffort?['low','medium','high']:[]),pinned:false,favorite:false,...(context>0?{contextWindow:context}:{}),...(maxOutput>0?{maxOutputTokens:maxOutput}:{})});
 }
