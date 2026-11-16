@@ -35,7 +35,7 @@ test('two devices converge chats, offline edits, settings, live messages and sto
     await action(two, 'patchChat', chat.id, { title: `${title} offline` });
     await b.setOffline(false);
     await expect.poll(async () => (await chats(one)).find((c: any) => c.id === chat.id)?.title, { timeout: 15000 }).toBe(`${title} offline`);
-    for (const [field, value] of Object.entries({ theme: 'dark', palette: 'forest', button: '#b6e36b', model: 'sync-model', provider: 'sync-provider', effort: 'high' })) {
+    for (const [field, value] of Object.entries({ theme: 'dark', palette: 'forest', model: 'sync-model', effort: 'high' })) {
       await one.evaluate(async ({field, value}) => {
         // @ts-expect-error Vite source module.
         const { apiClient } = await import('/src/lib/api.ts');
@@ -52,6 +52,21 @@ test('two devices converge chats, offline edits, settings, live messages and sto
       return (await apiClient.request('/v1/sync/settings')).items.map((item: { field: string }) => item.field);
     });
     expect(served).not.toContain('button');
+    const retired = await one.evaluate(async () => {
+      // @ts-expect-error Vite source module.
+      const { apiClient } = await import('/src/lib/api.ts');
+      const statuses: number[] = [];
+      for (const [field, value] of [['button', '#b6e36b'], ['provider', 'sync-provider']]) {
+        try {
+          await apiClient.request('/v1/sync/settings', { method: 'PATCH', body: JSON.stringify({ field, value }) });
+          statuses.push(200);
+        } catch (error) {
+          statuses.push((error as { status?: number }).status ?? 0);
+        }
+      }
+      return statuses;
+    });
+    expect(retired).toEqual([400, 400]);
     await two.goto(`/c/${chat.id}`); await one.goto(`/c/${chat.id}`);
     await openApi(one);
     await openApi(two);
