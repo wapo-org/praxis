@@ -1,0 +1,28 @@
+name: Modal reviewer
+on:
+  push:
+    branches: [main, develop]
+    paths: ['infra/**', '.github/workflows/modal-reviewer.yml']
+  pull_request:
+    paths: ['infra/**', '.github/workflows/modal-reviewer.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: modal-reviewer-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  pytest:
+    name: Modal reviewer / pytest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: infra/modal-pr-review/uv.lock
+          python-version: '3.12'
+      - run: uv run --project infra/modal-pr-review --locked pytest infra/modal-pr-review/tests -q
