@@ -7,3 +7,5 @@ build/
 .swiftpm/
 Package.resolved
 cloud/docs/function-maps/
+
+cloud/.spec-traces/

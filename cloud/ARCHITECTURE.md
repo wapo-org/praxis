@@ -56,3 +56,11 @@ No accounts/projects are created or deployed by agents. Required credentials, ex
 - sharp: server-side orientation-aware image cropping and scaling for the vision reader on Vercel.
 
 - fflate: small in-memory streaming ZIP decoder for skill imports; declared and actual sizes, entry types, paths and counts are bounded before persistence. Tar parsing and bounded gzip use Node built-ins.
+
+## Formal protocol checks
+
+`specs/` models the v2 Linear designs before their implementations exist; see
+`specs/contracts/README.md` for assumptions and the mapping to current code.
+Pinned dev dependencies: `@informalsystems/quint` runs protocol simulations without
+Java; `fast-check` generates checkpoint, API dedup/truncation and failover cases.
+Run `npm run specs` for models and `npm test` for implementation properties.
