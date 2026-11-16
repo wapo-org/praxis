@@ -1,6 +1,7 @@
 import {ToolInvocationSchema, type ToolInvocation, type ToolError, type JsonValue, type Mode} from '@praxis/protocol';
 import {ApprovalReceipt, argsHash, type ApprovalReplayStore} from './receipt.js';
 import {classifyInvocation, isSideEffect, resultTaint, type ToolClassifier, type MetaToolAdapter, type TaintState, type BoundaryResult} from './policy.js';
+import {boundaryDecision} from './decision.js';
 import {toolError} from './errors.js';
 
 export type GateResult = {ok: true; result: BoundaryResult; taint: TaintState} | {ok: false; error: ToolError};
@@ -19,14 +20,12 @@ export async function executeBoundary(
 ): Promise<GateResult> {
   const parsed = ToolInvocationSchema.safeParse(rawCall);
   if (!parsed.success) return {ok: false, error: toolError('schema', 'Invalid tool invocation.')};
-  const call = ToolInvocationSchema.parse(JSON.parse(JSON.stringify(parsed.data)));
+  const call = structuredClone(parsed.data);
   const classification = classifyInvocation(call, registry, adapters);
-  if (classification.decision === 'deny') return {ok: false, error: toolError('policy-denied', 'Tool policy denied this action.')};
+  const decision = boundaryDecision(context.mode, classification, context.taint.tainted);
+  if (decision === 'deny') return {ok: false, error: toolError('policy-denied', 'Tool policy denied this action.')};
   const sideEffect = isSideEffect(classification.capabilities);
-  if (sideEffect && (context.mode === 'ask' || context.mode === 'plan')) {
-    return {ok: false, error: toolError('policy-denied', 'This mode only permits read capabilities.')};
-  }
-  if (sideEffect || classification.decision === 'approve') {
+  if (decision === 'approve') {
     const binding = {runId: context.runId, toolCallId: context.toolCallId, tool: call.tool, argsHash: await argsHash(call.args)};
     const verified = await ApprovalReceipt.verify(receipt, binding, context.nowMs(), context.key, context.replay);
     if (!verified) return {

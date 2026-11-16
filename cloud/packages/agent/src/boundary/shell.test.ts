@@ -50,3 +50,11 @@ it('never allows quoted, escaped or chained denied executables', () => {
 it.each(['echo > //etc/passwd', 'echo >/workspace/.ssh/key', 'echo > /'])('denies sensitive redirect variants: %s', command => {
   expect(shellPolicy(command)).toBe('deny');
 });
+it.each([
+  'env env rm a', 'env -i env X=1 /usr/bin/env rm a', 'git push -vf origin main',
+  'git push origin +HEAD:main', 'git push origin +main:main',
+  'echo harmless ' + '\\'.repeat(2) + '\nrm marker',
+  'echo harmless ' + '\\' + '\nrm marker',
+])('denies reviewer bypass regression: %s', command => {
+  expect(shellPolicy(command)).toBe('deny');
+});

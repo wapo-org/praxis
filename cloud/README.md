@@ -51,3 +51,10 @@ npm test
 ```
 
 The test suite includes pure loop/policy/compaction/cancellation checks, auth/ownership/key redaction, idempotent runs, drop/reconnect SSE, authoritative snapshots and actual scripted runtime API flows. External-service contract tests are environment-gated. See `ARCHITECTURE.md`, `docs/api/AGENT.md` and `DEPLOY.md` (production setup and credentials).
+
+`npm run bench` is an opt-in memory/offline search latency report over 2,000 chats.
+It has no timing threshold and is excluded from `npm test` and CI.
+CI instead bounds store reads, message grouping, cosine comparisons and embedding
+calls at 500 and 2,000 chats, and checks asynchronous dependencies with deferred
+responses or virtual timers. The existing `PW_H2_PERF=1` headed frame capture
+also reports intervals without a hardware-dependent pass/fail threshold.

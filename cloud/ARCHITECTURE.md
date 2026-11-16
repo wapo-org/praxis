@@ -40,6 +40,9 @@ Wire schemas live in `packages/protocol/src/tool-boundary.ts`; the authenticated
 must remain server-owned. The current API adapter returns structured tool errors; the future Modal and
 Composio executors adopt `executeBoundary` in PRA-56/57/48. This core does not replace the current runner.
 Shell denials cannot be approved; unrecognized syntax fails closed and unknown commands require approval.
+`boundaryDecision` permits untainted allow calls in Build/Auto when the adapter certifies workspace
+confinement without secrets or network effects; tainted side effects and egress require verified receipts.
+Auto also requires approval for destructive or untrusted writes; Ask/Plan deny all side effects.
 
 ## Sandbox tools and browser CLI (PRA-77)
 
@@ -79,7 +82,7 @@ No accounts/projects are created or deployed by agents. Required credentials, ex
 
 Sandbox dependency: `modal` **0.11.1**, pinned, the official Modal JavaScript SDK (sandboxes, exec, filesystem, volumes, tunnels), used only by `@praxis/sandbox-tools/modal` and its opt-in scripts.
 
-Tool-boundary dependencies: `shell-quote` **1.12.0**, pinned, dependency-free pure JS token scanner for the restricted shell AST; `@types/shell-quote` **1.7.5** for compile-time declarations. `fast-check` **4.10.2**, pinned dev dependency, checks shell obfuscation and monotone taint properties; `npm test` runs the boundary suite.
+Tool-boundary dependencies: `shell-quote` **1.12.0**, pinned, dependency-free pure JS token scanner for the restricted shell AST; `@types/shell-quote` **1.7.5** for compile-time declarations. `fast-check` **4.10.2**, pinned dev dependency, checks shell obfuscation and monotone taint properties; `npm test` runs the boundary suite; `npm run specs` runs the PRA-75 formal models.
 
 ## Formal protocol checks
 

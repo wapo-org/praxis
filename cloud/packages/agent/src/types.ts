@@ -36,14 +36,17 @@ export interface ModelProvider {
   complete?(request:ProviderRequest,signal:AbortSignal):Promise<ProviderResponse>;
   stream(request:ProviderRequest,signal:AbortSignal):AsyncIterable<ProviderEvent>;
 }
-export const ToolResultSchema = z.object({
-  error:ToolErrorSchema.optional(), content:z.array(JsonObjectSchema), isError:z.boolean().default(false), outputRef:IdSchema.optional(),
-});
+const ToolResultContent = {content: z.array(JsonObjectSchema), outputRef: IdSchema.optional()};
+export const ToolResultSchema = z.discriminatedUnion('isError', [
+  z.object({...ToolResultContent, isError: z.literal(false).default(false), error: z.never().optional()}),
+  z.object({...ToolResultContent, isError: z.literal(true), error: ToolErrorSchema.optional()}),
+]);
 export type ToolResult = z.infer<typeof ToolResultSchema>;
 /** Results beyond this spill and truncate for read_tool_output. */
 export const MAX_RESULT_CHARACTERS=32000;
 export function textResult(text:string,isError=false):ToolResult {
-  return {content:[{type:'text',text}],isError};
+  const content = [{type: 'text', text}];
+  return isError ? {content, isError: true} : {content, isError: false};
 }
 export interface ToolContext {
   userId:string; chatId:string; runId:string; mode:Mode; signal:AbortSignal;
