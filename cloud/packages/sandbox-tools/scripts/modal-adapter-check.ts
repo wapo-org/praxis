@@ -1,5 +1,7 @@
 /** Opt-in: the sandbox tools on a real Modal sandbox (spends money, so it is a script, not a skipped test). */
-import {appendFileSync} from 'node:fs';
+import {appendFileSync, mkdirSync} from 'node:fs';
+import {dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {ModalClient} from 'modal';
 import {checkpointTurn, diffSince, listCheckpoints, rewindTo} from '../src/checkpoints.js';
 import {MemoryExportSink} from '../src/fake.js';
@@ -13,11 +15,13 @@ const IMAGE = 'node:22-bookworm';
 const SANDBOX_TIMEOUT_MS = 110_000;
 const ROOT = '/workspace/chats/check';
 
-const logFile = process.argv[2];
+/** A fixed, gitignored log: the scripts take no paths from the command line. */
+const logFile = fileURLToPath(new URL('../../../artifacts/modal/sandboxes.log', import.meta.url));
+mkdirSync(dirname(logFile), {recursive: true});
 function log(line: string): void {
   const stamped = `${new Date().toISOString()} ${line}`;
   console.log(stamped);
-  if (logFile) appendFileSync(logFile, `${stamped}\n`);
+  appendFileSync(logFile, `${stamped}\n`);
 }
 
 const checks: {name: string; ok: boolean; detail: string}[] = [];

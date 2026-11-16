@@ -1,5 +1,7 @@
 /** PRA-100 spike, opt-in: which sandbox capabilities the Modal JS SDK covers on a real account; prints no secrets. */
-import {appendFileSync} from 'node:fs';
+import {appendFileSync, mkdirSync} from 'node:fs';
+import {dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {ModalClient, type Sandbox} from 'modal';
 
 const APP_NAME = 'praxis-pra77-spike';
@@ -12,13 +14,15 @@ const SANDBOX_CPU = 0.125;
 const SANDBOX_MEMORY_MIB = 256;
 const TUNNEL_PORT = 8080;
 
-const logFile = process.argv[2];
+/** A fixed, gitignored log: the scripts take no paths from the command line. */
+const logFile = fileURLToPath(new URL('../../../artifacts/modal/sandboxes.log', import.meta.url));
+mkdirSync(dirname(logFile), {recursive: true});
 const results: {capability: string; ok: boolean; detail: string; ms: number}[] = [];
 
 function log(line: string): void {
   const stamped = `${new Date().toISOString()} ${line}`;
   console.log(stamped);
-  if (logFile) appendFileSync(logFile, `${stamped}\n`);
+  appendFileSync(logFile, `${stamped}\n`);
 }
 
 async function probe(capability: string, work: () => Promise<string>): Promise<void> {
@@ -92,12 +96,12 @@ try {
       return `${outcome} after ${elapsed} ms`;
     });
     await probe('exec: workdir, env and stdin', async () => {
-      const process = await sandbox.exec(['sh', '-c', 'pwd; echo $GREETING; cat'], {workdir: '/tmp', env: {GREETING: 'hi'}});
+      const process = await sandbox.exec(['sh', '-c', 'pwd; echo $GREETING; cat'], {workdir: '/workspace', env: {GREETING: 'hi'}});
       await process.stdin.writeText('from-stdin');
       await process.stdin.close();
       const {text} = await collect(process.stdout);
       await process.wait();
-      if (!text.includes('/tmp') || !text.includes('hi') || !text.includes('from-stdin')) throw new Error(JSON.stringify(text));
+      if (!text.includes('/workspace') || !text.includes('hi') || !text.includes('from-stdin')) throw new Error(JSON.stringify(text));
       return text.replace(/\n/g, ' | ').trim();
     });
     await probe('filesystem: write, read, stat, list', async () => {
@@ -111,8 +115,8 @@ try {
     });
     await probe('filesystem: binary round trip', async () => {
       const bytes = new Uint8Array([0, 1, 2, 250, 255]);
-      await sandbox.filesystem.writeBytes(bytes, '/tmp/blob.bin');
-      const back = await sandbox.filesystem.readBytes('/tmp/blob.bin');
+      await sandbox.filesystem.writeBytes(bytes, '/workspace/chats/c1/blob.bin');
+      const back = await sandbox.filesystem.readBytes('/workspace/chats/c1/blob.bin');
       if (Buffer.compare(Buffer.from(back), Buffer.from(bytes)) !== 0) throw new Error(`got ${[...back].join(',')}`);
       return '5 bytes identical';
     });
@@ -123,7 +127,7 @@ try {
       return text.replace(/\n/g, ' | ').trim();
     });
     await probe('encrypted port tunnel', async () => {
-      await sandbox.exec(['sh', '-c', `cd /workspace && nohup python3 -m http.server ${TUNNEL_PORT} >/tmp/http.log 2>&1 &`]);
+      await sandbox.exec(['sh', '-c', `cd /workspace && nohup python3 -m http.server ${TUNNEL_PORT} > /workspace/http.log 2>&1 &`]);
       const tunnels = await sandbox.tunnels(30_000);
       const tunnel = tunnels[TUNNEL_PORT];
       if (!tunnel) throw new Error(`no tunnel for ${TUNNEL_PORT}: ${Object.keys(tunnels).join(',')}`);

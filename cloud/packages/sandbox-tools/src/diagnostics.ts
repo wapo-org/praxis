@@ -61,18 +61,39 @@ export function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${pattern}$`);
 }
 
+// Negated classes instead of lazy `.+?`, so a long line without a match fails in linear time.
+const TSC_LINE = /^([^(\n]+)\((\d+),(\d+)\): (?:error|warning) (TS\d+: [^\n]*)$/gm;
+const GNU_LINE = /^([^:\n]+):(\d+)(?::(\d+))?:[ \t]*([^\n]+)$/gm;
+const FILE_LINE = /^([^:\n]+):(\d+)$/m;
+const ERROR_LINE = /^(\w*Error: [^\n]*)$/m;
+const PYTHON_LOCATION = /File "([^"\n]+)", line (\d+)/;
+
+function located(check: string, location: RegExpExecArray | null, message: string): Problem {
+  return {check, ...(location ? {file: location[1]!, line: Number(location[2])} : {}), message};
+}
+
 const PARSERS: Record<z.infer<typeof DiagnosticFormatSchema>, (output: string, check: string) => Problem[]> = {
-  tsc: (output, check) => [...output.matchAll(/^(.+?)\((\d+),(\d+)\): (?:error|warning) (TS\d+: .*)$/gm)].map(m => ({check, file: m[1]!, line: Number(m[2]), column: Number(m[3]), message: m[4]!})),
-  gnu: (output, check) => [...output.matchAll(/^(.+?):(\d+)(?::(\d+))?:\s*(.+)$/gm)].map(m => ({check, file: m[1]!, line: Number(m[2]), ...(m[3] ? {column: Number(m[3])} : {}), message: m[4]!.trim()})),
+  tsc: (output, check) => [...output.matchAll(TSC_LINE)].map(match => ({
+    check,
+    file: match[1]!,
+    line: Number(match[2]),
+    column: Number(match[3]),
+    message: match[4]!,
+  })),
+  gnu: (output, check) => [...output.matchAll(GNU_LINE)].map(match => ({
+    check,
+    file: match[1]!,
+    line: Number(match[2]),
+    ...(match[3] ? {column: Number(match[3])} : {}),
+    message: match[4]!.trim(),
+  })),
   node: (output, check) => {
-    const location = /^(.+?):(\d+)$/m.exec(output);
-    const error = /^(\w*Error: .*)$/m.exec(output);
-    return error ? [{check, ...(location ? {file: location[1]!, line: Number(location[2])} : {}), message: error[1]!}] : [];
+    const error = ERROR_LINE.exec(output);
+    return error ? [located(check, FILE_LINE.exec(output), error[1]!)] : [];
   },
   python: (output, check) => {
-    const location = /File "(.+?)", line (\d+)/.exec(output);
-    const error = /^(\w*Error: .*)$/m.exec(output);
-    return error ? [{check, ...(location ? {file: location[1]!, line: Number(location[2])} : {}), message: error[1]!}] : [];
+    const error = ERROR_LINE.exec(output);
+    return error ? [located(check, PYTHON_LOCATION.exec(output), error[1]!)] : [];
   },
   text: (output, check) => output.split('\n').map(line => line.trim()).filter(Boolean).map(message => ({check, message})),
 };

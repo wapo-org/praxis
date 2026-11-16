@@ -3,8 +3,8 @@ export const WORKSPACE_ROOT = '/workspace';
 /** Tool bookkeeping (jobs, diagnostics config) lives here; checkpoints never commit it. */
 export const PRAXIS_DIR = '.praxis';
 export const DIAGNOSTICS_CONFIG = '.praxis/diagnostics.json';
-/** Jobs die with the sandbox, so their records live on its ephemeral disk, not the Volume. */
-export const JOBS_DIR = '/tmp/praxis-jobs';
+/** Jobs die with the sandbox, so their records live on its own disk (not the Volume), in a root-owned path, not /tmp. */
+export const JOBS_DIR = '/var/lib/praxis/jobs';
 
 export const SHELL_TIMEOUT_DEFAULT_MS = 30_000;
 /** Longer work goes to the background and is polled with wait_for_job, so no call blocks a turn. */
