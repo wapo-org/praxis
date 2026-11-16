@@ -102,6 +102,8 @@ async function launchScreenshot(udid: string, derived: string, directory: string
   const bundle = await runCommand('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIdentifier', join(app, 'Info.plist')], {cwd: REPO_DIR});
   if (bundle.code !== 0) return undefined;
   if ((await step('install', 'xcrun', ['simctl', 'install', udid, app])).code !== 0) return undefined;
+  // A first-launch permission sheet would cover the screen the screenshot is meant to prove.
+  if ((await step('grant-permissions', 'xcrun', ['simctl', 'privacy', udid, 'grant', 'all', bundle.output.trim()])).code !== 0) return undefined;
   if ((await step('launch', 'xcrun', ['simctl', 'launch', udid, bundle.output.trim()])).code !== 0) return undefined;
   await new Promise(resolve => setTimeout(resolve, LAUNCH_SETTLE_MS));
   const screenshot = join(directory, 'launch.png');
