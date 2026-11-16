@@ -1,3 +1,4 @@
+import {validTitle} from './title-model.js';
 import {ensureBuiltins} from './features/mcp/builtins.js';
 import { randomUUID } from 'node:crypto';
 import { ChatSchema,PROTOCOL_VERSION,RunSchema,type Bootstrap,type Chat,type JsonObject,type Message,type Run,type RunEventPayload,type RunSnapshot,type StartRun } from '@praxis/protocol';
@@ -105,7 +106,7 @@ export class ApiService{
   if(title&&!suggested&&runChat.title===title&&runChat.titleRevision===chat.titleRevision&&this.driver.title){
    const expected=runChat.title,revision=runChat.titleRevision;
    const work=Promise.resolve().then(async()=>{
-    const generated=await this.driver!.title!(userId,runChat,input.text);if(!generated)return;
+    const generated=await this.driver!.title!(userId,runChat,input.text);if(!generated||!validTitle(generated,input.text))return;
     await this.updateChat(userId,chat.id,live=>live.title===expected&&live.titleRevision===revision?{...live,title:generated,updatedAt:this.now()}:undefined);
    }).catch(()=>this.put(userId,'titleMetric',chat.id,{reason:'provider_error: unknown'})).catch(()=>{}).finally(()=>this.work.delete(work));
    this.work.add(work);this.defer?.(work);

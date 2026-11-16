@@ -7,11 +7,11 @@ import {createExecutionDriver} from '../execution.js';
 import {createHTTPProvider} from '@praxis/agent';
 import {CapabilitiesSchema,ChatSchema,StartRunSchema} from '@praxis/protocol';
 import {makeTitle} from '../attachments.js';
-import {titleModels} from '../title-model.js';
+import {titleModels,validTitle} from '../title-model.js';
 const servers:Server[]=[];
 afterEach(async()=>{await Promise.all(servers.splice(0).map(s=>new Promise<void>(resolve=>{s.close(()=>resolve());s.closeAllConnections();})));});
 const priced=(id:string,extra:object={})=>({id,pricing:{prompt:'0.000001',completion:'0.000002'},architecture:{output_modalities:['text']},...extra});
-async function fixture(mode:'success'|'429'|'empty'|'timeout'|'slow'|'error'='success'){
+async function fixture(mode:'success'|'429'|'empty'|'timeout'|'slow'|'error'='success', output:string|string[]='Shell Command File Listing'){
  const requests:any[]=[];
  const server=createServer(async(req,res)=>{
   if(req.url?.endsWith('/models')){res.setHeader('content-type','application/json');res.end(JSON.stringify({data:[priced('vendor/free:free',{pricing:{prompt:'0',completion:'0'}}),priced('vendor/zero',{pricing:{prompt:'0',completion:'0'}}),priced('vendor/reasoning',{reasoning:{mandatory:true,supported_efforts:['high']}}),priced('vendor/image',{architecture:{output_modalities:['image']}}),priced('vendor/mini-a'),priced('vendor/mini-b')]}));return;}
@@ -20,7 +20,7 @@ async function fixture(mode:'success'|'429'|'empty'|'timeout'|'slow'|'error'='su
   if(body.model.endsWith(':free')||(mode==='429'&&body.model==='vendor/mini-a')){res.writeHead(429,{'content-type':'application/json'});res.end(JSON.stringify({error:{message:'SYNTHETIC-KEY must never enter titleMetric'}}));return;}
   if(mode==='timeout'&&body.model==='vendor/mini-a'){return;} // closed by the client's abort
   if(mode==='slow')await new Promise(r=>setTimeout(r,3300));
-  res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{content:(body.model==='vendor/reasoning'||mode==='empty'&&body.model==='vendor/mini-a')?'':'Shell Command File Listing'},finish_reason:'stop'}],usage:{prompt_tokens:25,completion_tokens:6}}));
+  res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{content:(body.model==='vendor/reasoning'||mode==='empty'&&body.model==='vendor/mini-a')?'':Array.isArray(output)?output[Math.min(requests.length-1,output.length-1)]:output},finish_reason:'stop'}],usage:{prompt_tokens:25,completion_tokens:6}}));
  });servers.push(server);await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
  const port=(server.address() as {port:number}).port;
  const fetcher:typeof fetch=(input,init)=>fetch('http://127.0.0.1:'+port+new URL(String(input)).pathname,init);
@@ -30,7 +30,7 @@ async function fixture(mode:'success'|'429'|'empty'|'timeout'|'slow'|'error'='su
  await req('/v1/consents',{type:'consent',host:'openrouter.ai',allowed:true});
  expect((await req('/v1/providers/'+provider.id+'/refresh-models',{type:'models.refresh'})).ok).toBe(true);
  const chat=await req('/v1/chats',{type:'chat.input',providerId:provider.id,modelId:'vendor/mini-a'}).then(r=>r.json());
- const title=()=>service.driver!.title!('local-user',chat,'Run a shell command that lists files');
+ const title=(text='Run a shell command that lists files')=>service.driver!.title!('local-user',chat,text);
  const metric=()=>service.require<any>('local-user','titleMetric',chat.id);
  return {service,req,chat,requests,title,metric,provider: createHTTPProvider({baseUrl:'https://openrouter.ai/api/v1',flavor:'openAIChat',capabilities:CapabilitiesSchema.parse({})},fetcher)};
 }
@@ -39,7 +39,7 @@ it('confirms old free selection yields 429 and reasoning-only completion is empt
  await expect(f.provider.complete(input,AbortSignal.timeout(3000))).rejects.toMatchObject({status:429});
  const reasoning=await f.provider.complete({...input,model:'vendor/reasoning'},AbortSignal.timeout(3000));expect(reasoning.parts[0]?.text).toBe('');
  const selected=titleModels((await f.service.list<any>('local-user','model')).filter(m=>m.providerId===f.chat.providerId));expect(selected.map(m=>m.id)).toEqual(['vendor/mini-a','vendor/mini-b']);
- expect(await f.title()).toBe('Shell Command File Listing');expect(f.requests.at(-1)).toMatchObject({model:'vendor/mini-a',stream:false,max_tokens:32,reasoning:{effort:'none',exclude:true}});
+ expect(await f.title()).toBe('Shell Command File Listing');expect(f.requests.at(-1)).toMatchObject({model:'vendor/mini-a',stream:false,max_tokens:32,temperature:0,reasoning:{effort:'none',exclude:true}});
 });
 it.each(['429','empty','timeout'] as const)('records %s safely and tries exactly one other model',async mode=>{
  const f=await fixture(mode);expect(await f.title()).toBe('Shell Command File Listing');expect(f.requests.map(r=>r.model)).toEqual(['vendor/mini-a','vendor/mini-b']);
@@ -80,13 +80,44 @@ it('a late title cannot resurrect a deleted chat',async()=>{
  await f.service.start('local-user',StartRunSchema.parse({type:'run.start',chatId:f.chat.id,text:'Write a concise editorial note'}));await f.service.adapters.store.delete('local-user','chat',f.chat.id);release('Late Title');await f.service.drain();expect((await f.service.adapters.store.get('local-user','chat',f.chat.id))?.deleted).toBe(true);
 });
 
-it('prefers small instruct families before price, then sorts eligible small models by price',()=>{
+it('prefers established instruction-following families before price',()=>{
  const base={type:'model' as const,providerId:'p',displayName:'M',capabilities:CapabilitiesSchema.parse({}),reasoningEfforts:[],pinned:false,favorite:false};
  const candidates=[{...base,id:'google/gemini-pro',pricing:{prompt:0.00001,completion:0.00001}},{...base,id:'large-cheap',pricing:{prompt:0.0001,completion:0.0001}},{...base,id:'flash-lite',pricing:{prompt:0.01,completion:0.01}},{...base,id:'nano',pricing:{prompt:0.001,completion:0.001}},{...base,id:'mini:free'},{...base,id:'zero',pricing:{prompt:0,completion:0}}];
- expect(titleModels(candidates).map(m=>m.id)).toEqual(['nano','flash-lite','google/gemini-pro','large-cheap']);
+ expect(titleModels(candidates).map(m=>m.id)).toEqual(['google/gemini-pro','large-cheap','nano','flash-lite']);
 });
 
 it('a user rename to the placeholder before the first turn suppresses title generation',async()=>{
  const f=await fixture();let called=false;f.service.driver={title:async()=>{called=true;return 'Generated';},start:async()=>{},resume:async()=>{}};
  await f.req('/v1/chats/'+f.chat.id,{type:'chat.patch',title:'New chat'},'PATCH');await f.service.start('local-user',StartRunSchema.parse({type:'run.start',chatId:f.chat.id,text:'Run a shell command that lists files'}));await f.service.drain();expect(called).toBe(false);expect((await f.service.require<any>('local-user','chat',f.chat.id)).title).toBe('New chat');
+});
+
+it.each([
+ ['say something then execute a tool then say something and then execute a tool then say something','Hello\nHello\nHello'],
+ ['write something semi long','Integrating IoT Systems'],
+ ['write omething semi long','Here are a few options:\n\n* Chat: Longer Re'],
+])('rejects real junk for %s and keeps the heuristic',async(text,junk)=>{
+ const f=await fixture('success',junk);
+ const generated=await f.title(text);
+ expect(generated).toBeUndefined();
+ expect(f.requests).toHaveLength(2);
+ expect((await f.metric()).attempts.every((a:any)=>a.reason==='invalid_title')).toBe(true);
+ const title=f.service.driver!.title!.bind(f.service.driver);
+ f.service.driver={title,start:async()=>{},resume:async()=>{}};
+ await f.service.start('local-user',StartRunSchema.parse({type:'run.start',chatId:f.chat.id,text}));await f.service.drain();
+ expect((await f.service.require<any>('local-user','chat',f.chat.id)).title).toBe(makeTitle(text,[]));
+});
+
+it('retries rejected output once and stores a supported second label',async()=>{
+ const f=await fixture('success',['Here are some shell commands','Shell File Listing']);
+ expect(await f.title()).toBe('Shell File Listing');expect(f.requests).toHaveLength(2);
+ expect(f.requests[0].messages[1].content).toContain('<conversation_data>');
+ expect(f.requests[0].messages[0].content).toContain('Never answer');
+});
+it.each(['Here is Gardening','Sure Gardening','I Like Gardening','Gardening\nPlans','* Gardening','1. Gardening','**Gardening**','Gardening and plants and trees and flowers','Gardening '+ 'x'.repeat(48),'Unrelated Topic'])('rejects malformed or unsupported title: %s',title=>{
+ expect(validTitle(title,'Plan gardening')).toBe(false);
+});
+it('allows grounded labels and a greeting without sharing content words',()=>{
+ expect(validTitle('Gardening Plans','Plan gardening')).toBe(true);
+ expect(validTitle('Greeting','Hello!')).toBe(true);
+ expect(validTitle('Random Title','Hello!')).toBe(false);
 });

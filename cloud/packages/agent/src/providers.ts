@@ -71,6 +71,7 @@ export function createHTTPProvider(config:HTTPProviderConfig,fetcher:typeof fetc
       if(c.maxTokensField==='omit')throw new ProviderFailure('This provider does not support a bounded title completion.');
       const body=buildProviderRequest(c.flavor,input,c as RequestOptions);
       body.stream=false;
+      if(input.temperature!==undefined)body.temperature=input.temperature;
       if(input.titleReasoning&&c.flavor==='openAIChat'&&new URL(c.baseUrl).hostname==='openrouter.ai'){delete body.reasoning_effort;body.reasoning={effort:input.titleReasoning,exclude:true};}
       delete body.stream_options;
       const path=c.flavor==='anthropicMessages'?'messages':c.flavor==='openAIChat'?'chat/completions':'responses';

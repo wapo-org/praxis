@@ -1,5 +1,5 @@
 import {variablesTool,variablePrompt} from './variables.js';
-import {titleModels} from './title-model.js';
+import {titleModels,titlePrompt,validTitle} from './title-model.js';
 import {executionSecrets} from './saved-secrets.js';
 import {
   AgentRunner, CheckpointSchema, ExecutionFenced, ToolResultSchema, createScriptedProvider, isRunControl, scriptedTools, textResult,
@@ -262,15 +262,15 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
         if(chat.providerId!=='scripted')await service.providers?.requireConsent(userId,chat.providerId);
         const resolved=await resolveProvider(userId,chat,{type:'run.start',chatId:chat.id,text,attachmentIds:[],webSearch:false});
         const effort:'none'|'minimal'|'low'=!model.capabilities.reasoningEffort?'none':model.reasoningEfforts.includes('none')?'none':model.reasoningEfforts.includes('minimal')?'minimal':'low';
-        const request={model:model.id,system:'Return only a short, specific 3 to 5 word topic title for this chat. Omit request verbs and filler. No quotes or explanation.',messages:[{type:'message' as const,id:'title',chatId:chat.id,role:'user' as const,parts:[{type:'text' as const,text:text.slice(0,600)}],createdAt:service.now(),updatedAt:service.now()}],tools:[],capabilities:model.capabilities,maxTokens:32,effort,supportedEfforts:model.reasoningEfforts,titleReasoning:effort,webSearch:false};
+        const request={model:model.id,system:titlePrompt,messages:[{type:'message' as const,id:'title',chatId:chat.id,role:'user' as const,parts:[{type:'text' as const,text:'<conversation_data>\n'+JSON.stringify(text.slice(0,600))+'\n</conversation_data>'}],createdAt:service.now(),updatedAt:service.now()}],tools:[],capabilities:model.capabilities,maxTokens:32,temperature:0,effort,supportedEfforts:model.reasoningEfforts,titleReasoning:effort,webSearch:false};
         let result;
         if(chat.providerId==='scripted'){
           for await(const event of resolved.provider.stream(request,signal))if(event.type==='completed')result=event.response;
         }else result=await (await service.providers!.resolve(userId,chat.providerId)).provider.complete(request,signal);
-        const title=result?.parts.filter(p=>p.type==='text').map(p=>p.text??'').join('').trim().replace(/^["']|["']$/g,'').slice(0,42);
+        const title=result?.parts.filter(p=>p.type==='text').map(p=>p.text??'').join('').trim();
         if(result)Object.assign(attempt,{inputTokens:result.usage.inputTokens,outputTokens:result.usage.outputTokens});
-        if(title){attempt.outcome='success';attempts.push(attempt);await metric();return title;}
-        attempt.reason='empty';
+        if(title&&validTitle(title,text)){attempt.outcome='success';attempts.push(attempt);await metric();return title;}
+        attempt.reason=title?'invalid_title':'empty';
        }catch(error){const status=(error as {status?:number}).status;attempt.reason=signal.aborted?'timeout':status===429?'rate_limited':`provider_error: ${typeof status==='number'?status:'unknown'}`;}
        attempts.push(attempt);await metric();
       }
