@@ -16,8 +16,9 @@ const MODELS = {
 };
 
 const specNames = readdirSync(new URL('../specs/', import.meta.url))
-  .filter(name => name.endsWith('.qnt')).map(name => name.slice(0, -4)).sort();
-if (JSON.stringify(specNames) !== JSON.stringify(Object.keys(MODELS).sort())) {
+  .filter(name => name.endsWith('.qnt')).map(name => name.slice(0, -4));
+if (specNames.length !== Object.keys(MODELS).length ||
+    specNames.some(name => !Object.hasOwn(MODELS, name))) {
   throw new Error('Every Quint model must declare its CI invariants in MODELS');
 }
 
