@@ -32,6 +32,15 @@ Redis key namespace is `praxis:v1:<owner>:...`: bootstrap snapshot; the shared O
 
 The sync experiment partitions entity hashes into a deterministic tree over stable entity keys. Canonical JSON has sorted object keys, UTF-8 encoding, explicit tombstones and SHA-256; Swift can reproduce it. Cursor sync uses a monotonic revision cursor (not wall-clock equality) so simultaneous updates are not skipped. `/v1/sync/*` supplies snapshots, changed entities and tree nodes; clients apply updates transactionally to IndexedDB or iOS persistence. The benchmark compares cursor and Merkle at 1k chats/50k messages, with 0,1,50 changed rows, reporting bytes, round trips and elapsed time. The winner stays default and the other remains feature-flagged; details in `docs/SYNC_EXPERIMENT.md`.
 
+## Tool boundary
+
+`packages/agent/src/boundary` provides deterministic capability policy, a restricted shell AST,
+HMAC approval verification with an injected atomic replay store, structural taint joins and meta-tool unwrapping.
+Wire schemas live in `packages/protocol/src/tool-boundary.ts`; the authenticated issuer and durable adapter
+must remain server-owned. The current API adapter returns structured tool errors; the future Modal and
+Composio executors adopt `executeBoundary` in PRA-56/57/48. This core does not replace the current runner.
+Shell denials cannot be approved; unrecognized syntax fails closed and unknown commands require approval.
+
 ## Dependencies and deployment
 
 Runtime dependency inventory (features add their package only when implemented):
@@ -56,3 +65,5 @@ No accounts/projects are created or deployed by agents. Required credentials, ex
 - sharp: server-side orientation-aware image cropping and scaling for the vision reader on Vercel.
 
 - fflate: small in-memory streaming ZIP decoder for skill imports; declared and actual sizes, entry types, paths and counts are bounded before persistence. Tar parsing and bounded gzip use Node built-ins.
+
+Tool-boundary dependencies: `shell-quote` **1.12.0**, pinned, dependency-free pure JS token scanner for the restricted shell AST; `@types/shell-quote` **1.7.5** for compile-time declarations. `fast-check` **4.10.2**, pinned dev dependency, checks shell obfuscation and monotone taint properties; `npm run specs` runs the boundary suite (the independent PRA-75 formal models are not included here).

@@ -15,10 +15,12 @@
     "test": "vitest run --passWithNoTests",
     "check:rules": "node scripts/check-rules.mjs",
     "lint": "oxlint --deny-warnings",
-    "dev:local": "npm run dev:local -w @praxis/api"
+    "dev:local": "npm run dev:local -w @praxis/api",
+    "specs": "vitest run packages/agent/src/boundary"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "fast-check": "4.10.2",
     "oxlint": "1.93.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"
