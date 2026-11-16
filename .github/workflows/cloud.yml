@@ -99,8 +99,9 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: cloud/package-lock.json
-      - run: npm install --global npm@11
-      - run: npm --prefix cloud ci
+      # Exact npm and no lifecycle scripts, as in the specs job; vite and tsx run from their optional platform packages.
+      - run: npm install --global npm@11.6.2 --ignore-scripts
+      - run: npm --prefix cloud ci --ignore-scripts
       - name: Cache Playwright browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -108,7 +109,7 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('cloud/package-lock.json') }}
       - name: Install Chromium and its system libraries
         working-directory: cloud
-        run: npx playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium
       - name: Run the web flows
         run: npm --prefix cloud run verify -- web
       - name: Keep screenshots, snapshots and server logs

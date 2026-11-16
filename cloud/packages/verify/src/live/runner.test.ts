@@ -115,6 +115,47 @@ describe('live runner', () => {
   });
 });
 
+describe('evidence redaction and partial runs', () => {
+  const manual = (id: string) => ({id, kind: 'manual' as const, checklist: id, needs: {}, instruction: 'i', evidence: 'file' as const});
+
+  it('redacts text evidence, manual or attached as bytes, before writing and hashing it', async () => {
+    const directory = scratch();
+    const log = join(scratch(), 'vercel.log');
+    writeFileSync(log, `credential.cooldown slot=1 auth=Bearer ${KEY}\n`);
+    const suite = defineSuite({id: 's', issue: 'PRA-4', title: 'T', steps: [
+      manual('logs'),
+      {id: 'bytes', kind: 'auto', checklist: 'c', needs: {secrets: ['TEST_LIVE_KEY']}, run: async context => {
+        context.attach('dump.txt', new TextEncoder().encode(`raw ${context.secret('TEST_LIVE_KEY').reveal()}`));
+        return {status: 'pass', summary: 'ok'};
+      }},
+    ]});
+    const {proof} = await runSuite(suite, {env: {TEST_LIVE_KEY: KEY}, evidence: parseEvidence([`logs=${log}`]), directory});
+    expect(everyFile(directory)).not.toContain(KEY);
+    const stored = readFileSync(join(directory, 'evidence/logs-vercel.log'));
+    expect(proof.steps[0]!.evidence[0]).toMatchObject({sha256: createHash('sha256').update(stored).digest('hex')});
+  });
+
+  it('keeps screenshots as they are and refuses other binary evidence it cannot redact', async () => {
+    const png = join(scratch(), 'card.png');
+    const blob = join(scratch(), 'dump.bin');
+    writeFileSync(png, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0xff]));
+    writeFileSync(blob, Buffer.from([0, 0xff, 0xfe, 0x00]));
+    const suite = defineSuite({id: 's', issue: 'PRA-4', title: 'T', steps: [manual('shot')]});
+    const kept = await runSuite(suite, {env: {}, evidence: parseEvidence([`shot=${png}`]), directory: scratch()});
+    expect(kept.proof.steps[0]).toMatchObject({status: 'attached', evidence: [{bytes: 6}]});
+    await expect(runSuite(suite, {env: {}, evidence: parseEvidence([`shot=${blob}`]), directory: scratch()})).rejects.toThrow(/cannot be redacted/);
+  });
+
+  it('records unselected steps as skipped, so an --only run is never complete', async () => {
+    const png = join(scratch(), 'a.png');
+    writeFileSync(png, 'x');
+    const suite = defineSuite({id: 's', issue: 'PRA-4', title: 'T', steps: [manual('a'), manual('b')]});
+    const {proof} = await runSuite(suite, {env: {}, evidence: parseEvidence([`a=${png}`]), only: ['a'], directory: scratch()});
+    expect(proof.steps.map(step => [step.id, step.status, step.reason])).toEqual([['a', 'attached', undefined], ['b', 'skipped', 'not selected (--only)']]);
+    expect(proof.status).toBe('incomplete');
+  });
+});
+
 describe('redactor', () => {
   it('redacts declared values in raw, JSON and URL forms, plus known key shapes and bearer tokens', () => {
     const redactor = new Redactor().add(SealedSecret.of('s3cr3t"value/with+chars')).addEnv({SOME_API_KEY: 'plain-env-secret', PUBLIC_URL: 'https://example.com'});

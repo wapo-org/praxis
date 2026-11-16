@@ -1,14 +1,18 @@
-import {cooldownKey, slotSuffix} from '@praxis/credentials';
+import {cooldownKey, GROQ_POOL, slotSuffix} from '@praxis/credentials';
 import {defineSuite, type StepContext} from '@praxis/verify';
+import {z} from 'zod';
 
-/** Production reads the Groq pool under this name and service (apps/api transcribe.ts, production.ts). */
-const GROQ_POOL = 'GROQ_API_KEY';
-const GROQ_SERVICE = 'groq';
 const GROQ_MODELS_URL = 'https://api.groq.com/openai/v1/models';
 const VERCEL_API = 'https://api.vercel.com';
 const REQUEST_TIMEOUT_MS = 20_000;
 
-async function upstash(context: StepContext, command: string[]): Promise<unknown> {
+/** Upstash answers `{result}` or `{error}`; anything else is a broken reply, not evidence. */
+const UpstashReply = z.union([z.object({result: z.unknown()}).strict(), z.object({error: z.string()}).strict()]);
+/** Redis TTL: seconds, or -1 (no expiry) / -2 (no key). */
+const Ttl = z.number().int().min(-2);
+const StoredValue = z.string().nullable();
+
+async function upstash<S extends z.ZodType>(context: StepContext, command: string[], schema: S): Promise<z.infer<S>> {
   const response = await fetch(context.config('UPSTASH_REDIS_REST_URL'), {
     method: 'POST',
     headers: {authorization: `Bearer ${context.secret('UPSTASH_REDIS_REST_TOKEN').reveal()}`, 'content-type': 'application/json'},
@@ -16,7 +20,9 @@ async function upstash(context: StepContext, command: string[]): Promise<unknown
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(`Upstash ${command[0]} answered HTTP ${response.status}`);
-  return ((await response.json()) as {result: unknown}).result;
+  const reply = UpstashReply.parse(await response.json());
+  if ('error' in reply) throw new Error(`Upstash ${command[0]} failed: ${reply.error}`);
+  return schema.parse(reply.result);
 }
 
 export default defineSuite({
@@ -37,7 +43,7 @@ export default defineSuite({
         });
         if (!response.ok) return {status: 'fail', summary: `Vercel env listing answered HTTP ${response.status}`};
         const {envs} = (await response.json()) as {envs: {key: string; target?: string[]}[]};
-        const wanted = [1, 2].map(slot => `${GROQ_POOL}${slotSuffix(slot)}`);
+        const wanted = [1, 2].map(slot => `${GROQ_POOL.name}${slotSuffix(slot)}`);
         const production = new Set(envs.filter(env => env.target?.includes('production')).map(env => env.key));
         const missing = wanted.filter(name => !production.has(name));
         context.log(`production env names checked: ${wanted.join(', ')}`);
@@ -48,10 +54,10 @@ export default defineSuite({
       id: 'keys-authenticate',
       kind: 'auto',
       checklist: 'Set GROQ_API_KEY and GROQ_API_KEY_2 (two real Groq keys) in Vercel.',
-      needs: {pools: [{name: GROQ_POOL, service: GROQ_SERVICE, minSlots: 2}]},
+      needs: {pools: [{...GROQ_POOL, minSlots: 2}]},
       async run(context) {
         const failed: number[] = [];
-        for (const {slot, credential} of context.pool(GROQ_POOL).slots) {
+        for (const {slot, credential} of context.pool(GROQ_POOL.name).slots) {
           const response = await fetch(GROQ_MODELS_URL, {headers: {authorization: `Bearer ${credential.reveal()}`}, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)});
           context.log(`slot ${slot}: HTTP ${response.status}`);
           if (!response.ok) failed.push(slot);
@@ -71,14 +77,14 @@ export default defineSuite({
       id: 'cooldown',
       kind: 'auto',
       checklist: 'Cool-down in real Upstash: pool:groq:1:cooldown exists with a TTL and holds no key material.',
-      needs: {secrets: ['UPSTASH_REDIS_REST_TOKEN'], config: ['UPSTASH_REDIS_REST_URL'], pools: [{name: GROQ_POOL, service: GROQ_SERVICE, minSlots: 1}]},
+      needs: {secrets: ['UPSTASH_REDIS_REST_TOKEN'], config: ['UPSTASH_REDIS_REST_URL'], pools: [{...GROQ_POOL, minSlots: 1}]},
       async run(context) {
-        const key = cooldownKey(GROQ_SERVICE, 1);
-        const ttl = Number(await upstash(context, ['TTL', key]));
-        const value = String(await upstash(context, ['GET', key]) ?? '');
+        const key = cooldownKey(GROQ_POOL.service, 1);
+        const ttl = await upstash(context, ['TTL', key], Ttl);
+        const value = (await upstash(context, ['GET', key], StoredValue)) ?? '';
         context.log(`${key}: ttl ${ttl}s, ${value.length} bytes`);
         if (ttl <= 0) return {status: 'fail', summary: `${key} has no live TTL (${ttl}); run the failover step first`};
-        const leaked = context.pool(GROQ_POOL).slots.some(({credential}) => value.includes(credential.reveal()));
+        const leaked = context.pool(GROQ_POOL.name).slots.some(({credential}) => value.includes(credential.reveal()));
         return leaked ? {status: 'fail', summary: `${key} contains key material`} : {status: 'pass', summary: `${key} expires in ${ttl}s and holds no key material`};
       },
     },

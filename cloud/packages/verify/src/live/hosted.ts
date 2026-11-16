@@ -1,4 +1,6 @@
 import {setTimeout as sleep} from 'node:timers/promises';
+import {ChatSchema, ErrorSchema, MessageSchema, PageSchema, RunSchema, RunSnapshotSchema, type Message, type RunSnapshot} from '@praxis/protocol';
+import type {z} from 'zod';
 import {API_REQUEST_TIMEOUT_MS} from '../constants.js';
 import type {StepContext, StepNeeds} from './types.js';
 
@@ -12,15 +14,8 @@ const RUN_POLL_INTERVAL_MS = 2_000;
 // Parked states count as settled: a live step asserts on them instead of waiting out the timeout.
 const SETTLED = new Set(['completed', 'failed', 'cancelled', 'awaitingApproval', 'awaitingElicitation']);
 
-export interface HostedResponse<T> {
-  status: number;
-  body: T;
-}
-
-export interface ErrorBody {
-  code?: string;
-  message?: string;
-}
+/** Accepted answers are parsed with the protocol schema; rejected ones with `ErrorSchema`, since steps assert on both. */
+export type HostedResult<T> = {ok: true; status: number; data: T} | {ok: false; status: number; error: z.infer<typeof ErrorSchema>};
 
 /** Merges the step's own needs with the hosted API's, so either missing skips the step. */
 export function withHosted(needs: StepNeeds = {}): StepNeeds {
@@ -37,8 +32,8 @@ function origin(context: StepContext): string {
   return url.origin;
 }
 
-/** Never throws on an HTTP error: live checks assert on rejected requests as often as on accepted ones. */
-export async function hosted<T = Record<string, unknown>>(context: StepContext, path: string, body?: unknown, method = body === undefined ? 'GET' : 'POST'): Promise<HostedResponse<T>> {
+/** Throws when a response violates the protocol: a malformed answer must fail the step, never pass it. */
+export async function hosted<S extends z.ZodType>(context: StepContext, path: string, schema: S, body?: unknown, method = body === undefined ? 'GET' : 'POST'): Promise<HostedResult<z.infer<S>>> {
   const response = await fetch(`${origin(context)}${path}`, {
     method,
     headers: {authorization: `Bearer ${context.secret(HOSTED_TOKEN).reveal()}`, ...(body === undefined ? {} : {'content-type': 'application/json'})},
@@ -46,43 +41,43 @@ export async function hosted<T = Record<string, unknown>>(context: StepContext, 
     redirect: 'error',
     signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
   });
-  const text = await response.text();
-  let parsed: unknown = {};
-  try {
-    parsed = text ? JSON.parse(text) : {};
-  } catch {
-    parsed = {message: text.slice(0, 500)};
-  }
   context.log(`${method} ${path} → ${response.status}`);
-  return {status: response.status, body: parsed as T};
+  const json: unknown = await response.json().catch(() => undefined);
+  if (!response.ok) {
+    const error = ErrorSchema.safeParse(json);
+    if (!error.success) throw new Error(`${method} ${path}: HTTP ${response.status} without a protocol error body`);
+    return {ok: false, status: response.status, error: error.data};
+  }
+  const parsed = schema.safeParse(json);
+  if (!parsed.success) throw new Error(`${method} ${path}: response violates the protocol: ${parsed.error.issues.map(issue => `${issue.path.join('.')} ${issue.message}`).join('; ')}`);
+  return {ok: true, status: response.status, data: parsed.data};
 }
 
-export interface HostedRun {
-  run: {id: string; status: string; outcome?: string; errorCode?: string; error?: string};
-  blocks: {type: string; text?: string}[];
-  usage?: {inputTokens: number; outputTokens: number; cost?: number};
+export function expectOk<T>(result: HostedResult<T>, what: string): T {
+  if (!result.ok) throw new Error(`${what} failed: HTTP ${result.status} ${result.error.code}: ${result.error.message}`);
+  return result.data;
 }
 
-async function newChat(context: StepContext, input: {modelId?: string; effort?: string}): Promise<string> {
-  const chat = await hosted<{id: string}>(context, '/v1/chats', {type: 'chat.input', title: 'praxis-verify live', ...(input.modelId ? {modelId: input.modelId} : {}), ...(input.effort ? {effort: input.effort} : {})});
-  if (chat.status >= 300) throw new Error(`creating a chat failed: HTTP ${chat.status}`);
-  return chat.body.id;
-}
+export type HostedTurn = RunSnapshot & {chatId: string};
 
 /** Starts a turn (in a fresh chat unless one is given) and polls its snapshot until it settles. */
-export async function hostedTurn(context: StepContext, input: {text: string; chatId?: string; modelId?: string; effort?: string}): Promise<HostedRun & {chatId: string}> {
-  const chatId = input.chatId ?? await newChat(context, input);
-  const started = await hosted<{id: string}>(context, '/v1/runs', {type: 'run.start', chatId, text: input.text});
-  if (started.status >= 300) throw new Error(`starting the run failed: HTTP ${started.status}`);
+export async function hostedTurn(context: StepContext, input: {text: string; chatId?: string; modelId?: string; effort?: string}): Promise<HostedTurn> {
+  const chatInput = {type: 'chat.input', title: 'praxis-verify live', ...(input.modelId ? {modelId: input.modelId} : {}), ...(input.effort ? {effort: input.effort} : {})};
+  const chatId = input.chatId ?? expectOk(await hosted(context, '/v1/chats', ChatSchema, chatInput), 'creating a chat').id;
+  const run = expectOk(await hosted(context, '/v1/runs', RunSchema, {type: 'run.start', chatId, text: input.text}), 'starting the run');
   const deadline = Date.now() + RUN_SETTLE_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const snapshot = await hosted<HostedRun>(context, `/v1/runs/${started.body.id}/snapshot`);
-    if (snapshot.status === 200 && SETTLED.has(snapshot.body.run.status)) return {...snapshot.body, chatId};
+    const snapshot = expectOk(await hosted(context, `/v1/runs/${run.id}/snapshot`, RunSnapshotSchema), 'reading the run snapshot');
+    if (SETTLED.has(snapshot.run.status)) return {...snapshot, chatId};
     await sleep(RUN_POLL_INTERVAL_MS);
   }
-  throw new Error(`run ${started.body.id} did not settle within ${RUN_SETTLE_TIMEOUT_MS} ms`);
+  throw new Error(`run ${run.id} did not settle within ${RUN_SETTLE_TIMEOUT_MS} ms`);
 }
 
-export function replyText(run: HostedRun): string {
-  return run.blocks.filter(block => block.type === 'text').map(block => block.text ?? '').join('');
+export async function chatMessages(context: StepContext, chatId: string): Promise<Message[]> {
+  return expectOk(await hosted(context, `/v1/chats/${chatId}/messages`, PageSchema(MessageSchema)), 'reading chat messages').items;
+}
+
+export function replyText(run: RunSnapshot): string {
+  return run.blocks.filter(block => block.type === 'text').map(block => block.text).join('');
 }

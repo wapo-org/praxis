@@ -1,7 +1,8 @@
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {CLOUD_DIR, HOSTED_API_URL, defineSuite, hosted, hostedTurn, replyText, runCommand, withHosted, type ErrorBody, type StepContext} from '@praxis/verify';
+import {ModelKeySchema, PageSchema, ModelListItemSchema} from '@praxis/protocol';
+import {CLOUD_DIR, HOSTED_API_URL, chatMessages, defineSuite, expectOk, hosted, hostedTurn, replyText, runCommand, withHosted, type HostedResult, type HostedTurn, type StepContext, type StepOutcome} from '@praxis/verify';
 
 /** A funded key on the live-check account; every auto step that needs a working model reads it. */
 const LIVE_KEY = 'OPENROUTER_LIVE_KEY';
@@ -11,14 +12,27 @@ const SMOKE_KEY = 'SMOKE_OPENROUTER_KEY';
 const WEB_URL = 'PRAXIS_LIVE_WEB_URL';
 /** A Claude model with tools and reasoning in the curated list; change it here when the curated list moves. */
 const CLAUDE_MODEL = 'anthropic/claude-sonnet-5.5';
-const TOOL_PROMPT = 'Use the JavaScript tool to compute 6 * 7, then answer with the number only.';
+const TOOL_PROMPT = 'You must call the JavaScript tool to compute 6 * 7; do not answer from memory. Then answer with the number only.';
+const MODEL_KEY_PATH = '/v1/model-key';
 
 async function connect(context: StepContext, secretName: string) {
-  return hosted<ErrorBody & {maskedKey?: string}>(context, '/v1/model-key', {method: 'paste', apiKey: context.secret(secretName).reveal()});
+  return hosted(context, MODEL_KEY_PATH, ModelKeySchema, {method: 'paste', apiKey: context.secret(secretName).reveal()});
 }
 
-function rejected(response: {status: number; body: ErrorBody}, expected: string) {
-  return response.status === 400 && response.body.code === expected;
+function expectRejected(result: HostedResult<unknown>, quoting?: RegExp): StepOutcome {
+  if (result.ok) return {status: 'fail', summary: `expected 400 model_key_rejected, the key was accepted (HTTP ${result.status})`};
+  const ok = result.status === 400 && result.error.code === 'model_key_rejected' && (!quoting || quoting.test(result.error.message));
+  return ok ? {status: 'pass', summary: result.error.message} : {status: 'fail', summary: `expected 400 model_key_rejected${quoting ? ' quoting OpenRouter' : ''}, got ${result.status} ${result.error.code}`};
+}
+
+/** Tool, reasoning and the persisted reasoning part that the next turn replays; each is observed, not inferred from the answer. */
+function toolTurnProblems(turn: HostedTurn): string[] {
+  const problems: string[] = [];
+  if (turn.run.status !== 'completed') problems.push(`run ended ${turn.run.status} ${turn.run.errorCode ?? ''}`.trim());
+  if (!turn.tools.some(tool => tool.completion?.status === 'succeeded')) problems.push('no tool call succeeded');
+  if (!turn.blocks.some(block => block.type === 'reasoning')) problems.push('no reasoning block');
+  if (!replyText(turn).includes('42')) problems.push(`answer lacks 42: "${replyText(turn).slice(0, 80)}"`);
+  return problems;
 }
 
 export default defineSuite({
@@ -40,8 +54,7 @@ export default defineSuite({
       checklist: 'Paste a non-OpenRouter key: model_key_rejected.',
       needs: withHosted(),
       async run(context) {
-        const response = await hosted<ErrorBody>(context, '/v1/model-key', {method: 'paste', apiKey: `gsk_${'0'.repeat(40)}`});
-        return rejected(response, 'model_key_rejected') ? {status: 'pass', summary: response.body.message ?? 'rejected'} : {status: 'fail', summary: `expected 400 model_key_rejected, got ${response.status} ${response.body.code ?? ''}`};
+        return expectRejected(await hosted(context, MODEL_KEY_PATH, ModelKeySchema, {method: 'paste', apiKey: `gsk_${'0'.repeat(40)}`}));
       },
     },
     {
@@ -50,9 +63,7 @@ export default defineSuite({
       checklist: 'Paste a revoked key: model_key_rejected with OpenRouter\'s text.',
       needs: withHosted({secrets: [REVOKED_KEY]}),
       async run(context) {
-        const response = await connect(context, REVOKED_KEY);
-        const ok = rejected(response, 'model_key_rejected') && /OpenRouter said:/.test(response.body.message ?? '');
-        return ok ? {status: 'pass', summary: response.body.message ?? 'rejected'} : {status: 'fail', summary: `expected model_key_rejected quoting OpenRouter, got ${response.status} ${response.body.code ?? ''}`};
+        return expectRejected(await connect(context, REVOKED_KEY), /OpenRouter said:/);
       },
     },
     {
@@ -61,11 +72,10 @@ export default defineSuite({
       checklist: 'Paste a real key and it connects.',
       needs: withHosted({secrets: [LIVE_KEY]}),
       async run(context) {
-        const response = await connect(context, LIVE_KEY);
-        if (response.status !== 200) return {status: 'fail', summary: `connect answered ${response.status} ${response.body.code ?? ''}`};
-        const stored = await hosted<{maskedKey?: string; lastError?: string}>(context, '/v1/model-key');
-        context.attach('model-key.json', JSON.stringify(stored.body, null, 2));
-        return stored.body.maskedKey && !stored.body.lastError ? {status: 'pass', summary: `connected as ${stored.body.maskedKey}`} : {status: 'fail', summary: 'the stored key is missing or flagged'};
+        expectOk(await connect(context, LIVE_KEY), 'connecting the live key');
+        const stored = expectOk(await hosted(context, MODEL_KEY_PATH, ModelKeySchema), 'reading the stored key');
+        context.attach('model-key.json', JSON.stringify(stored, null, 2));
+        return stored.lastError ? {status: 'fail', summary: `stored key is flagged: ${stored.lastError}`} : {status: 'pass', summary: `connected as ${stored.maskedKey}`};
       },
     },
     {
@@ -74,10 +84,10 @@ export default defineSuite({
       checklist: 'A real chat turn on the default model.',
       needs: withHosted({secrets: [LIVE_KEY]}),
       async run(context) {
-        const run = await hostedTurn(context, {text: 'Reply with the single word: pong'});
-        context.state.set('defaultRun', JSON.stringify({id: run.run.id, usage: run.usage ?? null}));
-        const text = replyText(run);
-        return run.run.status === 'completed' && text.trim() ? {status: 'pass', summary: `run ${run.run.id} completed: "${text.slice(0, 80)}"`} : {status: 'fail', summary: `run ${run.run.id} ended ${run.run.status} ${run.run.errorCode ?? ''}`};
+        const turn = await hostedTurn(context, {text: 'Reply with the single word: pong'});
+        context.state.set('defaultRun', JSON.stringify({id: turn.run.id, cost: turn.usage?.cost ?? null}));
+        const text = replyText(turn);
+        return turn.run.status === 'completed' && text.trim() ? {status: 'pass', summary: `run ${turn.run.id} completed: "${text.slice(0, 80)}"`} : {status: 'fail', summary: `run ${turn.run.id} ended ${turn.run.status} ${turn.run.errorCode ?? ''}`};
       },
     },
     {
@@ -88,8 +98,8 @@ export default defineSuite({
       async run(context) {
         const recorded = context.state.get('defaultRun');
         if (!recorded) return {status: 'fail', summary: 'chat-turn did not record a run; run it first'};
-        const {id, usage} = JSON.parse(recorded) as {id: string; usage: {cost?: number} | null};
-        return typeof usage?.cost === 'number' ? {status: 'pass', summary: `run ${id} cost ${usage.cost}`} : {status: 'fail', summary: `run ${id} snapshot has no usage.cost`};
+        const {id, cost} = JSON.parse(recorded) as {id: string; cost: number | null};
+        return typeof cost === 'number' ? {status: 'pass', summary: `run ${id} cost ${cost}`} : {status: 'fail', summary: `run ${id} snapshot has no usage.cost`};
       },
     },
     {
@@ -99,10 +109,14 @@ export default defineSuite({
       needs: withHosted({secrets: [LIVE_KEY]}),
       async run(context) {
         const first = await hostedTurn(context, {text: TOOL_PROMPT, modelId: CLAUDE_MODEL, effort: 'high'});
-        if (first.run.status !== 'completed' || !replyText(first).includes('42')) return {status: 'fail', summary: `tool turn ended ${first.run.status} ${first.run.errorCode ?? ''}: "${replyText(first).slice(0, 80)}"`};
+        const problems = toolTurnProblems(first);
+        if (problems.length) return {status: 'fail', summary: `tool turn ${first.run.id}: ${problems.join('; ')}`};
+        const stored = (await chatMessages(context, first.chatId)).filter(message => message.role === 'assistant' && message.runId === first.run.id);
+        const replayable = stored.some(message => message.parts.some(part => part.type === 'reasoning' && !!(part.signature ?? part.data)));
+        if (!replayable) return {status: 'fail', summary: `run ${first.run.id} stored no signed reasoning part, so nothing can be replayed`};
         const second = await hostedTurn(context, {text: 'Which number did you compute? Answer with the number only.', chatId: first.chatId});
         const replayed = second.run.status === 'completed' && replyText(second).includes('42');
-        return replayed ? {status: 'pass', summary: `tool turn ${first.run.id} and follow-up ${second.run.id} completed on ${CLAUDE_MODEL}`} : {status: 'fail', summary: `follow-up ended ${second.run.status} ${second.run.errorCode ?? ''}`};
+        return replayed ? {status: 'pass', summary: `tool + reasoning turn ${first.run.id}, signed reasoning stored, follow-up ${second.run.id} completed on ${CLAUDE_MODEL}`} : {status: 'fail', summary: `follow-up with replayed reasoning ended ${second.run.status} ${second.run.errorCode ?? ''}`};
       },
     },
     {
@@ -119,11 +133,10 @@ export default defineSuite({
       checklist: 'A zero-credit key ends the run with model_credit_exhausted (402).',
       needs: withHosted({secrets: [ZERO_CREDIT_KEY, LIVE_KEY]}),
       async run(context) {
-        const connected = await connect(context, ZERO_CREDIT_KEY);
-        if (connected.status !== 200) return {status: 'fail', summary: `zero-credit key did not connect: ${connected.status} ${connected.body.code ?? ''}`};
+        expectOk(await connect(context, ZERO_CREDIT_KEY), 'connecting the zero-credit key');
         try {
-          const run = await hostedTurn(context, {text: 'Reply with the single word: pong'});
-          return run.run.errorCode === 'model_credit_exhausted' ? {status: 'pass', summary: `run ${run.run.id} ended model_credit_exhausted`} : {status: 'fail', summary: `run ${run.run.id} ended ${run.run.status} ${run.run.errorCode ?? ''}`};
+          const turn = await hostedTurn(context, {text: 'Reply with the single word: pong'});
+          return turn.run.errorCode === 'model_credit_exhausted' ? {status: 'pass', summary: `run ${turn.run.id} ended model_credit_exhausted`} : {status: 'fail', summary: `run ${turn.run.id} ended ${turn.run.status} ${turn.run.errorCode ?? ''}`};
         } finally {
           await connect(context, LIVE_KEY);
         }
@@ -135,9 +148,8 @@ export default defineSuite({
       checklist: 'The catalogue loads in production through the guarded fetch and the Upstash cache.',
       needs: withHosted(),
       async run(context) {
-        const response = await hosted<{items?: {id: string}[]}>(context, '/v1/models?limit=5');
-        const count = response.body.items?.length ?? 0;
-        return response.status === 200 && count > 0 ? {status: 'pass', summary: `catalogue served ${count} models on the first page`} : {status: 'fail', summary: `catalogue answered ${response.status} with ${count} models`};
+        const page = expectOk(await hosted(context, '/v1/models?limit=5', PageSchema(ModelListItemSchema)), 'listing models');
+        return page.items.length ? {status: 'pass', summary: `catalogue served ${page.items.length} models on the first page`} : {status: 'fail', summary: 'catalogue answered with no models'};
       },
     },
     {

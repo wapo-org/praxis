@@ -7,6 +7,8 @@ import {describeIssue, unexpectedIssues, type BrowserIssue} from './judge.js';
 
 export interface FlowResult {
   id: string;
+  /** What the flow proves, so run.json reads without the source. */
+  title: string;
   ok: boolean;
   ms: number;
   error?: string;
@@ -89,6 +91,7 @@ async function runFlow(browser: Browser, flow: WebFlow, options: HarnessOptions)
   writeFileSync(issuesFile, `${JSON.stringify({issues, unexpected, allow: flow.allow.map(rule => ({...rule, pattern: rule.pattern.source}))}, null, 2)}\n`);
   return {
     id: flow.id,
+    title: flow.title,
     ok: !error && unexpected.length === 0,
     ms: Date.now() - started,
     ...(error ? {error} : {}),

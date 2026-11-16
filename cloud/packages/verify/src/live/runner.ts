@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {basename, join} from 'node:path';
 import {pool, type CredentialPool} from '@praxis/credentials';
 import {SealedSecret} from '@praxis/types';
@@ -55,6 +55,22 @@ export function suiteRedactor(suite: LiveSuite, env: LiveRunOptions['env']): Red
   return redactor;
 }
 
+/** Media a redactor cannot read; anything else binary is refused, because it might carry a key we cannot scrub. */
+const BINARY_EVIDENCE = /\.(png|jpe?g|gif|webp|heic|mp4|mov|webm|pdf)$/i;
+
+/** Text is redacted before it is written or hashed; the hash then proves the redacted copy. */
+export function evidenceBytes(name: string, bytes: Uint8Array, redactor: Redactor): Uint8Array {
+  let text: string | undefined;
+  try {
+    text = new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+  } catch {
+    text = undefined;
+  }
+  if (text !== undefined && !text.includes('\0')) return new TextEncoder().encode(redactor.apply(text));
+  if (BINARY_EVIDENCE.test(name)) return bytes;
+  throw new Error(`evidence ${name} is binary and not an image, video or PDF, so it cannot be redacted; attach it as text or media`);
+}
+
 function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
@@ -81,7 +97,8 @@ function context(step: LiveStep, options: LiveRunOptions, redactor: Redactor, lo
     attach: (name, content) => {
       const relativePath = join('evidence', `${step.id}-${basename(name)}`);
       mkdirSync(join(options.directory, 'evidence'), {recursive: true});
-      writeFileSync(join(options.directory, relativePath), typeof content === 'string' ? redactor.apply(content) : content);
+      const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
+      writeFileSync(join(options.directory, relativePath), evidenceBytes(name, bytes, redactor));
       evidence.push(fileEvidence(options.directory, relativePath));
     },
     state,
@@ -97,7 +114,7 @@ function manualEvidence(step: LiveStep & {kind: 'manual'}, value: string, option
   if (!existsSync(value)) throw new Error(`evidence file for ${step.id} not found: ${value}`);
   const relativePath = join('evidence', `${step.id}-${basename(value)}`);
   mkdirSync(join(options.directory, 'evidence'), {recursive: true});
-  copyFileSync(value, join(options.directory, relativePath));
+  writeFileSync(join(options.directory, relativePath), evidenceBytes(value, readFileSync(value), redactor));
   return fileEvidence(options.directory, relativePath);
 }
 
@@ -124,6 +141,11 @@ async function runStep(step: LiveStep, options: LiveRunOptions, redactor: Redact
   }
 }
 
+function notSelected(step: LiveStep, options: LiveRunOptions): ProofStep {
+  const at = (options.now ?? (() => new Date()))().toISOString();
+  return {id: step.id, kind: step.kind, checklist: step.checklist, needs: needNames(step.needs), evidence: [], log: [], startedAt: at, finishedAt: at, status: 'skipped', reason: 'not selected (--only)'};
+}
+
 /** Runs steps in order (later steps may read earlier state) and writes a schema-checked, redacted proof.json. */
 export async function runSuite(suite: LiveSuite, options: LiveRunOptions): Promise<{proof: Proof; path: string}> {
   const now = options.now ?? (() => new Date());
@@ -135,8 +157,9 @@ export async function runSuite(suite: LiveSuite, options: LiveRunOptions): Promi
   const state = new Map<string, string>();
   const steps: ProofStep[] = [];
   for (const step of suite.steps) {
-    if (options.only?.length && !options.only.includes(step.id)) continue;
-    steps.push(await runStep(step, options, redactor, state));
+    // Unselected steps stay in the proof as skipped, so a partial run can never read as complete.
+    if (options.only?.length && !options.only.includes(step.id)) steps.push(notSelected(step, options));
+    else steps.push(await runStep(step, options, redactor, state));
   }
   const proof = ProofSchema.parse({
     $schema: PROOF_SCHEMA,

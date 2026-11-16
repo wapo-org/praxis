@@ -32,6 +32,9 @@ A suite is `export default defineSuite({id, issue, title, steps})` in `cloud/ver
 - `secrets` are read as `SealedSecret` and seeded into the redactor; `config` holds non-secret values (URLs, project ids); `pools` are `@praxis/credentials` pools read with production's `NAME`, `NAME_2`… rules.
 - An unmet need **skips** the step with `missing credential X`; it never passes.
 - `auto` steps run code; `manual` steps carry an instruction and wait for `--evidence step=<file|url>`.
+- Text evidence (manual files and `attach()`ed bytes alike) is redacted before it is written and hashed. Binary evidence is accepted only as image, video or PDF, which a human must check for secrets; any other binary is refused.
+- `--only` runs a subset; the remaining steps are recorded as `skipped` with `not selected (--only)`, so a partial run is never `complete`.
+- Hosted responses are parsed with the `@praxis/protocol` schemas (`RunSnapshotSchema`, `ErrorSchema`, …): a malformed answer fails the step.
 - A step that reads an env value it did not declare fails.
 
 Hosted steps use `PRAXIS_LIVE_API_URL` (https origin) and `PRAXIS_LIVE_TOKEN` (a session bearer of a throwaway live-check account).
