@@ -1,0 +1,62 @@
+name: Cloud
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cloud-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    name: Cloud / ${{ matrix.check }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [typecheck, tests, web-build, api-build, comments, audit]
+        include:
+          - check: typecheck
+            command: npm --prefix cloud run typecheck
+          - check: tests
+            command: npm --prefix cloud test -- --reporter=default --reporter=json --outputFile=test-results.json
+          - check: web-build
+            command: npm --prefix cloud run build -w @praxis/web
+          - check: api-build
+            command: npm --prefix cloud run build -w @praxis/api
+          - check: comments
+            command: node cloud/scripts/comment-sweep.mjs check
+          - check: audit
+            command: npm --prefix cloud audit --omit=dev --audit-level=high
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+      - run: npm install --global npm@11
+      - run: npm --prefix cloud ci
+      - run: ${{ matrix.command }}
+      - name: Fail on new skipped tests
+        if: matrix.check == 'tests'
+        env:
+          # Live-service suites (Convex, Upstash, storage, semantic search) skip without credentials; never raise this.
+          MAX_SKIPPED_TESTS: "12"
+        run: |
+          node --input-type=module - <<'JS'
+          import { readFileSync } from 'node:fs';
+          const results = JSON.parse(readFileSync('cloud/test-results.json', 'utf8'));
+          const skipped = results.numPendingTests + results.numTodoTests;
+          const max = Number(process.env.MAX_SKIPPED_TESTS);
+          console.log(`skipped/todo tests: ${skipped} (max ${max})`);
+          if (skipped > max) throw new Error(`New skipped/todo tests: ${skipped} > ${max}. Make them run or gate them on live credentials explicitly.`);
+          JS
+      - name: Check architectural rules when available
+        if: matrix.check == 'comments' && hashFiles('cloud/scripts/check-rules.mjs') != ''
+        run: npm --prefix cloud run check:rules
