@@ -1,0 +1,73 @@
+{
+  "name": "owner-from-body",
+  "gates": [],
+  "sessions": {
+    "abstractions": {
+      "session": "abstractions",
+      "findings": [
+        {
+          "rule_id": "R4.boundary-parse",
+          "file": "cloud/apps/api/src/features/media/share-routes.ts",
+          "line": 1,
+          "evidence": "the body is not validated properly",
+          "failure_scenario": "Unvalidated input reaches the store and could break things.",
+          "suggestion": null,
+          "confidence": "medium",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    },
+    "maintainability": {
+      "session": "maintainability",
+      "findings": [
+        {
+          "rule_id": "G.linear-contradiction",
+          "file": "cloud/apps/api/src/features/media/share-routes.ts",
+          "line": 8,
+          "evidence": "app.post('/v1/files/share', async (c) => {",
+          "failure_scenario": "PRA-41 says routes should move to Convex, so this route contradicts the plan.",
+          "suggestion": null,
+          "confidence": "medium",
+          "linear_issue": "PRA-41",
+          "linear_quote": null
+        }
+      ]
+    },
+    "conciseness": {
+      "session": "conciseness",
+      "findings": []
+    },
+    "logic_bs": {
+      "session": "logic_bs",
+      "findings": []
+    },
+    "security": {
+      "session": "security",
+      "findings": [
+        {
+          "rule_id": "R5.owner-from-auth",
+          "file": "cloud/apps/api/src/features/media/share-routes.ts",
+          "line": 9,
+          "evidence": "const { userId, fileId } = ShareRequestSchema.parse(await c.req.json());",
+          "failure_scenario": "A signed-in user can send another user's id in the body and get a share link for that user's file.",
+          "suggestion": "Could the owner come from the verified session?",
+          "confidence": "high",
+          "linear_issue": null,
+          "linear_quote": null
+        },
+        {
+          "rule_id": "R5.secret-leak",
+          "file": "cloud/apps/api/src/features/media/share-routes.ts",
+          "line": 11,
+          "evidence": "return c.json({ link });",
+          "failure_scenario": "The share link is returned to the client and could maybe be considered sensitive.",
+          "suggestion": null,
+          "confidence": "low",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    }
+  }
+}

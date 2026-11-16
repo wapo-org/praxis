@@ -1,0 +1,50 @@
+{
+  "name": "clean-refactor",
+  "gates": [],
+  "sessions": {
+    "abstractions": {
+      "session": "abstractions",
+      "findings": []
+    },
+    "maintainability": {
+      "session": "maintainability",
+      "findings": []
+    },
+    "conciseness": {
+      "session": "conciseness",
+      "findings": [
+        {
+          "rule_id": "G.duplicate-logic",
+          "file": "cloud/packages/sync/src/chunk.ts",
+          "line": 1,
+          "evidence": "the function duplicates lodash chunk",
+          "failure_scenario": "There is already a chunk function in lodash that does this.",
+          "suggestion": null,
+          "confidence": "medium",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    },
+    "logic_bs": {
+      "session": "logic_bs",
+      "findings": [
+        {
+          "rule_id": "CORRECTNESS",
+          "file": "cloud/packages/sync/src/chunk.ts",
+          "line": 8,
+          "evidence": "for (let start = 0; start < items.length; start += size) {",
+          "failure_scenario": "This loop might be slow for very large lists and could potentially be optimized.",
+          "suggestion": null,
+          "confidence": "low",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    },
+    "security": {
+      "session": "security",
+      "findings": []
+    }
+  }
+}

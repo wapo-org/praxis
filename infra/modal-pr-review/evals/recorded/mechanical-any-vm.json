@@ -1,0 +1,70 @@
+{
+  "name": "mechanical-any-vm",
+  "gates": [
+    {
+      "key": "check-rules",
+      "rule_id": "GATE.check-rules",
+      "status": "failed",
+      "findings": [
+        {
+          "rule_id": "R5.banned-primitives",
+          "file": "cloud/apps/api/src/features/tools/run-snippet.ts",
+          "line": 1,
+          "message": "import \"node:vm\" is banned in apps/api"
+        },
+        {
+          "rule_id": "R4.no-any",
+          "file": "cloud/apps/api/src/features/tools/run-snippet.ts",
+          "line": 3,
+          "message": "raw `any`: use a real type, `unknown` plus a parse, or a generic"
+        }
+      ]
+    }
+  ],
+  "sessions": {
+    "abstractions": {
+      "session": "abstractions",
+      "findings": [
+        {
+          "rule_id": "R4.no-any",
+          "file": "cloud/apps/api/src/features/tools/run-snippet.ts",
+          "line": 3,
+          "evidence": "export function runSnippet(code: string, context: any): unknown {",
+          "failure_scenario": "The any type removes type checking for the context value.",
+          "suggestion": null,
+          "confidence": "high",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    },
+    "maintainability": {
+      "session": "maintainability",
+      "findings": []
+    },
+    "conciseness": {
+      "session": "conciseness",
+      "findings": []
+    },
+    "logic_bs": {
+      "session": "logic_bs",
+      "findings": []
+    },
+    "security": {
+      "session": "security",
+      "findings": [
+        {
+          "rule_id": "R5.banned-primitives",
+          "file": "cloud/apps/api/src/features/tools/run-snippet.ts",
+          "line": 1,
+          "evidence": "import vm from 'node:vm';",
+          "failure_scenario": "The vm module is banned in apps/api and allows code execution.",
+          "suggestion": null,
+          "confidence": "high",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    }
+  }
+}

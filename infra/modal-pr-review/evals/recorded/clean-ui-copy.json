@@ -1,0 +1,38 @@
+{
+  "name": "clean-ui-copy",
+  "gates": [],
+  "sessions": {
+    "abstractions": {
+      "session": "abstractions",
+      "findings": [
+        {
+          "rule_id": "R2.shared-constant",
+          "file": "cloud/apps/web/src/components/EmptyHistory.tsx",
+          "line": 4,
+          "evidence": "<h2>No chats yet</h2>",
+          "failure_scenario": "User-facing strings are hard-coded and should be moved to a constants module.",
+          "suggestion": null,
+          "confidence": "low",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    },
+    "maintainability": {
+      "session": "maintainability",
+      "findings": []
+    },
+    "conciseness": {
+      "session": "conciseness",
+      "findings": []
+    },
+    "logic_bs": {
+      "session": "logic_bs",
+      "findings": []
+    },
+    "security": {
+      "session": "security",
+      "findings": []
+    }
+  }
+}
