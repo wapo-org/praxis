@@ -1,6 +1,7 @@
 import type { Message } from '@praxis/protocol';
 import React from 'react';
-import { apiClient } from '../lib/api';
+import { apiClient, PraxisApiError } from '../lib/api';
+import { isScriptedModel } from '../lib/models';
 
 import type { useChatActions } from './useChatActions';
 import type { PraxisState } from './usePraxisState';
@@ -18,9 +19,8 @@ export function useSendActions(
     setChats,
     activeChatId,
     setMessagesByChat,
-    models,
     attachmentsById,
-    selectedProviderId,
+    setActiveSheet,
     selectedModelId,
     webSearch,
     selectedEffort,
@@ -44,7 +44,8 @@ export function useSendActions(
           | 'compaction'
           | 'vision';
       },
-    ) => {
+    ): Promise<boolean> => {
+      // Resolves false only when the connect card was opened instead of sending.
       setErrorBanner(null);
       let targetChatId = activeChatId;
       if (!targetChatId) {
@@ -81,7 +82,7 @@ export function useSendActions(
 
       // Infer script in local mode from prompt keywords if not explicitly provided
       let inferredScript = options?.script;
-      if (!inferredScript && selectedProviderId === 'scripted') {
+      if (!inferredScript && isScriptedModel(selectedModelId)) {
         const lower = text.toLowerCase();
         if (lower.includes('nested approval')) inferredScript = 'nestedApproval';
         else if (lower.includes('approval') || lower.includes('approve'))
@@ -103,14 +104,10 @@ export function useSendActions(
         const run = await apiClient.startRun({
           chatId: targetChatId,
           text,
-          providerId: selectedProviderId,
           modelId: selectedModelId,
           mode: selectedMode,
           effort: selectedEffort,
-          webSearch:
-            webSearch &&
-            !!models.find((m) => m.id === selectedModelId && m.providerId === selectedProviderId)
-              ?.capabilities.serverWebSearch,
+          webSearch,
           attachmentIds: options?.attachmentIds ?? [],
           clientTurnId,
           idempotencyKey: clientTurnId,
@@ -141,9 +138,22 @@ export function useSendActions(
             setErrorBanner(err instanceof Error ? err.message : 'Unable to refresh title'),
           );
         attachRunStream(run, 0);
+        return true;
       } catch (err) {
+        if (err instanceof PraxisApiError && err.code === 'model_key_missing') {
+          // The server found no key (another client removed it): take the optimistic message back and
+          // show the connect card, not an error.
+          setMessagesByChat((prev) => ({
+            ...prev,
+            [targetChatId!]: (prev[targetChatId!] ?? []).filter((m) => m.id !== optimisticUserMsg.id),
+          }));
+          state.setModelKey(null);
+          setActiveSheet('models');
+          return false;
+        }
         const msg = err instanceof Error ? err.message : 'Failed to start run';
         setErrorBanner(msg);
+        return true;
       }
     },
     [
@@ -151,12 +161,10 @@ export function useSendActions(
       createNewChat,
       chats,
       attachmentsById,
-      selectedProviderId,
       selectedModelId,
       selectedMode,
       selectedEffort,
       webSearch,
-      models,
       attachRunStream,
     ],
   );

@@ -79,12 +79,12 @@ export type Message = z.infer<typeof MessageSchema>;
 export const ConversationSetupSchema = z.object({type:z.literal('conversation.setup'),system:z.string(),tools:z.array(ToolSpecSchema),hiddenTools:z.array(ToolSpecSchema).optional(),skillCatalog:z.string(),connectorIds:z.array(IdSchema),createdAt:TimestampSchema});
 export type ConversationSetup = z.infer<typeof ConversationSetupSchema>;
 export const ChatSchema = z.object({
-  type:z.literal('chat'),id:IdSchema,pinned:z.boolean().default(false),title:z.string(),mode:ModeSchema,providerId:IdSchema.optional(),modelId:z.string().optional(),effort:z.string().optional(),
+  type:z.literal('chat'),id:IdSchema,pinned:z.boolean().default(false),title:z.string(),mode:ModeSchema,modelId:z.string().optional(),effort:z.string().optional(),
   connectorIds:z.array(IdSchema).default([]),disabledConnectorIds:z.array(IdSchema).default([]),
   setup:ConversationSetupSchema.optional(),createdAt:TimestampSchema,updatedAt:TimestampSchema,deletedAt:TimestampSchema.optional(),activeRunId:IdSchema.optional(),
 });
 export type Chat = z.infer<typeof ChatSchema>;
-export const ChatInputSchema = z.object({type:z.literal('chat.input'),id:IdSchema.optional(),pinned:z.boolean().optional(),title:z.string().max(300).default('New chat'),mode:ModeSchema.default('build'),providerId:IdSchema.optional(),modelId:z.string().optional(),effort:z.string().optional(),connectorIds:z.array(IdSchema).default([]),disabledConnectorIds:z.array(IdSchema).default([])});
+export const ChatInputSchema = z.object({type:z.literal('chat.input'),id:IdSchema.optional(),pinned:z.boolean().optional(),title:z.string().max(300).default('New chat'),mode:ModeSchema.default('build'),modelId:z.string().optional(),effort:z.string().optional(),connectorIds:z.array(IdSchema).default([]),disabledConnectorIds:z.array(IdSchema).default([])});
 export const ChatPatchSchema = ChatInputSchema.partial().extend({type:z.literal('chat.patch')});
 export const RunStatusSchema = z.enum(['queued','running','awaitingApproval','awaitingElicitation','continuing','completed','cancelled','failed']);
 export const RunOutcomeSchema = z.enum(['completed','truncated','maxIterations','refused','cancelled','failed']);
@@ -92,7 +92,7 @@ export const RunSchema = z.object({type:z.literal('run'),id:IdSchema,chatId:IdSc
 export type Run = z.infer<typeof RunSchema>;
 export const StartRunSchema = z.object({
   type:z.literal('run.start'),chatId:IdSchema,text:z.string().max(200000).default(''),
-  providerId:IdSchema.optional(),modelId:z.string().optional(),mode:ModeSchema.optional(),effort:z.string().optional(),
+  modelId:z.string().optional(),mode:ModeSchema.optional(),effort:z.string().optional(),
   attachmentIds:z.array(IdSchema).default([]),webSearch:z.boolean().default(false),idempotencyKey:IdSchema.optional(),clientTurnId:IdSchema.optional(),
   script:z.enum(['text','tools','approval','nestedApproval','elicitation','elicitationURL','error','long','compaction','vision']).optional(),
 });
@@ -157,12 +157,12 @@ export const UserSchema = z.object({type:z.literal('user'),id:IdSchema,name:z.st
 export type User = z.infer<typeof UserSchema>;
 export const SessionSchema = z.object({type:z.literal('session'),user:UserSchema,expiresAt:TimestampSchema,bearerToken:z.string().optional()});
 export const AuthInputSchema = z.object({type:z.literal('auth.input'),email:z.string().email(),password:z.string().min(12).max(256),name:z.string().max(100).optional()});
-export const PreferencesSchema = z.object({type:z.literal('preferences'),vision:z.object({type:z.literal('vision.preferences').default('vision.preferences'),providerId:IdSchema.optional(),modelId:z.string().optional(),enabled:z.boolean().default(true)}),voice:z.object({type:z.literal('voice.preferences').default('voice.preferences'),model:z.string().default('whisper-large-v3-turbo'),language:z.string().optional(),configured:z.boolean().default(false)}),updatedAt:TimestampSchema});
-export const PreferencesInputSchema = z.object({type:z.literal('preferences.input'),vision:z.object({providerId:IdSchema.optional(),modelId:z.string().optional(),enabled:z.boolean().optional()}).optional(),voice:z.object({model:z.string().optional(),language:z.string().optional(),apiKey:z.string().optional()}).optional()});
+export const PreferencesSchema = z.object({type:z.literal('preferences'),vision:z.object({type:z.literal('vision.preferences').default('vision.preferences'),modelId:z.string().optional(),enabled:z.boolean().default(true)}),voice:z.object({type:z.literal('voice.preferences').default('voice.preferences'),model:z.string().default('whisper-large-v3-turbo'),language:z.string().optional(),configured:z.boolean().default(false)}),updatedAt:TimestampSchema});
+export const PreferencesInputSchema = z.object({type:z.literal('preferences.input'),vision:z.object({modelId:z.string().optional(),enabled:z.boolean().optional()}).optional(),voice:z.object({model:z.string().optional(),language:z.string().optional(),apiKey:z.string().optional()}).optional()});
 export const BootstrapSchema = z.object({type:z.literal('bootstrap'),protocolVersion:z.number().int(),user:UserSchema,chats:z.array(ChatSchema),modelKey:ModelKeySchema.optional(),modelPreferences:z.array(ModelPreferenceRecordSchema).default([]),connectors:z.array(ConnectorSchema),skills:z.array(SkillSchema),consents:z.array(ConsentSchema).optional(),registries:z.array(RegistrySchema).optional(),preferences:PreferencesSchema.optional(),activeRuns:z.array(RunSchema),syncCursor:z.string(),syncRoot:z.string(),serverTime:TimestampSchema,eventCursor:z.number().int().nonnegative().optional()});
 export type Bootstrap = z.infer<typeof BootstrapSchema>;
 export type UserEvent = z.infer<typeof UserEventSchema>;
-export const UserEventSchema = z.object({type:z.literal('user.event'),id:z.number().int().positive(),createdAt:TimestampSchema,entity:z.enum(['chat','message','run','provider','model','modelKey','modelPreference','connector','skill','consent','attachment']),entityId:IdSchema,operation:z.enum(['upsert','delete']),value:JsonValueSchema.optional(),syncCursor:z.string()});
+export const UserEventSchema = z.object({type:z.literal('user.event'),id:z.number().int().positive(),createdAt:TimestampSchema,entity:z.enum(['chat','message','run','modelKey','modelPreference','connector','skill','consent','attachment']),entityId:IdSchema,operation:z.enum(['upsert','delete']),value:JsonValueSchema.optional(),syncCursor:z.string()});
 export const PageQuerySchema = z.object({cursor:z.string().optional(),limit:z.coerce.number().int().min(1).max(100).default(50),q:z.string().max(500).optional()});
 export function PageSchema<T extends z.ZodType>(item:T){return z.object({type:z.literal('page'),items:z.array(item),nextCursor:z.string().nullable()});}
 export const SyncRequestSchema = z.object({type:z.literal('sync.request'),strategy:z.enum(['cursor','merkle']).default('cursor'),cursor:z.string().optional(),root:z.string().optional(),prefixes:z.array(z.string()).optional(),limit:z.number().int().min(1).max(1000).default(500)});
@@ -172,7 +172,7 @@ export const SyncResponseSchema = z.object({type:z.literal('sync.response'),stra
 export const ErrorSchema = z.object({type:z.literal('error'),code:z.string(),message:z.string(),requestId:z.string().optional(),details:JsonValueSchema.optional()});
 export const OkSchema = z.object({type:z.literal('ok')});
 export const ENDPOINTS = {
- bootstrap:'/v1/bootstrap',chats:'/v1/chats',runs:'/v1/runs',events:'/v1/events',providers:'/v1/providers',modelKey:'/v1/model-key',models:'/v1/models',connectors:'/v1/connectors',skills:'/v1/skills',registries:'/v1/skill-registries',uploads:'/v1/uploads',transcribe:'/v1/transcribe',sync:'/v1/sync',
+ bootstrap:'/v1/bootstrap',chats:'/v1/chats',runs:'/v1/runs',events:'/v1/events',modelKey:'/v1/model-key',models:'/v1/models',connectors:'/v1/connectors',skills:'/v1/skills',registries:'/v1/skill-registries',uploads:'/v1/uploads',transcribe:'/v1/transcribe',sync:'/v1/sync',
 } as const;
 
 // Additive client-review fields, v1. Snapshot is authoritative even after stream retention.

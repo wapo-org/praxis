@@ -1,16 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { localUploadPath, providerConsentHost } from './hosts';
+import { localUploadPath } from './hosts';
 import { PraxisApiClient } from './api';
-
-describe('REV-W2: provider consent uses the same host key as the API', () => {
-  it('keeps the port, so local providers like Ollama can be allowed', () => {
-    expect(providerConsentHost('http://localhost:11434/v1')).toBe('localhost:11434');
-    expect(providerConsentHost('https://API.Example.com/v1')).toBe('api.example.com');
-    expect(providerConsentHost('https://llm.example.com:443/v1')).toBe('llm.example.com');
-    expect(() => providerConsentHost('ftp://x.example')).toThrow('Invalid provider URL');
-  });
-});
 
 describe('REV-W2: uploads under dev:local through the Vite proxy carry auth', () => {
   afterEach(() => vi.unstubAllGlobals());

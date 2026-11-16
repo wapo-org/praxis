@@ -1,51 +1,32 @@
-import { type Model } from '../../lib/legacy-providers';
+import type { ModelListItem } from '@praxis/protocol';
 import React from 'react';
 import { Check, Eye } from '../../lib/icons';
 
+import { modelDetail } from '../../lib/models';
+import { useModelSearch } from '../../lib/useModelSearch';
 import { usePraxisStore } from '../../state/store.js';
 import {
   Card,
   ScreenBody,
+  ScreenButton,
   Section,
   TaskError,
   Toggle,
   useScreenTask,
 } from './ScreenUI.js';
-import { ChoiceChip } from './ScreenUI';
 import styles from './Screen.module.css';
 
 export function ImageReaderScreen() {
   const store = usePraxisStore();
   const task = useScreenTask();
   const [query, setQuery] = React.useState('');
-  const [providerId, setProviderId] = React.useState(
-    store.preferences?.vision.providerId ?? store.providers[0]?.id ?? '',
-  );
   const vision = store.preferences?.vision;
   const enabled = vision?.enabled ?? true;
-  const activeProvider = store.providers.some(
-    (provider) => provider.id === providerId,
-  )
-    ? providerId
-    : store.providers[0]?.id;
-  const models = store.models.filter(
-    (model) =>
-      model.providerId === activeProvider &&
-      model.supportsImages !== false &&
-      `${model.displayName} ${model.id}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  );
-  const choose = (model: Model) => {
-    void task.run(() =>
-      store.updatePreferences({
-        vision: {
-          enabled: true,
-          providerId: model.providerId,
-          modelId: model.id,
-        },
-      }),
-    );
+  // The catalogue says which models take images; nothing is probed or guessed.
+  const search = useModelSearch(query, true, store.models);
+  const models = search.items.filter((model) => model.capabilities.images);
+  const choose = (model: ModelListItem) => {
+    void task.run(() => store.updatePreferences({ vision: { enabled: true, modelId: model.id } }));
   };
   return (
     <ScreenBody>
@@ -75,92 +56,52 @@ export function ImageReaderScreen() {
           />
         </Card>
       </Section>
-      {store.providers.length ? (
-        <>
-          <Section title="Provider">
-            <div className={styles.pillRow}>
-              {store.providers.map((provider) => (
-                <ChoiceChip
-                  key={provider.id}
-                  active={activeProvider === provider.id}
-                  onClick={() => setProviderId(provider.id)}
-                >
-                  {provider.name}
-                </ChoiceChip>
-              ))}
-            </div>
-          </Section>
-          <input
-            className={styles.search}
-            type="search"
-            aria-label="Search vision models"
-            placeholder="Search models…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          {(['verified', 'unverified'] as const).map((group) => {
-            const candidates = models.filter((model) =>
-              group === 'verified'
-                ? model.supportsImages === true
-                : model.supportsImages == null,
-            );
-            if (!candidates.length) return null;
-            return (
-              <Section
-                key={group}
-                title={
-                  group === 'verified'
-                    ? 'Verified vision support'
-                    : 'Unverified vision support'
-                }
-                hint={
-                  group === 'unverified'
-                    ? 'These models do not advertise image support. They may be unable to read images.'
-                    : undefined
-                }
-              >
-                <Card>
-                  {candidates.map((model) => (
-                    <button
-                      type="button"
-                      className={`${styles.row} ${styles.navRow}`}
-                      key={model.id}
-                      disabled={task.busy}
-                      aria-pressed={
-                        enabled &&
-                        vision?.providerId === model.providerId &&
-                        vision.modelId === model.id
-                      }
-                      onClick={() => choose(model)}
-                    >
-                      <Eye size={16} aria-hidden="true" />
-                      <span className={styles.rowCopy}>
-                        <span>{model.displayName}</span>
-                        <span className={styles.detail}>{model.id}</span>
-                      </span>
-                      {enabled &&
-                      vision?.providerId === model.providerId &&
-                      vision.modelId === model.id ? (
-                        <Check size={18} aria-label="Selected" />
-                      ) : null}
-                    </button>
-                  ))}
-                </Card>
-              </Section>
-            );
-          })}
-          {!models.length ? (
-            <p className={styles.empty}>
-              No image-reading models found. Refresh this provider’s models in
-              Settings or try another provider.
-            </p>
-          ) : null}
-        </>
-      ) : (
-        <p className={styles.empty}>
-          Add a provider in Settings to choose an image-reading model.
+      <input
+        className={styles.search}
+        type="search"
+        aria-label="Search vision models"
+        placeholder="Search models…"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      {search.error ? (
+        <p className={styles.error} role="alert">
+          {search.error}
         </p>
-      )}
+      ) : null}
+      {models.length ? (
+        <Section title="Models that read images">
+          <Card>
+            {models.map((model) => {
+              const selected = enabled && vision?.modelId === model.id;
+              return (
+                <button
+                  type="button"
+                  className={`${styles.row} ${styles.navRow}`}
+                  key={model.id}
+                  disabled={task.busy}
+                  aria-pressed={selected}
+                  onClick={() => choose(model)}
+                >
+                  <Eye size={16} aria-hidden="true" />
+                  <span className={styles.rowCopy}>
+                    <span>{model.name}</span>
+                    <span className={styles.detail}>{modelDetail(model)}</span>
+                  </span>
+                  {selected ? <Check size={18} aria-label="Selected" /> : null}
+                </button>
+              );
+            })}
+          </Card>
+        </Section>
+      ) : !search.busy && !search.error ? (
+        <p className={styles.empty}>No image-reading models found.</p>
+      ) : null}
+      {search.cursor ? (
+        <ScreenButton disabled={search.busy} onClick={search.loadMore}>
+          Load more models
+        </ScreenButton>
+      ) : null}
     </ScreenBody>
   );
 }

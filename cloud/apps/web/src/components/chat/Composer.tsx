@@ -3,7 +3,8 @@ import { Photo, Paperclip, X } from '../../lib/icons';
 import { useModelSearch } from '../../lib/useModelSearch';
 import React from 'react';
 import type { Attachment } from '@praxis/protocol';
-import { DotMeter, GlassSurface } from '@praxis/glass';
+import { GlassSurface } from '@praxis/glass';
+import { modelDetail } from '../../lib/models';
 import { usePraxisStore } from '../../state/store';
 import { PlusTray } from './PlusTray';
 import styles from './Composer.module.css';
@@ -13,8 +14,6 @@ export const Composer: React.FC = () => {
     setPlusTrayOpen,
     inlineModelSearchActive,
     setInlineModelSearchActive,
-    models,
-    selectedProviderId,
     selectedModelId,
     setSelectedModel,
     cacheModels,
@@ -72,18 +71,24 @@ export const Composer: React.FC = () => {
       const match = modelSearch.items[0];
       if (match) {
         cacheModels([match]);
-        setSelectedModel(match.providerId, match.id);
+        setSelectedModel(match.id);
       }
       setInlineModelSearchActive(false);
       setText('');
       return;
     }
 
+    const draft = { text, attachments: queuedAttachments };
     const attachmentIds = queuedAttachments.map((a) => a.id);
     setText('');
     setQueuedAttachments([]);
     setPlusTrayOpen(false);
-    await sendMessage(trimmed || 'Attached files', { attachmentIds });
+    const sent = await sendMessage(trimmed || 'Attached files', { attachmentIds });
+    // No OpenRouter key yet: the connect card opened instead, so the draft stays in the composer.
+    if (!sent) {
+      setText((current) => current || draft.text);
+      setQueuedAttachments((current) => (current.length ? current : draft.attachments));
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -172,23 +177,22 @@ export const Composer: React.FC = () => {
           ) : null}
           {inlineMatchingModels.map((m) => (
             <button
-              key={`${m.providerId}-${m.id}`}
+              key={m.id}
               type="button"
               className={styles.modelRow}
               data-testid={`inline-model-option-${m.id}`}
-              data-selected={m.providerId === selectedProviderId && m.id === selectedModelId}
+              data-selected={m.id === selectedModelId}
               onClick={() => {
                 cacheModels([m]);
-                setSelectedModel(m.providerId, m.id);
+                setSelectedModel(m.id);
                 setInlineModelSearchActive(false);
                 setText('');
               }}
             >
               <span className={styles.modelCopy}>
-                <span className={styles.modelName}>{m.displayName}</span>
-                <span className={styles.modelDetail}>{m.tagline ?? m.providerId}</span>
+                <span className={styles.modelName}>{m.name}</span>
+                <span className={styles.modelDetail}>{modelDetail(m)}</span>
               </span>
-              {typeof m.speed === 'number' ? <DotMeter value={m.speed} /> : null}
             </button>
           ))}
         </GlassSurface>

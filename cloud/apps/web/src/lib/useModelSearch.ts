@@ -1,14 +1,15 @@
-import { ModelSchema, type Model } from './legacy-providers';
+import { ModelListItemSchema, type ModelListItem } from '@praxis/protocol';
 import React from 'react';
 
 import { apiClient } from './api';
 
 const PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 250;
-const key = (m: Pick<Model, 'providerId' | 'id'>) => `${m.providerId}\u0000${m.id}`;
+type Model = ModelListItem;
+const key = (m: Pick<Model, 'id'>) => m.id;
 
 /**
- * Server-backed model catalog. The list never empties while a request is in flight: `seed` is shown
+ * The OpenRouter catalogue, searched and paged on the server. The list never empties while a request is in flight: `seed` is shown
  * until the first page arrives, and the previous results stay up while a new query is loading.
  */
 export function useModelSearch(query: string, enabled: boolean, seed?: readonly Model[]) {
@@ -27,7 +28,7 @@ export function useModelSearch(query: string, enabled: boolean, seed?: readonly 
       const page = await apiClient.listModels({ q, cursor: next, limit: PAGE_SIZE });
       if (generation.current !== version) return;
       const valid = page.items.flatMap((value) => {
-        const result = ModelSchema.safeParse(value);
+        const result = ModelListItemSchema.safeParse(value);
         return result.success ? [result.data] : [];
       });
       setItems((previous) => {
@@ -65,7 +66,7 @@ export function useModelSearch(query: string, enabled: boolean, seed?: readonly 
     };
   }, [query, enabled, revision]);
   /** Apply a change to one model in place, so toggling a pin never resets the loaded pages. */
-  const patch = React.useCallback((updated: Pick<Model, 'providerId' | 'id'> & Partial<Model>) => {
+  const patch = React.useCallback((updated: Pick<Model, 'id'> & Partial<Model>) => {
     setItems((previous) =>
       previous.map((m) => (key(m) === key(updated) ? { ...m, ...updated } : m)),
     );

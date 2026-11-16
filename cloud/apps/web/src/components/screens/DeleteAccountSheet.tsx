@@ -36,7 +36,7 @@ export function DeleteAccountSheet({
           <h2 className={styles.heading}>Delete your account?</h2>
           <p className={styles.intro}>
             This permanently deletes your account on {server}: all chats and messages, runs,
-            attachments, skills, connectors and their sign-ins, provider keys, settings and
+            attachments, skills, connectors and their sign-ins, your OpenRouter key, settings and
             consents. Every device is signed out. This can’t be undone.
           </p>
           <label className={styles.field}>

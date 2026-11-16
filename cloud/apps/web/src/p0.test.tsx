@@ -60,8 +60,8 @@ it('propagates unavailable routes instead of fabricating successful entities', a
   );
   const c = new PraxisApiClient();
   const operations = [
-    () => c.testProvider('p'),
-    () => c.refreshProviderModels('p'),
+    () => c.checkModelKey(),
+    () => c.connectModelKey({ method: 'paste', apiKey: 'sk-or-v1-x' }),
     () => c.listConnectors(),
     () => c.createConnector({ name: 'Ghost', url: 'https://invalid.invalid' }),
     () => c.patchConnector('c', {}),

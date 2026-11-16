@@ -9,7 +9,7 @@ import {
 } from './ConnectorsScreen.js';
 import { ConsentsScreen } from './ConsentSheet.js';
 import { ImageReaderScreen } from './ImageReaderScreen.js';
-import { ProviderEditor } from './ProviderEditor.js';
+import { OpenRouterCallback } from './OpenRouterCallback.js';
 import { BackButton } from './ScreenUI.js';
 import screen from './Screen.module.css';
 import {
@@ -23,11 +23,11 @@ import { SkillBrowser, SkillImport, SkillsScreen } from './SkillsScreen.js';
 import { VoiceSettingsScreen } from './VoiceSettingsScreen.js';
 
 export type SettingsSheet = Exclude<NonNullable<ActiveSheet>, 'history'>;
-type Section = 'general' | 'providers' | 'connectors' | 'skills' | 'consents' | 'account' | 'developer';
+type Section = 'general' | 'models' | 'connectors' | 'skills' | 'consents' | 'account' | 'developer';
 
 const NAV: Array<{ sheet: Section; title: string; Icon: typeof Settings; devOnly?: boolean }> = [
   { sheet: 'general', title: 'General', Icon: Settings },
-  { sheet: 'providers', title: 'Models & providers', Icon: Star },
+  { sheet: 'models', title: 'Models', Icon: Star },
   { sheet: 'connectors', title: 'Connectors', Icon: Link },
   { sheet: 'skills', title: 'Skills', Icon: Sparkles },
   { sheet: 'consents', title: 'Data & privacy', Icon: Shield },
@@ -39,9 +39,9 @@ const NAV: Array<{ sheet: Section; title: string; Icon: typeof Settings; devOnly
 const PAGES: Record<Exclude<SettingsSheet, 'settings'>, { title: string; section: Section; parent?: SettingsSheet }> = {
   general: { title: 'General', section: 'general' },
   'voice-settings': { title: 'Voice input', section: 'general', parent: 'general' },
-  providers: { title: 'Models & providers', section: 'providers' },
-  'provider-editor': { title: 'Provider', section: 'providers', parent: 'providers' },
-  'image-reader': { title: 'Image reading model', section: 'providers', parent: 'providers' },
+  models: { title: 'Models', section: 'models' },
+  'openrouter-callback': { title: 'Connect OpenRouter', section: 'models', parent: 'models' },
+  'image-reader': { title: 'Image reading model', section: 'models', parent: 'models' },
   connectors: { title: 'Connectors', section: 'connectors' },
   'connector-add-url': { title: 'Add by URL', section: 'connectors', parent: 'connectors' },
   'connector-paste-config': { title: 'Paste a config', section: 'connectors', parent: 'connectors' },
@@ -63,13 +63,10 @@ function PageContent({ sheet, onOpenGlassLab }: { sheet: SettingsSheet; onOpenGl
     case 'settings':
     case 'general':
       return <GeneralSection />;
-    case 'providers':
+    case 'models':
       return <ModelsSection />;
-    case 'provider-editor':
-      if (store.editingProviderId && !store.hydrated) return <p role="status" className={screen.empty}>Loading provider…</p>;
-      if (store.editingProviderId && !store.providers.some((p) => p.id === store.editingProviderId))
-        return <p role="alert" className={screen.error}>Provider not found.</p>;
-      return <ProviderEditor key={store.editingProviderId ?? 'new-provider'} />;
+    case 'openrouter-callback':
+      return <OpenRouterCallback />;
     case 'image-reader':
       return <ImageReaderScreen />;
     case 'voice-settings':
@@ -111,9 +108,7 @@ export function SettingsModal({
   const store = usePraxisStore();
   const isRoot = sheet === 'settings';
   const page = isRoot ? PAGES.general : PAGES[sheet];
-  const provider = store.providers.find((p) => p.id === store.editingProviderId);
-  const title =
-    sheet === 'provider-editor' ? (provider?.name ?? 'Add provider') : page.title;
+  const title = page.title;
 
   const previous = React.useRef(sheet);
   const direction = depth(sheet) >= depth(previous.current) ? 'forward' : 'back';
@@ -169,13 +164,7 @@ export function SettingsModal({
             <BackButton className={styles.back} onClick={back} data-section-root="true" />
           )}
           <h1 className={styles.paneTitle}>{title}</h1>
-          {sheet === 'provider-editor' ? (
-            <button className={screen.textButton} type="submit" form="provider-editor-form">
-              Save
-            </button>
-          ) : (
-            done
-          )}
+          {done}
         </header>
         <div className={styles.page} key={sheet} data-direction={direction} data-testid="settings-page">
           <PageContent sheet={sheet} onOpenGlassLab={onOpenGlassLab} />

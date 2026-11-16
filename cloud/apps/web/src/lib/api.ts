@@ -1,8 +1,9 @@
-import { type Model, type Provider, ProviderTestResultSchema } from './legacy-providers';
-import type { LegacyBootstrap } from './legacy-providers';
 import type {
   Attachment,
   Bootstrap,
+  ModelKey,
+  ModelListItem,
+  ModelPreferenceRecord,
   Capabilities,
   Chat,
   Run,
@@ -22,10 +23,8 @@ import { localUploadPath } from './hosts';
 export * from './api-transport';
 export class PraxisApiClient extends FeatureApiClient {
   // Bootstrap & Auth
-  async bootstrap(): Promise<LegacyBootstrap> {
-    // Phase A bridge: the server no longer sends providers or models (see legacy-providers.ts).
-    const boot = await this.request<Bootstrap & Partial<LegacyBootstrap>>('/v1/bootstrap');
-    return { ...boot, providers: boot.providers ?? [], models: boot.models ?? [] };
+  async bootstrap(): Promise<Bootstrap> {
+    return this.request<Bootstrap>('/v1/bootstrap');
   }
 
   // Chats & Messages
@@ -47,7 +46,6 @@ export class PraxisApiClient extends FeatureApiClient {
     title: string;
     pinned?: boolean;
     mode?: 'ask' | 'plan' | 'build' | 'auto';
-    providerId?: string;
     modelId?: string;
     effort?: string;
     disabledConnectorIds?: string[];
@@ -59,7 +57,6 @@ export class PraxisApiClient extends FeatureApiClient {
         title: input.title,
         pinned: input.pinned ?? false,
         mode: input.mode ?? 'build',
-        providerId: input.providerId,
         modelId: input.modelId,
         effort: input.effort,
         disabledConnectorIds: input.disabledConnectorIds ?? [],
@@ -74,8 +71,7 @@ export class PraxisApiClient extends FeatureApiClient {
       title?: string;
       pinned?: boolean;
       mode?: 'ask' | 'plan' | 'build' | 'auto';
-      providerId?: string;
-      modelId?: string;
+        modelId?: string;
       effort?: string;
       disabledConnectorIds?: string[];
     },
@@ -121,7 +117,6 @@ export class PraxisApiClient extends FeatureApiClient {
   async startRun(input: {
     chatId: string;
     text: string;
-    providerId?: string;
     modelId?: string;
     mode?: 'ask' | 'plan' | 'build' | 'auto';
     effort?: string;
@@ -209,93 +204,55 @@ export class PraxisApiClient extends FeatureApiClient {
     );
   }
 
-  // Providers & Models
-  async listProviders(): Promise<PageResult<Provider>> {
-    return this.request<PageResult<Provider>>('/v1/providers?limit=100');
+  // OpenRouter key & model catalogue
+  /** The masked key record, or null when no key is connected. */
+  async getModelKey(): Promise<ModelKey | null> {
+    try {
+      return await this.request<ModelKey>('/v1/model-key');
+    } catch (error) {
+      if (error instanceof PraxisApiError && error.status === 404) return null;
+      throw error;
+    }
   }
 
-  async createProvider(input: {
-    name: string;
-    flavor: 'anthropicMessages' | 'openAIChat' | 'openAIResponses';
-    baseUrl: string;
-    defaultModel?: string;
-    apiKey?: string;
-    capabilities?: Capabilities;
-    extraHeaders?: Record<string, string>;
-  }): Promise<Provider> {
-    return this.request<Provider>('/v1/providers', {
+  async connectModelKey(
+    input: { method: 'paste'; apiKey: string } | { method: 'pkce'; code: string; codeVerifier: string },
+  ): Promise<ModelKey> {
+    return this.request<ModelKey>('/v1/model-key', {
       method: 'POST',
-      body: JSON.stringify({ type: 'provider.input', ...input }),
+      body: JSON.stringify({ type: 'modelKey.connect', ...input }),
     });
   }
 
-  async patchProvider(
-    providerId: string,
-    input: {
-      name: string;
-      flavor: 'anthropicMessages' | 'openAIChat' | 'openAIResponses';
-      baseUrl: string;
-      defaultModel?: string;
-      apiKey?: string;
-      capabilities?: Capabilities;
-      extraHeaders?: Record<string, string>;
-    },
-  ): Promise<Provider> {
-    return this.request<Provider>(`/v1/providers/${encodeURIComponent(providerId)}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ type: 'provider.input', ...input }),
-    });
+  async checkModelKey(): Promise<ModelKey> {
+    return this.request<ModelKey>('/v1/model-key/check', { method: 'POST', body: '{}' });
   }
 
-  async deleteProvider(providerId: string): Promise<{ type: 'ok' }> {
-    return this.request<{ type: 'ok' }>(`/v1/providers/${encodeURIComponent(providerId)}`, {
-      method: 'DELETE',
-    });
-  }
-
-  async testProvider(providerId: string, modelId?: string) {
-    return ProviderTestResultSchema.parse(
-      await this.request(`/v1/providers/${encodeURIComponent(providerId)}/test`, {
-        method: 'POST',
-        body: JSON.stringify({ type: 'provider.test', ...(modelId ? { modelId } : {}) }),
-      }),
-    );
-  }
-
-  async refreshProviderModels(providerId: string): Promise<PageResult<Model>> {
-    return await this.request<PageResult<Model>>(
-      `/v1/providers/${encodeURIComponent(providerId)}/refresh-models`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ type: 'models.refresh' }),
-      },
-    );
+  async deleteModelKey(): Promise<{ type: 'ok' }> {
+    return this.request<{ type: 'ok' }>('/v1/model-key', { method: 'DELETE' });
   }
 
   async listModels(params?: {
-    providerId?: string;
     q?: string;
     pinned?: boolean;
     favorite?: boolean;
     cursor?: string;
     limit?: number;
-  }): Promise<PageResult<Model>> {
+  }): Promise<PageResult<ModelListItem>> {
     const q = new URLSearchParams({ limit: String(params?.limit ?? 100) });
-    if (params?.providerId) q.set('providerId', params.providerId);
     if (params?.q) q.set('q', params.q);
     if (params?.pinned !== undefined) q.set('pinned', String(params.pinned));
     if (params?.favorite !== undefined) q.set('favorite', String(params.favorite));
     if (params?.cursor) q.set('cursor', params.cursor);
-    return this.request<PageResult<Model>>(`/v1/models?${q.toString()}`);
+    return this.request<PageResult<ModelListItem>>(`/v1/models?${q.toString()}`);
   }
 
   async updateModelPreference(input: {
-    providerId: string;
     modelId: string;
     pinned?: boolean;
     favorite?: boolean;
-  }): Promise<Model> {
-    return this.request<Model>('/v1/models/preferences', {
+  }): Promise<ModelPreferenceRecord> {
+    return this.request<ModelPreferenceRecord>('/v1/models/preferences', {
       method: 'PATCH',
       body: JSON.stringify({ type: 'model.preference', ...input }),
     });
@@ -318,7 +275,7 @@ export class PraxisApiClient extends FeatureApiClient {
   }
 
   async patchPreferences(input: {
-    vision?: { providerId?: string; modelId?: string; enabled?: boolean };
+    vision?: { modelId?: string; enabled?: boolean };
     voice?: { model?: string; language?: string; apiKey?: string };
   }): Promise<Preferences> {
     return this.request<Preferences>('/v1/preferences', {

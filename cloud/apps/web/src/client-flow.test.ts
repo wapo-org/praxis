@@ -58,7 +58,6 @@ describe('@praxis/web client flows against Lead A local API', () => {
     const chat = await client.createChat({
       title: 'Liquid Glass Spec Chat',
       mode: 'build',
-      providerId: 'scripted',
       modelId: 'scripted',
       effort: 'high',
     });
@@ -144,7 +143,7 @@ describe('@praxis/web client flows against Lead A local API', () => {
 
   it('exercises preferences, connectors, skills, registries, consents, and sync/pull', async () => {
     const prefs = await client.patchPreferences({
-      vision: { enabled: true, providerId: 'scripted', modelId: 'scripted-vision' },
+      vision: { enabled: true, modelId: 'scripted-vision' },
       voice: { model: 'whisper-large-v3-turbo', language: 'en' },
     });
     expect(prefs.vision.modelId).toBe('scripted-vision');

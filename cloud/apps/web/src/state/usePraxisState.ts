@@ -1,4 +1,3 @@
-import { type Model, type Provider } from '../lib/legacy-providers';
 import type { ResolvedTheme, ThemeMode } from '@praxis/glass';
 import type {
   Attachment,
@@ -6,7 +5,10 @@ import type {
   Connector,
   Message,
   Skill,
+  ModelKey,
+  ModelListItem,
 } from '@praxis/protocol';
+import { ModelListItemSchema } from '@praxis/protocol';
 import React from 'react';
 import {
   apiClient,
@@ -68,12 +70,6 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
 
   // Sheets & Layout
   const [activeSheet, setActiveSheetState] = React.useState<ActiveSheet>(null);
-  const [editingProviderId, setEditingProviderIdState] = React.useState<string | null>(null);
-  const providerIdRef = React.useRef(editingProviderId);
-  const setEditingProviderId = (id: string | null) => {
-    providerIdRef.current = id;
-    setEditingProviderIdState(id);
-  };
   const [desktopSidebarOpen, setDesktopSidebarOpen] = React.useState<boolean>(false);
   const [plusTrayOpen, setPlusTrayOpen] = React.useState<boolean>(false);
   const [inlineModelSearchActive, setInlineModelSearchActive] = React.useState<boolean>(false);
@@ -84,9 +80,10 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   const [messagesByChat, setMessagesByChat] = React.useState<Record<string, Message[]>>(
     () => initialCache?.messagesByChat ?? {},
   );
-  const [providers, setProviders] = React.useState<Provider[]>(() => initialCache?.providers ?? []);
-  const [models, setModels] = React.useState<Model[]>(() =>
-    initialCache?.models?.length ? initialCache.models : [],
+  const [modelKey, setModelKey] = React.useState<ModelKey | null>(() => initialCache?.modelKey ?? null);
+  // A replica cached before OpenRouter holds the old per-provider model shape: only catalogue entries are kept.
+  const [models, setModels] = React.useState<ModelListItem[]>(() =>
+    (initialCache?.models ?? []).filter((m) => ModelListItemSchema.safeParse(m).success),
   );
   const [connectors, setConnectors] = React.useState<Connector[]>(
     () => initialCache?.connectors ?? [],
@@ -105,13 +102,12 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   const [syncCursor, setSyncCursor] = React.useState<string>(() => initialCache?.syncCursor ?? '0');
 
   // Selected composer controls
-  const [selectedProviderId, setSelectedProviderId] = React.useState<string>('');
   const [selectedModelId, setSelectedModelId] = React.useState<string>('');
   const [webSearch, setWebSearch] = React.useState(false);
   const cacheModels = React.useCallback(
-    (items: Model[]) =>
+    (items: ModelListItem[]) =>
       setModels((prev) => [
-        ...prev.filter((p) => !items.some((m) => m.providerId === p.providerId && m.id === p.id)),
+        ...prev.filter((p) => !items.some((m) => m.id === p.id)),
         ...items,
       ]),
     [],
@@ -127,7 +123,7 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
 
   const setActiveSheet = (sheet: ActiveSheet) => {
     setActiveSheetState(sheet);
-    onNavigate?.(pathForSheet(sheet, activeChatId, providerIdRef.current));
+    onNavigate?.(pathForSheet(sheet, activeChatId));
   };
   const startNewConversation = () => {
     setActiveChatId(null);
@@ -135,9 +131,8 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     setPlusTrayOpen(false);
     onNavigate?.('/');
   };
-  const restoreRoute = (chatId: string | null, sheet: ActiveSheet, providerId?: string | null) => {
+  const restoreRoute = (chatId: string | null, sheet: ActiveSheet) => {
     setActiveSheetState(sheet);
-    if (providerId !== undefined) setEditingProviderId(providerId);
     if (sheet) return;
     setActiveChatId(chatId);
     if (chatId)
@@ -182,10 +177,6 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     setThemeMode,
     activeSheet,
     setActiveSheetState,
-    editingProviderId,
-    setEditingProviderIdState,
-    providerIdRef,
-    setEditingProviderId,
     desktopSidebarOpen,
     setDesktopSidebarOpen,
     plusTrayOpen,
@@ -198,8 +189,8 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     setActiveChatId,
     messagesByChat,
     setMessagesByChat,
-    providers,
-    setProviders,
+    modelKey,
+    setModelKey,
     models,
     setModels,
     connectors,
@@ -220,8 +211,6 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     setAttachmentsById,
     syncCursor,
     setSyncCursor,
-    selectedProviderId,
-    setSelectedProviderId,
     selectedModelId,
     setSelectedModelId,
     webSearch,

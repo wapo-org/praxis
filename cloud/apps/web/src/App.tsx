@@ -21,7 +21,7 @@ export function App() {
   restore.current = store.restoreRoute;
   React.useEffect(() => {
     const route = parseRoute(pathname);
-    restore.current(route.chatId ?? null, route.sheet, route.providerId);
+    restore.current(route.chatId ?? null, route.sheet);
   }, [pathname]);
   React.useEffect(() => {
     const media = window.matchMedia('(min-width: 1024px)');

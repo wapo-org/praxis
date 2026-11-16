@@ -50,7 +50,6 @@ beforeEach(() => {
     desktopSidebarOpen: true,
     models: [],
     selectedModelId: null,
-    selectedProviderId: null,
     setDesktopSidebarOpen: vi.fn(),
     startNewConversation: vi.fn(),
     setActiveSheet: vi.fn(),

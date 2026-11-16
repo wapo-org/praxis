@@ -24,8 +24,8 @@ export function useReplica(
     setActiveChatId,
     messagesByChat,
     setMessagesByChat,
-    providers,
-    setProviders,
+    modelKey,
+    setModelKey,
     models,
     setModels,
     connectors,
@@ -40,7 +40,6 @@ export function useReplica(
     setPreferences,
     syncCursor,
     setSyncCursor,
-    setSelectedProviderId,
     selectedModelId,
     setSelectedModelId,
     setSelectedEffort,
@@ -51,8 +50,8 @@ export function useReplica(
       const snap: LocalReplicaSnapshot = {
         chats,
         messagesByChat,
-        providers,
         models,
+        modelKey,
         connectors,
         skills,
         consents,
@@ -67,8 +66,8 @@ export function useReplica(
     [
       chats,
       messagesByChat,
-      providers,
       models,
+      modelKey,
       connectors,
       skills,
       consents,
@@ -83,12 +82,15 @@ export function useReplica(
     try {
       const boot = await apiClient.bootstrap();
       setChats(boot.chats);
-      setProviders(boot.providers);
-      setModels(boot.models);
-      if (!selectedModelId && boot.models[0]) {
-        setSelectedModelId(boot.models[0].id);
-        setSelectedProviderId(boot.models[0].providerId);
-      }
+      setModelKey(boot.modelKey ?? null);
+      // The catalogue is not part of bootstrap: its first page (pinned, then recommended) seeds the picker.
+      // A failure here must not block the app; the model list reports it when opened.
+      const catalogue = await apiClient
+        .listModels({ limit: 100 })
+        .then((page) => page.items)
+        .catch(() => null);
+      if (catalogue) setModels(catalogue);
+      if (!selectedModelId && catalogue?.[0]) setSelectedModelId(catalogue[0].id);
       setConnectors(boot.connectors);
       setSkills(boot.skills);
       if (boot.consents) setConsents(boot.consents);
@@ -102,8 +104,8 @@ export function useReplica(
           bootstrap: boot,
           chats: boot.chats,
           messagesByChat,
-          providers: boot.providers,
-          models: boot.models,
+          models: catalogue ?? models,
+          modelKey: boot.modelKey ?? null,
           connectors: boot.connectors,
           skills: boot.skills,
           consents: boot.consents ?? [],
@@ -128,8 +130,8 @@ export function useReplica(
               bootstrap: boot,
               chats: boot.chats,
               messagesByChat: next,
-              providers: boot.providers,
-              models: boot.models.length ? boot.models : [],
+              models: catalogue ?? models,
+              modelKey: boot.modelKey ?? null,
               connectors: boot.connectors,
               skills: boot.skills,
               consents: boot.consents ?? [],
@@ -165,9 +167,8 @@ export function useReplica(
 
   const routeChat = chats.find((value) => value.id === activeChatId);
   React.useEffect(() => {
-    if (routeChat?.providerId) setSelectedProviderId(routeChat.providerId);
     if (routeChat?.modelId) setSelectedModelId(routeChat.modelId);
-  }, [activeChatId, routeChat?.providerId, routeChat?.modelId]);
+  }, [activeChatId, routeChat?.modelId]);
   React.useEffect(() => {
     if (routeChat?.mode) setSelectedMode(routeChat.mode);
   }, [activeChatId, routeChat?.mode]);

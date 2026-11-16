@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
-import { type Model, type Provider } from '../../lib/legacy-providers';
-import type { Chat, Connector, Skill } from '@praxis/protocol';
+import type { Chat, Connector, ModelListItem, Skill } from '@praxis/protocol';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,7 +10,6 @@ import { ConsentSheet } from './ConsentSheet.js';
 import { HistorySheet } from './HistorySheet.js';
 import { ImageReaderScreen } from './ImageReaderScreen.js';
 import { SheetDialog } from './ScreenUI.js';
-import { ProviderEditor } from './ProviderEditor.js';
 import { SettingsModal } from './SettingsModal.js';
 import { GeneralSection, ModelsSection } from './SettingsSections.js';
 import { SheetsRoot } from './SheetsRoot.js';
@@ -35,16 +33,6 @@ const chat = (id: string, pinned = false): Chat => ({
   createdAt: now,
   updatedAt: now,
 });
-const provider = {
-  type: 'provider',
-  id: 'provider-1',
-  name: 'Example',
-  flavor: 'openAIChat',
-  baseUrl: 'https://example.com/v1',
-  maskedKey: 'sk-…1234',
-  capabilities: {},
-  updatedAt: now,
-} as Provider;
 const connector: Connector = {
   type: 'connector',
   id: 'connector-1',
@@ -84,7 +72,7 @@ beforeEach(() => {
     chats: [],
     activeChatId: null,
     messagesByChat: {},
-    providers: [],
+    modelKey: null,
     models: [],
     connectors: [],
     connectorTools: {},
@@ -99,9 +87,7 @@ beforeEach(() => {
     activeSheet: null,
     pendingConsentPrompt: null,
     desktopSidebarOpen: false,
-    editingProviderId: null,
     setActiveSheet: vi.fn(),
-    setEditingProviderId: vi.fn(),
     setDesktopSidebarOpen: vi.fn(),
     setThemeMode: vi.fn(),
     setPendingConsentPrompt: vi.fn(),
@@ -110,9 +96,9 @@ beforeEach(() => {
     renameChat: vi.fn().mockResolvedValue(undefined),
     togglePinChat: vi.fn().mockResolvedValue(undefined),
     deleteChats: vi.fn().mockResolvedValue(undefined),
-    saveProvider: vi.fn().mockResolvedValue(provider),
-    removeProvider: vi.fn().mockResolvedValue(undefined),
-    refreshModelsForProvider: vi.fn().mockResolvedValue([]),
+    connectModelKey: vi.fn().mockResolvedValue(undefined),
+    checkModelKey: vi.fn().mockResolvedValue(undefined),
+    disconnectModelKey: vi.fn().mockResolvedValue(undefined),
     loadConnectorTools: vi.fn().mockResolvedValue([]),
     setConnectorToolEnabled: vi.fn().mockResolvedValue(undefined),
     refreshAll: vi.fn().mockResolvedValue(undefined),
@@ -253,11 +239,12 @@ describe('connector health status', () => {
 });
 
 describe('settings and capabilities', () => {
-  it('navigates to providers and tools, and updates the appearance preference', async () => {
+  it('shows the OpenRouter card and tools under Models, and updates the appearance preference', async () => {
     await mount(<ModelsSection />);
-    await click(button('Add provider'));
-    expect(store.setEditingProviderId).toHaveBeenCalledWith(null);
-    expect(store.setActiveSheet).toHaveBeenCalledWith('provider-editor');
+    expect(button('Connect OpenRouter')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('Add provider');
+    await click([...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Image reading model'))!);
+    expect(store.setActiveSheet).toHaveBeenCalledWith('image-reader');
     await mount(<GeneralSection />);
     await click(button('Light'));
     expect(store.setThemeMode).toHaveBeenCalledWith('light');
@@ -271,8 +258,9 @@ describe('settings and capabilities', () => {
     for (const [sheet, title, nav] of [
       ['settings', 'General', 'General'],
       ['general', 'General', 'General'],
-      ['providers', 'Models & providers', 'Models & providers'],
-      ['image-reader', 'Image reading model', 'Models & providers'],
+      ['models', 'Models', 'Models'],
+      ['openrouter-callback', 'Connect OpenRouter', 'Models'],
+      ['image-reader', 'Image reading model', 'Models'],
       ['connectors', 'Connectors', 'Connectors'],
       ['connector-add-url', 'Add by URL', 'Connectors'],
       ['skills', 'Skills', 'Skills'],
@@ -283,8 +271,6 @@ describe('settings and capabilities', () => {
       expect(titleOf()).toBe(title);
       expect(current()).toBe(nav);
     }
-    await mount(<SettingsModal sheet="provider-editor" />);
-    expect(titleOf()).toBe('Add provider');
   });
   it('goes back to the parent page, and sections back to the list', async () => {
     await mount(<SettingsModal sheet="connector-add-url" />);
@@ -293,53 +279,6 @@ describe('settings and capabilities', () => {
     await mount(<SettingsModal sheet="connectors" />);
     await click(button('Back'));
     expect(store.setActiveSheet).toHaveBeenLastCalledWith('settings');
-  });
-  it('preserves saved secrets when editing a provider and leaves verification failures visible', async () => {
-    store.providers = [provider];
-    store.editingProviderId = provider.id;
-    vi.spyOn(apiClient, 'testProvider').mockResolvedValue({
-      type: 'provider.test.result',
-      ok: false,
-      models: [],
-      message: 'Invalid credentials',
-    });
-    await mount(<ProviderEditor />);
-    await click(button('Test connection'));
-    expect(store.saveProvider).toHaveBeenCalledWith(
-      expect.not.objectContaining({ apiKey: expect.anything() }),
-    );
-    expect(store.saveProvider).toHaveBeenCalledWith(
-      expect.not.objectContaining({ extraHeaders: expect.anything() }),
-    );
-    expect(store.refreshModelsForProvider).not.toHaveBeenCalled();
-    expect(document.querySelector('[role="alert"]')?.textContent).toContain('Invalid credentials');
-    expect(store.setActiveSheet).not.toHaveBeenCalled();
-  });
-  it('persists edited endpoint capabilities and offers an iOS preset picker', async () => {
-    store.providers = [provider];
-    store.editingProviderId = provider.id;
-    await mount(<ProviderEditor />);
-    expect(document.querySelector('[aria-label="Provider preset"]')?.tagName).toBe('BUTTON');
-    const tools = [...document.querySelectorAll<HTMLInputElement>('[role="switch"]')].find((n) =>
-      n.closest('label')?.textContent?.includes('Tool calling'),
-    )!;
-    await click(tools);
-    await click(button('Save provider'));
-    expect(store.saveProvider).toHaveBeenCalledWith(
-      expect.objectContaining({
-        capabilities: expect.objectContaining({ tools: true }),
-      }),
-    );
-  });
-  it('clears saved headers only after an explicit edit', async () => {
-    store.providers = [{ ...provider, headerNames: ['X-Account'] }];
-    store.editingProviderId = provider.id;
-    await mount(<ProviderEditor />);
-    await click(button('Clear saved headers'));
-    await click(button('Save provider'));
-    expect(store.saveProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ id: provider.id, extraHeaders: {} }),
-    );
   });
   it('loads a connector’s tools on expansion and persists a per-tool toggle', async () => {
     store.connectors = [connector];
@@ -376,25 +315,33 @@ describe('settings and capabilities', () => {
       }),
     );
   });
-  it('separates verified and unknown vision models while excluding text-only models', async () => {
-    store.providers = [provider];
-    store.models = [true, null, false].map(
-      (supportsImages, index) =>
-        ({
-          id: `model-${index}`,
-          displayName: `Model ${index}`,
-          providerId: provider.id,
-          supportsImages,
-        }) as Model,
-    );
-    await mount(<ImageReaderScreen />);
-    expect(document.body.textContent).toContain('Verified vision support');
-    expect(document.body.textContent).toContain('Unverified vision support');
-    expect(document.body.textContent).not.toContain('Model 2');
-    await click(button('Model 1model-1'));
-    expect(store.updatePreferences).toHaveBeenCalledWith({
-      vision: { enabled: true, providerId: provider.id, modelId: 'model-1' },
+  it('lists only models whose catalogue entry takes images, and saves the choice by model id', async () => {
+    const entry = (id: string, images: boolean) =>
+      ({
+        type: 'catalogModel',
+        id,
+        name: `Model ${id}`,
+        contextLength: 128000,
+        pricing: { prompt: '0.000001', completion: '0.000002' },
+        capabilities: { tools: true, reasoning: false, images, files: false },
+        pinned: false,
+        favorite: false,
+        recommended: false,
+      }) as ModelListItem;
+    vi.spyOn(apiClient, 'listModels').mockResolvedValue({
+      type: 'page',
+      items: [entry('sees', true), entry('blind', false)],
+      nextCursor: null,
     });
+    await mount(<ImageReaderScreen />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    });
+    expect(document.body.textContent).toContain('Model sees');
+    expect(document.body.textContent).toContain('128K context · $1 in · $2 out per 1M');
+    expect(document.body.textContent).not.toContain('Model blind');
+    await click([...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Model sees'))!);
+    expect(store.updatePreferences).toHaveBeenCalledWith({ vision: { enabled: true, modelId: 'sees' } });
   });
   it('saves voice options without replacing an omitted key', async () => {
     await mount(<VoiceSettingsScreen />);

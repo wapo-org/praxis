@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 
-import { type Model } from '../../lib/legacy-providers';
-import { CapabilitiesSchema } from '@praxis/protocol';
+import type { ModelListItem } from '@praxis/protocol';
 import React from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -13,15 +12,18 @@ import { PlusTray } from './PlusTray';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const model = (id: string, pinned = false, name = id): Model => ({
-  type: 'model',
+type Model = ModelListItem;
+const model = (id: string, pinned = false, name = id, recommended = false): Model => ({
+  type: 'catalogModel',
   id,
-  providerId: 'p',
-  displayName: name,
-  capabilities: CapabilitiesSchema.parse({ tools: true, vision: true }),
-  reasoningEfforts: ['low', 'high'],
+  name,
+  contextLength: 200000,
+  maxOutput: 64000,
+  pricing: { prompt: '0.000003', completion: '0.000015' },
+  capabilities: { tools: true, reasoning: true, images: true, files: false },
   pinned,
   favorite: false,
+  recommended,
 });
 const page = (items: Model[], nextCursor: string | null = null) => ({ type: 'page', items, nextCursor }) as never;
 
@@ -53,7 +55,7 @@ const press = async (key: string, target: EventTarget = document) => {
 async function openTray(models: Model[] = [model('a', true)]) {
   await act(async () => {
     store.cacheModels(models);
-    store.setSelectedModel('p', models[0]!.id);
+    store.setSelectedModel(models[0]!.id);
     store.setPlusTrayOpen(true);
   });
 }
@@ -94,7 +96,7 @@ describe('composer tray', () => {
     expect(tray.textContent!.indexOf(order[0]!)).toBeLessThan(tray.textContent!.indexOf('Photos'));
     expect(tray.textContent!.indexOf('Photos')).toBeLessThan(tray.textContent!.indexOf('Web search'));
     expect(tray.textContent!.indexOf('Web search')).toBeLessThan(tray.textContent!.indexOf('Connectors'));
-    expect(tray.textContent!.indexOf('Connectors')).toBeLessThan(tray.textContent!.indexOf('Model providers'));
+    expect(tray.textContent!.indexOf('Connectors')).toBeLessThan(tray.textContent!.indexOf('Models & OpenRouter'));
   });
 
   it('opens the file picker with an image filter from the Photos tile', async () => {
@@ -112,8 +114,7 @@ describe('composer tray', () => {
       protocolVersion: 1,
       user: { type: 'user', id: 'u', name: 'U' },
       chats: [chat],
-      models: [model('a', true)],
-      providers: [],
+      modelPreferences: [],
       connectors: [{ type: 'connector', id: 'docs', name: 'Docs', url: 'https://docs.example/mcp', enabled: true, transport: 'streamableHttp', authStatus: 'none', tools: [] }],
       skills: [],
       activeRuns: [],
@@ -165,11 +166,11 @@ describe('composer tray', () => {
   it('closes itself when it navigates to a Settings page', async () => {
     await openTray();
     const row = [...document.querySelectorAll<HTMLButtonElement>('[data-testid="plus-tray"] button')].find(
-      (n) => n.textContent?.includes('Model providers'),
+      (n) => n.textContent?.includes('Models & OpenRouter'),
     )!;
     await act(async () => row.click());
     expect(store.plusTrayOpen).toBe(false);
-    expect(store.activeSheet).toBe('providers');
+    expect(store.activeSheet).toBe('models');
   });
 });
 
@@ -224,15 +225,58 @@ describe('model list inside the tray', () => {
 
   it('pinning updates in place and keeps the loaded pages', async () => {
     const list = vi.spyOn(apiClient, 'listModels').mockResolvedValue(page([model('a', true), model('b')]));
-    const pin = vi.spyOn(apiClient, 'updateModelPreference').mockResolvedValue(model('b', true));
+    const pin = vi.spyOn(apiClient, 'updateModelPreference').mockResolvedValue({ type: 'modelPreference', modelId: 'b', pinned: true, favorite: false });
     await openTray();
     await openList();
     list.mockClear();
     await act(async () => query<HTMLButtonElement>('[aria-label="Pin b"]')!.click());
     await flush();
-    expect(pin).toHaveBeenCalledWith({ providerId: 'p', modelId: 'b', pinned: true });
+    expect(pin).toHaveBeenCalledWith({ modelId: 'b', pinned: true });
     expect(list).not.toHaveBeenCalled();
     expect(query('[aria-label="Unpin b"]')).not.toBeNull();
+  });
+
+  it('shows the context window and price from the catalogue under each model', async () => {
+    vi.spyOn(apiClient, 'listModels').mockResolvedValue(
+      page([model('a', true), { ...model('free', false, 'Free One'), contextLength: 1048576, pricing: { prompt: '0', completion: '0' } }]),
+    );
+    await openTray();
+    await openList();
+    expect(query('[data-testid="model-option-a"]')!.textContent).toContain('200K context · $3 in · $15 out per 1M');
+    expect(query('[data-testid="model-option-free"]')!.textContent).toContain('1.05M context · Free');
+    expect(query('[data-testid="model-option-a"] [aria-label="Reasoning"]')).not.toBeNull();
+    expect(query('[data-testid="model-option-a"] [aria-label="Web search"]')).toBeNull();
+  });
+
+  it('lists pinned, then recommended, then the rest', async () => {
+    vi.spyOn(apiClient, 'listModels').mockResolvedValue(
+      page([model('pinned', true), model('pick', false, 'pick', true), model('other')]),
+    );
+    await openTray([model('pinned', true)]);
+    await openList();
+    const text = query('[role="listbox"]')!.textContent!;
+    expect(text.indexOf('Pinned')).toBeLessThan(text.indexOf('Recommended'));
+    expect(text.indexOf('Recommended')).toBeLessThan(text.indexOf('All models · 1'));
+    expect(options().map((o) => o!.replace(/\d.*$/, ''))).toEqual(['pinned', 'pick', 'other']);
+  });
+
+  it('searches the catalogue on the server by what was typed', async () => {
+    const list = vi
+      .spyOn(apiClient, 'listModels')
+      .mockImplementation(async (params) => page(params?.q === 'son' ? [model('vendor/sonnet', false, 'Sonnet')] : [model('a', true), model('b')]));
+    await openTray();
+    await openList();
+    const input = query<HTMLInputElement>('input[role="combobox"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'son');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 320));
+    });
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'son' }));
+    expect(options()).toEqual([expect.stringContaining('Sonnet')]);
+    expect(query('[role="listbox"]')!.textContent).not.toContain('All models');
   });
 
   it('mounts a small window of a 500-model catalog', async () => {
@@ -247,6 +291,10 @@ describe('model list inside the tray', () => {
 });
 
 describe('buildModelRows', () => {
+  it('puts recommended models in their own section between pinned and the rest', () => {
+    const rows = buildModelRows([model('c'), model('r', false, 'r', true), model('a', true)], false, false);
+    expect(rows.map((r) => (r.kind === 'label' ? r.text : r.kind === 'model' ? r.model.id : r.kind))).toEqual(['Pinned', 'a', 'Recommended', 'r', 'All models · 1', 'c']);
+  });
   it('orders pinned before the rest and adds a load-more row when a cursor remains', () => {
     const rows = buildModelRows([model('b'), model('a', true)], false, true);
     expect(rows.map((r) => r.kind)).toEqual(['label', 'model', 'label', 'model', 'more']);

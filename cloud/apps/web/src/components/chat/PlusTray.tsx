@@ -1,3 +1,4 @@
+import { effortsFor, modelDetail } from '../../lib/models';
 import { GlassSurface, popIn, slideIn, slideUnder, usePreset } from '@praxis/glass';
 import { AnimatePresence, motion } from 'framer-motion';
 import React from 'react';
@@ -74,17 +75,16 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
     };
   }, []);
 
-  const model = store.models.find(
-    (m) => m.providerId === store.selectedProviderId && m.id === store.selectedModelId,
-  );
-  const efforts = model?.reasoningEfforts ?? [];
-  const searchSupported = !!model?.capabilities.serverWebSearch;
+  const model = store.models.find((m) => m.id === store.selectedModelId);
+  const efforts = effortsFor(model);
+  // Runs through OpenRouter have no hosted web search, so the row stays in its unsupported state.
+  const searchSupported = false;
   const enabledConnectors = store.connectors.filter((c) => c.enabled);
   const backToMain = React.useCallback(() => {
     setView('main');
     modelRow.current?.focus({ preventScroll: true });
   }, []);
-  const openSheet = (sheet: 'connectors' | 'providers') => {
+  const openSheet = (sheet: 'connectors' | 'models') => {
     store.setPlusTrayOpen(false);
     store.setActiveSheet(sheet);
   };
@@ -138,8 +138,8 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
               onClick={() => setView('models')}
             >
               <span className={styles.modelCopy}>
-                <span className={styles.modelName}>{model?.displayName || 'Select model'}</span>
-                <span className={styles.modelTagline}>{model?.tagline || 'Choose a model for this chat'}</span>
+                <span className={styles.modelName}>{model?.name || 'Select model'}</span>
+                <span className={styles.modelTagline}>{model ? modelDetail(model) : 'Choose a model for this chat'}</span>
               </span>
               <span className={styles.chevron}>
                 <ChevronRight size={18} />
@@ -216,11 +216,11 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                     </label>
                   ))
                 : null}
-              <button type="button" className={styles.row} onClick={() => openSheet('providers')}>
+              <button type="button" className={styles.row} onClick={() => openSheet('models')}>
                 <span className={styles.rowIcon}>
                   <Settings size={18} />
                 </span>
-                <span className={styles.rowCopy}>Model providers</span>
+                <span className={styles.rowCopy}>Models & OpenRouter</span>
                 <span className={styles.chevron}>
                   <ChevronRight size={16} />
                 </span>

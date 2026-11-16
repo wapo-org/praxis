@@ -1,5 +1,4 @@
-import { type Provider } from '../lib/legacy-providers';
-import type { Capabilities, Skill } from '@praxis/protocol';
+import type { Skill } from '@praxis/protocol';
 import React from 'react';
 import { apiClient } from '../lib/api';
 
@@ -9,7 +8,7 @@ export function useCatalogActions(state: PraxisState) {
     setErrorBanner,
     setChats,
     activeChatId,
-    setProviders,
+    setModelKey,
     setModels,
     setConnectors,
     setConnectorTools,
@@ -18,16 +17,14 @@ export function useCatalogActions(state: PraxisState) {
     setRegistryEntries,
     setConsents,
     setPreferences,
-    setSelectedProviderId,
     setSelectedModelId,
   } = state;
   const setSelectedModel = React.useCallback(
-    (providerId: string, modelId: string) => {
-      setSelectedProviderId(providerId);
+    (modelId: string) => {
       setSelectedModelId(modelId);
       if (activeChatId) {
         void apiClient
-          .patchChat(activeChatId, { providerId, modelId })
+          .patchChat(activeChatId, { modelId })
           .then((updated) => {
             setChats((prev) => prev.map((c) => (c.id === activeChatId ? updated : c)));
           })
@@ -39,62 +36,38 @@ export function useCatalogActions(state: PraxisState) {
     [activeChatId],
   );
 
-  const toggleModelPin = React.useCallback(
-    async (providerId: string, modelId: string, pinned: boolean) => {
-      try {
-        const updated = await apiClient.updateModelPreference({
-          providerId,
-          modelId,
-          pinned,
-        });
-        setModels((prev) =>
-          prev.map((m) => (m.providerId === providerId && m.id === modelId ? updated : m)),
-        );
-      } catch (err) {
-        setErrorBanner(err instanceof Error ? err.message : 'Request failed');
-      }
-    },
-    [],
-  );
-
-  const saveProvider = React.useCallback(
-    async (input: {
-      id?: string;
-      name: string;
-      flavor: 'anthropicMessages' | 'openAIChat' | 'openAIResponses';
-      baseUrl: string;
-      defaultModel?: string;
-      apiKey?: string;
-      capabilities?: Capabilities;
-      extraHeaders?: Record<string, string>;
-    }): Promise<Provider> => {
-      if (input.id) {
-        const updated = await apiClient.patchProvider(input.id, input);
-        setProviders((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-        return updated;
-      }
-      const created = await apiClient.createProvider({
-        ...input,
-        ...(input.apiKey ? { apiKey: input.apiKey } : {}),
-      });
-      setProviders((prev) => [...prev, created]);
-      return created;
-    },
-    [],
-  );
-
-  const removeProvider = React.useCallback(async (providerId: string) => {
-    await apiClient.deleteProvider(providerId);
-    setProviders((prev) => prev.filter((p) => p.id !== providerId));
+  const toggleModelPin = React.useCallback(async (modelId: string, pinned: boolean) => {
+    try {
+      const updated = await apiClient.updateModelPreference({ modelId, pinned });
+      setModels((prev) =>
+        prev.map((m) => (m.id === modelId ? { ...m, pinned: updated.pinned, favorite: updated.favorite } : m)),
+      );
+    } catch (err) {
+      setErrorBanner(err instanceof Error ? err.message : 'Request failed');
+      throw err;
+    }
   }, []);
 
-  const refreshModelsForProvider = React.useCallback(async (providerId: string) => {
-    const page = await apiClient.refreshProviderModels(providerId);
-    setModels((prev) => {
-      const others = prev.filter((m) => m.providerId !== providerId);
-      return [...others, ...page.items];
-    });
-    return page.items;
+  const connectModelKey = React.useCallback(
+    async (
+      input: { method: 'paste'; apiKey: string } | { method: 'pkce'; code: string; codeVerifier: string },
+    ) => {
+      const key = await apiClient.connectModelKey(input);
+      setModelKey(key);
+      return key;
+    },
+    [],
+  );
+
+  const checkModelKey = React.useCallback(async () => {
+    const key = await apiClient.checkModelKey();
+    setModelKey(key);
+    return key;
+  }, []);
+
+  const disconnectModelKey = React.useCallback(async () => {
+    await apiClient.deleteModelKey();
+    setModelKey(null);
   }, []);
 
   const createConnector = React.useCallback(
@@ -209,7 +182,7 @@ export function useCatalogActions(state: PraxisState) {
 
   const updatePreferences = React.useCallback(
     async (input: {
-      vision?: { providerId?: string; modelId?: string; enabled?: boolean };
+      vision?: { modelId?: string; enabled?: boolean };
       voice?: { model?: string; language?: string; apiKey?: string };
     }) => {
       const updated = await apiClient.patchPreferences(input);
@@ -221,9 +194,9 @@ export function useCatalogActions(state: PraxisState) {
   return {
     setSelectedModel,
     toggleModelPin,
-    saveProvider,
-    removeProvider,
-    refreshModelsForProvider,
+    connectModelKey,
+    checkModelKey,
+    disconnectModelKey,
     createConnector,
     updateConnector,
     removeConnector,

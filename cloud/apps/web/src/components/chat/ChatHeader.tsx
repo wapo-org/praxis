@@ -9,9 +9,7 @@ import styles from './ChatHeader.module.css';
 /** Top bar: subtle centred title + model, and small glass clusters of actions. */
 export function ChatHeader() {
   const store = usePraxisStore();
-  const model = store.models.find(
-    (m) => m.id === store.selectedModelId && m.providerId === store.selectedProviderId,
-  );
+  const model = store.models.find((m) => m.id === store.selectedModelId);
   return (
     <header className={styles.bar} data-testid="chat-top-bar">
       <div className={styles.side}>
@@ -37,7 +35,7 @@ export function ChatHeader() {
         aria-label="Chat and model settings"
       >
         <span className={styles.titleText}>{displayTitle(store.activeChat?.title || 'New chat')}</span>
-        <span className={styles.model}>{model?.displayName || 'Select model'}</span>
+        <span className={styles.model}>{model?.name || 'Select model'}</span>
       </button>
 
       <div className={`${styles.side} ${styles.end}`}>

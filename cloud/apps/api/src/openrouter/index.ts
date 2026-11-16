@@ -50,9 +50,10 @@ export class OpenRouterModels {
   /** The catalogue for one user: pinned first, then the curated list in its order, then by name. */
   async list(userId: string): Promise<ModelListItem[]> {
     const [models, preferences] = await Promise.all([this.models(), this.preferences(userId)]);
-    const rank = (id: string) => { const i = (RECOMMENDED_MODELS as readonly string[]).indexOf(id); return i < 0 ? RECOMMENDED_MODELS.length : i; };
+    // Local dev lists its scripted models first, so a fresh local account starts on one and needs no key.
+    const rank = (id: string) => { if (isScripted(id)) return -1; const i = (RECOMMENDED_MODELS as readonly string[]).indexOf(id); return i < 0 ? RECOMMENDED_MODELS.length : i; };
     return models
-      .map(m => ({...m, pinned: preferences.get(m.id)?.pinned ?? false, favorite: preferences.get(m.id)?.favorite ?? false, recommended: rank(m.id) < RECOMMENDED_MODELS.length}))
+      .map(m => ({...m, pinned: preferences.get(m.id)?.pinned ?? false, favorite: preferences.get(m.id)?.favorite ?? false, recommended: rank(m.id) >= 0 && rank(m.id) < RECOMMENDED_MODELS.length}))
       .sort((a, b) => Number(b.pinned) - Number(a.pinned) || rank(a.id) - rank(b.id) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   }
 

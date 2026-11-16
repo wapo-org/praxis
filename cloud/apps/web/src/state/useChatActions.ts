@@ -17,8 +17,6 @@ export function useChatActions(
     setActiveChatId,
     messagesByChat,
     setMessagesByChat,
-    selectedProviderId,
-    setSelectedProviderId,
     selectedModelId,
     setSelectedModelId,
     selectedEffort,
@@ -34,10 +32,7 @@ export function useChatActions(
       setActiveChatId(chatId);
       onNavigate?.(`/c/${encodeURIComponent(chatId)}`);
       const chat = chats.find((c) => c.id === chatId);
-      if (chat?.providerId && chat?.modelId) {
-        setSelectedProviderId(chat.providerId);
-        setSelectedModelId(chat.modelId);
-      }
+      if (chat?.modelId) setSelectedModelId(chat.modelId);
       if (chat?.effort) setSelectedEffort(chat.effort);
       if (chat?.mode) setSelectedMode(chat.mode);
 
@@ -73,7 +68,6 @@ export function useChatActions(
       const created = await apiClient.createChat({
         title,
         mode: selectedMode,
-        providerId: selectedProviderId,
         modelId: selectedModelId,
         effort: selectedEffort,
       });
@@ -87,7 +81,7 @@ export function useChatActions(
       setMessagesByChat((prev) => ({ ...prev, [created.id]: [] }));
       return created;
     },
-    [selectedMode, selectedProviderId, selectedModelId, selectedEffort, persistState],
+    [selectedMode, selectedModelId, selectedEffort, persistState],
   );
 
   const renameChat = React.useCallback(

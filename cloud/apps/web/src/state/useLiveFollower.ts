@@ -1,4 +1,4 @@
-import { ChatSchema, RunSchema, type UserEvent } from '@praxis/protocol';
+import { ChatSchema, ModelKeySchema, RunSchema, type UserEvent } from '@praxis/protocol';
 import React from 'react';
 import { apiClient } from '../lib/api';
 import { subscribeUserEvents } from '../lib/user-events';
@@ -17,7 +17,7 @@ export function useLiveFollower(
   state: PraxisState,
   { attachRunStream, applySnapshotToLiveRun }: ReturnType<typeof useRunStreams> & ReturnType<typeof useRunState>,
 ) {
-  const { eventCursor, setChats, setMessagesByChat, activeRunUnsubMapRef, localTurnIdsRef } = state;
+  const { eventCursor, setChats, setMessagesByChat, setModelKey, activeRunUnsubMapRef, localTurnIdsRef } = state;
   const following = React.useRef(new Set<string>());
   const handlers = React.useRef({ attachRunStream, applySnapshotToLiveRun });
   handlers.current = { attachRunStream, applySnapshotToLiveRun };
@@ -55,6 +55,11 @@ export function useLiveFollower(
     } else if (event.entity === 'run' && event.operation === 'upsert') {
       const run = RunSchema.safeParse(event.value);
       if (run.success && !terminal(run.data.status)) void follow(run.data.id);
+    } else if (event.entity === 'modelKey') {
+      // Connected, checked, rejected by OpenRouter during a run, or removed, on this or another client.
+      const key = event.operation === 'delete' ? null : ModelKeySchema.safeParse(event.value);
+      if (key === null) setModelKey(null);
+      else if (key.success) setModelKey(key.data);
     }
   }, [follow]);
 
