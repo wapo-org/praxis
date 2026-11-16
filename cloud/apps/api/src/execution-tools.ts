@@ -1,8 +1,14 @@
-import {ExecutionFenced,ToolResultSchema,isRunControl,textResult,type AgentTool,type ToolResult} from '@praxis/agent';
+import {ToolBoundaryError,toolError,ExecutionFenced,ToolResultSchema,isRunControl,textResult,type AgentTool,type ToolResult} from '@praxis/agent';
+import {ZodError} from 'zod';
 import {JsonValueSchema,RunEventPayloadSchema,type JsonValue} from '@praxis/protocol';
 import type {FeatureContext,FeatureTool} from './contracts.js';
 import {executionSecrets} from './saved-secrets.js';
 import {ApiError} from './service.js';
+
+const TOOL_API_ERROR_CODES: Record<string, import('@praxis/protocol').ToolErrorCode> = {
+  invalid_path: 'path-traversal', plan_read_only: 'policy-denied', budget_exceeded: 'budget',
+  firewall_blocked: 'upstream-firewall', approval_required: 'approval-required',
+};
 
 /** Bridges an API feature tool (MCP, builtin) onto the loop's tool port; the runner keeps policy. */
 export function adaptTool(tool: FeatureTool, featureCtx?: FeatureContext): AgentTool {
@@ -34,7 +40,10 @@ export function adaptTool(tool: FeatureTool, featureCtx?: FeatureContext): Agent
         if (isRunControl(error) || error instanceof ExecutionFenced || context.signal.aborted) throw error;
         const message = error instanceof ApiError || error instanceof Error ? error.message : 'Tool failed';
         const secrets=featureCtx?await executionSecrets(featureCtx,context.chatId):undefined;
-        return textResult(String(secrets?secrets.redact(message):message), true);
+        const safeMessage = String(secrets ? secrets.redact(message) : message);
+        const code = error instanceof ZodError ? 'schema' : error instanceof ApiError ? TOOL_API_ERROR_CODES[error.code] ?? 'upstream' : 'upstream';
+        const detail = error instanceof ToolBoundaryError ? {...error.detail, message: safeMessage} : toolError(code, safeMessage);
+        return {...textResult(JSON.stringify(detail), true), error: detail};
       }
     },
   } as AgentTool;

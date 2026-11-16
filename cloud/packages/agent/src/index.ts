@@ -6,3 +6,8 @@ export {buildProviderRequest,clampEffort} from './wire.js';
 export * from './streams.js';
 export * from './openrouter.js';
 export * from './image-reader.js';
+export * from './boundary/errors.js';
+export * from './boundary/shell.js';
+export * from './boundary/receipt.js';
+export * from './boundary/policy.js';
+export * from './boundary/gate.js';

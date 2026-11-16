@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import {ReasoningShapeSchema,StreamAnnotationSchema} from '@praxis/protocol';
 import {
-  ApprovalSchema, CapabilitiesSchema, ChatSchema, ConversationSetupSchema, ElicitationSchema,
+  ToolErrorSchema, ApprovalSchema, CapabilitiesSchema, ChatSchema, ConversationSetupSchema, ElicitationSchema,
   IdSchema, JsonObjectSchema, JsonValueSchema, MessagePartSchema, MessageSchema, RunSchema,
   UsageSchema, type Capabilities, type JsonObject, type JsonValue, type Mode, type RunEventPayload, type ToolSpec,
 } from '@praxis/protocol';
@@ -37,7 +37,7 @@ export interface ModelProvider {
   stream(request:ProviderRequest,signal:AbortSignal):AsyncIterable<ProviderEvent>;
 }
 export const ToolResultSchema = z.object({
-  content:z.array(JsonObjectSchema), isError:z.boolean().default(false), outputRef:IdSchema.optional(),
+  error:ToolErrorSchema.optional(), content:z.array(JsonObjectSchema), isError:z.boolean().default(false), outputRef:IdSchema.optional(),
 });
 export type ToolResult = z.infer<typeof ToolResultSchema>;
 /** Results beyond this spill and truncate for read_tool_output. */
