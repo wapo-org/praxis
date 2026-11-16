@@ -1,10 +1,7 @@
 import SwiftUI
 import AgentMCP
 
-/// A connector's tools with per-tool on/off switches (the detail
-/// screen's tools section). Off tools are left out of new
-/// conversations; chats that froze them refuse their calls. Tools the
-/// server added since the user last looked get a "New" badge once.
+/// Disabled tools are omitted from new chats and refused by chats that already froze them.
 struct ConnectorToolToggles: View {
     let library: ConnectorLibrary
     let serverID: String
@@ -96,8 +93,7 @@ struct ConnectorToolToggles: View {
 }
 
 extension MCPToolDefinition {
-    /// The server's own claim about a tool — believed only once the
-    /// server is trusted (`TrustExplanation`).
+    /// Server-reported tool hints are only trusted once the server itself is marked trusted.
     var trustHint: String {
         let traits = annotations.traits
         if traits.contains(.readOnly) { return "Says read-only" }
@@ -107,7 +103,6 @@ extension MCPToolDefinition {
 }
 
 private extension String {
-    /// The description's first line: tool lists stay one row per tool.
     var firstLine: String {
         self[...].split(separator: "\n", maxSplits: 1).first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? self
     }

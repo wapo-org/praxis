@@ -10,7 +10,7 @@ export function privateAddress(raw:string){const h=raw.toLowerCase().replace(/^\
  return false;
 }
 export async function hostConsent(ctx:FeatureContext,host:string){const row=await ctx.store.get(ctx.userId,'consent',host.toLowerCase());if(!row||row.deleted||row.value.allowed!==true)throw new ApiError(403,'consent_required',`AI-data consent required for ${host}`);}
-/** User-controlled URLs go only through ctx.egress, which validates DNS and dials the pinned address (no rebinding window). */
+/** Routes user URLs through ctx.egress for DNS pinning against rebinding. */
 export async function publicFetch(ctx:FeatureContext,raw:string,init:RequestInit={},consent=false,max=1000000){
  const url=new URL(z.string().url().max(8000).parse(raw));
  if(!['https:','http:'].includes(url.protocol)||url.username||url.password||privateAddress(url.hostname))throw new ApiError(403,'network_denied','Only public HTTP(S) hosts are allowed');

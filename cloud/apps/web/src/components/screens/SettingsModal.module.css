@@ -1,4 +1,3 @@
-/* One modal: nav rail + content pane on desktop; a stacked iOS-style navigation on narrow screens. */
 .modal {
   display: flex;
   flex: 1;
@@ -136,7 +135,7 @@
   .modal {
     flex-direction: column;
   }
-  /* The root shows the nav as a grouped list; every other page shows the pane with a back button. */
+  /* Root shows nav list; subpages show pane with back button. */
   .modal[data-root='true'] .pane,
   .modal[data-root='false'] .nav {
     display: none;

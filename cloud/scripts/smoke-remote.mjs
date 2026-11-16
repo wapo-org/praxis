@@ -112,7 +112,7 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
       token = fresh.bearerToken;
       checks.push('local session/sign-out/revocation');
     } else {
-      // Assume the account may exist as soon as sign-up is attempted: cleanup then signs in to check.
+      // Mark created before sign-up so cleanup runs even on partial failure.
       created = true;
       const response = await fetcher(api + '/v1/auth/sign-up', {
         method: 'POST',
@@ -236,7 +236,6 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
   if (failure) throw failure;
   return { checks, skipped };
 
-  /** Deletes the throwaway user with a credential that is still valid, re-authenticating if needed. */
   async function cleanup() {
     const signIn = async () => {
       token = '';

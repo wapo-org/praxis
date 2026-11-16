@@ -56,7 +56,7 @@ It never falls back to memory adapters or dev auth.
 | `QSTASH_CURRENT_SIGNING_KEY` | yes | QStash → Signing keys → current. |
 | `QSTASH_NEXT_SIGNING_KEY` | yes | QStash → Signing keys → next (needed for key rotation). |
 | `PRAXIS_RUN_BUDGET_MS` | no | Time budget per run slice, default `240000`. Keep it under `maxDuration` (300 s) minus about 30 s. |
-| `PRAXIS_SYNC_STRATEGY` | no | `cursor` (default, the winner of docs/SYNC_EXPERIMENT.md) or `merkle`. |
+| `PRAXIS_SYNC_STRATEGY` | no | `cursor` (default) or `merkle`. |
 | `GROQ_API_KEY` | no | Server-side fallback for `/v1/transcribe` (console.groq.com → API Keys). Users can also save their own key; it is stored encrypted. More keys: `GROQ_API_KEY_2`, … (see "Numbered siblings" below). |
 
 ### Numbered siblings: several keys for one service

@@ -1,7 +1,5 @@
 import XCTest
 
-/// Cloud equivalents of the retained frozen native settings tests. These
-/// controls use the injected HTTP server, not native provider/connector stores.
 final class CloudCatalogUITests: XCTestCase {
     private var app: XCUIApplication!
     override func setUpWithError() throws {

@@ -73,7 +73,6 @@ describe('GlassDropdown (@praxis/glass)', () => {
     expect(html).toContain('role="separator"');
     expect(html).toContain('data-tone="destructive"');
     expect(html).toContain('Delete');
-    // At root level (subPath = []), morph SubContent is not yet rendered
     expect(html).not.toContain('am i missing something?');
   });
 
@@ -126,16 +125,13 @@ describe('GlassDropdown (@praxis/glass)', () => {
       </GlassDropdown>,
     );
 
-    // Elevated submenu sticky header is rendered
     expect(html).toContain('Recent Notes');
-    // All 5 multi-line child note items are rendered with 3-line clamp
     expect(html).toContain('am i missing something? the protestors are over...');
     expect(html).toContain('Using this repository, and plus find some for search...');
     expect(html).toContain('figure of around 40% refers to ethnic kazakhs...');
     expect(html).toContain('Hi, I got disconnected again. My name is Artem...');
     expect(html).toContain('Hi Fiero, / okay so to summarise the total code...');
     expect(html).toContain('-webkit-line-clamp:3');
-    // Parent root items and top ActionGrid are replaced by the elevated submenu view
     expect(html).not.toContain('Find in Note');
     expect(html).not.toContain('data-slot="dropdown-action-grid"');
   });
@@ -209,10 +205,8 @@ describe('GlassDropdown (@praxis/glass)', () => {
 
     expect(html).toContain('data-slot="dropdown-search"');
     expect(html).toContain('aria-label="Clear search"');
-    // First items inside the initial viewport + overscan are rendered
     expect(html).toContain('Synthetic Model #1');
     expect(html).toContain('Synthetic Model #10');
-    // Far-off items (e.g., #250, #500) are not mounted in the DOM
     expect(html).not.toContain('Synthetic Model #250');
     expect(html).not.toContain('Synthetic Model #500');
   });

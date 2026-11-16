@@ -10,7 +10,7 @@ interface ConnectorInput {
   token?: string;
 }
 
-/** Parse the complete document before creating anything, so invalid entries never partially import. */
+/** Validate whole document first to prevent partial imports. */
 export function parseConnectorConfig(source: string): ConnectorInput[] {
   const trimmed = source.trim();
   if (/^https?:\/\//i.test(trimmed)) {

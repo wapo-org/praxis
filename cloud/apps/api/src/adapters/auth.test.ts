@@ -59,7 +59,6 @@ describe('Better Auth on the executable Convex database', () => {
     const out = await auth.handler(post('sign-out', {}, { authorization: `Bearer ${body.bearerToken}` }));
     expect(out.status).toBe(200);
     expect(await auth.resolveSession(bearer)).toBeNull();
-    // Other sessions stay valid.
     expect((await auth.resolveSession(get({ authorization: `Bearer ${second.bearerToken}` })))?.user.id).toBe(body.user.id);
   });
 

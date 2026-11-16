@@ -7,7 +7,7 @@ export function accountEraser(rpc: ConvexRPC, ownership: ReturnType<typeof accou
       await rpc.mutation('account:begin', { userId });
       await ownership.freeze(userId);
       await ownership.purge(userId);
-      // Keep the caller's session and password credential until the final atomic batch: interrupted work can retry.
+      // Keep session and password credential until final batch so interrupted erasures can retry.
       let blobCursor: string | undefined,
         blobsDone = false;
       for (;;) {

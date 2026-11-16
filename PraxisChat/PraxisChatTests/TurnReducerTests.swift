@@ -2,8 +2,6 @@ import XCTest
 import AgentCore
 @testable import PraxisChat
 
-/// The reducer folds runtime events into one turn's blocks: grouping,
-/// discards, commits, mapping and outcomes.
 final class TurnReducerTests: XCTestCase {
     private var reducer = TurnReducer()
     private var turn = Turn(userText: "Do the thing")
@@ -60,7 +58,6 @@ final class TurnReducerTests: XCTestCase {
         XCTAssertEqual(change.discardedText.count, 1)
         XCTAssertEqual(turn.blocks.count, 1, "text gone, emptied activity gone")
         XCTAssertEqual(turn.activities[0].steps.map(\.toolCallID), ["keep"])
-        // The discarded attempt's later events find nothing.
         send(.toolFinished(id: "drop", ToolCompletion(status: .succeeded, summary: "x")))
         XCTAssertEqual(turn.activities[0].steps.count, 1)
     }
@@ -138,15 +135,13 @@ final class TurnReducerTests: XCTestCase {
     }
 
     func testStepWithoutDroppedCountStillDecodes() throws {
-        // Conversations persisted before the trace cap have no dropped
-        // key; they must still decode with a zero count.
+        // Conversations saved before the trace cap lack a dropped key and must decode with count 0.
         let old = try JSONDecoder().decode(Step.self, from: Data("""
             {"id":"00000000-0000-0000-0000-000000000000","kind":"tool",\
             "runningSummary":"r","finalSummary":"f","status":"succeeded","traces":[]}
             """.utf8))
         XCTAssertEqual(old.droppedTraceCount, 0)
         XCTAssertTrue(old.traces.isEmpty)
-        // And a persisted count round-trips.
         let coded = try JSONDecoder().decode(Step.self, from: Data("""
             {"id":"00000000-0000-0000-0000-000000000000","kind":"tool",\
             "runningSummary":"r","finalSummary":"f","status":"succeeded","traces":[],\
@@ -194,7 +189,6 @@ final class TurnReducerTests: XCTestCase {
                                       arguments: [:], reason: "Destructive", title: "Delete it")
         send(.toolAwaitingApproval(request))
         XCTAssertEqual(turn.activities[0].steps.count, 1)
-        // Found by the id prefix (no parentCallID): still the parent's card.
         XCTAssertEqual(turn.activities[0].steps[0].codeApprovals.map(\.requestID), ["js1/inner"])
         XCTAssertNil(turn.activities[0].steps[0].approval, "the run's own row isn't the one asking")
         send(.toolApprovalResolved(id: "js1/inner", decision: .allowOnce))
@@ -225,7 +219,6 @@ final class TurnReducerTests: XCTestCase {
         XCTAssertEqual(step.traces.last?.text, "Declined: Acme · delete_repo")
         XCTAssertEqual(step.status, .running)
 
-        // Finishing the run clears anything still asking.
         send(.toolFinished(id: "js1", ToolCompletion(status: .succeeded, summary: "Ran code")))
         XCTAssertTrue(turn.activities[0].steps[0].codeApprovals.isEmpty)
         XCTAssertFalse(turn.activities[0].steps[0].isWaitingOnUser)

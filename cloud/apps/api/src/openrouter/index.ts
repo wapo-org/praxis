@@ -32,7 +32,7 @@ export class OpenRouterModels {
     this.catalog = new ModelCatalog(service.adapters.kv, fetcher, clock);
   }
 
-  /** Catalogue entries a client may list. Local dev also lists the scripted models, and works offline with only those. */
+  /** Catalogue entries a client may list; local dev includes scripted models. */
   async models(): Promise<CatalogModel[]> {
     if (!this.service.local) return this.catalog.list();
     const remote = await this.catalog.list().catch(error => {
@@ -67,10 +67,7 @@ export class OpenRouterModels {
     return next;
   }
 
-  /**
-   * The model a run uses and a provider holding the user's key for that run only. Capabilities come from the
-   * catalogue entry. A chosen model that is no longer listed falls back to the default, with a note for the run.
-   */
+  /** Resolves run model and ephemeral user-key provider; falls back to default with note. */
   async forRun(userId: string, requestedId: string | undefined): Promise<RunModel> {
     const apiKey = await this.keys.reveal(userId);
     const wanted = requestedId ?? DEFAULT_MODEL_ID;

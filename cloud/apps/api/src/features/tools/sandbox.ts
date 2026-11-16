@@ -9,7 +9,7 @@ export type ToolExecution=Parameters<FeatureTool['execute']>[1]&{signal?:AbortSi
 export interface SandboxFiles {list():Promise<string[]>;read(name:string):Promise<Uint8Array>}
 const Code=z.object({code:z.string().max(200000),timeout_ms:z.number().int().min(1).max(30000).default(5000)});
 const FetchInput=z.object({url:z.string().url(),method:z.enum(['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS']).default('GET'),headers:z.record(z.string(),z.string()).default({}),body:z.string().max(1000000).optional()});
-/** WASM gets JSON/strings only. No Node functions/objects, module loader, or filesystem leak into it. */
+/** WASM receives JSON/strings only; no Node objects, loader, or FS access. */
 export async function runSandbox(args:JsonValue,ctx:FeatureContext,execution:ToolExecution,files:SandboxFiles,toolNames:string[],toolState?:ToolsState){
  const input=Code.parse(args);if(execution.mode==='ask')throw new ApiError(403,'mode_denied','Running JavaScript is unavailable in Ask mode');
  const key=JSON.stringify(['tools','js-kv',ctx.userId,execution.chatId]);const saved=toolState?await toolState.get(ctx.userId,'javascriptKV',execution.chatId):null;const legacy=toolState?null:await ctx.store.get(ctx.userId,'javascriptKV',execution.chatId);const initial=saved?.data??(legacy&&!legacy.deleted?legacy.value.data??{}:{});

@@ -95,7 +95,7 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
         ...(confirmPassword ? { password: confirmPassword } : {}),
       }),
     });
-    // The server has revoked every session; forget the credential and this device's copy of the data.
+    // Revoked session: clear local credentials and replica copy.
     apiClient.setBearerToken('');
     await wipeReplicaStorage();
     setPassword('');

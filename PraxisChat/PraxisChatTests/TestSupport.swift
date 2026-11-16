@@ -2,8 +2,7 @@ import XCTest
 import AgentCore
 @testable import PraxisChat
 
-/// Polls the main actor until `condition` holds (runs settle through a
-/// detached reader and main-actor drains, so tests wait on state).
+/// Runs settle via a detached reader and main-actor drains, so tests must poll on state.
 @MainActor
 func waitUntil(timeout: TimeInterval = 5, file: StaticString = #filePath, line: UInt = #line,
                _ condition: () -> Bool) async {
@@ -47,15 +46,7 @@ func temporaryDirectory() -> URL {
 
 @MainActor
 extension ChatStore {
-    /// Settles the store at the end of a test: waits (bounded, silent)
-    /// for any running turn to finish, then drains queued persistence
-    /// writes, so `tearDown` can remove the temp directory without a
-    /// late write landing in a deleted folder.
-    ///
-    /// Prefer this over `flushPersistence()` as the last line of any
-    /// store-based test: a bare flush only waits for writes that are
-    /// already queued, while a run that just finished may still have
-    /// saves on the way.
+    /// Prefer settle() over flushPersistence(): bare flush misses saves from a just-finished run.
     func settle(timeout: TimeInterval = 5) async {
         let deadline = Date().addingTimeInterval(timeout)
         while isRunning, Date() <= deadline {

@@ -1,18 +1,12 @@
-/**
- * The one motion module. Every animated component imports from here.
- * CSS mirrors these values as --duration-* / --ease-standard (apps/web/src/styles/tokens.css).
- * Only transform and opacity are ever animated.
- */
+/** Mirrors --duration-* and --ease-standard in tokens.css; animate transform/opacity only. */
 import React from 'react';
 import type { Transition } from 'framer-motion';
 
 export const DURATION = { fast: 0.12, base: 0.2, slow: 0.32 } as const;
 export const EASE_STANDARD = [0.2, 0, 0, 1] as const;
 
-/** The single spring: quick, barely-there overshoot (damping ratio ≈ 0.83). */
 export const SPRING_VALUE = { stiffness: 520, damping: 38, mass: 1 } as const;
 export const SPRING: Transition = { type: 'spring', ...SPRING_VALUE };
-/** Delay between staggered list rows. */
 export const STAGGER = 0.03;
 
 const tween = (duration: number): Transition => ({ type: 'tween', duration, ease: EASE_STANDARD });
@@ -39,7 +33,7 @@ export interface MotionPreset {
   transition: Transition;
 }
 
-/** Menus and popovers: scale from the anchor origin (set transform-origin on the element) plus opacity. */
+/** Scale from element transform-origin + opacity. */
 export const popIn: MotionPreset = {
   initial: { opacity: 0, scale: 0.96 },
   animate: { opacity: 1, scale: 1 },
@@ -47,7 +41,6 @@ export const popIn: MotionPreset = {
   transition: SPRING,
 };
 
-/** Sheets and dialogs: rise a little and fade. */
 export const sheet: MotionPreset = {
   initial: { opacity: 0, y: 16, scale: 0.99 },
   animate: { opacity: 1, y: 0, scale: 1 },
@@ -55,7 +48,6 @@ export const sheet: MotionPreset = {
   transition: SPRING,
 };
 
-/** Scrim behind sheets. */
 export const fade: MotionPreset = {
   initial: { opacity: 0 },
   animate: { opacity: 1 },
@@ -63,7 +55,6 @@ export const fade: MotionPreset = {
   transition: TRANSITION.base,
 };
 
-/** New list rows and messages. */
 export const listItem: MotionPreset = {
   initial: { opacity: 0, y: 6 },
   animate: { opacity: 1, y: 0 },
@@ -71,7 +62,6 @@ export const listItem: MotionPreset = {
   transition: TRANSITION.base,
 };
 
-/** Push navigation inside a tray or settings stack: the next page slides in from the trailing edge. */
 export const slideIn: MotionPreset = {
   initial: { opacity: 0, x: 24 },
   animate: { opacity: 1, x: 0 },
@@ -79,7 +69,6 @@ export const slideIn: MotionPreset = {
   transition: SPRING,
 };
 
-/** The page underneath a push: it recedes a little towards the leading edge. */
 export const slideUnder: MotionPreset = {
   initial: { opacity: 1, x: 0 },
   animate: { opacity: 0, x: -24 },
@@ -87,7 +76,6 @@ export const slideUnder: MotionPreset = {
   transition: SPRING,
 };
 
-/** Press feedback for every tappable control. */
 export const press = { whileTap: { scale: 0.97 }, transition: TRANSITION.fast } as const;
 
 const REDUCED: MotionPreset = {
@@ -97,7 +85,6 @@ const REDUCED: MotionPreset = {
   transition: TRANSITION.fast,
 };
 
-/** Collapse any preset to an opacity-only fade under prefers-reduced-motion. */
 export function resolvePreset(preset: MotionPreset, reduced: boolean): MotionPreset {
   return reduced ? REDUCED : preset;
 }
@@ -119,7 +106,6 @@ export function useReducedMotion(): boolean {
   return React.useSyncExternalStore(subscribe, snapshot, () => false);
 }
 
-/** Spread onto a motion element: preset props, already reduced-motion aware. */
 export function usePreset(preset: MotionPreset) {
   const p = resolvePreset(preset, useReducedMotion());
   return { initial: p.initial, animate: p.animate, exit: p.exit, transition: p.transition };

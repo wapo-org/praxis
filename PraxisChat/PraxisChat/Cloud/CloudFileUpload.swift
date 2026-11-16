@@ -1,7 +1,6 @@
 import Foundation
 
-/// Shared by chat attachments and skill archive imports. One-time upload
-/// origins never receive the API session credential.
+/// One-time upload origins never receive the API session credential.
 enum CloudFileUpload {
     static func send(client: CloudAPIClient, bytes: Data, name: String, mediaType: String, chatID: String? = nil, hidden: Bool = false) async throws -> String {
         let upload: CloudUploadURL = try await client.send("/v1/uploads", method: "POST", body: JSONEncoder().encode(CloudUploadRequest(name: name, mediaType: mediaType, size: bytes.count, chatId: chatID)))
@@ -11,9 +10,7 @@ enum CloudFileUpload {
         request.httpMethod = upload.method?.rawValue ?? "POST"; request.httpBody = bytes
         request.setValue(mediaType, forHTTPHeaderField: "Content-Type")
         request.httpShouldHandleCookies = false
-        // Local API upload routes require the API bearer. A Convex one-time
-        // URL is a different origin and must never receive that credential,
-        // including any Authorization supplied by session default headers.
+        // Strip API bearer header since Convex upload URL is a foreign origin.
         let uploadOrigin = try CloudServerConfiguration(baseURL: originURL).origin
         let token = uploadOrigin == client.configuration.origin
             ? try await client.tokens.token(for: client.configuration.origin) : nil

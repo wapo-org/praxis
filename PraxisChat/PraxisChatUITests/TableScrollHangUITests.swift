@@ -1,9 +1,6 @@
 import XCTest
 
-/// Hang probe: opening a call's details and then scrolling the tables into
-/// view used to wedge the main thread for 30 s or more (ViewThatFits +
-/// TableGrid re-measuring inside the transcript LazyVStack). Part of the
-/// regular suite: after every swipe the UI must answer within 5 s.
+/// Guards against ViewThatFits+TableGrid re-measure hangs in LazyVStack; UI must stay responsive.
 final class TableScrollHangUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -28,11 +25,8 @@ final class TableScrollHangUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Retry"].waitForExistence(timeout: 30),
                       "the run should finish before scrolling")
 
-        // The finished run sits below the fold; scroll back to the top so
-        // the activity header is in the accessibility tree.
         app.swipeDown()
         app.swipeDown()
-        // Expand the folded activity, then open one call's details.
         let toggle = app.buttons["Show agent activity"].firstMatch
         XCTAssertTrue(toggle.waitForExistence(timeout: 10))
         toggle.tap()
@@ -41,8 +35,6 @@ final class TableScrollHangUITests: XCTestCase {
         let search = steps.matching(NSPredicate(format: "label CONTAINS[c] %@", "search")).firstMatch
         if search.waitForExistence(timeout: 5) { search.tap() }
 
-        // Scroll the tables into view. If the main thread wedges, the
-        // hittability check below fails instead of hanging the suite.
         for i in 0..<6 {
             app.swipeUp()
             XCTAssertTrue(

@@ -4,8 +4,8 @@ import {JsonObjectSchema} from '@praxis/protocol';
 import {createConvexRPC, type ConvexRPC, type ConvexOptions} from '../../adapters/convex.js';
 import {ApiError} from '../../service.js';
 import type {ToolsStorage, UploadInput} from './ports.js';
-/** Convex receives upload bytes and binds storageId to the pending ticket owner before returning it. */
-/** `fetcher` reads Convex storage URLs (the deployment's own origin, from CONVEX_URL; not user-controlled). */
+/** Convex binds uploaded bytes to the pending ticket owner before returning. */
+/** Reads Convex storage URLs from deployment origin; never user-controlled. */
 export function toolsStorageFromRPC(rpc:ConvexRPC,baseUrl:string,fetcher:typeof fetch=fetch):ToolsStorage {
  void baseUrl;
  const scope=(userId:string,kind:string,id:string)=>({userId,kind,id});
@@ -18,7 +18,7 @@ export function toolsStorageFromRPC(rpc:ConvexRPC,baseUrl:string,fetcher:typeof 
   async createUpload(userId,input){
    const ticket=randomUUID(),expiresAt=Date.now()+600_000;
    await rpc.mutation('files:createTicket',{userId,ticket,...input,expiresAt});
-   // The one-time Convex HTTP capability only uploads for this ticket; no API bearer token goes there.
+   // One-time upload capability for this ticket; never send API bearer token.
    const uploadUrl=z.string().url().parse(await rpc.mutation('files:generateUploadUrl',{userId,ticket}));
    return {uploadUrl,expiresAt:new Date(expiresAt).toISOString(),method:'POST'};
   },

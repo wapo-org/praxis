@@ -14,10 +14,7 @@ export const maskKey = (key: string) => `••••${key.slice(-4)}`;
 
 const missing = () => new ApiError(400, 'model_key_missing', 'Connect your OpenRouter key to use models');
 
-/**
- * One OpenRouter key per user: sealed at rest, bound to the owner, unsealed only to call OpenRouter for
- * that same user. Nothing here returns, logs or emits the key; clients only ever see the masked record.
- */
+/** Per-user OpenRouter key sealed with owner AAD; never returned or logged. */
 export class ModelKeys {
   constructor(private service: ApiService, private encryptionKey: string | undefined, private fetcher: typeof fetch = fetch) {}
 

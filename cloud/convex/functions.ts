@@ -20,7 +20,7 @@ export type DataModel = DataModelFromSchemaDefinition<typeof schema>;
 export type QueryCtx = GenericQueryCtx<DataModel>;
 export type MutationCtx = GenericMutationCtx<DataModel>;
 
-/** Public functions. Every handler MUST call `requireServer` first. */
+/** Public Convex functions; every handler MUST call requireServer first. */
 export const query: QueryBuilder<DataModel, 'public'> = queryGeneric;
 export const mutation: MutationBuilder<DataModel, 'public'> = ((definition: any) => {
   if (!definition.args?.userId) return mutationGeneric(definition);
@@ -33,7 +33,6 @@ export const mutation: MutationBuilder<DataModel, 'public'> = ((definition: any)
 }) as MutationBuilder<DataModel, 'public'>;
 export const action: ActionBuilder<DataModel, 'public'> = actionGeneric;
 
-/** Internal functions are not reachable from outside the deployment. */
 export const internalQuery: QueryBuilder<DataModel, 'internal'> = internalQueryGeneric;
 export const internalMutation: MutationBuilder<DataModel, 'internal'> = internalMutationGeneric;
 

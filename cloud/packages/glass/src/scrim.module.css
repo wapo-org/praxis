@@ -1,4 +1,3 @@
-/* Progressive blur: static stacked bands, each masked toward the edge. No JS, no per-frame work. */
 .scrim {
   position: absolute;
   inset-inline: 0;
@@ -35,7 +34,7 @@
   );
 }
 
-/* Scroll fade for menus and lists: a mask, not a blur, so it is free on glass. */
+/* Uses a mask instead of blur so scrolling over glass stays cheap. */
 @property --fade-top {
   syntax: '<length>';
   inherits: false;

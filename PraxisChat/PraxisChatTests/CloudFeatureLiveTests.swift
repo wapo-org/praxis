@@ -1,8 +1,7 @@
 import XCTest
 @testable import PraxisChat
 
-/// Real HTTP checks; the deterministic local registry is provided by the API,
-/// not a client fallback. Probe failures remain failures in the presentation.
+/// Tests real HTTP probes against local API registry; probe failures never fall back on client.
 @MainActor
 final class CloudFeatureLiveTests: XCTestCase {
     private func services() async throws -> CloudServices {
@@ -49,8 +48,7 @@ final class CloudFeatureLiveTests: XCTestCase {
     }
     func testLiveProviderProbeSurfacesRealFailureWithoutInventingCapabilities() async throws {
         let services = try await services()
-        // The seed profile is for scripted runs, not a listening provider.
-        // Its real probe must return a typed failure, never fake a capability.
+        // Seed profile has no listening provider, so real probes must fail cleanly without faking.
         try await services.setConsent(host: "localhost:8787", allowed: true)
         let result = try await services.testProvider("scripted", modelID: "scripted")
         XCTAssertFalse(result.ok); XCTAssertNil(result.probe)

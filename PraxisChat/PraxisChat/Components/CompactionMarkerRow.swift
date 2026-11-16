@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// Where older history was condensed for the model: a thin hairline
-/// divider with a quiet caption, "Earlier messages summarized". Tapping it
-/// shows the summary read-only — what the model now remembers of
-/// everything above. The thread itself stays whole.
 struct CompactionMarkerRow: View, Equatable {
     let marker: CompactionMarker
     @State private var showsSummary = false
@@ -63,7 +59,6 @@ struct CompactionMarkerRow: View, Equatable {
     }
 }
 
-/// The compaction summary, read-only.
 struct CompactionSummarySheet: View {
     let marker: CompactionMarker
     @Environment(\.dismiss) private var dismiss
@@ -124,7 +119,6 @@ struct CompactionSummarySheet: View {
         return "To stay within the model's context window, the messages above this point were condensed into the summary below. The model now sees this summary instead of them; your full thread stays here."
     }
 
-    /// Inline markdown (bold, code, links) with the summary's own line breaks.
     static func rendered(_ text: String) -> AttributedString {
         (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
             ?? AttributedString(text)

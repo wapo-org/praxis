@@ -3,7 +3,6 @@ import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { root } from './deploy-config.mjs';
-/** The only cloud/ paths the API deployment needs (npm ci runs in cloud/ and builds apps/api). */
 export const API_SOURCES = [
   'package.json',
   'package-lock.json',
@@ -14,7 +13,6 @@ export const API_SOURCES = [
 ];
 const SKIP =
   /(^|\/)(node_modules|dist|coverage|tests|testing|\.vercel|\.deploy|\.convex)(\/|$)|\.test\.tsx?$|(^|\/)\.DS_Store$|(^|\/)\.env(?!\.example$)[^/]*$/;
-/** Secret-bearing or out-of-scope paths that must never be uploaded. */
 const FORBIDDEN =
   /(^|\/)\.env(?!\.example$)[^/]*$|(^|\/)(PraxisChat|\.deploy|\.git)(\/|$)|\.(pem|key|p8|p12|mobileprovision)$|(^|\/)deploy\.env$/;
 export const VERCELIGNORE = [
@@ -39,7 +37,6 @@ export async function listFiles(dir) {
       out.push(relative(dir, join(entry.parentPath, entry.name)).split(sep).join('/'));
   return out.sort();
 }
-/** Fails on forbidden paths, and on any file that contains a configured secret value. */
 export async function assertSafeUpload(dir, files, secrets = []) {
   const bad = files.filter((f) => FORBIDDEN.test(f));
   if (bad.length) throw Error(`Upload contains forbidden files: ${bad.join(', ')}`);
@@ -51,7 +48,7 @@ export async function assertSafeUpload(dir, files, secrets = []) {
         throw Error(`Upload file ${f} contains a deployment secret`);
     }
 }
-/** Mirrors the repo layout (cloud/apps/api is the project's root directory) from an allowlist only. */
+/** Stages allowlisted paths matching cloud/ repo layout. */
 export async function stageApi(stage = join(root, '.deploy/api'), from = root) {
   await rm(stage, { recursive: true, force: true });
   for (const source of API_SOURCES)
@@ -62,7 +59,7 @@ export async function stageApi(stage = join(root, '.deploy/api'), from = root) {
   await writeFile(join(stage, '.vercelignore'), VERCELIGNORE);
   return stage;
 }
-/** A private 0600 file in a 0700 directory, removed afterwards, also on SIGINT/SIGTERM. */
+/** Writes 0600 file in 0700 dir and cleans up on exit or signal. */
 export async function withPrivateFile(value, fn) {
   const dir = await mkdtemp(join(tmpdir(), 'praxis-deploy-'));
   const cleanup = (signal) => {

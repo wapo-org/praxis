@@ -1,16 +1,11 @@
 import SwiftUI
 import UIKit
 
-/// Marks chip-only glyphs (tile monograms, file-icon spacers) so copying a
-/// selection yields the prose, not the placeholders the renderer draws over.
+/// Marks chip placeholder glyphs so copy omits them.
 private let chipGlyphKey = NSAttributedString.Key("praxis.chipGlyph")
 
 extension View {
-    /// Finished prose selects like regular text: the SwiftUI text keeps
-    /// drawing (chips) and stays the accessibility element, while touches
-    /// fall through to a native text view laid out identically behind it,
-    /// so the highlight sits under the glyphs like any selection. Streaming
-    /// text keeps plain SwiftUI hit-testing so the reveal never fights one.
+    /// Translucent TextKit mirror handles selection behind SwiftUI prose.
     func selectionLayer(_ text: AttributedString, lineSpacing: CGFloat,
                         font: Font = Type.inter(17), enabled: Bool,
                         onLink: @escaping (URL) -> Void) -> some View {
@@ -24,10 +19,6 @@ extension View {
     }
 }
 
-/// Native range selection for agent prose: an invisible TextKit 2 view
-/// mirroring the drawn runs, fonts and line spacing, so long-press, drag
-/// handles and the edit menu behave like regular text. Chip links tap
-/// through the same handler the SwiftUI text used.
 struct SelectableTextLayer: UIViewRepresentable {
     let text: AttributedString
     let lineSpacing: CGFloat
@@ -51,8 +42,7 @@ struct SelectableTextLayer: UIViewRepresentable {
     func updateUIView(_ view: SelectableTextView, context: Context) {
         let coordinator = context.coordinator
         coordinator.onLink = onLink
-        // The transcript re-renders on every streamed token; finished
-        // paragraphs only rebuild their mirror when their input changes.
+        // Only rebuilds mirror when finished input changes.
         let fonts = context.environment.fontResolutionContext
         let key = Coordinator.Key(text: text, lineSpacing: lineSpacing, fonts: fonts)
         guard coordinator.key != key else { return }
@@ -62,15 +52,12 @@ struct SelectableTextLayer: UIViewRepresentable {
                                           fonts: fonts)
     }
 
-    /// Takes exactly the frame of the SwiftUI text it mirrors.
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: SelectableTextView, context: Context) -> CGSize? {
         CGSize(width: proposal.width ?? 0, height: proposal.height ?? 0)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(onLink: onLink) }
 
-    /// Rebuilds the attributed runs for UIKit with clear ink: same fonts
-    /// (resolved from the SwiftUI fonts), tracking, links and line spacing.
     static func mirror(_ text: AttributedString, lineSpacing: CGFloat,
                        fallback: UIFont, fonts: Font.Context) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
@@ -119,13 +106,11 @@ struct SelectableTextLayer: UIViewRepresentable {
 }
 
 final class SelectableTextView: UITextView {
-    /// The SwiftUI text in front stays the accessibility element (it
-    /// exposes the chip links); the mirror would only duplicate it.
+    /// SwiftUI layer stays accessible; mirror would duplicate elements.
     override var isAccessibilityElement: Bool { get { false } set {} }
     override var accessibilityElementsHidden: Bool { get { true } set {} }
 
-    /// Copies the selected prose as plain text (the mirror's ink is clear,
-    /// so rich text would paste invisibly) and drops chip placeholders.
+    /// Copies plain text since clear-ink mirror text would paste invisibly.
     override func copy(_ sender: Any?) {
         guard let attributed = attributedText, selectedRange.length > 0 else { return }
         var plain = ""

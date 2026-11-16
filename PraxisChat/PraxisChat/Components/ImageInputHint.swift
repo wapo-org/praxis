@@ -1,19 +1,11 @@
 import SwiftUI
 
-/// What happens to attached images when the chat model can't see them.
 enum ImageInputHint: Equatable {
-    /// The image-reading model describes them (`look_at_image`).
     case reader(String)
-    /// A reader is picked but its host hasn't been allowed yet.
     case readerNeedsConsent(String)
-    /// The picked reader turned out to be text-only too.
     case readerCantSeeImages(String)
-    /// No reader configured.
     case noReader
-    /// This chat froze its tools with a model that could see images, so it
-    /// has no image tool; a new chat gets one.
     case notInThisChat
-    /// The model can't call tools, so it can't ask about images either.
     case noTools
 
     var text: String {
@@ -31,13 +23,10 @@ enum ImageInputHint: Equatable {
 }
 
 extension ChatStore {
-    /// Shown above the composer while images are attached for a live model
-    /// known not to take them (never for one whose support is unknown).
+    /// Only shown when live model is known text-only.
     var imageInputHint: ImageInputHint? {
         guard isLive, let services, attachments.contains(where: \.isImage) else { return nil }
         let settings = services.settings
-        // Only a confirmed "no" (profile flag, model list, or an earlier
-        // rejection): a model whose support is unknown is simply tried.
         guard settings.selectedProfile != nil, settings.selectedImageSupport == .unsupported else { return nil }
         guard settings.selectedModelSupportsTools else { return .noTools }
         if let conv = selected, let setup = conv.setup,
@@ -54,8 +43,6 @@ extension ChatStore {
 }
 
 extension Attachment {
-    /// A photo, screenshot, camera shot or image file: it reaches the model
-    /// as an image part.
     var isImage: Bool {
         hasImage || kind != .file || mediaType?.hasPrefix("image/") == true
     }

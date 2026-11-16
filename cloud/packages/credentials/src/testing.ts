@@ -1,6 +1,5 @@
 import type {RedisLike} from './cooldown.js';
 
-/** Test Redis: strings with NX + PX on a fake clock, recording every value written. */
 export function testRedis(now: () => number) {
   const data = new Map<string, {value: string; expires: number}>();
   const writes: {key: string; value: string}[] = [];

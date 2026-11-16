@@ -1,16 +1,13 @@
 import Foundation
 import Observation
 
-/// Account-scoped cloud settings. No provider/MCP/Groq credential store is
-/// constructed or read here; the only persisted credential is the client's
-/// origin-scoped session token. The native service graph is sunset separately.
+/// Account-scoped settings holding only the origin-scoped session token.
 @MainActor
 @Observable
 final class CloudServices: VoiceSettingsReader {
     @ObservationIgnored let client: CloudAPIClient
     @ObservationIgnored var onSessionChanged: (@MainActor (CloudUser?) -> Void)?
     private(set) var account: CloudUser?
-    /// Shows the "Account deleted" notice until the next sign-in.
     private(set) var accountDeleted = false
     private(set) var providers: [CloudCatalogProvider] = []
     private(set) var models: [CloudCatalogModel] = []
@@ -35,8 +32,7 @@ final class CloudServices: VoiceSettingsReader {
 
     var serverURL: URL { client.configuration.baseURL }
     var isSignedIn: Bool { account != nil }
-    /// Cloud transcription is authenticated by the app session. Configuration
-    /// and provider credentials are checked by the server, never the device.
+    /// Server checks cloud voice transcription auth and provider keys.
     var isConfigured: Bool { isSignedIn && preferences?.voice.configured == true }
     var availableModels: [AIModel] { models.map(adapter) }
     var pinnedModelIDs: [String] { favoriteModels.filter(\.pinned).map(\.selectionID) }
@@ -54,8 +50,7 @@ final class CloudServices: VoiceSettingsReader {
     func loadIfNeeded() async {
         guard !hasLoaded else { return }
         hasLoaded = true
-        // Account bootstrap belongs to the facade, not a transient view task.
-        // A dismissed/cancelled view must not leave hasLoaded true with no account.
+        // Bootstrap lives on facade so view cancel cannot mark empty state as loaded.
         let bootstrap = Task { await self.reload() }
         await bootstrap.value
     }
@@ -110,8 +105,7 @@ final class CloudServices: VoiceSettingsReader {
         hasLoaded = true
     }
 
-    /// Success signs out through `onSessionChanged`, which wipes the replica,
-    /// journals, attachments and recordings of the deleted account.
+    /// Signs out via onSessionChanged to wipe local account data.
     func deleteAccount(password: String) async throws {
         try await client.deleteAccount(password: password)
         clearAccount()
@@ -145,8 +139,7 @@ final class CloudServices: VoiceSettingsReader {
         try await refreshFavorites()
     }
 
-    /// One small page is rendered. The server performs filtering/ranking;
-    /// superseded responses cannot replace a newer query (or account).
+    /// Discards superseded search responses when query or account changes.
     func searchModels(query: String, providerID: String? = nil) async throws {
         let query = String(query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500))
         let revision = UUID()

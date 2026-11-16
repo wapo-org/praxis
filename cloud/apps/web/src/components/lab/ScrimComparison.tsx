@@ -55,7 +55,6 @@ export function ScrimComparison() {
           gap: '20px',
         }}
       >
-        {/* Left: 6-Band ProgressiveBlurScrim */}
         <div
           data-testid="scrim-demo-progressive"
           style={{
@@ -107,7 +106,6 @@ export function ScrimComparison() {
           </ScrollBlur>
         </div>
 
-        {/* Right: Hard Clip */}
         <div
           data-testid="scrim-demo-hard-clip"
           style={{
@@ -161,7 +159,6 @@ export function ScrimComparison() {
         </div>
       </div>
 
-      {/* Standalone Scrim Inspector Strip */}
       <div
         style={{
           marginTop: '16px',

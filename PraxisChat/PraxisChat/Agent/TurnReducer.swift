@@ -2,23 +2,11 @@ import Foundation
 import AgentCore
 import AgentMCP
 
-/// Folds runtime events into one turn's blocks. Pure: the clock comes in
-/// with each call, and side effects (haptics, persistence, live text) are
-/// reported in `Change` for the store to carry out.
-///
-/// Grouping: a tool or reasoning step arriving when the last block isn't
-/// an open activity opens a new activity; any text closes it. That holds
-/// for arbitrary interleaving across loop iterations.
-///
-/// Streaming text never touches the turn: it accumulates here (and in the
-/// block's `LiveText`) and is written into the block once it closes, so
-/// a token costs neither a turn copy nor a transcript re-render.
+/// Pure event-to-block reducer; keeps streamed text in LiveText until block closes.
 struct TurnReducer {
     struct Effects: OptionSet {
         let rawValue: Int
-        /// The turn value changed: write it back.
         static let turn = Effects(rawValue: 1 << 0)
-        /// A commit point: persist the conversation.
         static let commit = Effects(rawValue: 1 << 1)
         static let finished = Effects(rawValue: 1 << 2)
         static let commandFailed = Effects(rawValue: 1 << 3)
@@ -27,10 +15,8 @@ struct TurnReducer {
 
     struct Change {
         var effects: Effects = []
-        /// Blocks opened for streaming text.
         var openedText: [UUID] = []
         var appendedText: [(block: UUID, text: String)] = []
-        /// Blocks closed, with their final source.
         var closedText: [(block: UUID, source: String)] = []
         var discardedText: [UUID] = []
         var approvalIDs: [String] = []
@@ -49,21 +35,16 @@ struct TurnReducer {
         }
     }
 
-    /// Engine block id → transcript block id (engine ids repeat across runs).
+    /// Engine block IDs repeat across runs, so map to unique block UUIDs.
     private var textBlocks: [String: UUID] = [:]
-    /// Text of blocks still streaming.
     private var streaming: [UUID: String] = [:]
-    /// Reasoning text per engine block id, kept until the step closes.
     private var reasoning: [String: String] = [:]
-    /// Step key (tool call id / reasoning key) → location, revalidated on use.
     private var stepLocations: [String: (block: Int, step: Int)] = [:]
-    /// Nested approval id → the step key (parent call) whose card shows it.
     private var nestedApprovalParents: [String: String] = [:]
     private var imageTraces: [String: Int] = [:]
 
     init() {}
 
-    /// Text received so far for a block that is still streaming.
     func streamingText(for block: UUID) -> String? { streaming[block] }
 
     // MARK: Events
@@ -75,9 +56,7 @@ struct TurnReducer {
             break
 
         case .compaction(let id, let update):
-            // The transcript is untouched; a divider row marks the spot
-            // ("Earlier messages summarized"). It ends the open activity:
-            // later steps start a new one below it.
+            // Compaction divider ends any open activity without altering transcript.
             if case .started = update { closeOpenActivity(in: &turn, at: now) }
             if CompactionActivity.apply(update, key: id, to: &turn, at: now) { change.effects.formUnion([.turn, .commit]) }
 
@@ -118,7 +97,6 @@ struct TurnReducer {
             updateStep(Self.reasoningKey(blockID), in: &turn) { step in
                 step.status = .succeeded
                 step.finalSummary = Self.reasoningSummary(text, elapsed: now.timeIntervalSince(step.startedAt ?? now))
-                // Tapping the line shows what was reasoned.
                 step.result = StepPresentation.clip(text, limit: StepPresentation.reasoningLimit, singleLine: false)
             }
             change.effects.insert(.turn)
@@ -139,8 +117,7 @@ struct TurnReducer {
                 requestID: request.id, title: request.title, reason: request.reason, toolName: request.toolName,
                 sourceName: Self.sourceName(request.source), arguments: request.arguments.encodedString(pretty: true),
                 parentCallID: request.parentCallID)
-            // A call made from inside code shows in its parent's step (the
-            // JS run); the id prefix is the fallback for older runtimes.
+            // Fallback ID prefix matches older runtimes for nested code approvals.
             let key = request.parentCallID
                 ?? (locate(request.id, in: turn) != nil ? request.id : Self.parentKey(request.id))
             let nested = key != request.id
@@ -150,7 +127,6 @@ struct TurnReducer {
             }
             updateStep(key, in: &turn) { step in
                 if nested {
-                    // Parallel calls from one code run can each wait at once.
                     step.codeApprovals.removeAll { $0.requestID == request.id }
                     step.codeApprovals.append(approval)
                 } else {
@@ -159,7 +135,6 @@ struct TurnReducer {
                 }
             }
             if nested { nestedApprovalParents[request.id] = key }
-            // The card needs to be seen: open the activity holding it.
             if let location = locate(key, in: turn) {
                 turn.updateActivity(at: location.block) { $0.isExpanded = true }
             }
@@ -212,8 +187,6 @@ struct TurnReducer {
                     step.command?.append(lines)
                 }
             case .trace(.note, let text) where MCPSignInNotice.parse(text) != nil:
-                // A connector refused for missing credentials: the step
-                // offers "Sign in to <server>" instead of showing a trace.
                 let notice = MCPSignInNotice.parse(text)!
                 updateStep(id, in: &turn) { $0.signIn = StepSignIn(serverID: notice.serverID, serverName: notice.serverName) }
             case .trace(let kind, let text):
@@ -235,7 +208,6 @@ struct TurnReducer {
                 step.approval = nil
                 step.codeApprovals = []
                 guard step.command != nil else {
-                    // What the tool returned (or why it failed), for the details.
                     if !completion.preview.isEmpty {
                         step.result = StepPresentation.clip(completion.preview, limit: StepPresentation.resultLimit,
                                                             singleLine: false)
@@ -275,9 +247,6 @@ struct TurnReducer {
         return change
     }
 
-    /// Closes everything still open: streamed text is written into its
-    /// block, running activity stops its clock, unfinished steps settle
-    /// (cancelled when stopped). Used for `finished` and for a user stop.
     mutating func finish(_ turn: inout Turn, outcome: TurnOutcome, at now: Date) -> Change {
         var change = Change()
         for (id, text) in streaming {
@@ -341,8 +310,6 @@ struct TurnReducer {
 
     private mutating func appendStep(_ step: Step, key: String, to turn: inout Turn, at now: Date) {
         if !Self.endsWithOpenActivity(turn) {
-            // Folded from the start: while the run works, the header line
-            // carries the live progress; the list is one tap away.
             turn.blocks.append(.activity(ActivityData(isRunning: true, startedAt: now, isExpanded: false)))
         }
         let block = turn.blocks.count - 1
@@ -412,15 +379,12 @@ struct TurnReducer {
 
     private static func apply(_ activity: ToolActivity, to step: inout Step) {
         step.kind = Self.kind(for: activity)
-        // The line: who ran it, what it did, what it was about. The raw
-        // call (formatted arguments) waits behind a tap.
         let titles = StepPresentation.titles(for: activity)
         step.source = titles.source
         step.title = titles.finished
         step.detail = titles.detail
         step.runningSummary = titles.running
         step.finalSummary = titles.finished
-        // Code shows itself in its card; everything else shows its input.
         if step.kind != .command { step.arguments = StepPresentation.formattedArguments(for: activity) }
         guard step.kind == .command, let arguments = activity.arguments else { return }
         let code = code(in: arguments) ?? activity.name
@@ -433,8 +397,6 @@ struct TurnReducer {
         }
     }
 
-    /// Image traces show the turn attachment they name (by id or file
-    /// name); otherwise the next attachment in order.
     private mutating func imageAttachment(for text: String, stepKey: String, in turn: Turn) -> Attachment? {
         let n = imageTraces[stepKey, default: 0]
         imageTraces[stepKey] = n + 1
@@ -489,8 +451,6 @@ struct TurnReducer {
         }
     }
 
-    /// First line of the reasoning, plain and short; a duration when the
-    /// model kept its reasoning to itself.
     static func reasoningSummary(_ text: String, elapsed: TimeInterval) -> String {
         let line = text.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "#*_ ").union(.whitespaces)) }
@@ -501,16 +461,13 @@ struct TurnReducer {
 
     static func reasoningKey(_ blockID: String) -> String { "reasoning:\(blockID)" }
 
-    /// `parent/xyz` → `parent` (approvals for calls made from inside code).
     static func parentKey(_ id: String) -> String {
         id.split(separator: "/", maxSplits: 1).first.map(String.init) ?? id
     }
 }
 
 extension Turn {
-    /// Mutates an activity block in place. The block is swapped out first
-    /// so the extracted value holds the only reference to its steps and
-    /// lines — appending output never copies the whole activity.
+    /// Swaps out activity block before mutating to avoid Copy-on-Write copies.
     mutating func updateActivity(at index: Int, _ body: (inout ActivityData) -> Void) {
         guard blocks.indices.contains(index), case .activity(var activity) = blocks[index] else { return }
         blocks[index] = .markdown(id: activity.id, source: "", isStreaming: false)

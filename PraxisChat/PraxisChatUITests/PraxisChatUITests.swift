@@ -1,16 +1,11 @@
 import XCTest
 
-/// End-to-end acceptance flows driven through the public UI (§15):
-/// composer growth + mic→send, send → run → collapse, tray controls
-/// applying outside the tray, chips, history, recording, stop/retry/edit.
 final class PraxisChatUITests: XCTestCase {
     var app: XCUIApplication!
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        // Conversations persist now: every test starts from the seed.
-        // The gallery shows mocks: deterministic tiles, no photo prompt.
         app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES", "-PraxisMockGallery", "YES"]
         app.launch()
         XCTAssertTrue(el(.button, "History").waitForExistence(timeout: 15))
@@ -39,8 +34,6 @@ final class PraxisChatUITests: XCTestCase {
         return query.element(boundBy: max(query.count - 1, 0))
     }
 
-    /// Drags inside the bottom content area (tray card or transcript),
-    /// scrolling whatever is actually under the finger upward.
     private func scrollContentUp() {
         app.swipeUp()
     }
@@ -49,7 +42,6 @@ final class PraxisChatUITests: XCTestCase {
         app.swipeDown()
     }
 
-    /// Scrolls toward the element, whichever side of the fold it is on.
     private func scrollToward(_ element: XCUIElement) {
         if element.frame.minY < app.frame.height * 0.30 {
             scrollContentDown()
@@ -58,22 +50,15 @@ final class PraxisChatUITests: XCTestCase {
         }
     }
 
-    /// An element can report hittable while its centre is clipped
-    /// below the tray card's fold (the tap then lands on the composer).
-    /// Anything reaching into the bottom chrome needs a scroll first.
+    /// Elements clipped under the tray fold still report hittable, so scroll before tapping.
     private func needsScroll(_ element: XCUIElement) -> Bool {
         element.frame.maxY > app.frame.height - 100 || element.frame.minY < 0
     }
 
-    /// Re-resolves until the element is hittable, then taps. Glass morphs
-    /// make one-shot taps flaky; the query is live so this stays honest.
-    /// Elements below a scroll fold (tray card, transcript) get dragged
-    /// into view between checks.
+    /// Re-resolve live queries between checks because glass morphs make one-shot taps flaky.
     private func tapReliably(_ element: XCUIElement, timeout: TimeInterval = 20,
                              clippedScroll: Bool = true) {
-        // clippedScroll is retained for call-site clarity; hittability
-        // alone gates the tap (an earlier frame-based gate blocked
-        // visible rows whose frames reach into the bottom chrome).
+        // Keep clippedScroll for call-site clarity; only hittability gates taps on bottom-edge rows.
         _ = clippedScroll
         let deadline = Date().addingTimeInterval(timeout)
         var scrolls = 0
@@ -166,8 +151,7 @@ final class PraxisChatUITests: XCTestCase {
         let stopButton = el(.button, "Stop generating")
         XCTAssertTrue(stopButton.waitForExistence(timeout: 12))
         Thread.sleep(forTimeInterval: 1.2)
-        // Single tap, no polling loop: repeated snapshots while the
-        // answer streams at 60fps can time out under load.
+        // Tap once without polling: repeated AX snapshots during 60fps streaming time out under load.
         stopButton.tap()
 
         if !elBegins(.staticText, "Stopped after").waitForExistence(timeout: 6) {
@@ -177,9 +161,7 @@ final class PraxisChatUITests: XCTestCase {
                       "stopping should relabel the activity 'Stopped after Ns'")
         shot("04-stopped")
 
-        // Send leaves the keyboard up over the action row, below the fold.
-        // A slow drag dismisses it interactively (a fast swipe does not
-        // track the finger), then scroll to the bottom action row.
+        // Use a slow drag to dismiss the keyboard interactively; fast swipes fail to track the finger.
         if app.keyboards.firstMatch.exists {
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.40))
             let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
@@ -214,7 +196,6 @@ final class PraxisChatUITests: XCTestCase {
         el(.button, "Atlas Mini, Fastest answers").tap()
         el(.button, "Back").tap()
 
-        // Code execution is decided by the mode now: no toggle for it.
         let memorySwitch = elContains(.switch, "Memory")
         XCTAssertTrue(memorySwitch.waitForExistence(timeout: 10))
         XCTAssertFalse(elContains(.switch, "Code execution").exists,
@@ -241,7 +222,6 @@ final class PraxisChatUITests: XCTestCase {
         XCTAssertTrue(el(.button, "Add 1").waitForExistence(timeout: 8))
         el(.button, "Add 1").tap()
 
-        // Outside the tray: model caption + mode placeholder + attachment.
         XCTAssertTrue(elContains(.button, "Atlas Mini").waitForExistence(timeout: 10),
                       "toolbar caption should show the chosen model")
         let placeholderOK = app.staticTexts["Plan it out..."].exists
@@ -251,8 +231,6 @@ final class PraxisChatUITests: XCTestCase {
                       "the chosen screenshot should land in the composer")
         shot("07-after-tray")
 
-        // Swipe-to-dismiss: drag the card itself (it now grows out
-        // of the composer at the bottom) and it tracks the finger.
         el(.button, "Add photos, files and more").tap()
         XCTAssertTrue(el(.button, "Plan").waitForExistence(timeout: 15))
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
@@ -271,8 +249,6 @@ final class PraxisChatUITests: XCTestCase {
         let tray = app.scrollViews["plusTray"]
         XCTAssertTrue(tray.waitForExistence(timeout: 5))
 
-        // Scroll the content down, then flick back toward the top fast and
-        // short: the old drag gesture dismissed on any downward velocity.
         tray.swipeUp()
         Thread.sleep(forTimeInterval: 0.8)
         let mid = tray.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
@@ -281,7 +257,6 @@ final class PraxisChatUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.8)
         XCTAssertTrue(el(.button, "Close add menu").exists, "scrolling inside the tray must not dismiss it")
 
-        // Connectors page: scrolling the list keeps the tray open too.
         tapReliably(elBegins(.button, "Connectors"))
         XCTAssertTrue(elContains(.switch, "Linear").waitForExistence(timeout: 8))
         tray.swipeUp()
@@ -289,7 +264,6 @@ final class PraxisChatUITests: XCTestCase {
         XCTAssertTrue(el(.button, "Close add menu").exists, "scrolling the connector list must not dismiss")
         shot("28-connectors-scrolled")
 
-        // A deliberate pull past the top dismisses on release.
         tray.swipeDown()
         Thread.sleep(forTimeInterval: 0.4)
         let top = tray.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
@@ -302,9 +276,7 @@ final class PraxisChatUITests: XCTestCase {
     // MARK: Inline chips: FileRef sheet, LinkRef preview, CodePill copy
 
     func testChipTaps() {
-        // FileRef opens the mock file sheet. It sits in the first turn,
-        // above the fold: the transcript's rows are built lazily, so
-        // scroll back until its row exists.
+        // Transcript rows build lazily, so scroll up until the first turn's FileRef row materializes.
         let fileLink = app.links["ComposerView.swift"]
         _ = fileLink.waitForExistence(timeout: 3)
         for _ in 0..<8 where !fileLink.exists || !fileLink.isHittable {
@@ -318,7 +290,6 @@ final class PraxisChatUITests: XCTestCase {
         shot("09-file-sheet")
         el(.button, "Done").tap()
 
-        // CodePill copies and shows the Copied toast (visible `.light` pill).
         let pill = app.links[".light"]
         XCTAssertTrue(pill.waitForExistence(timeout: 10))
         tapReliably(pill)
@@ -343,9 +314,6 @@ final class PraxisChatUITests: XCTestCase {
     // MARK: Recording: mic → recording UI → transcription in the draft
 
     func testRecordingTypesTranscription() {
-        // The placeholder is gone: capture is simulated from the bundled
-        // fixture and the transcript is scripted (DEBUG seams, no mic or
-        // network), but the flow is the real one.
         app.terminate()
         app = XCUIApplication()
         app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES",
@@ -409,16 +377,12 @@ final class PraxisChatUITests: XCTestCase {
         el(.button, "Send message").tap()
         let bubble = elContains(.any, "You said: Audit glass contrast")
         XCTAssertTrue(bubble.waitForExistence(timeout: 12))
-        // Let the short low-effort run finish rather than racing it with a
-        // Stop tap (exists-then-tap can land after the run already ended).
+        // Let the short run finish instead of tapping Stop, as exists-then-tap races completion.
         let stop = el(.button, "Stop generating")
         let settled = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: stop)
         wait(for: [settled], timeout: 45)
 
-        // The answer pushed the bubble above the fold, and the transcript
-        // builds rows lazily: scroll back until it is on screen again. The
-        // keyboard is still up after sending, and a swipe over it taps the
-        // suggestion bar — drag above it, after dismissing it.
+        // Transcript builds lazily; dismiss keyboard first so swiping does not tap the suggestion bar.
         let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
         let lower = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
         if app.keyboards.firstMatch.exists {
@@ -441,8 +405,7 @@ final class PraxisChatUITests: XCTestCase {
 
     // MARK: Photos / Files pickers cancel back into the open tray
 
-    /// System pickers run out of process; their Cancel lives in the
-    /// SpringBoard tree, not the app's. Poll both scopes.
+    /// System pickers run out-of-process with Cancel in SpringBoard, so poll both scopes.
     private func waitForPickerCancel() -> XCUIElement? {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let deadline = Date().addingTimeInterval(15)
@@ -456,9 +419,7 @@ final class PraxisChatUITests: XCTestCase {
         return nil
     }
 
-    /// Cancels a system picker and proves the tray is topmost again
-    /// (Plan hittable, not merely present under the sheet). Retries
-    /// the Cancel tap once if dismissal raced.
+    /// Cancel picker and confirm tray is topmost (hittable, not behind sheet); retries Cancel once.
     private func cancelPickerBackToTray() -> Bool {
         for _ in 0..<2 {
             guard let cancel = waitForPickerCancel() else {
@@ -502,8 +463,7 @@ final class PraxisChatUITests: XCTestCase {
         prose.press(forDuration: 1.6)
         XCTAssertTrue(el(.button, "Copy").waitForExistence(timeout: 12),
                       "long-pressing agent prose should offer Copy")
-        // Look Up only appears for a native range selection (a word under
-        // the finger with handles), not a whole-block Copy/Share menu.
+        // Look Up requires a native range selection with handles, not a whole-block context menu.
         XCTAssertTrue(el(.any, "Look Up").waitForExistence(timeout: 4),
                       "agent prose should select a range like regular text")
         shot("27-text-selection")
@@ -582,7 +542,6 @@ final class PraxisChatUITests: XCTestCase {
         el(.button, "Add 1").tap()
         XCTAssertTrue(elBegins(.button, "Remove").waitForExistence(timeout: 8), "attachment lands in the composer")
 
-        // The composer's thumbnail (the tray is closed now).
         let thumb = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label == %@ AND NOT (label BEGINSWITH 'Remove')", "Screenshot 1")).firstMatch
         XCTAssertTrue(thumb.waitForExistence(timeout: 8))

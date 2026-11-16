@@ -46,7 +46,7 @@ it('matches the native light/dark palette and monochrome primary action aliases'
   const dark = block("[data-theme='dark']");
   const native = [...swift.matchAll(/static let (\w+) = c\(0x([\dA-F]+), 0x([\dA-F]+)\)/g)];
   expect(native.length).toBe(13);
-  // Web token names for the native colours; hairline/pressed/tile are translucent or aliased on web (DESIGN.md).
+  // Maps native token names to web CSS equivalents.
   const web: Record<string, string> = {
     canvas: '--color-paper', card: '--color-surface', ink: '--color-ink', secondaryInk: '--color-ink-2',
     mutedInk: '--color-ink-3', fill1: '--color-fill-1', fill2: '--color-fill-2',

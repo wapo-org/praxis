@@ -200,7 +200,6 @@ describe('history interactions', () => {
       'Chat two',
     );
     await click(button('History options'));
-    // The menu lives outside the scrolling body, within the focus-trapped sheet.
     expect(document.querySelector('[role="menu"]')?.parentElement?.className).toBe('screen-shell');
     await click(button('Select chats'));
     await click(document.querySelector<HTMLInputElement>('[aria-label="Select Chat two"]')!);

@@ -2,9 +2,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 import AgentSkills
 
-/// Settings → Skills: installed skills (with what was dropped at import
-/// and any warnings), import from Files (a .zip, a folder or a SKILL.md)
-/// with the import report, and folders that failed to load.
 struct SkillsScreen: View {
     let library: SkillLibrary
     @Environment(ChatStore.self) private var store
@@ -31,7 +28,6 @@ struct SkillsScreen: View {
                         .accessibilityIdentifier("skillImportError")
                 }
                 installed
-                // Two peers, one look: same glass capsule, same width.
                 HStack(spacing: 10) {
                     importButton
                     browseButton
@@ -173,8 +169,6 @@ struct SkillsScreen: View {
         }
     }
 
-    /// What the last import did: new or replaced, what was left out and
-    /// why, and format warnings.
     private func reportCard(_ report: SkillImportReport) -> some View {
         let unchanged = report.replacedExisting && report.previousContentHash == report.skill.contentHash
         let headline = unchanged ? "\(report.skill.name) is already up to date"
@@ -269,7 +263,6 @@ struct SkillsScreen: View {
     }
 }
 
-/// One skill: name, description, origin, warnings and dropped files.
 private struct SkillRow: View {
     let skill: Skill
     var registryName: String?
@@ -367,7 +360,6 @@ private struct SkillRow: View {
     }
 }
 
-/// Files dropped at import, each with why.
 private struct DroppedList: View {
     let files: [DroppedFile]
 
@@ -387,14 +379,12 @@ private struct DroppedList: View {
     }
 }
 
-/// A skill being edited (sheet item).
 private struct EditedSkill: Identifiable {
     var draft: SkillDraft
     var id: String { draft.name }
 }
 
-/// Edits an agent-made skill: description and instructions (its other
-/// files are kept). Saved with the same checks as when the agent writes it.
+/// Edits description and instructions while preserving other skill files and validation checks.
 private struct SkillEditorSheet: View {
     let library: SkillLibrary
     @State var draft: SkillDraft

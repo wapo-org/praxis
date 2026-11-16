@@ -26,7 +26,7 @@ for (const [engine, type] of [['chromium', chromium], ['webkit', webkit]]) {
         const reference = await readFile(`${homedir()}/Downloads/dwfef/${frame}.PNG`);
         const proof = await browser.newPage({ viewport: { width: 620, height: 650 } });
         const refHeight = frame === 'IMG_7752' ? 960 : 1160;
-        // CSS crop only: preserve original frame pixels and put both menu crops at the same display width.
+        // Crop original frame pixels without rescaling.
         await proof.setContent(`<html><style>*{box-sizing:border-box}body{margin:0;padding:16px;font:14px system-ui;background:#f2f2ef}h1{font-size:16px}.cols{display:flex;gap:20px}.col{width:280px}.crop{position:relative;width:264px;height:${refHeight * 264 / 550}px;overflow:hidden;background:white}.crop img{position:absolute;width:${1290 * 264 / 550}px;max-width:none;left:${-515 * 264 / 550}px;top:${-480 * 264 / 550}px}img.web{width:264px;height:auto}</style><h1>${engine} · ${width}px · ${state}${midway ? ' (mid-animation)' : ''}</h1><div class="cols"><div class="col"><p>Reference ${frame}</p><div class="crop"><img src="data:image/png;base64,${reference.toString('base64')}"></div></div><div class="col"><p>Web · matching 240px card</p><img class="web" src="data:image/png;base64,${web.toString('base64')}"></div></div></html>`);
         await proof.screenshot({ path: `${out}/${prefix}-comparison.png` }); await proof.close();
         metadata.push({ engine, width, state, frame, menu: box, clip });

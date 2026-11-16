@@ -89,8 +89,7 @@ struct CloudChatEngine: ChatEngine {
                     }
                     await onRunFinished(request.conversationID, request.turnID, id)
                 } catch {
-                    // Transport cancellation detaches only. Stop is the explicit
-                    // request flag handled by the watcher, never onTermination.
+                    // Task cancellation detaches only; stop requires explicit request.isCancelled.
                     if !Task.isCancelled { out.yield(.finished(request.isCancelled() ? .cancelled : .failed(error.localizedDescription))) }
                 }
                 await pending.cancelAll()
@@ -106,8 +105,7 @@ struct CloudChatEngine: ChatEngine {
                             await pending.cancelAll()
                             out.yield(.finished(.cancelled)); out.finish()
                         }
-                        // If start is in-flight it observes the cancellation as
-                        // soon as it receives the durable run id.
+                        // If start is in flight, it sees cancellation once it gets the run ID.
                         return
                     }
                     do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
@@ -116,24 +114,20 @@ struct CloudChatEngine: ChatEngine {
             out.onTermination = { _ in
                 watcher.cancel()
                 if request.isCancelled() {
-                    // Stop can terminate the consumer before the 50ms watcher
-                    // observes its flag. This uncancelled task owns the durable
-                    // POST, independently of the now-terminated stream.
+                    // Uncancelled task owns start POST if stream terminates before watcher fires.
                     Task {
                         if let cancellation = await control.requestCancel(client: client) {
                             _ = try? await cancellation.value
                             worker.cancel()
                         }
-                        // Start still in flight: let it obtain the durable id,
-                        // observe the flag and cancel that run before attaching.
+                        // In-flight start reads cancel flag once it obtains the run ID.
                     }
                 } else { worker.cancel() } // detach only
             }
         }
     }
 
-    /// Restores outstanding human-response tasks from a durable journal without
-    /// blocking the event reader. Resolved requests are cancelled by SSE events.
+    /// Restores pending interactive waits without blocking SSE; resolved ones cancel.
     private func respond(to payload: CloudEventPayload, runID id: String, request: ChatRunRequest,
                          pending: CloudPendingActions, out: AsyncStream<AgentEvent>.Continuation) async {
         switch payload {

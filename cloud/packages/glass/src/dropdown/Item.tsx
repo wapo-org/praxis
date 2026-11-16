@@ -18,7 +18,6 @@ export interface ItemProps extends Omit<
   selected?: boolean;
   inset?: boolean;
   keepOpen?: boolean;
-  /** Number of lines to allow for label/preview (1 = truncate, 2 or 3 = multi-line clamp as in IMG_7773). */
   lines?: 1 | 2 | 3;
   onSelect?: () => void;
 }
@@ -92,7 +91,6 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
         style={style}
         {...otherProps}
       >
-        {/* Fluid highlight pill */}
         {isHighlighted && !disabled ? (
           <motion.span
             layoutId={`${panelHighlight?.layoutScopeId ?? 'menu'}-highlight`}
@@ -102,7 +100,6 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
           />
         ) : null}
 
-        {/* Leading icon or checkmark slot */}
         {icon ? (
           <span aria-hidden="true" className={styles.slot}>
             {icon}
@@ -113,7 +110,6 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
           </span>
         ) : null}
 
-        {/* Label & subtitle */}
         <span className={styles.copy}>
           <span
             className={lines === 1 ? styles.truncate : styles.clamp}
@@ -124,7 +120,6 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
           {subtitle ? <span className={styles.subtitle}>{subtitle}</span> : null}
         </span>
 
-        {/* Trailing checkmark when leading slot has an icon */}
         {icon && selected ? (
           <span aria-hidden="true" className={`${styles.trailingIcon} ${styles.check}`}>
             <Check size={16} />
@@ -141,7 +136,6 @@ const Item = React.forwardRef<HTMLButtonElement, ItemProps>(function Item(
           </span>
         ) : null}
       </button>
-      {/* Trailing interactive action (e.g. pin star button) */}
       {trailingAction ? (
         <span onClick={(e) => e.stopPropagation()} className={styles.trailingAction}>
           {trailingAction}

@@ -7,7 +7,7 @@ import {createPraxisApp} from '../server.js';
 
 export const TEST_KEY = 'sk-or-v1-test-key-123456';
 export interface FakeModel {id: string; name?: string; tools?: boolean; vision?: boolean; documents?: boolean; reasoning?: boolean; context?: number; maxOutput?: number; prompt?: string; completion?: string}
-/** A model entry in the shape of OpenRouter's `GET /models`. */
+/** Fake OpenRouter model entry matching GET /models. */
 export const catalogEntry = (m: FakeModel) => ({
   id: m.id, name: m.name ?? m.id, context_length: m.context ?? 128000,
   architecture: {input_modalities: ['text', ...(m.vision ? ['image'] : []), ...(m.documents ? ['file'] : [])], output_modalities: ['text']},
@@ -15,10 +15,7 @@ export const catalogEntry = (m: FakeModel) => ({
   top_provider: {context_length: m.context ?? 128000, max_completion_tokens: m.maxOutput ?? 16000},
   supported_parameters: ['max_tokens', ...(m.tools === false ? [] : ['tools', 'tool_choice']), ...(m.reasoning ? ['reasoning'] : [])],
 });
-/**
- * Local app + fake OpenRouter (model list, key info, chat completions) shared by the suites. Any other host
- * goes to the real fetch (tests that use it serve their own local servers).
- */
+/** Stubs OpenRouter endpoints; other hosts pass through to real fetch. */
 export function fakeOpenRouter(turns: string[][], models: FakeModel[] = [{id: 'm', tools: true, vision: true, documents: true}]) {
   const requests: any[] = [], authorizations: string[] = [];
   const state = {models, modelFetches: 0};

@@ -12,9 +12,9 @@ import {
 import {alwaysAllowKey,canonical,decideTool,fingerprint} from './policy.js';
 
 class Park extends Error {}
-/** Loop control flow (park for approval/elicitation, cancel). Tool adapters must rethrow these, never turn them into tool results. */
+/** Loop control signals; tool adapters must rethrow rather than stringify. */
 export function isRunControl(error:unknown):boolean{return error instanceof Park||error instanceof Cancelled;}
-/** Thrown by a `save` port when this executor lost its lease/fence (another executor owns the run). It aborts the slice without touching run state. */
+/** Thrown on CAS save failure when this slice lost its lease. */
 export class ExecutionFenced extends Error {constructor(){super('Execution fenced: another executor owns this run');}}
 class Cancelled extends Error {}
 export class ResumeConflict extends Error {}
@@ -33,7 +33,7 @@ function addUsage(total:Usage,part:Usage):void {
 }
 const emptyUsage=()=>({type:'usage' as const,inputTokens:0,outputTokens:0,cacheReadTokens:0,cacheWriteTokens:0});
 
-/** Pure state machine. A scheduler must ensure only one worker holds a run at a time. */
+/** Pure state machine; scheduler must serialize each run. */
 export class AgentRunner {
   private readonly tools:Map<string,AgentTool>;
   constructor(private readonly options:AgentRunnerOptions) {
@@ -57,14 +57,14 @@ export class AgentRunner {
   private message(cp:AgentCheckpoint,role:Message['role'],parts:MessagePart[]):Message {
     const now=this.now();return {type:'message',id:this.id(),chatId:cp.chat.id,runId:cp.run.id,...(cp.run.clientTurnId?{clientTurnId:cp.run.clientTurnId}:{}),role,parts,createdAt:now,updatedAt:now};
   }
-  /** Outbox: the message is saved with the checkpoint first, then delivered; a crash in between is repaired by `flush` on the next slice. */
+  /** Commits message into checkpoint outbox; next slice flushes crashed deliveries. */
   private async commit(cp:AgentCheckpoint,message:Message) {
     if(cp.messages.some(m=>m.id===message.id))throw new Error('Duplicate message id');
     cp.messages.push(message);cp.outbox.push(message);
     await this.save(cp);
     await this.flush(cp);
   }
-  /** Delivers outbox messages (at least once; message rows are keyed by id, so redelivery is idempotent). */
+  /** Flushes outbox idempotently by message id. */
   private async flush(cp:AgentCheckpoint) {
     if(!cp.outbox.length)return;
     await this.emit(cp,{type:'messages.committed',messages:cp.outbox});
@@ -80,12 +80,12 @@ export class AgentRunner {
       messages:i.messages,modelId:i.modelId??i.chat.modelId??'scripted',effort:i.effort??i.chat.effort,
       supportedEfforts:i.supportedEfforts,webSearch:i.webSearch??false,
       capabilities:this.options.provider.capabilities,policy:i.policy??{},phase:'model',iteration:0,
-      // Hidden (gateway) tools are frozen with the conversation like its direct tools; older setups fall back to this run's.
+      // Hidden tools freeze with setup; older setups fall back to current tools.
       hiddenTools:setup.hiddenTools??[...this.tools.values()].filter(t=>t.hidden).map(t=>t.spec),pending:[],calls:{},resolutions:{},maxIterations:i.maxIterations,maxTokens:i.maxTokens,
       modelMaxTokens:i.modelMaxTokens,maxRetries:i.maxRetries,usage:emptyUsage(),
     });
     await this.save(cp);await this.emit(cp,{type:'run.started'});
-    // Repair by appending only. Request builders merge adjacent users and put results first.
+    // Repair by appending only; request builders merge adjacent users and put results first.
     const calls=new Map<string,MessagePart>();const results=new Set<string>();
     for(const m of cp.messages)for(const p of m.parts) {
       if(p.type==='toolCall'&&p.callId)calls.set(p.callId,p);
@@ -390,7 +390,7 @@ export class AgentRunner {
       }),this.options.toolTimeoutMs??120000);
       return this.completeTool(cp,call,ToolResultSchema.parse(output),output.isError?'failed':'succeeded');
     }catch(error){
-      // Parked mid-call: the tool re-runs on resume (nested results replay from cp.calls), so it isn't "interrupted".
+      // Parked mid-call tools re-run on resume rather than fail as interrupted.
       if(error instanceof Park){delete entry.started;throw error;}
       if(error instanceof Cancelled||error instanceof ExecutionFenced)throw error;
       return this.completeTool(cp,call,textResult(error instanceof Error?error.message:'Tool failed',true),'failed');

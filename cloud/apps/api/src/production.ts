@@ -11,7 +11,7 @@ import {GROQ_POOL} from './features/tools/transcribe.js';
 import {featureModules} from './modules.js';
 import {createPraxisApp, jsonLog} from './server.js';
 
-/** Every variable production needs. Missing or malformed values stop startup with one message listing them all. */
+/** Required production env vars; any missing/invalid stops startup. */
 export const PRODUCTION_ENV = [
   'PRAXIS_API_URL',
   'PRAXIS_WEB_ORIGINS',
@@ -29,10 +29,7 @@ export type ProductionEnv = Record<(typeof PRODUCTION_ENV)[number], string> & {P
 
 export const CONTINUATION_PATH = '/internal/continue';
 
-/**
- * Platform-paid credentials that may have numbered siblings (`NAME_2`, `NAME_3`, … with no gaps), read by
- * `@praxis/credentials`. All are optional. A multi-part credential lists every variable of one slot.
- */
+/** Optional pooled platform keys using un-gapped _2, _3, ... suffixes. */
 export const PLATFORM_POOLS: readonly PoolSpec[] = [{service: 'groq', names: GROQ_POOL}];
 export interface PoolSpec {service: string; names: string | readonly string[]}
 export interface ReadEnvOptions {pools?: readonly PoolSpec[]; warn?: (message: string) => void}
@@ -42,7 +39,7 @@ const warnJson = (message: string) => console.warn(JSON.stringify({type: 'startu
 /** Pool events carry the service name and slot numbers only. */
 const credentialLog = (event: CredentialLogEvent) => console.warn(JSON.stringify({type: 'credentials', ...event}));
 
-/** The keyring: PRAXIS_ENCRYPTION_KEYS (current first, then previous keys) or the legacy single PRAXIS_ENCRYPTION_KEY. */
+/** Keyring ordered current-first, with single PRAXIS_ENCRYPTION_KEY fallback. */
 export function encryptionKeyring(env: Record<string, string | undefined>): string | undefined {
   return (env.PRAXIS_ENCRYPTION_KEYS ?? env.PRAXIS_ENCRYPTION_KEY)?.trim() || undefined;
 }
@@ -73,7 +70,7 @@ export function readProductionEnv(env: Record<string, string | undefined>, optio
       problems.push('PRAXIS_WEB_ORIGINS must be a comma-separated list of https origins');
     }
   }
-  // Credential pools: a half-defined multi-part slot stops startup; slots after a numbering gap are ignored with a warning.
+  // Half-defined credential slots fail closed; post-gap slots warn.
   const warnings: string[] = [];
   for (const spec of options.pools ?? PLATFORM_POOLS) {
     try {
@@ -87,11 +84,7 @@ export function readProductionEnv(env: Record<string, string | undefined>, optio
   return env as ProductionEnv;
 }
 
-/**
- * Production composition: Convex store + file storage, Upstash KV/events/lease/rate limits, Better Auth,
- * QStash continuations, SSRF-guarded egress for providers/MCP/tools, redacted request logs. Never falls back
- * to memory adapters or dev auth: anything missing throws at startup.
- */
+/** Production app wiring; fails closed without fallback if any dependency is missing. */
 export function createProductionApp(rawEnv: Record<string, string | undefined>, hooks: {defer?: (work: Promise<unknown>) => void} = {}) {
   if (rawEnv.PRAXIS_LOCAL_SMOKE) throw new Error('PRAXIS_LOCAL_SMOKE must not be set in production');
   const env = readProductionEnv(rawEnv);

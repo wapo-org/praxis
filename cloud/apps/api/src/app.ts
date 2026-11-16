@@ -33,11 +33,11 @@ export interface AppOptions {
  authHandler?:(request:Request)=>Promise<Response>;
  allowedOrigins?:string[];
  log?:(record:{requestId:string;method:string;path:string;status:number;durationMs:number})=>void;
- /** Per-key limiter (Upstash in production). Keys are `user:<id>` after auth and `ip:<addr>` before it. */
+ /** Per-key limiter using user:<id> after auth and ip:<addr> before it. */
  rateLimit?:(key:string)=>Promise<{ok:boolean;retryAfterSeconds?:number}>;
- /** Mount feature routers (MCP, tools) under /v1 after auth; `contextFor` resolves the request's owner-scoped context. */
+ /** Mount feature routers under /v1 after auth with owner-scoped context. */
  mount?:(app:Hono<Env>,contextFor:(request:Request)=>Promise<FeatureContext>)=>void;
- /** Paths under /v1 that skip session auth (OAuth callbacks, hosted CIMD). Exact match or prefix ending in '/'. */
+ /** /v1 paths (exact or trailing-'/' prefix) exempt from session auth. */
  publicPaths?:string[];
 }
 export function createApp(options:AppOptions){

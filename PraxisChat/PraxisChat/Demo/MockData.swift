@@ -1,8 +1,6 @@
 import Foundation
 import SwiftUI
 
-/// Mock catalogue (spec §7). Everything here is demo data; every control
-/// bound to it applies live through `ChatStore`.
 enum MockData {
     static let models: [AIModel] = catalogue + extraModels(UserDefaults.standard.integer(forKey: "PraxisDemoModels"))
 
@@ -19,8 +17,6 @@ enum MockData {
                 speed: 5, intelligence: 2, streamMultiplier: 1.8, effortLevels: []),
     ]
 
-    /// `-PraxisDemoModels N` (UI/perf tests): a provider-sized list, like
-    /// the hundreds of models OpenRouter returns.
     private static func extraModels(_ count: Int) -> [AIModel] {
         (0..<max(count, 0)).map { i in
             AIModel(id: "vendor/model-\(i)", name: String(format: "Vendor Model %03d", i),
@@ -45,9 +41,7 @@ enum MockData {
         "Why is my build failing?",
     ]
 
-    /// Bundled fallback screenshots (spec §7): rendered swatches used when
-    /// Photos access is denied. 12 calm monochrome tiles, rendered once —
-    /// the tray used to redraw and PNG-encode all 12 on every open.
+    /// Fallback swatches when Photos access is denied, rendered and cached once.
     static func sampleScreenshots() -> [Attachment] { cachedSamples }
 
     private static let cachedSamples: [Attachment] = (1...12).map { i in

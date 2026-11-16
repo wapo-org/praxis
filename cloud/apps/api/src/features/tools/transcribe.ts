@@ -8,7 +8,7 @@ import {readLimited} from './http.js';
 import type {PlatformVoice,ToolsPorts} from './ports.js';
 export const GROQ_POOL='GROQ_API_KEY';
 const localCooldowns=memoryCooldownStore();
-/** Platform keys are read per call so a key added to the environment is used without a code change. */
+/** Read platform keys per call so env additions take effect immediately. */
 export const platformVoice=(env:Record<string,string|undefined>=process.env):PlatformVoice=>({pool:pool(GROQ_POOL,env,{service:'groq'}),cooldowns:localCooldowns});
 const Options=z.object({model:z.enum(['whisper-large-v3','whisper-large-v3-turbo']).optional(),language:z.string().max(20).regex(/^[a-zA-Z-]*$/).optional(),prompt:z.string().max(10000).optional()});
 export async function transcribe(req:Request,ctx:FeatureContext,ports:ToolsPorts){
@@ -32,7 +32,7 @@ export async function transcribe(req:Request,ctx:FeatureContext,ports:ToolsPorts
   const form=new FormData();form.set('file',audio,name);form.set('model',opts.model!);form.set('response_format','verbose_json');if(opts.language)form.set('language',opts.language);if(opts.prompt!==undefined)form.set('prompt',opts.prompt);
   try{return await ctx.fetch('https://api.groq.com/openai/v1/audio/transcriptions',{method:'POST',headers:{Authorization:`Bearer ${bearer}`},body:form,signal:AbortSignal.timeout(60000)});}catch{throw new ApiError(502,'transcription_failed','Transcription provider is unavailable');}
  };
- // A user's own key is used as is. Platform keys fail over: 401/403, 402, 429 and 5xx cool the slot and the next one is tried.
+ // User keys aren't retried; platform keys cool on 401/402/403/429/5xx and fail over.
  let response:Response;
  if(key)response=await call(key);
  else try{response=(await withCredential(platform!.pool,platform!.cooldowns,call,{...(platform!.log?{log:platform!.log}:{})})).value;}

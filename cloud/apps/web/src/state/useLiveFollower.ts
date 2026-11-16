@@ -8,11 +8,7 @@ import type { useRunStreams } from './useRunStreams';
 
 const terminal = (status: string) => ['completed', 'cancelled', 'failed'].includes(status);
 
-/**
- * Attaches live to runs started on another client (iOS, another tab, the API) for this account: chat and run
- * upserts on the user channel name the run; the snapshot restores text, tools and pending approvals/elicitations,
- * then the run stream continues it. Runs this tab started are attached by the send path instead.
- */
+/** Attaches via snapshot + SSE to runs started by other clients. */
 export function useLiveFollower(
   state: PraxisState,
   { attachRunStream, applySnapshotToLiveRun }: ReturnType<typeof useRunStreams> & ReturnType<typeof useRunState>,
@@ -34,7 +30,7 @@ export function useLiveFollower(
       handlers.current.applySnapshotToLiveRun(snapshot);
       if (!terminal(run.status)) handlers.current.attachRunStream(run, snapshot.lastEventId);
     } catch {
-      // A run that vanished or can't be read is simply not followed; the next chat upsert retries.
+      // Ignored here; the next chat upsert retries.
     } finally {
       following.current.delete(runId);
     }

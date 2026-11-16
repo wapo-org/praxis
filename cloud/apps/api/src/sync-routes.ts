@@ -5,7 +5,7 @@ import {HashTree, canonicalJSON, respondMerkle} from '@praxis/sync';
 import type {StoredRecord} from './contracts.js';
 import {ApiError, type ApiService} from './service.js';
 
-/** Kinds a client replica holds. Secrets, checkpoints, idempotency rows and other server state never sync. */
+/** Client-synced kinds; secrets, checkpoints, and idempotency rows stay server-only. */
 export const SYNC_KINDS = new Set(['chat', 'message', 'modelPreference', 'connector', 'skill', 'registry', 'consent', 'preferences', 'attachment', 'run']);
 
 export {canonicalJSON};
@@ -28,12 +28,12 @@ function parseCursor(raw: string | undefined): number {
   return Number(raw);
 }
 
-/** Cursor sync over the store's monotonic revision log (never wall-clock), so simultaneous writes can't be skipped. */
+/** Reads monotonic per-owner revisions (never wall-clock) so concurrent writes aren't skipped. */
 export async function pullChanges(service: ApiService, userId: string, after: number, limit: number) {
   const entities = new Map<string, ReturnType<typeof entity>>();
   let cursor = after;
   let hasMore = true;
-  // Skip non-sync kinds without returning short pages forever; bounded by a few store reads per request.
+  // Bound inner reads when skipping non-sync kinds to avoid infinite short pages.
   for (let reads = 0; reads < 5 && hasMore && entities.size < limit; reads++) {
     const batch = await service.adapters.store.changes(userId, cursor, limit);
     for (const record of batch.records) {
@@ -82,7 +82,7 @@ export function registerSyncRoutes(app: Hono<any>, service: ApiService) {
 }
 
 
-/** Cursor sync won the experiment (docs/SYNC_EXPERIMENT.md); Merkle stays available behind PRAXIS_SYNC_STRATEGY=merkle (and locally). */
+/** Cursor sync is default; Merkle requires PRAXIS_SYNC_STRATEGY=merkle. */
 export function syncStrategy(service: ApiService): 'cursor' | 'merkle' {
   void service;
   return process.env.PRAXIS_SYNC_STRATEGY === 'merkle' ? 'merkle' : 'cursor';
@@ -90,7 +90,7 @@ export function syncStrategy(service: ApiService): 'cursor' | 'merkle' {
 
 const trees = new Map<string, {head: number; tree: HashTree; rows: Map<string, StoredRecord>}>();
 
-/** Builds the owner's tree from the store; reused while the owner's head revision is unchanged. The cache is per-instance memory (each serverless instance rebuilds its own). */
+/** Builds and caches the owner's Merkle tree per instance while head revision matches. */
 async function serverTree(service: ApiService, userId: string) {
   const head = await service.adapters.store.head(userId);
   const cached = trees.get(userId);
@@ -112,7 +112,7 @@ async function serverTree(service: ApiService, userId: string) {
 }
 
 async function merkle(service: ApiService, userId: string, input: {root?: string | undefined; prefixes?: string[] | undefined}) {
-  // Off by default everywhere (cursor sync won, docs/SYNC_EXPERIMENT.md); only PRAXIS_SYNC_STRATEGY=merkle enables it.
+  // Merkle requires PRAXIS_SYNC_STRATEGY=merkle.
   if (syncStrategy(service) !== 'merkle') throw new ApiError(404, 'strategy_disabled', 'Merkle sync is disabled; use cursor sync');
   const {head, tree, rows} = await serverTree(service, userId);
   try {

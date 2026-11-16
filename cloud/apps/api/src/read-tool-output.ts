@@ -1,11 +1,11 @@
 import {MAX_RESULT_CHARACTERS, textResult, type AgentTool} from '@praxis/agent';
 import type {ApiService} from './service.js';
 
-/** A page plus its header must stay under the spill threshold, or reading would spill (and truncate) once more. */
+/** Leaves room for the page header below MAX_RESULT_CHARACTERS. */
 export const MAX_READ_CHARACTERS = MAX_RESULT_CHARACTERS - 200;
 const DEFAULT_READ = 20_000;
 
-/** Port of AgentCore ReadToolOutputTool: pages through a spilled (truncated) tool result of this conversation. */
+/** Pages through spilled tool results in this chat. */
 export function readToolOutputTool(service: ApiService): AgentTool {
   return {
     spec: {

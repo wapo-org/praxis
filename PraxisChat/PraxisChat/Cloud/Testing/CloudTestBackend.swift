@@ -1,10 +1,7 @@
 #if DEBUG
 import Foundation
 
-/// Deterministic protocol-v1 server behind URLSession. The production HTTP and
-/// SSE decoders still consume real status codes, headers and fragmented bytes.
-/// All mutable server/connection state belongs to `queue`; callbacks never run
-/// under a lock used by URLSession cancellation.
+/// Protocol-v1 stub behind URLSession; isolates queue lock from cancel.
 final class CloudTestBackend: @unchecked Sendable {
     enum Scenario: String, CaseIterable, Sendable {
         case text, tools, approval, nestedApproval, elicitation, compaction, vision, cancel, reconnect, cursorExpired, error
@@ -122,9 +119,7 @@ final class CloudTestBackend: @unchecked Sendable {
         self.scenario = scenario; self.chunkDelay = chunkDelay
     }
 
-    /// Sessions are isolated even when multiple test backends run concurrently.
-    /// A backend intercepts every request in its session, so a missing fixture
-    /// fails locally with 404 instead of accidentally reaching the network.
+    /// Intercepts all session requests so missing fixtures fail with 404 locally.
     func makeSession() -> URLSession {
         Self.registry.insert(self)
         let configuration = URLSessionConfiguration.ephemeral
@@ -192,7 +187,6 @@ final class CloudTestBackend: @unchecked Sendable {
         func parameter(_ name: String) -> String? { query.first { $0.name == name }?.value }
         switch (method, path) {
         case ("DELETE", "/v1/account"):
-            // Mirrors the API: a wrong password is a 403 whose message the client shows.
             guard input["type"] as? String == "account.delete", input["password"] as? String != "wrong" else {
                 failure("confirmation_required", "Confirm your current password or sign in again", 403); return
             }
@@ -421,8 +415,7 @@ final class CloudTestBackend: @unchecked Sendable {
         connection.bytes(Data(": fixture keepalive\r\nretry: 10\r\n\r\n".utf8))
         run.openedStreams += 1
         let disconnect = [Scenario.reconnect, .cursorExpired].contains(run.scenario) && run.openedStreams == 1
-        // Drop after the first text delta: this catches both duplicate text and
-        // implementations that incorrectly treat a broken stream as completion.
+        // Drops after first delta to test partial disconnects vs completion.
         let end = disconnect ? min(run.events.count, 4) : run.events.count
         for index in after..<max(after, end) {
             deliver(run.events[index], to: connection, after: Double(index - after + 1) * chunkDelay * 4)
@@ -435,8 +428,7 @@ final class CloudTestBackend: @unchecked Sendable {
         } else { run.streams.append(connection) }
     }
     private func deliver(_ data: Data, to connection: Connection, after delay: TimeInterval) {
-        // One-byte first fragment and a split inside the final UTF-8 scalar
-        // exercise boundaries independently of URLSession's callback batching.
+        // Splits initial byte and mid-UTF-8 scalar to test chunk boundaries.
         let utf8Cut = data.firstIndex(where: { $0 >= 0x80 }).map { $0 + 1 } ?? max(1, data.count - 5)
         let cuts = [0, min(1, data.count), utf8Cut, data.count]
         let proposed = DispatchTime.now() + delay
@@ -520,8 +512,6 @@ final class CloudTestBackend: @unchecked Sendable {
     }
     private func page(_ items: [[String: Any]]) -> [String: Any] { ["type": "page", "items": items, "nextCursor": NSNull()] }
     private static func json(_ value: [String: Any]) -> Data {
-        // Every fixture is JSON checked by the harness tests. Fail loudly for a
-        // malformed new fixture rather than silently returning an empty body.
         try! JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes])
     }
 }

@@ -1,5 +1,3 @@
-// WP-D1 visual gate: empty state, ~6-turn chat with a tool row, open composer tray;
-// 1440×900 and 402×874; light and dark; plus side-by-side with the iOS references.
 import { chromium } from '@playwright/test';
 import { mkdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -31,7 +29,6 @@ async function settle(page) {
   await page.waitForTimeout(400);
 }
 
-// Seed one real chat through the UI: a tool run plus five text turns.
 const seed = await open('light', viewports.desktop);
 await seed.page.getByTestId('starter-chip-1').click();
 await settle(seed.page);
@@ -86,7 +83,6 @@ for (const theme of ['light', 'dark'])
     shots.push(tag);
   }
 
-// Side-by-side boards: web (left) vs iOS reference (right).
 const pairs = { empty: 'chat-0-bottom', chat: 'chat-0-bottom', tray: 'tray-2-main' };
 const board = await browser.newPage({ viewport: { width: 1800, height: 900 } });
 const dataUrl = async (path) => `data:image/png;base64,${(await readFile(path)).toString('base64')}`;

@@ -8,9 +8,6 @@ import AgentMCP
 import AgentTestSupport
 @testable import PraxisChat
 
-/// Settings → Image reading model, the live engine's `look_at_image`
-/// wiring, the composer hint, and the Skills library's registry and
-/// agent-skill editing.
 @MainActor
 final class ImageReaderAndSkillsAppTests: XCTestCase {
     private var directory: URL!
@@ -110,7 +107,7 @@ final class ImageReaderAndSkillsAppTests: XCTestCase {
 
     func testBlindModelAsksTheImageReader() async throws {
         let settings = settings()
-        var chat = ProviderProfile.draft(.customAnthropic) // conservative: no vision
+        var chat = ProviderProfile.draft(.customAnthropic) // Custom Anthropic draft conservatively assumes no vision support.
         chat.endpoint.baseURL = URL(string: "http://localhost:9/v1")!
         chat.defaultModel = "text-model"
         try settings.save(chat, apiKey: "sk-chat")
@@ -202,7 +199,6 @@ final class ImageReaderAndSkillsAppTests: XCTestCase {
         reopened.removeRegistry(registry.id)
         XCTAssertTrue(SkillLibrary(importedDirectory: directory, registriesFileURL: file).customRegistries.isEmpty)
 
-        // An agent-made skill, edited in the app: provenance kept, rules apply.
         try await library.store.saveAgentSkill(SkillDraft(name: "recap", description: "Recaps. Use for recaps.",
                                                           instructions: "v1", files: ["ref.md": "r"]),
                                                replace: false, conversationID: "c1")

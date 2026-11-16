@@ -5,8 +5,7 @@ private enum CloudSettingsRoute: Hashable {
     case connectors, connector(String), addConnector, skills, registries, sharing, imageReader, voice
 }
 
-/// Cloud and sunset settings deliberately have separate navigation trees:
-/// opening a cloud settings page never evaluates a native secret-backed view.
+/// Separate navigation tree prevents loading native secret-backed views.
 struct CloudSettingsSheet: View {
     @Environment(ChatStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -187,8 +186,6 @@ struct CloudSettingsAccountScreen: View {
     }
 }
 
-/// Destructive confirmation: the API checks the current password (or a fresh
-/// session) and its message is shown verbatim on failure.
 struct CloudDeleteAccountSheet: View {
     let services: CloudServices
     @Environment(\.dismiss) private var dismiss
@@ -227,7 +224,7 @@ private struct CloudSettingsDeveloperScreen: View {
         NavigationStack {
             CloudSettingsPage(title: "Developer") {
                 SettingsCard {
-                    // SUNSET(native-loop): explicit opt-in; applies only after launch.
+                    // Hidden opt-in applies on next launch.
                     Toggle("Enable native loop", isOn: $native).tint(Praxis.ink).padding(14)
                         .accessibilityIdentifier("nativeLoopEnabled")
                 }
@@ -276,8 +273,7 @@ struct CloudSettingsErrorText: View {
     }
 }
 
-/// Each mutation reports progress and a visible retryable error. Values only
-/// update after API success, so a failed trust/tool toggle never looks saved.
+/// Updates UI state only after API confirmation succeeds.
 struct CloudSettingsAction: View {
     var title: String
     var identifier: String

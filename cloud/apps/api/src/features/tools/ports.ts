@@ -29,8 +29,7 @@ export interface ToolsPorts {
  storage?:ToolsStorage;
  vision?:VisionProvider;
  voiceKey?:(ctx:FeatureContext)=>Promise<string|undefined>;
- /** Platform Groq keys (GROQ_API_KEY, GROQ_API_KEY_2, …) with their cool-down store. Default: process.env and an in-process store. */
+ /** Pooled Groq keys with cool-down store; defaults to process.env and memory. */
  platformVoice?:PlatformVoice;
- /** Notify the root service/cache/event layer after a public resource mutation. */
  changed?:(ctx:FeatureContext,kind:string,id:string,value:JsonObject|null)=>Promise<void>;
 }

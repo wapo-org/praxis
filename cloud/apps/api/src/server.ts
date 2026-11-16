@@ -6,12 +6,10 @@ import {createExecutionDriver, type ContinuationScheduler, type ExecutionFeature
 import {ContinuationAuthError} from './adapters/qstash.js';
 import {ApiService} from './service.js';
 
-/** Feature modules plugged in by the entry point (MCP, tools). */
 export interface FeatureModule {
   deleteAccount?(userId:string):Promise<void>;
   /** dev:local only: undo the post-deletion write fence for a fresh dev sign-in. */
   restoreAccount?(userId:string):Promise<void>;
-  /** Mounted under /v1 after auth. */
   routes?(contextFor: (request: Request) => Promise<FeatureContext>): Hono<any>;
   /** /v1 paths that must skip session auth (OAuth callbacks). */
   publicPaths?: string[];
@@ -32,13 +30,11 @@ export interface PraxisDeps {
   /** Keeps background slices alive after the response (Vercel `waitUntil`). */
   defer?: (work: Promise<unknown>) => void;
   budgetMs?: number;
-  /** Shared run lease (Redis in production) so one executor advances a run at a time across instances. */
+  /** Shared run lease (Redis in production) serializing run slices across instances. */
   lease?: RunLease;
-  /** Signed continuation callback (production): verifies a delivery and returns the run to advance. */
+  /** Verifies signed continuation callbacks and returns the run to advance. */
   continuation?: {path: string; verify: (request: Request) => Promise<{userId: string; runId: string}>};
-  /** Test hook for slice budgets. */
   clock?: () => number;
-  /** Feature modules, or a factory that receives the service (modules need the service). */
   modules?: FeatureModule[] | ((service: ApiService) => FeatureModule[]);
   log?: (record: {requestId: string; method: string; path: string; status: number; durationMs: number}) => void;
 }
@@ -79,8 +75,7 @@ export function createPraxisApp(deps: PraxisDeps) {
   });
   if (deps.continuation) {
     const {path, verify} = deps.continuation;
-    // Outside /v1: no session; authenticity comes only from the signed delivery. The slice runs inside this
-    // request so a failure returns 5xx and QStash redelivers (duplicates are fenced by the run lease + CAS).
+    // Unauthenticated outside /v1; slice runs inline so 5xx triggers QStash redelivery.
     app.post(path, async c => {
       let message: {userId: string; runId: string};
       try {

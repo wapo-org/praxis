@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown } from '../../lib/icons';
 import { Switch } from '../ui/controls';
 import styles from './Screen.module.css';
-import './screens.css'; // Legacy classes for HistorySheet until WP-D3 converts it.
+import './screens.css'; // Legacy styles for HistorySheet.
 
 export function useScreenTask() {
   const [busy, setBusy] = React.useState(false);
@@ -82,7 +82,7 @@ export function Section({
   );
 }
 
-/** Grouped rows: an opaque card on the sheet. Content is never glass. */
+/** Opaque card surface; content is never glass. */
 export function Card({ children }: { children: React.ReactNode }) {
   return <div className={styles.card}>{children}</div>;
 }
@@ -164,7 +164,6 @@ export function Field({
   );
 }
 
-/** Native select (the OS picker is the right control) dressed to match the other fields. */
 export function Select({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <span className={styles.select}>
@@ -174,7 +173,6 @@ export function Select({ children, ...props }: React.SelectHTMLAttributes<HTMLSe
   );
 }
 
-/** One-of-many choice when the options can overflow a segmented control. */
 export function ChoiceChip({
   active,
   children,

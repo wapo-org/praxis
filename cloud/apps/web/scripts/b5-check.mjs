@@ -29,13 +29,12 @@ try {
   await page.getByTestId('assistant-turn').first().waitFor();
   assert.equal(await page.getByTestId('turn-copy-button').first().textContent(), '');
   assert.equal(await page.getByTestId('turn-retry-button').first().textContent(), '');
-  // Real user file -> API document part -> metadata-backed filename chip after reload.
   const input = { name: 'Protocol-notes.txt', mediaType: 'text/plain', size: Buffer.byteLength('Document attachment test'), chatId };
   const ticket = await page.evaluate(async input => {
     const { apiClient } = await import('/src/lib/api.ts');
     return apiClient.request('/v1/uploads', { method: 'POST', body: JSON.stringify({ type: 'upload.request', ...input }) });
   }, input);
-  // API request context bypasses the local API's missing PUT CORS method; no response is mocked.
+  // Use Playwright request context to bypass missing local PUT CORS.
   const uploaded = await page.request.fetch(ticket.uploadUrl, { method: ticket.method, headers: { 'Content-Type': input.mediaType }, data: 'Document attachment test' });
   assert.equal(uploaded.ok(), true);
   const { storageId } = await uploaded.json();
@@ -49,7 +48,6 @@ try {
   await settings.getByRole('button', { name: 'Sign out', exact: true }).waitFor();
   assert.equal(await page.locator('.account-sign-out').count(), 0);
   assert.equal(await settings.getByRole('button', { name: 'Close settings' }).textContent(), 'Done');
-  // 402 px: stacked navigation. Section list -> section -> Back -> next section.
   await settings.getByRole('button', { name: 'Back', exact: true }).click(); await settings.getByRole('heading', { name: 'Settings', exact: true }).waitFor();
   await settings.getByRole('button', { name: 'General', exact: true }).click(); await settings.getByText('Voice input', { exact: true }).waitFor();
   await settings.getByRole('button', { name: 'Back', exact: true }).click();

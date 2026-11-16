@@ -9,8 +9,7 @@ const fixture=(name:string)=>new Uint8Array(readFileSync(new URL(`./fixtures/${n
 const doc='---\nname: demo\ndescription: Demo skill\n---\nFollow these steps.';
 function ctx():FeatureContext{return {...createLocalAdapters(),local:false,userId:'alice',egress:vi.fn(),fetch:vi.fn()};}
 describe('REV-R1 P1 5: archives made on macOS',()=>{
- // finder.zip: `ditto -c -k --sequesterRsrc --keepParent` (what Finder's Compress runs), with xattrs and a .DS_Store.
- // macos.tar.gz / macos-dot.tar: bsdtar 3.5.3 on macOS (AppleDouble `._*` entries, pax `x` headers, `.` root).
+ // Fixtures cover Finder ditto zip and bsdtar macOS archives with AppleDouble/pax metadata.
  it.each(['finder.zip','macos.tar.gz','macos-dot.tar'])('imports %s, skipping metadata',name=>{
   const result=extractSkill(fixture(name),name);
   expect(result.name).toBe('demo');expect(result.files).toEqual({'notes.md':'notes'});expect(result.dropped).toEqual([]);

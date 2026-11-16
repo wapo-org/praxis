@@ -9,7 +9,6 @@ extension ChatStore {
     var isCloud: Bool { engineKind == .cloud }
     var isLive: Bool { engineKind == .live || isCloud }
 
-    /// The model new turns use: the demo pick, or the selected provider's.
     var model: AIModel {
         get {
             if let cloud = cloudServices {
@@ -25,9 +24,7 @@ extension ChatStore {
         }
     }
 
-    /// Reasoning levels the tray offers for the current model. Nil = unknown
-    /// (all four); empty = no reasoning (the control hides). Live models
-    /// resolve this from the provider's list or a learned rejection.
+    /// Nil shows all effort levels; empty hides the control.
     var supportedEfforts: [Effort]? {
         if let cloud = cloudServices {
             return cloud.model(selectionID: model.id).map { EffortLevels.map($0.reasoningEfforts) }
@@ -39,22 +36,18 @@ extension ChatStore {
         return demoModel.effortLevels
     }
 
-    /// After a model change, moves the effort to the nearest level the new
-    /// model takes; unknown or unreasoning models keep it. The tray's
-    /// control animates to the new selection, which is the subtle show.
+    /// Snaps effort to nearest valid level; unknown or unreasoning models keep theirs.
     func snapEffortToSupportedLevels() {
         guard let levels = supportedEfforts, !levels.isEmpty, !levels.contains(effort),
               let snapped = EffortLevels.nearest(to: effort, in: levels) else { return }
         effort = snapped
     }
 
-    /// What the tray's model page lists.
     var availableModels: [AIModel] {
         if let cloud = cloudServices { return cloud.availableModels }
         guard isLive else { return MockData.models }
         guard let settings = services?.settings, let profile = settings.selectedProfile else { return [] }
         var models = settings.models(for: profile.id).map { Self.aiModel($0, profile: profile) }
-        // A manually entered id the server doesn't list still shows.
         if !profile.defaultModel.isEmpty, !models.contains(where: { $0.id == profile.defaultModel }) {
             models.insert(Self.aiModel(ModelInfo(id: profile.defaultModel), profile: profile), at: 0)
         }

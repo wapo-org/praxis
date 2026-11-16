@@ -1,10 +1,7 @@
 import SwiftUI
 import AgentCore
 
-/// Settings → Image reading model: the profile + model that looks at
-/// images for chat models that can't (`look_at_image`). Any configured
-/// provider works; its key stays in the Keychain. Picking a model on a
-/// host that hasn't been allowed to receive chat data asks first.
+/// Fallback image-reading model for text-only chat models; unconsented hosts ask first.
 struct ImageReaderScreen: View {
     let settings: ProviderSettings
     let consent: AIDataConsent
@@ -18,11 +15,8 @@ struct ImageReaderScreen: View {
             ?? settings.profiles.first
     }
 
-    /// Models that take images first, then ones the list doesn't describe.
     private func candidates(_ profile: ProviderProfile) -> [ModelInfo] {
         guard profile.endpoint.capabilities.vision else { return [] }
-        // Leaves out models known to be text-only: listed as such, or
-        // turned down for images before (`markImagesUnsupported`).
         var models = settings.models(for: profile.id).filter {
             $0.supportsImages != false && settings.imageSupport(profileID: profile.id, model: $0.id) != .unsupported
         }

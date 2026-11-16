@@ -1,8 +1,4 @@
-/**
- * Key rotation: re-seal every stored secret with the current key.
- *   PRAXIS_ENCRYPTION_KEYS="<new>,<old>" CONVEX_URL=… PRAXIS_CONVEX_SERVER_TOKEN=… npx tsx scripts/reencrypt.ts [--dry-run]
- * Prints counts only (never values). Exit code 1 if any value could not be opened with the configured keys.
- */
+/** Re-seals stored secrets with the active key; prints counts only and exits 1 if any fail to open. */
 import {createConvexStore} from '../src/adapters/convex.js';
 import {reencryptAll} from '../src/reencrypt.js';
 

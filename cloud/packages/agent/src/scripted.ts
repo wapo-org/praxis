@@ -42,7 +42,6 @@ export function scriptedTools():AgentTool[] {
       return textResult(reply.action==='accept'?JSON.stringify(reply.content??{}):'Elicitation declined',reply.action!=='accept');
     }},
     {spec:spec('local_elicit_url',{type:'builtin'},['readOnly']),execute:async(_,ctx)=>{
-      // Deterministic URL elicitation (protocol v1 mode:'url'): the client opens the URL, then responds accept/decline/cancel.
       const reply=await ctx.elicit({message:'Sign in to Local Connector to continue.',schema:{type:'object',properties:{}},mode:'url',url:'https://example.com/praxis/local-oauth?state=scripted-elicitation',connectorId:'local-connector',connectorName:'Local Connector'});
       return textResult(({accept:'Local Connector sign-in completed.',decline:'Local Connector sign-in declined.',cancel:'Local Connector sign-in cancelled.'})[reply.action],reply.action!=='accept');
     }},

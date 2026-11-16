@@ -18,7 +18,6 @@ afterEach(() => vi.unstubAllEnvs());
 const KEYS = {GROQ_API_KEY: 'gsk_first-secret', GROQ_API_KEY_2: 'gsk_second-secret'};
 const AUDIO = {type: 'transcribe.request', audioBase64: 'AAAA'};
 
-/** The tools routes in production mode with a pooled platform Groq credential and a scripted Groq. */
 function voice(groq: (bearer: string) => Response, env: Record<string, string> = KEYS, ports: ToolsPorts = {}) {
   const events: CredentialLogEvent[] = [];
   const bearers: string[] = [];

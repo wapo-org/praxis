@@ -1,7 +1,6 @@
 import React from 'react';
 import styles from './controls.module.css';
 
-/** Equal-width segmented control. The thumb is a CSS transform; re-rendering it costs nothing. */
 export function SegmentedControl<T extends string>({
   label,
   value,

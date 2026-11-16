@@ -5,9 +5,6 @@ import XCTest
 import AgentCore
 @testable import PraxisChat
 
-/// Background runs (BACKGROUND_PLAN.md §2): progress mapping, the
-/// simulator fallback path, pause/continue semantics, notification
-/// mapping with a fake center, and approval-action routing.
 @MainActor
 final class BackgroundRuntimeTests: XCTestCase {
     // MARK: Fakes
@@ -102,8 +99,7 @@ final class BackgroundRuntimeTests: XCTestCase {
         return Rig(store: store, runtime: runtime, reporter: reporter, center: center)
     }
 
-    /// Tool step opens, a result commits, partial text streams, then the
-    /// run holds until stopped: pause lands on mixed partial state.
+    /// Produces mixed partial state (tool result plus streaming text) then holds until stopped.
     private func pausingEngine() -> ScriptedChatEngine {
         ScriptedChatEngine { _ in
             let call = tool("bg-partial", .readFile)
@@ -134,7 +130,6 @@ final class BackgroundRuntimeTests: XCTestCase {
         driver.textBatch()
         seen.append(driver.completed)
         XCTAssertEqual(driver.completed, 41)
-        // A text-only stream keeps nudging without ever jumping.
         for _ in 0..<30 { driver.textBatch(); seen.append(driver.completed) }
         XCTAssertEqual(driver.completed, 71)
         // Steps cap at 950, never at full while running.
@@ -198,9 +193,7 @@ final class BackgroundRuntimeTests: XCTestCase {
     // MARK: Simulator fallback
 
     func testSubmitFailsUnavailableInSimulator() throws {
-        // The simulator cannot run background processing (BGTaskScheduler.h):
-        // submission must fail, and the failure is what selects the
-        // beginBackgroundTask fallback — asserted, not worked around.
+        // Simulator forbids BGTaskScheduler processing, so submission must fail to trigger fallback.
         let id = BackgroundRuntime.taskIDPrefix + String(UUID().uuidString.prefix(8)).lowercased()
         XCTAssertTrue(BGTaskScheduler.shared.register(forTaskWithIdentifier: id, using: .main, launchHandler: { _ in }),
                       "wildcard id must register against the pre-seeded Info.plist")
@@ -235,11 +228,10 @@ final class BackgroundRuntimeTests: XCTestCase {
         rig.store.appDidEnterBackground()
         XCTAssertEqual(begun.map(\.0), [BackgroundRuntime.fallbackTaskName])
         XCTAssertEqual(rig.runtime.states[conv.id]?.fallbackTask, fakeTask)
-        // First backgrounded run asks for notification permission.
         await waitUntil { rig.center.authorizationRequests.count == 1 }
         XCTAssertEqual(rig.center.authorizationRequests, [[.alert, .sound]])
 
-        // The fallback expiring pauses the run exactly like stop().
+        // Invoking the beginBackgroundTask expiration handler pauses the run like stop().
         begun[0].1()
         await waitUntil { !rig.store.isRunning(conv.id) }
         XCTAssertEqual(conv.turns.last?.outcome, .pausedBackground)
@@ -275,13 +267,11 @@ final class BackgroundRuntimeTests: XCTestCase {
         XCTAssertFalse(turn.isRunning)
         XCTAssertEqual(turn.outcome, .pausedBackground)
         XCTAssertEqual(TurnOutcome.pausedBackground.note, "Paused in background")
-        // The open tool step settled cancelled; the uncommitted stream
-        // text was written into its block, not dropped.
+        // Cancelled open tool step preserves uncommitted streamed text inside its block.
         let steps = turn.activities.flatMap(\.steps)
         XCTAssertEqual(steps.count, 1)
         XCTAssertEqual(steps.first?.status, .cancelled)
         XCTAssertEqual(turn.markdownSources, ["Partial answer so far"])
-        // User message plus the committed tool call/result survive.
         XCTAssertEqual(turn.transcript.first?.role, .user)
         XCTAssertTrue(turn.transcript.first?.parts.contains(.text("go")) ?? false)
         XCTAssertTrue(turn.transcript.contains { !$0.toolCalls.isEmpty })
@@ -340,13 +330,10 @@ final class BackgroundRuntimeTests: XCTestCase {
         rig.store.continueRun(conversationID: conv.id)
         await waitUntil { !rig.store.isRunning(conv.id) && conv.turns.count == 2 }
 
-        // The old turn keeps its outcome and its partial answer.
         XCTAssertEqual(conv.turns[0].outcome, .pausedBackground)
         XCTAssertEqual(conv.turns[0].markdownSources, ["Partial answer so far"])
         XCTAssertEqual(conv.turns[1].userText, "Continue")
         XCTAssertEqual(conv.turns[1].outcome, .completed)
-        // The new run replayed the paused turn's committed transcript —
-        // user message plus finished tool call — then continued.
         let transcripts = seen.withLock { $0 }
         XCTAssertEqual(transcripts.count, 2)
         let replayed = transcripts[1]
@@ -374,7 +361,6 @@ final class BackgroundRuntimeTests: XCTestCase {
     }
 
     func testContinueGuards() async {
-        // Nothing to continue: no turns, a finished run, a run in flight.
         let first = rig(ScriptedChatEngine.echo(pause: .milliseconds(1)))
         first.store.continueRun(conversationID: first.conv.id)
         XCTAssertTrue(first.conv.turns.isEmpty)
@@ -469,7 +455,6 @@ final class BackgroundRuntimeTests: XCTestCase {
         let actions = Dictionary(uniqueKeysWithValues: category.actions.map { ($0.identifier, $0) })
         XCTAssertEqual(actions["praxis.approve"]?.options, [.foreground])
         XCTAssertEqual(actions["praxis.deny"]?.options, [.foreground])
-        // The lock-screen line matches too.
         await waitUntil { rig.reporter.updates.contains { $0.phase == .needsApproval } }
 
         rig.store.resolveApproval("bg-appr-1", decision: .allowOnce)
@@ -639,9 +624,7 @@ final class BackgroundRuntimeTests: XCTestCase {
     }
 
     func testUntitledFinishNeverLeaksModelTextToTheLockScreen() async {
-        // The loop reports some failures (unknown tool, invalid JSON)
-        // with no start event; their summaries echo model-written
-        // arguments and must never become the lock-screen line.
+        // Errors without a start event echo model arguments and must never appear on the lock screen.
         let rig = rig(pausingEngine())
         let conv = rig.conv
         rig.store.send(text: "go")
@@ -665,8 +648,6 @@ final class BackgroundRuntimeTests: XCTestCase {
     func testLaunchClearsOrphanedRunNotifications() async {
         let rig = rig(pausingEngine())
         let conv = rig.conv
-        // A card posted pre-kill plus cards the dead process left in the
-        // center; an unrelated notification must survive.
         await rig.runtime.notifications.postApproval(requestID: "r1", tool: "Run command",
                                                      chatTitle: conv.displayTitle, conversationID: conv.id)
         rig.center.delivered = ["praxis.approval.r1", "praxis.done.\(conv.id.uuidString)", "other.keep"]
@@ -679,7 +660,6 @@ final class BackgroundRuntimeTests: XCTestCase {
         XCTAssertEqual(rig.center.removedDelivered.flatMap { $0 }.sorted(),
                        ["praxis.approval.r1", "praxis.done.\(conv.id.uuidString)"].sorted())
         XCTAssertEqual(rig.center.removedPending.flatMap { $0 }, ["praxis.approval.r2"])
-        // ...and the posting record is forgotten with them.
         await rig.runtime.notifications.withdrawApprovals(for: conv.id)
         XCTAssertEqual(rig.center.removedDelivered.count, 1, "nothing left to withdraw")
         await rig.store.settle()

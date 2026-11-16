@@ -1,10 +1,7 @@
 import {OPENROUTER_API_BASE, readBounded, redactKey} from '@praxis/agent';
 import type {JsonObject} from '@praxis/protocol';
 
-/**
- * The few OpenRouter calls besides chat: key info, PKCE code exchange, the model list.
- * Every URL is built from the pinned base. `fetcher` is the guarded fetch in production.
- */
+/** Non-chat OpenRouter endpoints using the pinned base and guarded fetch. */
 export class OpenRouterError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
   /** OpenRouter answered and said no (bad key, bad code), as opposed to being unreachable or failing. */

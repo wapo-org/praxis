@@ -1,17 +1,11 @@
 import SwiftUI
 import ImageIO
 
-/// User bubble (§8): right-aligned, max 78%, fill-2, radius 20 with the
-/// bottom-trailing corner at 8. Compact density for very short prompts.
-/// Long-press: native context menu — Copy / Edit / Resend. Long-press an
-/// attachment: "Hide from code" / "Available to code".
 struct UserBubble: View {
     let turn: Turn
     var onCopy: () -> Void = {}
     var onEdit: () -> Void = {}
     var onResend: () -> Void = {}
-    /// Bottom of the composer's text field when this turn was just sent:
-    /// the bubble rises from there. Nil for every other appearance.
     var riseFrom: CGFloat?
     /// Optional so previews without a store still render.
     @Environment(ChatStore.self) private var store: ChatStore?
@@ -24,9 +18,6 @@ struct UserBubble: View {
             Spacer(minLength: 0)
             VStack(alignment: .trailing, spacing: 8) {
                 if !visibleAttachments.isEmpty {
-                    // Same rounded-square boxes as the composer strip;
-                    // scrolls sideways instead of overflowing the bubble
-                    // column when a turn carries many attachments.
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
                             ForEach(visibleAttachments) { att in
@@ -43,8 +34,7 @@ struct UserBubble: View {
                             }
                         }
                     }
-                    // A strip that fits needs no clip (it would shave the
-                    // thumbnails' code-hidden badges).
+                    // Avoid clipping strips that fit so code-hidden badges aren't shaved.
                     .scrollClipDisabled(visibleAttachments.count <= 4)
                     .frame(maxWidth: 680 * 0.78)
                 }
@@ -113,10 +103,6 @@ struct AttachmentThumbnail: View {
 // MARK: Code access
 
 extension View {
-    /// Long-press menu on an attachment thumbnail: "Hide from code" /
-    /// "Available to code" (JS `fs` access, `Attachment.isHiddenFromCode`),
-    /// plus a small badge while hidden. VoiceOver gets the same as an
-    /// action and reads the state as the value.
     func codeAccessMenu(_ attachment: Attachment, setHidden: @escaping (Bool) -> Void) -> some View {
         let hidden = attachment.isHiddenFromCode
         let title = hidden ? "Available to code" : "Hide from code"
@@ -136,7 +122,6 @@ extension View {
     }
 }
 
-/// Quiet marker on a thumbnail the user hid from code.
 private struct CodeHiddenBadge: View {
     var body: some View {
         Image(systemName: "eye.slash")
@@ -148,9 +133,7 @@ private struct CodeHiddenBadge: View {
     }
 }
 
-/// Downsampled thumbnails, decoded once per attachment. `UIImage(data:)` in
-/// `body` decoded full-resolution camera photos on every render — during
-/// streaming that was every token, for every visible bubble.
+/// Caches downsampled thumbnails so streaming never re-decodes full photos.
 @MainActor
 enum ThumbnailCache {
     private static let cache: NSCache<NSString, UIImage> = {
@@ -168,7 +151,7 @@ enum ThumbnailCache {
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceShouldCacheImmediately: true,
-            // Long-side cap; 2× leaves the short side sharp under scaledToFill.
+            // 2x max pixel keeps short side sharp under scaledToFill.
             kCGImageSourceThumbnailMaxPixelSize: max(side * 2, 1),
         ]
         guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }

@@ -3,7 +3,7 @@ import {createLocalToolsState} from './state.js';
 import {randomUUID} from 'node:crypto';
 import {ApiError} from '../../service.js';
 import type {ToolsStorage,UploadInput} from './ports.js';
-/** Explicit local fixture only. Never instantiate this adapter in production. */
+/** Local fixture only; never instantiate in production. */
 export function createLocalToolsStorage(baseUrl:string):ToolsStorage{
  if(process.env.NODE_ENV==='production'||process.env.VERCEL)throw new Error('Local fixture storage forbidden in production');
  const closed=new Set<string>();const hash=(u:string)=>createHash('sha256').update(u).digest('hex');const guard=(u:string)=>{if(closed.has(hash(u)))throw new Error('Account unavailable');};

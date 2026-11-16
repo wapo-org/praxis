@@ -4,7 +4,6 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import styles from './Sheet.module.css';
 
-/** Each portal isolates the background, traps focus, and restores it on dismissal. */
 export function SheetDialog({
   label,
   onDismiss,

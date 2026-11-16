@@ -1,9 +1,5 @@
 import XCTest
 
-/// Tray attachments and drafts belong to their chat (items 2+9): nothing
-/// selected carries over to the next chat, and returning restores both.
-/// The solid composer buttons (item 10) keep their labels here; their
-/// look is verified by screenshots in both modes (see the wave report).
 final class PlusTrayUITests: XCTestCase {
     var app: XCUIApplication!
 
@@ -25,8 +21,7 @@ final class PlusTrayUITests: XCTestCase {
             .matching(NSPredicate(format: "label BEGINSWITH %@", text)).firstMatch
     }
 
-    /// The tray's "Add N" attach button only (not the empty state's
-    /// "Add haptics to buttons" suggestion, which also begins with "Add ").
+    /// Match only the tray's "Add N" button, excluding the "Add haptics to buttons" suggestion.
     private func addCountButton() -> XCUIElement {
         app.descendants(matching: .button)
             .matching(NSPredicate(format: "label MATCHES %@", "Add [0-9]+")).firstMatch
@@ -71,8 +66,6 @@ final class PlusTrayUITests: XCTestCase {
         XCTAssertTrue(el(.button, "Add photos, files and more").waitForExistence(timeout: 10))
     }
 
-    /// The reported bug: photos picked in one chat stayed selected and
-    /// attached in the next.
     func testPhotoSelectionDoesNotCarryToNewChat() {
         app.buttons["New chat"].tap()
         openTray()
@@ -98,8 +91,6 @@ final class PlusTrayUITests: XCTestCase {
         shot("composer-solid-buttons")
     }
 
-    /// The Screenshot tile quick-adds the newest screenshot and leaves
-    /// the tray open (a shortcut, not a flow).
     func testScreenshotTileQuickAdds() {
         app.buttons["New chat"].tap()
         openTray()
@@ -111,11 +102,8 @@ final class PlusTrayUITests: XCTestCase {
         closeTray()
     }
 
-    /// Switching away stashes the draft; coming back restores its text
-    /// and its attachments.
     func testDraftRestoredWhenReturningToChat() {
         app.buttons["New chat"].tap()
-        // Title the chat first, so History can find it again.
         field.tap()
         field.typeText("tray draft check")
         el(.button, "Send message").tap()

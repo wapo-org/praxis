@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type {AdapterBundle,EventRecord,StoredRecord} from './contracts.js';
-/** Local-only adapters. Production entry never imports this module. */
+/** Local-only adapters; never import in production. */
 export function createLocalAdapters():AdapterBundle{
  const closed=new Set<string>(),ownerKeys=new Map<string,string>();const digest=(u:string)=>createHash('sha256').update(u).digest('hex');const check=(u:string)=>{if(closed.has(digest(u)))throw new Error('Account unavailable');};
  const records=new Map<string,StoredRecord>(),revisions:StoredRecord[]=[],cache=new Map<string,{value:unknown;expires:number}>(),streams=new Map<string,EventRecord[]>(),dedup=new Map<string,EventRecord>();let revision=0;

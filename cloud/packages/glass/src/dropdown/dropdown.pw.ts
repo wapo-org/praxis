@@ -129,7 +129,6 @@ test('combobox/listbox ARIA, logical virtualization, filter reset, unique favori
     page.getByRole('button', { name: 'Pin Model 001', exact: true }),
   ).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByRole('listbox')).toBeVisible();
-  // Axe-style role ownership and accessible naming checks, without a new dependency.
   expect(await list.locator('[role^="menuitem"]').count()).toBe(0);
   for (const option of await list.getByRole('option').all()) {
     await expect(option).toHaveAttribute('aria-selected', /true|false/);

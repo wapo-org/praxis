@@ -16,9 +16,9 @@ import { useMenuReducedMotion } from './motion';
 import { usePointerRelease } from './pointer';
 export interface GlassDropdownRootProps
   extends React.HTMLAttributes<HTMLDivElement>, GlassMaterialControls {
-  /** Render in document.body so no ancestor can clip the menu. On by default. */
+  /** Portals to document.body to avoid ancestor clipping. */
   portal?: boolean;
-  /** Keep the menu inside this element instead of the viewport (non-portal menus in a clipped sheet). */
+  /** Constrains non-portal menus inside a clipped element. */
   boundary?: () => HTMLElement | null;
   open?: boolean;
   defaultOpen?: boolean;

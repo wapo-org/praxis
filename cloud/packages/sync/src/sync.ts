@@ -1,13 +1,13 @@
 import {HashTree, type TreeNode} from './tree.js';
 
-/** Wire shapes mirror `@praxis/protocol` SyncRequest/SyncResponse (kept structural so Swift/web need no zod). */
+/** Mirrors @praxis/protocol SyncRequest/SyncResponse structurally without zod. */
 export interface SyncEntity {type: 'sync.entity'; key: string; hash: string; updatedAt: string; deleted: boolean; value: unknown}
 export interface SyncNode {type: 'sync.node'; prefix: string; hash: string; count: number}
 export interface SyncRequest {type: 'sync.request'; strategy: 'cursor' | 'merkle'; cursor?: string; root?: string; prefixes?: string[]; limit: number}
 export interface SyncResponse {type: 'sync.response'; strategy: 'cursor' | 'merkle'; root: string; cursor: string; entities: SyncEntity[]; nextCursor: string | null; nodes: SyncNode[]}
 export type Transport = (request: SyncRequest) => Promise<SyncResponse>;
 
-/** The client's local replica (IndexedDB on web, SwiftData on iOS). Applying a batch must be transactional. */
+/** Client replica abstraction; batch writes must be transactional. */
 export interface Replica {
   tree: HashTree;
   cursor: string;
@@ -27,7 +27,6 @@ function counted(transport: Transport, stats: SyncStats): Transport {
 }
 const emptyStats = (): SyncStats => ({roundTrips: 0, requestBytes: 0, responseBytes: 0, upserts: 0, deletes: 0});
 
-/** Cursor strategy: page through the server's revision log from the replica's cursor. */
 export async function syncCursor(transport: Transport, replica: Replica, limit = 500): Promise<SyncStats> {
   const stats = emptyStats();
   const send = counted(transport, stats);
@@ -44,12 +43,7 @@ export async function syncCursor(transport: Transport, replica: Replica, limit =
   }
 }
 
-/**
- * Merkle strategy: compare roots, descend only into differing subtrees, then replace differing leaf buckets.
- * Rule: prefixes shorter than `depth` return their 16 child nodes; prefixes of length `depth` return the
- * leaf's live entities. Needs no cursor, so it also repairs a replica whose cursor is lost or expired.
- * Round trips when anything differs: 1 (root) + depth.
- */
+/** Cursorless Merkle sync descending only differing subtrees in 1 + depth trips. */
 export async function syncMerkle(transport: Transport, replica: Replica): Promise<SyncStats> {
   const stats = emptyStats();
   const send = counted(transport, stats);
@@ -78,7 +72,6 @@ export async function syncMerkle(transport: Transport, replica: Replica): Promis
   return stats;
 }
 
-/** Server side of the Merkle strategy over a tree the server keeps current. */
 export async function respondMerkle(
   tree: HashTree,
   request: Pick<SyncRequest, 'root' | 'prefixes'>,

@@ -17,24 +17,20 @@ import {readToolOutputTool} from './read-tool-output.js';
 export {withMedia} from './media-provider.js';
 export {readToolOutputTool} from './read-tool-output.js';
 
-/** Hands a run's next slice to a fresh invocation (QStash in production, the in-process queue locally). */
+/** Dispatches the next run slice (QStash in production, in-process queue locally). */
 export interface ContinuationScheduler {
   schedule(userId: string, runId: string): Promise<void>;
 }
 
-/** Feature modules composed by the entry point (tools + MCP). All optional so tests can run the bare loop. */
+/** Composed feature modules (tools, MCP); optional so tests can run bare loops. */
 export interface ExecutionFeatures {
   tools?(ctx: FeatureContext, input: {chat: Chat; runId: string; attachmentIds: string[]}): Promise<FeatureTool[]>;
-  /** Tools already shaped for the loop (e.g. `look_at_image` from @praxis/agent). */
   agentTools?(ctx: FeatureContext, input: {chat: Chat; runId: string; attachmentIds: string[]}): Promise<AgentTool[]>;
   skills?(ctx: FeatureContext): Promise<CatalogSkill[]>;
   toolNotes?(ctx: FeatureContext, chat: Chat): Promise<string[]>;
-  /**
-   * Resolves an attachment reference for an outgoing provider request (history keeps references): bytes the model
-   * can take, inlined text, or a note saying why it can't be shown.
-   */
+  /** Resolves an attachment reference into model-compatible bytes, text, or an omission note. */
   media?(ctx: FeatureContext, part: MessagePart, capabilities: ModelCapabilities): Promise<MessagePart>;
-  /** Extra notes for the new user turn (e.g. connector availability), given the notes already in the transcript. */
+  /** Builds extra turn notes (e.g. connector status) not yet in transcript. */
   turnNotes?(ctx: FeatureContext, chat: Chat, previousNotes: string[]): Promise<string[]>;
 }
 
@@ -57,7 +53,7 @@ export interface RunLease {
   release(key: string, token: string): Promise<void>;
 }
 
-/** Process-local lease for dev/tests. Production passes the Redis lease (adapters/upstash.ts). */
+/** Process-local lease for dev/tests; production injects the Redis lease. */
 export function memoryLease(clock: () => number = Date.now): RunLease {
   const held = new Map<string, {token: string; expires: number}>();
   return {
@@ -87,11 +83,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   const lease = options.lease ?? memoryLease();
   const leaseTtlMs = budgetMs + 120_000;
 
-  /**
-   * Ports for one execution slice. Checkpoint writes are compare-and-set against the revision this slice
-   * last read or wrote, so an executor that lost its lease (or a duplicate delivery) can't overwrite newer
-   * state: its save throws ExecutionFenced and the slice stops without emitting anything else.
-   */
+  /** CAS-fenced checkpoint save throws ExecutionFenced if this slice lost its lease. */
   const slicePorts = (fence: {revision: number}): AgentPorts => ({
     ...ports,
     save: async (userId, cp) => {
@@ -113,7 +105,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       }
   }
 
-  /** Runs `fn` as the run's only executor; a concurrent or duplicate caller returns without doing anything. */
+  /** Runs fn exclusively for this run; concurrent callers return without acting. */
   async function exclusive(userId: string, runId: string, fn: (fence: {revision: number}) => Promise<AgentCheckpoint | void>) {
     const key = `run:${userId}:${runId}`;
     const token = await lease.acquire(key, leaseTtlMs, userId);
@@ -161,10 +153,10 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       return {provider: scriptedProvider(request.script), script: request.script};
     }
     const modelId = request.modelId ?? chat.modelId;
-    // Local dev keeps M1 behaviour: a chat without a model, or on a scripted model, runs the scripted provider.
+    // Local dev keeps M1 fallback to scripted provider.
     if (service.local && (!modelId || isScripted(modelId))) return {provider: scriptedProvider('text'), script: 'text'};
     if (!service.models) throw new ApiError(503, 'models_unavailable', 'Models are not configured');
-    // The user's key is unsealed here, held by this slice's provider only, and never checkpointed.
+    // User key is unsealed for this slice only and never checkpointed.
     return service.models.forRun(userId, modelId);
   }
 
@@ -216,7 +208,6 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     };
   }
 
-  /** Runs the loop until it finishes, parks, or the slice budget ends; then schedules the next slice. */
   async function settle(userId: string, cp: AgentCheckpoint) {
     if (cp.run.status === 'continuing') await scheduler.schedule(userId, cp.run.id);
   }
@@ -271,7 +262,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     },
 
     async continue(userId: string, runId: string) {
-      // A continuation for a run that was deleted (truncate/chat delete) is acknowledged as done, so QStash stops retrying.
+      // Acknowledge continuations for deleted runs as done so QStash stops retrying.
       const row = await service.adapters.store.get(userId, 'checkpoint', runId);
       if (!row || row.deleted) return;
       await exclusive(userId, runId, async fence => {
@@ -279,7 +270,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
         if (!current || current.deleted) return;
         fence.revision = current.revision;
         const pending = CheckpointSchema.parse(current.value);
-        // Repair delivery before loading providers/tools: terminal and parked runs need no remote credentials.
+        // Repair delivery before loading providers/tools so parked runs need no remote secrets.
         if (pending.outbox.length) {
           await service.emit(userId, runId, {type: 'messages.committed', messages: pending.outbox});
           pending.outbox = [];
@@ -297,7 +288,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       if (!row || row.deleted) return;
       const cp = CheckpointSchema.parse(row.value);
       if (cp.run.status === 'awaitingApproval' || cp.run.status === 'awaitingElicitation' || cp.run.status === 'continuing') {
-        // A running executor sees the cancel flag between chunks; parked/continuing runs are finished here under the lease.
+        // Running slices poll cancel between chunks; parked runs finish under lease.
         await exclusive(userId, runId, async fence => {
           const {cp: current, runner} = await load(userId, runId, fence);
           await runner.cancel(current);
@@ -342,7 +333,7 @@ async function localSummary(req: Parameters<NonNullable<AgentPorts['summarize']>
   return `Earlier conversation: ${text.slice(-2000)}`;
 }
 
-/** Bridges an API feature tool (MCP, builtin) onto the loop's tool port; the runner keeps policy. */
+/** Adapts a feature tool onto the runner's tool port while keeping runner policy. */
 export function adaptTool(tool: FeatureTool): AgentTool {
   return {
     spec: {type: 'tool.spec', name: tool.name, description: tool.description, inputSchema: tool.inputSchema, source: tool.source, traits: tool.traits},
@@ -362,7 +353,6 @@ export function adaptTool(tool: FeatureTool): AgentTool {
         });
         return toToolResult(value);
       } catch (error) {
-        // Park (nested approval/elicitation) and cancel are loop control flow, not tool failures.
         if (isRunControl(error) || error instanceof ExecutionFenced || context.signal.aborted) throw error;
         const message = error instanceof ApiError || error instanceof Error ? error.message : 'Tool failed';
         return textResult(message, true);

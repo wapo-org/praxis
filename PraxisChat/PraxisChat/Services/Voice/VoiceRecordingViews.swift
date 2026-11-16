@@ -1,10 +1,5 @@
 import SwiftUI
 
-/// The voice UI (VOICE_PLAN.md §3): the composer's recording middle, the
-/// review row, the recovery banner + list, and the cross-chat pill.
-///
-/// The mic button's LOOK belongs to tray — these views only render the
-/// middle area and the floating banner/pill, in monochrome liquid glass.
 struct VoiceRecordingMiddle: View {
     var voice: VoiceInputController
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -55,8 +50,6 @@ struct VoiceRecordingMiddle: View {
                 cancelButton
             }
             .frame(minHeight: 38)
-            // Stacked full-width: side by side they squeeze to
-            // unreadable wrapped pills in the narrow middle.
             VStack(spacing: 6) {
                 Button { voice.stopAndTranscribe() } label: {
                     Text("Stop & transcribe")
@@ -102,8 +95,7 @@ struct VoiceRecordingMiddle: View {
         .padding(.vertical, 2)
     }
 
-    /// Red dot: pulses only while this view exists (the recording phase),
-    /// so no off-screen `repeatForever` outlives it.
+    /// Scoped to recording phase existence so repeatForever never leaks off-screen.
     private var recordDot: some View {
         Circle()
             .fill(Color.red)
@@ -325,8 +317,7 @@ struct VoiceRecordingMiddle: View {
     }
 }
 
-/// Live level meter: 24 bars in one pass, driven by the controller's
-/// ~10/s poll (no own timers, no animation budget while idle).
+/// Driven purely by the controller's ~10/s poll with no internal timer or idle animation cost.
 struct VoiceLevelMeter: View {
     var level: Float
 
@@ -338,8 +329,6 @@ struct VoiceLevelMeter: View {
             let lit = Int((CGFloat(level) * CGFloat(count)).rounded())
             for i in 0..<count {
                 let on = i < lit
-                // Louder bars grow: speech swells toward the right, silence
-                // leaves a flat dotted line.
                 let h = on ? size.height * (0.35 + 0.65 * CGFloat(i + 1) / CGFloat(count)) : 3
                 let rect = CGRect(x: CGFloat(i) * (bar + gap), y: (size.height - h) / 2,
                                   width: max(1, bar), height: h)
@@ -352,7 +341,6 @@ struct VoiceLevelMeter: View {
     }
 }
 
-/// Opacity pulse scoped to the recording phase only.
 private struct RecordPulse: ViewModifier {
     var active: Bool
     @State private var bright = true
@@ -372,9 +360,6 @@ private struct RecordPulse: ViewModifier {
 
 // MARK: - Recovery banner + list
 
-/// A small banner above the composer while recoverable recordings exist.
-/// Tapping it expands the per-recording list (Transcribe / Play / Delete)
-/// in place — the same list voice-groq's Settings screen shows.
 struct VoiceRecoveryBanner: View {
     var voice: VoiceInputController
     @State private var expanded = false
@@ -435,8 +420,6 @@ struct VoiceRecoveryBanner: View {
     }
 }
 
-/// One recording's Transcribe / Play / Delete row, shared by the banner's
-/// expanded list and the Settings → Recordings destination.
 struct VoiceRecoveryRow: View {
     var voice: VoiceInputController
     var recording: VoiceRecording
@@ -458,8 +441,7 @@ struct VoiceRecoveryRow: View {
                 }
                 Spacer()
                 if isTranscribing {
-                    // The controller runs one transcription at a time, so a
-                    // notice (if any) belongs to this row's recording.
+                    // Safe to read global transcriptionNotice here because only one recording transcribes at once.
                     if let notice = voice.transcriptionNotice {
                         Text(notice)
                             .font(Type.inter(12, .caption2))
@@ -545,10 +527,7 @@ struct VoiceRecoveryRow: View {
     }
 }
 
-/// Settings → Voice input → Recordings destination: everything on disk,
-/// including transcribed-but-unsent (which would otherwise leak with no
-/// delete path). Injected at the app root into voice-groq's
-/// `voiceRecordingsList` environment slot; the empty state is theirs.
+/// Includes transcribed-but-unsent audio so delete works; injected at root.
 struct VoiceRecordingsListView: View {
     var voice: VoiceInputController
 
@@ -577,8 +556,6 @@ struct VoiceRecordingsListView: View {
 
 // MARK: - Cross-chat pill
 
-/// A live recording belongs to the chat it started in; leaving that chat
-/// doesn't stop it. This pill floats above the composer anywhere else.
 struct VoiceRecordingPill: View {
     var voice: VoiceInputController
     var recording: VoiceRecording
@@ -612,7 +589,6 @@ struct VoiceRecordingPill: View {
 // MARK: - Formatting
 
 enum VoiceTime {
-    /// 0:07, 12:34, 1:02:03.
     static func elapsed(_ t: TimeInterval) -> String {
         let s = max(0, Int(t))
         let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
@@ -622,7 +598,6 @@ enum VoiceTime {
         return String(format: "%d:%02d", m, sec)
     }
 
-    /// 10:42 (device locale, short time).
     static func short(_ date: Date) -> String {
         ShortTime.shared.string(from: date)
     }

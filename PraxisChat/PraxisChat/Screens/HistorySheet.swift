@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// History (reference: Claude Chats): glass circle chrome, airy rows
-/// with a chat glyph and relative date, floating New chat pill over a
-/// glass search bar, overflow menu for select / All / Pinned.
 struct HistorySheet: View {
     @Environment(ChatStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -49,8 +46,6 @@ struct HistorySheet: View {
         .scrollDismissesKeyboard(.interactively)
         .scrollEdgeEffectStyle(.soft, for: .top)
         .scrollEdgeEffectStyle(.soft, for: .bottom)
-        // Rows scroll under the header and the glass search bar instead
-        // of stopping at opaque edges, blurring progressively at both.
         .safeAreaBar(edge: .top) { header }
         .safeAreaBar(edge: .bottom) { bottomBar }
         .background(Praxis.canvas)
@@ -119,8 +114,7 @@ struct HistorySheet: View {
                     else { selectedIDs.insert(conv.id) }
                 }
             } else {
-                // Crossfade the transcript under the closing sheet; a
-                // morph spring here animated the whole thread's layout.
+                // Uses reveal crossfade because a morph spring animated the entire transcript's layout.
                 withAnimation(reduceMotion ? Motion.reduced : Motion.reveal) { store.select(conv.id) }
                 dismiss()
             }
@@ -181,7 +175,6 @@ struct HistorySheet: View {
                     Button(role: .destructive) {
                         store.haptics.fire(.warning)
                         withAnimation(listAnimation) {
-                            // Stops their runs and drops their files too.
                             store.deleteConversations(selectedIDs)
                             selectedIDs = []
                             selecting = false
@@ -222,7 +215,6 @@ struct HistorySheet: View {
     }
 }
 
-/// Thick-glass mock file sheet (§9.2 FileRef tap).
 struct FilePreviewSheet: View {
     let name: String
     @Environment(\.dismiss) private var dismiss
@@ -251,7 +243,6 @@ struct FilePreviewSheet: View {
     }
 }
 
-/// Glass link preview card (§9.2 LinkRef tap) → SFSafariViewController.
 struct LinkPreviewSheet: View {
     let url: URL
     @Environment(\.dismiss) private var dismiss

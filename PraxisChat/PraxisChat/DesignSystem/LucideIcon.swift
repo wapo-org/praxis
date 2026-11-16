@@ -1,8 +1,6 @@
 import SwiftUI
 
-/// Bundled Lucide glyphs (spec §2): template vectors parsed from the
-/// OFL/MIT Lucide SVGs in Resources/Lucide and drawn as stroked paths.
-/// 24×24 grid, stroke 2, round caps/joins — rendered at any size.
+/// Template vectors parsed from Resources/Lucide SVGs on a 24x24 grid with stroke width 2.
 struct LucideIcon: View {
     let name: String
     var size: CGFloat = 14
@@ -40,15 +38,13 @@ enum LucidePaths {
     }
 }
 
-/// Minimal parser for Lucide's SVG subset: path (M/L/H/V/A/C/Z + relative),
-/// line, circle, polyline, polygon.
+/// Parses only Lucide's SVG subset: path (M/L/H/V/A/C/Z), line, circle, polyline, polygon.
 enum SVGPathParser {
     static func parse(svg: String) -> Path {
         var path = Path()
         for match in matches(#"<path[^>]*\bd="([^"]+)""#, in: svg) {
             path.addPath(parsePathData(match.0))
         }
-        // Lines, circles, polylines via attribute scan.
         for tag in matches(#"<(line|circle|polyline|polygon)[^>]*>"#, in: svg) {
             let kind = tag.0
             let attrs = attributes(tag.1)

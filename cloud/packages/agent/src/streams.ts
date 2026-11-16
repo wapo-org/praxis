@@ -66,7 +66,7 @@ function usage(raw:unknown):Usage {
   const input=number(u.prompt_tokens),written=number(details.cache_write_tokens);
   return {type:'usage',inputTokens:Math.max(0,input-cached-written),outputTokens:number(u.completion_tokens),cacheReadTokens:cached,cacheWriteTokens:written,...(typeof u.cost==='number'&&u.cost>=0?{cost:u.cost}:{})};
 }
-/** Streamed `reasoning_details` fragments, merged per index so the blocks can be sent back unchanged on the next turn. */
+/** Merges streamed `reasoning_details` per index for replay on the next turn. */
 function mergeReasoningDetails(into:JsonObject[],fragments:unknown[]):void {
   for(const raw of fragments) {
     const f=object(raw),index=typeof f.index==='number'?f.index:into.length?into.length-1:0;

@@ -1,40 +1,30 @@
-/** Environment as read from `process.env`: values may be missing, empty or whitespace (all count as missing). */
+/** Empty or whitespace env values count as missing. */
 export type Env = Record<string, string | undefined>;
 
 export interface CredentialSlot<C> {
-  /** 1-based slot number. The only identifier of a credential that may leave the process. */
+  /** 1-based slot number; the only credential identifier allowed out of process. */
   slot: number;
   credential: C;
 }
 
 export interface CredentialPool<C = string> {
-  /** Name used in cool-down keys and logs. Never a key value. */
+  /** Service name for cool-down keys and logs; never a key value. */
   service: string;
-  /** Base variable names (slot 1). Further slots add `_2`, `_3`, … to each name. */
   names: readonly string[];
-  /** Configured slots in ascending order, without gaps. */
   slots: readonly CredentialSlot<C>[];
-  /** Startup warnings (variable names only): slots ignored because of a numbering gap. */
   warnings: readonly string[];
 }
 
 export interface PoolOptions {
-  /** Defaults to the first variable name in lower case. */
   service?: string;
 }
 
-/** `NAME` is slot 1, `NAME_2` slot 2, … */
 export const slotSuffix = (slot: number) => (slot === 1 ? '' : `_${slot}`);
 
 const present = (env: Env, name: string) => !!env[name]?.trim();
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/**
- * Reads a credential pool from the environment: `NAME`, `NAME_2`, `NAME_3`, … until the first gap.
- * A credential made of several variables forms one slot per suffix (`ID` + `SECRET`, `ID_2` + `SECRET_2`);
- * a slot with only some of its parts throws, so startup fails closed. Slots after a gap are ignored and named
- * in `warnings`. Adding `NAME_n` to the environment adds a slot with no code change.
- */
+/** Reads NAME, NAME_2... slots until first gap; partial multi-var slots fail closed. */
 export function pool(name: string, env: Env, options?: PoolOptions): CredentialPool<string>;
 export function pool(names: readonly string[], env: Env, options?: PoolOptions): CredentialPool<Record<string, string>>;
 export function pool(nameOrNames: string | readonly string[], env: Env, options: PoolOptions = {}): CredentialPool<string> | CredentialPool<Record<string, string>> {

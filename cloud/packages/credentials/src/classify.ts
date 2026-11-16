@@ -1,11 +1,9 @@
 export type CooldownReason = 'invalid' | 'exhausted' | 'rateLimited' | 'serverError';
 
-/** What a response says about the credential that made the call. `ok` means "nothing wrong with the key". */
 export type CredentialSignal = {kind: 'ok'} | {kind: CooldownReason; cooldownMs: number};
 
 export type HeadersLike = {get(name: string): string | null} | Record<string, string | undefined>;
 
-/** Cool-down per reason when the response does not say how long to wait. */
 export const DEFAULT_COOLDOWNS_MS: Record<CooldownReason, number> = {
   invalid: 60 * 60_000,
   exhausted: 60 * 60_000,
@@ -15,9 +13,8 @@ export const DEFAULT_COOLDOWNS_MS: Record<CooldownReason, number> = {
 
 export interface ClassifyOptions {
   now?: () => number;
-  /** Per-service overrides, e.g. the length of the quota period. */
   cooldownsMs?: Partial<Record<CooldownReason, number>>;
-  /** Matches a quota-exhausted body on a status other than 402 (APIs word this differently). */
+  /** Detects quota exhaustion on non-402 statuses. */
   quotaBody?: RegExp;
 }
 
@@ -31,7 +28,7 @@ function header(headers: HeadersLike | undefined, name: string): string | undefi
   return undefined;
 }
 
-/** `Retry-After` as delay-seconds or an HTTP-date, in milliseconds; undefined when absent or unreadable. */
+/** Parses Retry-After seconds or HTTP-date into ms. */
 function retryAfterMs(headers: HeadersLike | undefined, now: number): number | undefined {
   const raw = header(headers, 'retry-after')?.trim();
   if (!raw) return undefined;
@@ -40,11 +37,7 @@ function retryAfterMs(headers: HeadersLike | undefined, now: number): number | u
   return Math.min(Math.max(Math.ceil(ms), 1000), MAX_RETRY_AFTER_MS);
 }
 
-/**
- * Default reading of an HTTP response: 401/403 key invalid, 402 or a quota body exhausted, 429 rate limited
- * (for `Retry-After`, else 60 s), 5xx a short cool-down. Everything else is `ok`: the key is fine and the
- * caller handles the response. Services whose API words these differently pass their own classifier.
- */
+/** Classifies HTTP statuses (401/403 invalid, 402 quota, 429 limit, 5xx cooldown). */
 export function classifyHttp(status: number, headers?: HeadersLike, body?: string, options: ClassifyOptions = {}): CredentialSignal {
   const cool = {...DEFAULT_COOLDOWNS_MS, ...options.cooldownsMs};
   const quota = body !== undefined && (options.quotaBody ?? QUOTA_BODY).test(body);

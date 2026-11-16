@@ -1,8 +1,7 @@
 import Foundation
 import Security
 
-/// The only persisted cloud secret. Keychain account is the canonical server
-/// origin, so changing servers can never forward another server's token.
+/// Keychain entry keys by origin so changing servers never leaks tokens.
 actor CloudSessionStore {
     private let service: String
     private let inMemory: Bool

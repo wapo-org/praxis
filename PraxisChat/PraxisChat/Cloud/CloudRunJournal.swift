@@ -1,17 +1,14 @@
 import CryptoKit
 import Foundation
 
-/// Local replicas and journals are scoped by verified account and server. The
-/// last account's cached UI may paint before session validation; it is never
-/// reconciled into another account's store.
+/// Scoped by account and server; cached UI never reconciles across accounts.
 enum CloudReplicaScope {
     static func directory(root: URL, origin: String, userID: String) -> URL {
         root.appendingPathComponent("Cloud", isDirectory: true)
             .appendingPathComponent(digest(origin + "\n" + userID), isDirectory: true)
     }
 
-    /// Cloud resource ids are opaque; a deterministic local UUID preserves the
-    /// existing SwiftUI/persistence identity without requiring UUID server ids.
+    /// Maps opaque cloud IDs to deterministic UUIDs for SwiftUI identity.
     static func localID(_ remoteID: String) -> UUID {
         if let id = UUID(uuidString: remoteID) { return id }
         var bytes = Array(SHA256.hash(data: Data(remoteID.utf8)).prefix(16))
@@ -26,10 +23,7 @@ enum CloudReplicaScope {
     }
 }
 
-/// The wire log is written BEFORE presentation events enter the coalescer. On
-/// relaunch a fresh reducer replays this log, then SSE resumes after its last
-/// complete record. A partial final write is discarded, so an acknowledged
-/// cursor can never outrun the durable projection used to rebuild the UI.
+/// Journals wire events pre-coalescer and discards partial tail so cursors stay valid.
 actor CloudRunJournal {
     struct Record: Codable, Sendable, Equatable {
         var conversationID: UUID
@@ -78,8 +72,7 @@ actor CloudRunJournal {
         let header = try JSONDecoder().decode(Envelope.self, from: data)
         guard header.type == "run.event", header.runId == runID, header.id > 0,
               header.id <= 9_007_199_254_740_991 else { throw Failure.invalidEvent }
-        // Codable base64 framing preserves the original bytes and all unknown
-        // fields, including multi-line JSON, without a dynamic JSON parser.
+        // Base64 framing preserves unknown fields and multi-line JSON verbatim.
         var line = try JSONEncoder().encode(WireRecord(data: data))
         line.append(10)
         do {
@@ -105,8 +98,7 @@ actor CloudRunJournal {
             cursors[runID] = header.id
             return true
         } catch {
-            // Do not append a later cursor after a failed record: it would
-            // create a gap that could not be recovered by Last-Event-ID.
+            // Block later cursors after a failed write to prevent Last-Event-ID gaps.
             blocked.insert(runID)
             throw error
         }
@@ -139,8 +131,7 @@ actor CloudRunJournal {
         guard snapshot.run.id == runID else { throw Failure.invalidEvent }
         _ = try snapshot.presentationEvents()
         try prepareDirectory()
-        // Snapshot first: a crash before deleting the old log is safe because
-        // replay ignores entries already covered by this checkpoint.
+        // Write snapshot before unlinking log since replay ignores covered entries.
         try data.write(to: snapshotURL(runID), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         try Data().write(to: eventsURL(runID), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         cursors[runID] = snapshot.lastEventId
@@ -150,8 +141,7 @@ actor CloudRunJournal {
         directory.appendingPathComponent(CloudReplicaScope.digest(runID)).appendingPathExtension("snapshot")
     }
 
-    /// Call only after the terminal turn projection has been persisted. Keeping
-    /// a journal longer is safe; deleting it before that commit loses recovery.
+    /// Remove journal only after persisting terminal turn projection.
     func remove(runID: String) throws {
         for url in [eventsURL(runID), metadataURL(runID), snapshotURL(runID)] where FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)

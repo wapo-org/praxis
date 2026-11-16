@@ -10,7 +10,7 @@ import {
   withPrivateFile,
   writeUploadList,
 } from './deploy-stage.mjs';
-/** Pinned: the CLI runs with deployment credentials, so it must never float to a newly published release. */
+/** Pin CLI version because it runs with deployment credentials. */
 export const VERCEL_CLI = 'vercel@65.9.0';
 export function deploymentPlan(env) {
   const vercel = ['npx', '--yes', VERCEL_CLI],
@@ -105,7 +105,6 @@ export function stepEnv(step, env, api) {
     };
   return base;
 }
-/** Stages and checks an upload; prints a per-directory summary and writes the full list. */
 async function checkUpload(label, stage, env) {
   const files = await listFiles(stage);
   await assertSafeUpload(
@@ -138,7 +137,7 @@ export function execute(step, env, input) {
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,
       });
-    // CLI output can contain sensitive diagnostics; never forward it. Only report command/status.
+    // Suppress CLI output so secrets never reach logs.
     child.stdout.resume();
     child.stderr.resume();
     child.on('error', () => reject(Error(`${step.name}: executable unavailable`)));
@@ -204,7 +203,7 @@ export async function deploy(args = process.argv.slice(2), runner = execute, pat
   };
   const api = origin(env.PRAXIS_API_URL, 'https://api.example.invalid'),
     web = origin(env.PRAXIS_WEB_ORIGINS?.split(',')[0].trim(), 'https://web.example.invalid');
-  // Staging is local and runs in dry mode too, so the rehearsal checks exactly what would upload.
+  // Runs local staging in dry mode to verify the exact upload manifest.
   await checkUpload('API', await stageApi(join(deployDir, 'api'), paths.source), env);
   for (const step of deploymentPlan(env)) {
     console.log(`${dry && step.remote ? 'SKIP remote' : 'RUN'} ${step.name}: ${maskCommand(step)}`);

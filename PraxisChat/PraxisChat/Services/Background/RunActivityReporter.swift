@@ -1,8 +1,6 @@
 import Foundation
 
-/// User-visible phase of one agent run, shared by the app-side
-/// reporter protocol and the widget-side activity attributes
-/// (both targets compile this file; see BACKGROUND_PLAN.md §6).
+/// Compiled into both app and LiveActivityWidget targets; shared by attributes and reporter.
 enum RunPhase: String, Sendable, Codable, Hashable {
     case thinking
     case runningTool
@@ -12,11 +10,7 @@ enum RunPhase: String, Sendable, Codable, Hashable {
     case paused
 }
 
-/// Fire-and-forget reporting from the background runtime to the
-/// ActivityKit updater. All calls no-op when activities are
-/// disabled or an activity can't start — a run NEVER depends on
-/// its activity. Contract between bg-runtime (caller) and bg-live
-/// (implementation); do not reshape unilaterally.
+/// Fire-and-forget ActivityKit reporter; all failures no-op so runs never depend on it.
 @MainActor
 protocol RunActivityReporter: Sendable {
     func began(conversationID: UUID, title: String, modelName: String) async
@@ -26,8 +20,6 @@ protocol RunActivityReporter: Sendable {
     func reconcile(activeConversationIDs: Set<UUID>) async
 }
 
-/// Compiles the app before the ActivityKit implementation lands;
-/// bg-runtime develops against this, bg-live replaces its use.
 @MainActor
 struct NoOpRunActivityReporter: RunActivityReporter {
     func began(conversationID: UUID, title: String, modelName: String) async {}

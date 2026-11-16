@@ -3,28 +3,21 @@ import UIKit
 import UserNotifications
 import AgentCore
 
-/// The seam `BackgroundNotifications` posts through. Main-actor bound:
-/// `UNUserNotificationCenter` and `UNNotificationRequest` are not
-/// Sendable, so everything stays on one domain and the live
-/// implementation only ever makes synchronous calls into the center
-/// (completion-handler based, wrapped in continuations) — nothing
-/// crosses an isolation boundary.
+/// MainActor-bound because UNUserNotificationCenter/UNNotificationRequest are non-Sendable.
 @MainActor
 protocol NotificationScheduling: Sendable {
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
     func add(_ request: UNNotificationRequest) async throws
     func removePendingNotificationRequests(withIdentifiers: [String])
     func removeDeliveredNotifications(withIdentifiers: [String])
-    /// Identifiers only (the requests themselves aren't Sendable):
-    /// launch cleanup lists and filters by our prefixes.
+    /// Returns IDs only since UNNotificationRequest is non-Sendable.
     func deliveredIdentifiers() async -> [String]
     func pendingIdentifiers() async -> [String]
     func setNotificationCategories(_ categories: Set<UNNotificationCategory>)
     var delegate: (any UNUserNotificationCenterDelegate)? { get set }
 }
 
-/// The live center. Calls into `UNUserNotificationCenter` (thread-safe
-/// by framework design) always happen on the main actor.
+/// UNUserNotificationCenter is thread-safe; kept on MainActor so requests never cross actors.
 @MainActor
 final class LiveNotificationCenter: NotificationScheduling {
     private let center = UNUserNotificationCenter.current()
@@ -87,17 +80,12 @@ final class LiveNotificationCenter: NotificationScheduling {
     }
 }
 
-/// Where a notification interaction routes. Pure, so the mapping is
-/// unit-testable without constructing a `UNNotificationResponse`
-/// (which has no public initializer).
+/// Pure route model so mapping is unit-testable without UNNotificationResponse (no public init).
 enum NotificationRoute: Equatable, Sendable {
     case approve(requestID: String, conversationID: UUID)
     case deny(requestID: String, conversationID: UUID)
     case openChat(conversationID: UUID)
 
-    /// `actionID` is the tapped action (or
-    /// `UNNotificationDefaultActionIdentifier` for a tap on the
-    /// notification itself); `userInfo` is what we posted.
     static func resolve(actionID: String, userInfo: [AnyHashable: Any]) -> NotificationRoute? {
         guard let idString = userInfo["conversationID"] as? String,
               let conversationID = UUID(uuidString: idString) else { return nil }
@@ -116,9 +104,7 @@ enum NotificationRoute: Equatable, Sendable {
     }
 }
 
-/// Routes notification interactions: Approve/Deny decide through the
-/// store, taps deep-link to the chat. Main-actor (the store is); the
-/// two protocol witnesses are `nonisolated` and hop.
+/// MainActor to match ChatStore; UNUserNotificationCenterDelegate witnesses are nonisolated.
 @MainActor
 final class BackgroundNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     weak var store: ChatStore?
@@ -130,10 +116,7 @@ final class BackgroundNotificationDelegate: NSObject, UNUserNotificationCenterDe
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let route = NotificationRoute.resolve(actionID: response.actionIdentifier,
                                               userInfo: response.notification.request.content.userInfo)
-        // The completion handler can't cross into the hop below (it isn't
-        // Sendable), so it runs here: every route foregrounds the app
-        // (`.foreground` actions, taps), which keeps the process alive
-        // for the scheduled handling.
+        // Completion handler isn't Sendable so it runs here; .foreground keeps process alive for Task.
         Task { @MainActor [weak self] in self?.handle(route) }
         completionHandler()
     }
@@ -141,8 +124,7 @@ final class BackgroundNotificationDelegate: NSObject, UNUserNotificationCenterDe
     nonisolated func userNotificationCenter(_: UNUserNotificationCenter,
                                             willPresent _: UNNotification,
                                             withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        // We only post while backgrounded, so this just covers the race
-        // of returning to the foreground mid-flight: still show it.
+        // Covers race of returning to foreground while a background notification is in flight.
         completionHandler([.banner, .sound])
     }
 
@@ -165,18 +147,7 @@ final class BackgroundNotificationDelegate: NSObject, UNUserNotificationCenterDe
     }
 }
 
-/// Approval and completion notifications for backgrounded runs, plus
-/// the one-time permission gate (plan §2.5–2.6).
-///
-/// - Permission is requested the first time a run is backgrounded —
-///   never at launch — and the prompt having been shown is persisted.
-/// - Approvals post one notification per pending request id (category
-///   `praxis.approval`, `.foreground` Approve/Deny actions), replaced
-///   by identifier, withdrawn when the request resolves or the run
-///   ends — but kept across a background pause (it still deep-links
-///   back to the chat).
-/// - Completions post the chat title plus the answer's first line
-///   (~160 chars); failures post the short reason instead.
+/// Requests permission on first backgrounded run (never at launch); approvals survive pause.
 @MainActor
 final class BackgroundNotifications: Sendable {
     static let approvalCategoryID = "praxis.approval"
@@ -189,7 +160,6 @@ final class BackgroundNotifications: Sendable {
     private let defaults: UserDefaults
     let delegate = BackgroundNotificationDelegate()
 
-    /// Posted approval request ids per conversation, for withdrawal.
     private var postedApprovals: [UUID: Set<String>] = [:]
 
     init(center: (any NotificationScheduling)? = nil, defaults: UserDefaults = .standard) {
@@ -199,16 +169,13 @@ final class BackgroundNotifications: Sendable {
 
     var hasPrompted: Bool { defaults.bool(forKey: Self.promptedFlagKey) }
 
-    /// Installed once from `ChatStore.forLaunch`.
     func installDelegate(store: ChatStore) {
         delegate.store = store
         var center = center
         center.delegate = delegate
     }
 
-    /// Asks once, ever, the first time a run is backgrounded. Denied
-    /// counts as asked (we must not nag); a thrown error doesn't (the
-    /// next backgrounding retries).
+    /// Prompts once on first backgrounded run; denial counts as asked, thrown errors retry later.
     func ensureFirstRunPermission() async {
         guard !hasPrompted else { return }
         registerCategories()
@@ -216,7 +183,7 @@ final class BackgroundNotifications: Sendable {
             _ = try await center.requestAuthorization(options: [.alert, .sound])
             defaults.set(true, forKey: Self.promptedFlagKey)
         } catch {
-            // Retry on the next backgrounded run.
+            // Leave prompt flag unset on error so next backgrounding retries.
         }
     }
 
@@ -242,10 +209,7 @@ final class BackgroundNotifications: Sendable {
         postedApprovals[conversationID]?.remove(requestID)
     }
 
-    /// Launch cleanup: a kill leaves delivered approval/completion cards
-    /// behind as dead cards (their waiters are gone — taps would no-op),
-    /// and the in-memory posting record with them. Drops everything under
-    /// our prefixes; nothing else is touched.
+    /// Clears dead cards left by an app kill (waiters are gone); only touches our prefixes.
     func clearRunNotifications() async {
         postedApprovals.removeAll()
         let ours = { (id: String) in
@@ -257,8 +221,6 @@ final class BackgroundNotifications: Sendable {
         if !pending.isEmpty { center.removePendingNotificationRequests(withIdentifiers: pending) }
     }
 
-    /// Withdraws every approval posted for a conversation (run end, or
-    /// a fresh run superseding a paused one).
     func withdrawApprovals(for conversationID: UUID) async {
         let ids = postedApprovals.removeValue(forKey: conversationID) ?? []
         guard !ids.isEmpty else { return }
@@ -287,8 +249,6 @@ final class BackgroundNotifications: Sendable {
         URL(string: "praxis-app://chat/\(conversationID.uuidString)")
     }
 
-    /// First non-empty line of the answer (~160 chars); failures read
-    /// their short reason. Pure, for the mapping tests.
     static func completionBody(for turn: Turn) -> String {
         switch turn.outcome {
         case .completed, .none:

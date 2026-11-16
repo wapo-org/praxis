@@ -3,23 +3,17 @@ import Observation
 import AgentCore
 import AgentMCP
 
-/// The human side of MCP elicitation: a server asks for input (a small
-/// form) or for the user to open a URL. Requests queue here and the sheet
-/// shows the first one. Like `ApprovalCenter`, every request resolves
-/// exactly once — by the user, or `.cancel` when the asking call is
-/// cancelled — so a tool call can never hang on a sheet nobody sees.
+/// Queues MCP elicitations and resolves every waiter once so tools never hang.
 @MainActor
 @Observable
 final class ElicitationCenter: MCPElicitationHandler, RunScopedElicitationHandler {
     struct Pending: Identifiable, Equatable {
         let id: UUID
         let request: MCPElicitation
-        /// The run that asked (nil for unscoped callers); stop cancels
-        /// one run's scope without touching other chats' runs.
+        /// Nil scope leaves request untouched when a run cancels.
         let scope: UUID?
     }
 
-    /// Waiting requests, oldest first. The sheet presents `current`.
     private(set) var queue: [Pending] = []
     @ObservationIgnored private var waiters: [UUID: CheckedContinuation<MCPElicitationResult, Never>] = [:]
 
@@ -27,14 +21,11 @@ final class ElicitationCenter: MCPElicitationHandler, RunScopedElicitationHandle
 
     var current: Pending? { queue.first }
 
-    /// Concurrent callers queue in MainActor arrival order, which is not
-    /// creation order — callers must not assume which request is `current`.
+    /// Callers enqueue in MainActor arrival order, not creation order.
     nonisolated func elicit(_ request: MCPElicitation) async -> MCPElicitationResult {
         await elicit(request, scope: nil)
     }
 
-    /// A run's elicitation: tagged with its scope so stopping the run
-    /// resolves exactly these waiters.
     nonisolated func elicit(_ request: MCPElicitation, scope: UUID?) async -> MCPElicitationResult {
         let id = UUID()
         return await withTaskCancellationHandler {
@@ -57,9 +48,7 @@ final class ElicitationCenter: MCPElicitationHandler, RunScopedElicitationHandle
         waiters.removeValue(forKey: id)?.resume(returning: result)
     }
 
-    /// Resolves every waiter of one run's scope with `.cancel` (stop).
-    /// Other scopes — other chats' runs — and unscoped requests are
-    /// untouched.
+    /// Cancels only matching scoped waiters; leaves other chats and unscoped intact.
     func cancel(scope: UUID) {
         for pending in queue where pending.scope == scope {
             respond(pending.id, with: .cancel)
@@ -67,17 +56,13 @@ final class ElicitationCenter: MCPElicitationHandler, RunScopedElicitationHandle
     }
 }
 
-/// The flat form fields of an elicitation schema (the spec restricts it
-/// to an object of primitives), parsed once for the sheet. Unknown
-/// keywords are ignored; the server validates again anyway.
+/// Parsed once per spec (flat primitive object); server re-validates unknown keywords.
 struct ElicitationField: Identifiable, Equatable {
     enum Kind: Equatable {
         case text, number, integer, boolean
-        /// Single select; the values sent. Titles are in `choiceTitles`.
         case choice([String])
     }
 
-    /// String formats the spec allows.
     enum Format: String, Equatable {
         case email, uri, date
         case dateTime = "date-time"
@@ -95,15 +80,13 @@ struct ElicitationField: Identifiable, Equatable {
     var maxLength: Int? = nil
     var minimum: Double? = nil
     var maximum: Double? = nil
-    /// Display titles for `.choice` values, same order (the value itself
-    /// when the schema gives none).
+    /// Fallback titles match choice values when schema omits them.
     var choiceTitles: [String] = []
 
     static func fields(in schema: JSONValue) -> [ElicitationField] {
         let required = Set(schema["required"]?.arrayValue?.compactMap(\.stringValue) ?? [])
         guard let properties = schema["properties"]?.objectValue else { return [] }
-        // Servers list fields in a meaningful order but JSON objects don't
-        // keep it; sorting keeps the form stable between renders.
+        // JSON objects lose key order, so sort keys to keep the form stable.
         return properties.keys.sorted().compactMap { key in
             guard let property = properties[key] else { return nil }
             let kind: Kind
@@ -117,7 +100,6 @@ struct ElicitationField: Identifiable, Equatable {
                           guard let value = o["const"]?.stringValue else { return nil }
                           return (value, o["title"]?.stringValue ?? value)
                       }), !pairs.isEmpty {
-                // Titled single select: `oneOf: [{const, title}]`.
                 kind = .choice(pairs.map(\.0))
                 titles = pairs.map(\.1)
             } else {
@@ -140,8 +122,6 @@ struct ElicitationField: Identifiable, Equatable {
         }
     }
 
-    /// Why `raw` (the field's text) can't be sent; nil when it can. An
-    /// empty optional field is fine — it's left out.
     func problem(with raw: String) -> String? {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty { return isRequired && kind != .boolean ? "Required" : nil }
@@ -177,7 +157,6 @@ struct ElicitationField: Identifiable, Equatable {
         }
     }
 
-    /// The JSON value sent for valid text; nil for an empty optional field.
     func value(from raw: String) -> JSONValue? {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
@@ -189,7 +168,6 @@ struct ElicitationField: Identifiable, Equatable {
         }
     }
 
-    /// The default as the text the form edits.
     var defaultText: String? {
         switch defaultValue {
         case .string(let s)?: return s
@@ -226,8 +204,7 @@ struct ElicitationField: Identifiable, Equatable {
     static func dateTimeString(_ date: Date) -> String { ISO8601DateFormatter().string(from: date) }
 }
 
-/// The values of one elicitation form and what's wrong with them. Kept
-/// out of the view so validation and the content sent are testable.
+/// Holds form state and validation out of the view for testability.
 struct ElicitationForm: Equatable {
     let fields: [ElicitationField]
     var values: [String: String] = [:]
@@ -256,8 +233,7 @@ struct ElicitationForm: Equatable {
 
     var isValid: Bool { problems.isEmpty }
 
-    /// What `accept` carries; nil while anything is invalid. Booleans are
-    /// always sent (an untouched switch means "no").
+    /// Always includes booleans since untouched switches mean false.
     func content() -> JSONValue? {
         guard isValid else { return nil }
         var content: [String: JSONValue] = [:]

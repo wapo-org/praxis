@@ -1,5 +1,3 @@
-/* GlassDropdown internals. One row scale: --control-md rows, --radius-sm highlight, 15/22 labels.
-   The menu surface itself is the `thick` recipe from glass.module.css. */
 .content {
   max-width: calc(100vw - var(--space-4));
   touch-action: pan-y;

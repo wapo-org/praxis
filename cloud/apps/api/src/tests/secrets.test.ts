@@ -20,9 +20,9 @@ describe('versioned encryption keys', () => {
   it('tags ciphertext with the current key id and decrypts across the ring', () => {
     const sealed = seal('sk-secret', 'u', 'provider:p:key', A);
     expect(sealed.split('.').slice(0, 2)).toEqual(['v2', keyId(Buffer.from(A, 'base64'))]);
-    expect(unseal(sealed, 'u', 'provider:p:key', `${B},${A}`)).toBe('sk-secret'); // previous key still opens it
+    expect(unseal(sealed, 'u', 'provider:p:key', `${B},${A}`)).toBe('sk-secret');
     expect(() => unseal(sealed, 'u', 'provider:p:key', B)).toThrow('not configured');
-    expect(() => unseal(sealed, 'other', 'provider:p:key', A)).toThrow(); // owner-bound AAD
+    expect(() => unseal(sealed, 'other', 'provider:p:key', A)).toThrow();
     expect(sealedWithCurrent(seal('x', 'u', 'r', `${B},${A}`), `${B},${A}`)).toBe(true);
   });
   it('still opens legacy v1 values with any key in the ring', () => {
@@ -55,7 +55,7 @@ describe('re-encryption for rotation', () => {
     expect(unseal(String((await store.get('u1', 'voiceSecret', 'current'))!.value.key), 'u1', 'voice', B)).toBe('gsk');
     const mcp = (await store.get('u2', 'mcpSecret', 'c1'))!.value;
     expect(unseal(String(mcp.token), 'u2', 'mcp:c1:token', B)).toBe('"t"');
-    expect(unseal(String(mcp.tokens), 'u2', 'mcp:c1:tokens', C)).toBe('{}'); // left as-is, reported as failed
+    expect(unseal(String(mcp.tokens), 'u2', 'mcp:c1:tokens', C)).toBe('{}');
     expect(await reencryptAll(store, ['u1', 'u2'], ring)).toMatchObject({rewritten: 0, failed: 1});
   });
   it('enumerates every owner from Convex for the rotation script', async () => {

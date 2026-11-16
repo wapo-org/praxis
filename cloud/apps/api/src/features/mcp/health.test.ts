@@ -116,7 +116,7 @@ describe('connector health at run time', () => {
     const first = await connectorTurnNotes(s.ctx, s.chat, []);
     expect(first).toEqual(["The Docs connector can't be reached right now, so its tools aren't available in this turn."]);
     expect(await connectorTurnNotes(s.ctx, s.chat, first)).toEqual([]);
-    expect(await connectorTurnNotes(s.ctx, {...s.chat, disabledConnectorIds: [value.id]}, [])).toEqual([]); // off in this chat: no note
+    expect(await connectorTurnNotes(s.ctx, {...s.chat, disabledConnectorIds: [value.id]}, [])).toEqual([]);
     await saveConnector(s.ctx, {...(await connector(s.ctx, value.id)), status: 'connected'});
     const back = await connectorTurnNotes(s.ctx, s.chat, first);
     expect(back).toEqual(['The Docs connector is available again.']);
@@ -146,7 +146,7 @@ describe('MCP resource tools (parity: MCPResourceTools)', () => {
     await s.add(`${remote.base}/mcp`);
     const tools = await getMcpTools(s.ctx, {chatId: 'chat-1', disabledConnectorIds: []});
     const list = tools.find(t => t.name.includes('resources_list'))!, read = tools.find(t => t.name.includes('resources_read'))!;
-    // Namespaced: a server tool literally named list_resources/read_resource can't be shadowed (REV-R1 P2).
+    // Server tools named list_resources/read_resource cannot shadow built-ins.
     const value = (await s.ctx.store.list('alice', 'connector'))[0]!.value as never;
     expect(list.name).not.toBe(qualifiedName(value, 'list_resources'));
     expect(read.name).not.toBe(qualifiedName(value, 'read_resource'));
@@ -157,6 +157,6 @@ describe('MCP resource tools (parity: MCPResourceTools)', () => {
     expect(listed.resources.length).toBeGreaterThan(0);
     const content = JSON.stringify(await read.execute({uri: listed.resources[0]!.uri}, run));
     expect(content).toContain('"type":"text"');
-    await expect(list.execute({}, {...run, mode: 'plan'})).rejects.toMatchObject({code: 'plan_read_only'}); // untrusted server in plan mode
+    await expect(list.execute({}, {...run, mode: 'plan'})).rejects.toMatchObject({code: 'plan_read_only'});
   });
 });

@@ -4,7 +4,6 @@ import {fakeClock, testRedis} from './testing.js';
 
 const KEYS = {EXA_API_KEY: 'sk-secret-one', EXA_API_KEY_2: 'sk-secret-two', EXA_API_KEY_3: 'sk-secret-three'};
 const exa = () => pool('EXA_API_KEY', KEYS, {service: 'exa'});
-/** A service whose listed keys answer with the given status; every other key answers 200. */
 const service = (failing: Record<string, Response | (() => Response)>) => vi.fn(async (key: string, _slot: number) => {
   const r = failing[key];
   return r ? (typeof r === 'function' ? r() : r.clone()) : new Response('ok');
@@ -59,7 +58,6 @@ describe('withCredential failover', () => {
     expect(error.slots.map((s: {slot: number; reason: string}) => [s.slot, s.reason])).toEqual([[1, 'invalid'], [2, 'rateLimited'], [3, 'rateLimited']]);
     expect(fn).toHaveBeenCalledTimes(3);
 
-    // Already cooling: no call is made at all, and the retry time is still the earliest one.
     clock.advance(10_000);
     const again = await withCredential(exa(), store, fn, {now: clock.now}).catch(e => e);
     expect(again.retryAt).toEqual(new Date(clock.now() + 35_000));
@@ -114,7 +112,6 @@ describe('withCredential failover', () => {
     for (let i = 0; i < 2; i++) expect((await withCredential(exa(), store, fn)).slot).toBe(2);
     expect(fn.mock.calls.map(c => c[1])).toEqual([1, 2, 1, 2]);
     expect(onError.mock.calls.map(c => c[0])).toEqual(['get', 'mark', 'get', 'get', 'mark', 'get']);
-    // A store that rejects outright is tolerated as well.
     const rejecting = {get: async () => { throw new Error('down'); }, mark: async () => { throw new Error('down'); }};
     expect((await withCredential(exa(), rejecting, fn)).slot).toBe(2);
   });

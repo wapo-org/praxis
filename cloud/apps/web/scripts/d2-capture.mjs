@@ -1,5 +1,3 @@
-// WP-D2 visual gate: tray (main, model list, search), each Settings section, and a dropdown opened
-// at a viewport edge; 1440×900 and 402×874; light and dark; plus boards next to the iOS references.
 import { chromium } from '@playwright/test';
 import { mkdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -29,7 +27,6 @@ const SECTIONS = {
   developer: '/settings/developer',
 };
 
-// A catalog of 60 models, so the list, its sections and its badges show the real layout.
 const CATALOG = Array.from({ length: 60 }, (_, i) => ({
   type: 'model',
   id: `model-${i}`,
@@ -89,7 +86,6 @@ for (const theme of ['light', 'dark'])
       await context.close();
     }
     if (want('tray-chat')) {
-      // A real chat behind the glass, with a connector: the row toggles and no ghost text.
       const { context, page } = await open(theme, viewport);
       await page.evaluate(async () => {
         const { apiClient } = await import('/src/lib/api.ts');
@@ -159,7 +155,6 @@ for (const theme of ['light', 'dark'])
       await context.close();
     }
     if (want('menu-edge') && vpName === 'desktop') {
-      // A real menu: the chat row's actions at the bottom-left, plus the lab's edge triggers.
       const { context, page } = await open(theme, viewport);
       await page.goto(`${BASE}/lab/glass?dropdown`);
       for (const anchor of ['bottom-end', 'top-start']) {
@@ -183,7 +178,6 @@ for (const theme of ['light', 'dark'])
     }
   }
 
-// Side-by-side boards: web (desktop, narrow) next to the iOS reference.
 const pairs = {
   tray: 'tray-2-main',
   consent: 'consent-0-sheet',

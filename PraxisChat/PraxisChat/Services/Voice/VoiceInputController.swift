@@ -2,90 +2,60 @@ import Foundation
 import AVFoundation
 import Observation
 
-// VoiceSendObserver's frozen home (VOICE_PLAN.md §7): voice-rec owns this
-// file permanently. ChatStore calls noteDidSend after a successful send.
+// Frozen VoiceSendObserver contract: ChatStore calls noteDidSend after a successful send.
 @MainActor
 protocol VoiceSendObserver {
     func noteDidSend(text: String)
 }
 
-/// Why a live recording is paused. Display copy comes from `notice`.
 enum VoicePauseReason: String, Sendable, Equatable {
-    /// The user tapped pause.
     case user
-    /// A call/Siri/alarm interrupted: "Paused — tap to resume". Never
-    /// auto-resumes — the user may be mid-call.
+    /// System interruption (call/Siri/alarm); never auto-resumes because user may be mid-call.
     case interrupted
-    /// The input vanished mid-recording (unplugged mic, lost route).
     case routeLost
 }
 
-/// The composer's voice UI state. One value drives the middle area, the
-/// trailing button, the pill and the banner, so they can't disagree.
+/// Single source of truth driving composer middle, trailing button, pill, and recovery banner.
 enum VoicePhase: Equatable {
     case idle
     case recording
     case paused(VoicePauseReason)
     case transcribing
-    /// Stopped, audio kept: play / transcribe / delete row.
     case review
 }
 
-/// The voice UI state machine (VOICE_PLAN.md §2–3). Owns the recorder +
-/// the store, calls `any Transcriber`. Every failure keeps the audio and
-/// offers Retry; deletion happens only on explicit user delete or the
-/// sent-message rule (`noteDidSend`).
-///
-/// Constructed per frozen §7 with `(store:transcriber:settings:chatStore:)`;
-/// the engine factory is an extra defaulted parameter (fakes in tests,
-/// the `-PraxisFakeRecording` simulator in DEBUG UI tests).
+/// Voice state machine: preserves audio on every failure; deletes only via user or noteDidSend.
 @MainActor
 @Observable
 final class VoiceInputController: VoiceSendObserver {
     // MARK: Observed UI state
 
     private(set) var phase: VoicePhase = .idle
-    /// The live or under-review recording (nil in idle/transcribing-from-banner).
+    /// Live or under-review recording; nil when idle or transcribing from the recovery banner.
     private(set) var activeRecording: VoiceRecording?
-    /// 0…1 meter level, polled ~10/s while recording.
     private(set) var level: Float = 0
-    /// Seconds captured (pauses excluded — the recorder's clock).
+    /// Recorded duration in seconds, excluding paused intervals.
     private(set) var elapsed: TimeInterval = 0
-    /// (fraction, part, parts) while transcribing.
     private(set) var transcriptionProgress: (fraction: Double, part: Int, parts: Int)?
     private(set) var transcribingID: UUID?
-    /// "Long recording — 62 min" once past 60 min, then every 15. Warning
-    /// only: there is deliberately no auto-stop.
+    /// Advisory warning past 60 min (then every 15 min); recording never auto-stops.
     private(set) var lengthWarning: String?
-    /// Mic permission denied/restricted: inline explanation + Open Settings.
     private(set) var permissionDenied = false
-    /// "Couldn't start recording" (engine failure): inline error + dismiss.
     private(set) var startError: String?
-    /// Cancel of a > 10 s recording waits on this destructive confirmation.
+    /// Guards destructive cancel confirmation for recordings longer than 10 s.
     var cancelConfirmation = false
-    /// Last failure message + which recording offers Retry (nil id = the
-    /// review row or a global notice, never a banner row).
+    /// Failure message; nil errorRecordingID targets the review row or global notice, never a banner.
     private(set) var errorMessage: String?
     private(set) var errorRecordingID: UUID?
-    /// "Add your Groq API key…" — transcribe needs the key, recording doesn't.
+    /// Hint shown when transcribing without a key; recording itself never requires a key.
     private(set) var transcribeHint: String?
-    /// Recovery list (banner + rows), newest first. Live and
-    /// under-review-in-own-chat recordings are excluded — they have their
-    /// own UI. Transcribed recordings are excluded here (not news) but
-    /// listed in `listRecordings` with a delete path.
+    /// Recoverable banner items newest-first; excludes live, in-chat review, and transcribed items.
     private(set) var recoverable: [VoiceRecording] = []
-    /// Settings → Recordings destination: everything on disk, including
-    /// transcribed-but-unsent (which would otherwise leak with no delete
-    /// path). Only a live recording is excluded.
+    /// All stored recordings except live ones, including transcribed-but-unsent for deletion.
     private(set) var listRecordings: [VoiceRecording] = []
-    /// AVAudioPlayer review playback.
     private(set) var playingID: UUID?
 
-    /// The composer middle shows voice UI instead of the text field.
-    /// Live/review/transcribing UI belongs to the originating chat only —
-    /// other chats keep their field (plus the pill for live recordings),
-    /// and stopping always happens where the recording started. The
-    /// permission/start notices are global (no chat owns them).
+    /// Shows voice UI only in the originating chat (except global permission/start error notices).
     var showsRecordingUI: Bool {
         if permissionDenied || startError != nil { return true }
         switch phase {
@@ -97,13 +67,10 @@ final class VoiceInputController: VoiceSendObserver {
         }
     }
 
-    /// The trailing red stop button: live recordings in their own chat.
-    /// Review, transcribing and notices own their actions in the middle.
     var showsStopButton: Bool {
         (phase == .recording || isPausedPhase) && showsRecordingUI
     }
 
-    /// A live recording from another chat: the pill ("tap to return").
     var pillRecording: VoiceRecording? {
         guard let activeRecording,
               phase == .recording || isPausedPhase,
@@ -116,13 +83,11 @@ final class VoiceInputController: VoiceSendObserver {
         return false
     }
 
-    /// Failure text for the review row. Banner failures carry their
-    /// recording's id and belong to that row only — never the review row.
+    /// Review-row error only; banner failures carry a recording ID and never appear here.
     var reviewError: String? {
         errorRecordingID == nil ? errorMessage : nil
     }
 
-    /// "Paused — tap to resume" style notice for the current pause reason.
     var pauseNotice: String? {
         guard case .paused(let reason) = phase else { return nil }
         switch reason {
@@ -165,11 +130,7 @@ final class VoiceInputController: VoiceSendObserver {
         refreshRecoverables()
     }
 
-    /// Production wiring (final `voice` integration): the real Groq settings
-    /// plus a transcriber that snapshots them fresh on every call, so a
-    /// consent grant or a model/language change after launch takes effect on
-    /// the next transcription (in particular the consent allow-path retry).
-    /// DEBUG `-PraxisFakeTranscript` still swaps in the fake for UI tests.
+    /// Wires live settings with per-call snapshotting so consent/model changes apply on next call.
     static func production(chatStore: ChatStore, services: AgentServices) -> VoiceInputController {
         #if DEBUG
         if let text = fakeTranscriptText() {
@@ -179,9 +140,7 @@ final class VoiceInputController: VoiceSendObserver {
         #endif
         let settings = services.voice
         let consent = services.consent
-        // Queue events (review fix F4): the relay exists before the
-        // controller does; the handler is set right after (events only flow
-        // during a transcription, strictly later).
+        // Relay is created before controller init; handler is wired right after before any events flow.
         let relay = TranscriptionEventRelay()
         let live = LiveGroqTranscriber {
             settings.makeTranscriber(consentGranted: consent.isGranted(GroqEndpoints.host))
@@ -195,8 +154,7 @@ final class VoiceInputController: VoiceSendObserver {
         return controller
     }
 
-    /// Cloud production path: same recorder and recovery controller, with
-    /// session-only uploads. No GroqVoiceSettings or SecretStore is touched.
+    /// Cloud production controller with session-only uploads; ignores GroqVoiceSettings and Keychain.
     static func production(chatStore: ChatStore, cloudServices: CloudServices) -> VoiceInputController {
         #if DEBUG
         if let text = fakeTranscriptText() {
@@ -222,21 +180,15 @@ final class VoiceInputController: VoiceSendObserver {
 
     // MARK: Transcription queue events (review fix F4)
 
-    /// Sendable weak handle so the transcription-event relay (off the main
-    /// actor) can reach the controller. Mirrors ChatStore's WeakStore.
+    /// Sendable weak wrapper letting off-main-actor relays reach the controller without cycles.
     private struct WeakVoiceController: Sendable {
         weak var controller: VoiceInputController?
     }
 
-    /// Queue lifecycle notice while transcribing ("Waiting for network…",
-    /// "Retrying in Ns…"). Cleared by progress and on finish.
+    /// Transient queue status notice while transcribing; cleared on progress updates and completion.
     private(set) var transcriptionNotice: String?
 
-    /// Transcription queue events: the offline wait and backoff would
-    /// otherwise look like a stuck "Transcribing…". On
-    /// `.waitingForNetwork` the sidecar is restowed `.queued` (persisted:
-    /// a relaunch lists it with Retry) while the in-flight call keeps
-    /// waiting and auto-retries when the network returns.
+    /// Persists .queued on waitingForNetwork so relaunches offer Retry while the active call waits.
     func handleTranscriptionEvent(_ event: TranscriptionEvent) {
         guard transcribingID != nil else { return }
         switch event {
@@ -264,8 +216,6 @@ final class VoiceInputController: VoiceSendObserver {
     @ObservationIgnored private var transcribeOrigin: TranscribeOrigin?
     @ObservationIgnored private var player: AVAudioPlayer?
     @ObservationIgnored private let playbackDelegate = VoicePlaybackDelegate()
-    /// (recording, inserted text, deposit chat) tuples awaiting the
-    /// sent-message rule.
     @ObservationIgnored private var insertedTranscripts: [(id: UUID, text: String, conversationID: UUID)] = []
 
     private enum TranscribeOrigin {
@@ -274,21 +224,13 @@ final class VoiceInputController: VoiceSendObserver {
 
     // MARK: Mic
 
-    /// The mic button. No-op while voice UI is already up (stop/pause/
-    /// review buttons own those states). Recording never depends on the
-    /// Groq key — only transcribing does.
+    /// No-op while voice UI is active; recording never requires an API key.
     func micTapped() {
         guard !showsRecordingUI else { return }
-        // One live session: starting over a recording, a review or an
-        // active transcription would orphan its engine or clobber its
-        // phase. A banner transcription in flight leaves the phase idle
-        // and owns the other slot, so recording during one stays allowed
-        // (it just stops into review while the slot is busy).
+        // Blocks new recordings during non-banner transcriptions; banner uploads run in a separate slot.
         if transcriptionTask != nil, transcribeOrigin != .banner { return }
         guard phase == .idle else { return }
-        // Synchronous guard: a double-tap must not start two recordings
-        // (the second would orphan the first engine mid-record). This runs
-        // in the tap's own turn, before any suspension point.
+        // Synchronous guard before any await to prevent double-taps from starting two engines.
         guard !starting else { return }
         starting = true
         stopPlayback()
@@ -341,7 +283,6 @@ final class VoiceInputController: VoiceSendObserver {
         refreshRecoverables()
     }
 
-    /// Dismisses the denied / start-error cards.
     func dismissNotice() {
         permissionDenied = false
         startError = nil
@@ -393,21 +334,18 @@ final class VoiceInputController: VoiceSendObserver {
         guard phase == .recording || isPausedPhase else { return }
         switch event {
         case .interrupted:
-            // A call, Siri, an alarm: pause, persist NOW, never discard.
             pauseRecording(reason: .interrupted)
         case .interruptionEnded:
-            // Deliberately no auto-resume (VOICE_PLAN.md §2).
+            // Deliberately does not auto-resume after an interruption ends.
             break
         case .routeLost:
             pauseRecording(reason: .routeLost)
         case .routeRestored:
-            // An input is back, but the user may have moved on: stay
-            // paused, downgrade to the generic resume hint.
+            // Keeps recording paused when input returns, switching to the generic resume hint.
             if case .paused(.routeLost) = phase {
                 phase = .paused(.user)
             }
         case .failed(let message):
-            // Disk full / encode error: stop, keep the file, say so.
             stopEngineKeepingFile()
             if var active = activeRecording {
                 active.state = .stopped
@@ -423,12 +361,10 @@ final class VoiceInputController: VoiceSendObserver {
 
     // MARK: Stop
 
-    /// Primary action: stop, then transcribe into the draft.
     func stopAndTranscribe() {
         guard phase == .recording || isPausedPhase, var active = activeRecording else { return }
         stopEngineKeepingFile()
-        // A banner transcription already in flight owns the single slot:
-        // stop cleanly into review instead of dropping the transcribe.
+        // Falls back to review when the single transcription slot is occupied by a banner upload.
         guard transcribingID == nil else {
             active.state = .stopped
             activeRecording = active
@@ -441,7 +377,6 @@ final class VoiceInputController: VoiceSendObserver {
         transcribe(active, origin: .active)
     }
 
-    /// Stop and keep the audio: the review row (play / transcribe / delete).
     func stopAndReview() {
         guard phase == .recording || isPausedPhase, var active = activeRecording else { return }
         stopEngineKeepingFile()
@@ -453,7 +388,6 @@ final class VoiceInputController: VoiceSendObserver {
         refreshRecoverables()
     }
 
-    /// Stops the engine, freezes duration into the sidecar. The file stays.
     private func stopEngineKeepingFile() {
         pollTimer?.invalidate()
         pollTimer = nil
@@ -470,8 +404,7 @@ final class VoiceInputController: VoiceSendObserver {
 
     // MARK: Cancel / delete
 
-    /// ≤ 10 s discards at once; longer recordings need the destructive
-    /// confirmation (`cancelConfirmation` drives the alert).
+    /// Discards <= 10 s recordings immediately; longer ones require destructive confirmation.
     func cancelTapped() {
         guard phase == .recording || isPausedPhase else { return }
         if elapsed > 10 {
@@ -502,13 +435,10 @@ final class VoiceInputController: VoiceSendObserver {
         refreshRecoverables()
     }
 
-    /// Explicit user delete — one of only two deletion paths (the other is
-    /// the sent-message rule). Works from the review row and the recovery
-    /// list alike.
     func deleteRecording(id: UUID) {
         if playingID == id { stopPlayback() }
         if transcribingID == id {
-            // The task's late finish then no-ops (sidecar gone, origin nil).
+            // Clears origin first so any late completion of the cancelled task becomes a no-op.
             transcriptionTask?.cancel()
             transcriptionTask = nil
             transcribingID = nil
@@ -533,7 +463,6 @@ final class VoiceInputController: VoiceSendObserver {
 
     // MARK: Transcribe
 
-    /// Review-row and recovery-row Transcribe buttons.
     func transcribeTapped(id: UUID) {
         guard transcribingID == nil else { return }
         stopPlayback()
@@ -546,8 +475,7 @@ final class VoiceInputController: VoiceSendObserver {
         }
     }
 
-    /// voice-groq's consent allow-path calls this (via ChatStore's
-    /// `voiceRetryTranscription`) to resume a consented transcription.
+    /// Resumes transcription, including from ChatStore's post-consent retry path.
     func retryTranscription(id: UUID) {
         transcribeTapped(id: id)
     }
@@ -559,7 +487,6 @@ final class VoiceInputController: VoiceSendObserver {
     private func transcribe(_ recording: VoiceRecording, origin: TranscribeOrigin) {
         guard transcribingID == nil else { return }
         guard store.audioExists(for: recording) else {
-            // The audio is already gone: drop the orphaned sidecar, say so.
             store.delete(id: recording.id)
             errorMessage = "Audio file is missing — recording removed"
             errorRecordingID = nil
@@ -571,9 +498,7 @@ final class VoiceInputController: VoiceSendObserver {
             return
         }
         guard settings.isConfigured else {
-            // Recording works without a key; transcribing routes to Settings.
-            // Restow first: the engine already stopped, so the phase must
-            // leave recording behind (review owns the retry).
+            // Restows to .stopped first because the engine already stopped and review owns the retry.
             restow(id: recording.id, state: .stopped, origin: origin)
             transcribeHint = cloudMode ? "Configure voice input on your cloud server in Settings" : "Add your Groq API key to use voice input"
             chatStore?.haptics.fire(.soft)
@@ -581,9 +506,7 @@ final class VoiceInputController: VoiceSendObserver {
             chatStore?.isSettingsPresented = true
             return
         }
-        // One transcription at a time; the UI disables the other buttons.
-        // Banner transcriptions leave activeRecording alone: a live
-        // recording may be running while an old one transcribes.
+        // Only one transcription runs at a time; banner uploads must not disturb activeRecording.
         var inFlight = recording
         inFlight.state = .transcribing
         store.save(inFlight)
@@ -628,9 +551,7 @@ final class VoiceInputController: VoiceSendObserver {
     }
 
     private func finishTranscription(id: UUID, transcript: VoiceTranscript?, failure: VoiceTranscriptionError?) {
-        // Deleted mid-flight (deleteRecording is the only path that clears
-        // the origin before the finish): the sidecar is gone, so there is
-        // nothing to restow and no draft to append — never resurrect.
+        // Nil transcribeOrigin means deleted mid-flight; bail out so sidecar/draft never resurrect.
         guard transcribeOrigin != nil else {
             refreshRecoverables()
             return
@@ -652,13 +573,11 @@ final class VoiceInputController: VoiceSendObserver {
         }
         let text = transcript.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
-            // The pipeline worked but heard nothing: keep the audio, offer
-            // Retry like any other failure (it may be transient).
+            // Treats empty transcription as a retryable failure and preserves the audio.
             handleTranscriptionFailure(id: id, error: .server(message: "Transcription was empty"), origin: origin)
             return
         }
-        // The active fallback is gated by id: a banner finish must never
-        // grab a different live recording's sidecar.
+        // Match activeRecording by ID so a banner completion never mutates a live recording.
         let activeMatch = activeRecording?.id == id ? activeRecording : nil
         var done = store.load(id: id) ?? activeMatch ?? VoiceRecording(
             id: id, conversationID: UUID(), state: .transcribed, createdAt: Date(),
@@ -666,8 +585,7 @@ final class VoiceInputController: VoiceSendObserver {
         done.state = .transcribed
         done.transcriptPreview = String(text.prefix(120))
         store.save(done)
-        // Deposit into the recording's own chat (live or stashed): a switch
-        // mid-transcription must not spill A's text into B's draft.
+        // Deposits transcript into the recording's originating chat even if the user switched chats.
         if let chatStore {
             chatStore.depositToDraft(text: text, conversationID: done.conversationID)
         }
@@ -686,7 +604,6 @@ final class VoiceInputController: VoiceSendObserver {
 
     private func handleTranscriptionFailure(id: UUID, error: VoiceTranscriptionError, origin: TranscribeOrigin?) {
         if case .cancelled = error {
-            // User-cancelled: back to stopped, parts kept, no error shown.
             restow(id: id, state: .stopped, origin: origin)
             return
         }
@@ -697,10 +614,7 @@ final class VoiceInputController: VoiceSendObserver {
             chatStore?.haptics.fire(.soft)
             chatStore?.isSettingsPresented = true
         case .consentRequired(let host):
-            // First upload to this host: hold for the consent sheet (the
-            // same sheet as sends). Allowing grants + retries via
-            // voice-groq's resolveConsent branch; declining keeps the
-            // queued audio (their decline path is a no-op by agreement).
+            // Holds recording as .queued for consent; allowing retries it while declining preserves audio.
             restow(id: id, state: .queued, origin: origin)
             let recording = store.load(id: id) ?? (activeRecording?.id == id ? activeRecording : nil)
             if let chatStore, let recording {
@@ -722,8 +636,7 @@ final class VoiceInputController: VoiceSendObserver {
             restow(id: id, state: .failed, origin: origin)
             showFailure("Rate limited — try again shortly", id: id, origin: origin)
         case .offline:
-            // Queued + persisted: Retry (or voice-groq's path monitor)
-            // resumes it. The queue survives relaunch via the sidecar.
+            // Persists .queued in the sidecar so Retry or network recovery can resume across launches.
             restow(id: id, state: .queued, origin: origin)
             showFailure("You're offline — transcription is queued", id: id, origin: origin)
         case .server(let message):
@@ -735,7 +648,6 @@ final class VoiceInputController: VoiceSendObserver {
         chatStore?.haptics.fire(.warning)
     }
 
-    /// Returns the recording to a resting state after a failure/cancel.
     private func restow(id: UUID, state: VoiceRecordingState, origin: TranscribeOrigin?) {
         if var current = store.load(id: id) {
             current.state = state
@@ -743,14 +655,11 @@ final class VoiceInputController: VoiceSendObserver {
             if activeRecording?.id == id { activeRecording = current }
         }
         if origin == .active || origin == .review {
-            // The review row owns Retry/Delete/Play for these.
             phase = .review
         }
         refreshRecoverables()
     }
 
-    /// Routes the message to the review row (active/review origins) or to
-    /// the matching recovery row (banner origin).
     private func showFailure(_ message: String, id: UUID, origin: TranscribeOrigin?) {
         errorMessage = message
         errorRecordingID = origin == .banner ? id : nil
@@ -758,13 +667,7 @@ final class VoiceInputController: VoiceSendObserver {
 
     // MARK: Sent-message rule (VoiceSendObserver)
 
-    /// Deletes recordings whose inserted transcript is contained in the
-    /// sent text — but only for sends from the chat the transcript was
-    /// deposited in, so an unrelated send elsewhere (or a short transcript
-    /// like "thanks") can't wipe another chat's audio. Called by
-    /// `ChatStore.send` after a successful send; the sending chat is the
-    /// selected one (send and the consent allow-path both operate on it).
-    /// Transcribed-but-unsent recordings stay until the user deletes them.
+    /// Deletes recordings matched in a send from their own deposit chat; never wipes other chats.
     func noteDidSend(text: String) {
         guard !insertedTranscripts.isEmpty else { return }
         let sent = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -819,8 +722,7 @@ final class VoiceInputController: VoiceSendObserver {
 
     // MARK: Lifecycle
 
-    /// Background/lock: persist the live sidecar (the audio is already on
-    /// disk; the `audio` background mode keeps the recorder running).
+    /// Persists sidecar metadata on backgrounding while the audio background mode keeps recording.
     func appDidEnterBackground() {
         if let active = activeRecording, phase == .recording || isPausedPhase {
             var snap = active
@@ -829,9 +731,6 @@ final class VoiceInputController: VoiceSendObserver {
         }
     }
 
-    /// Meter + elapsed poll (~10/s). Elapsed is the recorder's clock, so
-    /// pauses are excluded. Persists the sidecar every ~5 s; warns past
-    /// 60 min (then every 15) without ever auto-stopping.
     private func poll() {
         guard let engine, phase == .recording || isPausedPhase else { return }
         engine.updateMeters()
@@ -849,12 +748,7 @@ final class VoiceInputController: VoiceSendObserver {
         }
     }
 
-    /// Reloads the banner/list, excluding recordings that have their own
-    /// UI. A review left behind in another chat falls back to the banner —
-    /// ChatScreen calls this on every chat switch so it can't get stuck
-    /// either way. The in-flight transcription keeps its row (with progress
-    /// + cancel); the scan exclusion only shields its sidecar from the
-    /// stale-state normalization.
+    /// Reloads banner/list on chat switch; scan exclusion shields active sidecars from normalization.
     func refreshRecoverables() {
         var bannerExcluded: Set<UUID> = []
         if let active = activeRecording {
@@ -867,15 +761,13 @@ final class VoiceInputController: VoiceSendObserver {
 
         var listExcluded: Set<UUID> = []
         if let active = activeRecording, phase == .recording || isPausedPhase {
-            // A live recording transcribes a growing file: keep it out of
-            // the Settings list (the composer owns it).
+            // Excludes live recording from Settings list so users cannot delete or upload a growing file.
             listExcluded.insert(active.id)
         }
         if let transcribing = transcribingID { listExcluded.insert(transcribing) }
         listRecordings = stitched(excluding: listExcluded, includeTranscribed: true)
     }
 
-    /// Scan plus the in-flight transcription stitched back in from memory.
     private func stitched(excluding: Set<UUID>, includeTranscribed: Bool) -> [VoiceRecording] {
         var list = store.scan(excluding: excluding, includeTranscribed: includeTranscribed)
         if let tid = transcribingID,
@@ -887,8 +779,7 @@ final class VoiceInputController: VoiceSendObserver {
     }
 }
 
-/// AVAudioPlayer's delegate must be an NSObject; this forwarder keeps
-/// the controller a plain `@Observable` class.
+/// NSObject delegate proxy so VoiceInputController stays a plain @Observable class.
 @MainActor
 final class VoicePlaybackDelegate: NSObject, AVAudioPlayerDelegate {
     var onFinish: (@MainActor () -> Void)?
@@ -900,8 +791,7 @@ final class VoicePlaybackDelegate: NSObject, AVAudioPlayerDelegate {
 
 // MARK: - Until voice-groq lands
 
-/// Placeholder transcriber: recording works, transcribing routes to
-/// Settings. voice-groq's `GroqTranscriber` replaces this in `production`.
+/// Placeholder transcriber that routes transcription attempts to Settings when unconfigured.
 struct UnconfiguredTranscriber: Transcriber, Sendable {
     func transcribe(file: URL, fileName: String,
                     progress: @Sendable @escaping (Double, Int, Int) -> Void) async throws -> VoiceTranscript {
@@ -909,15 +799,13 @@ struct UnconfiguredTranscriber: Transcriber, Sendable {
     }
 }
 
-/// Placeholder settings reader (key state unknown until voice-groq's
-/// `GroqVoiceSettings` lands, so transcribe routes to Settings).
+/// Placeholder VoiceSettingsReader reporting unconfigured so transcription routes to Settings.
 struct UnconfiguredVoiceSettings: VoiceSettingsReader, Sendable {
     var isConfigured: Bool { false }
 }
 
 #if DEBUG
-/// Scripted transcriber for tests: reports progress, honors cancellation,
-/// returns `text`. UI tests pick it via `-PraxisFakeTranscript <text>`.
+/// Test transcriber honoring cancellation; enabled in UI tests via -PraxisFakeTranscript.
 struct FakeTranscriber: Transcriber, Sendable {
     var text: String
     var language: String? = "en"
@@ -937,14 +825,11 @@ struct FakeTranscriber: Transcriber, Sendable {
     }
 }
 
-/// Scripted settings reader (UI tests run "configured" so transcribe flows).
 struct FakeVoiceSettings: VoiceSettingsReader, Sendable {
     var isConfigured: Bool
 }
 
 extension VoiceInputController {
-    /// `-PraxisFakeTranscript <text>`: UI-test seam (plan §9). Present =
-    /// use `FakeTranscriber`; the value is the returned transcript.
     static func fakeTranscriptText(arguments: [String] = ProcessInfo.processInfo.arguments) -> String? {
         guard let i = arguments.firstIndex(of: "-PraxisFakeTranscript") else { return nil }
         let next = arguments.index(after: i)
@@ -954,9 +839,7 @@ extension VoiceInputController {
         return "Test transcription"
     }
 
-    /// `-PraxisFakeRecording <path>` (frozen, plan §9): when present, mic
-    /// input is simulated and the bundled/absolute-path audio file stages
-    /// as the result. Unit-testable via explicit arguments.
+    /// Parses -PraxisFakeRecording fixture path to bypass real mic capture in UI tests.
     static func fakeFixtureURL(arguments: [String] = ProcessInfo.processInfo.arguments,
                                bundle: Bundle = .main) -> URL? {
         guard let i = arguments.firstIndex(of: "-PraxisFakeRecording") else { return nil }
@@ -974,8 +857,7 @@ extension VoiceInputController {
         return bundle.url(forResource: path, withExtension: "m4a")
     }
 
-    /// `-PraxisFakeElapsed <seconds>`: the simulated recording starts with
-    /// this much elapsed (cancel-confirm tests need > 10 s instantly).
+    /// Seeds simulated elapsed seconds so >10 s cancel-confirmation UI tests run instantly.
     static func fakeElapsed(arguments: [String] = ProcessInfo.processInfo.arguments) -> TimeInterval {
         guard let i = arguments.firstIndex(of: "-PraxisFakeElapsed") else { return 0 }
         let next = arguments.index(after: i)
