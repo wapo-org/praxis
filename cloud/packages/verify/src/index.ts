@@ -4,3 +4,4 @@ export {PROOF_SCHEMA, ProofSchema, type Proof, type ProofStep} from './live/proo
 export {FeatureMapSchema, type FeatureMap} from './feature-map.js';
 export {CLOUD_DIR} from './constants.js';
 export {runCommand} from './proc.js';
+export {accessibilitySnapshot, screenshotEvidence, type ScreenshotEvidence} from './web/evidence.js';

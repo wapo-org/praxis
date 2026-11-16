@@ -112,6 +112,8 @@ jobs:
         run: ./node_modules/.bin/playwright install --with-deps chromium
       - name: Run the web flows
         run: npm --prefix cloud run verify -- web
+      - name: Drive praxis-browser against its fixture page
+        run: npm --prefix cloud run browser:check
       - name: Keep screenshots, snapshots and server logs
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

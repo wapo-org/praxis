@@ -3,6 +3,7 @@ import {join} from 'node:path';
 import {chromium, request as playwrightRequest, type Browser, type Page} from '@playwright/test';
 import {FLOW_ACTION_TIMEOUT_MS, FLOW_TIMEOUT_MS} from '../constants.js';
 import type {WebFlow} from './flow-types.js';
+import {accessibilitySnapshot, screenshotEvidence} from './evidence.js';
 import {describeIssue, unexpectedIssues, type BrowserIssue} from './judge.js';
 
 export interface FlowResult {
@@ -54,13 +55,12 @@ async function capture(page: Page, directory: string, id: string): Promise<{scre
   const files: {screenshot?: string; aria?: string} = {};
   try {
     files.aria = join(directory, `${id}.aria.yml`);
-    writeFileSync(files.aria, await page.locator('body').ariaSnapshot({timeout: FLOW_ACTION_TIMEOUT_MS}));
+    writeFileSync(files.aria, await accessibilitySnapshot(page));
   } catch {
     delete files.aria;
   }
   try {
-    files.screenshot = join(directory, `${id}.png`);
-    await page.screenshot({path: files.screenshot, fullPage: true, timeout: FLOW_ACTION_TIMEOUT_MS});
+    files.screenshot = (await screenshotEvidence(page, join(directory, `${id}.png`))).path;
   } catch {
     delete files.screenshot;
   }

@@ -18,6 +18,7 @@ export type ApprovalBinding = z.infer<typeof ApprovalBindingSchema>;
 export type ApprovalReceiptWire = z.infer<typeof ApprovalReceiptWireSchema>;
 export const ToolErrorCodeSchema = z.enum([
   'schema', 'path-traversal', 'taint-blocked', 'policy-denied', 'approval-required', 'budget', 'upstream-firewall', 'upstream',
+  'not-found', 'conflict', 'timeout',
 ]);
 export type ToolErrorCode = z.infer<typeof ToolErrorCodeSchema>;
 const errorShape = {message: z.string(), remediation: z.string().min(1)};
@@ -30,5 +31,8 @@ export const ToolErrorSchema = z.discriminatedUnion('code', [
   z.object({code: z.literal('budget'), ...errorShape}),
   z.object({code: z.literal('upstream-firewall'), ...errorShape}),
   z.object({code: z.literal('upstream'), ...errorShape}),
+  z.object({code: z.literal('not-found'), ...errorShape}),
+  z.object({code: z.literal('conflict'), ...errorShape}),
+  z.object({code: z.literal('timeout'), ...errorShape}),
 ]);
 export type ToolError = z.infer<typeof ToolErrorSchema>;

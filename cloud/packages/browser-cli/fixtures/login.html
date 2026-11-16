@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture sign-in</title></head>
+<body>
+  <main>
+    <h1>Fixture sign-in</h1>
+    <nav><a href="#docs-top">Docs</a> <a href="#docs-bottom">Docs</a></nav>
+    <form id="form">
+      <label>Email <input type="email" name="email"></label>
+      <label>Password <input type="password" name="password"></label>
+      <label><input type="checkbox" name="remember"> Remember me</label>
+      <button type="submit">Sign in</button>
+    </form>
+    <p id="status" role="status"></p>
+  </main>
+  <script>
+    // Deterministic delay so wait-for has something to wait for.
+    document.getElementById('form').addEventListener('submit', event => {
+      event.preventDefault();
+      const email = new FormData(event.target).get('email');
+      setTimeout(() => {
+        const heading = document.createElement('h2');
+        heading.textContent = `Welcome, ${email}`;
+        document.querySelector('main').append(heading);
+        const done = document.createElement('button');
+        done.textContent = 'Continue';
+        document.querySelector('main').append(done);
+      }, 300);
+    });
+  </script>
+</body>
+</html>
