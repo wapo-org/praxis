@@ -4,31 +4,24 @@ import AgentCore
 import AgentProviders
 import AgentMCP
 
-// MARK: - FROZEN voice interface (VOICE_PLAN §7; voice-rec reads isConfigured)
+// MARK: - Frozen voice interface
 
-// Note: the frozen decl is `@MainActor protocol VoiceSettingsReader`.
-// `GroqVoiceSettings` below conforms; voice-rec consumes the protocol.
+// Frozen contract consumed by VoiceInputController.
 @MainActor
 protocol VoiceSettingsReader {
-    /// Key present (the model may still be the default).
+    /// True whenever a key is present, even if the model is still the default.
     var isConfigured: Bool { get }
 }
 
-/// Groq voice settings: API key (Keychain only), speech-model list cache +
-/// selection, and language. Persisted in its OWN JSON file
-/// (`Application Support/PraxisChat/voice-settings.json`) — deliberately NOT
-/// in `ProviderSettings.swift`, which effort/picker share (conflict map).
-///
-/// `fileURL == nil` keeps everything in memory (tests, previews).
+/// Persists voice settings in voice-settings.json (key in Keychain); nil fileURL is in-memory.
 @MainActor
 @Observable
 final class GroqVoiceSettings: VoiceSettingsReader {
     nonisolated static let keychainService = "PraxisChat.Voice"
     nonisolated static let keychainAccount = "groq.apiKey"
-    /// Sensible default when listed (fastest/cheapest per the Groq STT docs).
+    /// Default STT model chosen as fastest and cheapest per Groq STT docs.
     nonisolated static let defaultModelID = "whisper-large-v3-turbo"
-    /// A model list older than this is read again on opening the screen,
-    /// mirroring `ProviderSettings.modelListLifetime`.
+    /// Model lists older than 24 h refresh on screen open, matching ProviderSettings.
     nonisolated static let modelListLifetime: TimeInterval = 24 * 3600
 
     private struct File: Codable {
@@ -39,21 +32,19 @@ final class GroqVoiceSettings: VoiceSettingsReader {
         var modelsFetchedAt: Date?
     }
 
-    /// The model id uploads use. Always non-empty (defaults, then persists).
+    /// Active upload model ID; always non-empty (falls back to default).
     var selectedModelID: String
-    /// ISO-639-1 code for the `language` param; nil = Auto.
+    /// ISO-639-1 code for the Groq language parameter, or nil for auto-detect.
     var language: String?
-    /// Last fetched speech-model ids (filtered to STT), newest fetch last.
+    /// Cached STT-filtered model IDs from the last fetch.
     private(set) var cachedModels: [String]
     private(set) var modelsFetchedAt: Date?
     private(set) var hasKey = false
     private(set) var refreshing = false
-    /// Last refresh failure, safe to show; cleared on success.
+    /// User-safe message from the last refresh failure, cleared on success.
     private(set) var lastRefreshError: String?
 
-    /// Rows for the picker: cached STT ids, plus the selected id when it
-    /// isn't listed (manual-entry fallback: unknown future STT ids and
-    /// typed ids stay selectable).
+    /// Includes selectedModelID even if unlisted so manually entered or new STT IDs stay selectable.
     var displayModels: [String] {
         var ids = cachedModels
         if !selectedModelID.isEmpty, !ids.contains(selectedModelID) {
@@ -94,7 +85,7 @@ final class GroqVoiceSettings: VoiceSettingsReader {
 
     // MARK: Key (Keychain only; never logged, never in the JSON)
 
-    /// Trims on save; empty removes.
+    /// Trims whitespace before saving and deletes the key when empty.
     func saveKey(_ raw: String) {
         let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
@@ -105,7 +96,7 @@ final class GroqVoiceSettings: VoiceSettingsReader {
             }
             hasKey = !key.isEmpty
         } catch {
-            // Keychain failures leave the old state; the UI re-reads hasKey.
+            // Re-reads Keychain state so a save failure never leaves hasKey out of sync.
             hasKey = ((try? secrets.secret(for: Self.keychainAccount)) ?? nil)?.isEmpty == false
         }
     }
@@ -114,24 +105,18 @@ final class GroqVoiceSettings: VoiceSettingsReader {
 
     // MARK: Models
 
-    /// Groq's model list carries NO speech capability flag (models doc), so
-    /// speech models are filtered by id: contains `whisper`
-    /// (case-insensitive). Pure, unit-tested.
+    /// Groq omits speech flags, so STT models are filtered by case-insensitive 'whisper' ID.
     nonisolated static func speechModels(from models: [ModelInfo]) -> [ModelInfo] {
         models.filter { $0.id.lowercased().contains("whisper") }
     }
 
-    /// `whisper-large-v3-turbo` when listed, else the first listed STT id,
-    /// else nil (the UI then shows the manual-entry row). Pure.
+    /// Returns whisper-large-v3-turbo, else first STT ID; nil shows manual-entry UI.
     nonisolated static func defaultModel(from ids: [String]) -> String? {
         if ids.contains(defaultModelID) { return defaultModelID }
         return ids.first
     }
 
-    /// `GET /models` with the stored key, filtered to STT ids. A 401 keeps
-    /// the key (it may be a paste away from correct) and reports "Check
-    /// your Groq API key". `-PraxisFakeGroqModels YES` (UI tests) answers
-    /// with a canned list instead of the network.
+    /// Preserves the stored key on 401; -PraxisFakeGroqModels YES returns a canned UI-test list.
     func refreshModels() async {
         guard !refreshing else { return }
         refreshing = true
@@ -172,7 +157,7 @@ final class GroqVoiceSettings: VoiceSettingsReader {
         persist()
     }
 
-    /// User-safe refresh failure. Never includes the key or wire details.
+    /// Formats a user-safe refresh error without exposing the API key or wire details.
     nonisolated static func refreshErrorMessage(_ error: ProviderError) -> String {
         switch error {
         case .http(let status, _, _):
@@ -198,7 +183,6 @@ final class GroqVoiceSettings: VoiceSettingsReader {
 
     // MARK: Languages
 
-    /// Common ISO-639-1 codes for the language row (nil = Auto).
     nonisolated static let supportedLanguages: [(code: String?, name: String)] = [
         (nil, "Auto"),
         ("en", "English"), ("es", "Spanish"), ("fr", "French"), ("de", "German"),
@@ -213,11 +197,7 @@ final class GroqVoiceSettings: VoiceSettingsReader {
 
     // MARK: Transcriber (final voice integration wiring)
 
-    /// Builds a transcriber snapshotting the CURRENT model and language.
-    /// Build one per transcription call: the model, language and consent
-    /// may all have changed since the controller was created (in particular
-    /// the consent allow-path retries after a grant). The key itself is read
-    /// per call inside `transcribe`, never held here.
+    /// Must be called per transcription so mid-session setting or consent changes take effect.
     func makeTranscriber(consentGranted: Bool,
                          onEvent: (@Sendable (TranscriptionEvent) -> Void)? = nil) -> GroqTranscriber {
         GroqTranscriber(transport: transport, secrets: secrets, modelID: selectedModelID,

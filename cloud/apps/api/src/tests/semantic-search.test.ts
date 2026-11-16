@@ -9,10 +9,6 @@ import { MAX_PHRASES_PER_CHAT, SearchIndexer, chatItems, chunk, convexVectorInde
 import { SEMANTIC_LIMIT, loadChatDocs } from '../search.js';
 import { ApiService } from '../service.js';
 
-/**
- * A deterministic stand-in for a sentence model: words map onto a few concept axes (so "vacation luggage"
- * meets "Trip packing list" with no shared word); other words land on hashed residue axes.
- */
 const CONCEPTS: Record<string, number> = {
   trip: 0, travel: 0, vacation: 0, journey: 0, lisbon: 0, holiday: 0,
   pack: 1, suitcase: 1, luggage: 1, bag: 1,
@@ -209,11 +205,6 @@ describe('semantic search: parts', () => {
   }, 60_000);
 });
 
-/**
- * WP-H3b recall fixture with the real model: the orchestrator's probe. Six chats with random names (no shared
- * word with the queries), each a user message and the dev:local scripted reply. Skipped when MiniLM is not in
- * the local cache: tests never download it.
- */
 const MINILM_CACHE = `${process.env.HOME ?? '.'}/.cache/praxis-embeddings`;
 const minilmCached = existsSync(`${MINILM_CACHE}/Xenova/all-MiniLM-L6-v2/onnx/model_quantized.onnx`);
 describe.skipIf(!minilmCached)('semantic search: real MiniLM recall (WP-H3b probe)', () => {

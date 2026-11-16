@@ -1,21 +1,18 @@
 import type {JsonObject} from '@praxis/protocol';
 import type {Store} from './contracts.js';
+import {MODEL_KEY_RESOURCE, SEALED_FIELD} from './openrouter/keys.js';
 import {parseKeyring, seal, sealedWithCurrent, unseal} from './secrets.js';
 
-/**
- * Where encrypted values live and the authenticated-data resource each was sealed with. Rotation must know the
- * resource, because AES-GCM AAD (owner + resource) is part of the seal. Short-lived OAuth state in Redis (10 min)
- * is not rotated: keep the previous key in the ring for at least that long.
- */
+/** Maps stored secret kinds to AES-GCM AAD resource strings; keep old keys 10m for Redis OAuth state. */
 export const SECRET_KINDS: Record<string, (id: string, field: string) => string | null> = {
-  providerSecret: (id, field) => (field === 'apiKey' ? `provider:${id}:key` : field === 'extraHeaders' ? `provider:${id}:headers` : null),
+  modelKey: (_id, field) => (field === SEALED_FIELD ? MODEL_KEY_RESOURCE : null),
   voiceSecret: (_id, field) => (field === 'key' ? 'voice' : null),
   mcpSecret: (id, field) => `mcp:${id}:${field}`,
 };
 
 export interface RotationStats {owners: number; rows: number; rewritten: number; failed: number}
 
-/** Re-seals one owner's secrets with the ring's current key. Values that no ring key opens are counted, never dropped. */
+/** Re-seals owner secrets with current key; unreadable values are counted, never dropped. */
 export async function reencryptOwner(store: Store, userId: string, keyring: string, stats: RotationStats, dryRun = false) {
   parseKeyring(keyring);
   stats.owners++;

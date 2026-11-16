@@ -30,10 +30,6 @@ export function formatBytes(bytes: number): string {
 
 const isInlineText = (kind: AttachmentKind, mediaType: string) => kind === 'text' || kind === 'code' || kind === 'sheet' || mediaType.startsWith('text/');
 
-/**
- * What the attach-time chip says about size, mirroring how the API hands the file to the model
- * (apps/api attachments.ts): `block` files are never uploaded; a `warn` file uploads, but nothing can read it.
- */
 export function attachmentLimit(file: { name: string; mediaType: string; size: number }): { level: 'block' | 'warn'; message: string } | null {
   const { uploadBytes, inlineDocumentBytes, inlineTextBytes, codeReadBytes } = ATTACHMENT_LIMITS;
   if (file.size > uploadBytes) return { level: 'block', message: `Too large to attach. The limit is ${formatBytes(uploadBytes)}.` };

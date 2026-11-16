@@ -5,9 +5,6 @@ import AgentMCP
 import AgentTestSupport
 @testable import PraxisChat
 
-/// Servers that answer anonymously but need sign-in for calls (Google's
-/// Gmail MCP server): the add flow's probe, the chat step's "Sign in to"
-/// action, Google client-ID guidance, and connector prompts.
 @MainActor
 final class ConnectorSignInTests: XCTestCase {
     private var directory: URL!
@@ -15,9 +12,6 @@ final class ConnectorSignInTests: XCTestCase {
     override func setUp() async throws { directory = temporaryDirectory() }
     override func tearDown() async throws { try? FileManager.default.removeItem(at: directory) }
 
-    /// Gmail-shaped: legacy Streamable HTTP, anonymous `tools/list`, 401
-    /// on `tools/call`, RFC 9728 metadata naming a Google-style issuer
-    /// without Dynamic Client Registration, and one prompt.
     private func gmailLike() -> ScriptedTransport {
         ScriptedTransport { request, _ in
             let rpc = request.httpBody.flatMap { try? JSONValue(parsing: $0) } ?? [:]
@@ -73,12 +67,9 @@ final class ConnectorSignInTests: XCTestCase {
         XCTAssertFalse(library.canSignInDirectly(id), "no DCR: the user needs the client-ID form")
         XCTAssertEqual(library.prompts[id]?.map(\.name), ["triage"])
 
-        // A call refused mid-run marks it as needing sign-in.
         library.handle(.authorizationRequired(.oauthNeedsClientCredentials(issuer: issuer)), serverID: id)
         XCTAssertEqual(library.state(of: id), .needsSignIn(.oauthNeedsClientCredentials(issuer: issuer)))
 
-        // The user enters a Google iOS client ID: the reversed-client-ID
-        // redirect and the chosen scopes go into the config.
         let clientID = "123-abc.apps.googleusercontent.com"
         try await library.setManualOAuth(id, clientID: clientID, clientSecret: nil,
                                          redirectURI: OAuthClientGuide.redirect(forClientID: clientID), scopes: ["gmail.readonly"])

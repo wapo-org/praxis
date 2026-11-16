@@ -89,16 +89,16 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
   }, [backToMain]);
 
   const model = store.models.find(
-    (m) => m.providerId === store.selectedProviderId && m.id === store.selectedModelId,
+    (m) => m.id === store.selectedModelId,
   );
   const modes = actionOptions('mode', store);
   const efforts = actionOptions('effort', store);
-  const searchSupported = !!model?.capabilities.serverWebSearch;
+  const searchSupported = false;
   const enabledConnectors = store.connectors.filter((c) => c.enabled);
   const inSubView = view !== 'main';
   const coarsePointer = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 
-  const openSheet = (sheet: 'connectors' | 'providers') => {
+  const openSheet = (sheet: 'connectors' | 'models') => {
     store.setPlusTrayOpen(false);
     store.setActiveSheet(sheet);
   };
@@ -147,7 +147,7 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                 onClick={() => setView('models')}
               >
                 <span className={styles.modelCopy}>
-                  <span className={styles.modelName}>{model?.displayName || 'Select model'}</span>
+                  <span className={styles.modelName}>{model?.name || 'Select model'}</span>
                 </span>
                 <span className={styles.chevron}>
                   <ChevronRight size={18} />
@@ -219,7 +219,7 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                 <button
                   type="button"
                   className={`${rowClass(true)} ${styles.row}`}
-                  onClick={() => openSheet('providers')}
+                  onClick={() => openSheet('models')}
                 >
                   <span className={styles.rowIcon}>
                     <Settings size={18} />

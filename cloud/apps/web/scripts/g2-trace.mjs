@@ -1,5 +1,3 @@
-// WP-G2: the morph's actual numbers per frame (no screencast overhead): shape, radius, content pose.
-//   BASE=... node apps/web/scripts/g2-trace.mjs separate-top|attached-top [close]
 import { launch, open } from './g2-lib.mjs';
 const id = process.argv[2] ?? 'separate-top';
 const browser = await launch();

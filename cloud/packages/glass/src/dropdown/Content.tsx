@@ -108,7 +108,6 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
       ? morphState.trail[morphState.trail.length - 1]
       : null;
 
-  // Separate top sticky ActionGrid / Search from scrollable list when at root level
   const topPinnedNodes: React.ReactNode[] = [];
   const scrollableNodes: React.ReactNode[] = [];
 
@@ -209,10 +208,8 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                         transition={reduced ? TRANSITION.none : { ...TRANSITION.base, opacity: { ...TRANSITION.base, delay: MORPH.panelFadeDelay } }}
                         className={styles.panel}
                       >
-                        {/* Elevated Submenu Sticky Header (IMG_7773–IMG_7774: "Recent Notes ⌄") */}
                         <MorphHeader level={activeMorphLevel ?? null} />
 
-                        {/* Top pinned ActionGrid & Search */}
                         {topPinnedNodes}
 
                         {/* Scrollable items with progressive blur edge scrims */}

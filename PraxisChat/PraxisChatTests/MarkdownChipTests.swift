@@ -1,8 +1,6 @@
 import XCTest
 @testable import PraxisChat
 
-/// Focused coverage for the inline-chip pipeline (spec §9.2):
-/// markdown → attributed runs → layout markers read by ChipTextRenderer.
 final class MarkdownChipTests: XCTestCase {
 
     func testCodeSpanBecomesCodePillRun() {
@@ -24,15 +22,12 @@ final class MarkdownChipTests: XCTestCase {
         let tiles = text.runs.compactMap { $0[TileTextAttribute.self]?.monogram }
         XCTAssertTrue(tiles.contains("file-code-2"), "file tile glyph missing: \(tiles)")
         XCTAssertTrue(tiles.contains("A"), "link monogram tile missing: \(tiles)")
-        // FileRef name is an underlined link routed to the mock file sheet.
         let fileRun = text.runs.first { String(text[$0.range].characters) == "ComposerView.swift" }
         XCTAssertEqual(fileRun?.link?.scheme, "praxis-file")
     }
 
     func testChipSegmentsCarryLayoutMarkers() {
-        // The renderer reads markers off Text.Layout runs; segments are how
-        // markers get there (Text.customAttribute), so segment extraction
-        // must classify every chip run.
+        // Renderer reads Text.Layout markers via Text.customAttribute, so segments must classify chips.
         let blocks = PraxisMarkdown.parse("Run `xcodebuild build` in [GitHub](praxis-app://GitHub).")
         guard case .paragraph(let text) = blocks.first else {
             return XCTFail("expected a paragraph, got \(blocks)")

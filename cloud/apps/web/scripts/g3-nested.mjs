@@ -1,5 +1,3 @@
-// WP-G3: frame strips of nested and wide menus, to read frame by frame.
-//   BASE=... OUT=... node apps/web/scripts/g3-nested.mjs [in-place|cascade|wide]
 import { execFileSync } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { clean, disarm, installClock, launch, open, OUT, record } from './g2-lib.mjs';

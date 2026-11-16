@@ -1,9 +1,7 @@
 import XCTest
 @testable import PraxisChat
 
-/// The crash-safety contract (VOICE_PLAN.md §2): audio streams straight to
-/// disk, the JSON sidecar describes it, and `scan()` recovers everything
-/// unfinished — including orphan audio — on the next launch.
+/// Crash-safety contract: audio streams to disk with a JSON sidecar so scan() recovers orphans.
 @MainActor
 final class VoiceRecordingTests: XCTestCase {
     private var directory: URL!
@@ -59,9 +57,7 @@ final class VoiceRecordingTests: XCTestCase {
     }
 
     func testScanNormalizesStaleRecordingToPaused() {
-        // A kill mid-recording: no recorder is alive at scan time, so the
-        // stale `.recording` becomes `.paused` (transcribable, playable,
-        // but never resumed — AVAudioRecorder can't append across launches).
+        // Stale .recording scans as .paused (playable, not resumable: AVAudioRecorder cannot append).
         let recording = seed(state: .recording)
         let found = store.scan()
         XCTAssertEqual(found.first { $0.id == recording.id }?.state, .paused)
@@ -70,7 +66,6 @@ final class VoiceRecordingTests: XCTestCase {
     }
 
     func testScanNormalizesStaleTranscribingToStopped() {
-        // A kill mid-upload: the audio is intact and re-transcribes whole.
         let recording = seed(state: .transcribing)
         let found = store.scan()
         XCTAssertEqual(found.first { $0.id == recording.id }?.state, .stopped)
@@ -78,8 +73,6 @@ final class VoiceRecordingTests: XCTestCase {
     }
 
     func testScanAdoptsOrphanM4a() {
-        // A crash between the recorder creating the file and the first
-        // sidecar write leaves audio with no description: adopt it.
         let id = UUID()
         let audioURL = directory.appendingPathComponent(id.uuidString + ".m4a")
         FileManager.default.createFile(atPath: audioURL.path, contents: Data([0x00]))
@@ -104,8 +97,7 @@ final class VoiceRecordingTests: XCTestCase {
     }
 
     func testScanExcludesLiveIDs() {
-        // The controller owns live/transcribing/under-review states; scan's
-        // normalization must not rewrite them mid-flight.
+        // Controller owns active states; scan() normalization must not rewrite them mid-flight.
         let live = seed(state: .recording)
         let found = store.scan(excluding: [live.id])
         XCTAssertTrue(found.isEmpty)

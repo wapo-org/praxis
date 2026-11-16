@@ -75,7 +75,6 @@ final class CloudC5RegressionTests: XCTestCase {
         }
         let directory = CloudReplicaScope.directory(root: base, origin: client.configuration.origin, userID: "u")
         let initial = try replica(directory)
-        // No pending run is needed for the changed-chat regression.
         var cache = initial; cache.values = cache.values.filter { $0.key.hasPrefix("chat:") }
         try JSONEncoder().encode(cache).write(to: directory.appendingPathComponent("replica.json"))
         let disk = ConversationStore(directory: directory.appendingPathComponent("Conversations"))

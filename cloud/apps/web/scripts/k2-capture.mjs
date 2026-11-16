@@ -1,5 +1,4 @@
 // WP-K2 captures, before and after on the same scenes (items 1–7).
-//   BASE=http://127.0.0.1:5232 TAG=before|after [ONLY=activity,type,tray,blur,press] node apps/web/scripts/k2-capture.mjs
 import { chromium, webkit } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';

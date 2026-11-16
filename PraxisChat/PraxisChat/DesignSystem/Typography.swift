@@ -1,8 +1,6 @@
 import SwiftUI
 
-/// Praxis type. Inter (UI/body), IBM Plex Mono (code/traces/refs),
-/// Source Serif 4 (agent headings only). Always `Font.custom(..., relativeTo:)`
-/// so Dynamic Type scales (spec §2). Bundled OFL cuts live in Resources/Fonts.
+/// Always use Font.custom(..., relativeTo:) so Dynamic Type scales with bundled OFL fonts.
 enum Type {
     static func inter(_ size: CGFloat, _ style: Font.TextStyle = .body) -> Font {
         .custom("Inter", size: size, relativeTo: style)
@@ -22,6 +20,5 @@ enum Type {
 }
 
 extension View {
-    /// Optical line height ≈1.58 for long-read body (spec §8): Inter 17/27.
     func bodyLineSpacing() -> some View { lineSpacing(10) }
 }

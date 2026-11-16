@@ -1,6 +1,3 @@
-// WP-G1 visual gate: stills of every main screen (1440×900, 402×874, light and dark, some with content
-// behind the glass and on a busy background), frame strips of each stretch and release, and videos.
-// Needs the dev app on BASE. ONLY=stills,strips,videos limits what runs.
 import { execFileSync } from 'node:child_process';
 import { mkdir, readdir, rename, rm } from 'node:fs/promises';
 import { engines, OUT, openApp, seedChat } from './g1-lib.mjs';

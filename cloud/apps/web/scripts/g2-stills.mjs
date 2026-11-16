@@ -1,5 +1,4 @@
-// WP-G2 visual gate: shadows and type, before and after. LABEL=before|after, against whichever build is on BASE.
-//   BASE=http://127.0.0.1:5231 LABEL=after node apps/web/scripts/g2-stills.mjs
+// WP-G2 visual gate: shadows and type, before and after.
 import { mkdir } from 'node:fs/promises';
 import { engines, openApp, seedChat } from './g1-lib.mjs';
 import { homedir } from 'node:os';

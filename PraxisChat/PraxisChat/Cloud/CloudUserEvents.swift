@@ -9,8 +9,7 @@ struct CloudUserEvent: Decodable, Sendable {
     let syncCursor: String
 }
 
-/// User events discover work from other clients; individual run streams still
-/// own deltas and response handlers. Cursor advances only after reconciliation.
+/// Discovers cross-client work and advances cursor only after reconciliation.
 struct CloudUserEvents: Sendable {
     let client: CloudAPIClient
     func consume(after: Int, accept: @escaping @Sendable (CloudUserEvent) async throws -> Void) async throws {

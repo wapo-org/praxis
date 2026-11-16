@@ -1,9 +1,7 @@
 import XCTest
 @testable import PraxisChat
 
-/// The variable-blur scrim's band math: layers must nest strictly toward
-/// the edge (each deeper layer a shorter band), so the blur radius steps
-/// up instead of fading out, and every mask must be a valid gradient.
+/// Blur bands must nest strictly toward the edge so radius steps up instead of fading out.
 final class ProgressiveBlurTests: XCTestCase {
     func testBandsNestStrictlyTowardTheEdge() {
         let reach = ProgressiveBlurScrim.bandReach(bands: 4, hold: 0.36)
@@ -42,8 +40,7 @@ final class ProgressiveBlurTests: XCTestCase {
     }
 
     func testEachLayerRampsOverExactlyItsOwnBand() {
-        // Layer i is full where layer i+1 starts ramping: the total blur
-        // climbs without a step at any band boundary.
+        // Layer i is full where layer i+1 starts ramping so total blur climbs without a boundary step.
         let reaches = ProgressiveBlurScrim.bandReach(bands: 4, hold: 0.36)
         for i in 0..<(reaches.count - 1) {
             let stops = ProgressiveBlurScrim.maskStops(reach: reaches[i], innerFull: reaches[i + 1])

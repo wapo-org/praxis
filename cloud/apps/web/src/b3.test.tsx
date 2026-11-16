@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { CapabilitiesSchema, ModelSchema } from '@praxis/protocol';
+import { ModelListItemSchema } from '@praxis/protocol';
 import { apiClient } from './lib/api';
 import { parseRoute, pathForSheet, sheetPaths } from './lib/navigation';
 import { useModelSearch } from './lib/useModelSearch';
@@ -16,12 +16,15 @@ import { PraxisStoreProvider, usePraxisStore } from './state/store';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; vi.useRealTimers(); vi.restoreAllMocks(); });
-const model = (id: string) => ModelSchema.parse({ type: 'model', id, providerId: 'p', displayName: id, capabilities: { serverWebSearch: true }, reasoningEfforts: ['low', 'high'], pinned: false, favorite: false });
+const model = (id: string) => ModelListItemSchema.parse({ type: 'catalogModel', id, name: id, contextLength: 128000, pricing: { prompt: '0.000003', completion: '0.000015' }, capabilities: { tools: true, reasoning: true, images: false }, pinned: false, favorite: false, recommended: false });
+const modelKey = { type: 'modelKey' as const, maskedKey: '••••1234', connectedAt: '2026-11-15T10:00:00.000Z' };
 it('round-trips chat and every settings sub-page through route paths', () => {
-  for (const [sheet] of Object.entries(sheetPaths)) expect(parseRoute(pathForSheet(sheet as never, null, null)).sheet).toBe(sheet);
+  for (const [sheet] of Object.entries(sheetPaths)) expect(parseRoute(pathForSheet(sheet as never, null)).sheet).toBe(sheet);
   expect(parseRoute('/c/private%20chat')).toEqual({ chatId: 'private chat', sheet: null, valid: true });
-  expect(parseRoute('/settings/providers/new').providerId).toBeNull();
-  expect(parseRoute('/settings/providers/p').providerId).toBe('p');
+  expect(parseRoute('/settings/models')).toEqual({ sheet: 'models', valid: true });
+  expect(parseRoute('/settings/openrouter/callback')).toEqual({ sheet: 'openrouter-callback', valid: true });
+  expect(parseRoute('/settings/providers').valid).toBe(false);
+  expect(parseRoute('/settings/providers/new').valid).toBe(false);
   expect(parseRoute('/missing').valid).toBe(false);
   expect(parseRoute('/c/%xx').valid).toBe(false);
 });
@@ -43,7 +46,7 @@ it('matches the native light/dark palette and monochrome primary action aliases'
   const dark = block("[data-theme='dark']");
   const native = [...swift.matchAll(/static let (\w+) = c\(0x([\dA-F]+), 0x([\dA-F]+)\)/g)];
   expect(native.length).toBe(13);
-  // Web token names for the native colours; hairline/pressed/tile are translucent or aliased on web (DESIGN.md).
+  // Maps native token names to web CSS equivalents.
   const web: Record<string, string> = {
     canvas: '--color-paper', card: '--color-surface', ink: '--color-ink', secondaryInk: '--color-ink-2',
     mutedInk: '--color-ink-3', fill1: '--color-fill-1', fill2: '--color-fill-2',
@@ -85,7 +88,7 @@ it('debounces server model search, loads cursors, and ignores stale responses', 
   await act(async () => finish({ type: 'page', items: [model('old')], nextCursor: null } as never));
   expect(result.items.map(m => m.id)).toEqual(['new']);
 });
-it('shows iOS tray order and sends the supported Web search toggle to the API', async () => {
+it('shows iOS tray order, offers reasoning effort from the catalogue entry, and keeps Web search off', async () => {
   vi.spyOn(apiClient, 'bootstrap').mockRejectedValue(new Error('Offline'));
   vi.spyOn(apiClient, 'createChat').mockResolvedValue({ type: 'chat', id: 'new', title: 'New chat', mode: 'build', pinned: false, connectorIds: [], disabledConnectorIds: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
   vi.spyOn(apiClient, 'patchChat').mockResolvedValue({} as never);
@@ -95,13 +98,16 @@ it('shows iOS tray order and sends the supported Web search toggle to the API', 
   window.matchMedia = vi.fn().mockReturnValue({ matches: false, addEventListener: () => {}, removeEventListener: () => {} });
   const node = document.createElement('div'); root = createRoot(node);
   await act(async () => root!.render(<PraxisStoreProvider><Probe /></PraxisStoreProvider>));
-  await act(async () => { store.cacheModels([model('hosted')]); store.setSelectedModel('p', 'hosted'); store.setPlusTrayOpen(true); });
+  vi.spyOn(apiClient, 'connectModelKey').mockResolvedValue(modelKey);
+  await act(async () => { await store.connectModelKey({ method: 'paste', apiKey: 'sk-or-v1-test' }); store.cacheModels([model('hosted')]); store.setSelectedModel('hosted'); store.setPlusTrayOpen(true); });
   const groups = [...node.querySelectorAll('[role="group"]')];
   expect(groups.map(g => g.getAttribute('aria-label'))).toEqual(['Mode', 'Reasoning effort']);
   expect([...node.querySelectorAll('[data-testid^="tray-tile-"]')].map(n => n.textContent)).toEqual(['Photos', 'Camera', 'Files', 'Screenshot']);
-  await act(async () => node.querySelector<HTMLInputElement>('[aria-label="Web search"]')!.click());
-  await act(async () => store.sendMessage('Question'));
-  expect(start).toHaveBeenCalledWith(expect.objectContaining({ webSearch: true }));
-  await act(async () => { store.cacheModels([{ ...model('no-search'), capabilities: CapabilitiesSchema.parse({}) }]); store.setSelectedModel('p', 'no-search'); });
+  // OpenRouter runs have no hosted web search: the toggle is present but off for every model.
   expect(node.querySelector<HTMLInputElement>('[aria-label="Web search"]')!.disabled).toBe(true);
+  await act(async () => { await store.sendMessage('Question'); });
+  expect(start).toHaveBeenCalledWith(expect.objectContaining({ modelId: 'hosted', webSearch: false }));
+  expect(start.mock.calls[0]![0]).not.toHaveProperty('providerId');
+  await act(async () => { store.cacheModels([{ ...model('plain'), capabilities: { tools: true, reasoning: false, images: false, files: false } }]); store.setSelectedModel('plain'); });
+  expect([...node.querySelectorAll('[role="group"]')].map(g => g.getAttribute('aria-label'))).toEqual(['Mode']);
 });

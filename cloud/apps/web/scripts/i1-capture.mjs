@@ -1,9 +1,4 @@
 // WP-I1 captures, run against any build of the app (before: 2f19672 / 666b524; after: redesign/liquid-i1).
-//   BASE=http://127.0.0.1:5233 API=http://127.0.0.1:8863 OUT=/tmp/i1/after node apps/web/scripts/i1-capture.mjs main cards search tray
-// main:   the same seeded chat, light and dark, 1440 and 402, full page (compare with i1-compare.py).
-// cards:  the elicitation card in every state (mounted from the module the server is serving), light and dark.
-// search: the search panel empty, with results and with no results, light and dark.
-// tray:   the + tray at rest, light and dark.
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 const BASE = process.env.BASE ?? 'http://127.0.0.1:5233';

@@ -1,5 +1,5 @@
 import { BASE, API } from './check-env.mjs';
-// Run with API 8817 + Vite 5191. Captures real local scripted runs; no mocked success paths.
+// Requires API 8817 + Vite 5191.
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';

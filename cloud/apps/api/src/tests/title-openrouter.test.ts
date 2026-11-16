@@ -3,20 +3,21 @@ import {createServer,type Server} from 'node:http';
 import {randomBytes} from 'node:crypto';
 import {createPraxisApp} from '../server.js';
 import {createLocalAdapters} from '../local-memory.js';
-import {createHTTPProvider} from '@praxis/agent';
+import {createOpenRouterProvider} from '@praxis/agent';
 import {CapabilitiesSchema,StartRunSchema} from '@praxis/protocol';
 import {makeTitle} from '../attachments.js';
 import {titleModels,validateTitle} from '../title-model.js';
 const servers:Server[]=[];
 afterEach(async()=>{await Promise.all(servers.splice(0).map(s=>new Promise<void>(resolve=>{s.close(()=>resolve());s.closeAllConnections();})));});
-const priced=(id:string,extra:object={})=>({id,pricing:{prompt:'0.000001',completion:'0.000002'},architecture:{output_modalities:['text']},...extra});
+const priced=(id:string,extra:object={})=>({id,pricing:{prompt:'0.000001',completion:'0.000002'},context_length:128000,architecture:{output_modalities:['text']},...extra});
 async function fixture(mode:'success'|'429'|'empty'|'timeout'|'slow'|'error'='success'){
  const requests:any[]=[];
  const server=createServer(async(req,res)=>{
+  if(req.url?.endsWith('/key')){res.setHeader('content-type','application/json');res.end(JSON.stringify({data:{label:'test'}}));return;}
   if(req.url?.endsWith('/models')){res.setHeader('content-type','application/json');res.end(JSON.stringify({data:[priced('vendor/free:free',{pricing:{prompt:'0',completion:'0'}}),priced('vendor/zero',{pricing:{prompt:'0',completion:'0'}}),priced('vendor/reasoning',{reasoning:{mandatory:true,supported_efforts:['high']}}),priced('vendor/image',{architecture:{output_modalities:['image']}}),priced('vendor/mini-a'),priced('vendor/mini-b')]}));return;}
   let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);requests.push(body);
-  if(mode==='error'){res.writeHead(503,{'content-type':'application/json'});res.end(JSON.stringify({error:{message:'SYNTHETIC-KEY upstream unavailable'}}));return;}
-  if(body.model.endsWith(':free')||(mode==='429'&&body.model==='vendor/mini-a')){res.writeHead(429,{'content-type':'application/json'});res.end(JSON.stringify({error:{message:'SYNTHETIC-KEY must never enter titleMetric'}}));return;}
+  if(mode==='error'){res.writeHead(503,{'content-type':'application/json'});res.end(JSON.stringify({error:{message:'sk-or-SYNTHETIC-KEY upstream unavailable'}}));return;}
+  if(body.model.endsWith(':free')||(mode==='429'&&body.model==='vendor/mini-a')){res.writeHead(429,{'content-type':'application/json'});res.end(JSON.stringify({error:{message:'sk-or-SYNTHETIC-KEY must never enter titleMetric'}}));return;}
   if(mode==='timeout'&&body.model==='vendor/mini-a'){return;} // closed by the client's abort
   if(mode==='slow')await new Promise(r=>setTimeout(r,3300));
   res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{content:(body.model==='vendor/reasoning'||mode==='empty'&&body.model==='vendor/mini-a')?'':'Shell Command File Listing'},finish_reason:'stop'}],usage:{prompt_tokens:25,completion_tokens:6}}));
@@ -25,33 +26,31 @@ async function fixture(mode:'success'|'429'|'empty'|'timeout'|'slow'|'error'='su
  const fetcher:typeof fetch=(input,init)=>fetch('http://127.0.0.1:'+port+new URL(String(input)).pathname,init);
  const {app,service}=createPraxisApp({adapters:createLocalAdapters(),local:true,encryptionKey:randomBytes(32).toString('base64'),fetcher});
  const req=async(path:string,body?:unknown,method=body?'POST':'GET')=>app.request(path,{method,headers:{Authorization:'Bearer dev-local','content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
- const provider=await req('/v1/providers',{type:'provider.input',name:'Fake OpenRouter',flavor:'openAIChat',baseUrl:'https://openrouter.ai/api/v1',apiKey:'SYNTHETIC-KEY'}).then(r=>r.json());
- await req('/v1/consents',{type:'consent',host:'openrouter.ai',allowed:true});
- expect((await req('/v1/providers/'+provider.id+'/refresh-models',{type:'models.refresh'})).ok).toBe(true);
- const chat=await req('/v1/chats',{type:'chat.input',providerId:provider.id,modelId:'vendor/mini-a'}).then(r=>r.json());
+ await req('/v1/model-key',{method:'paste',apiKey:'sk-or-SYNTHETIC-KEY'});
+ const chat=await req('/v1/chats',{type:'chat.input',modelId:'vendor/mini-a'}).then(r=>r.json());
  const title=(text='Run a shell command that lists files')=>service.driver!.title!('local-user',chat,text);
  const metric=()=>service.require<any>('local-user','titleMetric',chat.id);
- return {service,req,chat,requests,title,metric,provider: createHTTPProvider({baseUrl:'https://openrouter.ai/api/v1',flavor:'openAIChat',capabilities:CapabilitiesSchema.parse({})},fetcher)};
+ return {service,req,chat,requests,title,metric,provider: createOpenRouterProvider({apiKey:'sk-or-SYNTHETIC-KEY',capabilities:CapabilitiesSchema.parse({})},fetcher)};
 }
 it('confirms old free selection yields 429 and reasoning-only completion is empty; new metadata excludes both and image-only models',async()=>{
  const f=await fixture();const input={model:'vendor/free:free',system:'Title',messages:[],tools:[],capabilities:CapabilitiesSchema.parse({}),maxTokens:20,webSearch:false};
- await expect(f.provider.complete(input,AbortSignal.timeout(3000))).rejects.toMatchObject({status:429});
- const reasoning=await f.provider.complete({...input,model:'vendor/reasoning'},AbortSignal.timeout(3000));expect(reasoning.parts[0]?.text).toBe('');
- const selected=titleModels((await f.service.list<any>('local-user','model')).filter(m=>m.providerId===f.chat.providerId));expect(selected.map(m=>m.id)).toEqual(['vendor/mini-a','vendor/mini-b']);
+ await expect(f.provider.complete!(input,AbortSignal.timeout(3000))).rejects.toMatchObject({kind:'retryable'});
+ const reasoning=await f.provider.complete!({...input,model:'vendor/reasoning'},AbortSignal.timeout(3000));expect(reasoning.parts[0]?.text).toBe('');
+ const selected=titleModels(await f.service.models!.catalog.list());expect(selected.map(m=>m.id)).toEqual(['vendor/mini-a','vendor/mini-b']);
  expect(await f.title()).toBe('Shell Command File Listing');
  const reqBody=f.requests.at(-1);
- expect(reqBody).toMatchObject({model:'vendor/mini-a',stream:false,max_tokens:32,temperature:0,reasoning:{effort:'none',exclude:true}});
+ expect(reqBody).toMatchObject({model:'vendor/mini-a',stream:false,max_tokens:32,temperature:0});
  expect(reqBody.messages[0].content).toContain('<message>...</message>');
  expect(reqBody.messages[0].content).toContain('Examples:');
  expect(reqBody.messages[1].content).toContain('<message>\nRun a shell command that lists files\n</message>');
 });
 it.each(['429','empty','timeout'] as const)('records %s safely and tries exactly one other model',async mode=>{
  const f=await fixture(mode);expect(await f.title()).toBe('Shell Command File Listing');expect(f.requests.map(r=>r.model)).toEqual(['vendor/mini-a','vendor/mini-b']);
- const metric=await f.metric();expect(metric.attempts[0].reason).toBe(mode==='429'?'rate_limited':mode);expect(metric.outcome).toBe('success');expect(JSON.stringify(metric)).not.toContain('SYNTHETIC-KEY');
+ const metric=await f.metric();expect(metric.attempts[0].reason).toBe(mode==='429'?'rate_limited':mode);expect(metric.outcome).toBe('success');expect(JSON.stringify(metric)).not.toContain('sk-or-SYNTHETIC-KEY');
 },15000);
 it('a queued completion beyond the old 3-second timeout succeeds under the new deadline',async()=>{
  const f=await fixture('slow');const input={model:'vendor/mini-a',system:'Title',messages:[],tools:[],capabilities:CapabilitiesSchema.parse({}),maxTokens:20,webSearch:false};
- await expect(f.provider.complete(input,AbortSignal.timeout(3000))).rejects.toBeDefined();expect(await f.title()).toBe('Shell Command File Listing');
+ await expect(f.provider.complete!(input,AbortSignal.timeout(3000))).rejects.toBeDefined();expect(await f.title()).toBe('Shell Command File Listing');
 },15000);
 it.each(['custom','same'] as const)('starts and finishes the run before title resolution, uses defer, and preserves %s rename',async rename=>{
  const f=await fixture();let release!:(value:string)=>void;const pending=new Promise<string>(r=>release=r);let titleStarted=false,runFinished=false;const deferred:Promise<unknown>[]=[];
@@ -77,7 +76,7 @@ it.each([
 
 it('records bounded provider error codes and keeps the keyword fallback when both models fail',async()=>{
  const f=await fixture('error');const title=f.service.driver!.title!.bind(f.service.driver);f.service.driver={title,start:async(u,r)=>{await f.service.emit(u,r.id,{type:'run.finished',outcome:'completed'});},resume:async()=>{}};
- await f.service.start('local-user',StartRunSchema.parse({type:'run.start',chatId:f.chat.id,text:'Run a shell command that lists files'}));await f.service.drain();expect((await f.service.require<any>('local-user','chat',f.chat.id)).title).toBe('Shell Command Lists Files');const metric=await f.metric();expect(metric.attempts).toHaveLength(2);expect(metric.reason).toBe('provider_error: 503');expect(JSON.stringify(metric)).not.toContain('SYNTHETIC-KEY');
+ await f.service.start('local-user',StartRunSchema.parse({type:'run.start',chatId:f.chat.id,text:'Run a shell command that lists files'}));await f.service.drain();expect((await f.service.require<any>('local-user','chat',f.chat.id)).title).toBe('Shell Command Lists Files');const metric=await f.metric();expect(metric.attempts).toHaveLength(2);expect(metric.reason).toBe('provider_error: 503');expect(JSON.stringify(metric)).not.toContain('sk-or-SYNTHETIC-KEY');
 });
 it('a late title cannot resurrect a deleted chat',async()=>{
  const f=await fixture();let release!:(value:string)=>void;f.service.driver={title:()=>new Promise<string>(r=>release=r),start:async()=>{},resume:async()=>{}};
@@ -85,21 +84,21 @@ it('a late title cannot resurrect a deleted chat',async()=>{
 });
 
 it('prefers small instruct families before price, then sorts eligible small models by price',()=>{
- const base={type:'model' as const,providerId:'p',displayName:'M',capabilities:CapabilitiesSchema.parse({}),reasoningEfforts:[],pinned:false,favorite:false};
- const candidates=[{...base,id:'google/gemini-pro',pricing:{prompt:0.00001,completion:0.00001}},{...base,id:'large-cheap',pricing:{prompt:0.0001,completion:0.0001}},{...base,id:'flash-lite',pricing:{prompt:0.01,completion:0.01}},{...base,id:'nano',pricing:{prompt:0.001,completion:0.001}},{...base,id:'mini:free'},{...base,id:'zero',pricing:{prompt:0,completion:0}}];
+ const base={type:'catalogModel' as const,name:'M',contextLength:128000,capabilities:{tools:true,reasoning:false,images:false,files:false}};
+ const candidates=[{...base,id:'google/gemini-pro',pricing:{prompt:'0.00001',completion:'0.00001'}},{...base,id:'large-cheap',pricing:{prompt:'0.0001',completion:'0.0001'}},{...base,id:'flash-lite',pricing:{prompt:'0.01',completion:'0.01'}},{...base,id:'nano',pricing:{prompt:'0.001',completion:'0.001'}},{...base,id:'mini:free',pricing:{prompt:'0',completion:'0'}},{...base,id:'zero',pricing:{prompt:'0',completion:'0'}}];
  expect(titleModels(candidates).map(m=>m.id)).toEqual(['nano','flash-lite','google/gemini-pro','large-cheap']);
 });
 
 it('ranks instruction-following frontier compact models ahead of ultra-tiny models regardless of price and excludes utility models',()=>{
- const base={type:'model' as const,providerId:'p',displayName:'M',capabilities:CapabilitiesSchema.parse({}),reasoningEfforts:[],pinned:false,favorite:false};
+ const base={type:'catalogModel' as const,name:'M',contextLength:128000,capabilities:{tools:true,reasoning:false,images:false,files:false}};
  const candidates=[
-  {...base,id:'nvidia/llama-3.1-nemotron-nano-8b-v1',pricing:{prompt:0.00000002,completion:0.00000004}},
-  {...base,id:'meta-llama/llama-3.2-3b-instruct',pricing:{prompt:0.00000002,completion:0.00000002}},
-  {...base,id:'openai/text-embedding-3-small',pricing:{prompt:0.00000001,completion:0.00000001}},
-  {...base,id:'meta-llama/llama-guard-3-8b',pricing:{prompt:0.00000001,completion:0.00000001}},
-  {...base,id:'anthropic/claude-3.5-haiku',pricing:{prompt:0.0008,completion:0.004}},
-  {...base,id:'google/gemini-2.5-flash',pricing:{prompt:0.00015,completion:0.0006}},
-  {...base,id:'openai/gpt-4.1-mini',pricing:{prompt:0.0004,completion:0.0016}},
+  {...base,id:'nvidia/llama-3.1-nemotron-nano-8b-v1',pricing:{prompt:'0.00000002',completion:'0.00000004'}},
+  {...base,id:'meta-llama/llama-3.2-3b-instruct',pricing:{prompt:'0.00000002',completion:'0.00000002'}},
+  {...base,id:'openai/text-embedding-3-small',pricing:{prompt:'0.00000001',completion:'0.00000001'}},
+  {...base,id:'meta-llama/llama-guard-3-8b',pricing:{prompt:'0.00000001',completion:'0.00000001'}},
+  {...base,id:'anthropic/claude-3.5-haiku',pricing:{prompt:'0.0008',completion:'0.004'}},
+  {...base,id:'google/gemini-2.5-flash',pricing:{prompt:'0.00015',completion:'0.0006'}},
+  {...base,id:'openai/gpt-4.1-mini',pricing:{prompt:'0.0004',completion:'0.0016'}},
  ];
  expect(titleModels(candidates).map(m=>m.id)).toEqual([
   'google/gemini-2.5-flash',
@@ -117,7 +116,8 @@ it.each([
 ])('rejects real bad model output (%s), falls back to the second candidate or heuristic, and never stores junk',async(userText,badOutput,goodOutput)=>{
  for(const secondGood of [true,false]){
   const server=createServer(async(req,res)=>{
-   if(req.url?.endsWith('/models')){
+   if(req.url?.endsWith('/key')){res.setHeader('content-type','application/json');res.end(JSON.stringify({data:{label:'test'}}));return;}
+  if(req.url?.endsWith('/models')){
     res.setHeader('content-type','application/json');
     res.end(JSON.stringify({data:[
      priced('nvidia/llama-3.1-nemotron-nano-8b-v1',{pricing:{prompt:'0.00000002',completion:'0.00000004'}}),
@@ -135,10 +135,8 @@ it.each([
   const fetcher:typeof fetch=(input,init)=>fetch('http://127.0.0.1:'+port+new URL(String(input)).pathname,init);
   const {app,service}=createPraxisApp({adapters:createLocalAdapters(),local:true,encryptionKey:randomBytes(32).toString('base64'),fetcher});
   const req=async(path:string,body?:unknown)=>app.request(path,{method:body?'POST':'GET',headers:{Authorization:'Bearer dev-local','content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
-  const provider=await req('/v1/providers',{type:'provider.input',name:'Fake OpenRouter',flavor:'openAIChat',baseUrl:'https://openrouter.ai/api/v1',apiKey:'SYNTHETIC-KEY'}).then(r=>r.json());
-  await req('/v1/consents',{type:'consent',host:'openrouter.ai',allowed:true});
-  await req('/v1/providers/'+provider.id+'/refresh-models',{type:'models.refresh'});
-  const chat=await req('/v1/chats',{type:'chat.input',providerId:provider.id,modelId:'openai/gpt-4.1-mini'}).then(r=>r.json());
+  await req('/v1/model-key',{method:'paste',apiKey:'sk-or-SYNTHETIC-KEY'});
+  const chat=await req('/v1/chats',{type:'chat.input',modelId:'openai/gpt-4.1-mini'}).then(r=>r.json());
   const titleFn=service.driver!.title!.bind(service.driver);
   service.driver={title:titleFn,start:async(u,r)=>{await service.emit(u,r.id,{type:'run.finished',outcome:'completed'});},resume:async()=>{}};
   await service.start('local-user',StartRunSchema.parse({type:'run.start',chatId:chat.id,text:userText}));

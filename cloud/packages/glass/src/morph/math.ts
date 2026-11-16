@@ -1,8 +1,3 @@
-/**
- * The menu morph as pure math: one shape path over a shape progress `p` and a
- * content progress `c`, measured from the iOS reference (DESIGN.md, Menu morph).
- * No DOM here, so every frame of the path can be asserted in a test.
- */
 import { MORPH, type SpringValue } from '../motion';
 
 export interface Box {
@@ -40,11 +35,6 @@ function anchorFraction(sourceCenter: number, start: number, size: number) {
   return size > 0 ? clamp((sourceCenter - start) / size) : 0.5;
 }
 
-/**
- * The glass at shape progress `p` and form progress `form` (its own clock, `MORPH.*.form`). It leaves the source's shape for a near-circle,
- * holds it while growing away from the button (which mirrors by itself for a menu opening up or left), and
- * squares up late, into a superellipse. `p` passes 1 on landing, so the far edges overshoot and return.
- */
 export function shapeAt(p: number, form: number, g: MorphGeometry): Shape {
   const { source: s, final: f } = g;
   const { path } = MORPH;
@@ -59,8 +49,6 @@ export function shapeAt(p: number, form: number, g: MorphGeometry): Shape {
 
   const fx = anchorFraction(s.left + s.width / 2, f.left, f.width);
   const fy = anchorFraction(s.top + s.height / 2, f.top, f.height);
-  // The anchor never passes its place: the overshoot only moves the far edges, so the edge beside the button
-  // is at its rest position when it lands, and nothing snaps back to it late.
   const toAnchor = Math.min(p, 1);
   const anchorX = lerp(s.left + s.width / 2, f.left + fx * f.width, toAnchor);
   const anchorY = lerp(s.top + s.height / 2, f.top + fy * f.height, toAnchor);
@@ -103,10 +91,6 @@ export interface SpringState {
   v: number;
 }
 
-/**
- * One semi-implicit Euler step of a spring toward `target`. Position and velocity
- * are the whole state, so a retarget reverses from exactly where it is.
- */
 export function stepSpring(state: SpringState, target: number, spring: SpringValue, dt: number) {
   state.v += (spring.stiffness * (target - state.x) - spring.damping * state.v) * dt;
   state.x += state.v * dt;

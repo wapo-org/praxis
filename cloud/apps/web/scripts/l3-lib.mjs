@@ -24,12 +24,8 @@ export async function open(browserType, { width = 1440, height = 900, dpr = 2, s
 export async function provider(page) {
   return page.evaluate(async () => {
     const { apiClient } = await import('/src/lib/api.ts');
-    const existing = (await apiClient.listProviders()).items.find((p) => p.name === 'L3 Upstream');
-    await apiClient.request('/v1/consents', { method: 'POST', body: JSON.stringify({ type: 'consent', host: 'l3-upstream.test', allowed: true }) });
-    if (existing) { await apiClient.refreshProviderModels(existing.id); return existing.id; }
-    const created = await apiClient.createProvider({ name: 'L3 Upstream', flavor: 'openAIChat', baseUrl: 'https://l3-upstream.test/v1', defaultModel: 'l3-80-150', apiKey: 'l3-test-key' });
-    await apiClient.refreshProviderModels(created.id);
-    return created.id;
+    await apiClient.connectModelKey({method:'paste',apiKey:'sk-or-l3-test-key'});
+    return 'openrouter';
   });
 }
 
@@ -38,9 +34,9 @@ export async function chat(page, { model = 'l3-80-150', title = 'L3 probe', hist
   const providerId = await provider(page);
   const id = await page.evaluate(async ({ providerId, model, title, history }) => {
     const { apiClient } = await import('/src/lib/api.ts');
-    const chat = await apiClient.createChat({ title, providerId, modelId: model });
+    const chat = await apiClient.createChat({ title, modelId: model });
     for (const text of history) {
-      const run = await apiClient.startRun({ chatId: chat.id, text, providerId, modelId: 'l3-4000', clientTurnId: crypto.randomUUID() });
+      const run = await apiClient.startRun({ chatId: chat.id, text, modelId: 'l3-4000', clientTurnId: crypto.randomUUID() });
       for (let i = 0; i < 600; i++) {
         const snap = await apiClient.getRunSnapshot(run.id);
         if (['completed', 'failed', 'cancelled'].includes(snap.run.status)) break;

@@ -2,10 +2,7 @@ import {waitUntil} from '../src/wait-until.js';
 import {handle} from 'hono/vercel';
 import {createProductionApp} from '../src/production.js';
 
-/**
- * Vercel Node function (Fluid compute). Production composition only; `PRAXIS_LOCAL_SMOKE=1` swaps in memory
- * adapters for the local bundle smoke test and is refused whenever VERCEL or NODE_ENV=production is set.
- */
+/** Vercel handler; PRAXIS_LOCAL_SMOKE=1 uses memory adapters locally and fails closed in production. */
 async function build() {
   if (process.env.PRAXIS_LOCAL_DATA_DIR !== undefined) throw new Error("PRAXIS_LOCAL_DATA_DIR is only supported by dev:local, never Vercel");
   if (process.env.PRAXIS_LOCAL_SMOKE === '1') {

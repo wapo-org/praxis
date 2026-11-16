@@ -1,8 +1,6 @@
 import { BASE, API } from './check-env.mjs';
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
-// RC1 live cross-client: (1) a run started in web tab A is followed live in a separate browser context B
-// (user events channel) and approved there; (2) a run started through the API is approved in the web.
 const auth = { Authorization: 'Bearer dev-local', 'Content-Type': 'application/json' };
 const api = async (path, init = {}) => {
   const res = await fetch(`${API}${path}`, { ...init, headers: auth });
@@ -38,7 +36,6 @@ try {
     await page.goto(`${BASE}/c/${encodeURIComponent(chat.id)}`);
     await page.getByTestId('composer-input').waitFor();
   }
-  // 1. Web A starts an approval run; B was already open, so it can only learn of the run live.
   const text = `Please approve RC1 web run ${suffix}`;
   await a.getByTestId('composer-input').fill(text);
   await a.getByTestId('composer-send-button').click();
@@ -55,7 +52,6 @@ try {
     .at(-1);
   assert.ok(webRunId, 'web run id recorded on its messages');
   assert.equal(await settle(webRunId), 'completed');
-  // 2. The reverse: a run started through the API (as iOS would) is approved in web B.
   const remote = await api('/v1/runs', {
     method: 'POST',
     body: JSON.stringify({

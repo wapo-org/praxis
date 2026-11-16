@@ -4,11 +4,6 @@ import type { GenericId as Id } from 'convex/values';
 import { action, internalQuery, mutation, query } from './functions.js';
 import { bounded, requireServer } from './access.js';
 
-/**
- * Semantic search vectors behind the server credential (apps/api/src/search-index.ts, convexVectorIndex).
- * One row per indexed text (a chat title or a message chunk), content-addressed by `itemId`; `scope` is
- * owner + embedder so a search never sees another owner's rows or another embedder's vectors.
- */
 export const DIMENSIONS = 384;
 const scopeOf = (userId: string, embedder: string) => `${bounded(userId)}\u0000${bounded(embedder)}`;
 const owner = { serverToken: v.string(), userId: v.string(), embedder: v.string() };

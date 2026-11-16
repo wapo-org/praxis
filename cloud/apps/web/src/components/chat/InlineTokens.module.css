@@ -11,8 +11,6 @@
   cursor: pointer;
   vertical-align: baseline;
 }
-/* Inline code (K-ref/06): a touch smaller than the body, a 4.5 % ink wash, 1 × 5 px, 5 px corners. A hair of
-   margin keeps two chips with a comma between them from reading as one blob. */
 button.token {
   margin: 0 1px;
   padding: 1px 5px;

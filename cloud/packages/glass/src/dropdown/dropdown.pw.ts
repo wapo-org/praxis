@@ -131,7 +131,6 @@ test('combobox/listbox ARIA, logical virtualization, filter reset, unique favori
     page.getByRole('button', { name: 'Pin Model 001', exact: true }),
   ).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByRole('listbox')).toBeVisible();
-  // Axe-style role ownership and accessible naming checks, without a new dependency.
   expect(await list.locator('[role^="menuitem"]').count()).toBe(0);
   for (const option of await list.getByRole('option').all()) {
     await expect(option).toHaveAttribute('aria-selected', /true|false/);
@@ -358,8 +357,6 @@ test('a cascade near a narrow viewport edge flips, shifts and keeps its final it
  }).toPass();
 });
 
-// L-ref/13: an in-place submenu resize is monotonic. The list cap was measured from the exiting panel's list, so
-// the new list and the glass alternated between two heights every frame while the old panel faded out.
 test('an in-place submenu grows monotonically: no frame steps back toward the old size', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 900 });
   await page.goto('/lab/glass');
@@ -389,8 +386,6 @@ test('an in-place submenu grows monotonically: no frame steps back toward the ol
   expect(layout).toBeGreaterThan(0);
 });
 
-// L-ref/11: the text trigger is one surface. The button paints no fill of its own and fills its capsule exactly;
-// the open state darkens the capsule's own layer.
 test('a text trigger is one surface, open or closed', async ({ page }) => {
   for (const url of ['/lab/glass?dropdown', '/lab/glass']) {
     await page.goto(url);
@@ -416,8 +411,6 @@ test('a text trigger is one surface, open or closed', async ({ page }) => {
   }
 });
 
-// L-ref/12: without corner-shape (Safari 26) the rings were inset box-shadows on the circle under the squircle
-// clip, which shaved them where each corner starts to round. They are strokes of the clip's own path now.
 test('without corner-shape the menu lines are strokes of the clip path', async ({ page }) => {
   await page.addInitScript(() => {
     const supports = CSS.supports.bind(CSS);

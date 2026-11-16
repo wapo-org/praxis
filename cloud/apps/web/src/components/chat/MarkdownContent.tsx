@@ -11,18 +11,10 @@ import { holdScrollPosition } from './Fold';
 import 'streamdown/styles.css';
 import styles from './MarkdownContent.module.css';
 
-/**
- * Assistant markdown on Streamdown (WP-L3). Streamdown splits the text into blocks and memoises each one, so a
- * finished block never re-renders as tokens arrive; `remend` closes unterminated syntax while live instead of
- * withholding it. What Streamdown styles with Tailwind (which this app does not generate) is rendered here.
- */
-
 // Raw HTML is shown as text, never rendered: without rehype-raw Streamdown escapes it (`<u>…</u>` stays literal).
-// Sanitising and URL hardening still run. `==highlight==` is not markdown and stays literal too.
 const rehypePlugins = Object.entries(defaultRehypePlugins).filter(([name]) => name !== 'raw').map(([, plugin]) => plugin);
 
 // A soft fade for new words only: it starts on arrival (never later) and runs on the compositor (opacity only).
-// The keyframes are `sd-praxisIn` in MarkdownContent.module.css; reduced motion turns it off there.
 const ANIMATION = { animation: 'praxisIn', duration: 280, easing: 'var(--ease-standard)', stagger: 0, maxBacklogMs: 0 } as const;
 
 const COLLAPSE_AFTER = 20;
@@ -39,10 +31,6 @@ function scrollerOf(el: Element): HTMLElement | null {
   return document.scrollingElement as HTMLElement | null;
 }
 
-/**
- * Keeps an element where it is on screen across the block's next layout (N-ref/04): a block that changes height moves
- * the content below it, never the content above. It also tells the chat's scroll follower to stop pinning.
- */
 function useKeepOnScreen() {
   const pending = React.useRef<{ el: Element; top: number } | null>(null);
   React.useLayoutEffect(() => {
@@ -122,8 +110,6 @@ function FencedCode({ code, language, meta }: { code: string; language: string; 
             onClick={(e) => {
               const block = root.current;
               const scroller = block ? scrollerOf(block) : null;
-              // Expanding grows the block downwards; collapsing keeps the button under the pointer when the block's
-              // start is already above the fold.
               const fold = !scroller || scroller === document.scrollingElement ? 0 : scroller.getBoundingClientRect().top;
               const offTop = !!block && block.getBoundingClientRect().top < fold;
               keep(expanded && offTop ? e.currentTarget : block);
@@ -161,9 +147,6 @@ const components: Components = {
 };
 
 export const MarkdownContent = React.memo(function MarkdownContent({ text, isStreaming = false }: { text: string; isStreaming?: boolean }) {
-  // While live, two things wait for the next chunk: half a surrogate pair, and a bare run of up to three marker
-  // characters at the very end (`**`, `~~`, a backtick), which remend cannot yet tell from literal text. Both are a
-  // few characters for one chunk; everything before them is shown.
   const source = isStreaming ? text.replace(/[\uD800-\uDBFF]$/, '').replace(/[*_~`]{1,3}$/, '') : text;
   return (
     <Streamdown className={styles.prose} components={components} rehypePlugins={rehypePlugins} controls={false}

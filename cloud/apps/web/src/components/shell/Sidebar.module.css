@@ -1,8 +1,3 @@
-/* The floating sidebar, ported literally from the owner's design v2 (Chat Screen.dc.html: <aside>, PAL, ACC,
-   grad, ringBg) with reworked bright palettes (Sand, Paper) carrying crisp conic highlight, inset bevel,
-   depth shadow and dark-ink active pill. A 1 px conic ring sits on the padding-clipped surface; a plain
-   29 px radius (v2 drops the squircle). See DESIGN.md. */
-
 .docked {
   position: fixed;
   top: var(--sidebar-top);

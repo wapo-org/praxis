@@ -1,14 +1,5 @@
 import { planFor, resolveLanguage, type CodeBlockLineVariant, type HighlightPlan } from '../ui/code-block';
 
-/**
- * What a fenced block asks for, from its info string (` ```lang meta `). The agent is told this syntax in the system
- * prompt's formatting section (apps/api/src/conversation.ts, FORMATTING_GUIDE); keep the two in step.
- *
- *   ```ts title="src/app.ts" {3,5-7} showLineNumbers startLine=40
- *   ```diff ts            +/- lines are added/removed; `ts` still highlights the code
- *   ```terminal           `$ ` lines are commands, the rest is output (ANSI colours render); also console, shell-session
- *   ```ansi  ```text  ```error
- */
 export type FenceKind = 'code' | 'diff' | 'terminal' | 'ansi' | 'text';
 
 export interface Fence {

@@ -58,8 +58,21 @@ It never falls back to memory adapters or dev auth.
 | `QSTASH_CURRENT_SIGNING_KEY` | yes | QStash → Signing keys → current. |
 | `QSTASH_NEXT_SIGNING_KEY` | yes | QStash → Signing keys → next (needed for key rotation). |
 | `PRAXIS_RUN_BUDGET_MS` | no | Time budget per run slice, default `240000`. Keep it under `maxDuration` (300 s) minus about 30 s. |
-| `PRAXIS_SYNC_STRATEGY` | no | `cursor` (default, the winner of docs/SYNC_EXPERIMENT.md) or `merkle`. |
-| `GROQ_API_KEY` | no | Server-side fallback for `/v1/transcribe` (console.groq.com → API Keys). Users can also save their own key; it is stored encrypted. |
+| `PRAXIS_SYNC_STRATEGY` | no | `cursor` (default) or `merkle`. |
+| `GROQ_API_KEY` | no | Server-side fallback for `/v1/transcribe` (console.groq.com → API Keys). Users can also save their own key; it is stored encrypted. More keys: `GROQ_API_KEY_2`, … (see "Numbered siblings" below). |
+
+### Numbered siblings: several keys for one service
+
+A platform-paid key can have siblings from other accounts of the same service: `NAME` is slot 1, then `NAME_2`, `NAME_3`, … **with no gaps**.
+Today this applies to `GROQ_API_KEY` (`GROQ_API_KEY_2`, `GROQ_API_KEY_3`, …).
+
+- **To add a key:** set `NAME_n` in the Vercel project, and in the Convex deployment env too if the service is called from Convex, then redeploy. No code change.
+  `npm run deploy` forwards only the unsuffixed name from `.env.deploy`, so add the siblings in the dashboards (or with `vercel env add NAME_2 production`).
+- **Failover:** calls use the lowest-numbered healthy key. A key that answers 401/403, 402 (or a quota error), 429 or 5xx is put on a cool-down (an hour, an hour, the `Retry-After` time or 60 s, 15 s) and the next one is used.
+  Cool-downs live in Upstash Redis under `pool:<service>:<slot>:cooldown` and expire by themselves. If Redis is unreachable, every key is treated as healthy.
+- **A gap** (`NAME_2` missing, `NAME_3` set): `NAME_3` is ignored and a `startup.warning` log line names it.
+- **A credential made of several variables** forms one slot per suffix (`X_ID` + `X_SECRET`, `X_ID_2` + `X_SECRET_2`). A slot with only some of its variables stops startup.
+- Logs and Redis hold slot numbers only, never key values. Users' own keys, `PRAXIS_ENCRYPTION_KEYS` and the QStash signing keys are not pooled and keep their own rotation rules.
 
 Never set these in production: `PRAXIS_LOCAL_SMOKE` (the bundle refuses to start if it is set), `NODE_ENV=development`.
 Browser builds get only the API origin, never a secret.
@@ -109,7 +122,7 @@ Create a second project with Root Directory `cloud/apps/web` (see `cloud/docs/we
 
 ## Security notes
 
-- Provider base URLs, MCP servers, registry URLs and the JS `fetch` bridge all go through one SSRF guard (`adapters/security.ts`). It allows http(s) only, resolves DNS once and dials that pinned address, blocks private, loopback, link-local and metadata ranges, and limits redirects.
+- OpenRouter calls (a pinned URL, never user input), MCP servers, registry URLs and the JS `fetch` bridge all go through one SSRF guard (`adapters/security.ts`). It allows http(s) only, resolves DNS once and dials that pinned address, blocks private, loopback, link-local and metadata ranges, and limits redirects.
 - Request logs are JSON lines with request id, method, path, status and duration. They never include query strings, headers, cookies, bodies or provider responses.
 - Rate limits use an Upstash sliding window, 120 requests per minute per verified user, plus a per-IP bucket on public paths. Over the limit, the API answers 429 with `Retry-After`.
 - QStash signing keys: rotate them in QStash, then update both values.

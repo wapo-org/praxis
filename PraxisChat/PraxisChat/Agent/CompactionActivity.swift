@@ -1,18 +1,10 @@
 import Foundation
 import AgentCore
 
-/// A context compaction in the thread: `TurnReducer` turns
-/// `AgentEvent.compaction` into a `CompactionMarker` block (a thin
-/// divider row, `CompactionMarkerRow`). The transcript itself is
-/// untouched; the record the next requests use is persisted by the store
-/// (`ChatRunRequest.onCompaction`), and the marker keeps its own copy of
-/// the summary to show.
+/// Leaves transcript intact; persists summary via onCompaction.
 enum CompactionActivity {
-    /// The loop's `failed` reason when the run was stopped mid-summary.
     static let cancelledReason = "Cancelled"
 
-    /// Folds one update into the turn's marker for `key`. Returns false
-    /// when there was nothing to change.
     static func apply(_ update: CompactionUpdate, key: String, to turn: inout Turn, at now: Date) -> Bool {
         switch update {
         case .started:
@@ -57,7 +49,6 @@ enum CompactionActivity {
         }
     }
 
-    /// "~120K → ~9K tokens"; nil when the sizes aren't known.
     static func sizes(before: Int, after: Int) -> String? {
         guard before > 0, after > 0 else { return nil }
         func k(_ n: Int) -> String { n >= 1_000 ? "\(n / 1_000)K" : "\(n)" }

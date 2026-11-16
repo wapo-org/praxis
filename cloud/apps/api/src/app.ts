@@ -2,6 +2,7 @@ import {JsonValueSchema} from '@praxis/protocol';
 import {protectAnswer,secretMetadata,savedValues,querySavedValues,saveVariable,saveSecret} from './saved-secrets.js';
 import { searchChats } from './search.js';
 import {registerAccountDeletion} from './account-routes.js';
+import {platformVoice} from './features/tools/transcribe.js';
 import {AccountDeleteSchema} from '@praxis/protocol';
 import {randomUUID} from 'node:crypto';
 import {Hono,type Context} from 'hono';
@@ -10,12 +11,14 @@ import {streamSSE} from 'hono/streaming';
 import {getCookie,setCookie,deleteCookie} from 'hono/cookie';
 import {z} from 'zod';
 import {
- ApprovalDecisionSchema,ChatTruncateSchema,ChatInputSchema,ChatPatchSchema,ChatSchema,ConsentSchema,ElicitationResponseSchema,ModelPreferenceSchema,PageQuerySchema,PreferencesInputSchema,PreferencesSchema,ProviderInputSchema,ProviderSchema,RunEventSchema,RunSnapshotSchema,StartRunSchema,
- type Chat,type JsonObject,type Message,type Model,type Provider,type Run,type RunSnapshot,type User,
+ ApprovalDecisionSchema,ChatTruncateSchema,ChatInputSchema,ChatPatchSchema,ChatSchema,ConsentSchema,ElicitationResponseSchema,PageQuerySchema,PreferencesInputSchema,PreferencesSchema,RunEventSchema,RunSnapshotSchema,StartRunSchema,
+ type Chat,type JsonObject,type Message,type Run,type User,
 } from '@praxis/protocol';
 import {ApiError,ApiService} from './service.js';
 import {seal} from './secrets.js';
-import {ApiProviders} from './providers.js';
+import {OpenRouterModels} from './openrouter/index.js';
+import {registerModelRoutes} from './openrouter/routes.js';
+import {body,page} from './route-helpers.js';
 import type {FeatureContext} from './contracts.js';
 import {featureContext} from './features.js';
 import {registerSyncRoutes} from './sync-routes.js';
@@ -24,21 +27,25 @@ export interface AppOptions {
  /** dev:local only: a fresh dev sign-in recreates an erased user as a clean account. */
  reopenDevUser?:(userId:string)=>Promise<void>;
  accountDeletion?:{confirm?(request:Request,password?:string):Promise<{userId:string;sessionId:string}|null>;purge(userId:string,sessionId:string):Promise<void>};
- service:ApiService;encryptionKey?:string;fetcher?:typeof fetch;
+ service:ApiService;encryptionKey?:string;
+ /** Outbound fetch for OpenRouter (the guarded fetch in production). */
+ fetcher?:typeof fetch;
+ /** Test hook for the catalogue's one-hour cache. */
+ clock?:()=>number;
  resolveSession?:(request:Request)=>Promise<{user:User;expiresAt:string}|null>;
  authHandler?:(request:Request)=>Promise<Response>;
  allowedOrigins?:string[];
  log?:(record:{requestId:string;method:string;path:string;status:number;durationMs:number})=>void;
- /** Per-key limiter (Upstash in production). Keys are `user:<id>` after auth and `ip:<addr>` before it. */
+ /** Per-key limiter using user:<id> after auth and ip:<addr> before it. */
  rateLimit?:(key:string)=>Promise<{ok:boolean;retryAfterSeconds?:number}>;
- /** Mount feature routers (MCP, tools) under /v1 after auth; `contextFor` resolves the request's owner-scoped context. */
+ /** Mount feature routers under /v1 after auth with owner-scoped context. */
  mount?:(app:Hono<Env>,contextFor:(request:Request)=>Promise<FeatureContext>)=>void;
- /** Paths under /v1 that skip session auth (OAuth callbacks, hosted CIMD). Exact match or prefix ending in '/'. */
+ /** /v1 paths (exact or trailing-'/' prefix) exempt from session auth. */
  publicPaths?:string[];
 }
 export function createApp(options:AppOptions){
  const {service}=options;const app=new Hono<Env>();
- service.providers=new ApiProviders(service,options.encryptionKey,options.fetcher);
+ const models=service.models=new OpenRouterModels(service,options.encryptionKey,options.fetcher,options.clock);
  if(service.local&&(process.env.NODE_ENV==='production'||process.env.VERCEL))throw new Error('Local adapters and auth are forbidden in production');
  const allowed=options.allowedOrigins??[];const originOk=(origin:string)=>allowed.includes(origin)||(service.local&&/^http:\/\/(localhost|127\.0\.0\.1):\d{2,5}$/.test(origin));
  if(service.local)app.use('/v1/uploads/content/*',cors({origin:origin=>originOk(origin)?origin:'',credentials:true,allowHeaders:['Content-Type','Authorization'],allowMethods:['PUT','POST','OPTIONS']}));
@@ -134,28 +141,16 @@ export function createApp(options:AppOptions){
   },async()=>{});
  });
  app.get('/v1/events',async c=>{const user=c.get('userId');let after=eventCursor(c);c.header('Cache-Control','no-cache, no-transform');c.header('X-Accel-Buffering','no');return streamSSE(c,async stream=>{let heartbeat=Date.now();while(!stream.aborted){for(const e of await service.adapters.events.read(user,'user',after,100)){await stream.writeSSE({id:String(e.id),event:'user.event',data:JSON.stringify({type:'user.event',id:e.id,...e.payload,syncCursor:String(e.id),...(e.payload.type?{type:'user.event'}:{})})});after=e.id;}if(Date.now()-heartbeat>15000){await stream.write(': keepalive\n\n');heartbeat=Date.now();}await stream.sleep(100);}},async()=>{});});
- app.get('/v1/providers',async c=>c.json(page(await service.list<Provider>(c.get('userId'),'provider'),PageQuerySchema.parse(c.req.query()),'providers')));
- app.post('/v1/providers',async c=>{const input=await body(c,ProviderInputSchema);const id=randomUUID(),user=c.get('userId');await saveProviderSecret(user,id,input);const provider=ProviderSchema.parse({...input,type:'provider',id,maskedKey:input.apiKey?mask(input.apiKey):'Not configured',headerNames:Object.keys(input.extraHeaders??{}),capabilities:input.capabilities??{},updatedAt:service.now()});await service.write(user,'provider',id,provider);return c.json(provider,201);});
- app.get('/v1/providers/:id',async c=>c.json(await service.require<Provider>(c.get('userId'),'provider',c.req.param('id'))));
- app.patch('/v1/providers/:id',async c=>{const user=c.get('userId'),id=c.req.param('id');const prior=await service.require<Provider>(user,'provider',id);const input=await body(c,ProviderInputSchema);if(input.apiKey||input.extraHeaders)await saveProviderSecret(user,id,input);const provider=ProviderSchema.parse({...prior,...input,type:'provider',id,maskedKey:input.apiKey?mask(input.apiKey):prior.maskedKey,headerNames:input.extraHeaders?Object.keys(input.extraHeaders):prior.headerNames,updatedAt:service.now()});await service.write(user,'provider',id,provider);return c.json(provider);});
- app.delete('/v1/providers/:id',async c=>{const user=c.get('userId'),id=c.req.param('id');await service.remove(user,'provider',id);await service.adapters.store.delete(user,'providerSecret',id);return c.json({type:'ok'});});
- async function saveProviderSecret(user:string,id:string,input:z.infer<typeof ProviderInputSchema>){const existing=await service.adapters.store.get(user,'providerSecret',id);const value={...existing?.value};if(input.apiKey)value.apiKey=seal(input.apiKey,user,`provider:${id}:key`,options.encryptionKey);if(input.extraHeaders)value.extraHeaders=seal(JSON.stringify(input.extraHeaders),user,`provider:${id}:headers`,options.encryptionKey);await service.put(user,'providerSecret',id,value);}
- app.post('/v1/providers/:id/test',async c=>{const input=await body(c,z.object({type:z.literal('provider.test'),modelId:z.string().min(1).max(500).optional()}));const user=c.get('userId'),id=c.req.param('id');if(input.modelId){await service.providers!.requireConsent(user,id);return c.json(await service.providers!.probe(user,id,input.modelId));}const models=await service.providers!.refresh(user,id);return c.json({type:'provider.test.result',ok:true,models});});
- app.post('/v1/providers/:id/refresh-models',async c=>{await body(c,z.object({type:z.literal('models.refresh')}));const models=await service.providers!.refresh(c.get('userId'),c.req.param('id'));return c.json({type:'page',items:models,nextCursor:null});});
+ registerModelRoutes(app,models);
  app.post('/v1/chats/:id/truncate',async c=>{const input=await body(c,ChatTruncateSchema);return c.json(await service.truncate(c.get('userId'),c.req.param('id'),input.clientTurnId));});
- app.get('/v1/models',async c=>{const query=PageQuerySchema.parse(c.req.query());let models=await service.list<Model>(c.get('userId'),'model');const provider=c.req.query('providerId');if(provider)models=models.filter(m=>m.providerId===provider);if(query.q)models=models.filter(m=>`${m.displayName} ${m.id}`.toLowerCase().includes(query.q!.toLowerCase()));if(c.req.query('pinned')==='true')models=models.filter(m=>m.pinned);if(c.req.query('favorite')==='true')models=models.filter(m=>m.favorite);models.sort((a,b)=>Number(b.pinned)-Number(a.pinned)||a.displayName.localeCompare(b.displayName)||a.id.localeCompare(b.id));return c.json(page(models,query,`models:${provider??''}:${query.q??''}:${c.req.query('pinned')??''}:${c.req.query('favorite')??''}`));});
- app.patch('/v1/models/preferences',async c=>{const input=await body(c,ModelPreferenceSchema);const id=`${input.providerId}:${input.modelId}`,user=c.get('userId');const model=await service.require<Model>(user,'model',id);if(input.pinned!==undefined)model.pinned=input.pinned;if(input.favorite!==undefined)model.favorite=input.favorite;await service.write(user,'model',id,model);return c.json(model);});
  app.get('/v1/consents',async c=>c.json(page(await service.list(c.get('userId'),'consent'),PageQuerySchema.parse(c.req.query()),'consents')));
  app.post('/v1/consents',async c=>{const input=await body(c,ConsentSchema);const consent={...input,host:input.host.toLowerCase(),updatedAt:service.now()};await service.write(c.get('userId'),'consent',consent.host,consent);return c.json(consent);});
  app.get('/v1/preferences',async c=>c.json(await preferences(c.get('userId'))));
  app.patch('/v1/preferences',async c=>{const user=c.get('userId'),input=await body(c,PreferencesInputSchema);const current=await preferences(user);if(input.vision)current.vision={...current.vision,...input.vision};if(input.voice){const {apiKey,...publicPrefs}=input.voice;current.voice={...current.voice,...publicPrefs};if(apiKey){await service.put(user,'voiceSecret','current',{key:seal(apiKey,user,'voice',options.encryptionKey)});current.voice.configured=true;}}current.updatedAt=service.now();await service.write(user,'preferences','current',current,'consent');return c.json(current);});
- async function preferences(user:string){const existing=await service.adapters.store.get(user,'preferences','current');return PreferencesSchema.parse(existing?.value??{type:'preferences',vision:{},voice:{configured:!!process.env.GROQ_API_KEY},updatedAt:service.now()});}
+ async function preferences(user:string){const existing=await service.adapters.store.get(user,'preferences','current');return PreferencesSchema.parse(existing?.value??{type:'preferences',vision:{},voice:{configured:platformVoice().pool.slots.length>0},updatedAt:service.now()});}
  app.get('/v1/runs/:runId/outputs/:id',async c=>{await service.require(c.get('userId'),'run',c.req.param('runId'));const output=await service.require<JsonObject>(c.get('userId'),'output',c.req.param('id'));if(output.runId!==c.req.param('runId'))throw new ApiError(404,'not_found','Output not found');const offset=z.coerce.number().int().nonnegative().parse(c.req.query('offset')??0),limit=z.coerce.number().int().min(1).max(100000).parse(c.req.query('limit')??16000);const text=String(output.text??'');return c.json({type:'tool.output',id:c.req.param('id'),text:text.slice(offset,offset+limit),offset,nextOffset:offset+limit<text.length?offset+limit:null});});
  registerSyncRoutes(app,service);
  options.mount?.(app,async request=>{const owner=requestOwners.get(request);const pathname=new URL(request.url).pathname;if(!owner&&!publicPaths.includes(pathname))throw new ApiError(401,'unauthorized','Sign in to continue');return featureContext(service,owner??'',{...(owner?{}:{unpinned:true}),...(options.fetcher?{fetch:options.fetcher}:{}),...(options.encryptionKey?{encryptionKey:options.encryptionKey}:{})});});
  return {app,session};
 }
-async function body<T extends z.ZodType>(c:Context,schema:T,allowEmpty=false):Promise<z.infer<T>>{const length=Number(c.req.header('content-length')??0);if(length>1000000)throw new ApiError(413,'too_large','Request is too large');let data:unknown;try{const text=await c.req.text();if(Buffer.byteLength(text)>1000000)throw new ApiError(413,'too_large','Request is too large');data=allowEmpty&&!text.trim()?{}:JSON.parse(text);}catch(e){if(e instanceof ApiError)throw e;throw new ApiError(400,'invalid_json','Expected a JSON request body');}return schema.parse(data);}
-function mask(key:string){return `••••${key.slice(-4)}`;}
 function eventCursor(c:Context){const raw=c.req.header('Last-Event-ID')??c.req.query('after')??'0';if(!/^\d+$/.test(raw)||!Number.isSafeInteger(Number(raw)))throw new ApiError(400,'invalid_cursor','Invalid event cursor');return Number(raw);}
-function page<T>(items:T[],query:{cursor?:string;limit:number},scope:string){let offset=0;if(query.cursor){try{const value=JSON.parse(Buffer.from(query.cursor,'base64url').toString());if(value.scope!==scope||!Number.isSafeInteger(value.offset)||value.offset<0)throw 0;offset=value.offset;}catch{throw new ApiError(400,'invalid_cursor','Invalid page cursor');}}const end=offset+query.limit;return {type:'page',items:items.slice(offset,end),nextCursor:end<items.length?Buffer.from(JSON.stringify({scope,offset:end})).toString('base64url'):null};}

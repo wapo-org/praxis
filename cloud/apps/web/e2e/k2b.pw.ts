@@ -1,7 +1,4 @@
 import { test, expect, type Page } from '@playwright/test';
-// WP-K2b: a model the user picks stays picked: in a new chat, during a slow save, across a reload; a failed
-// save says so instead of silently reverting. A second provider with models is added to the local API's
-// responses (the local stack has only the scripted provider).
 test.use({ serviceWorkers: 'block' });
 
 const now = '2026-11-11T00:00:00.000Z';

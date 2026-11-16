@@ -12,7 +12,7 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
   const following = React.useRef(new Set<string>());
   const latest = React.useRef(state); latest.current = state;
   const palette = useSidebarPalette();
-  const values = { theme: state.themeMode, palette, model: state.selectedModelId, provider: state.selectedProviderId, effort: state.selectedEffort };
+  const values = { theme: state.themeMode, palette, model: state.selectedModelId, effort: state.selectedEffort };
   const caughtUp = React.useRef(false);
   const previous = React.useRef(values);
   const remote = React.useRef<Record<string, string>>({});
@@ -24,7 +24,7 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
     }
     previous.current = values;
     void flushEdits();
-  }, [values.theme, palette, values.model, values.provider, values.effort]);
+  }, [values.theme, palette, values.model, values.effort]);
   React.useEffect(() => {
     if (!state.replicaKey.current || !state.hydrated) return;
     let stopped = false;
@@ -69,9 +69,8 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
           }
           // The account's last model applies where no chat has its own, and never over a pick being saved (WP-K2b).
           const openChat = s.chats.find(c => c.id === s.activeChatId);
-          const chatOwnsModel = !!(openChat?.providerId && openChat.modelId) || !!s.pendingPickRef.current;
+          const chatOwnsModel = !!openChat?.modelId || !!s.pendingPickRef.current;
           if (field === 'model' && !chatOwnsModel) s.setSelectedModelId(value);
-          if (field === 'provider' && !chatOwnsModel) s.setSelectedProviderId(value);
           if (field === 'effort') s.setSelectedEffort(value);
         }
       }

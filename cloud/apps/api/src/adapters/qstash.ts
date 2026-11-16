@@ -2,13 +2,13 @@ import {Client, Receiver} from '@upstash/qstash';
 import {z} from 'zod';
 import type {ContinuationScheduler} from '../execution.js';
 
-/** The only thing a continuation carries: which run to advance. No secrets, no transcript. */
+/** Continuation carries only runId; never include secrets or transcripts. */
 export const ContinuationMessageSchema = z.object({type: z.literal('run.continue'), userId: z.string().min(1).max(500), runId: z.string().min(1).max(500)}).strict();
 export type ContinuationMessage = z.infer<typeof ContinuationMessageSchema>;
 
 export class ContinuationAuthError extends Error {}
 
-/** Publishes the next slice to QStash, which calls `callbackUrl` with a signed request (at-least-once). */
+/** Publishes next slice to QStash for signed at-least-once callback delivery. */
 export function createQStashScheduler(options: {token?: string; callbackUrl: string; client?: Pick<Client, 'publishJSON'>}): ContinuationScheduler {
   const callbackUrl = z.string().url().parse(options.callbackUrl);
   const client = options.client ?? new Client({token: z.string().min(1).parse(options.token)});
@@ -20,10 +20,7 @@ export function createQStashScheduler(options: {token?: string; callbackUrl: str
   };
 }
 
-/**
- * Verifies a QStash delivery: the JWT in `upstash-signature` must be signed with the current or next signing
- * key, name `callbackUrl` as its subject and carry the SHA-256 of the exact body. Only then is the body parsed.
- */
+/** Verify QStash JWT (sub = callbackUrl, SHA-256 of raw body) before parsing body. */
 export function createQStashVerifier(options: {currentSigningKey: string; nextSigningKey: string; callbackUrl: string}) {
   const receiver = new Receiver({currentSigningKey: z.string().min(1).parse(options.currentSigningKey), nextSigningKey: z.string().min(1).parse(options.nextSigningKey)});
   return async (request: Request): Promise<ContinuationMessage> => {

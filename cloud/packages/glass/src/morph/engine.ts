@@ -1,15 +1,3 @@
-/**
- * Drives one menu's morph. Imperative and transform-first, so a frame never re-renders
- * React and never touches layout:
- *  - The glass keeps its rest size in layout. The shell's transform takes it from the
- *    source's box to the menu's, with the corner radius written against that scale.
- *  - The content layer is counter-scaled, so it arrives on its own terms.
- *  - The refraction comes from one prebuilt round map (transit.ts) that hands over to
- *    the menu's real lens by opacity as it lands. No map or filter value changes per frame.
- *  - The blur is a static copy under a fixed filter, crossfaded with the sharp rows and
- *    removed once it is gone. The blur radius never animates.
- * Nothing is left inline at rest, so the stretch and the held rig own the glass as usual.
- */
 import { cancelFrame, frame } from 'framer-motion';
 import { MORPH } from '../motion';
 import { copyScroll, inertCopy } from './copy';
@@ -122,10 +110,6 @@ export function createMorph(options: MorphOptions) {
     return node === layers.shell ? { x, y } : null;
   };
 
-  /**
-   * The counter-transform that holds a layer's centre where its rest layout puts it, by `weight` (0: it rides
-   * the glass's pose; 1: it stays put whatever the glass is doing), in the shell's px before the shell's scale.
-   */
   const pinShift = (centre: { x: number; y: number } | null, sx: number, sy: number, weight: number) => {
     if (!centre || weight <= 0) return { x: 0, y: 0 };
     const dx = tx + (sx - 1) * (centre.x - origin.x);
@@ -164,8 +148,6 @@ export function createMorph(options: MorphOptions) {
       source: source.box,
       sourceRadius: source.radius,
       final,
-      // Never --glass-radius-round: it is set by an observer that may not have run yet on the first open, and a
-      // morph that lands on the wrong radius swaps it when the inline styles clear (WP-G4 A2).
       radius: restRadius(Number.parseFloat(style.getPropertyValue('--glass-radius')) || 0),
       corner: corner ? Number(corner[1]) : 1,
     };
@@ -197,8 +179,6 @@ export function createMorph(options: MorphOptions) {
     }
     // One crisp line at any scale, in every frame: the rim is what says this is a piece of glass.
     put(rim, '--morph-rim', `${(MORPH.rimWidth / Math.min(sx, sy)).toFixed(2)}px`);
-    // The rows ride the glass while they arrive; as they land they are pinned to their rest layout, so whatever
-    // the glass still does it never carries them (WP-I1: the tray's rows drifted with its last squaring).
     const pin = smoothstep(MORPH.open.pinFrom, 1, c.x);
     const scale = `scale(${(pose.scale / sx).toFixed(4)}, ${(pose.scale / sy).toFixed(4)})`;
     const held = pinShift(bodyCentre, sx, sy, pin);
@@ -241,10 +221,6 @@ export function createMorph(options: MorphOptions) {
     }
   };
 
-  /**
-   * The rows' first arrival: a static copy under a fixed filter, in a wrapper that scales with
-   * the glass, so the round map bends the rows at the rim the way the rim bends the backdrop.
-   */
   const addBlurred = () => {
     if (!layers || blurred) return;
     blurred = document.createElement('div');
@@ -326,10 +302,6 @@ export function createMorph(options: MorphOptions) {
     observer = null;
   };
 
-  /**
-   * The open menu changed size in layout (a submenu, a filtered list, the tray's model view). Layout has
-   * already moved; the glass glides there from where it was, in transforms, with the rows held at scale 1.
-   */
   const relayout = () => {
     if (!layers || !geometry) return;
     if (phase !== 'open' && phase !== 'resizing' && phase !== 'opening' && phase !== 'closing') return;

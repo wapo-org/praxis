@@ -1,8 +1,6 @@
 import XCTest
 
-/// Cloud is deliberately selected by the app's default: these launches contain
-/// no PraxisEngine argument. URLProtocol replaces only the server, so HTTP,
-/// SSE parsing, the cloud engine, reducer and real controls all execute.
+/// Omit PraxisEngine so cloud default runs; URLProtocol stubs only HTTP so SSE and engine run.
 final class CloudUITests: XCTestCase {
     private var app: XCUIApplication!
 
@@ -111,8 +109,6 @@ final class CloudUITests: XCTestCase {
         XCTAssertTrue(text("Cloud run is waiting for Stop.").waitForExistence(timeout: 15))
         stop.tap()
         XCTAssertTrue(stop.waitForNonExistence(timeout: 15))
-        // This fixture streams text without a tool activity block. Stopping
-        // preserves that answer and exposes retry; no activity timer exists.
         XCTAssertTrue(text("Cloud run is waiting for Stop.").exists)
         XCTAssertTrue(app.buttons["Retry"].waitForExistence(timeout: 10))
         shot("cloud-cancelled")
@@ -121,8 +117,6 @@ final class CloudUITests: XCTestCase {
         launch("reconnect"); send("Reconnect this run")
         let answer = "Cloud reconnect: one 🌍 answer, no duplicate text."
         completed(answer)
-        // Full equality catches repeated delta text inside one markdown block;
-        // the count catches a replayed assistant message as a second block.
         let matches = app.staticTexts.matching(NSPredicate(format: "label == %@", answer))
         XCTAssertEqual(matches.count, 1)
         shot("cloud-reconnected-once")

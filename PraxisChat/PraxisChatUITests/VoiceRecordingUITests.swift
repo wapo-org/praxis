@@ -1,18 +1,11 @@
 import XCTest
 
-/// Voice input through the real UI (VOICE_PLAN.md §9): the mic uses the
-/// DEBUG seams (`-PraxisFakeRecording` simulates capture from the bundled
-/// `voice-fake.m4a`, `-PraxisFakeTranscript` scripts the transcript), so no
-/// mic permission prompt and no network ever happen here.
 final class VoiceRecordingUITests: XCTestCase {
     var app: XCUIApplication!
 
     // MARK: Launch
 
-    /// Launches with the voice seams. `resetData` false keeps Application
-    /// Support (recordings) across a relaunch inside one test. `transcript`
-    /// nil omits `-PraxisFakeTranscript`, so the REAL transcriber runs (no
-    /// network happens before the consent sheet, so this stays hermetic).
+    /// resetData false keeps recordings across relaunch; nil transcript runs the real transcriber.
     private func launch(transcript: String? = "buy oat milk", elapsed: String? = nil,
                         resetData: Bool = true) {
         continueAfterFailure = false
@@ -68,7 +61,6 @@ final class VoiceRecordingUITests: XCTestCase {
         return app.textFields["Message"]
     }
 
-    /// The field's text; the placeholder stands in for an empty field.
     private var fieldText: String {
         let value = (composerField.value as? String) ?? ""
         return value == "Plan, ask, build..." ? "" : value
@@ -187,8 +179,6 @@ final class VoiceRecordingUITests: XCTestCase {
         XCTAssertTrue(el(.button, "Transcribe recording").waitForExistence(timeout: 8))
 
         relaunchKeepingData()
-        // Type while the old recording waits: the transcript must append,
-        // never replace.
         composerField.tap()
         composerField.typeText("typed first")
         tapReliably(elContains(.button, "Review"))
@@ -224,8 +214,6 @@ final class VoiceRecordingUITests: XCTestCase {
         XCTAssertTrue(pill.waitForExistence(timeout: 10),
                       "leaving the chat shows the recording pill")
         shot("voice-pill")
-        // The other chat keeps its field; its mic can't hijack the live
-        // recording (one live session — the pill returns to it).
         XCTAssertTrue(el(.button, "Record voice message").waitForExistence(timeout: 8))
         el(.button, "Record voice message").tap()
         Thread.sleep(forTimeInterval: 1.0)
@@ -234,8 +222,7 @@ final class VoiceRecordingUITests: XCTestCase {
         pill.tap()
         XCTAssertTrue(el(.button, "Stop and transcribe").waitForExistence(timeout: 10),
                       "the pill returns to the originating chat")
-        // Cleanup: by now the recording may be over 10 s (cancel asks)
-        // or under (cancel discards at once) — handle either.
+        // Cancel asks after 10 s and discards immediately under 10 s, so handle either in cleanup.
         el(.button, "Cancel recording").tap()
         let alert = app.alerts["Discard this recording?"]
         if alert.waitForExistence(timeout: 3) {
@@ -246,8 +233,6 @@ final class VoiceRecordingUITests: XCTestCase {
 
     // MARK: Real transcriber E2E (final voice integration)
 
-    /// History → ⋯ → Settings → Voice input (local copy: the settings
-    /// suite's helpers are private to its file).
     private func openVoiceSettings() {
         el(.button, "History").tap()
         let options = el(.button, "History options")
@@ -264,10 +249,6 @@ final class VoiceRecordingUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Voice input"].waitForExistence(timeout: 10))
     }
 
-    /// The production path, no fake transcript: with a key saved, the first
-    /// transcribe must hold for the api.groq.com consent sheet (the fake
-    /// would transcribe instantly, so the sheet proves the real transcriber
-    /// ran). Declining keeps the audio queued with Retry; nothing uploads.
     func testRealTranscriberConsentDeclineKeepsQueued() {
         launch(transcript: nil)
         openVoiceSettings()
@@ -292,8 +273,6 @@ final class VoiceRecordingUITests: XCTestCase {
         el(.button, "Don't allow").tap()
         XCTAssertFalse(allow.waitForExistence(timeout: 5))
 
-        // Declined: the audio stays, Retry (Transcribe) is offered, the
-        // draft is untouched (review replaces the field; no send morph).
         XCTAssertTrue(el(.button, "Transcribe recording").waitForExistence(timeout: 8))
         XCTAssertTrue(el(.button, "Play recording").exists)
         XCTAssertTrue(el(.button, "Delete recording").exists)

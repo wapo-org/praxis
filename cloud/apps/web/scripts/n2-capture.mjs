@@ -1,6 +1,3 @@
-// WP-N2 captures: headed real Chrome (service workers allowed) and WebKit, against the N2 stack (web 5262).
-//   node scripts/n2-capture.mjs <before|after> <look|wrap|stream|fixture> [chrome|webkit]
-// Writes videos, stills and measured numbers to ~/.praxis-agent-state/cloud/design/N/N2/<phase>/<mode>-<browser>/.
 import {chromium,webkit} from '@playwright/test';
 import {mkdirSync,writeFileSync} from 'node:fs';
 

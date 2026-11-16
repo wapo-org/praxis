@@ -1,3 +1,4 @@
+import {pool, redisCooldownStore, type CredentialLogEvent} from '@praxis/credentials';
 import {accountEraser} from './account-deletion.js';
 import {createConvexRPC} from './adapters/convex.js';
 import {createAuth, parseOrigins} from './adapters/auth.js';
@@ -6,12 +7,13 @@ import {createQStashScheduler, createQStashVerifier} from './adapters/qstash.js'
 import {createSafeFetch} from './adapters/security.js';
 import {createRateLimiter, createUpstashAdapters} from './adapters/upstash.js';
 import {createConvexToolsStorage} from './features/tools/convex-storage.js';
+import {GROQ_POOL} from './features/tools/transcribe.js';
 import {featureModules} from './modules.js';
 import {createPraxisApp, jsonLog} from './server.js';
 import {productionEmbedder} from './embedding.js';
 import {convexVectorIndex} from './search-index.js';
 
-/** Every variable production needs. Missing or malformed values stop startup with one message listing them all. */
+/** Required production env vars; any missing/invalid stops startup. */
 export const PRODUCTION_ENV = [
   'PRAXIS_API_URL',
   'PRAXIS_WEB_ORIGINS',
@@ -31,13 +33,23 @@ export type ProductionEnv = Record<(typeof PRODUCTION_ENV)[number], string> & {P
 
 export const CONTINUATION_PATH = '/internal/continue';
 
-/** The keyring: PRAXIS_ENCRYPTION_KEYS (current first, then previous keys) or the legacy single PRAXIS_ENCRYPTION_KEY. */
+/** Optional pooled platform keys using un-gapped _2, _3, ... suffixes. */
+export const PLATFORM_POOLS: readonly PoolSpec[] = [{service: 'groq', names: GROQ_POOL}];
+export interface PoolSpec {service: string; names: string | readonly string[]}
+export interface ReadEnvOptions {pools?: readonly PoolSpec[]; warn?: (message: string) => void}
+
+const readPool = (spec: PoolSpec, env: Record<string, string | undefined>) => (typeof spec.names === 'string' ? pool(spec.names, env, {service: spec.service}) : pool(spec.names, env, {service: spec.service}));
+const warnJson = (message: string) => console.warn(JSON.stringify({type: 'startup.warning', message}));
+/** Pool events carry the service name and slot numbers only. */
+const credentialLog = (event: CredentialLogEvent) => console.warn(JSON.stringify({type: 'credentials', ...event}));
+
+/** Keyring ordered current-first, with single PRAXIS_ENCRYPTION_KEY fallback. */
 export function encryptionKeyring(env: Record<string, string | undefined>): string | undefined {
   return (env.PRAXIS_ENCRYPTION_KEYS ?? env.PRAXIS_ENCRYPTION_KEY)?.trim() || undefined;
 }
 
-export function readProductionEnv(env: Record<string, string | undefined>): ProductionEnv {
-  if (env.PRAXIS_LOCAL_DATA_DIR !== undefined) throw new Error("PRAXIS_LOCAL_DATA_DIR is only supported by dev:local, never production");
+export function readProductionEnv(env: Record<string, string | undefined>, options: ReadEnvOptions = {}): ProductionEnv {
+  if (env.PRAXIS_LOCAL_DATA_DIR !== undefined) throw new Error('PRAXIS_LOCAL_DATA_DIR is only supported by dev:local');
   const problems: string[] = [];
   for (const name of PRODUCTION_ENV) if (!env[name]?.trim()) problems.push(`${name} is missing`);
   const https = (name: string) => {
@@ -63,17 +75,23 @@ export function readProductionEnv(env: Record<string, string | undefined>): Prod
       problems.push('PRAXIS_WEB_ORIGINS must be a comma-separated list of https origins');
     }
   }
+  // Half-defined credential slots fail closed; post-gap slots warn.
+  const warnings: string[] = [];
+  for (const spec of options.pools ?? PLATFORM_POOLS) {
+    try {
+      warnings.push(...readPool(spec, env).warnings);
+    } catch (error) {
+      problems.push((error as Error).message);
+    }
+  }
   if (problems.length) throw new Error(`Praxis API cannot start in production:\n- ${problems.join('\n- ')}\nSee cloud/DEPLOY.md.`);
+  for (const warning of warnings) (options.warn ?? warnJson)(warning);
   return env as ProductionEnv;
 }
 
-/**
- * Production composition: Convex store + file storage, Upstash KV/events/lease/rate limits, Clerk,
- * QStash continuations, SSRF-guarded egress for providers/MCP/tools, redacted request logs. Never falls back
- * to memory adapters or dev auth: anything missing throws at startup.
- */
 export function createProductionApp(rawEnv: Record<string, string | undefined>, hooks: {defer?: (work: Promise<unknown>) => void} = {}) {
   if (rawEnv.PRAXIS_LOCAL_SMOKE) throw new Error('PRAXIS_LOCAL_SMOKE must not be set in production');
+  if (rawEnv.PRAXIS_LOCAL_DATA_DIR) throw new Error('PRAXIS_LOCAL_DATA_DIR is only supported by dev:local');
   const env = readProductionEnv(rawEnv);
   const origin = new URL(env.PRAXIS_API_URL).origin;
   const webOrigins = parseOrigins(env.PRAXIS_WEB_ORIGINS);
@@ -106,6 +124,7 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
     log: jsonLog,
     modules: service => featureModules(service, {
       storage,
+      platformVoice: {pool: pool(GROQ_POOL, rawEnv, {service: 'groq'}), cooldowns: redisCooldownStore(upstash.redis), log: credentialLog},
       mcp: {publicOrigin: origin, webReturnOrigins: webOrigins, safeFetch: egress, consumeOAuthState: key => upstash.consumeOnce(key), lease: upstash.lease},
     }),
   });

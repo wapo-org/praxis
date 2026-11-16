@@ -16,9 +16,10 @@ describe('M1 run start timing and critical-path isolation', () => {
     let fakeLlmCalls = 0;
     const fetcher: typeof fetch = async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
-      if (url.hostname === 'llm.example.test') {
+      if (url.hostname === 'openrouter.ai') {
+        if (url.pathname.endsWith('/key')) return Response.json({data:{label:'test'}});
         if (url.pathname.endsWith('/models')) {
-          return Response.json({ data: [{ id: 'fake-model' }] });
+          return Response.json({ data: [{ id: 'fake-model', context_length:128000, pricing:{prompt:'0.000001',completion:'0.000002'},supported_parameters:['tools'] }] });
         }
         fakeLlmCalls++;
         const req = JSON.parse(String(init?.body || '{}'));
@@ -114,13 +115,7 @@ describe('M1 run start timing and critical-path isolation', () => {
       url: 'https://exa.mcp.test/mcp',
       trusted: true,
     });
-    const provider = await call('/v1/providers', {
-      type: 'provider.input',
-      name: 'Fake',
-      flavor: 'openAIChat',
-      baseUrl: 'https://llm.example.test/v1',
-      apiKey: 'sk-test-123456',
-    });
+    await call('/v1/model-key', {method:'paste',apiKey:'sk-or-test-123456'});
     await call('/v1/saved-values', {
       name: 'deployment region',
       kind: 'variable',
@@ -151,7 +146,6 @@ describe('M1 run start timing and critical-path isolation', () => {
     const chat = await call('/v1/chats', {
       type: 'chat.input',
       title: 'New chat',
-      providerId: provider.id,
       modelId: 'fake-model',
     });
 
@@ -183,13 +177,9 @@ describe('M1 run start timing and critical-path isolation', () => {
     expect(timing!.postResponseMs!).toBeLessThan(timing!.providerRequestMs!);
     expect(steps.titleGeneration!.endMs).toBeGreaterThan(timing!.postResponseMs!);
 
-    // SWR cache served the stale MCP catalog immediately without waiting for the 220ms x 3 MCP handshake,
-    // while scheduling the background refresh in service.work (completed during service.drain()).
     expect(steps.mcpCatalog!.durationMs).toBeLessThan(150);
     expect(mcpHits).toBeGreaterThan(hitsBefore);
 
-    // Deferred variablesTouch runs after or alongside the critical path without delaying providerRequestMs
-    // when variablesTouch finishes after runner setup or concurrently with runner work.
     expect(steps.variablesTouch!.startMs).toBeGreaterThanOrEqual(steps.variables!.endMs - 5);
   });
 });

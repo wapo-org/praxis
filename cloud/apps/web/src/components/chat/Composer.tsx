@@ -1,3 +1,4 @@
+import {modelDetail} from '../../lib/models';
 import { ComposerBar } from './ComposerBar';
 import { cancelSendFlight, launchSendFlight } from './chatMotion';
 import { useModelSearch } from '../../lib/useModelSearch';
@@ -30,7 +31,6 @@ export const Composer: React.FC = () => {
     setPlusTrayOpen,
     inlineModelSearchActive,
     setInlineModelSearchActive,
-    selectedProviderId,
     selectedModelId,
     setSelectedModel,
     cacheModels,
@@ -40,8 +40,6 @@ export const Composer: React.FC = () => {
 
   const [text, setText] = React.useState('');
   const [queued, setQueuedState] = React.useState<QueuedFile[]>([]);
-  // The queue also lives in a ref updated in the same call, so a send pressed before React re-renders sees
-  // the files just picked; send waits for uploads in flight instead of ignoring the press (WP-J2).
   const queueRef = React.useRef<QueuedFile[]>([]);
   const setQueued = React.useCallback((next: QueuedFile[] | ((prev: QueuedFile[]) => QueuedFile[])) => {
     queueRef.current = typeof next === 'function' ? next(queueRef.current) : next;
@@ -171,25 +169,28 @@ export const Composer: React.FC = () => {
       const match = modelSearch.items[0];
       if (match) {
         cacheModels([match]);
-        setSelectedModel(match.providerId, match.id);
+        setSelectedModel(match.id);
       }
       setInlineModelSearchActive(false);
       setText('');
       return;
     }
 
-    const attachmentIds = ready.map((a) => a.id);
-    if (trimmed) {
-      launchSendFlight(textareaRef.current, trimmed);
-    }
-    for (const q of queueRef.current) {
-      if (q.previewUrl) URL.revokeObjectURL(q.previewUrl);
-    }
+    const draft = queueRef.current;
+    const attachmentIds = ready.map(a => a.id);
     setText('');
     setQueued([]);
     setPlusTrayOpen(false);
     try {
-      await sendMessage(trimmed, { attachmentIds });
+      const sent = await sendMessage(trimmed || 'Attached files', { attachmentIds });
+      if (!sent) {
+        setText(current => current || text);
+        setQueued(current => current.length ? current : draft);
+        cancelSendFlight();
+        return;
+      }
+      if (trimmed) launchSendFlight(textareaRef.current, trimmed);
+      for (const q of draft) if (q.previewUrl) URL.revokeObjectURL(q.previewUrl);
     } catch {
       cancelSendFlight();
     }
@@ -242,20 +243,21 @@ export const Composer: React.FC = () => {
           ) : null}
           {inlineMatchingModels.map((m) => (
             <button
-              key={`${m.providerId}-${m.id}`}
+              key={m.id}
               type="button"
               className={styles.modelRow}
               data-testid={`inline-model-option-${m.id}`}
-              data-selected={m.providerId === selectedProviderId && m.id === selectedModelId}
+              data-selected={m.id === selectedModelId}
               onClick={() => {
                 cacheModels([m]);
-                setSelectedModel(m.providerId, m.id);
+                setSelectedModel(m.id);
                 setInlineModelSearchActive(false);
                 setText('');
               }}
             >
               <span className={styles.modelCopy}>
-                <span className={styles.modelName}>{m.displayName}</span>
+                <span className={styles.modelName}>{m.name}</span>
+                <span className={styles.modelDetail}>{modelDetail(m)}</span>
               </span>
             </button>
           ))}

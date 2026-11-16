@@ -1,5 +1,3 @@
-// WP-G5: the composer and every other lens surface, light/dark at DPR 1 and 2, idle and with text behind.
-// BASE=… OUT=… TAG=before|after [ENGINE=chromium|webkit] node apps/web/scripts/g5-composer.mjs
 import { chromium, webkit } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';

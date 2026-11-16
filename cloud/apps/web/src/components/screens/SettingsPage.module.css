@@ -1,5 +1,3 @@
-/* The Settings content: one centred column beside the floating navigation, which
-   Settings has taken over. Content sits in the window, not in a rail. */
 .pageShell {
   position: relative;
   display: flex;

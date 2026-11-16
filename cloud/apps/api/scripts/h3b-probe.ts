@@ -1,5 +1,3 @@
-// WP-H3b probe: the orchestrator's six random-title chats against real MiniLM; per-chat best scores.
-// npx tsx apps/api/scripts/h3b-probe.ts
 import { ChatSchema, MessageSchema } from '@praxis/protocol';
 import { createMemoryAdapters } from '../src/adapters/memory.js';
 import { loadMiniLmEmbedder } from '../src/embedding.js';

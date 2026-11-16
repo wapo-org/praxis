@@ -3,9 +3,6 @@ import AgentCore
 import AgentMCP
 @testable import PraxisChat
 
-/// Model picker search (filter + ranking), favourites partitioning and
-/// pin persistence. The composer binds `store.modelQuery` while the Model
-/// page is open; the draft is never touched (covered by UI tests).
 @MainActor
 final class ModelCatalogTests: XCTestCase {
     private func model(_ id: String, name: String? = nil, tagline: String = "") -> AIModel {
@@ -39,10 +36,10 @@ final class ModelCatalogTests: XCTestCase {
 
     func testPrefixMatchesRankFirst() {
         let models = [
-            model("chat", name: "ChatAtlas"),          // name contains
-            model("atlas-mini", name: "Mini"),         // id prefix
-            model("a", name: "Atlas Pro"),             // name prefix
-            model("b", name: "Bob", tagline: "by Atlas Labs"), // tagline contains
+            model("chat", name: "ChatAtlas"),
+            model("atlas-mini", name: "Mini"),
+            model("a", name: "Atlas Pro"),
+            model("b", name: "Bob", tagline: "by Atlas Labs"),
         ]
         XCTAssertEqual(ModelSearch.filter(models, query: "atlas").map(\.id),
                        ["a", "atlas-mini", "chat", "b"])
@@ -164,8 +161,7 @@ final class ModelCatalogTests: XCTestCase {
 
     // MARK: Smoothness
 
-    /// A provider-sized list must filter in a fraction of a keystroke
-    /// (the UI runs this on every keystroke over a lazy list).
+    /// UI filters on every keystroke over a lazy list, so filtering must stay sub-frame.
     func testFilterStaysFastOnThousandsOfModels() {
         let models = (0..<5000).map {
             model("vendor/model-\($0)", name: "Vendor Model \($0)", tagline: "Demo provider")

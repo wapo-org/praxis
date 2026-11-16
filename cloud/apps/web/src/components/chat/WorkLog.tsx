@@ -109,8 +109,6 @@ export function ToolGlyph({
         </span>
       );
     }
-    // Lucide names arrive as PascalCase ("BookOpen") or kebab-case ("book-open"). A generic glyph (plug, wrench)
-    // says less than the row's own kind, so a specific kind keeps its glyph.
     const key = display.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
     const Named = named[key];
     if (Named && !(GENERIC.has(key) && kind !== 'tool')) {

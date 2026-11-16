@@ -1,5 +1,3 @@
-/* The one text field (WP-L2 §4): the question card's pill. Filled with the surface, a strong hairline, and on
-   focus the line darkens instead of a ring being drawn around it. Textareas are the same field as a squircle. */
 .input,
 .textarea,
 .selectTrigger {

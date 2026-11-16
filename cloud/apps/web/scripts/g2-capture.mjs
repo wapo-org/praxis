@@ -1,6 +1,3 @@
-// WP-G2 visual gate: frame strips and videos of open, close and interrupted open for both classes,
-// in the lab scene and in the real app. Frames are real screencast frames, placed by the barcode.
-//   BASE=http://127.0.0.1:5231 ONLY=open,close,interrupted,real THEME=light node apps/web/scripts/g2-capture.mjs
 import { execFileSync } from 'node:child_process';
 import { mkdir, readdir, rename, rm } from 'node:fs/promises';
 import { clean, disarm, installClock, launch, open, OUT, record } from './g2-lib.mjs';

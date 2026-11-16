@@ -8,7 +8,7 @@ export interface SafeFetchOptions {
  /** Redirects followed (each hop re-validated); 0 (default) rejects any redirect. */
  maxRedirects?:number;
  resolve?:(hostname:string)=>Promise<ResolvedAddress[]>;
- /** Address policy override for tests (e.g. allow one loopback fixture). Production uses isPublicAddress. */
+ /** Test override for address policy; production uses isPublicAddress. */
  isAllowedAddress?:(address:string)=>boolean;
 }
 function v4Number(ip:string){return ip.split('.').reduce((n,p)=>n*256+Number(p),0);}
@@ -42,14 +42,14 @@ async function resolveUrl(input:string|URL,options:SafeFetchOptions){
  return {u,hostname,addresses};
 }
 export async function assertPublicUrl(input:string|URL,options:SafeFetchOptions={}):Promise<URL>{return (await resolveUrl(input,options)).u;}
-/** SSRF-guarded fetch: http(s) only, DNS checked and pinned per hop, private/loopback/link-local/metadata blocked, redirects capped. */
+/** SSRF-guarded fetch: http(s) only, DNS-pinned per hop, private IPs and redirects blocked. */
 export function createSafeFetch(options:SafeFetchOptions={}):typeof fetch {
  const maxRedirects=z.number().int().min(0).max(10).parse(options.maxRedirects??0);
  return async(input,init)=>{
   let request=new Request(input,init);
   for(let hop=0;;hop++){
    const {hostname,addresses}=await resolveUrl(request.url,options);
-   // The dialer uses only this validated result. TLS SNI and Host retain the original hostname.
+   // Dial the validated IP while preserving Host and TLS SNI for the original hostname.
    const agent=new Agent({connect:{lookup:(host,opts,callback)=>{
     if(host.replace(/^\[|\]$/g,'').replace(/\.$/,'').toLowerCase()!==hostname){callback(new Error('Egress host changed'),'',0);return;}
     if(opts.all)(callback as any)(null,addresses);else {const a=addresses.find(x=>!opts.family||x.family===opts.family)??addresses[0]!;callback(null,a.address,a.family);}

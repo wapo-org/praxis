@@ -4,9 +4,7 @@ protocol CloudOAuthAuthorizing: Sendable {
     func authorize(_ authorization: CloudCatalogOAuthAuthorization) async throws -> URL
 }
 
-/// The API owns discovery, DCR/CIMD, PKCE and tokens. This adapter only
-/// presents the authorization URL and verifies the app callback. Reuses the
-/// cancellation-safe ASWebAuthenticationSession presenter, with no MCP client.
+/// Presents server auth URL and verifies callback without local MCP client.
 struct CloudOAuthAuthorizer: CloudOAuthAuthorizing {
     var present: @Sendable (URL, String) async throws -> URL = { url, scheme in
         try await WebAuthenticationPresenter().authorize(url: url, callbackScheme: scheme)

@@ -3,16 +3,11 @@ import Foundation
 
 // MARK: - Store seam
 
-/// Test seam over ActivityKit's concrete static API
-/// (`Activity.request/update/end/activities`), which cannot be
-/// mocked directly. Production uses `LiveActivityKitStore`;
-/// tests inject a fake. Keyed by conversation: one activity
-/// per run (BACKGROUND_PLAN.md §3.3).
+/// Test seam over ActivityKit static APIs (cannot be mocked directly); one activity per run.
 @MainActor
 protocol RunActivityStore: Sendable {
     var activitiesEnabled: Bool { get }
     func enablementUpdates() -> AsyncStream<Bool>
-    /// Currently live activities: conversation → latest state.
     func current() -> [UUID: RunActivityAttributes.ContentState]
     func request(attributes: RunActivityAttributes,
                  state: RunActivityAttributes.ContentState,
@@ -25,7 +20,6 @@ protocol RunActivityStore: Sendable {
              dismissalPolicy: ActivityUIDismissalPolicy) async
 }
 
-/// The real store: local-only ActivityKit, zero hosting.
 @MainActor
 struct LiveActivityKitStore: RunActivityStore {
     typealias Content = RunActivityAttributes.ContentState
@@ -88,26 +82,19 @@ struct LiveActivityKitStore: RunActivityStore {
 // MARK: - Reporter
 
 extension RunPhase {
-    /// done/failed/paused: shown as-is when orphaned (§3.5).
+    /// Terminal phases (done/failed/paused) keep their state when orphaned.
     var isTerminal: Bool {
         self == .done || self == .failed || self == .paused
     }
 }
 
-/// `RunActivityReporter` implementation (BACKGROUND_PLAN.md §3.3, §3.5,
-/// §6): throttled local-only updates, staleDate advanced on every
-/// update, final state on every end, orphan reconciliation.
-///
-/// A run NEVER depends on its activity: every failure path
-/// (disabled, denied, limits, request throw) no-ops and the run
-/// continues. `now` is injectable so the throttle is unit-testable.
+/// Throttled local-only ActivityKit reporter; all failures no-op so runs never depend on it.
 @MainActor
 final class LiveRunActivityReporter: RunActivityReporter {
     typealias Content = RunActivityAttributes.ContentState
 
     /// Non-phase updates: at most one per activity per interval.
     private static let updateInterval: TimeInterval = 5
-    /// How far ahead each update pushes the stale date.
     private static let staleAfter: TimeInterval = 60
     /// done/failed stay glanceable on the lock screen, then dismiss.
     private static let dismissAfter: TimeInterval = 5 * 60
@@ -117,33 +104,22 @@ final class LiveRunActivityReporter: RunActivityReporter {
     private let store: any RunActivityStore
     private let now: @Sendable () -> Date
 
-    /// Attributes for every begun-but-not-ended run, recorded even
-    /// when activities are disabled — so `reconcile` and
-    /// enablement flips can start activities for live runs whose
-    /// `began` no-op'd (update/reconcile carry no title/model).
+    /// Recorded even when disabled so enablement flips/reconcile can start activities later.
     private var attributes: [UUID: RunActivityAttributes] = [:]
-    /// Newest content per run, recorded on EVERY update even when
-    /// the send is throttled away — `ended` always has a final state.
+    /// Recorded even on throttled updates so ended() always has the latest state.
     private var lastState: [UUID: Content] = [:]
     private var liveIDs: Set<UUID> = []
     private var lastSentAt: [UUID: Date] = [:]
     private var lastSentPhase: [UUID: RunPhase] = [:]
-    /// Proxy for "the chat the user is looking at": the newest run
-    /// is the one just sent in the foreground. Drives relevanceScore
-    /// (100 newest, 50 the rest) without a contract change.
+    /// Newest run gets relevanceScore 100 (others 50) as a proxy for the active chat.
     private var mostRecentID: UUID?
-    /// App-lifetime observation (see init).
     private var enablementTask: Task<Void, Never>?
 
     init(store: any RunActivityStore = LiveActivityKitStore(),
          now: @escaping @Sendable () -> Date = { Date() }) {
         self.store = store
         self.now = now
-        // Start reporting mid-run if the user enables activities in
-        // Settings. Weak capture, no retain cycle; the task ends
-        // when the stream does (i.e. app lifetime for the real
-        // store — one suspended task, same as a NotificationCenter
-        // observation).
+        // Watches enablement changes for app lifetime (weak self, no cycle) to start mid-run.
         enablementTask = Task { [weak self] in
             guard let updates = await self?.store.enablementUpdates() else { return }
             for await enabled in updates {
@@ -189,10 +165,9 @@ final class LiveRunActivityReporter: RunActivityReporter {
         guard store.activitiesEnabled else { return }
         if !liveIDs.contains(id) {
             if store.current()[id] != nil {
-                liveIDs.insert(id) // fresh instance: adopt, then update below.
+                liveIDs.insert(id)
             } else if let attrs = attributes[id] {
-                // Began while disabled (or the request failed): the
-                // run is live, so start reporting now.
+                // Started disabled or prior request failed; request activity now since run is live.
                 do {
                     try await store.request(attributes: attrs, state: state,
                                             staleDate: now().addingTimeInterval(Self.staleAfter),
@@ -208,10 +183,7 @@ final class LiveRunActivityReporter: RunActivityReporter {
                 return // update before began: no title/model, can't start.
             }
         }
-        // Throttle: phase changes go immediately, otherwise at most
-        // one update per 5 s per activity. Dropped sends are
-        // coalesced, not lost: lastState holds the newest text and
-        // the next tick or `ended` delivers it.
+        // Phase changes flush immediately; other updates coalesce in lastState at 5s intervals.
         if phase == lastSentPhase[id], let last = lastSentAt[id],
            now().timeIntervalSince(last) < Self.updateInterval {
             return
@@ -238,9 +210,7 @@ final class LiveRunActivityReporter: RunActivityReporter {
     func reconcile(activeConversationIDs active: Set<UUID>) async {
         let current = store.current()
         for (id, state) in current where !active.contains(id) {
-            // Orphaned by a crash or a missed end: never left running.
-            // Terminal phases keep their state; a run caught
-            // mid-flight reads as paused.
+            // Orphaned activities never stay running; terminal states stay, mid-flight ones become paused.
             let terminal = state.phase.isTerminal
             let final = Content(
                 phase: terminal ? state.phase : .paused,
@@ -252,15 +222,14 @@ final class LiveRunActivityReporter: RunActivityReporter {
             forget(id)
         }
         for id in current.keys where active.contains(id) {
-            liveIDs.insert(id) // fresh instance: adopt live activities.
+            liveIDs.insert(id)
         }
         // Snapshot the keys: forget() mutates the table we enumerate.
         for id in Array(attributes.keys) where !active.contains(id) && current[id] == nil {
-            forget(id) // began but neither live nor reporting: stale.
+            forget(id)
         }
         guard store.activitiesEnabled else { return }
         for id in active where current[id] == nil && !liveIDs.contains(id) {
-            // Live run with no activity (enabled mid-run): began.
             guard let attrs = attributes[id] else { continue }
             let state = lastState[id] ?? Content(phase: .thinking, stepCount: 0,
                                                  startedAt: now(), lastLine: "Thinking…", toolName: nil)
@@ -280,9 +249,7 @@ final class LiveRunActivityReporter: RunActivityReporter {
 
     // MARK: Private
 
-    /// Enablement flipped on: start activities for begun runs that
-    /// have none. Orphans are NOT adopted here — `reconcile` (launch
-    /// + `.active`) ends them.
+    /// Starts activities for begun runs on enable; ignores orphans (reconcile ends them).
     private func startMissing() async {
         guard store.activitiesEnabled else { return }
         let current = store.current()

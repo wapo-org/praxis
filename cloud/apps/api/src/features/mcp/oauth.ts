@@ -59,7 +59,7 @@ export async function startOAuth(ctx: FeatureContext, value: Connector, input: {
   const record: OAuthState = { userId: ctx.userId, connectorId: value.id, connectorUrl: value.url, state: opaqueId(), expiresAt: new Date(Date.now() + 600_000).toISOString(), returnUrl: returnTarget(input.returnUrl, options) };
   const provider = new Provider(ctx, value, record, options);
   const network = guardedFetch(ctx, options);
-  // Probe only for WWW-Authenticate discovery hints; connector secrets never go to metadata/AS endpoints.
+  // Probe only for discovery hints; never send connector secrets to metadata endpoints.
   const probe = await guardedFetch(ctx, options, new URL(value.url).origin)(value.url, { method: 'GET', headers: { Accept: 'application/json, text/event-stream' }, signal: AbortSignal.timeout(10_000) });
   const hints = extractWWWAuthenticateParams(probe); await probe.body?.cancel();
   try {
@@ -76,7 +76,7 @@ export async function finishOAuth(base: FeatureContext, query: { state: string; 
   if (active.has(key)) throw new McpError(409, 'invalid_state', 'OAuth state has already been used');
   active.add(key);
   try {
-    // The local fallback is only atomic within this process. Production requires GETDEL.
+    // Local fallback is process-local only; production requires atomic GETDEL.
     if (!base.local && !options.consumeOAuthState) throw new McpError(503, 'oauth_state_unconfigured', 'Atomic OAuth state consumption is not configured');
     const record = options.consumeOAuthState ? await options.consumeOAuthState(key) : await base.kv.get<OAuthState>(key);
     if (!options.consumeOAuthState) await base.kv.del(key);
@@ -95,7 +95,7 @@ export async function finishOAuth(base: FeatureContext, query: { state: string; 
       if (result !== 'AUTHORIZED') throw new McpError(502, 'oauth_failed', 'OAuth exchange failed');
       const discovery = record.discovery as { authorizationServerUrl?: string; authorizationServerMetadata?: unknown } | undefined;
       if (discovery?.authorizationServerUrl) await writeSecret(ctx, value.id, 'discovery', { authorizationServerUrl: discovery.authorizationServerUrl, ...(discovery.authorizationServerMetadata ? { metadata: discovery.authorizationServerMetadata } : {}), resource: value.url });
-      // Signed in: re-run the handshake so status reflects it (only a successful handshake says connected).
+      // Re-run handshake after sign-in since only a successful probe marks connected.
       await probeConnector(ctx, await connector(ctx, value.id), options);
       return { connectorId: value.id, target: target ? callbackTarget(target, record.state) : undefined };
     } catch {

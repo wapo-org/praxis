@@ -1,6 +1,3 @@
-/* The one button (WP-L2 §4, DESIGN.md "Buttons and fields"). Every button is a pill on one height per size,
-   medium 14 px type. Variants: primary (ink), secondary (outlined), quiet (text), destructive (outlined, red).
-   Other modules adopt these with `composes`, so the question and approval cards keep their markup. */
 .button {
   display: inline-flex;
   flex-shrink: 0;

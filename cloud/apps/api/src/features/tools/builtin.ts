@@ -8,7 +8,6 @@ import {runSandbox, type SandboxFiles} from './sandbox.js';
 import {parseSkillDocument, skillByName, skillPath} from './skills.js';
 import type {ToolsStorage} from './ports.js';
 
-/** Enabled skills for the frozen system-prompt catalog (conversation.ts builds the section). */
 export async function listSkillsForCatalog(ctx: FeatureContext): Promise<{name: string; description: string}[]> {
   return (await ctx.store.list(ctx.userId, 'skill'))
     .filter(r => !r.deleted && r.value.enabled !== false)
@@ -20,7 +19,7 @@ const LoadSkill = z.object({name: z.string().min(1).max(64)});
 const ReadSkillFile = z.object({skill: z.string().min(1).max(64), path: z.string().min(1), offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(50_000).default(20_000)});
 const text = (value: string, isError = false) => ({content: [{type: 'text', text: value}], isError});
 
-/** Port of AgentSkills `load_skill` / `read_skill_file` (scripts stay dropped in v1). */
+/** Skill read tools; bundled scripts stay dropped in v1. */
 export function skillTools(ctx: FeatureContext, storage?: ToolsStorage): FeatureTool[] {
   return [
     ...skillAuthoringTools(ctx, storage),

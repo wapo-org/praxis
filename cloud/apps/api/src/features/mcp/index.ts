@@ -23,7 +23,7 @@ async function body<T extends z.ZodType>(c: Context, schema: T): Promise<z.infer
   if (Buffer.byteLength(text) > 1_000_000) throw new McpError(413, 'too_large', 'Request is too large');
   try { return schema.parse(JSON.parse(text)); } catch (error) { if (error instanceof z.ZodError) throw error; throw new McpError(400, 'invalid_json', 'Expected JSON'); }
 }
-/** Mounted at /v1 after auth EXCEPT public OAuth callback + CIMD. Context provides adapters there with userId ''. */
+/** Mounted under /v1 after auth; public OAuth callback & CIMD get userId ''. */
 export function createMcpRoutes(context: (req: Request) => Promise<FeatureContext>, options: McpOptions = {}): Hono {
   const app = new Hono();
   app.onError((error, c) => {

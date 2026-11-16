@@ -1,9 +1,3 @@
-// WP-M1 capture: every frame of a send (from the empty state and inside a chat) and of a chat switch, from
-// headless Chromium's screencast. Each frame carries its true time since the key press as a barcode drawn in
-// the same rAF as the page, and a per-frame sampler records what is on screen (bubble rects, empty state,
-// Working row, stop button) for the measured numbers.
-// Needs the M1 harness (m1-server.ts) + Vite. Run from cloud/:
-//   BASE=http://127.0.0.1:5261 API=http://127.0.0.1:8891 OUT=<dir> node apps/web/scripts/m1-capture.mjs [new|existing|switch]...
 import { chromium, webkit } from '@playwright/test';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 

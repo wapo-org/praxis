@@ -1,8 +1,5 @@
 import XCTest
 
-/// The tray's model page with a provider-sized list (500 models): it
-/// opens, scrolls, selects and closes, and each cycle's app CPU time is
-/// measured (open → scroll → close).
 final class ModelPickerUITests: XCTestCase {
     var app: XCUIApplication!
 
@@ -42,7 +39,6 @@ final class ModelPickerUITests: XCTestCase {
         let tray = app.scrollViews["plusTray"]
         for _ in 0..<3 { tray.swipeUp() }
         XCTAssertTrue(buttonBeginning("Vendor Model ").waitForExistence(timeout: 10), "provider models should be listed")
-        // The lazy list keeps a few rows above the fold: pick one on screen.
         let rows = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Vendor Model ")).allElementsBoundByIndex
         guard let far = rows.first(where: { $0.isHittable }) else { return XCTFail("no provider model on screen") }
         let name = far.label.components(separatedBy: ",").first ?? ""

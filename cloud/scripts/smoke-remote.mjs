@@ -112,7 +112,7 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
       token = fresh.bearerToken;
       checks.push('local session/sign-out/revocation');
     } else {
-      // Assume the account may exist as soon as sign-up is attempted: cleanup then signs in to check.
+      // Mark created before sign-up so cleanup runs even on partial failure.
       created = true;
       const response = await fetcher(api + '/v1/auth/sign-up', {
         method: 'POST',
@@ -175,24 +175,11 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
       );
     } else if (args.includes('--with-llm')) {
       const env = await loadEnv(envArg(args));
-      if (!env.SMOKE_LLM_KEY || !env.SMOKE_LLM_MODEL || !env.SMOKE_LLM_BASE_URL)
-        throw Error(
-          '--with-llm needs SMOKE_LLM_KEY, SMOKE_LLM_MODEL, SMOKE_LLM_BASE_URL in deploy env',
-        );
-      const provider = await call('/v1/providers', 'POST', {
-        type: 'provider.input',
-        name: 'Smoke provider',
-        flavor: env.SMOKE_LLM_FLAVOR ?? 'openAIChat',
-        baseUrl: env.SMOKE_LLM_BASE_URL,
-        apiKey: env.SMOKE_LLM_KEY,
-      });
-      await call('/v1/consents', 'POST', {
-        type: 'consent',
-        host: new URL(env.SMOKE_LLM_BASE_URL).hostname,
-        allowed: true,
-      });
-      await call(`/v1/providers/${provider.id}/refresh-models`, 'POST', { type: 'models.refresh' });
-      runInput = { providerId: provider.id, modelId: env.SMOKE_LLM_MODEL };
+      if (!env.SMOKE_OPENROUTER_KEY)
+        throw Error('--with-llm needs SMOKE_OPENROUTER_KEY (and optionally SMOKE_OPENROUTER_MODEL) in deploy env');
+      // Connects the smoke user's own OpenRouter key; the throwaway account is deleted in `finally`.
+      await call('/v1/model-key', 'POST', { method: 'paste', apiKey: env.SMOKE_OPENROUTER_KEY });
+      runInput = env.SMOKE_OPENROUTER_MODEL ? { modelId: env.SMOKE_OPENROUTER_MODEL } : {};
     } else
       skipped.push(
         'LLM and SSE checks skipped: no explicit --with-llm configuration; production has no scripted fallback',
@@ -249,7 +236,6 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
   if (failure) throw failure;
   return { checks, skipped };
 
-  /** Deletes the throwaway user with a credential that is still valid, re-authenticating if needed. */
   async function cleanup() {
     const signIn = async () => {
       token = '';

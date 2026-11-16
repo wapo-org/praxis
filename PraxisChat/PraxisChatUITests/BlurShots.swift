@@ -1,11 +1,5 @@
 import XCTest
 
-/// Blur verification probe (not part of the regular suite): holds poses
-/// with transcript text behind the title/model (top scrim) and behind the
-/// composer (bottom scrim) while the host takes `simctl io screenshot`s.
-/// Skipped unless `PRAXIS_BLURSHOTS` is set
-/// (`TEST_RUNNER_PRAXIS_BLURSHOTS=1 xcodebuild test -only-testing:…/BlurShots`).
-/// Each pose prints a wall-clock marker: `BLURSHOTS <label> <epoch>`.
 final class BlurShots: XCTestCase {
     var app: XCUIApplication!
 
@@ -26,8 +20,6 @@ final class BlurShots: XCTestCase {
         Thread.sleep(forTimeInterval: 1.0)
     }
 
-    /// Text behind the title and model name: as launched, then scrolled
-    /// up one and two pages.
     func testTopScrim() {
         launch()
         mark("top-as-launched")
@@ -42,7 +34,6 @@ final class BlurShots: XCTestCase {
         Thread.sleep(forTimeInterval: 5.0)
     }
 
-    /// Text behind the composer: near the bottom, then a page up.
     func testBottomScrim() {
         launch()
         app.swipeUp()

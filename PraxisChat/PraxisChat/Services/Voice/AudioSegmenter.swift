@@ -1,40 +1,29 @@
 import AVFoundation
 import Foundation
 
-/// Plan for splitting one recording into uploadable parts.
 struct SegmentationPlan: Sendable {
     struct Part: Sendable {
-        /// Absolute audio range to export (includes the leading overlap).
         var audioRange: Range<TimeInterval>
     }
     var parts: [Part]
-    /// Absolute end of each part's leading overlap window (nil for part 0):
-    /// stitching drops segments fully inside it.
+    /// Absolute end of part's leading overlap (nil for part 0); stitch drops segments inside it.
     var overlapEnds: [TimeInterval?]
     var duration: TimeInterval
 }
 
-/// Splits long recordings into Groq-sized parts at silence-preferring
-/// boundaries, and stitches part transcripts back together.
-///
-/// Limits: ≤ ~10 min / ≤ 20 MB per part (20 MB stays under the 25 MB
-/// free-tier cap with multipart overhead headroom).
+/// Splits audio at <= 10 min / <= 20 MB (leaves multipart headroom under Groq's 25 MB cap).
 enum AudioSegmenter {
     static let maxPartDuration: TimeInterval = 600
     static let maxPartBytes = 20 << 20
-    /// Leading overlap each part (after the first) re-records; the
-    /// overlap's tail words are stripped at stitch time via timestamps.
+    /// Leading overlap re-exported per part after part 0; stripped at stitch via timestamps.
     static let overlap: TimeInterval = 5
     /// 413-halving floor: never split below ~1 min parts.
     static let minSplitDuration: TimeInterval = 60
-    /// Silence search around each nominal boundary.
     static let searchRadius: TimeInterval = 30
     static let silenceWindow: TimeInterval = 0.5
 
     // MARK: Plan
 
-    /// Nominal part length: 10 min, shrunk proportionally when the file is
-    /// so dense that 10 min would exceed 20 MB. Pure, unit-tested.
     static func nominalPartDuration(fileBytes: Int, duration: TimeInterval) -> TimeInterval {
         guard duration > 0, fileBytes > 0 else { return maxPartDuration }
         let bytesPerSecond = Double(fileBytes) / duration
@@ -55,9 +44,7 @@ enum AudioSegmenter {
             return SegmentationPlan(parts: [SegmentationPlan.Part(audioRange: 0..<duration)],
                                     overlapEnds: [nil], duration: duration)
         }
-        // Nominal boundaries, adjusted toward silence (falls back to
-        // nominal when decoding fails: the scan is an optimization, never
-        // a failure).
+        // Silence scan is best-effort; decoding failure falls back to nominal boundaries.
         let scanned = try? await scanEnergies(file: file)
         var boundaries: [TimeInterval] = []
         var previous = 0.0
@@ -90,7 +77,6 @@ enum AudioSegmenter {
 
     // MARK: Silence scan
 
-    /// RMS energy per window over mono samples. Pure, unit-tested.
     static func energies(samples: [Float], windowSize: Int) -> [Float] {
         guard windowSize > 0, !samples.isEmpty else { return [] }
         var out: [Float] = []
@@ -106,9 +92,6 @@ enum AudioSegmenter {
         return out
     }
 
-    /// Lowest-energy window center within nominal ± searchRadius (clamped to
-    /// `limits`); ties go to the window nearest nominal. Falls back to the
-    /// clamped nominal when there is nothing to scan. Pure, unit-tested.
     static func bestBoundary(energies: [Float], windowDuration: TimeInterval, nominal: TimeInterval,
                              searchRadius: TimeInterval, limits: Range<TimeInterval>) -> TimeInterval {
         let clampedNominal = min(max(nominal, limits.lowerBound), limits.upperBound - 0.01)
@@ -129,9 +112,6 @@ enum AudioSegmenter {
         return best
     }
 
-    /// Decodes the file to 16 kHz mono and returns RMS energy per 0.5 s
-    /// window. Nil when decoding fails (the plan then uses nominal
-    /// boundaries).
     static func scanEnergies(file: URL) async throws -> (energies: [Float], windowDuration: TimeInterval)? {
         let asset = AVURLAsset(url: file)
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else { return nil }
@@ -175,8 +155,6 @@ enum AudioSegmenter {
 
     // MARK: Export
 
-    /// Exports `range` (seconds) to `dest` as `.m4a`, passthrough when
-    /// possible, re-encoded when the trim needs it.
     static func exportPart(file: URL, range: Range<TimeInterval>, to dest: URL) async throws {
         try? FileManager.default.removeItem(at: dest)
         let asset = AVURLAsset(url: file)
@@ -202,10 +180,6 @@ enum AudioSegmenter {
 
     // MARK: Stitch
 
-    /// Joins part texts with single-space joining (no space before
-    /// `.,!?;:%)]}`, no double spaces), dropping each part's leading
-    /// segments fully inside its overlap window (`overlaps[i]` is part i's
-    /// absolute overlap end, nil for part 0). Pure, unit-tested.
     static func stitch(_ parts: [PartTranscript], overlaps: [TimeInterval?]) ->
         (text: String, language: String?, segments: [(start: TimeInterval, end: TimeInterval, text: String)]) {
         var texts: [String] = []
@@ -221,8 +195,7 @@ enum AudioSegmenter {
                 kept = part.segments
             }
             if part.segments.isEmpty {
-                // No timestamps to strip by: keep the whole text (verbose_json
-                // normally always returns segments, so this is rare).
+                // Fallback when verbose_json omits segments: keep full part text without stripping.
                 texts.append(part.text)
             } else {
                 texts.append(join(kept.map(\.text)))
@@ -232,7 +205,6 @@ enum AudioSegmenter {
         return (join(texts), language, segments)
     }
 
-    /// Single-space joining with closer punctuation glued. Pure.
     static func join(_ phrases: [String]) -> String {
         let closers: Set<Character> = [".", ",", "!", "?", ";", ":", "%", ")", "]", "}"]
         var result = ""
@@ -246,8 +218,7 @@ enum AudioSegmenter {
         return result
     }
 
-    /// Previous part's tail as the next part's `prompt` (≤ ~200 tokens ≈
-    /// 800 chars, cut at a word boundary). Pure.
+    /// Caps Whisper prompt context to ~200 tokens (800 chars) on a word boundary.
     static func promptTail(_ text: String, maxChars: Int = 800) -> String {
         guard text.count > maxChars else { return text }
         let tail = text.suffix(maxChars)
@@ -259,7 +230,6 @@ enum AudioSegmenter {
 }
 
 private extension AVAssetExportSession {
-    /// Structured-concurrency wrapper for `exportAsynchronously`.
     func exportAsynchronously() async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             exportAsynchronously { continuation.resume() }
@@ -269,12 +239,7 @@ private extension AVAssetExportSession {
 
 // MARK: - Resume cache
 
-/// Completed part transcripts on disk, so Retry resumes from the first
-/// untranscribed part instead of re-uploading. Keyed by file name; a cached
-/// entry is reused only when the fresh plan has the same part count, starts
-/// and duration (segmentation is deterministic for one file). Cleared when
-/// the full transcript stitches. Best-effort: any I/O failure reads as a
-/// cache miss, never as a transcription failure.
+/// Best-effort part cache for retry; reused only on exact plan match, I/O errors act as misses.
 struct PartTranscriptCache: Sendable {
     var directory: URL
 
@@ -302,7 +267,6 @@ struct PartTranscriptCache: Sendable {
         directory.appendingPathComponent("\(safeName(fileName)).part\(index).json")
     }
 
-    /// Cached transcripts aligned with `plan.parts` (nil = not done).
     func load(matching plan: SegmentationPlan, fileName: String) -> [PartTranscript?] {
         let empty = [PartTranscript?](repeating: nil, count: plan.parts.count)
         guard let data = try? Data(contentsOf: manifestURL(fileName)),
@@ -332,13 +296,10 @@ struct PartTranscriptCache: Sendable {
         }
     }
 
-    /// Matches the app standard (recordings, conversations, attachments):
-    /// transcripts are user content, protected like the audio they came from.
+    /// Protect cached transcripts with completeFileProtection like the source audio.
     private static let writingOptions: Data.WritingOptions = [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
 
-    /// Clears the shared (production-directory) cache for one recording.
-    /// Called by `RecordingStore.delete`, so deleting a recording leaves no
-    /// transcript behind in Caches. `directory` is test-only.
+    /// Called on recording delete so no transcript remains in Caches; directory is test-only.
     static func clearSharedCache(fileName: String, in directory: URL? = nil) {
         PartTranscriptCache(directory: directory).clear(fileName: fileName)
     }

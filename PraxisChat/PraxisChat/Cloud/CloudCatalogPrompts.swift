@@ -81,8 +81,7 @@ struct CloudCatalogPromptsPage: View {
         let arguments = values.filter { !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         let text = try await services.prompt(connectorID: choice.group.id, name: choice.prompt.name, arguments: arguments)
         try Task.checkCancellation()
-        // A request may finish after the user switches chats. Never deposit
-        // another chat's prompt into the newly-selected draft.
+        // Drop prompt if user switched chats while loading.
         guard selected == store.selectedID else { return }
         store.draft = store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? text : store.draft + "\n\n" + text
         store.haptics.fire(.success); onInserted()

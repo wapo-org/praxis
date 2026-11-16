@@ -1,6 +1,3 @@
-// WP-L2 visual gate: the tray rows (§1), the consent sheet (§3), the button and input audit (§4) and
-// Settings → Secrets & variables (§5), light and dark.
-//   BASE=http://127.0.0.1:5232 TAG=before|after [ONLY=tray,consent,audit,secrets] [ENGINES=chromium,webkit] node apps/web/scripts/l2-capture.mjs
 import { chromium, webkit } from '@playwright/test';
 import { homedir } from 'node:os';
 import { mkdirSync } from 'node:fs';

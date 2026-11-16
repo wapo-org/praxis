@@ -12,7 +12,6 @@ import {
   ConnectorsScreen,
 } from './ConnectorsScreen.js';
 import { ImageReaderScreen } from './ImageReaderScreen.js';
-import { ProviderEditor } from './ProviderEditor.js';
 import { BackButton, ScreenBody } from './ScreenUI.js';
 import screen from './Screen.module.css';
 import {
@@ -35,13 +34,8 @@ function PageContent({ sheet, onOpenGlassLab }: { sheet: SettingsSheet; onOpenGl
     case 'settings':
     case 'general':
       return <GeneralSection />;
-    case 'providers':
+    case 'models':
       return <ModelsSection />;
-    case 'provider-editor':
-      if (store.editingProviderId && !store.hydrated) return <p role="status" className={screen.empty}>Loading provider…</p>;
-    if (store.editingProviderId && !store.providers.some((p) => p.id === store.editingProviderId))
-        return <p role="alert" className={screen.error}>Provider not found.</p>;
-      return <ProviderEditor key={store.editingProviderId ?? 'new-provider'} />;
     case 'image-reader':
       return <ImageReaderScreen />;
     case 'voice-settings':
@@ -71,11 +65,6 @@ function PageContent({ sheet, onOpenGlassLab }: { sheet: SettingsSheet; onOpenGl
   }
 }
 
-/**
- * The Settings content: a normal routed page in the space beside the floating
- * navigation, which Settings has taken over (see shell/Sidebar). No modal, no
- * second rail, no page header: the way out is the panel's back control.
- */
 export function SettingsPage({
   sheet,
   onOpenGlassLab,
@@ -85,8 +74,7 @@ export function SettingsPage({
 }) {
   const store = usePraxisStore();
   const page = settingsPage(sheet);
-  const provider = store.providers.find((p) => p.id === store.editingProviderId);
-  const title = sheet === 'provider-editor' ? (provider?.name ?? 'Add provider') : page.title;
+  const title = page.title;
   const shift = useContentShift();
 
   return (
@@ -112,11 +100,7 @@ export function SettingsPage({
         {page.parent ? (
           <div className={styles.subHeader}>
             <BackButton onClick={() => store.setActiveSheet(page.parent ?? 'settings')} />
-            {sheet === 'provider-editor' ? (
-              <button className={screen.textButton} type="submit" form="provider-editor-form">
-                Save
-              </button>
-            ) : null}
+
           </div>
         ) : null}
         <div className={styles.pageStack}>

@@ -1,7 +1,7 @@
 import {HashTree} from './tree.js';
 import type {Replica, SyncEntity} from './sync.js';
 
-/** In-memory replica: reference implementation for IndexedDB/SwiftData replicas, used by tests and the benchmark. */
+/** In-memory replica reference implementation for tests and benchmarks. */
 export class MemoryReplica implements Replica {
   tree: HashTree;
   cursor = '0';

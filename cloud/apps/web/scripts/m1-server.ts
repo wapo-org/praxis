@@ -1,9 +1,3 @@
-// WP-M1 harness: the real local API (in-memory, scripted provider, local MiniLM embedder) with two remote-looking
-// MCP connectors, Exa and Firecrawl, whose every HTTP exchange takes MCP_RTT_MS (default 800: six sequential
-// exchanges reproduce the ~5 s the owner's capture shows before the first run event). Exa's web_search_exa
-// answers after 4 s. POST /__test/m1/cold expires the connectors' tool catalogue, as 60 s of idling does.
-// Run from cloud/: `API_PORT=8891 WEB_ORIGIN=http://127.0.0.1:5261 npx tsx apps/web/scripts/m1-server.ts`,
-// then Vite with VITE_API_PROXY_TARGET pointing at it.
 import { randomBytes } from 'node:crypto';
 import { serve } from '@hono/node-server';
 import { createPraxisApp } from '../../api/src/server';

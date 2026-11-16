@@ -1,6 +1,3 @@
-// WP-G3 visual gate: our open directly above the reference frames, with the reference shifted 15 %:
-// the owner asked for a faster open, so a reference frame at t pairs with ours at 0.85 t.
-//   BASE=http://127.0.0.1:5231 OUT=.../G3/A node apps/web/scripts/g3-compare.mjs separate|attached
 import { execFileSync } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { clean, disarm, installClock, launch, open, OUT, record, REF_DIR, REF_FRAMES } from './g2-lib.mjs';

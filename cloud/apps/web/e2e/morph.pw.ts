@@ -208,8 +208,6 @@ test.describe('every frame is one piece of glass', () => {
     await landed(menu);
     const samples = (await stopSampling(page)).filter((s) => s.menu);
     const rest = samples[samples.length - 1]!.menu!;
-    // WP-I1: the squaring runs on the shape's own clock, so it is square when it is full size: the circle holds
-    // through the first half of the growth, not to 75 % (a late squaring was a second move after landing).
     const big = samples.filter((s) => s.menu!.w > rest.w * 0.3 && s.radius > Math.min(s.menu!.w, s.menu!.h) * 0.45);
     expect(big.length).toBeGreaterThan(1);
     for (const s of big) expect(s.menu!.w / s.menu!.h).toBeLessThan(1.12);
@@ -536,11 +534,6 @@ test.describe('prefers-reduced-motion', () => {
   });
 });
 
-/**
- * WP-I1: the + tray "shifted diagonally at the end": the glass looked landed, then squared up and returned from
- * its overshoot, and the rows rode it. Every frame from the end of the fast phase (the glass first at 90 % of its
- * rest size): no edge moves back away from its rest position, and once the rows are in place they stay put.
- */
 test.describe('no move at the end', () => {
   async function track(page: Page, glassSelector: string, rowSelector: string, open: () => Promise<void>) {
     await page.evaluate(({ glassSelector, rowSelector }) => {
@@ -548,8 +541,6 @@ test.describe('no move at the end', () => {
       w.__end = [];
       w.__endOn = true;
       const box = (el: Element | null) => { if (!el) return null; const r = el.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; };
-      // Read after each paint (as the nested spec does): a rAF can see a new layout before the ResizeObserver
-      // covers it, a frame nobody sees.
       const channel = new MessageChannel();
       channel.port1.onmessage = () => {
         const glass = box(document.querySelector(glassSelector));

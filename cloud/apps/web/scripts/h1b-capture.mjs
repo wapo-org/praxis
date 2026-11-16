@@ -1,6 +1,3 @@
-// WP-H1b captures of the sign-in and register screens.
-// Usage (from cloud/): BASE=http://127.0.0.1:5233 PHASE=after node apps/web/scripts/h1b-capture.mjs
-// PHASE=before takes the rest state only; PHASE=after also takes hover, pressed, disabled, loading, focus and the code step.
 import { chromium } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 const BASE = process.env.BASE ?? 'http://127.0.0.1:5233';

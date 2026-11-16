@@ -1,4 +1,4 @@
-/** The title length the API and iOS cap at (ConversationTitle.make). They cut without an ellipsis. */
+/** Matches server/iOS title cap without ellipsis. */
 const SERVER_TITLE_CAP = 42;
 
 /** Collapse any line breaks or repeated whitespace so a chat title always stays single-line in UI chrome. */

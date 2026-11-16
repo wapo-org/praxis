@@ -1,6 +1,3 @@
-// WP-L2 §2: the menu trigger (L-ref/11), the menu corners (L-ref/12) at 4x, light and dark, Chromium and WebKit
-// (and WebKit with corner-shape hidden, which is what Safari paints today).
-//   BASE=http://127.0.0.1:5232 TAG=before|after node apps/web/scripts/l2-menu-probe.mjs
 import { chromium, webkit } from '@playwright/test';
 import { homedir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';

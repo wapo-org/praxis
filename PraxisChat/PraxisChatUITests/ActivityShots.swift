@@ -1,9 +1,5 @@
 import XCTest
 
-/// Screenshot probe for the activity levels and markdown tables (not part of
-/// the regular suite). Skipped unless `PRAXIS_SHOTS` is set
-/// (`TEST_RUNNER_PRAXIS_SHOTS=1 xcodebuild test -only-testing:…/ActivityShots`).
-/// Writes PNGs to /tmp/praxis-activity-shots/.
 final class ActivityShots: XCTestCase {
     override func setUpWithError() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_SHOTS"] != nil, "Optional activity capture requires PRAXIS_SHOTS; LiveActivityUITests cover behavior")
@@ -34,12 +30,10 @@ final class ActivityShots: XCTestCase {
             Thread.sleep(forTimeInterval: 0.5)
             save("1-running-collapsed-\(i)")
         }
-        // Open while running too.
         let show = app.buttons["Show agent activity"].firstMatch
         if show.exists { show.tap(); Thread.sleep(forTimeInterval: 0.8); save("2-running-list") }
         XCTAssertTrue(app.buttons["Retry"].waitForExistence(timeout: 60))
         Thread.sleep(forTimeInterval: 1.0)
-        // Collapse first: 3-finished-top is the finished FOLDED header.
         let hide = app.buttons["Hide agent activity"].firstMatch
         if hide.exists && hide.isHittable { hide.tap(); Thread.sleep(forTimeInterval: 0.8) }
         app.swipeDown(); app.swipeDown()

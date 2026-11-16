@@ -1,6 +1,3 @@
-// WP-J2 item 6: frame times while search closes in Chromium (Escape, clicking a result, clicking outside).
-// Headed with GPU by default, like g2-perf. Writes a Chrome trace per path and a JSON summary.
-//   BASE=http://127.0.0.1:5232 TAG=before|after [HEADLESS=1] node apps/web/scripts/j2-search-close.mjs
 import { chromium } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';

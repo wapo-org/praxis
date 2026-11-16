@@ -1,41 +1,16 @@
 import SwiftUI
 import UIKit
 
-/// True variable (progressive) blur protecting text under screen chrome.
-///
-/// The blur RADIUS grows toward the edge — text goes from sharp, to
-/// slightly soft, to strongly blurred — with only a whisper of
-/// theme-aware canvas tint. Built from public API only: `bands` stacked
-/// `UIVisualEffectView`s, each masked to a band reaching further inward
-/// than the one above it, so content near the edge is blurred repeatedly
-/// while the tail gets a single soft pass. No `CAFilter.variableBlur`
-/// (private API, App Store rejection risk).
-///
-/// Where the system can do it instead, it does: scroll views under
-/// navigation bars, toolbars and `safeAreaBar`s use
-/// `.scrollEdgeEffectStyle(.soft)` (Apple's own progressive blur). This
-/// scrim is for chrome the system effect can't see — the chat's floating
-/// composer dock (a ZStack overlay, not a bar) and the tray card's bottom.
-///
-/// `hold` matters more than `length`: with a straight fade from the edge,
-/// chrome sitting partway down the field lands where the blur has already
-/// weakened. The held band gets every layer at full strength.
-///
-/// Live blur is expensive while scrolling: use it for screen chrome only.
-/// Small in-content edges (code blocks, command output) use `fadeEdges`.
+/// Stacked public UIVisualEffectViews (no private CAFilter.variableBlur); hold keeps chrome full.
 struct ProgressiveBlurScrim: View {
     enum Edge { case top, bottom, leading, trailing }
     var edge: Edge = .top
     var length: CGFloat = 110
-    /// Stacked blur layers (clamped to 1...6). Each extra layer re-blurs
-    /// a shorter band toward the edge, stepping the effective radius up.
+    /// Clamped to 1...6; each extra layer re-blurs a shorter band toward the edge.
     var bands: Int = 4
-    /// Share of `length` (from the edge) kept at full strength: the band
-    /// the chrome sits on. The rest feathers out.
+    /// Fraction of length from the edge kept at full blur before feathering.
     var hold: CGFloat = 0
-    /// Peak canvas tint at the edge, fading out with the blur. A
-    /// readability aid only — keep it subtle (≤ 0.15), never a gradient
-    /// wash. Theme-aware via `Praxis.canvas`.
+    /// Peak edge tint; keep <= 0.15 so it aids readability without reading as a gradient wash.
     var tint: CGFloat = 0.12
 
     var body: some View {
@@ -58,10 +33,7 @@ struct ProgressiveBlurScrim: View {
         .accessibilityHidden(true)
     }
 
-    /// Inner reach of each blur layer, as a fraction of `length` from the
-    /// edge. Layer 0 reaches the full length; deeper layers stop sooner,
-    /// so the edge gets all `bands` blur passes and the tail gets one.
-    /// Strictly decreasing, all in (0, 1], every one past `hold`.
+    /// Strictly decreasing fractions in (0, 1] past hold so edge gets all bands and tail gets one.
     static func bandReach(bands: Int, hold: CGFloat) -> [CGFloat] {
         let bands = min(max(bands, 1), 6)
         let hold = min(max(hold, 0), 0.8)
@@ -71,13 +43,7 @@ struct ProgressiveBlurScrim: View {
         }
     }
 
-    /// Alpha-mask stops for one blur layer: full from the edge (location
-    /// 0) to `innerFull`, then ramping to clear at `reach`. Each layer
-    /// ramps over exactly its own band — full where the next deeper layer
-    /// starts, clear where it ends — so the total blur climbs smoothly
-    /// from zero at the tail to every layer at the edge, with no step
-    /// (a short feather instead landed the first full-strength pass all
-    /// at once, and rows hit it like a wall). Locations ascend in 0...1.
+    /// Each layer ramps across its entire band to innerFull so blur builds smoothly without a wall.
     static func maskStops(reach: CGFloat, innerFull: CGFloat) -> [(location: CGFloat, strength: CGFloat)] {
         let reach = min(max(reach, 0.01), 1)
         let innerFull = min(max(innerFull, 0), reach)
@@ -86,9 +52,6 @@ struct ProgressiveBlurScrim: View {
         return [(0, 1), (innerFull, 1), (reach, 0)]
     }
 
-    /// Strength from the edge (location 0) inward: flat over the held
-    /// band, then an ease-out feather (steep early, long soft tail) so the
-    /// end of the field never reads as a line.
     static func profile(hold: CGFloat) -> [(location: CGFloat, strength: CGFloat)] {
         let hold = min(max(hold, 0), 0.8)
         let feather: [CGFloat] = [1.0, 0.92, 0.80, 0.64, 0.46, 0.29, 0.14, 0.05, 0.0]
@@ -134,9 +97,7 @@ private struct VariableBlurView: UIViewRepresentable {
     }
 }
 
-/// The stacked blur layers and their gradient masks. Rebuilt only when
-/// the configuration changes, so parent re-renders never rebuild layers
-/// or queue async work; masks resize in `layoutSubviews`.
+/// Rebuilds blur layers only on config change so parent SwiftUI re-renders never recreate them.
 private final class VariableBlurContainer: UIView {
     private var layers: [(view: UIVisualEffectView, mask: CAGradientLayer)] = []
 
@@ -167,8 +128,6 @@ private final class VariableBlurContainer: UIView {
         layers.forEach { $0.view.removeFromSuperview() }
         layers = []
         let reaches = ProgressiveBlurScrim.bandReach(bands: bands, hold: hold)
-        // The innermost layer ramps down to the hold band's inner edge,
-        // so the held band gets every layer at full strength.
         let holdClamped = min(max(hold, 0), 0.8)
         for (i, reach) in reaches.enumerated() {
             let innerFull = i + 1 < reaches.count ? reaches[i + 1] : holdClamped
@@ -207,8 +166,7 @@ private final class VariableBlurContainer: UIView {
 }
 
 extension View {
-    /// Cheap feathered edges for in-content scroll areas: an alpha mask,
-    /// no live blur, so scrolling the transcript past it costs nothing.
+    /// Alpha-masked edges without live blur so scrolling transcript items past them stays cheap.
     func fadeEdges(_ axis: Axis, length: CGFloat = 16, leading: Bool = true, trailing: Bool = true) -> some View {
         mask {
             GeometryReader { geo in

@@ -1,10 +1,3 @@
-/**
- * What the menu grows out of. A button with its own glass that holds only an icon is
- * `separate`: that glass becomes the menu. Anything else is `attached` (a button with
- * text, or inside the composer pill, a chat row, a toolbar, a menu row, or sharing glass
- * with neighbours): the parent and the button stay put, and the menu grows from a small
- * blob on the button.
- */
 import { MORPH } from '../motion';
 import type { Box } from './math';
 

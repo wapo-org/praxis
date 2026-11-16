@@ -22,27 +22,14 @@ export interface GlassSurfaceProps extends HTMLMotionProps<'div'>, GlassMaterial
   shape?: GlassShape;
   /** Corner radius in px for `card`; ignored for `capsule`. Prefer the tokens (--glass-radius). */
   radius?: number;
-  /**
-   * The elastic stretch (default on, from anywhere on the glass). `edge` only
-   * pulls once the pointer is past the edge, for menus that scrub inside.
-   */
   stretch?: boolean | 'edge';
   /** Pointer-tracked focus glow (default on). Off for touch and reduced motion regardless. */
   spotlight?: boolean;
-  /**
-   * `false` makes an opaque surface with the same shape, stretch and shadow but no lens and no backdrop:
-   * one solid layer painted from --glass-solid-bg, --glass-solid-border and --glass-solid-shadow.
-   */
   lens?: boolean;
 }
 
 type MotionFrame = HTMLMotionProps<'div'>['animate'];
 
-/**
- * `opacity` on the root would make it a backdrop root and blank the lens inside
- * it for the whole fade, so a fade is routed through a variable the layers and
- * the content read. Everything else (scale, x, y) stays on the root's transform.
- */
 function routeFade<T extends MotionFrame | HTMLMotionProps<'div'>['exit'] | HTMLMotionProps<'div'>['initial']>(frame: T): T {
   if (!frame || typeof frame !== 'object' || Array.isArray(frame) || !('opacity' in frame)) return frame;
   const { opacity, ...rest } = frame as Record<string, unknown>;
@@ -70,9 +57,7 @@ function useLensMaps(rootRef: React.RefObject<HTMLElement | null>, material: Gla
       if (w < 8 || h < 8 || (w === lastW && h === lastH)) return;
       lastW = w;
       lastH = h;
-      // From the tokens, never the live radius: the morph is writing that one. The ring is the painted corner
-      // itself: the radius after CSS clamps it to the box (a 44 px composer on a 52 px pill paints 26 px), on
-      // the corner's own superellipse. A circle there sits inside the squircle's apex and draws a second rim.
+      // From the tokens, never the live radius: the morph is writing that one.
       const { span, exponent } = mapCorner(el, w, h, shape, radius);
       const version = ++generation;
       const next = await generateMapsAsync({ width: w, height: h, radius: span, exponent, bezel: MATERIAL_RAMP[material].bezel, material });
@@ -145,11 +130,6 @@ function attachSpotlight(el: HTMLElement) {
   };
 }
 
-/**
- * The glass's lines as strokes of its own squircle path, for engines without corner-shape (squircle.ts fills in
- * the paths and turns it on). One shape: the fill, the lens and the clip use that path too. Non-scaling strokes
- * stay 1 px on screen through the morph's scale, like the rim they replace.
- */
 const GlassOutline = React.memo(function GlassOutline({ id }: { id: string }) {
   return (
     <svg aria-hidden="true" focusable="false" data-glass-outline="" className={styles.outline} preserveAspectRatio="none">
@@ -170,12 +150,6 @@ const GlassOutline = React.memo(function GlassOutline({ id }: { id: string }) {
   );
 });
 
-/**
- * Liquid glass. On Chromium a real lens (`backdrop-filter: url(#id)`, the kube.io
- * construction from wapo.dp); elsewhere a progressive frost with the same finish.
- * Layout and DOM geometry never move: the stretch is `scale` + `translate` on this
- * root and framer-motion's own transform composes with it. No re-render per frame.
- */
 export const GlassSurface = React.forwardRef<HTMLDivElement, GlassSurfaceProps>(function GlassSurface(
   { material = 'regular', shape = 'card', radius, stretch = true, spotlight = true, lens = true, className = '', style, initial, animate: animateProp, exit, children, ...rest },
   forwardedRef,

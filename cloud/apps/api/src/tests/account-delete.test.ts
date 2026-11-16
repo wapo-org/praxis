@@ -73,8 +73,8 @@ it('deletes every owned table, blob, Redis key and session; preserves another us
       'connector',
       'skill',
       'checkpoint',
-      'modelLearning',
-      'providerSecret',
+      'modelPreference',
+      'modelKey',
       'consent',
     ])
       await rpc.mutation('store:put', { userId: u, kind, id: kind, value: { private: u } });
@@ -134,7 +134,7 @@ it('deletes every owned table, blob, Redis key and session; preserves another us
       });
     });
   }
-  await call('/v1/bootstrap', 'GET', alias.bearerToken); // both credential aliases hot-cached
+  await call('/v1/bootstrap', 'GET', alias.bearerToken);
   const beforeOther = await t.run(async (ctx) => {
     const rows = {};
     for (const table of [

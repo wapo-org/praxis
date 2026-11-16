@@ -32,8 +32,6 @@ export function useStreamAnchor(viewport:React.RefObject<HTMLElement|null>,conte
       userMoved.current=true;
       if(el.scrollTop<lastTop.current-1)pinned.current=false;
     }
-    // Height growth can itself dispatch scroll (including browser anchoring).
-    // It must not be mistaken for a user leaving the live edge.
     if(pinned.current&&metrics.distance>BOTTOM_EDGE&&!jumping.current){el.scrollTop=el.scrollHeight;metrics=scrollMetrics(el);}
     lastTop.current=el.scrollTop;
     const show=metrics.showJump&&!jumping.current&&(!sentAnchor.current||userMoved.current);

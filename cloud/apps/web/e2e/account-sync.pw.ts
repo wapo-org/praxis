@@ -35,8 +35,6 @@ test('two devices converge chats, offline edits, settings, live messages and sto
     await action(two, 'patchChat', chat.id, { title: `${title} offline` });
     await b.setOffline(false);
     await expect.poll(async () => (await chats(one)).find((c: any) => c.id === chat.id)?.title, { timeout: 15000 }).toBe(`${title} offline`);
-    // Change each durable setting field on A, then observe B's applied account state. 'button' is the removed
-    // button-colour option (WP-I1): an older client may still send it; it is accepted and ignored everywhere.
     for (const [field, value] of Object.entries({ theme: 'dark', palette: 'forest', button: '#b6e36b', model: 'sync-model', provider: 'sync-provider', effort: 'high' })) {
       await one.evaluate(async ({field, value}) => {
         // @ts-expect-error Vite source module.

@@ -1,6 +1,4 @@
 /* Composer tray: a compact popover anchored to the + button (360 x 480 max, fitting shorter viewports). */
-/* WP-K2 (K-ref/08): the tray's own list. Every control in the tray is a translucent squircle on the glass
-   (tiles, segmented tracks, rows): no opaque white card, no full-width separators. DESIGN.md "Lists". */
 .surface {
   --tray-fill: color-mix(in srgb, var(--color-ink) 4.5%, transparent);
   --tray-fill-hover: color-mix(in srgb, var(--color-ink) 7%, transparent);

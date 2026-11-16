@@ -1,8 +1,8 @@
 import {ensureBuiltins} from './features/mcp/builtins.js';
 import { randomUUID } from 'node:crypto';
-import { ChatSchema,PROTOCOL_VERSION,RunSchema,type Bootstrap,type Chat,type JsonObject,type Message,type Run,type RunEventPayload,type RunSnapshot,type StartRun } from '@praxis/protocol';
+import { ChatSchema,RunErrorCodeSchema,ModelKeySchema,ModelPreferenceRecordSchema,PROTOCOL_VERSION,RunSchema,type Bootstrap,type Chat,type JsonObject,type Message,type Run,type RunEventPayload,type RunSnapshot,type StartRun } from '@praxis/protocol';
 import type { AdapterBundle } from './contracts.js';
-import type {ApiProviders} from './providers.js';
+import type {OpenRouterModels} from './openrouter/index.js';
 import {foldSnapshot,initialSnapshot} from './snapshot.js';
 import {attachmentParts,makeTitle,wantsTitle,type AttachmentRow} from './attachments.js';
 import type {SearchIndexer} from './search-index.js';
@@ -14,7 +14,7 @@ export type RunDecision={type:'approval.decision';approvalId:string;decision:'al
 export interface ExecutionDriver{
  title?(userId:string,chat:Chat,text:string):Promise<string|undefined>;
  validate?(userId:string,chat:Chat,input:StartRun):Promise<void>;
- /** Context notes (mode/effort, new skills) for the new user turn; see conversation.ts. */
+ /** Generates extra context notes for the next user turn. */
  notes?(userId:string,chat:Chat,input:StartRun,previous:Message[]):Promise<string[]>;
  start(userId:string,run:Run,chat:Chat,messages:Message[],request:StartRun):Promise<void>;
  resume(userId:string,runId:string,decision:RunDecision):Promise<void>;
@@ -22,8 +22,9 @@ export interface ExecutionDriver{
 }
 export class ApiService{
  driver?:ExecutionDriver;
- providers?:ApiProviders;
- /** Keeps background work alive past the response (Vercel waitUntil). Local runs need nothing. */
+ /** OpenRouter with each user's own key (set by createApp). */
+ models?:OpenRouterModels;
+ /** Keeps background work alive past HTTP response (Vercel waitUntil). */
  defer?:(work:Promise<unknown>)=>void;
  private locks=new Map<string,Promise<unknown>>();
  private work=new Set<Promise<unknown>>();
@@ -47,19 +48,19 @@ export class ApiService{
   if(!this.local)return;
   await this.exclusive(`seed:${userId}`,async()=>{
    if(await this.adapters.store.get(userId,'seed','v1'))return;
-   const now=this.now();const capabilities={type:'capabilities',tools:true,parallelToolCalls:true,vision:true,documents:true,imagesInToolResults:true,reasoningEffort:true,streamUsage:true,explicitPromptCaching:false,serverWebSearch:false,midConversationSystem:false,serverCompaction:false,toolSearch:false};
-   await this.put(userId,'provider','scripted',{type:'provider',id:'scripted',name:'Local scripted',flavor:'openAIChat',baseUrl:'http://localhost:8787/scripted',maskedKey:'local (no key)',capabilities,updatedAt:now});
-   for(const [id,name] of [['scripted','Praxis Scripted'],['scripted-vision','Praxis Vision']])await this.put(userId,'model',`scripted:${id}`,{type:'model',id,providerId:'scripted',displayName:name,capabilities,reasoningEfforts:['low','medium','high','max'],pinned:true,favorite:false,supportsImages:true,tagline:'Deterministic local development',speed:5,intelligence:3});
-   const chat=ChatSchema.parse({type:'chat',id:'welcome',title:'Welcome to Praxis Cloud',mode:'build',providerId:'scripted',modelId:'scripted',createdAt:now,updatedAt:now});await this.put(userId,'chat',chat.id,chat);
-   await this.put(userId,'preferences','current',{type:'preferences',vision:{type:'vision.preferences',enabled:true,providerId:'scripted',modelId:'scripted-vision'},voice:{type:'voice.preferences',model:'whisper-large-v3-turbo',configured:true},updatedAt:now});
+   const now=this.now();
+   const chat=ChatSchema.parse({type:'chat',id:'welcome',title:'Welcome to Praxis Cloud',mode:'build',modelId:'scripted',createdAt:now,updatedAt:now});await this.put(userId,'chat',chat.id,chat);
+   await this.put(userId,'preferences','current',{type:'preferences',vision:{type:'vision.preferences',enabled:true,modelId:'scripted-vision'},voice:{type:'voice.preferences',model:'whisper-large-v3-turbo',configured:true},updatedAt:now});
    await this.put(userId,'seed','v1',{version:1});
   });
  }
  async bootstrap(userId:string):Promise<Bootstrap>{
   const cached=await this.adapters.kv.get<Bootstrap>(`bootstrap:${userId}`);if(cached)return cached;
-  await ensureBuiltins(this.adapters.store,userId);
-  const [chats,providers,models,connectors,skills,runs,consents,registries,preferences,changes,eventCursor]=await Promise.all([this.list<any>(userId,'chat'),this.list<any>(userId,'provider'),this.list<any>(userId,'model'),this.list<any>(userId,'connector'),this.list<any>(userId,'skill'),this.list<Run>(userId,'run'),this.list<any>(userId,'consent'),this.list<any>(userId,'registry'),this.adapters.store.get(userId,'preferences','current'),this.adapters.store.head(userId),this.adapters.events.latest?.(userId,'user')??Promise.resolve(undefined)]);
-  const result:Bootstrap={type:'bootstrap',protocolVersion:PROTOCOL_VERSION,user:{type:'user',id:userId,name:this.local?'Local developer':'Praxis user'},chats:chats.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,50),providers,models,connectors,skills,activeRuns:runs.filter(r=>!this.terminal(r)),consents,registries,preferences:preferences?.value as any,syncCursor:String(changes),syncRoot:'',serverTime:this.now(),...(eventCursor===undefined?{}:{eventCursor})};
+  const [chats,modelKey,modelPreferences,connectors,skills,runs,consents,registries,preferences,changes]=await Promise.all([this.list<any>(userId,'chat'),this.adapters.store.get(userId,'modelKey','current'),this.list<unknown>(userId,'modelPreference'),this.list<any>(userId,'connector'),this.list<any>(userId,'skill'),this.list<Run>(userId,'run'),this.list<any>(userId,'consent'),this.list<any>(userId,'registry'),this.adapters.store.get(userId,'preferences','current'),this.adapters.store.head(userId)]);
+  const eventCursor=await this.adapters.events.latest?.(userId,'user');
+  const result:Bootstrap={type:'bootstrap',protocolVersion:PROTOCOL_VERSION,user:{type:'user',id:userId,name:this.local?'Local developer':'Praxis user'},chats:chats.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,50),
+   // Parsing drops the sealed key: only the masked record ever leaves the server.
+   ...(modelKey&&!modelKey.deleted?{modelKey:ModelKeySchema.parse(modelKey.value)}:{}),modelPreferences:modelPreferences.flatMap(p=>{const r=ModelPreferenceRecordSchema.safeParse(p);return r.success?[r.data]:[];}),connectors,skills,activeRuns:runs.filter(r=>!this.terminal(r)),consents,registries,preferences:preferences?.value as any,syncCursor:String(changes),syncRoot:'',serverTime:this.now(),...(eventCursor===undefined?{}:{eventCursor})};
   await this.adapters.kv.set(`bootstrap:${userId}`,result,10,userId);return result;
  }
  terminal(run:Run){return ['completed','cancelled','failed'].includes(run.status);}
@@ -183,9 +184,12 @@ export class ApiService{
   if(!wantsTitle(chat.title,text,firstTurn))return undefined;return makeTitle(text,attachments);
  }
  enqueue(userId:string,runId:string,task:()=>Promise<void>){
-  const work=Promise.resolve().then(task).catch(async()=>{const run=await this.require<Run>(userId,'run',runId).catch(()=>null);if(run&&!this.terminal(run)){run.status='failed';run.outcome='failed';run.error='Run execution failed';await this.put(userId,'run',runId,run);await this.emit(userId,runId,{type:'run.finished',outcome:'failed',message:'Run execution failed'});}}).catch(error=>{this.onBackgroundError(runId,error);}).finally(()=>this.work.delete(work));this.work.add(work);this.defer?.(work);
+  const work=Promise.resolve().then(task).catch(async(error:unknown)=>{const run=await this.require<Run>(userId,'run',runId).catch(()=>null);if(run&&!this.terminal(run)){
+   // A key that disappeared between slices is something the user can fix, so it keeps its typed code.
+   const code=error instanceof ApiError?RunErrorCodeSchema.safeParse(error.code).data:undefined,message=code?(error as ApiError).message:'Run execution failed';
+   run.status='failed';run.outcome='failed';run.error=message;if(code)run.errorCode=code;await this.put(userId,'run',runId,run);await this.emit(userId,runId,{type:'run.finished',outcome:'failed',message,...(code?{code}:{})});}}).catch(error=>{this.onBackgroundError(runId,error);}).finally(()=>this.work.delete(work));this.work.add(work);this.defer?.(work);
  }
- /** Background work never rejects unobserved (that would kill the process); failures of the failure path are logged without payloads. */
+ /** Never leave background rejections unhandled; log failures without payloads. */
  onBackgroundError=(runId:string,error:unknown)=>{console.error(JSON.stringify({type:'background_error',runId,error:error instanceof Error?error.name+': '+error.message.slice(0,300):'unknown'}));};
  async drain(){await Promise.all([...this.work]);}
  async emit(userId:string,runId:string,event:RunEventPayload){

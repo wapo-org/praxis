@@ -3,10 +3,6 @@ import { z } from 'zod';
 import { mutation, query, type MutationCtx, type QueryCtx } from './functions.js';
 import { requireServer } from './access.js';
 
-/**
- * Better Auth database behind the server credential. The API's custom adapter
- * (apps/api/src/adapters/auth.ts) forwards each adapter operation here.
- */
 const Where = z.object({
   field: z.string().regex(/^[a-zA-Z][a-zA-Z0-9]*$/),
   operator: z
@@ -91,7 +87,7 @@ const INDEX_BY_FIELD = {
 
 async function rows(ctx: QueryCtx, input: Input) {
   if (input.join && Object.keys(input.join as object).length) throw new ConvexError('Auth joins are disabled');
-  // With only AND connectors the fold is a conjunction, so one equality clause can drive an index.
+  // Pure AND queries can use one equality clause for index lookup.
   const allAnd = input.where.every((w) => w.connector !== 'OR');
   const indexed = allAnd
     ? input.where.find(
@@ -105,7 +101,6 @@ async function rows(ctx: QueryCtx, input: Input) {
     result = await ctx.db
       .query('authDocuments')
       .withIndex(INDEX_BY_FIELD[field], (q) =>
-        // Index field paths are typed per index; the value is validated above.
         (q.eq('model', input.model) as any).eq(field === 'id' ? 'id' : `data.${field}`, value),
       )
       .collect();

@@ -1,8 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// WP-J2: activity rows on one edge, the column centred beside the sidebar, attachments that look like files
-// and never vanish, voice input on the Web Speech API, and New chat landing the caret in the composer.
-
 async function signIn(page: Page, userId = `j2-${test.info().project.name}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`) {
   expect((await page.request.post('/v1/auth/dev', { data: { type: 'auth.dev', userId } })).ok()).toBeTruthy();
   await page.goto('/');
@@ -16,7 +13,7 @@ async function scriptedChat(page: Page, runs: Array<[string, string]>) {
     const { apiClient } = (await import(/* @vite-ignore */ path)) as typeof import('../src/lib/api');
     const chat = await apiClient.createChat({ title: 'J2 spec' });
     for (const [text, script] of runs) {
-      const run = await apiClient.startRun({ chatId: chat.id, text, script: script as 'tools', providerId: 'scripted', modelId: 'scripted', clientTurnId: crypto.randomUUID() });
+      const run = await apiClient.startRun({ chatId: chat.id, text, script: script as 'tools',  modelId: 'scripted', clientTurnId: crypto.randomUUID() });
       for (let i = 0; i < 150; i++) {
         const snap = await apiClient.getRunSnapshot(run.id);
         if (['completed', 'failed', 'cancelled'].includes(snap.run.status)) break;
@@ -27,8 +24,6 @@ async function scriptedChat(page: Page, runs: Array<[string, string]>) {
   }, runs);
 }
 
-/** The owner's failing rows (J-ref/01): a long run_javascript fetch and an MCP call, both failed. Injected by
- *  wrapping fetch in the page (Playwright's WebKit does not intercept these requests). */
 async function failedRows(page: Page) {
   await page.addInitScript(() => {
     const original = window.fetch.bind(window);

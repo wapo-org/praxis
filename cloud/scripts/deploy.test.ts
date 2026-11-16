@@ -2,7 +2,6 @@ import { it, expect, vi } from 'vitest';
 import { mkdtemp, writeFile, rm, mkdir, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-// CLI modules are standalone ESM; test the orchestration without invoking a cloud executable.
 // @ts-ignore JavaScript CLI module
 import { validate, required, loadEnv, safeBuildEnv } from './deploy-config.mjs';
 // @ts-ignore JavaScript CLI module

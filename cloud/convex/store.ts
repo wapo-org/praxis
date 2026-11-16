@@ -2,10 +2,7 @@ import { ConvexError, v } from 'convex/values';
 import { mutation, query, type MutationCtx, type QueryCtx } from './functions.js';
 import { bounded, requireServer } from './access.js';
 
-/**
- * Generic owner-scoped Store behind the server credential.
- * Every function requires `serverToken` and an owner `userId`; rows are addressed by (userId, kind, id).
- */
+/** Owner-scoped Store requiring serverToken and userId. */
 const scope = { serverToken: v.string(), userId: v.string() };
 const address = { ...scope, kind: v.string(), id: v.string() };
 
@@ -95,7 +92,7 @@ export const changes = query({
   },
 });
 
-/** Owners with stored rows, paginated (one `sequences` row per owner). Used only by maintenance scripts. */
+/** Paginated owners with stored rows for maintenance scripts. */
 export const owners = query({
   args: { serverToken: v.string(), cursor: v.union(v.string(), v.null()) },
   handler: async (ctx, a) => {
@@ -105,7 +102,6 @@ export const owners = query({
   },
 });
 
-/** Latest revision for the owner (0 when none): newest entry of the owner's revision index. */
 export const head = query({
   args: scope,
   handler: async (ctx, a) => {
@@ -129,7 +125,6 @@ interface WriteInput {
   deleted: boolean;
 }
 
-/** Writes the current row and appends an immutable revision with the next per-owner sequence. */
 async function write(ctx: MutationCtx, a: WriteInput) {
   [a.userId, a.kind, a.id].forEach(bounded);
   if (a.parentId !== undefined) bounded(a.parentId);
@@ -185,10 +180,7 @@ export const remove = mutation({
   },
 });
 
-/**
- * Compare-and-set write: succeeds only when the current revision equals `expectedRevision`
- * (0 = the row must not exist). Used for checkpoint versions under at-least-once delivery.
- */
+/** CAS write against expectedRevision (0 = absent) for at-least-once checkpoints. */
 export const putIfRevision = mutation({
   args: { ...address, value: v.any(), parentId: v.optional(v.string()), expectedRevision: v.number() },
   handler: async (ctx, a) => {

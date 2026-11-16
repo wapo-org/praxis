@@ -1,16 +1,3 @@
-/**
- * Runtime displacement and specular maps: the kube.io liquid-glass generator,
- * ported from wapo.dp `src/lib/glass/displacement-map.ts`. See that file for
- * how the tables were measured from the shipped maps.
- *
- * Differences from the source, all cost or correctness:
- *  - Loops visit only the bezel ring; the interior is the neutral fill anyway.
- *  - The ring is clamped to the radius, so a bezel wider than the corner (a
- *    sidebar with a 20 px radius and a 32 px bezel) stays a full ring instead of
- *    collapsing to a thin band.
- *  - Maps are built at rest size only, never during a gesture, and cached.
- *  - Maps are far smaller than the source's: see PIXEL_BUDGET.
- */
 import type { GlassMaterial } from './material';
 
 /** Normalized bezel profiles at 0.5 element-px steps, border = 1. */
@@ -70,10 +57,6 @@ function forRing(mw: number, mh: number, band: number, visit: (x: number, y: num
   }
 }
 
-/**
- * Distance and outward normal of a corner offset (l, d) under the corner's own superellipse norm, so the
- * ring follows the painted edge exactly. At n = 2 this is the circle kube draws, bit for bit.
- */
 function ringPoint(l: number, d: number, n: number): { dist: number; nx: number; ny: number } {
   if (n === 2) {
     const dist = Math.sqrt(l * l + d * d);
@@ -192,13 +175,6 @@ function frostMask(canvas: HTMLCanvasElement, mw: number, mh: number): string | 
   return paintFrostMask(canvas, mw, mh) ? canvas.toDataURL('image/png') : null;
 }
 
-/**
- * Chromium re-uploads feImage textures on every frame the lens redraws, so map
- * size is the lens's main cost: measured headed on an M4 Pro at 120 Hz, a sidebar
- * at the source's 1.1M budget drops scrolling to 60 Hz; at this budget it holds 120.
- * Displacement is smooth and bilinear-filtered back up, so it loses nothing visible;
- * the crisp 1 px rim on big surfaces comes from the CSS finish.
- */
 export const PIXEL_BUDGET = 60_000;
 /** The frost mask is one smooth radial gradient, so it never needs more than this. */
 const MASK_SIZE = 96;

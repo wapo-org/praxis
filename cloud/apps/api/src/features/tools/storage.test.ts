@@ -17,7 +17,7 @@ function harness(){
   '../../../../../convex/http.ts':()=>import('../../../../../convex/http.js'),
  });
  const rpc:ConvexRPC={query:(n,a)=>t.query(makeFunctionReference<'query'>(n),{...a,serverToken:token}),mutation:(n,a)=>t.mutation(makeFunctionReference<'mutation'>(n),{...a,serverToken:token}),action:(n,a)=>t.action(makeFunctionReference<'action'>(n),{...a,serverToken:token})};
- // Storage URLs from convex-test are fake; serve their bytes from the test deployment instead of the network.
+ // Serve fake convex-test storage URLs from the test deployment.
  const fetcher=(async(input:RequestInfo|URL)=>{
   const sha=String(input).split('/api/storage/')[1]!;
   const bytes=await t.run(async ctx=>{const doc=(await ctx.db.system.query('_storage').collect()).find(d=>d.sha256===sha);const blob=doc?await ctx.storage.get(doc._id):null;return blob?await blob.arrayBuffer():null;});
@@ -28,7 +28,7 @@ function harness(){
 const localUpload:ClientUpload=async(s,user,url,bytes,type)=>s.acceptUpload!(user,new URL(url.uploadUrl).pathname.split('/').at(-1)!,bytes,type);
 toolsStorageContract('tools storage: local',()=>createLocalToolsStorage('http://localhost'),localUpload);
 let current:ReturnType<typeof harness>;
-/** The client's direct POST to the Convex upload URL, simulated by storing the blob in the test deployment. */
+/** Simulates client POST to Convex upload URL by storing the blob directly. */
 const convexUpload:ClientUpload=async(_s,_user,url,bytes,type)=>{
  expect(url.method).toBe('POST');expect(url.uploadUrl).toContain('convex.site');
  const response=await current.t.fetch(new URL(url.uploadUrl).pathname,{method:'POST',headers:{'content-type':type},body:Uint8Array.from(bytes)});

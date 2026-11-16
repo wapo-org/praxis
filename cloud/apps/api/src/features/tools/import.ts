@@ -11,14 +11,14 @@ const fail=():never=>{throw new ApiError(400,'invalid_archive','Unsafe, malforme
 type Entry={path:string;bytes:Uint8Array;executable:boolean;directory:boolean};
 /** `./x` → `x`; the archive root itself (`.` or `./`) becomes ''. */
 const clean=(path:string)=>{const p=path.replace(/^(?:\.\/)+/,'');return p==='.'?'':p;};
-/** macOS metadata (Finder/ditto `__MACOSX/`, AppleDouble `._*`, `.DS_Store`) and the root entry: counted, never kept. */
+/** macOS Finder/AppleDouble metadata and root entries are counted against caps, never kept. */
 export const isMetadata=(path:string)=>{const p=clean(path).replace(/\/$/,'');return p===''||p==='__MACOSX'||p.startsWith('__MACOSX/')||p.split('/').some(s=>s.startsWith('._')||s==='.DS_Store');};
 export function extractSkill(archive:Uint8Array,name:string){
  if(archive.length>25_000_000)fail();
  const entries:Entry[]=[];let total=0,count=0;
  const seen=new Set<string>();
  const tally=(size:number)=>{if(++count>COUNT||!Number.isSafeInteger(size)||size<0||(total+=size)>MAX)fail();};
- /** Counts every entry against the caps; returns false for metadata that is skipped without being validated. */
+ /** Counts all entries against caps; returns false for skipped metadata. */
  function check(raw:string,size:number,directory=false){
   tally(size);
   if(isMetadata(raw))return false;
@@ -29,7 +29,7 @@ export function extractSkill(archive:Uint8Array,name:string){
  }
  try{
  if(/\.(zip|skill)$/i.test(name)){
-  // Inspect central directory Unix modes before extraction: no links/devices, even in dropped files.
+  // Check central directory Unix modes before extraction so links/devices are rejected.
   const b=Buffer.from(archive);let end=-1;
   for(let i=b.length-22;i>=Math.max(0,b.length-65557);i--)if(b.readUInt32LE(i)===0x06054b50&&i+22+b.readUInt16LE(i+20)===b.length){end=i;break;}
   if(end<0||b.readUInt16LE(end+4)!==0||b.readUInt16LE(end+6)!==0)fail();
@@ -80,7 +80,7 @@ export function extractSkill(archive:Uint8Array,name:string){
  const parsed=parseSkillDocument(document);return {...parsed,document,files:bundle,dropped};
  }catch(error){if(error instanceof ApiError)throw error;return fail();}
 }
-/** Atomic from the user's view: files are written first and the skill row (enabled) last; a failure rolls the files back. */
+/** Writes files before enabling the skill row and rolls back on failure. */
 export async function importSkill(ctx:FeatureContext,storage:ToolsStorage,bytes:Uint8Array,name:string){
  const input=extractSkill(bytes,name),id=randomUUID(),state=toolsState(ctx,storage);
  await state.put(ctx.userId,'skill',id,{files:input.files});

@@ -1,6 +1,3 @@
-/* The question card (WP-I1): part of the activity column, not a boxed form. Flat on the page, the
-   activity type scale, our pill fields and pill buttons; one quiet focus line, no double ring. */
-
 .card {
   display: flex;
   flex-direction: column;

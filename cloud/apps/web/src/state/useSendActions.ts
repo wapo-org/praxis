@@ -2,7 +2,9 @@ import { runErrorCopy } from '../lib/runErrorCopy';
 import type { Chat, Message } from '@praxis/protocol';
 import React from 'react';
 import { toWireMode } from '../lib/modes';
-import { apiClient } from '../lib/api';
+import { isScriptedModel } from '../lib/models';
+import { DEFAULT_MODEL_ID } from '@praxis/protocol';
+import { apiClient, PraxisApiError } from '../lib/api';
 
 import type { LiveRunState } from './types';
 import type { PraxisState } from './usePraxisState';
@@ -20,9 +22,8 @@ export function useSendActions(
     activeChatId,
     setActiveChatId,
     setMessagesByChat,
-    models,
     attachmentsById,
-    selectedProviderId,
+    setActiveSheet,
     selectedModelId,
     webSearch,
     selectedEffort,
@@ -31,27 +32,11 @@ export function useSendActions(
     liveRunsByChat,
     setLiveRunsByChat,
   } = state;
-  // The model list loads after the page does. A message sent before the selection resolves waits for it (the
-  // optimistic bubble and run show at once); sending '' as the model made the server reject the new chat.
-  const modelRef = React.useRef({ providerId: selectedProviderId, modelId: selectedModelId, catalogReady });
-  modelRef.current = { providerId: selectedProviderId, modelId: selectedModelId, catalogReady };
-  const resolveModel = React.useCallback(
-    () =>
-      new Promise<{ providerId?: string; modelId?: string }>((resolve) => {
-        const start = Date.now();
-        let readySince = 0;
-        const tick = () => {
-          const pick = modelRef.current;
-          if (pick.providerId && pick.modelId) return resolve({ providerId: pick.providerId, modelId: pick.modelId });
-          // Once the list has loaded, the selection settles within a render or two; none means there is no model.
-          if (pick.catalogReady) readySince ||= Date.now();
-          if ((readySince && Date.now() - readySince > 150) || Date.now() - start > 10_000) return resolve({});
-          setTimeout(tick, 50);
-        };
-        tick();
-      }),
-    [],
-  );
+  const resolveModel = React.useCallback(async () => {
+    if (selectedModelId) return { modelId: selectedModelId };
+    const page = await apiClient.listModels();
+    return { modelId: page.items.find(m => m.id === DEFAULT_MODEL_ID)?.id ?? page.items[0]?.id };
+  }, [selectedModelId]);
   const executeSendMessage = React.useCallback(
     async (
       text: string,
@@ -69,7 +54,8 @@ export function useSendActions(
           | 'compaction'
           | 'vision';
       },
-    ) => {
+    ): Promise<boolean> => {
+      // Resolves false only when the connect card was opened instead of sending.
       setErrorBanner(null);
       state.pendingChatSwitchRef.current = null;
       let targetChatId = state.activeChatIdRef.current ?? activeChatId;
@@ -92,7 +78,7 @@ export function useSendActions(
           disabledConnectorIds: [],
           createdAt: nowIso,
           updatedAt: nowIso,
-          providerId: selectedProviderId || undefined,
+
           modelId: selectedModelId || undefined,
           effort: selectedEffort || undefined,
         };
@@ -107,7 +93,7 @@ export function useSendActions(
             id: generatedId,
             title: 'New chat',
             mode: wireMode,
-            providerId: pick.providerId,
+
             modelId: pick.modelId,
             effort: selectedEffort || undefined,
           }),
@@ -177,9 +163,8 @@ export function useSendActions(
         [targetChatId!]: optimisticLiveRun,
       }));
 
-      // Infer script in local mode from prompt keywords if not explicitly provided
       let inferredScript = options?.script;
-      if (!inferredScript && selectedProviderId === 'scripted') {
+      if (!inferredScript && isScriptedModel(selectedModelId)) {
         const lower = text.toLowerCase();
         if (lower.includes('nested approval')) inferredScript = 'nestedApproval';
         else if (lower.includes('approval') || lower.includes('approve'))
@@ -238,14 +223,11 @@ export function useSendActions(
           regenerateMessageId: options?.regenerateMessageId,
           chatId: targetChatId,
           text,
-          providerId: pick.providerId,
+
           modelId: pick.modelId,
           mode: toWireMode(selectedMode),
           effort: selectedEffort,
-          webSearch:
-            webSearch &&
-            !!models.find((m) => m.id === pick.modelId && m.providerId === pick.providerId)
-              ?.capabilities.serverWebSearch,
+          webSearch,
           attachmentIds: options?.attachmentIds ?? [],
           clientTurnId,
           idempotencyKey: clientTurnId,
@@ -268,7 +250,7 @@ export function useSendActions(
               setChats((prev) => prev.map((value) => (value.id === chat.id ? chat : value))),
             )
             .catch(() => {});
-          return;
+          return true;
         }
 
         setLiveRunsByChat((prev) => {
@@ -301,6 +283,7 @@ export function useSendActions(
             setErrorBanner(err instanceof Error ? err.message : 'Unable to refresh title'),
           );
         attachRunStream(run, 0);
+        return true;
       } catch (err) {
         if (options?.regenerateMessageId) {
           setMessagesByChat((prev) => ({ ...prev, [targetChatId!]: originalMessages }));
@@ -312,20 +295,25 @@ export function useSendActions(
           delete next[targetChatId!];
           return next;
         });
+        if (err instanceof PraxisApiError && err.code === 'model_key_missing') {
+          state.setModelKey(null);
+          setActiveSheet('models');
+          setMessagesByChat(prev => ({...prev, [targetChatId!]: originalMessages}));
+          return false;
+        }
         const msg = runErrorCopy(err);
         setErrorBanner(msg);
+        return true;
       }
     },
     [
       activeChatId,
       onNavigate,
       attachmentsById,
-      selectedProviderId,
       selectedModelId,
       selectedMode,
       selectedEffort,
       webSearch,
-      models,
       attachRunStream,
       resolveModel,
     ],

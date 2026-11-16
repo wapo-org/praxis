@@ -1,15 +1,6 @@
 import type { MessagePart } from '@praxis/protocol';
 import { textResult, type AgentTool, type ProviderEvent, type ProviderRequest } from './types.js';
 
-/**
- * WP-M1: a replay of a real chat from the owner's app ("write something semi long", 2026-11-13), with the
- * real part order and realistic timing. One assistant turn is two provider responses split by a wire `user`
- * message that carries only the toolResult:
- *   assistant [reasoning(summary), reasoning(redacted), text, toolCall mcp__exa__web_search_exa_…]
- *   user      [toolResult]
- *   assistant [reasoning(summary), reasoning(redacted), text (long, streamed in small chunks)]
- * Timing: reasoning ≈1.6 s and ≈2.7 s, the search tool 4 s, text in ~4-character chunks at ~70 chunks/s.
- */
 export const REAL_SHAPE_TOOL = 'mcp__exa__web_search_exa_226473000415';
 export const REAL_SHAPE_TOOL_MS = 4000;
 

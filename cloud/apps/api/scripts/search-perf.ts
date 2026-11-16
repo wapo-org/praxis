@@ -1,5 +1,3 @@
-// WP-H3: search latency over 2,000 chats in dev (memory store + memory vectors) with the dev embedder.
-// npx tsx apps/api/scripts/search-perf.ts [minilm|hash]
 import { ChatSchema, MessageSchema } from '@praxis/protocol';
 import { createMemoryAdapters } from '../src/adapters/memory.js';
 import { selectEmbedder } from '../src/embedding.js';

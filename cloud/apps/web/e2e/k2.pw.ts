@@ -143,8 +143,6 @@ test('reduced motion: no run background', async ({ browser }) => {
   await context.close();
 });
 
-// WP-L2 (L-ref/08) supersedes K2's separate pills: rows next to each other are one translucent squircle group,
-// flat joins with an inset hairline, no gaps, the highlight clipped by the group.
 test('the tray\'s rows group into one translucent squircle with flat, hairline joins', async ({ page }) => {
   await signIn(page);
   await page.getByTestId('composer-plus-button').click();

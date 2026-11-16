@@ -7,11 +7,11 @@ const ImageQuestionSchema=z.object({image_id:IdSchema,question:z.string().trim()
 export interface ImageReaderOptions {
   provider:ModelProvider;modelId:string;maxTokens?:number;
   resolveImage(userId:string,chatId:string,imageId:string):Promise<MessagePart|null>;
-  /** Optional injected cropper. The core never imports a native image library. */
+  /** Optional cropper so core stays free of native image deps. */
   crop?(image:MessagePart,region:z.infer<typeof RegionSchema>,signal:AbortSignal):Promise<MessagePart>;
   now?():string;
 }
-/** Frozen spec is independent of the selected reader. All reads remain user/chat scoped. */
+/** Frozen tool spec; reads stay user/chat scoped. */
 export function createImageReaderTool(options:ImageReaderOptions):AgentTool {
   IdSchema.parse(options.modelId);
   return {

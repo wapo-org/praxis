@@ -77,8 +77,6 @@ export function ChatScreen() {
   const flightActive = useSendFlightActive();
   const status = activeLiveRun?.run.status;
   const runId = activeLiveRun?.run.id;
-  // Keep an inspected live turn mounted after completion: swapping it for saved rows would close
-  // the user's disclosure and discard the very element the scroll layer is pinning.
   const [inspectedRunId, setInspectedRunId] = React.useState<string>();
   React.useLayoutEffect(() => {
     const viewport = scrollRef.current;
@@ -112,8 +110,6 @@ export function ChatScreen() {
   } : undefined;
   const savedForLiveRun =
     !!runId && visibleMessages.some((m) => m.role === 'assistant' && m.runId === runId);
-  // A run that just completed keeps its live turn for one fold only when it has foldable activity
-  // (or until its saved message commits), so thoughts finish folding without snapping shut (WP-K2).
   const [lingerRunId, setLingerRunId] = React.useState<string | undefined>();
   const wasRunning = React.useRef(false);
   React.useEffect(() => {
@@ -188,11 +184,7 @@ export function ChatScreen() {
   return (
     <main data-testid="chat-screen" className={styles.screen}>
       <RunBackdrop active={status === 'queued' || status === 'running'} />
-      {/* The blur bands follow the column (Chromium mirrors scrolled text into a blur reaching past its edge);
-          the paper tint stays full-width so the lane has no visible edge. */}
       <motion.div className={styles.scrimLane} aria-hidden="true" initial={false} animate={{ x: shift }} transition={PANEL}>
-        {/* WP-K2 (K-ref/13): one ramp from the very top to just past the title's baseline, strongest at the edge;
-            the title sits on the blur with no box. The composer's ramp matches it. */}
         <ProgressiveBlurScrim edge="top" height={SCRIM_TOP} maxBlur={SCRIM_BLUR} layers="blur" />
         <ProgressiveBlurScrim edge="bottom" height={SCRIM_BOTTOM} maxBlur={SCRIM_BLUR} layers="blur" />
       </motion.div>

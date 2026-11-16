@@ -18,8 +18,6 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
   const [lightboxUrl, setLightboxUrl] = React.useState<string | null>(null);
 
   const textParts = message.parts.filter((p) => p.type === 'text');
-  // Files are parts with an attachment: images, inline documents, and file-only notes (the model reads the
-  // note's text; the person sees the file).
   const mediaParts = message.parts.filter((p) => !!p.attachmentId && (p.type === 'image' || p.type === 'document' || p.type === 'note'));
 
   const joined = visibleUserText(textParts.map((p) => p.text ?? '').join('\n'));

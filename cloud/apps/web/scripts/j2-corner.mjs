@@ -1,6 +1,3 @@
-// WP-J2 item 4: composer corners in Chromium and WebKit, DPR 1 and 2, light and dark, plus a WebKit run
-// with corner-shape disabled (what Safari 26 paints today) as the reference.
-//   BASE=http://127.0.0.1:5232 TAG=before|after node apps/web/scripts/j2-corner.mjs
 import { chromium, webkit } from '@playwright/test';
 import { homedir } from 'node:os';
 const BASE = process.env.BASE ?? 'http://127.0.0.1:5232';

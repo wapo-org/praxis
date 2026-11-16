@@ -1,8 +1,3 @@
-// WP-G1 performance budget. Production build; run headless and headed:
-//   BASE=http://127.0.0.1:5199 API=http://127.0.0.1:8824 node scripts/g1-perf.mjs            (headless)
-//   HEADED=1 BASE=... API=... node scripts/g1-perf.mjs                                       (headed, real GPU)
-// A 220-message scroll, menu open, tray open, sidebar collapse, stretching each surface, idle.
-// Budget: 0 long tasks over 50 ms, frame p95 within the display's refresh, no JS per frame while idle.
 import { chromium } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';

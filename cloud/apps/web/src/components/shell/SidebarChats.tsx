@@ -116,8 +116,6 @@ function ChatRow({
   onNavigate?: () => void;
 }) {
   const store = usePraxisStore();
-  // The Settings rows' press (scale on the SNAP spring, and the row's fill), for pointer and keyboard alike.
-  // Driven by the select button only, so pressing the row's actions button does not press the row.
   const canPress = Object.keys(usePress()).length > 0;
   const [pressed, setPressed] = React.useState(false);
   const release = () => setPressed(false);

@@ -1,4 +1,3 @@
-// Test harness: real local Hono API served inside Vite on the single assigned port.
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'vite';
 import { getRequestListener } from '@hono/node-server';

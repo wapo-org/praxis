@@ -48,11 +48,6 @@ import { formatTraceTitle } from './WorkEntry.logic';
 
 export type { AgentActivityViewProps } from './activityTypes';
 
-/**
- * Turn fold / work disclosure row built on Trace:
- * Level 1 ("Working · X" / "Worked for X" / "Stopped after X") -> Level 2 steps -> Level 3 output.
- * Approvals and questions always show under the header, even folded.
- */
 export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: string }> = ({
   runId,
   startedAt,

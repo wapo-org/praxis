@@ -3,7 +3,6 @@ import type {JsonObject} from '@praxis/protocol';
 import type {FeatureContext} from '../../contracts.js';
 import type {ToolsStorage, ToolsState} from './ports.js';
 
-/** Generic Store is already durable/user-scoped; a dedicated tools adapter can isolate tool state. */
 export function toolsState(ctx: FeatureContext, storage?: ToolsStorage): ToolsState {
   return storage?.state ?? {
     async get(userId, kind, id) {const row = await ctx.store.get(userId, `tools:${kind}`, id); return row && !row.deleted ? row.value : null;},

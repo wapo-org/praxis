@@ -27,7 +27,7 @@ export async function fixtureServer() {
   let base = '';
   let cimd = false;
   let protectedMode = false;
-  // Valid access tokens; rotateTokens() expires the current one so only a refresh restores access.
+  // rotateTokens() invalidates the current token so only refresh restores access.
   let validToken = 'fixture-access-token';
   let refreshes = 0;
 

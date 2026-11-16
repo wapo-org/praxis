@@ -6,12 +6,8 @@ export const JsonObjectSchema = z.record(z.string(), JsonValueSchema);
 export type JsonObject = z.infer<typeof JsonObjectSchema>;
 export const IdSchema = z.string().min(1).max(200);
 export const TimestampSchema = z.iso.datetime({ offset: false }); // ISO-8601 UTC, e.g. 2026-10-29T14:00:00.000Z
-// The web shows Auto, Ask and Execute (apps/web/src/lib/modes.ts): Execute is sent as build, and a stored plan reads
-// as Auto. plan and build stay valid here for older clients and stored chats.
 export const ModeSchema = z.enum(['ask', 'plan', 'build', 'auto']);
 export type Mode = z.infer<typeof ModeSchema>;
-export const ProviderFlavorSchema = z.enum(['anthropicMessages', 'openAIChat', 'openAIResponses']);
-export type ProviderFlavor = z.infer<typeof ProviderFlavorSchema>;
 export const ReasoningShapeSchema = z.enum(['titles', 'summary', 'raw', 'redacted', 'none']);
 export type ReasoningShape = z.infer<typeof ReasoningShapeSchema>;
 export const StreamAnnotationSchema = z.object({
@@ -36,36 +32,47 @@ export const CapabilitiesSchema = z.object({
   serverCompaction: z.boolean().default(false), toolSearch: z.boolean().default(false),
 });
 export type Capabilities = z.infer<typeof CapabilitiesSchema>;
-export const ProviderRequestOptionsSchema = z.object({type:z.literal('provider.request-options').default('provider.request-options'),systemRole:z.enum(['system','developer']).optional(),maxTokensField:z.enum(['max_tokens','max_completion_tokens','omit']).optional(),replayReasoning:z.boolean().optional()});
-export const ProviderSchema = z.object({
-  type: z.literal('provider'), id: IdSchema, name: z.string(), flavor: ProviderFlavorSchema,
-  baseUrl: z.string().url(), maskedKey: z.string(), capabilities: CapabilitiesSchema,
-  updatedAt: TimestampSchema,defaultModel:z.string().optional(),requestOptions:ProviderRequestOptionsSchema.optional(),headerNames:z.array(z.string()).optional(),
+/** The user's own OpenRouter key, as clients see it. The key itself is sealed server-side and never returned. */
+export const ModelKeySchema = z.object({
+  type: z.literal('modelKey'), maskedKey: z.string(), label: z.string().optional(), connectedAt: TimestampSchema,
+  /** Set when OpenRouter last rejected the key (401); cleared by a successful check or reconnect. */
+  lastError: z.string().optional(),
+  /** Credit limit and remaining credit in USD; null means OpenRouter reports no limit on this key. */
+  limit: z.number().nullable().optional(), limitRemaining: z.number().nullable().optional(),
 });
-export type Provider = z.infer<typeof ProviderSchema>;
-export const ProviderInputSchema = z.object({
-  type: z.literal('provider.input'), name: z.string().min(1).max(100), flavor: ProviderFlavorSchema,
-  requestOptions:ProviderRequestOptionsSchema.optional(),baseUrl: z.string().url(),defaultModel:z.string().optional(), apiKey: z.string().min(1).optional(),
-  capabilities: CapabilitiesSchema.optional(), extraHeaders: z.record(z.string(),z.string()).optional(),
+export type ModelKey = z.infer<typeof ModelKeySchema>;
+const connectType = z.literal('modelKey.connect').default('modelKey.connect');
+export const ModelKeyConnectInputSchema = z.discriminatedUnion('method', [
+  z.object({type: connectType, method: z.literal('paste'), apiKey: z.string().min(1).max(500)}),
+  z.object({type: connectType, method: z.literal('pkce'), code: z.string().min(1).max(2000), codeVerifier: z.string().min(43).max(128)}),
+]);
+export type ModelKeyConnectInput = z.infer<typeof ModelKeyConnectInputSchema>;
+/** One entry of the shared OpenRouter catalogue. Prices are OpenRouter's USD-per-token strings. */
+export const CatalogModelSchema = z.object({
+  type: z.literal('catalogModel').default('catalogModel'), reasoningMandatory:z.boolean().optional(), id: IdSchema, name: z.string(),
+  contextLength: z.number().int().positive(), maxOutput: z.number().int().positive().optional(),
+  pricing: z.object({prompt: z.string(), completion: z.string()}),
+  /** `files`: the model takes PDF/file input natively (absent on older cached entries = false). */
+  capabilities: z.object({tools: z.boolean(), reasoning: z.boolean(), images: z.boolean(), files: z.boolean().default(false)}),
 });
-export const ModelSchema = z.object({
-  type: z.literal('model'), id: IdSchema, providerId: IdSchema, displayName: z.string(),
-  outputModalities:z.array(z.string()).optional(),reasoningMandatory:z.boolean().optional(),
-  pricing:z.object({prompt:z.number().nonnegative(),completion:z.number().nonnegative()}).optional(),
-  contextWindow: z.number().int().positive().optional(), maxOutputTokens: z.number().int().positive().optional(),
-  tagline:z.string().optional(),speed:z.number().int().min(1).max(5).optional(),intelligence:z.number().int().min(1).max(5).optional(),supportsImages:z.boolean().nullable().optional(),capabilities: CapabilitiesSchema, reasoningEfforts: z.array(z.string()), pinned: z.boolean(), favorite: z.boolean(),
-});
-export type Model = z.infer<typeof ModelSchema>;
-export const ModelPreferenceSchema = z.object({type:z.literal('model.preference'), providerId:IdSchema, modelId:IdSchema, pinned:z.boolean().optional(),favorite:z.boolean().optional()});
+export type CatalogModel = z.infer<typeof CatalogModelSchema>;
+/** A catalogue entry as `GET /v1/models` lists it: plus this user's pin/favourite and the curated flag. */
+export const ModelListItemSchema = CatalogModelSchema.extend({pinned: z.boolean(), favorite: z.boolean(), recommended: z.boolean()});
+export type ModelListItem = z.infer<typeof ModelListItemSchema>;
+export const ModelPreferenceSchema = z.object({type:z.literal('model.preference'), modelId:IdSchema, pinned:z.boolean().optional(),favorite:z.boolean().optional()});
+export const ModelPreferenceRecordSchema = z.object({type:z.literal('modelPreference'), modelId:IdSchema, pinned:z.boolean(), favorite:z.boolean()});
+export type ModelPreferenceRecord = z.infer<typeof ModelPreferenceRecordSchema>;
+export const DEFAULT_MODEL_ID = 'anthropic/claude-sonnet-5.5';
+/** Curated short list ordered above the catalogue; missing IDs are skipped. */
+export const RECOMMENDED_MODELS = ['anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5', 'anthropic/claude-haiku-5.5', 'openai/gpt-5.6-sol', 'google/gemini-3.8-flash', 'deepseek/deepseek-v4.1-flash'] as const;
+/** Effort levels offered for models whose catalogue entry supports reasoning. */
+export const REASONING_EFFORTS = ['low', 'medium', 'high'] as const;
+export const RunErrorCodeSchema = z.enum(['model_key_missing', 'model_key_invalid', 'model_credit_exhausted']);
+export type RunErrorCode = z.infer<typeof RunErrorCodeSchema>;
 export const ToolSourceSchema = z.object({type:z.enum(['builtin','skill','javascript','mcp','server']),serverId:IdSchema.optional(),serverName:z.string().optional()});
 export const ToolPresentationSchema = z.object({type:z.literal('tool.presentation').default('tool.presentation'),category:z.enum(['integration','command','webSearch','webFetch','readFile','edit','skill','other']),runningTitle:z.string(),finishedTitle:z.string()});
 export const ToolSpecSchema = z.object({originalName:z.string().optional(),type:z.literal('tool.spec'),name:z.string(),description:z.string(),inputSchema:JsonObjectSchema,source:ToolSourceSchema,traits:z.array(z.enum(['readOnly','destructive','idempotent','openWorld','sandboxed']))});
 export type ToolSpec = z.infer<typeof ToolSpecSchema>;
-/**
- * Attachment size limits, shared by the API and the composer (which states them at attach time).
- * uploadBytes: the upload cap. inlineDocumentBytes / inlineTextBytes: PDFs and text the model reads directly.
- * codeReadBytes: the largest file run_javascript's `fs` reads; any other file over it can't be read at all.
- */
 export const ATTACHMENT_LIMITS = {uploadBytes: 25_000_000, inlineDocumentBytes: 10 << 20, inlineTextBytes: 200_000, codeReadBytes: 1_000_000} as const;
 export const AttachmentSchema = z.object({type:z.literal('attachment'),id:IdSchema,name:z.string(),mediaType:z.string(),size:z.number().int().nonnegative(),url:z.string().optional(),hiddenFromCode:z.boolean().default(false)});
 export type Attachment = z.infer<typeof AttachmentSchema>;
@@ -83,23 +90,23 @@ export type MessagePart = z.infer<typeof MessagePartSchema>;
 export const MessageSchema = z.object({
   type:z.literal('message'),id:IdSchema,chatId:IdSchema,runId:IdSchema.optional(),clientTurnId:IdSchema.optional(),promptStartedAt:TimestampSchema.optional(),
   role:z.enum(['user','assistant']),parts:z.array(MessagePartSchema),
-  raw:z.object({type:z.literal('provider.payload'),flavor:ProviderFlavorSchema,data:JsonValueSchema}).optional(),
+  raw:z.object({type:z.literal('provider.payload'),data:JsonValueSchema}).optional(),
   createdAt:TimestampSchema,updatedAt:TimestampSchema,sequence:z.number().int().positive().optional(),
 });
 export type Message = z.infer<typeof MessageSchema>;
 export const ConversationSetupSchema = z.object({type:z.literal('conversation.setup'),system:z.string(),tools:z.array(ToolSpecSchema),hiddenTools:z.array(ToolSpecSchema).optional(),skillCatalog:z.string(),connectorIds:z.array(IdSchema),createdAt:TimestampSchema});
 export type ConversationSetup = z.infer<typeof ConversationSetupSchema>;
 export const ChatSchema = z.object({
-  type:z.literal('chat'),titleRevision:z.string().optional(),id:IdSchema,pinned:z.boolean().default(false),title:z.string(),mode:ModeSchema,providerId:IdSchema.optional(),modelId:z.string().optional(),effort:z.string().optional(),
+  type:z.literal('chat'),titleRevision:z.string().optional(),id:IdSchema,pinned:z.boolean().default(false),title:z.string(),mode:ModeSchema,modelId:z.string().optional(),effort:z.string().optional(),
   connectorIds:z.array(IdSchema).default([]),disabledConnectorIds:z.array(IdSchema).default([]),
   setup:ConversationSetupSchema.optional(),createdAt:TimestampSchema,updatedAt:TimestampSchema,deletedAt:TimestampSchema.optional(),activeRunId:IdSchema.optional(),
 });
 export type Chat = z.infer<typeof ChatSchema>;
-export const ChatInputSchema = z.object({type:z.literal('chat.input'),id:IdSchema.optional(),pinned:z.boolean().optional(),title:z.string().max(300).default('New chat'),mode:ModeSchema.default('build'),providerId:IdSchema.optional(),modelId:z.string().optional(),effort:z.string().optional(),connectorIds:z.array(IdSchema).default([]),disabledConnectorIds:z.array(IdSchema).default([])});
+export const ChatInputSchema = z.object({type:z.literal('chat.input'),id:IdSchema.optional(),pinned:z.boolean().optional(),title:z.string().max(300).default('New chat'),mode:ModeSchema.default('build'),modelId:z.string().optional(),effort:z.string().optional(),connectorIds:z.array(IdSchema).default([]),disabledConnectorIds:z.array(IdSchema).default([])});
 export const ChatPatchSchema = ChatInputSchema.partial().extend({type:z.literal('chat.patch'),title:ChatInputSchema.shape.title.removeDefault().optional(),mode:ChatInputSchema.shape.mode.removeDefault().optional(),connectorIds:ChatInputSchema.shape.connectorIds.removeDefault().optional(),disabledConnectorIds:ChatInputSchema.shape.disabledConnectorIds.removeDefault().optional()});
 export const RunStatusSchema = z.enum(['queued','running','awaitingApproval','awaitingElicitation','continuing','completed','cancelled','failed']);
 export const RunOutcomeSchema = z.enum(['completed','truncated','maxIterations','refused','cancelled','failed']);
-export const RunSchema = z.object({type:z.literal('run'),id:IdSchema,chatId:IdSchema,status:RunStatusSchema,outcome:RunOutcomeSchema.optional(),error:z.string().optional(),createdAt:TimestampSchema,updatedAt:TimestampSchema,lastEventId:z.number().int().nonnegative(),clientTurnId:IdSchema.optional(),parentRunId:IdSchema.optional(),promptStartedAt:TimestampSchema.optional()});
+export const RunSchema = z.object({type:z.literal('run'),id:IdSchema,chatId:IdSchema,status:RunStatusSchema,outcome:RunOutcomeSchema.optional(),error:z.string().optional(),errorCode:RunErrorCodeSchema.optional(),note:z.string().optional(),createdAt:TimestampSchema,updatedAt:TimestampSchema,lastEventId:z.number().int().nonnegative(),clientTurnId:IdSchema.optional(),parentRunId:IdSchema.optional(),promptStartedAt:TimestampSchema.optional()});
 export type Run = z.infer<typeof RunSchema>;
 export const StreamSimOptionsSchema = z.object({
   sample: z.enum(['short', 'torture']).default('torture'),
@@ -113,7 +120,7 @@ export const StreamSimOptionsSchema = z.object({
 export type StreamSimOptions = z.infer<typeof StreamSimOptionsSchema>;
 export const StartRunSchema = z.object({regenerateMessageId:IdSchema.optional(),suggestedTitle:z.string().max(42).optional(),
   type:z.literal('run.start'),chatId:IdSchema,text:z.string().max(200000).default(''),
-  providerId:IdSchema.optional(),modelId:z.string().optional(),mode:ModeSchema.optional(),effort:z.string().optional(),
+  modelId:z.string().optional(),mode:ModeSchema.optional(),effort:z.string().optional(),
   attachmentIds:z.array(IdSchema).default([]),webSearch:z.boolean().default(false),idempotencyKey:IdSchema.optional(),clientTurnId:IdSchema.optional(),
   script:z.enum([
     'text','tools','approval','nestedApproval','elicitation','elicitationURL','error','long','compaction','vision',
@@ -127,7 +134,7 @@ export type Approval = z.infer<typeof ApprovalSchema>;
 export const ApprovalDecisionSchema = z.object({type:z.literal('approval.decision'),approvalId:IdSchema,decision:z.enum(['allowOnce','allowAlways','deny'])});
 export const ElicitationSchema = z.object({type:z.literal('elicitation'),id:IdSchema,message:z.string(),schema:JsonObjectSchema,callId:IdSchema.optional(),parentCallId:IdSchema.optional(),connectorId:IdSchema.optional(),connectorName:z.string().optional(),mode:z.enum(['form','url']).optional(),url:z.string().url().optional()});
 export const ElicitationResponseSchema = z.object({type:z.literal('elicitation.response'),elicitationId:IdSchema,action:z.enum(['accept','decline','cancel']),content:JsonObjectSchema.optional()});
-export const UsageSchema = z.object({type:z.literal('usage').default('usage'),inputTokens:z.number().nonnegative(),outputTokens:z.number().nonnegative(),cacheReadTokens:z.number().nonnegative().default(0),cacheWriteTokens:z.number().nonnegative().default(0)});
+export const UsageSchema = z.object({type:z.literal('usage').default('usage'),inputTokens:z.number().nonnegative(),outputTokens:z.number().nonnegative(),cacheReadTokens:z.number().nonnegative().default(0),cacheWriteTokens:z.number().nonnegative().default(0),cost:z.number().nonnegative().optional()});
 export type Usage = z.infer<typeof UsageSchema>;
 export const ToolDisplaySchema = z.object({title:z.string(),detail:z.string().optional(),connectorId:z.string().optional(),connectorName:z.string().optional(),icon:z.string().optional()});
 export const ToolActivitySchema = z.object({display:ToolDisplaySchema.optional(),type:z.literal('tool.activity'),id:IdSchema,name:z.string(),source:ToolSourceSchema,presentation:ToolPresentationSchema,arguments:JsonValueSchema.optional(),parentCallId:IdSchema.optional()});
@@ -158,14 +165,14 @@ export const RunEventPayloadSchema = z.discriminatedUnion('type',[
  z.object({type:z.literal('policy.updated'),alwaysAllowKey:z.string()}),
  z.object({type:z.literal('vision.activity'),id:IdSchema,phase:z.enum(['started','finished','failed']),attachmentId:IdSchema,modelId:z.string().optional(),question:z.string().optional(),answer:z.string().optional()}),
  z.object({type:z.literal('run.parked'),reason:z.enum(['approval','elicitation','continuation'])}),
- z.object({type:z.literal('run.finished'),outcome:RunOutcomeSchema,message:z.string().optional()}),
+ z.object({type:z.literal('run.finished'),outcome:RunOutcomeSchema,message:z.string().optional(),code:RunErrorCodeSchema.optional()}),
 ]);
 export type RunEventPayload = z.infer<typeof RunEventPayloadSchema>;
 export const RunEventSchema = z.object({type:z.literal('run.event'),id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),runId:IdSchema,chatId:IdSchema,createdAt:TimestampSchema,event:RunEventPayloadSchema});
 export type RunEvent = z.infer<typeof RunEventSchema>;
 export const ConnectorStatusSchema = z.enum(['connected','unreachable','needs_auth','needs_reauth','error']);
 export type ConnectorStatus = z.infer<typeof ConnectorStatusSchema>;
-/** status/lastCheckedAt/statusCode: result of the last MCP handshake (absent = never checked). Clients show status, not authStatus alone. */
+/** Last handshake status; UI renders status rather than authStatus alone. */
 export const ConnectorSchema = z.object({type:z.literal('connector'),status:ConnectorStatusSchema.optional(),lastCheckedAt:TimestampSchema.optional(),statusCode:z.string().optional(),error:z.string().optional(),toolCount:z.number().int().optional(),promptsCount:z.number().int().optional(),hasNewTools:z.boolean().optional(),headerNames:z.array(z.string()).optional(),id:IdSchema,name:z.string(),url:z.string().url(),transport:z.enum(['streamableHttp','sse']),enabled:z.boolean(),trusted:z.boolean(),disabledTools:z.array(z.string()),authStatus:z.enum(['none','required','connected']),updatedAt:TimestampSchema});
 export type Connector = z.infer<typeof ConnectorSchema>;
 export const ConnectorInputSchema = z.object({type:z.literal('connector.input'),name:z.string().min(1).max(100),url:z.string().url(),transport:z.enum(['streamableHttp','sse']).default('streamableHttp'),enabled:z.boolean().default(true),trusted:z.boolean().default(false),disabledTools:z.array(z.string()).default([]),extraHeaders:z.record(z.string(),z.string()).optional(),token:z.string().optional()});
@@ -183,12 +190,12 @@ export const UserSchema = z.object({type:z.literal('user'),id:IdSchema,name:z.st
 export type User = z.infer<typeof UserSchema>;
 export const SessionSchema = z.object({type:z.literal('session'),user:UserSchema,expiresAt:TimestampSchema,bearerToken:z.string().optional()});
 export const AuthInputSchema = z.object({type:z.literal('auth.input'),email:z.string().email(),password:z.string().min(12).max(256),name:z.string().max(100).optional()});
-export const PreferencesSchema = z.object({type:z.literal('preferences'),vision:z.object({type:z.literal('vision.preferences').default('vision.preferences'),providerId:IdSchema.optional(),modelId:z.string().optional(),enabled:z.boolean().default(true)}),voice:z.object({type:z.literal('voice.preferences').default('voice.preferences'),model:z.string().default('whisper-large-v3-turbo'),language:z.string().optional(),configured:z.boolean().default(false)}),updatedAt:TimestampSchema});
-export const PreferencesInputSchema = z.object({type:z.literal('preferences.input'),vision:z.object({providerId:IdSchema.optional(),modelId:z.string().optional(),enabled:z.boolean().optional()}).optional(),voice:z.object({model:z.string().optional(),language:z.string().optional(),apiKey:z.string().optional()}).optional()});
-export const BootstrapSchema = z.object({type:z.literal('bootstrap'),protocolVersion:z.number().int(),user:UserSchema,chats:z.array(ChatSchema),providers:z.array(ProviderSchema),models:z.array(ModelSchema),connectors:z.array(ConnectorSchema),skills:z.array(SkillSchema),consents:z.array(ConsentSchema).optional(),registries:z.array(RegistrySchema).optional(),preferences:PreferencesSchema.optional(),activeRuns:z.array(RunSchema),syncCursor:z.string(),syncRoot:z.string(),serverTime:TimestampSchema,eventCursor:z.number().int().nonnegative().optional()});
+export const PreferencesSchema = z.object({type:z.literal('preferences'),vision:z.object({type:z.literal('vision.preferences').default('vision.preferences'),modelId:z.string().optional(),enabled:z.boolean().default(true)}),voice:z.object({type:z.literal('voice.preferences').default('voice.preferences'),model:z.string().default('whisper-large-v3-turbo'),language:z.string().optional(),configured:z.boolean().default(false)}),updatedAt:TimestampSchema});
+export const PreferencesInputSchema = z.object({type:z.literal('preferences.input'),vision:z.object({modelId:z.string().optional(),enabled:z.boolean().optional()}).optional(),voice:z.object({model:z.string().optional(),language:z.string().optional(),apiKey:z.string().optional()}).optional()});
+export const BootstrapSchema = z.object({type:z.literal('bootstrap'),protocolVersion:z.number().int(),user:UserSchema,chats:z.array(ChatSchema),modelKey:ModelKeySchema.optional(),modelPreferences:z.array(ModelPreferenceRecordSchema).default([]),connectors:z.array(ConnectorSchema),skills:z.array(SkillSchema),consents:z.array(ConsentSchema).optional(),registries:z.array(RegistrySchema).optional(),preferences:PreferencesSchema.optional(),activeRuns:z.array(RunSchema),syncCursor:z.string(),syncRoot:z.string(),serverTime:TimestampSchema,eventCursor:z.number().int().nonnegative().optional()});
 export type Bootstrap = z.infer<typeof BootstrapSchema>;
 export type UserEvent = z.infer<typeof UserEventSchema>;
-export const UserEventSchema = z.object({type:z.literal('user.event'),id:z.number().int().positive(),createdAt:TimestampSchema,entity:z.enum(['chat','message','run','provider','model','connector','skill','consent','attachment']),entityId:IdSchema,operation:z.enum(['upsert','delete']),value:JsonValueSchema.optional(),syncCursor:z.string()});
+export const UserEventSchema = z.object({type:z.literal('user.event'),id:z.number().int().positive(),createdAt:TimestampSchema,entity:z.enum(['chat','message','run','modelKey','modelPreference','connector','skill','consent','attachment']),entityId:IdSchema,operation:z.enum(['upsert','delete']),value:JsonValueSchema.optional(),syncCursor:z.string()});
 export const PageQuerySchema = z.object({cursor:z.string().optional(),limit:z.coerce.number().int().min(1).max(100).default(50),q:z.string().max(500).optional()});
 export function PageSchema<T extends z.ZodType>(item:T){return z.object({type:z.literal('page'),items:z.array(item),nextCursor:z.string().nullable()});}
 export const SyncRequestSchema = z.object({type:z.literal('sync.request'),strategy:z.enum(['cursor','merkle']).default('cursor'),cursor:z.string().optional(),root:z.string().optional(),prefixes:z.array(z.string()).optional(),limit:z.number().int().min(1).max(1000).default(500)});
@@ -198,7 +205,7 @@ export const SyncResponseSchema = z.object({type:z.literal('sync.response'),stra
 export const ErrorSchema = z.object({type:z.literal('error'),code:z.string(),message:z.string(),requestId:z.string().optional(),details:JsonValueSchema.optional()});
 export const OkSchema = z.object({type:z.literal('ok')});
 export const ENDPOINTS = {
- bootstrap:'/v1/bootstrap',chats:'/v1/chats',runs:'/v1/runs',events:'/v1/events',providers:'/v1/providers',models:'/v1/models',connectors:'/v1/connectors',skills:'/v1/skills',registries:'/v1/skill-registries',uploads:'/v1/uploads',transcribe:'/v1/transcribe',sync:'/v1/sync',
+ bootstrap:'/v1/bootstrap',chats:'/v1/chats',runs:'/v1/runs',events:'/v1/events',modelKey:'/v1/model-key',models:'/v1/models',connectors:'/v1/connectors',skills:'/v1/skills',registries:'/v1/skill-registries',uploads:'/v1/uploads',transcribe:'/v1/transcribe',sync:'/v1/sync',
 } as const;
 
 // Additive client-review fields, v1. Snapshot is authoritative even after stream retention.
@@ -217,10 +224,6 @@ export const UploadUrlSchema = z.object({type:z.literal('upload.url'),uploadUrl:
 export const UploadReceiptSchema = z.object({type:z.literal('upload.receipt'),storageId:IdSchema});
 export const SkillUpdateSchema=z.object({type:z.literal('skill.update'),skillId:IdSchema,registryId:IdSchema,entryId:IdSchema,digest:z.string(),updateAvailable:z.literal(true)});
 export const SkillImportSchema=z.object({type:z.literal('skill.import'),attachmentId:IdSchema});
-export const ProviderProbeSchema=z.object({tools:z.boolean(),vision:z.boolean(),streaming:z.boolean(),reasoningEfforts:z.array(z.string())});
-export const ProviderTestInputSchema=z.object({type:z.literal('provider.test'),modelId:IdSchema.optional()});
-export const ProviderProbeErrorSchema=z.object({code:z.enum(['timeout','provider_unavailable','provider_error','unreachable']),message:z.string().max(500)});
-export const ProviderTestResultSchema = z.object({type:z.literal('provider.test.result'),ok:z.boolean(),models:z.array(ModelSchema),probe:ProviderProbeSchema.optional(),error:ProviderProbeErrorSchema.optional(),message:z.string().optional()});
 export const RegistryEntrySchema = z.object({type:z.literal('skill.registry.entry'),id:IdSchema,name:z.string(),description:z.string(),url:z.string().url().optional()});
 export const MCPResourceSchema = z.object({type:z.literal('mcp.resource'),uri:z.string(),name:z.string(),description:z.string().optional(),mimeType:z.string().optional()});
 export const MCPPromptSchema = z.object({type:z.literal('mcp.prompt'),name:z.string(),description:z.string().optional(),arguments:z.array(JsonObjectSchema).optional()});

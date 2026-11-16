@@ -1,8 +1,5 @@
 import XCTest
 
-/// Per-tool switches in the connector detail screen, against the
-/// `-PraxisMockConnector YES` seed (a hermetic connector with scripted
-/// tools). Nothing here reaches the network.
 final class ConnectorToolToggleUITests: XCTestCase {
     var app: XCUIApplication!
 
@@ -37,7 +34,6 @@ final class ConnectorToolToggleUITests: XCTestCase {
         add(attachment)
     }
 
-    /// History → ⋯ → Settings → Connectors → Mock Server.
     private func openMockConnector() {
         el(.button, "History").tap()
         let options = el(.button, "History options")
@@ -55,9 +51,7 @@ final class ConnectorToolToggleUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Mock Server"].waitForExistence(timeout: 10))
     }
 
-    /// The tools section sits below the fold: swipe until the element
-    /// can be tapped (the VStack renders eagerly, so existence alone
-    /// says nothing about visibility).
+    /// Tools VStack renders eagerly offscreen, so existence alone does not imply tappable visibility.
     private func scrollTo(_ element: XCUIElement) {
         for _ in 0..<8 {
             if element.waitForExistence(timeout: 1), element.isHittable { return }
@@ -70,7 +64,6 @@ final class ConnectorToolToggleUITests: XCTestCase {
         launch()
         openMockConnector()
 
-        // The header scrolls into view first, then the rows below it.
         let disableAll = el(.button, "Disable all tools")
         let enableAll = el(.button, "Enable all tools")
         scrollTo(disableAll)
@@ -82,13 +75,11 @@ final class ConnectorToolToggleUITests: XCTestCase {
         XCTAssertTrue(elContains(.staticText, "Can change things").exists)
         shot("mcptools-01-all-on")
 
-        // One toggle off: the count follows.
         search.tap()
         XCTAssertEqual(search.value as? String, "0")
         XCTAssertTrue(el(.staticText, "2 of 3 on").waitForExistence(timeout: 5))
         shot("mcptools-02-one-off")
 
-        // Disable all, then enable all.
         disableAll.tap()
         XCTAssertEqual(toolSwitch("list_projects").value as? String, "0")
         XCTAssertTrue(el(.staticText, "0 of 3 on").waitForExistence(timeout: 5))
@@ -96,7 +87,6 @@ final class ConnectorToolToggleUITests: XCTestCase {
         XCTAssertEqual(search.value as? String, "1")
         XCTAssertTrue(el(.staticText, "3 tools").waitForExistence(timeout: 5))
 
-        // Off survives leaving and reopening the detail screen.
         let ticket = toolSwitch("create_ticket")
         scrollTo(ticket)
         ticket.tap()
@@ -120,7 +110,6 @@ final class ConnectorToolToggleUITests: XCTestCase {
         XCTAssertTrue(el(.staticText, "New tool").exists)
         shot("mcptools-03-new-badge")
 
-        // Looked at once: leaving clears the badge.
         app.navigationBars.buttons["Connectors"].tap()
         XCTAssertTrue(app.navigationBars["Connectors"].waitForExistence(timeout: 10))
         elContains(.button, "Mock Server").tap()

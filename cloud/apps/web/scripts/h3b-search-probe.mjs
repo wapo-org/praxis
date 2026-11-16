@@ -1,5 +1,3 @@
-// WP-H3b live probe: six chats made in the web UI (random names, scripted replies) on a fresh dev:local, then
-// the orchestrator's six queries through /v1/search. BASE=http://127.0.0.1:5233 node apps/web/scripts/h3b-search-probe.mjs
 import { chromium } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 const BASE = process.env.BASE ?? 'http://127.0.0.1:5233';

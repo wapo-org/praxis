@@ -1,11 +1,5 @@
 import React from 'react';
 
-/**
- * Voice input on the Web Speech API (`SpeechRecognition`, `webkitSpeechRecognition` in Chrome and Safari).
- * Interim words stream into the composer while you speak; finished phrases stay. Browsers without the API
- * (Firefox today) get no mic at all: `supported` is false and the composer hides the button.
- */
-
 interface RecognitionAlternative { transcript: string }
 interface RecognitionResult { readonly isFinal: boolean; readonly length: number; [index: number]: RecognitionAlternative }
 interface RecognitionResultList { readonly length: number; [index: number]: RecognitionResult }

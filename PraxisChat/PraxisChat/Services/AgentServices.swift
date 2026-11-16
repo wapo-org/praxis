@@ -5,10 +5,7 @@ import AgentMCP
 import AgentSkills
 import AgentRuntime
 
-/// The app's agent stack, created once at launch: provider settings,
-/// connectors, skills, the elicitation queue and the one `AgentRuntime`
-/// that ties them together. Exists in every engine mode, so Settings can
-/// add a provider while the demo is running (the store then goes live).
+/// Singleton agent stack; exists in all engine modes so Settings can switch demo to live.
 @MainActor
 final class AgentServices {
     let settings: ProviderSettings
@@ -17,13 +14,10 @@ final class AgentServices {
     let elicitations: ElicitationCenter
     let runtime: AgentRuntime
     let attachments: AttachmentStore
-    /// Provider hosts allowed to receive chat data.
     let consent: AIDataConsent
-    /// Groq voice settings (Keychain key + model list + language).
     let voice: GroqVoiceSettings
 
-    /// `consent` defaults to an in-memory store with nothing allowed:
-    /// live sends ask first unless the caller grants a host.
+    /// Default consent is an empty in-memory store; live sends prompt unless caller grants a host.
     init(settings: ProviderSettings, connectors: ConnectorLibrary, skills: SkillLibrary,
          elicitations: ElicitationCenter, providerTransport: any HTTPTransport = URLSessionTransport(),
          attachments: AttachmentStore = .shared, consent: AIDataConsent = AIDataConsent(fileURL: nil),
@@ -36,15 +30,11 @@ final class AgentServices {
         self.attachments = attachments
         self.consent = consent
         self.voice = voice
-        // The runtime asks for a server's client on every prepare/run, so
-        // removing or reconfiguring a connector takes effect immediately.
-        // `scratch` keeps spilled tool output and JS `kv` across launches.
+        // Runtime fetches connector clients per prepare/run so edits apply immediately.
         self.runtime = AgentRuntime(skillStore: skills.store, providerTransport: providerTransport, scratch: scratch,
                                     mcpClient: { [weak connectors] id in await connectors?.client(for: id) })
     }
 
-    /// The app's services: files in Application Support, secrets in the
-    /// Keychain, sign-in through `ASWebAuthenticationSession`.
     static func live() -> AgentServices {
         let elicitations = ElicitationCenter()
         let services = AgentServices(
@@ -63,14 +53,11 @@ final class AgentServices {
                                   writingOptions: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]),
             voice: GroqVoiceSettings(fileURL: AppDirectories.voiceSettings,
                                      secrets: KeychainSecretStore(service: GroqVoiceSettings.keychainService)))
-        // Model lists cached before they carried image support (or more
-        // than a day ago) are read again, so "can it see images?" is
-        // answered from the server's current list, not a stale one.
+        // Refreshes pre-vision or >1d model caches so image support reflects server state.
         services.settings.refreshStaleModelListsInBackground()
         return services
     }
 
-    /// The live engine bound to these services.
     func makeEngine() -> LiveChatEngine {
         let settings = settings
         var engine = LiveChatEngine(runtime: runtime,
@@ -95,13 +82,11 @@ final class AgentServices {
         return engine
     }
 
-    /// What `look_at_image` may use this run: the reader from Settings,
-    /// when its key is there and its host may receive chat data.
+    /// Returns the Settings image reader only if its key exists and host has consent.
     static func imageReaderAccess(settings: ProviderSettings, consent: AIDataConsent) -> ImageReaderAccess {
         guard let reader = settings.imageReaderSelection() else { return .notConfigured }
         let displayName = settings.imageReaderDisplayName ?? reader.model
-        // A reader known to be text-only (its list says so, or its provider
-        // turned an image down before) would only fail again.
+        // Skip readers known to be text-only (by list or prior rejection) to avoid repeat failures.
         guard settings.imageSupport(profileID: reader.profile.id, model: reader.model) != .unsupported else {
             return .unavailable(ImageReaderAccess.readerCantSeeImagesMessage(displayName))
         }
@@ -116,20 +101,14 @@ final class AgentServices {
                                   onImagesRejected: { await settings.markImagesUnsupported(profileID: profileID, model: model) }))
     }
 
-    /// The selected provider's host when chat data can't go there yet
-    /// (no consent), with the profile name to show; nil when a send may
-    /// proceed (allowed, or no provider: that run fails fast and sends
-    /// nothing).
+    /// Host/name needing consent before sending, or nil if allowed or no provider (fails fast).
     func consentNeeded() -> (host: String, providerName: String)? {
         guard let profile = settings.selectedProfile else { return nil }
         let host = AIDataConsent.host(of: profile.endpoint.baseURL)
         return consent.isGranted(host) ? nil : (host, profile.name)
     }
 
-    /// `-PraxisTestProviderURL <url>` (UI tests): a keyless OpenAI-style
-    /// profile at that URL, so live mode can be exercised without a real
-    /// provider. Point it at an unroutable host; consent stops the send
-    /// before anything goes out.
+    /// UI test hook: keyless profile at -PraxisTestProviderURL; consent blocks actual sends.
     func installTestProviderIfRequested() {
         guard let raw = UserDefaults.standard.string(forKey: "PraxisTestProviderURL"), let url = URL(string: raw),
               !settings.profiles.contains(where: { $0.endpoint.baseURL == url }) else { return }
@@ -140,9 +119,7 @@ final class AgentServices {
         try? settings.save(profile, apiKey: nil)
     }
 
-    /// A deleted conversation's runtime state: spilled tool output and
-    /// the JS key-value store. Files go right away; the runner drops its
-    /// in-memory copy on its own thread.
+    /// Deletes spilled output and JS kv on disk now; runner drops in-memory state on its thread.
     func forget(conversationID: UUID) {
         let id = conversationID.uuidString
         runtime.spills.remove(conversationID: id)
@@ -150,15 +127,13 @@ final class AgentServices {
         Task { await runtime.forget(conversationID: id) }
     }
 
-    /// Drops runtime state of conversations that no longer exist (deleted
-    /// while a write was in flight, or files lost). Runs off the main actor.
+    /// Prunes state for deleted conversations (e.g. in-flight writes) off the main actor.
     func pruneRuntimeState(keeping conversationIDs: [UUID]) {
         guard let scratch = runtime.scratch else { return }
         let keep = Set(conversationIDs.map(\.uuidString))
         Task.detached(priority: .utility) { scratch.removeAll(except: keep) }
     }
 
-    /// Whether the web-search toggle means anything for the selected provider.
     var isWebSearchAvailable: Bool {
         guard let profile = settings.selectedProfile else { return false }
         return AgentRuntime.isWebSearchAvailable(on: profile.endpoint)

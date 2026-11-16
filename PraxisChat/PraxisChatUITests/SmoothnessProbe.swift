@@ -1,7 +1,5 @@
 import XCTest
 
-/// Temporary measurement probe: replays the recorded scenario (new chat →
-/// "Why is my build failing?" → full run) while simctl records the screen.
 final class SmoothnessProbe: XCTestCase {
     func testProbeBuildFailingRun() {
         let app = XCUIApplication()
@@ -36,7 +34,6 @@ final class SmoothnessProbe: XCTestCase {
         Thread.sleep(forTimeInterval: 1.5)
     }
 
-    // TEMP (send flight / command clip check)
     func testProbeSendFlightAndCommandToggle() {
         let app = XCUIApplication()
         app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES"]

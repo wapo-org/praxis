@@ -1,16 +1,16 @@
+import type { Mode } from '../lib/modes';
 import type { ResolvedTheme, ThemeMode } from '@praxis/glass';
 import type {
   Approval,
   Attachment,
-  Capabilities,
   Chat,
   Connector,
   Message,
-  Model,
-  Provider,
   Run,
   Skill,
   Usage,
+  ModelKey,
+  ModelListItem,
 } from '@praxis/protocol';
 import {
   type Consent,
@@ -77,8 +77,8 @@ export type ActiveSheet =
   | null
   | 'history'
   | 'settings'
-  | 'providers'
-  | 'provider-editor'
+  | 'models'
+  | 'openrouter-callback'
   | 'connectors'
   | 'connector-add-url'
   | 'connector-paste-config'
@@ -100,6 +100,8 @@ export interface PendingConsentPrompt {
 }
 
 export interface PraxisStoreContextValue {
+  draftTitle: string;
+  pendingChatSwitchRef: React.RefObject<string | null>;
   // Hydration & Perf
   hydrated: boolean;
   syncing: boolean;
@@ -116,13 +118,8 @@ export interface PraxisStoreContextValue {
   // Navigation & Sheets
   activeSheet: ActiveSheet;
   setActiveSheet: (sheet: ActiveSheet) => void;
-  restoreRoute: (chatId: string | null, sheet: ActiveSheet, providerId?: string | null) => void;
+  restoreRoute: (chatId: string | null, sheet: ActiveSheet) => void;
   startNewConversation: () => void;
-  /** The random two-word name the next new chat gets (design v2). */
-  draftTitle: string;
-  pendingChatSwitchRef: { current: string | null };
-  editingProviderId: string | null;
-  setEditingProviderId: (id: string | null) => void;
   desktopSidebarOpen: boolean;
   setDesktopSidebarOpen: (open: boolean) => void;
   plusTrayOpen: boolean;
@@ -136,8 +133,10 @@ export interface PraxisStoreContextValue {
   activeChat: Chat | null;
   messagesByChat: Record<string, Message[]>;
   activeMessages: Message[];
-  providers: Provider[];
-  models: Model[];
+  /** The user's OpenRouter key as the server shows it (masked); null when none is connected. */
+  modelKey: ModelKey | null;
+  /** OpenRouter catalogue entries seen so far: the first page plus any model this client selected. */
+  models: ModelListItem[];
   connectors: Connector[];
   connectorTools: Record<string, ToolSpec[]>;
   skills: Skill[];
@@ -148,15 +147,13 @@ export interface PraxisStoreContextValue {
   attachmentsById: Record<string, Attachment>;
 
   // Selected Composer Controls
-  selectedProviderId: string;
   selectedModelId: string;
   webSearch: boolean;
   setWebSearch: (value: boolean) => void;
-  cacheModels: (items: Model[]) => void;
+  cacheModels: (items: ModelListItem[]) => void;
   selectedEffort: string;
-  /** Auto, Ask or Execute (lib/modes.ts maps them to the wire's auto/ask/build). */
-  selectedMode: import('../lib/modes').Mode;
-  setSelectedModel: (providerId: string, modelId: string) => void;
+  selectedMode: Mode;
+  setSelectedModel: (modelId: string) => void;
   setSelectedEffort: (effort: string) => void;
   setSelectedMode: (mode: import('../lib/modes').Mode) => void;
 
@@ -176,6 +173,7 @@ export interface PraxisStoreContextValue {
   deleteChats: (chatIds: string[]) => Promise<void>;
   toggleChatConnector: (chatId: string, connectorId: string, enabled: boolean) => Promise<void>;
 
+  /** Resolves false when the connect card opened instead (no OpenRouter key); the caller keeps the draft. */
   sendMessage: (
     text: string,
     options?: {
@@ -192,7 +190,7 @@ export interface PraxisStoreContextValue {
         | 'compaction'
         | 'vision';
     },
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   cancelActiveRun: () => Promise<void>;
   resolveApproval: (
     runId: string,
@@ -206,20 +204,12 @@ export interface PraxisStoreContextValue {
     content?: Record<string, unknown>,
   ) => Promise<void>;
 
-  toggleModelPin: (providerId: string, modelId: string, pinned: boolean) => Promise<void>;
-  saveProvider: (input: {
-    id?: string;
-    name: string;
-    flavor: 'anthropicMessages' | 'openAIChat' | 'openAIResponses';
-    baseUrl: string;
-    defaultModel?: string;
-    apiKey?: string;
-    capabilities?: Capabilities;
-    extraHeaders?: Record<string, string>;
-  }) => Promise<Provider>;
-  removeProvider: (providerId: string) => Promise<void>;
-  refreshModelsForProvider: (providerId: string) => Promise<Model[]>;
-
+  toggleModelPin: (modelId: string, pinned: boolean) => Promise<void>;
+  connectModelKey: (
+    input: { method: 'paste'; apiKey: string } | { method: 'pkce'; code: string; codeVerifier: string },
+  ) => Promise<ModelKey>;
+  checkModelKey: () => Promise<ModelKey>;
+  disconnectModelKey: () => Promise<void>;
   createConnector: (input: {
     name: string;
     url: string;
@@ -260,7 +250,7 @@ export interface PraxisStoreContextValue {
 
   grantConsent: (host: string, allowed: boolean) => Promise<void>;
   updatePreferences: (input: {
-    vision?: { providerId?: string; modelId?: string; enabled?: boolean };
+    vision?: { modelId?: string; enabled?: boolean };
     voice?: { model?: string; language?: string; apiKey?: string };
   }) => Promise<void>;
   uploadFiles: (files: File[]) => Promise<Attachment[]>;

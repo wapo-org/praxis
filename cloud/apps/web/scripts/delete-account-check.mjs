@@ -1,7 +1,6 @@
 import { BASE } from './check-env.mjs';
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
-// Against Vite dev + dev:local: a user with chats deletes the account from Settings → Account.
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage();
@@ -21,9 +20,9 @@ try {
   );
   await page.reload();
   await page.getByTestId('chat-top-bar').waitFor();
-  if (await page.getByTestId('nav-history-button').isVisible()) await page.getByTestId('nav-history-button').click(); // desktop (WP-D1): chats live in the sidebar
+  if (await page.getByTestId('nav-history-button').isVisible()) await page.getByTestId('nav-history-button').click();
   await page.getByText(title, { exact: true }).first().waitFor();
-  // The replica must really be on disk before deletion, or "IndexedDB is empty" proves nothing.
+  // Verify replica hits disk before deletion so empty IDB is meaningful.
   await page.waitForFunction(
     async () =>
       (await indexedDB.databases()).some((d) => d.name === 'praxis-cloud-scoped-v2') &&
@@ -59,15 +58,14 @@ try {
   await page.reload();
   await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
   assert.equal(await page.getByText(title, { exact: true }).count(), 0);
-  // dev:local: the same dev user can sign in again and gets a clean, working account (no 500s).
   const status = await page.evaluate(async (suffix) => {
     await (await import('/src/lib/dev-auth.ts')).devAuth(`wp-d2-${suffix}`);
     return (await fetch('/v1/bootstrap', { credentials: 'include' })).status;
   }, suffix);
   assert.equal(status, 200, 'fresh dev sign-in after deletion must work');
-  await page.goto(BASE); // the tab is still on /settings; open the chat screen, then the history
+  await page.goto(BASE); // Tab starts on /settings; navigate home before opening history.
   await page.getByTestId('chat-top-bar').waitFor();
-  if (await page.getByTestId('nav-history-button').isVisible()) await page.getByTestId('nav-history-button').click(); // desktop (WP-D1): chats live in the sidebar
+  if (await page.getByTestId('nav-history-button').isVisible()) await page.getByTestId('nav-history-button').click();
   await page.waitForTimeout(500);
   assert.equal(await page.getByText(title, { exact: true }).count(), 0);
   console.log(

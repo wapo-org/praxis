@@ -1,6 +1,3 @@
-// WP-K2 motion gate: the reasoning fold and the run background's fade as frame strips, and frame times while
-// streaming with the background on and off.
-//   BASE=http://127.0.0.1:5232 [ONLY=fold,fade,perf] [HEADLESS=1] node apps/web/scripts/k2-motion.mjs
 import { chromium } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';

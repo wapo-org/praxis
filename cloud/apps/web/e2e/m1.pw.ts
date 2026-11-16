@@ -116,8 +116,6 @@ test('existing-chat send flies smoothly without losing or duplicating the bubble
     const w = window as unknown as { __flightSamples: Array<{ t: number; y: number; targetY?: number; scrollTop?: number }>; __go: boolean };
     w.__flightSamples = [];
     w.__go = true;
-    // Sample after the paint: Framer and this probe have separate rAF callbacks,
-    // and delayed pre-paint callbacks can pair an old pose with a new timestamp.
     const tick = () => {
       if (!w.__go) return;
       const flight = document.querySelector<HTMLElement>('[data-testid="send-flight-bubble"]');
@@ -345,8 +343,6 @@ test('defect 3: text-only turns show no work group or usage flash and keep reply
   });
   expect(instantBad).toEqual([]);
 
-  // 2) Streaming text-only turn crossing live -> completed -> saved swap:
-  // start a fresh chat so nothing scrolls, force token-paced streaming without reasoning/tools.
   await page.getByTestId('sidebar-new-chat').click();
   await page.waitForURL((u) => u.pathname === '/');
   await page.route('**/v1/runs', async (route) => {

@@ -1,6 +1,5 @@
 import XCTest
 
-/// Reads the user events channel exactly as the web client subscribes to it.
 private final class UserEventsProbe: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let lock = NSLock()
     private var buffer = ""
@@ -18,7 +17,6 @@ private final class UserEventsProbe: NSObject, URLSessionDataDelegate, @unchecke
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         lock.lock(); buffer += String(decoding: data, as: UTF8.self); lock.unlock()
     }
-    /// Decoded `user.event` payloads received so far.
     var events: [[String: Any]] {
         lock.lock(); defer { lock.unlock() }
         return buffer.split(separator: "\n").compactMap { line in
@@ -37,8 +35,6 @@ private final class UserEventsProbe: NSObject, URLSessionDataDelegate, @unchecke
     func stop() { session.invalidateAndCancel() }
 }
 
-/// Opt-in real-server walkthrough. No URLProtocol, fabricated account or
-/// connector OAuth completion is used by these screenshots.
 final class CloudWalkthroughUITests: XCTestCase {
     private var app: XCUIApplication!
     private var style = "light"
@@ -77,7 +73,6 @@ final class CloudWalkthroughUITests: XCTestCase {
         tap(field); field.typeText("Walkthrough \(script)")
         tap(app.buttons["Send message"])
     }
-    /// Same API the web client uses, authenticated as the app's local dev user.
     @discardableResult
     private func api(_ method: String, _ path: String, _ body: [String: Any]? = nil, token: String = "dev-local") -> (Int, [String: Any]) {
         var request = URLRequest(url: URL(string: "http://127.0.0.1:8807" + path)!)
@@ -97,14 +92,14 @@ final class CloudWalkthroughUITests: XCTestCase {
         _ = done.wait(timeout: .now() + 20)
         return result
     }
-    /// Fresh local session: dev deletion confirms sessions younger than five minutes.
+    /// Fresh local session needed because dev deletion only confirms sessions under five minutes old.
     private func signInLocally() {
         launch(); settings(); tap(app.buttons["cloudAccountServer"])
         if app.buttons["cloudSignOut"].waitForExistence(timeout: 3) { tap(app.buttons["cloudSignOut"]) }
         tap(app.buttons["cloudLocalSignIn"])
         XCTAssertTrue(app.buttons["cloudSignOut"].waitForExistence(timeout: 15))
     }
-    /// Part of the ordered walkthrough (deletion must come after it).
+    /// Ordered walkthrough step: must run before account deletion.
     private func followWebStartedRunLive() {
         signInLocally()
         launch()
@@ -117,7 +112,6 @@ final class CloudWalkthroughUITests: XCTestCase {
         XCTAssertTrue((200..<300).contains(runStatus), "\(run)")
         let runID = try! XCTUnwrap(run["id"] as? String)
         let probe = UserEventsProbe(after: eventCursor())
-        // The app stays in the foreground: only the user events channel can surface this run.
         tap(app.buttons["History"])
         tap(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", token)).firstMatch)
         XCTAssertTrue(app.buttons["Allow once"].waitForExistence(timeout: 20), "A web-started approval must reach the phone live")
@@ -132,12 +126,9 @@ final class CloudWalkthroughUITests: XCTestCase {
         XCTAssertNotNil(probe.waitForRun { $0 == runID }, "The web's user events channel reports the run approved on iOS")
         probe.stop()
         let messages = api("GET", "/v1/chats/" + chatID + "/messages").1["items"] as? [[String: Any]] ?? []
-        // Tool results are user-role rows; a re-sent prompt would show up as a second run.
         XCTAssertEqual(Set(messages.compactMap { $0["runId"] as? String }), [runID], "The phone must not re-send the web prompt")
     }
     private func eventCursor() -> Int { api("GET", "/v1/bootstrap").1["eventCursor"] as? Int ?? 0 }
-    /// Reverse direction: a run started on the phone appears on the web's channel
-    /// with the same answer the phone shows.
     private func watchPhoneRunOnWebLive() {
         let probe = UserEventsProbe(after: eventCursor())
         defer { probe.stop() }
@@ -159,7 +150,7 @@ final class CloudWalkthroughUITests: XCTestCase {
                       "Phone and web show the same answer: \(prefix)")
         shot("phone-run-seen-on-web-channel")
     }
-    /// Deletion runs last: dev:local answers 500 to the same dev user afterwards.
+    /// Must run last because dev:local returns 500 for this user after deletion.
     private func deleteAccountLive() {
         signInLocally()
         tap(app.buttons["cloudDeleteAccount"])
@@ -178,7 +169,6 @@ final class CloudWalkthroughUITests: XCTestCase {
         XCTAssertTrue(app.buttons["cloudSignOut"].waitForExistence(timeout: 15))
         app.swipeDown()
         shot("account-signed-in")
-        // Relaunch uses the real origin-scoped Keychain session.
         launch(); tap(app.buttons["New chat"]); shot("empty-chat")
         tap(app.buttons["Add photos, files and more"])
         tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Model, '")).firstMatch)

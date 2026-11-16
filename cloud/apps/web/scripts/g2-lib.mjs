@@ -1,6 +1,3 @@
-// WP-G2: real frames of a menu morph from headed Chromium. The screencast's own timestamps lag by
-// hundreds of ms, so each frame carries its true time as a barcode written in the same rAF that
-// draws the morph: a frame shows exactly the state at the time it encodes.
 import { chromium } from '@playwright/test';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';

@@ -1,5 +1,3 @@
-// WP-J2 captures: activity rows, centring, attachments, progressive blur. Before and after use the same scenes.
-//   BASE=http://127.0.0.1:5232 TAG=before|after [ONLY=activity,centre,attach,blur] node apps/web/scripts/j2-capture.mjs
 import { chromium, webkit } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';

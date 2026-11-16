@@ -9,8 +9,7 @@ extension ChatStore {
         persistConversation(conv)
     }
     func clearCloudReplica() {
-        // Detach presentation without setting cancellation flags: sign-out must
-        // not cancel server runs belonging to the account being left.
+        // Detach without cancelling so sign-out never cancels old account server runs.
         for id in Array(runs.keys) { detachCloudRun(id) }
         conversations = []; selectedID = nil
         resetCloudStorage()
@@ -83,8 +82,7 @@ extension ChatStore {
                     turns[i].blocks.append(.markdown(id: CloudReplicaScope.localID(row.id), source: native.text, isStreaming: false))
                 }
             }
-            // A locally rendered turn retains tool details and live block ids.
-            // New/changed remote turns get an authoritative message projection.
+            // Preserve local tool details on rendered turns; project changed remote turns.
             for turn in turns {
                 if let index = conv.turns.firstIndex(where: { $0.id == turn.id }) {
                     if !isRunning(conv.id), conv.turns[index].transcript.count < turn.transcript.count { conv.turns[index] = turn }

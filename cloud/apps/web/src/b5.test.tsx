@@ -1,11 +1,11 @@
 import { snapshotProgress } from './lib/toolProgress';
 // @vitest-environment jsdom
 import {
-  CapabilitiesSchema,
+  ModelListItemSchema,
   ToolActivitySchema,
   type Bootstrap,
+  type ModelKey,
   type Message,
-  type Provider,
 } from '@praxis/protocol';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -13,10 +13,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AgentActivityView } from './components/chat/AgentActivityView';
 import { AgentMessageView } from './components/chat/AgentMessageView';
+import { Composer } from './components/chat/Composer';
 import { UserBubble } from './components/chat/UserBubble';
 import { AccountSection, GeneralSection, ModelsSection } from './components/screens/SettingsSections';
 import { AccountContext } from './lib/account';
-import { apiClient } from './lib/api';
+import { apiClient, PraxisApiError } from './lib/api';
 import { clearReplica, readReplicaSync, setReplicaIdentity } from './lib/idb';
 import { safeLink, safeMessage } from './lib/links';
 import { PraxisStoreProvider, usePraxisStore, type LiveRunState } from './state/store';
@@ -25,23 +26,14 @@ import { useRunState } from './state/useRunState';
 const now = new Date().toISOString();
 let root: Root | undefined;
 let container: HTMLDivElement;
-const provider = (baseUrl: string): Provider => ({
-  type: 'provider',
-  id: 'external',
-  name: 'External',
-  flavor: 'openAIChat',
-  baseUrl,
-  maskedKey: '***',
-  capabilities: CapabilitiesSchema.parse({}),
-  updatedAt: now,
-});
-const bootstrap = (providers: Provider[] = []): Bootstrap => ({
+const connectedKey: ModelKey = { type: 'modelKey', maskedKey: '••••1234', connectedAt: '2026-11-15T10:00:00.000Z' };
+const bootstrap = (modelKey?: ModelKey): Bootstrap => ({
   type: 'bootstrap',
   protocolVersion: 1,
   user: { type: 'user', id: 'A', name: 'User A' },
   chats: [],
-  models: [],
-  providers,
+  modelPreferences: [],
+  ...(modelKey ? { modelKey } : {}),
   connectors: [],
   skills: [],
   activeRuns: [],
@@ -99,20 +91,74 @@ it('persists the first bootstrap on / without a chat mutation', async () => {
     chats: [],
   });
 });
-it('blocks invalid provider URLs and requires consent for valid external URLs', async () => {
-  const get = await storeWith(bootstrap([provider('javascript:alert(1)')]));
+it('with no OpenRouter key, sending opens the connect card instead of starting a run', async () => {
+  vi.spyOn(apiClient, 'listModels').mockResolvedValue({
+    type: 'page',
+    items: [ModelListItemSchema.parse({ id: 'vendor/m', name: 'M', contextLength: 8192, pricing: { prompt: '0', completion: '0' }, capabilities: { tools: true, reasoning: false, images: false }, pinned: false, favorite: false, recommended: true })],
+    nextCursor: null,
+  });
+  const get = await storeWith(bootstrap());
   const start = vi.spyOn(apiClient, 'startRun').mockRejectedValue(new Error('Should not send'));
-  await act(async () => get().setSelectedModel('external', 'm'));
-  await act(async () => get().sendMessage('Private'));
+  expect(get().modelKey).toBeNull();
+  expect(get().selectedModelId).toBe('vendor/m');
+  let sent: boolean | undefined;
+  await act(async () => { sent = await get().sendMessage('Private'); });
+  expect(sent).toBe(false);
   expect(start).not.toHaveBeenCalled();
-  expect(get().errorBanner).toContain('invalid server URL');
-  vi.mocked(apiClient.bootstrap).mockResolvedValue(
-    bootstrap([provider('https://provider.example/v1')]),
-  );
+  expect(get().activeSheet).toBe('models');
+  expect(get().errorBanner).toBeNull();
+  expect(get().pendingConsentPrompt).toBeNull();
+  expect(get().activeMessages).toEqual([]);
+
+  // Connected: the same message goes out, with no consent prompt (connecting the key is the consent).
+  vi.spyOn(apiClient, 'createChat').mockResolvedValue({ type: 'chat', id: 'c1', title: 'New chat', mode: 'build', pinned: false, connectorIds: [], disabledConnectorIds: [], createdAt: now, updatedAt: now });
+  vi.mocked(apiClient.bootstrap).mockResolvedValue(bootstrap(connectedKey));
   await act(async () => get().refreshAll());
-  await act(async () => get().sendMessage('Private'));
-  expect(get().pendingConsentPrompt?.host).toBe('provider.example');
+  await act(async () => get().setActiveSheet(null));
+  await act(async () => { sent = await get().sendMessage('Private'); });
+  expect(start).toHaveBeenCalledWith(expect.objectContaining({ text: 'Private', modelId: 'vendor/m' }));
+  expect(get().pendingConsentPrompt).toBeNull();
+});
+it('the composer with no key opens the connect card and keeps the draft', async () => {
+  window.matchMedia = vi.fn().mockReturnValue({ matches: false, addEventListener: () => {}, removeEventListener: () => {} });
+  vi.spyOn(apiClient, 'bootstrap').mockResolvedValue(bootstrap());
+  vi.spyOn(apiClient, 'listModels').mockResolvedValue({
+    type: 'page',
+    items: [ModelListItemSchema.parse({ id: 'vendor/m', name: 'M', contextLength: 8192, pricing: { prompt: '0', completion: '0' }, capabilities: { tools: true, reasoning: false, images: false }, pinned: false, favorite: false, recommended: true })],
+    nextCursor: null,
+  });
+  const start = vi.spyOn(apiClient, 'startRun').mockRejectedValue(new Error('Should not send'));
+  const create = vi.spyOn(apiClient, 'createChat').mockRejectedValue(new Error('Should not create a chat'));
+  let store!: ReturnType<typeof usePraxisStore>;
+  function Probe() {
+    store = usePraxisStore();
+    return <Composer />;
+  }
+  await act(async () => root!.render(<PraxisStoreProvider><Probe /></PraxisStoreProvider>));
+  const input = container.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, 'Summarise this for me');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="composer-send-button"]')!.click());
+  expect(store.activeSheet).toBe('models');
   expect(start).not.toHaveBeenCalled();
+  expect(create).not.toHaveBeenCalled();
+  expect(store.errorBanner).toBeNull();
+  expect(container.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')!.value).toBe('Summarise this for me');
+});
+it('a model_key_missing answer from the server opens the connect card and takes the optimistic message back', async () => {
+  vi.spyOn(apiClient, 'listModels').mockResolvedValue({ type: 'page', items: [], nextCursor: null });
+  const get = await storeWith(bootstrap(connectedKey));
+  vi.spyOn(apiClient, 'createChat').mockResolvedValue({ type: 'chat', id: 'c1', title: 'New chat', mode: 'build', pinned: false, connectorIds: [], disabledConnectorIds: [], createdAt: now, updatedAt: now });
+  vi.spyOn(apiClient, 'startRun').mockRejectedValue(new PraxisApiError(400, 'model_key_missing', 'Connect your OpenRouter key to use models'));
+  let sent: boolean | undefined;
+  await act(async () => { sent = await get().sendMessage('Hello'); });
+  expect(sent).toBe(false);
+  expect(get().modelKey).toBeNull();
+  expect(get().activeSheet).toBe('models');
+  expect(get().errorBanner).toBeNull();
+  expect(get().activeMessages).toEqual([]);
 });
 it('accepts only http/https/mailto URLs in markdown and parsed message parts', () => {
   for (const url of [
@@ -235,7 +281,8 @@ it('shows MCP status progress in the folded activity row', async () => {
   expect(container.textContent).toContain('Downloaded 2 of 8 pages');
 });
 it('uses the server title and never generates a client title PATCH', async () => {
-  const get = await storeWith(bootstrap());
+  vi.spyOn(apiClient, 'listModels').mockResolvedValue({type:'page',items:[ModelListItemSchema.parse({id:'vendor/m',name:'M',contextLength:8192,pricing:{prompt:'0',completion:'0'},capabilities:{tools:true,reasoning:false,images:false},pinned:false,favorite:false,recommended:true})],nextCursor:null});
+  const get = await storeWith(bootstrap(connectedKey));
   const created = {
     type: 'chat' as const,
     id: 'c',

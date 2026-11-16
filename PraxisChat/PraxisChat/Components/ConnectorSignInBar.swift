@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// "Sign in to <server>" under an activity whose steps a connector
-/// refused for missing credentials. Shown collapsed or expanded, one
-/// button per server; it turns into "Signed in" once that works.
 struct ConnectorSignInBar: View {
     let requests: [StepSignIn]
     @Environment(ChatStore.self) private var store: ChatStore?

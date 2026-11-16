@@ -1,10 +1,7 @@
 import { UserEventSchema, type UserEvent } from '@praxis/protocol';
 import { PraxisApiError, type PraxisApiClient } from './api';
 
-/**
- * Follows `GET /v1/events` (the user channel: chat/run/... upserts from every client) after `after`.
- * Reconnects with backoff and resumes from the last seen id; a 401 signs out like any other call.
- */
+/** Subscribes to GET /v1/events with backoff reconnect; 401 signs out. */
 export function subscribeUserEvents(
   client: PraxisApiClient,
   after: number,

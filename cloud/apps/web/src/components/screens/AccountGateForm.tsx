@@ -21,10 +21,6 @@ export function submitLabel(mode: AuthMode, step: AuthStep | null) {
   return mode === 'register' ? 'Create account' : mode === 'reset' ? 'Reset password' : mode === 'email' ? 'Send code' : 'Sign in';
 }
 
-/**
- * Radix's own `loading` hides the label with aria-hidden on a display:contents span, which browsers
- * ignore, so the button would be announced as "Sign in Sign in". Keep one name and the button's width.
- */
 function Pending({ on, children }: { on: boolean; children: React.ReactNode }) {
   if (!on) return <>{children}</>;
   return (

@@ -1,6 +1,3 @@
-// WP-L2 §5: Secrets & variables with 300 seeded values. Search latency (keystroke to the narrowed list painted,
-// including the 120 ms debounce) and the box's scroll frames while every page loads.
-//   BASE=http://127.0.0.1:5232 [HEADED=1] node apps/web/scripts/l2-secrets-perf.mjs
 import { chromium } from '@playwright/test';
 import { homedir } from 'node:os';
 import { writeFileSync } from 'node:fs';

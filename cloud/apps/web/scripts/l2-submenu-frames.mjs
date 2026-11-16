@@ -1,7 +1,3 @@
-// WP-L2 §2 (L-ref/13): the in-place submenu resize ("Recent chats" in the lab's Actions menu). Logs the glass's
-// painted height every frame (read after paint: rAF, then a posted task) in Chromium and WebKit, and in Chromium
-// saves a CDP screencast strip with the height measured from the pixels.
-//   BASE=http://127.0.0.1:5232 TAG=before|after node apps/web/scripts/l2-submenu-frames.mjs
 import { chromium, webkit } from '@playwright/test';
 import { homedir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';

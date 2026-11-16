@@ -1,9 +1,6 @@
 import { ConvexError } from 'convex/values';
 
-/**
- * Verifies the dedicated high-entropy API-to-Convex credential (`PRAXIS_CONVEX_SERVER_TOKEN`).
- * It is never a client session or the deployment key. Comparison is constant-time over digests.
- */
+/** Constant-time verification of dedicated PRAXIS_CONVEX_SERVER_TOKEN. */
 export async function requireServer(token: string): Promise<void> {
   const expected = process.env.PRAXIS_CONVEX_SERVER_TOKEN;
   if (!expected || expected.length < 32 || token.length > 1024) {
@@ -17,7 +14,6 @@ export async function requireServer(token: string): Promise<void> {
   if (diff) throw new ConvexError('Server authentication required');
 }
 
-/** Bounds an owner/kind/id scope string. */
 export function bounded(value: string): string {
   if (!value || value.length > 500) throw new ConvexError('Invalid scope');
   return value;

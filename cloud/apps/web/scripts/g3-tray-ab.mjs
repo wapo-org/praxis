@@ -1,6 +1,3 @@
-// WP-G3: is the tray heavier than another build? The same script against whichever build is on BASE.
-// Frames only during each open and close, so builds with different durations compare fairly.
-//   BASE=... LABEL=branch node apps/web/scripts/g3-tray-ab.mjs
 import { chromium } from '@playwright/test';
 const BASE = process.env.BASE ?? 'http://127.0.0.1:5231';
 const UNCAPPED = !!process.env.UNCAPPED;

@@ -116,7 +116,7 @@ describe('connector health at run time', () => {
     const first = await connectorTurnNotes(s.ctx, s.chat, []);
     expect(first).toEqual(["The Docs connector can't be reached right now, so its tools aren't available in this turn."]);
     expect(await connectorTurnNotes(s.ctx, s.chat, first)).toEqual([]);
-    expect(await connectorTurnNotes(s.ctx, {...s.chat, disabledConnectorIds: [value.id]}, [])).toEqual([]); // off in this chat: no note
+    expect(await connectorTurnNotes(s.ctx, {...s.chat, disabledConnectorIds: [value.id]}, [])).toEqual([]);
     await saveConnector(s.ctx, {...(await connector(s.ctx, value.id)), status: 'connected'});
     const back = await connectorTurnNotes(s.ctx, s.chat, first);
     expect(back).toEqual(['The Docs connector is available again.']);

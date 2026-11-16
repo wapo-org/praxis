@@ -8,13 +8,6 @@ import { Button } from '../ui/Button';
 import { RowGroup, rowClass } from '../ui/RowGroup';
 import styles from './ConsentPopover.module.css';
 
-/**
- * The AI data-consent step as a small anchored popover above the composer.
- * It keeps blocking sends until answered (the send path returns without
- * sending while it is open), but it is not a modal: no scrim, no focus trap,
- * no background inertness. Escape does not dismiss it, and the composer
- * stays reachable so the user can see what would be sent.
- */
 export function ConsentPopover() {
   const store = usePraxisStore();
   const prompt = store.pendingConsentPrompt;
@@ -135,10 +128,6 @@ export function ConsentPopover() {
   );
 }
 
-/**
- * Whether the details overflow, and whether more lies below the fold: the soft bottom edge shows only then, so
- * the last line is never left faded once it has been reached (L-ref/14).
- */
 function useScrollEdge(active: boolean) {
   const [node, setNode] = React.useState<HTMLDivElement | null>(null);
   const [state, setState] = React.useState({ overflow: false, moreBelow: false });

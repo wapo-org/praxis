@@ -1,6 +1,3 @@
-// WP-H3 captures: ours beside the owner's design v2 (Chat Screen (standalone).html) at DPR 2, for every sidebar
-// palette in both app themes, plus a 40-chat long list. Compose with h3-compare.py.
-// BASE=http://127.0.0.1:5232 OUT=/tmp/h3-raw node apps/web/scripts/h3-capture.mjs [palette ...]
 import { chromium } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';

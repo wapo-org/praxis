@@ -80,10 +80,6 @@ export function GlassLabPage({ onNavigateBack }: GlassLabPageProps) {
   );
 }
 
-/**
- * Dev-only: drive the real AI data-consent popover through real store state,
- * so the anchored popover (and its send-blocking) can be inspected live.
- */
 function ConsentDemoChip({ onNavigateBack }: { onNavigateBack?: () => void }) {
   const store = React.useContext(PraxisStoreContext);
   if (!store) return null;

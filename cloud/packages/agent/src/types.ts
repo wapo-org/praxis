@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import {ReasoningShapeSchema,StreamAnnotationSchema} from '@praxis/protocol';
 import {
   ApprovalSchema, CapabilitiesSchema, ChatSchema, ConversationSetupSchema, ElicitationSchema,
-  IdSchema, JsonObjectSchema, JsonValueSchema, MessagePartSchema, MessageSchema, ReasoningShapeSchema, RunSchema,
-  StreamAnnotationSchema, UsageSchema, type Capabilities, type JsonObject, type JsonValue, type Message,
-  type Mode, type ProviderFlavor, type RunEventPayload, type ToolSpec,
+  IdSchema, JsonObjectSchema, JsonValueSchema, MessagePartSchema, MessageSchema, RunSchema,
+  UsageSchema, type Capabilities, type JsonObject, type JsonValue, type Message,
+  type Mode, type RunEventPayload, type ToolSpec,
 } from '@praxis/protocol';
 
 export const ProviderRequestSchema = z.object({
@@ -32,25 +33,25 @@ export const ProviderEventSchema = z.discriminatedUnion('type', [
 ]);
 export type ProviderEvent = z.infer<typeof ProviderEventSchema>;
 export interface ModelProvider {
-  readonly flavor: ProviderFlavor;
   readonly capabilities: Capabilities;
+  complete?(request:ProviderRequest,signal:AbortSignal):Promise<ProviderResponse>;
   stream(request:ProviderRequest,signal:AbortSignal):AsyncIterable<ProviderEvent>;
 }
 export const ToolResultSchema = z.object({
   content:z.array(JsonObjectSchema), isError:z.boolean().default(false), outputRef:IdSchema.optional(),
 });
 export type ToolResult = z.infer<typeof ToolResultSchema>;
-/** Tool results longer than this are truncated and spilled (read back with read_tool_output). */
+/** Results beyond this spill and truncate for read_tool_output. */
 export const MAX_RESULT_CHARACTERS=32000;
 export function textResult(text:string,isError=false):ToolResult {
   return {content:[{type:'text',text}],isError};
 }
 export interface ToolContext {
   userId:string; chatId:string; runId:string; mode:Mode; signal:AbortSignal;
-  /** A stable execution id. Side-effecting tools must use it as their idempotency key. */
+  /** Stable idempotency key for side-effecting tools. */
   callId:string;
   callTool(name:string,args:JsonValue):Promise<ToolResult>;
-  /** `mode:'url'` asks the user to open `url` (e.g. a connector sign-in); the response carries no content. */
+  /** mode:'url' opens external URL (e.g. sign-in) without response content. */
   elicit(request:{message:string;schema:JsonObject;mode?:'form'|'url';url?:string;connectorId?:string;connectorName?:string}):Promise<z.infer<typeof import('@praxis/protocol').ElicitationResponseSchema>>;
   emit(event:RunEventPayload):Promise<void>;
 }
@@ -78,9 +79,9 @@ export const CheckpointSchema = z.object({
   lastToolCallId:IdSchema.optional(),
   phase:z.enum(['model','tools','terminal']),iteration:z.number().int().nonnegative(),
   pending:z.array(PendingCallSchema),
-  /** `started` is persisted before a tool executes; a replay that finds it without a result knows the call was interrupted. */
+  /** started is saved before execution so replay detects interrupted calls. */
   calls:z.record(z.string(),z.object({call:PendingCallSchema,result:ToolResultSchema.optional(),key:z.string().optional(),started:z.boolean().optional()})),
-  /** Transcript messages saved with the checkpoint but not yet delivered as `messages.committed` (durable outbox). */
+  /** Durable outbox awaiting messages.committed delivery. */
   outbox:z.array(MessageSchema).default([]),
   approval:ApprovalSchema.optional(),elicitation:ElicitationSchema.optional(),
   resolutions:z.record(z.string(),JsonValueSchema),
@@ -102,9 +103,9 @@ export const RunInputSchema = z.object({
 });
 export type RunInput=z.infer<typeof RunInputSchema>;
 export interface AgentPorts {
-  /** Must persist a detached snapshot; includes userId for every write. Scheduler must serialize a run. */
+  /** Must persist a detached owner-scoped snapshot; scheduler serializes runs. */
   save(userId:string,checkpoint:AgentCheckpoint):Promise<void>;
-  /** API owns durable event IDs/SSE. Return the assigned sequence to update run.lastEventId. */
+  /** Return assigned durable sequence to update run.lastEventId. */
   emit(userId:string,runId:string,event:RunEventPayload):Promise<number|void>;
   isCancelled(userId:string,runId:string):Promise<boolean>;
   now?():string; id?():string;

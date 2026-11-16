@@ -1,5 +1,3 @@
-// WP-G3: the tray's box per frame, from the press. The near (bottom) edge must not arrive late.
-//   BASE=... node apps/web/scripts/g3-tray-trace.mjs
 import { launch, open } from './g2-lib.mjs';
 const browser = await launch();
 const { page } = await open(browser, { width: 1440, height: 900, dpr: 2, path: '/' });

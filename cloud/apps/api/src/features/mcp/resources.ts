@@ -6,19 +6,12 @@ import { McpError, type McpOptions } from './shared.js';
 import { checkExecution, qualifiedName } from './tools.js';
 
 const MAX_TEXT = 100_000;
-/**
- * Reserved raw names (the MCP method names). They are outside the MCP tool-name charset, so a server tool can't
- * share the qualified name; getMcpTools also drops any server tool that claims one.
- */
+/** Outside MCP tool charset so server tools cannot shadow built-in resource methods. */
 export const LIST_RESOURCES = 'resources/list';
 export const READ_RESOURCE = 'resources/read';
 export const RESOURCE_TOOL_NAMES: readonly string[] = [LIST_RESOURCES, READ_RESOURCE];
 
-/**
- * Port of AgentMCP MCPResourceTools (mcp_list_resources / mcp_read_resource). One pair per server that offers
- * resources, so approval and trust follow that server exactly like its read-only tools (the app used one pair
- * with a `server` argument; per-server tools keep the cloud's policy keyed by tool source).
- */
+/** Per-server resource tools so approval/trust stays keyed by tool source. */
 export function resourceTools(ctx: FeatureContext, value: Connector, options: { chatId: string; disabledConnectorIds: string[] }, mcp: McpOptions): FeatureTool[] {
   const source = { type: 'mcp' as const, serverId: value.id, serverName: value.name };
   const guard = async (run: Parameters<FeatureTool['execute']>[1], name: string) => {

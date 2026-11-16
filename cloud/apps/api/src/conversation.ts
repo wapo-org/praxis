@@ -1,16 +1,7 @@
 import type {ConversationSetup, Message, MessagePart, Mode, ToolSpec} from '@praxis/protocol';
 
-/**
- * Port of AgentCore `SystemPrompt`, AgentSkills `SkillCatalog` and AgentRuntime `TurnNotes`.
- * Base instructions are frozen per conversation (no dates or names); current connector advertisements
- * refresh in the request. Mode/effort and later skill additions use new user notes, never history edits.
- */
 export interface CatalogSkill {name: string; description: string}
 
-/**
- * What the web app's code blocks can do, for the model (WP-N2). The renderer reads the same fence syntax:
- * apps/web/src/components/chat/codeFence.ts. Kept short: it is in every request.
- */
 const F = '```';
 export const FORMATTING_GUIDE = [
   '# Code blocks',
@@ -95,7 +86,7 @@ function announcedSkills(note: string): string[] {
   });
 }
 
-/** Notes for the next user turn: the mode note when it differs from the last one announced, then new skills. */
+/** Emits next-turn mode note on change, followed by newly added skills. */
 export function turnNotes(input: {mode: Mode; effort?: string; previous: Message[]; setup?: ConversationSetup; skills: CatalogSkill[]}): string[] {
   const userNotes = input.previous
     .filter(m => m.role === 'user')
@@ -122,7 +113,6 @@ function includesSkills(tools: ToolSpec[]): boolean {
   return tools.some(t => t.name === 'load_skill');
 }
 
-/** Skill names listed in a frozen catalog section. */
 export function catalogNames(catalog: string): string[] {
   const start = catalog.indexOf('<available_skills>');
   const end = catalog.indexOf('</available_skills>');

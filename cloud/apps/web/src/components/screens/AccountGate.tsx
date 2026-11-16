@@ -115,7 +115,7 @@ function Gate({ children, auth, ready = true, signedIn = false }: { children: Re
         ...(confirmPassword ? { password: confirmPassword } : {}),
       }),
     });
-    // The server has revoked every session; forget the credential and this device's copy of the data.
+    // Revoked session: clear local credentials and replica copy.
     apiClient.setBearerToken('');
     await wipeReplicaStorage();
     if (auth) await auth.signOut();

@@ -108,8 +108,7 @@ test.describe('menus', () => {
         w.__corner = [];
         const tick = () => {
           const surface = document.querySelector<HTMLElement>('[role="menu"] [data-glass-surface]');
-          // The corner on screen: the morph writes it against the glass's scale (radius / sx), so read it back at that
-          // scale. Since WP-I1 the corner squares while the glass is still growing, not after it has landed.
+          // The corner on screen: the morph writes it against the glass's scale (radius / sx), so read it back at that scale.
           const scale = surface ? surface.getBoundingClientRect().width / surface.offsetWidth : 1;
           if (surface) w.__corner.push({ r: parseFloat(getComputedStyle(surface).borderTopLeftRadius) * scale, morphing: surface.dataset.morphing === 'true', round: surface.dataset.morphRound === 'true' });
           if (w.__corner.length < 400) requestAnimationFrame(tick);

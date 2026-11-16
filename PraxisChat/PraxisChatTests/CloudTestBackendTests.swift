@@ -2,9 +2,7 @@ import XCTest
 import Synchronization
 @testable import PraxisChat
 
-/// Contract tests for the deterministic server itself. Production transport and
-/// reducer coverage lives in C-net's suite; these guard the fixture assumptions
-/// used by the UI suite, including races and replay rather than only happy paths.
+/// Guards deterministic test-server fixture contracts, including race and replay assumptions.
 final class CloudTestBackendTests: XCTestCase, @unchecked Sendable {
     private var backend: CloudTestBackend!
     private var session: URLSession!
@@ -166,8 +164,7 @@ final class CloudTestBackendTests: XCTestCase, @unchecked Sendable {
     func testCancelTerminatesAnOpenStreamAndIsDurable() async throws {
         let id = try await start("cancel")
         let reader = Task { try await self.stream(id) }
-        // Wait until URLProtocol has actually opened the stream, not a fixed
-        // delay; cancellation then races with real outstanding callbacks.
+        // Polls until URLProtocol opens the stream so cancellation races real outstanding callbacks.
         for _ in 0..<100 {
             if backend.recordedRequests().contains(where: { $0.path.hasSuffix("/events") }) { break }
             try await Task.sleep(for: .milliseconds(2))

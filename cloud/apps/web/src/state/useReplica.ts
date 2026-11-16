@@ -29,8 +29,8 @@ export function useReplica(
     setActiveChatId,
     messagesByChat,
     setMessagesByChat,
-    providers,
-    setProviders,
+    modelKey,
+    setModelKey,
     models,
     setModels,
     connectors,
@@ -45,8 +45,6 @@ export function useReplica(
     setPreferences,
     syncCursor,
     setSyncCursor,
-    setSelectedProviderId,
-    selectedProviderId,
     selectedModelId,
     setSelectedModelId,
     setSelectedEffort,
@@ -58,8 +56,8 @@ export function useReplica(
         bootstrap: readReplicaSync()?.bootstrap,
         chats,
         messagesByChat,
-        providers,
         models,
+        modelKey,
         connectors,
         skills,
         consents,
@@ -74,8 +72,8 @@ export function useReplica(
     [
       chats,
       messagesByChat,
-      providers,
       models,
+      modelKey,
       connectors,
       skills,
       consents,
@@ -87,19 +85,28 @@ export function useReplica(
 
   React.useEffect(() => { persistState(); }, [persistState]);
 
+  React.useEffect(() => { writeStoredSelection(replicaKey.current, {modelId:selectedModelId}); }, [selectedModelId]);
+
   const refreshAll = React.useCallback(async () => {
     setSyncing(true);
     try {
       const boot = await apiClient.bootstrap();
-      setChats((prev) => {
-        const creating = state.creatingChatPromisesRef.current;
-        const optimistic = prev.filter((c) => creating.has(c.id) && !boot.chats.some((b) => b.id === c.id));
-        return [...optimistic, ...boot.chats];
-      });
-      setProviders(boot.providers);
-      setModels(boot.models);
-      // No reset here: the selection resolver below decides, now that the list is complete (WP-K2b).
-      state.setCatalogReady(true);
+      setChats(boot.chats);
+      setModelKey(boot.modelKey ?? null);
+      // The catalogue is not in bootstrap; a failed first page must not block the app.
+      const catalogue = await apiClient
+        .listModels({ limit: 100 })
+        .then(async page => {
+          const items = [...page.items];
+          while (page.nextCursor) {
+            page = await apiClient.listModels({limit:100,cursor:page.nextCursor});
+            items.push(...page.items);
+          }
+          return items;
+        })
+        .catch(() => null);
+      if (catalogue) { setModels(catalogue); state.setCatalogReady(true); }
+      if (!selectedModelId && catalogue?.[0]) setSelectedModelId(catalogue[0].id);
       setConnectors(boot.connectors);
       setSkills(boot.skills);
       if (boot.consents) setConsents(boot.consents);
@@ -113,8 +120,8 @@ export function useReplica(
           bootstrap: boot,
           chats: boot.chats,
           messagesByChat,
-          providers: boot.providers,
-          models: boot.models,
+          models: catalogue ?? models,
+          modelKey: boot.modelKey ?? null,
           connectors: boot.connectors,
           skills: boot.skills,
           consents: boot.consents ?? [],
@@ -142,8 +149,8 @@ export function useReplica(
               bootstrap: boot,
               chats: boot.chats,
               messagesByChat: next,
-              providers: boot.providers,
-              models: boot.models.length ? boot.models : [],
+              models: catalogue ?? models,
+              modelKey: boot.modelKey ?? null,
               connectors: boot.connectors,
               skills: boot.skills,
               consents: boot.consents ?? [],
@@ -158,7 +165,6 @@ export function useReplica(
         });
       }
 
-      // Re-attach any active runs reported in bootstrap
       for (const run of boot.activeRuns) {
         try {
           const snap = await apiClient.getRunSnapshot(run.id);
@@ -180,15 +186,12 @@ export function useReplica(
   }, [activeChatId, applySnapshotToLiveRun, attachRunStream]);
 
   const routeChat = chats.find((value) => value.id === activeChatId);
-  // WP-K2b: the selection changes on its own only when the open chat changes (to that chat's model) or when
-  // the selected model is no longer available, and the latter only once the full list has loaded. A valid
-  // choice, or one whose save is still pending, is never replaced.
   const decidedChat = React.useRef<string | null | undefined>(undefined);
   const lastChatModel = React.useRef<string | undefined>(undefined);
   React.useEffect(() => {
     const chatKey = activeChatId ?? null;
-    const chatModel = routeChat?.providerId && routeChat.modelId ? { providerId: routeChat.providerId, modelId: routeChat.modelId } : undefined;
-    const chatModelKey = chatModel ? `${chatModel.providerId}/${chatModel.modelId}` : undefined;
+    const chatModel = routeChat?.modelId ? { modelId: routeChat.modelId } : undefined;
+    const chatModelKey = chatModel ? chatModel.modelId : undefined;
     const pending = state.pendingPickRef.current;
     // The open chat's model changed elsewhere (another device): follow it, unless our own pick is in flight.
     const remoteChange = decidedChat.current === chatKey && chatModelKey !== lastChatModel.current && !(pending && pending.chatId === activeChatId);
@@ -196,22 +199,20 @@ export function useReplica(
     const decision = decideSelection({
       chatChanged: decidedChat.current !== chatKey || remoteChange,
       chatModel,
-      current: { providerId: selectedProviderId, modelId: selectedModelId },
+      current: { modelId: selectedModelId },
       models,
-      providers,
       ready: state.catalogReady,
     });
     if (decision.kind === 'wait') return;
     decidedChat.current = chatKey;
     if (decision.kind === 'select') {
-      setSelectedProviderId(decision.ref.providerId);
       setSelectedModelId(decision.ref.modelId);
       if (decision.notice) setErrorBanner(decision.notice);
     }
-  }, [activeChatId, routeChat?.providerId, routeChat?.modelId, models, providers, state.catalogReady, selectedProviderId, selectedModelId]);
+  }, [activeChatId, routeChat?.modelId, models, state.catalogReady, selectedModelId]);
   React.useEffect(() => {
-    writeStoredSelection(replicaKey.current, { providerId: selectedProviderId, modelId: selectedModelId });
-  }, [selectedProviderId, selectedModelId]);
+    if (routeChat?.modelId) setSelectedModelId(routeChat.modelId);
+  }, [activeChatId, routeChat?.modelId]);
   React.useEffect(() => {
     if (routeChat?.mode) setSelectedMode(fromWireMode(routeChat.mode)); // a stored plan reads as Auto
   }, [activeChatId, routeChat?.mode]);
@@ -219,7 +220,6 @@ export function useReplica(
     if (routeChat?.effort) setSelectedEffort(routeChat.effort);
   }, [activeChatId, routeChat?.effort]);
 
-  // The account gate loads only the verified user’s replica before mounting.
   React.useEffect(() => {
     void refreshAll();
   }, []);

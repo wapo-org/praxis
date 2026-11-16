@@ -1,5 +1,4 @@
-// WP-D1 performance budget (Chromium, production build served by `vite preview` with the local API):
-// long tasks while opening a menu and scrolling a 200-message chat, and idle per-frame JS.
+// Benchmarks menu/scroll long tasks and idle frame JS against vite preview.
 import { chromium } from '@playwright/test';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -45,7 +44,6 @@ const rendered = await page.getByTestId('user-message-bubble').count();
 const window_ = (name) => page.evaluate((n) => { window.__mark = window.__longTasks.length; return n; }, name);
 const taken = () => page.evaluate(() => window.__longTasks.slice(window.__mark));
 
-// 1. Scroll the whole chat top→bottom→top with wheel input.
 await window_('scroll');
 await page.mouse.move(820, 450);
 for (let i = 0; i < 60; i++) { await page.mouse.wheel(0, -600); await page.waitForTimeout(16); }
@@ -59,7 +57,6 @@ const frames = await page.evaluate(async () => {
   return { p50: deltas[Math.floor(deltas.length / 2)], p95: deltas[Math.floor(deltas.length * 0.95)] };
 });
 
-// 2. Open and close a menu five times (sidebar row actions).
 await window_('menu');
 const row = page.locator('[data-testid="app-sidebar"] [data-sidebar-row]').first();
 for (let i = 0; i < 5; i++) {
@@ -72,7 +69,6 @@ for (let i = 0; i < 5; i++) {
 }
 const menuTasks = await taken();
 
-// 3. Composer tray and a 500-model list, paged like the real API: open, scroll to the end, back, close.
 const catalog = Array.from({ length: 500 }, (_, i) => ({
   type: 'model', id: `perf-${i}`, providerId: 'scripted', displayName: `Perf model ${String(i + 1).padStart(3, '0')}`, tagline: 'A realistic tagline for this model',
   capabilities: { type: 'capabilities', tools: true, parallelToolCalls: true, vision: i % 2 === 0, documents: false, imagesInToolResults: false, reasoningEffort: i % 3 === 0, streamUsage: true, explicitPromptCaching: false, serverWebSearch: i % 4 === 0, midConversationSystem: false, serverCompaction: false, toolSearch: false },
@@ -124,8 +120,6 @@ await page.unroute('**/v1/models?**');
 
 const scaled = value => value !== '' && value !== 'none' && value.split(' ').some(axis => Math.abs(Number(axis) - 1) > 0.001);
 
-// 4. Liquid Glass stretch: press-drag each glass surface; no long tasks, the
-// transform appears mid-drag and springs back to none on release.
 await window_('stretch');
 async function stretch(dragSelector, transformSelector, x, y) {
   const read = (sel) =>
@@ -158,8 +152,6 @@ stretchResults.sidebar = await stretch('[data-testid="app-sidebar"] [data-testid
 // Composer: start on the pill's bottom-left padding (not the textarea — typing keeps priority).
 stretchResults.composer = await stretch('[data-testid="composer-surface"]', '[data-testid="composer-surface"]', 360, 48);
 stretchResults.topbar = await stretch('[data-testid="nav-settings-button"]', '[data-testid="nav-settings-button"]', 10, 10);
-// A row-menu open + stretch while open. A press-drag outside the items dismisses
-// the menu by design, so only the mid-drag transform is asserted for menus.
 await row.hover();
 await row.getByRole('button', { name: /^Actions for/ }).click();
 await page.getByRole('menu').waitFor();

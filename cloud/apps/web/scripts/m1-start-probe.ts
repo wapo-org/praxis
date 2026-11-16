@@ -1,7 +1,3 @@
-// WP-M1: time from a send reaching the API to its provider request and streamed events, with the owner's shape of setup:
-// two remote MCP connectors (Exa, Firecrawl) whose HTTP exchanges take MCP_RTT_MS, 15 saved variables/secrets,
-// local MiniLM embedder, and optional artificial store latency (STORE_RTT_MS) — using scripted provider only.
-// Run from cloud/: `npx tsx apps/web/scripts/m1-start-probe.ts [out.json]`.
 import { randomBytes } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';

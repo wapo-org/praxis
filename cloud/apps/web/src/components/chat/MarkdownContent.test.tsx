@@ -56,8 +56,6 @@ describe('Streamdown formatting (WP-L3)', () => {
     expect(out).not.toContain('chip-inspector-card');
     expect(out.match(/data-testid="inline-code-pill"/g)).toHaveLength(2);
   });
-  // WP-N2: the Wrap toggle is per block and only appears once the block is measured to overflow (n2.pw.ts), so the
-  // first render has Copy alone. It used to be on every block, shared through sessionStorage.
   it('code blocks have a language label and a Copy button; Wrap waits until the block overflows', () => {
     const out = html('```python\nprint(1)\n```');
     expect(out).not.toContain('code-wrap-button');

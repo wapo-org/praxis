@@ -1,6 +1,3 @@
-// WP-G4 A captures: WebKit corner over time (video frames, native and without corner-shape), the search close
-// frame by frame (headed Chromium, barcode clock), and the model list's trailing icons.
-//   BASE=http://127.0.0.1:5231 node apps/web/scripts/g4-captures.mjs
 import { webkit } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { mkdir, readdir, rename, rm } from 'node:fs/promises';

@@ -1,6 +1,3 @@
-// WP-L3 measurements on a model-like stream (about 1,500 tokens at 80–150 tokens/s through the real pipeline).
-//   TAG=before|after [ONLY=latency,layout,strip,scroll] node apps/web/scripts/l3-probe.mjs
-// Needs the harness: `npx tsx apps/web/scripts/l3-server.ts`.
 import { chromium, webkit } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { OUT, TAG, chat, open, quantile, round, send } from './l3-lib.mjs';
@@ -82,9 +79,6 @@ function instrument(page, probes) {
           l3.shown = text.length;
           for (const p of l3.probes) if (p.paintedAt === undefined && text.includes(p.word)) p.paintedAt = now;
           if (l3.mode === 'layout') {
-            // By element identity: a block that already existed (and is not the one being written) must not move
-            // relative to the message or change height. A new <p> inside a list item that turns loose is a new
-            // element, not a move.
             const origin = view.getBoundingClientRect().top;
             const els = [...view.querySelectorAll(LEAVES)].filter(el => !el.closest('section[data-footnotes]'));
             const now_ = new Map(els.map((el) => { const r = el.getBoundingClientRect(); return [el, [el.tagName, r.top - origin, r.height]]; }));

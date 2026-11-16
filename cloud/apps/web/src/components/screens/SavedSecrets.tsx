@@ -57,8 +57,6 @@ function useSavedPages(filter: SavedFilter, query: string) {
   const [state, setState] = React.useState<ListState>(EMPTY);
   const generation = React.useRef(0);
   const inFlight = React.useRef<AbortController | null>(null);
-  // The cursor and the end live in refs, updated when a page arrives: a second request must never reuse the
-  // cursor of a page that has landed but not yet rendered (that fetched the same page twice).
   const cursor = React.useRef<string | null>(null);
   const done = React.useRef(false);
 

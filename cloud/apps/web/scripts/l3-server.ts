@@ -1,7 +1,3 @@
-// WP-L3 harness: the real local API (in memory) with a fake upstream model that streams markdown fixtures at a
-// model-like rate, plus Vite. The whole pipeline is real: provider adapter → runner → event log → SSE → the app.
-// Run from cloud/: `API_PORT=8871 WEB_PORT=5241 npx tsx apps/web/scripts/l3-server.ts`.
-// The stream rate comes from the model id: `l3-100` is 100 tokens/s, `l3-80-150` jitters between 80 and 150.
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'vite';
 import { serve } from '@hono/node-server';
@@ -12,7 +8,7 @@ import { fixtureFor, tokenize } from './l3-fixtures';
 
 const apiPort = Number(process.env.API_PORT ?? 8871), webPort = Number(process.env.WEB_PORT ?? 5241);
 const apiOrigin = `http://127.0.0.1:${apiPort}`;
-const UPSTREAM = 'l3-upstream.test';
+const UPSTREAM = 'openrouter.ai';
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function textOf(content: unknown): string {
@@ -24,7 +20,8 @@ function textOf(content: unknown): string {
 const upstream: typeof fetch = async (input, init) => {
   const url = new URL(String(input instanceof Request ? input.url : input));
   if (url.hostname !== UPSTREAM) return fetch(input, init);
-  if (url.pathname.endsWith('/models')) return Response.json({ data: ['l3-80-150', 'l3-100', 'l3-150', 'l3-40'].map((id) => ({ id, object: 'model', owned_by: 'l3' })) });
+  if (url.pathname.endsWith('/key')) return Response.json({data:{label:'L3 fixture'}});
+  if (url.pathname.endsWith('/models')) return Response.json({ data: ['l3-80-150', 'l3-100', 'l3-150', 'l3-40'].map((id) => ({ id, context_length:128000, pricing:{prompt:'0.000001',completion:'0.000002'} })) });
   const body = JSON.parse(String(init?.body ?? '{}'));
   const messages: Array<{ role: string; content: unknown }> = body.messages ?? [];
   const system = textOf(messages.find((m) => m.role === 'system')?.content);

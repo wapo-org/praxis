@@ -1,11 +1,5 @@
 import { useSyncExternalStore } from 'react';
 
-/**
- * The owner's sidebar palettes, ported from Chat Screen.dc.html (design v2: `PAL`, `ACC`, `grad()`,
- * `renderVals()`), with the two light palettes (Sand and Paper) reworked for coherent light material,
- * clean specular rim, top highlight/depth, visible selection fill, and AA contrast in both themes (WP-N4).
- * Dark palettes stay verbatim from v2. The choice persists and is applied before first paint by index.html.
- */
 export const SIDEBAR_PALETTES = [
   { id: 'graphite', name: 'Graphite', base: '#16181b', border: '#3d4147', acc: '#8ea0b3', dark: true },
   { id: 'midnight', name: 'Midnight', base: '#101c33', border: '#2f4570', acc: '#4b7fd6', dark: true },
@@ -43,9 +37,6 @@ const EVENT = 'praxis:sidebar-look';
 export const isPaletteId = (value: unknown): value is SidebarPaletteId =>
   SIDEBAR_PALETTES.some((p) => p.id === value);
 
-/**
- * v2's `grad(base)`, verbatim for dark palettes: top sheen over base solid to 45 %, fading to 40 % at bottom.
- */
 export const sidebarGradient = (base: string) =>
   'linear-gradient(to bottom,rgb(255 255 255/20%) 0%,rgb(255 255 255/12%) 2%,rgb(255 255 255/6%) 5%,rgb(255 255 255/2%) 9%,transparent 14%,transparent 100%),linear-gradient(to bottom,' +
   base +

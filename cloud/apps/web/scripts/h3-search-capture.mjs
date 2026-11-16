@@ -1,5 +1,3 @@
-// WP-H3: search captures through the real local API (semantic) and a long result list (padding).
-// BASE=http://127.0.0.1:5232 OUT=... node apps/web/scripts/h3-search-capture.mjs
 import { chromium } from '@playwright/test';
 const BASE = process.env.BASE ?? 'http://127.0.0.1:5232';
 const OUT = process.env.OUT ?? '/tmp/h3-raw';

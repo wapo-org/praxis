@@ -1,6 +1,3 @@
-// WP-G5 captures: our sidebar beside the owner's sidebar-design.html for all six palettes (desk and phone
-// drawer, DPR 2), the button colours, the Settings controls. Compose with g5-compare.py.
-// BASE=http://127.0.0.1:5261 OUT=~/.praxis-agent-state/cloud/design/G5/raw node apps/web/scripts/g5-capture.mjs
 import { chromium } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';

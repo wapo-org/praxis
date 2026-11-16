@@ -119,9 +119,6 @@ function stepCandidatePayloads(step: ActiveToolStep): unknown[] {
   return payloads;
 }
 
-/**
- * Extracts deduplicated web sources referenced by completed tool calls.
- */
 export function extractToolSources(steps: ActiveToolStep[]): TraceSource[] {
   const map = new Map<string, TraceSource>();
 

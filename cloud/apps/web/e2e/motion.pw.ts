@@ -81,7 +81,6 @@ test('the sidebar slides, and reversing mid-flight continues from where it is', 
   expect(Math.min(...lefts)).toBeLessThan(-40);
   expect(Math.min(...lefts)).toBeGreaterThan(-290); // it never finished leaving
   // No teleport: however coarse the frames, the speed stays a spring's (the whole trip is 286 px).
-  // Measured over three frames: a frame's own timestamp can land just either side of the write.
   const speeds = track.slice(3).map(([t, left], i) => Math.abs(left - track[i]![1]) / Math.max(1, t - track[i]![0]));
   expect(Math.max(...speeds)).toBeLessThan(5);
   expect(lefts[lefts.length - 1]).toBeCloseTo(12, 0);
@@ -212,11 +211,6 @@ test('a sent message flies from the composer with overshoot and never renders tw
   expect(await page.getByTestId('user-message-bubble').first().evaluate((el) => (el as HTMLElement).style.opacity)).toBe('');
 });
 
-/**
- * WP-J2 (J-ref/12): opening "Worked for" or a tool row moves everything on one curve. Per frame: the answer
- * below stays glued to the fold's bottom edge, and the chevron's turn, the content's fade and the fold's
- * height have the same progress. Nothing reaches its end state early. Same for collapse and the nested row.
- */
 async function foldTrack(page: Page, fold: Locator, chevron: Locator, follower: Locator, act: () => Promise<unknown>) {
   await page.evaluate(([f, c, n]) => {
     const w = window as unknown as { __t: unknown[]; __go: boolean };

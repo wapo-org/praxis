@@ -7,12 +7,7 @@ import {JsonObjectSchema} from '@praxis/protocol';
 import type {Events, KV} from '../contracts.js';
 import {EventSchema, Limit, Revision, Scope} from './validation.js';
 
-/**
- * Atomic append: INCR the per-stream sequence, XADD with the explicit `<seq>-0` id (so the SSE id and the
- * stream id are the same safe integer), trim to bounded retention, and refresh stream/dedup TTLs.
- * An optional stable key returns the original record atomically without allocating another SSE id.
- * A cursor older than retention shows up as a gap, which the SSE route reports as `cursor_expired`.
- */
+/** Atomic stream XADD with explicit <seq>-0 SSE id, bounded retention, and dedup key. */
 export const APPEND_EVENT_LUA = `
 if ARGV[4] ~= '' then
  local prior = redis.call('HGET', KEYS[3], ARGV[4])
@@ -35,10 +30,10 @@ return 0`;
 
 export interface UpstashOptions {url: string; token: string; prefix?: string; streamMaxLen?: number; streamTtlSeconds?: number; accountOwnership?: boolean; clock?: () => number}
 
-/** The subset of the Upstash client the adapters use (lets tests run the contract suite on a fake). */
+/** Minimal Redis surface so tests can run against fakeRedis. */
 export type RedisLike = Pick<Redis, 'get' | 'set' | 'del' | 'getdel' | 'eval' | 'xrange' | 'zrange' | 'zrem'>;
 
-/** Keys never contain user ids or other caller text: owner/channel/kv names are SHA-256 hashed. */
+/** Hash owner/channel/kv names with SHA-256 so caller text never enters Redis keys. */
 export const opaque = (...parts: string[]) => createHash('sha256').update(JSON.stringify(parts.map(p => Scope.parse(p)))).digest('hex').slice(0, 40);
 
 export function createUpstashAdapters(options: UpstashOptions) {
@@ -96,7 +91,7 @@ export function upstashFromRedis(redis: RedisLike, options: Omit<UpstashOptions,
     latest: async (u, c) => Revision.parse(Number((await redis.get<string | number>(`${stream(u, c)}:seq`)) ?? 0)),
   };
 
-  /** Fenced execution lease (SET NX PX + compare-and-delete) so duplicate continuations never run one run twice. */
+  /** Fenced SET NX PX lease so duplicate continuations never advance a run twice. */
   const lease = {
     acquire: async (k: string, ttlMs: number, ownerId?: string): Promise<string | null> => {
       const token = randomUUID();
@@ -115,18 +110,14 @@ export function upstashFromRedis(redis: RedisLike, options: Omit<UpstashOptions,
   return {kv, events, consumeOnce, lease, ownership};
 }
 
-/** KEYS: counter. ARGV: window ms. Fixed window in one self-expiring key; returns {count, ms left}. */
+/** KEYS: counter; ARGV: windowMs; returns {count, msLeft}. */
 export const FIXED_WINDOW_LUA = `
 local n=redis.call('INCR',KEYS[1])
 local left=redis.call('PTTL',KEYS[1])
 if left < 0 then redis.call('PEXPIRE',KEYS[1],ARGV[1]) left=tonumber(ARGV[1]) end
 return {n,left}`;
 
-/**
- * Limiter shaped for `createApp({rateLimit})`. Per-user keys use one fixed-window counter each: it is never
- * owner-indexed (bounded, expires within its window), so account deletion cannot reset it and limits keep applying.
- * Other keys (per-IP) use @upstash/ratelimit's sliding window. Keys are hashed with our opaque id.
- */
+/** Per-user fixed window isn't owner-indexed so account deletion can't reset limits. */
 export function createRateLimiter(redis: Pick<Redis, 'eval'> & Partial<Redis>, options: {requests?: number; window?: `${number} s`; prefix?: string} = {}) {
   const prefix = options.prefix ?? 'praxis:v1:ratelimit';
   const limiter = new Ratelimit({redis: redis as Redis, limiter: Ratelimit.slidingWindow(options.requests ?? 120, options.window ?? '60 s'), prefix, analytics: false});

@@ -1,5 +1,3 @@
-// Per-frame geometry of the + tray (or any morph menu) while it opens: the glass (shell rect), a content row,
-// and the morph's progress. Usage: node tray-probe.mjs <chromium|webkit> <out.json> [menu]
 import { chromium, webkit } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 const [engine = 'chromium', out = '/tmp/i1/tray-probe.json', menu = 'tray'] = process.argv.slice(2);

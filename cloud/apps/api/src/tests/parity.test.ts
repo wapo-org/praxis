@@ -5,7 +5,7 @@ import {RunSnapshotSchema, type Message} from '@praxis/protocol';
 import {createLocalAdapters} from '../local-memory.js';
 import {localModules} from '../modules.js';
 import {createPraxisApp} from '../server.js';
-import {delta, fakeOpenAI, png, setup, toolCall} from './harness.js';
+import {catalogEntry, connectKey, delta, fakeOpenRouter, png, setup, toolCall} from './harness.js';
 
 describe('attachments reach the model (parity: AttachmentMedia)', () => {
   it('images are sent as bytes, PDFs as documents, text inline, other files named for fs; history keeps references', async () => {
@@ -22,7 +22,7 @@ describe('attachments reach the model (parity: AttachmentMedia)', () => {
     const content = f.fake.requests[0].messages.find((m: any) => m.role === 'user').content;
     const imagePart = content.find((p: any) => p.type === 'image_url');
     expect(imagePart.image_url.url).toBe(`data:image/png;base64,${Buffer.from(image).toString('base64')}`);
-    expect(content.filter((p: any) => p.type === 'file')).toHaveLength(1); // only the PDF; text files go as text
+    expect(content.filter((p: any) => p.type === 'file')).toHaveLength(1);
     expect(content).toContainEqual({type: 'text', text: '[File: “notes.txt”]\nhello notes'});
     expect(JSON.stringify(content)).toContain('[Attached file: “data.zip”. Read them with `fs` in run_javascript.]');
     const stored: Message[] = (await (await f.req(`/v1/chats/${chat.id}/messages`)).json()).items;
@@ -111,15 +111,14 @@ describe('MCP gateway above 30 connector tools (parity: MCPGateway / gatewayThre
       name: `tool_${i}`, description: `Tool ${i}`, inputSchema: {type: 'object'}, source: {type: 'mcp' as const, serverId: 'big', serverName: 'Big'}, traits: ['readOnly' as const],
       execute: async () => { calls.push(`tool_${i}`); return `result ${i}`; },
     }));
-    const fake = fakeOpenAI([toolCall('mcp_call_tool', {tool: 'tool_7', arguments: {}}), [delta({content: 'done'}), delta({}, 'stop')]]);
+    const fake = fakeOpenRouter([toolCall('mcp_call_tool', {tool: 'tool_7', arguments: {}}), [delta({content: 'done'}), delta({}, 'stop')]]);
     const service = new ApiService(createLocalAdapters(), true);
     service.driver = createExecutionDriver({service, fetcher: fake.fetcher, features: {tools: async (_ctx, {chat}) => withGateway(chat, tools())}});
     const {app} = createApp({service, encryptionKey: randomBytes(32).toString('base64'), fetcher: fake.fetcher});
     const req = async (path: string, body?: unknown) => app.request(path, {method: body ? 'POST' : 'GET', headers: {Authorization: 'Bearer dev-local', 'Content-Type': 'application/json'}, ...(body ? {body: JSON.stringify(body)} : {})});
     await service.adapters.store.put('local-user', 'connector', 'big', {type: 'connector', id: 'big', name: 'Big', url: 'https://big.example/mcp', transport: 'streamableHttp', enabled: true, trusted: true, disabledTools: [], authStatus: 'none', updatedAt: new Date().toISOString()});
-    const provider = await (await req('/v1/providers', {type: 'provider.input', name: 'F', flavor: 'openAIChat', baseUrl: 'https://llm.example.test/v1', apiKey: 'sk-test-123456', capabilities: {tools: true}})).json();
-    await req('/v1/consents', {type: 'consent', host: 'llm.example.test', allowed: true});
-    const newChat = async () => (await req('/v1/chats', {type: 'chat.input', providerId: provider.id, modelId: 'm'})).json();
+    await connectKey(req);
+    const newChat = async () => (await req('/v1/chats', {type: 'chat.input', modelId: 'm'})).json();
     const run = async (chatId: string) => { await req('/v1/runs', {type: 'run.start', chatId, text: 'go'}); await service.drain(); };
 
     const chat = await newChat();
@@ -130,7 +129,7 @@ describe('MCP gateway above 30 connector tools (parity: MCPGateway / gatewayThre
     expect(calls).toEqual(['tool_7']);
     expect(JSON.stringify(fake.requests[1].messages)).toContain('result 7');
 
-    count = 5; // fewer tools later: this chat keeps the gateway it started with; a new chat gets direct tools
+    count = 5; // Frozen gateway decision holds for existing chats; new chats get direct tools.
     await run(chat.id);
     expect(fake.requests[2].tools.map((t: any) => t.function.name)).toContain('mcp_call_tool');
     const fresh = await newChat();
@@ -139,12 +138,13 @@ describe('MCP gateway above 30 connector tools (parity: MCPGateway / gatewayThre
   });
 });
 
-describe('learned provider rejections persist (parity: ProviderSettings toolRejections/imageRejections)', () => {
-  it('a model that refused tools is sent without tools on the next turn until the model list is refreshed', async () => {
+describe('capabilities come from the catalogue, not from learning', () => {
+  it('a refused tool request is retried without tools inside the run, and the next run offers tools again', async () => {
     const bodies: any[] = [];
     let rejections = 0;
     const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).endsWith('/models')) return Response.json({data: [{id: 'm'}]});
+      if (String(input).endsWith('/models')) return Response.json({data: [catalogEntry({id: 'm', tools: true})]});
+      if (String(input).endsWith('/key')) return Response.json({data: {label: 'k', limit: null, limit_remaining: null}});
       const body = JSON.parse(String(init?.body));
       bodies.push(body);
       if (body.tools?.length) { rejections++; return Response.json({error: {message: 'No endpoints found that support tool use'}}, {status: 404}); }
@@ -152,18 +152,14 @@ describe('learned provider rejections persist (parity: ProviderSettings toolReje
     }) as typeof fetch;
     const {app, service} = createPraxisApp({adapters: createLocalAdapters(), local: true, encryptionKey: randomBytes(32).toString('base64'), fetcher, modules: localModules('http://127.0.0.1:8787')});
     const req = async (path: string, body?: unknown) => app.request(path, {method: body ? 'POST' : 'GET', headers: {Authorization: 'Bearer dev-local', 'Content-Type': 'application/json'}, ...(body ? {body: JSON.stringify(body)} : {})});
-    const provider = await (await req('/v1/providers', {type: 'provider.input', name: 'F', flavor: 'openAIChat', baseUrl: 'https://llm.example.test/v1', apiKey: 'sk-test-123456', capabilities: {tools: true}})).json();
-    await req('/v1/consents', {type: 'consent', host: 'llm.example.test', allowed: true});
-    await req(`/v1/providers/${provider.id}/refresh-models`, {type: 'models.refresh'});
-    const chat = await (await req('/v1/chats', {type: 'chat.input', providerId: provider.id, modelId: 'm'})).json();
+    await connectKey(req);
+    const chat = await (await req('/v1/chats', {type: 'chat.input', modelId: 'm'})).json();
     const run = async () => { const r = await (await req('/v1/runs', {type: 'run.start', chatId: chat.id, text: 'hi'})).json(); await service.drain(); return RunSnapshotSchema.parse(await (await req(`/v1/runs/${r.id}/snapshot`)).json()); };
 
     expect((await run()).run.outcome).toBe('completed');
-    expect(rejections).toBe(1); // learned during the first turn (retried without tools)
+    expect(rejections).toBe(1); // Retried without tools inside the run.
     expect((await run()).run.outcome).toBe('completed');
-    expect(rejections).toBe(1); // next turn already goes without tools
-    await req(`/v1/providers/${provider.id}/refresh-models`, {type: 'models.refresh'});
-    await run();
-    expect(rejections).toBe(2); // a fresh model list clears what was learned
+    expect(rejections).toBe(2); // Catalogue still lists tools; next run offers them again.
+    expect(await service.adapters.store.list('local-user', 'modelLearning')).toEqual([]);
   });
 });

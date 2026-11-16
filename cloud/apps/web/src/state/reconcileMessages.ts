@@ -12,11 +12,6 @@ const sortMessages = (list: Message[]) =>
       a.id.localeCompare(b.id),
   );
 
-/**
- * Merges committed messages into a chat's list. Only the optimistic prompt is replaced, and only by the
- * committed prompt of the same turn. Tool results share the turn's clientTurnId and the wire role `user`;
- * matching on those alone used to drop the real prompt on every tool result until the run ended.
- */
 export function reconcileMessages(existing: Message[], committed: Message[]): Message[] {
   const committedPromptTurns = new Set(committed.filter(isPrompt).flatMap((m) => (m.clientTurnId ? [m.clientTurnId] : [])));
   const byId = new Map<string, Message>();
@@ -28,10 +23,6 @@ export function reconcileMessages(existing: Message[], committed: Message[]): Me
   return sortMessages(Array.from(byId.values()));
 }
 
-/**
- * Applies a fetched `listMessages` page while preserving any in-flight optimistic user turn whose
- * prompt has not yet landed in the server response.
- */
 export function mergeFetchedMessages(existing: Message[], fetched: Message[]): Message[] {
   const fetchedPromptTurns = new Set(fetched.filter(isPrompt).flatMap((m) => (m.clientTurnId ? [m.clientTurnId] : [])));
   const byId = new Map<string, Message>();

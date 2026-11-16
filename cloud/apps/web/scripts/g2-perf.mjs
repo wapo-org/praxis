@@ -1,6 +1,3 @@
-// WP-G2 performance: the morph at 120 Hz in headed Chromium with GPU, production build.
-//   BASE=... API=... node apps/web/scripts/g2-perf.mjs   (HEADLESS=1 for headless)
-// Measures a cold first open per session separately, then repeated open/close of each class, and fast toggling.
 import { chromium } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -59,8 +56,6 @@ async function measure(page, name, act) {
 const landed = (page) => page.waitForFunction(() => { const m = document.querySelector('[role=menu]'); return m && m.style.transform === ''; });
 const gone = (page) => page.getByRole('menu').waitFor({ state: 'detached' });
 
-// Lab scene, both classes over text.
-// Cold first open, in repeated fresh sessions: this is where a map build or a first mount would show.
 if (process.env.COLD) {
   const opens = {
     row: async (page) => {
