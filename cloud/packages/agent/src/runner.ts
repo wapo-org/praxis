@@ -243,17 +243,27 @@ export class AgentRunner {
             bytes+=canonical(e).length;if(bytes>16_000_000)throw new Error('Provider response exceeds buffer limit');
             if(e.type==='completed'){completed=ProviderResponseSchema.parse(e.response);continue;}
             const blockId=`${cp.run.id}.${cp.iteration}.${attempt}.${e.index}`;
-            if(e.type==='text'||e.type==='reasoning') {
-              if(!blocks.includes(blockId))blocks.push(blockId);if(e.type==='reasoning')reasoningBlocks.add(blockId);
-              await this.emit(cp,{type:e.type==='text'?'text.delta':'reasoning.delta',blockId,text:e.text});
+            if(e.type==='text') {
+              if(!blocks.includes(blockId))blocks.push(blockId);
+              await this.emit(cp,{type:'text.delta',blockId,text:e.text,...(e.annotations?.length?{annotations:e.annotations}:{})});
+            }else if(e.type==='reasoning') {
+              if(!blocks.includes(blockId))blocks.push(blockId);reasoningBlocks.add(blockId);
+              await this.emit(cp,{type:'reasoning.delta',blockId,text:e.text,...(e.shape?{shape:e.shape}:{}),...(e.redacted?{redacted:true}:{})});
             }else if(e.type==='tool') {
+              if(e.server)continue;
               calls.set(e.index,{id:e.id,name:e.name});callIds.push(e.id);
               const spec=cp.setup.tools.find(t=>t.name===e.name);
               await this.emit(cp,{type:'tool.started',activity:this.activity(e.id,e.name,spec)});
             }else if(e.type==='arguments') {
               const call=calls.get(e.index);if(call)await this.emit(cp,{type:'tool.arguments.delta',callId:call.id,json:e.json});
             }else if(e.type==='blockEnd') {
-              if(blocks.includes(blockId))await this.emit(cp,{type:reasoningBlocks.has(blockId)?'reasoning.finished':'text.finished',blockId});
+              if(blocks.includes(blockId)){
+                if(reasoningBlocks.has(blockId)) {
+                  await this.emit(cp,{type:'reasoning.finished',blockId,...(e.shape?{shape:e.shape}:{}),...(e.redacted?{redacted:true}:{})});
+                }else {
+                  await this.emit(cp,{type:'text.finished',blockId});
+                }
+              }
             }
           }
           if(!completed)throw new ProviderFailure('Provider stream ended without a completed response','retryable');

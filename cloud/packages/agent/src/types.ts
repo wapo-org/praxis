@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import {
   ApprovalSchema, CapabilitiesSchema, ChatSchema, ConversationSetupSchema, ElicitationSchema,
-  IdSchema, JsonObjectSchema, JsonValueSchema, MessagePartSchema, MessageSchema, RunSchema,
-  UsageSchema, type Capabilities, type JsonObject, type JsonValue, type Message,
+  IdSchema, JsonObjectSchema, JsonValueSchema, MessagePartSchema, MessageSchema, ReasoningShapeSchema, RunSchema,
+  StreamAnnotationSchema, UsageSchema, type Capabilities, type JsonObject, type JsonValue, type Message,
   type Mode, type ProviderFlavor, type RunEventPayload, type ToolSpec,
 } from '@praxis/protocol';
 
@@ -22,11 +22,11 @@ export const ProviderResponseSchema = z.object({
 });
 export type ProviderResponse = z.infer<typeof ProviderResponseSchema>;
 export const ProviderEventSchema = z.discriminatedUnion('type', [
-  z.object({type:z.literal('text'),index:z.number().int().nonnegative(),text:z.string()}),
-  z.object({type:z.literal('reasoning'),index:z.number().int().nonnegative(),text:z.string()}),
-  z.object({type:z.literal('tool'),index:z.number().int().nonnegative(),id:IdSchema,name:z.string()}),
+  z.object({type:z.literal('text'),index:z.number().int().nonnegative(),text:z.string(),annotations:z.array(StreamAnnotationSchema).optional()}),
+  z.object({type:z.literal('reasoning'),index:z.number().int().nonnegative(),text:z.string(),shape:ReasoningShapeSchema.optional(),redacted:z.boolean().optional()}),
+  z.object({type:z.literal('tool'),index:z.number().int().nonnegative(),id:IdSchema,name:z.string(),server:z.boolean().optional()}),
   z.object({type:z.literal('arguments'),index:z.number().int().nonnegative(),json:z.string()}),
-  z.object({type:z.literal('blockEnd'),index:z.number().int().nonnegative()}),
+  z.object({type:z.literal('blockEnd'),index:z.number().int().nonnegative(),shape:ReasoningShapeSchema.optional(),redacted:z.boolean().optional()}),
   z.object({type:z.literal('completed'),response:ProviderResponseSchema}),
 ]);
 export type ProviderEvent = z.infer<typeof ProviderEventSchema>;
