@@ -16,7 +16,8 @@
     "check:rules": "node scripts/check-rules.mjs",
     "lint": "oxlint --deny-warnings",
     "dev:local": "npm run dev:local -w @praxis/api",
-    "specs": "node scripts/specs.mjs"
+    "specs": "node scripts/specs.mjs",
+    "verify": "tsx packages/verify/src/cli.ts"
   },
   "devDependencies": {
     "@informalsystems/quint": "0.33.1",

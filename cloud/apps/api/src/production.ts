@@ -1,4 +1,4 @@
-import {pool, redisCooldownStore, type CredentialLogEvent} from '@praxis/credentials';
+import {GROQ_POOL, pool, redisCooldownStore, type CredentialLogEvent} from '@praxis/credentials';
 import {accountEraser} from './account-deletion.js';
 import {createConvexRPC} from './adapters/convex.js';
 import {createAuth, parseOrigins} from './adapters/auth.js';
@@ -7,7 +7,6 @@ import {createQStashScheduler, createQStashVerifier} from './adapters/qstash.js'
 import {createSafeFetch} from './adapters/security.js';
 import {createRateLimiter, createUpstashAdapters} from './adapters/upstash.js';
 import {createConvexToolsStorage} from './features/tools/convex-storage.js';
-import {GROQ_POOL} from './features/tools/transcribe.js';
 import {featureModules} from './modules.js';
 import {createPraxisApp, jsonLog} from './server.js';
 import {productionEmbedder} from './embedding.js';
@@ -34,7 +33,7 @@ export type ProductionEnv = Record<(typeof PRODUCTION_ENV)[number], string> & {P
 export const CONTINUATION_PATH = '/internal/continue';
 
 /** Optional pooled platform keys using un-gapped _2, _3, ... suffixes. */
-export const PLATFORM_POOLS: readonly PoolSpec[] = [{service: 'groq', names: GROQ_POOL}];
+export const PLATFORM_POOLS: readonly PoolSpec[] = [{service: GROQ_POOL.service, names: GROQ_POOL.name}];
 export interface PoolSpec {service: string; names: string | readonly string[]}
 export interface ReadEnvOptions {pools?: readonly PoolSpec[]; warn?: (message: string) => void}
 
@@ -124,7 +123,7 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
     log: jsonLog,
     modules: service => featureModules(service, {
       storage,
-      platformVoice: {pool: pool(GROQ_POOL, rawEnv, {service: 'groq'}), cooldowns: redisCooldownStore(upstash.redis), log: credentialLog},
+      platformVoice: {pool: pool(GROQ_POOL.name, rawEnv, {service: GROQ_POOL.service}), cooldowns: redisCooldownStore(upstash.redis), log: credentialLog},
       mcp: {publicOrigin: origin, webReturnOrigins: webOrigins, safeFetch: egress, consumeOAuthState: key => upstash.consumeOnce(key), lease: upstash.lease},
     }),
   });
