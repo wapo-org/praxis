@@ -360,7 +360,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
 }
 
 function scriptedProvider(script: Script, simOptions?: StreamSimOptions): ModelProvider {
-  const base = createScriptedProvider(script, simOptions);
+  const base = createScriptedProvider(script);
   if (script !== 'long' && script !== 'streamSim') return base;
   return {
     ...base,
