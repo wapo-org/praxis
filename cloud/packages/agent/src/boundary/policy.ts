@@ -22,6 +22,8 @@ export type ToolClassification = {
   capabilities: readonly ToolCapability[];
   decision: PolicyDecision;
   untrustedSource: boolean;
+  destructive?: boolean;
+  untrustedWrite?: boolean;
 };
 export interface ToolClassifier {
   classify(call: ToolInvocation): ToolClassification | undefined;
@@ -45,6 +47,8 @@ export function classifyInvocation(raw: unknown, registry: ToolClassifier, adapt
       capabilities: [...new Set(inner.flatMap(c => c.capabilities))],
       decision: strictest(inner.map(c => c.decision)),
       untrustedSource: inner.some(c => c.untrustedSource),
+      ...(inner.some(c => c.destructive) ? {destructive: true} : {}),
+      ...(inner.some(c => c.untrustedWrite) ? {untrustedWrite: true} : {}),
     };
   } catch {
     return DENIED_TOOL;

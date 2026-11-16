@@ -9,12 +9,16 @@ import {requireConsent} from '../mcp/shared.js';
 import {publicFetch} from './http.js';
 export type ToolExecution=Parameters<FeatureTool['execute']>[1]&{signal?:AbortSignal;callId?:string};
 export interface SandboxFiles {list():Promise<string[]>;read(name:string):Promise<Uint8Array>}
+const SANDBOX_RESULT_MAX_BYTES=400000;
+const SANDBOX_KV_MAX_BYTES=262144;
+const SandboxOutput=z.object({console:z.array(z.object({level:z.string(),text:z.string()})),result:JsonValueSchema,kv:z.record(z.string(),JsonValueSchema)});
 const Code=z.object({env:z.record(z.string(),z.string()).default({}),code:z.string().max(200000),timeout_ms:z.number().int().min(1).max(30000).default(5000)});
 const FetchInput=z.object({url:z.string().url(),method:z.enum(['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS']).default('GET'),headers:z.record(z.string(),z.string()).default({}),body:z.string().max(1000000).optional()});
 /** WASM receives JSON/strings only; no Node objects, loader, or FS access. */
-export async function runSandbox(args:JsonValue,ctx:FeatureContext,execution:ToolExecution,files:SandboxFiles,toolNames:string[],toolState?:ToolsState){
+export async function runSandbox(args:JsonValue,ctx:FeatureContext,execution:ToolExecution,files:SandboxFiles,toolNames:string[],toolState:ToolsState){
  const input=Code.parse(args);if(execution.mode==='ask')throw new ApiError(403,'mode_denied','Running JavaScript is unavailable in Ask mode');
- const saved=toolState?await toolState.get(ctx.userId,'javascriptKV',execution.chatId):null;const legacy=toolState?null:await ctx.store.get(ctx.userId,'javascriptKV',execution.chatId);const initial=saved?.data??(legacy&&!legacy.deleted?legacy.value.data??{}:{});
+ const saved=await toolState.get(ctx.userId,'javascriptKV',execution.chatId);
+ const initial=saved?.data??{};
  const quickJS=await getQuickJS(),runtime=quickJS.newRuntime();runtime.setMemoryLimit(16*1024*1024);runtime.setMaxStackSize(512*1024);
  const started=Date.now(),deadline=started+input.timeout_ms;const controller=new AbortController();const signal=execution.signal?AbortSignal.any([execution.signal,controller.signal]):controller.signal;
  runtime.setInterruptHandler(()=>Date.now()>=deadline||signal.aborted);
@@ -60,14 +64,23 @@ export async function runSandbox(args:JsonValue,ctx:FeatureContext,execution:Too
  const callTool=(name,args={})=>__rpc('tool',{name,args});const tools=Object.create(null);for(const name of ${JSON.stringify(toolNames.filter(n=>n!=='run_javascript'))})tools[name]=args=>callTool(name,args);
  `;
  try{
-  const evaluated=vm.evalCode(`(async()=>{${prelude}\nconst result=await(async()=>{${input.code}\n})();const output=JSON.stringify({console:__logs,result:result??null,kv:Object.fromEntries(__kv)});if(output.length>400000)throw new Error('Result exceeds limit');return output;})()`,'run.js');
+  const evaluated=vm.evalCode(`(async()=>{${prelude}\nconst result=await(async()=>{${input.code}\n})();const output=JSON.stringify({console:__logs,result:result??null,kv:Object.fromEntries(__kv)});if(output.length>${SANDBOX_RESULT_MAX_BYTES})throw new Error('Result exceeds limit');return output;})()`,'run.js');
   if(evaluated.error){const error=vm.dump(evaluated.error);evaluated.error.dispose();return {console:[],error:{name:'JavaScriptError',message:safeError(error)},ms:Date.now()-started};}handle=evaluated.value;
   while(true){
    if(hostFailure)throw hostFailure;
    if(Date.now()>=deadline||signal.aborted)return {console:[],error:{name:execution.signal?.aborted?'AbortError':'TimeoutError',message:'Execution cancelled or timed out'},ms:Date.now()-started};
    const jobs=runtime.executePendingJobs(100);if(jobs.error){const error=vm.dump(jobs.error);jobs.error.dispose();return {console:[],error:{name:'JavaScriptError',message:safeError(error)},ms:Date.now()-started};}
    const state=vm.getPromiseState(handle);
-   if(state.type==='fulfilled'){const raw=vm.getString(state.value);state.value.dispose();if(Buffer.byteLength(raw)>400000)throw new Error('Result exceeds limit');const output=z.object({console:z.array(z.object({level:z.string(),text:z.string()})),result:JsonValueSchema,kv:z.record(z.string(),JsonValueSchema)}).parse(JSON.parse(raw));if(Buffer.byteLength(JSON.stringify(output.kv))>262144)throw new Error('KV quota exceeded');const safeKV=secretBoundary.redact(output.kv);if(toolState)await toolState.put(ctx.userId,'javascriptKV',execution.chatId,{data:safeKV});else await ctx.store.put(ctx.userId,'javascriptKV',execution.chatId,{data:safeKV});return {console:output.console,result:output.result,ms:Date.now()-started};}
+   if(state.type==='fulfilled'){
+    const raw=vm.getString(state.value);
+    state.value.dispose();
+    if(Buffer.byteLength(raw)>SANDBOX_RESULT_MAX_BYTES)throw new Error('Result exceeds limit');
+    const output=SandboxOutput.parse(JSON.parse(raw));
+    if(Buffer.byteLength(JSON.stringify(output.kv))>SANDBOX_KV_MAX_BYTES)throw new Error('KV quota exceeded');
+    const safeKV=secretBoundary.redact(output.kv);
+    await toolState.put(ctx.userId,'javascriptKV',execution.chatId,{data:safeKV});
+    return {console:output.console,result:output.result,ms:Date.now()-started};
+   }
    if(state.type==='rejected'){const error=vm.dump(state.error);state.error.dispose();return {console:[],error:{name:'JavaScriptError',message:safeError(error)},ms:Date.now()-started};}
    if(!runtime.hasPendingJob()&&!pending.size)return {console:[],error:{name:'UnsettledPromise',message:'Script returned a promise that cannot settle'},ms:Date.now()-started};
    await new Promise<void>(resolve=>{const t=setTimeout(resolve,1);if(signal.aborted){clearTimeout(t);resolve();}});

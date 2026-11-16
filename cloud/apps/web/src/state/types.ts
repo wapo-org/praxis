@@ -110,7 +110,6 @@ export interface PraxisStoreContextValue {
   /** Shows a failure in the app's error banner (for work that finishes after its surface has closed). */
   reportError: (message: string) => void;
 
-  // Theme
   themeMode: ThemeMode;
   resolvedTheme: ResolvedTheme;
   setThemeMode: (mode: ThemeMode) => void;
@@ -161,7 +160,6 @@ export interface PraxisStoreContextValue {
   liveRunsByChat: Record<string, LiveRunState>;
   activeLiveRun: LiveRunState | null;
 
-  // Consent Prompt
   pendingConsentPrompt: PendingConsentPrompt | null;
   setPendingConsentPrompt: (prompt: PendingConsentPrompt | null) => void;
 

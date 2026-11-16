@@ -158,8 +158,7 @@ test('the six sidebar palettes apply live, persist, and are there before first p
   await page.keyboard.press('ArrowRight');
   await expect(palettes.getByRole('radio', { name: 'Forest', exact: true })).toBeFocused();
   await expect(solid(page)).toHaveCSS('background-image', fade('rgb(18, 38, 29)', true));
-  // A colour stored by the old option is ignored before first paint and after, and cleared.
-  await page.evaluate(() => localStorage.setItem('praxis-button-color', '#123abc'));
+  // The saved palette and the stylesheet button colour are in place before first paint.
   await page.addInitScript(() => {
     const w = window as unknown as { firstLook?: string };
     new MutationObserver(() => {
@@ -171,7 +170,6 @@ test('the six sidebar palettes apply live, persist, and are there before first p
   await expect(palettes.getByRole('radio', { name: 'Forest', exact: true })).toHaveAttribute('aria-checked', 'true');
   expect(await page.evaluate(() => (window as unknown as { firstLook: string }).firstLook)).toBe('forest #ffffff');
   await expect(page.getByTestId('settings-back')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-  expect(await page.evaluate(() => localStorage.getItem('praxis-button-color'))).toBeNull();
   await palettes.getByRole('radio', { name: 'Graphite', exact: true }).click();
 });
 test('the generic accent is gone: app controls keep their own ink, not a sidebar palette', async ({ page }) => {

@@ -11,3 +11,4 @@ export * from './boundary/shell.js';
 export * from './boundary/receipt.js';
 export * from './boundary/policy.js';
 export * from './boundary/gate.js';
+export * from './boundary/decision.js';

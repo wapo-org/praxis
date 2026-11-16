@@ -1,3 +1,4 @@
+import {cancellationKey} from './run-keys.js';
 import {ensureBuiltins} from './features/mcp/builtins.js';
 import { randomUUID } from 'node:crypto';
 import { ChatSchema,RunErrorCodeSchema,ModelKeySchema,ModelPreferenceRecordSchema,PROTOCOL_VERSION,RunSchema,type Bootstrap,type Chat,type JsonObject,type Message,type Run,type RunEventPayload,type RunSnapshot,type StartRun } from '@praxis/protocol';
@@ -255,5 +256,16 @@ export class ApiService{
   delete chat.activeRunId;chat.updatedAt=this.now();await this.write(userId,'chat',chatId,chat);
   return {type:'chat.truncated',chat,removedRunIds:[...runIds],removedMessageIds:removed.map(m=>m.id)};
  });}
- async cancel(userId:string,runId:string){const run=await this.require<Run>(userId,'run',runId);if(this.terminal(run))return run;await this.adapters.kv.set(`cancel:${userId}:${runId}`,true,86400,userId);await this.driver?.cancel?.(userId,runId);if(!this.terminal(await this.require<Run>(userId,'run',runId))&&(run.status==='awaitingApproval'||run.status==='awaitingElicitation'||run.status==='queued'))await this.emit(userId,runId,{type:'run.finished',outcome:'cancelled'});return this.require<Run>(userId,'run',runId);}
+ async cancel(userId: string, runId: string) {
+  const run = await this.require<Run>(userId, 'run', runId);
+  if (this.terminal(run)) return run;
+  await this.adapters.kv.set(cancellationKey(userId, runId), true, 86400, userId);
+  await this.driver?.cancel?.(userId, runId);
+  const current = await this.require<Run>(userId, 'run', runId);
+  if (!this.terminal(current) &&
+      (run.status === 'awaitingApproval' || run.status === 'awaitingElicitation' || run.status === 'queued')) {
+   await this.emit(userId, runId, {type: 'run.finished', outcome: 'cancelled'});
+  }
+  return this.require<Run>(userId, 'run', runId);
+ }
 }

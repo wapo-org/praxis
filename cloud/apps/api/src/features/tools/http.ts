@@ -21,4 +21,3 @@ export async function publicFetch(ctx:FeatureContext,raw:string,init:RequestInit
  if(response.status>=300&&response.status<400)throw new ApiError(400,'redirect_denied','Use the final URL; redirects are not followed');
  return {response,bytes:await readLimited(response.body,max)};
 }
-export function page<T>(items:T[],query:{cursor?:string;limit:number},scope:string){let offset=0;if(query.cursor){try{const v=JSON.parse(Buffer.from(query.cursor,'base64url').toString());if(v.scope!==scope||!Number.isSafeInteger(v.offset)||v.offset<0)throw new Error('invalid cursor');offset=v.offset;}catch{throw new ApiError(400,'invalid_cursor','Invalid cursor');}}const end=offset+query.limit;return {type:'page',items:items.slice(offset,end),nextCursor:end<items.length?Buffer.from(JSON.stringify({scope,offset:end})).toString('base64url'):null};}

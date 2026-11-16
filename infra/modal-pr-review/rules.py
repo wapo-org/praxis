@@ -37,6 +37,7 @@ SCRIPT_RULES: tuple[Rule, ...] = (
     _script("R1.api-imports-agent"),
     _script("R1.credentials-pool"),
     _script("R3.file-length"),
+    _script("R3.narrating-comment"),
     _script("R4.no-any"),
     _script("R4.convex-v-any"),
     _script("R4.tenant-id-boundary"),

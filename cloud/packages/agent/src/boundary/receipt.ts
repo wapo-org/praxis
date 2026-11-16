@@ -14,13 +14,8 @@ export interface ApprovalReplayStore {
 }
 const hex = (bytes: ArrayBuffer) => Array.from(new Uint8Array(bytes), b => b.toString(16).padStart(2, '0')).join('');
 export class ApprovalReceipt {
-  readonly #binding: ApprovalBinding;
-  private constructor(binding: ApprovalBinding) {
-    this.#binding = Object.freeze({...binding});
-  }
-  matches(binding: ApprovalBinding): boolean {
-    return canonicalArgs(this.#binding) === canonicalArgs(binding);
-  }
+  declare private readonly verified: void;
+  private constructor() {}
   static async verify(wire: unknown, binding: ApprovalBinding, nowMs: number, key: CryptoKey, replay: ApprovalReplayStore): Promise<ApprovalReceipt | null> {
     const parsed = ApprovalReceiptWireSchema.safeParse(wire);
     if (!parsed.success || !Number.isFinite(nowMs)) return null;
@@ -31,7 +26,7 @@ export class ApprovalReceipt {
     const bytes = new Uint8Array(signature.match(/../g)!.map(b => Number.parseInt(b, 16)));
     if (!await crypto.subtle.verify('HMAC', key, bytes, receiptMessage(payload))) return null;
     if (!await replay.consume(payload.nonce, payload.expiresAtMs)) return null;
-    return new ApprovalReceipt(expected.data);
+    return new ApprovalReceipt();
   }
 }
 function receiptMessage(payload: ApprovalReceiptWire['payload']): Uint8Array<ArrayBuffer> {

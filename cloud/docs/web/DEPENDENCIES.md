@@ -25,7 +25,7 @@ Per architectural decision `D15` ("Dependencies are a liability. Prefer zero-dep
 |---|---|---|---|
 | `vite` | `@praxis/web` | `^6.2.0` | Fast ESM dev server and Rollup-based production bundler for `cloud/apps/web`. |
 | `@vitejs/plugin-react` | `@praxis/web` | `^4.3.4` | JSX/TSX transform and Fast Refresh support for Vite. |
-| `@playwright/test` | `@praxis/web` | `^1.50.0` | Headless Chromium browser automation for E2E flows, performance mark verification (`PERF.md`), and side-by-side iOS parity screenshots (`PARITY.md`). |
+| `@playwright/test` | `@praxis/web` | `^1.50.0` | Headless Chromium browser automation for E2E flows, performance mark verification, and side-by-side iOS parity screenshots (`PARITY.md`). |
 | `jsdom` | `@praxis/web` | `^26.0.0` | Lightweight DOM implementation for fast Vitest interactive screen and dropdown tests. |
 | `@types/react` | `@praxis/web`, `@praxis/glass` | `^19.0.0` | Strict TypeScript type definitions for React 19 APIs. |
 | `@types/react-dom` | `@praxis/web`, `@praxis/glass` | `^19.0.0` | Strict TypeScript type definitions for `react-dom/client` and `react-dom/server`. |

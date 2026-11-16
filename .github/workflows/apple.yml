@@ -27,33 +27,19 @@ jobs:
       - name: Install pinned SwiftLint
         run: |
           set -euo pipefail
-          curl -fsSL -o "$RUNNER_TEMP/swiftlint.zip" "https://github.com/realm/SwiftLint/releases/download/$SWIFTLINT_VERSION/portable_swiftlint.zip"
+          curl --proto '=https' --tlsv1.2 -fsSL -o "$RUNNER_TEMP/swiftlint.zip" "https://github.com/realm/SwiftLint/releases/download/$SWIFTLINT_VERSION/portable_swiftlint.zip"
           echo "$SWIFTLINT_SHA256  $RUNNER_TEMP/swiftlint.zip" | shasum -a 256 -c -
           unzip -q "$RUNNER_TEMP/swiftlint.zip" -d "$RUNNER_TEMP/swiftlint"
           echo "$RUNNER_TEMP/swiftlint" >> "$GITHUB_PATH"
-      - name: Look for a committed baseline
-        id: baseline
-        run: |
-          if [ -s "$SWIFTLINT_BASELINE" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
-      - name: Lint against the baseline
-        if: steps.baseline.outputs.present == 'true'
-        run: swiftlint lint --strict --baseline "$SWIFTLINT_BASELINE"
-      # No baseline yet: write it so it can be committed; from then on the step above enforces it.
-      - name: Write the first baseline
-        if: steps.baseline.outputs.present != 'true'
+      # A missing baseline must fail: without it every violation would count as new, or none would be checked.
+      - name: Lint against the committed baseline
         run: |
           set -euo pipefail
-          swiftlint lint --quiet --write-baseline "$SWIFTLINT_BASELINE" || true
-          test -s "$SWIFTLINT_BASELINE"
-          echo "::warning::No SwiftLint baseline is committed. Commit the uploaded artifact as $SWIFTLINT_BASELINE."
-      - name: Upload the first baseline
-        if: steps.baseline.outputs.present != 'true'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: swiftlint-baseline
-          path: PraxisChat/.swiftlint-baseline.json
-          include-hidden-files: true
-          retention-days: 7
+          if [ ! -s "$SWIFTLINT_BASELINE" ]; then
+            echo "::error::$SWIFTLINT_BASELINE is missing. Restore it from git; do not regenerate it to hide new violations."
+            exit 1
+          fi
+          swiftlint lint --strict --baseline "$SWIFTLINT_BASELINE"
   ios:
     name: Apple / iOS build and unit tests
     runs-on: macos-26

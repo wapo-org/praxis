@@ -43,7 +43,7 @@ export function adaptTool(tool: FeatureTool, featureCtx?: FeatureContext): Agent
         const safeMessage = String(secrets ? secrets.redact(message) : message);
         const code = error instanceof ZodError ? 'schema' : error instanceof ApiError ? TOOL_API_ERROR_CODES[error.code] ?? 'upstream' : 'upstream';
         const detail = error instanceof ToolBoundaryError ? {...error.detail, message: safeMessage} : toolError(code, safeMessage);
-        return {...textResult(JSON.stringify(detail), true), error: detail};
+        return {content: [{type: 'text', text: JSON.stringify(detail)}], isError: true, error: detail};
       }
     },
   } as AgentTool;

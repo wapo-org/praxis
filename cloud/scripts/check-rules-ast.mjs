@@ -9,6 +9,7 @@ export const RULES = {
   apiImportsAgent: 'R1.api-imports-agent',
   credentialsPool: 'R1.credentials-pool',
   fileLength: 'R3.file-length',
+  narratingComment: 'R3.narrating-comment',
   noAny: 'R4.no-any',
   convexVAny: 'R4.convex-v-any',
   tenantIdBoundary: 'R4.tenant-id-boundary',

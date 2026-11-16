@@ -15,7 +15,7 @@ export type ShellAst = {commands: ShellCommand[]; operators: string[]};
 // Expansions and unsupported grammar never reach an optimistic interpretation of the token stream.
 export function parseShell(command: string): ShellAst | null {
   if (!command || command.length > SHELL_COMMAND_MAX_CHARACTERS) return null;
-  const normalized = command.replace(/\\\r?\n/g, '');
+  const normalized = command;
   if (/[$`#\n\r\0(){}]/.test(normalized) || !balancedQuotes(normalized)) return null;
   try {
     const tokens = parse(normalized);
@@ -77,14 +77,14 @@ function classifyCommand(node: ShellCommand): PolicyDecision {
     wrapped = true;
     words.shift();
   }
-  if (['env', '/usr/bin/env'].includes(words[0] ?? '')) {
+  while (['env', '/usr/bin/env'].includes(words[0] ?? '')) {
     wrapped = true;
     words.shift();
     while (words[0] && (ASSIGNMENT.test(words[0]) || words[0] === '--' || words[0] === '-i')) words.shift();
   }
   const name = words[0]?.split('/').pop() ?? '';
   if (DENIED_COMMANDS.has(name) || name.startsWith('mkfs.')) return 'deny';
-  if (name === 'git' && words.includes('push') && words.some(w => w === '-f' || w.startsWith('--force'))) return 'deny';
+  if (name === 'git' && words.includes('push') && words.some(w => (/^-[^-]*f/.test(w)) || w.startsWith('--force') || w.startsWith('+'))) return 'deny';
   for (const redirect of node.redirects) {
     if (redirect.operator.startsWith('>')) {
       // Dot segments and home-relative paths need worker filesystem resolution and cannot be approved here.

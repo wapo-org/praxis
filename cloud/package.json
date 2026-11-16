@@ -16,9 +16,12 @@
     "check:rules": "node scripts/check-rules.mjs",
     "lint": "oxlint --deny-warnings",
     "dev:local": "npm run dev:local -w @praxis/api",
-    "specs": "vitest run packages/agent/src/boundary"
+    "specs": "node scripts/specs.mjs",
+    "bench": "vitest bench --run scripts/bench/search.bench.ts",
+    "verify": "tsx packages/verify/src/cli.ts"
   },
   "devDependencies": {
+    "@informalsystems/quint": "0.33.1",
     "@types/node": "^24.0.0",
     "fast-check": "4.10.2",
     "oxlint": "1.93.0",
