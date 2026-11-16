@@ -8,16 +8,75 @@ from typing import Any
 
 import httpx
 
+from review import VERDICT_COMMENT, VERDICT_REQUEST_CHANGES, body_with_inline_comments
+
 STATUS_COMMENT_MARKER = "<!-- muse-pr-review-status -->"
 COMMAND_PATTERN = re.compile(
     r"(?:^|\s)(?:/muse|@muse-review)\b(?P<instructions>.*)$",
     re.IGNORECASE | re.DOTALL,
 )
-HUNK_HEADER_PATTERN = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 GITHUB_API_VERSION = "2022-11-28"
 GITHUB_PER_PAGE = 100
-NON_COMMENT_VERDICTS = {"APPROVE", "REQUEST_CHANGES"}
+GITHUB_AUTH_STATUS_CODES = (401, 403)
+GITHUB_ERROR_MESSAGE_CHARS = 300
+DEFAULT_ALLOWED_REPOS = ("wapo-org/praxis",)
+
+TOKEN_KIND_FINE_GRAINED_PAT = "fine_grained_pat"
+TOKEN_KIND_APP_INSTALLATION = "github_app_installation"
+TOKEN_KIND_APP_USER = "github_app_user"
+TOKEN_KIND_CLASSIC_PAT = "classic_pat"
+TOKEN_KIND_OAUTH_APP = "oauth_app"
+TOKEN_KIND_UNKNOWN = "unknown"
+_TOKEN_PREFIXES = (
+    ("github_pat_", TOKEN_KIND_FINE_GRAINED_PAT),
+    ("ghs_", TOKEN_KIND_APP_INSTALLATION),
+    ("ghu_", TOKEN_KIND_APP_USER),
+    ("ghp_", TOKEN_KIND_CLASSIC_PAT),
+    ("gho_", TOKEN_KIND_OAUTH_APP),
+)
+TOKEN_HELP = (
+    "GITHUB_TOKEN must be a fine-grained PAT or a GitHub App token for the repository "
+    "(Contents and Pull requests read/write): the organization restricts OAuth App access, "
+    "so `gho_` tokens get 403 on writes. Check that the token has not expired, then rotate it "
+    "as described in infra/modal-pr-review/README.md."
+)
+
+
+class GitHubAuthError(RuntimeError):
+    """GitHub refused the reviewer's token; the run must fail loudly instead of skipping the review."""
+
+    def __init__(self, status_code: int, action: str, message: str) -> None:
+        self.status_code = status_code
+        self.action = action
+        super().__init__(f"GitHub returned {status_code} while trying to {action}: {message}. {TOKEN_HELP}")
+
+
+def classify_github_token(token: str) -> str:
+    """Token family from its public prefix; never returns or logs any part of the secret itself."""
+    for prefix, kind in _TOKEN_PREFIXES:
+        if token.startswith(prefix):
+            return kind
+    return TOKEN_KIND_UNKNOWN
+
+
+def require_usable_token(token: str) -> str:
+    kind = classify_github_token(token)
+    if kind == TOKEN_KIND_OAUTH_APP:
+        raise GitHubAuthError(403, "start the review", "GITHUB_TOKEN is an OAuth App (`gho_`) token")
+    return kind
+
+
+def raise_for_github(response: httpx.Response, action: str) -> None:
+    """401/403 become an explicit GitHubAuthError naming the action; other errors raise as usual."""
+    if response.status_code in GITHUB_AUTH_STATUS_CODES:
+        try:
+            message = str(response.json().get("message") or "")
+        except ValueError:
+            message = ""
+        detail = message[:GITHUB_ERROR_MESSAGE_CHARS] or "no message"
+        raise GitHubAuthError(response.status_code, action, detail)
+    response.raise_for_status()
 
 
 @dataclass(frozen=True)
@@ -55,11 +114,14 @@ def parse_webhook_event(
     *,
     review_drafts: bool = False,
     allow_forks: bool = False,
+    allowed_repos: tuple[str, ...] = DEFAULT_ALLOWED_REPOS,
 ) -> tuple[ReviewTrigger | None, str]:
     repo = payload.get("repository") or {}
     repo_full_name = repo.get("full_name")
     if not repo_full_name:
         return None, "missing repository.full_name"
+    if repo_full_name not in allowed_repos:
+        return None, f"repository {repo_full_name} is not in ALLOWED_REPOS"
 
     if event_type == "pull_request":
         action = payload.get("action")
@@ -124,33 +186,6 @@ def parse_webhook_event(
     return None, f"ignored event type: {event_type}"
 
 
-def parse_diff_right_lines(patch: str | None) -> set[int]:
-    if not patch:
-        return set()
-    valid_lines: set[int] = set()
-    right_line = 0
-    in_hunk = False
-
-    for raw_line in patch.splitlines():
-        hunk_match = HUNK_HEADER_PATTERN.match(raw_line)
-        if hunk_match:
-            right_line = int(hunk_match.group(1))
-            in_hunk = True
-            continue
-        if not in_hunk:
-            continue
-        if raw_line.startswith("+"):
-            valid_lines.add(right_line)
-            right_line += 1
-        elif raw_line.startswith("-") or raw_line.startswith("\\"):
-            continue
-        else:
-            valid_lines.add(right_line)
-            right_line += 1
-
-    return valid_lines
-
-
 def github_headers(token: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {token}",
@@ -165,7 +200,7 @@ def fetch_pr_details(
     pr_number: int,
 ) -> dict[str, Any]:
     resp = client.get(f"https://api.github.com/repos/{repo}/pulls/{pr_number}")
-    resp.raise_for_status()
+    raise_for_github(resp, "read the pull request")
     return resp.json()
 
 
@@ -181,7 +216,7 @@ def fetch_pr_files(
             f"https://api.github.com/repos/{repo}/pulls/{pr_number}/files",
             params={"per_page": GITHUB_PER_PAGE, "page": page},
         )
-        resp.raise_for_status()
+        raise_for_github(resp, "read the pull request files")
         batch = resp.json()
         if not batch:
             break
@@ -190,14 +225,6 @@ def fetch_pr_files(
             break
         page += 1
     return files
-
-
-def build_diff_line_map(pr_files: list[dict[str, Any]]) -> dict[str, set[int]]:
-    return {
-        item["filename"]: parse_diff_right_lines(item.get("patch"))
-        for item in pr_files
-        if item.get("filename")
-    }
 
 
 def upsert_status_comment(
@@ -209,7 +236,7 @@ def upsert_status_comment(
     marked_body = f"{STATUS_COMMENT_MARKER}\n{body}"
     comments_url = f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
     resp = client.get(comments_url, params={"per_page": GITHUB_PER_PAGE})
-    resp.raise_for_status()
+    raise_for_github(resp, "list pull request comments")
     existing_id: int | None = None
     for comment in resp.json():
         if STATUS_COMMENT_MARKER in (comment.get("body") or ""):
@@ -221,173 +248,17 @@ def upsert_status_comment(
             f"https://api.github.com/repos/{repo}/issues/comments/{existing_id}",
             json={"body": marked_body},
         )
-        patch_resp.raise_for_status()
+        raise_for_github(patch_resp, "update the status comment")
     else:
         post_resp = client.post(comments_url, json={"body": marked_body})
-        post_resp.raise_for_status()
+        raise_for_github(post_resp, "post the status comment")
 
 
-def merge_session_reviews(
-    session_results: list[dict[str, Any]],
-    hands_on_result: dict[str, Any] | None,
-    session_errors: list[str] | None = None,
-) -> dict[str, Any]:
-    """Synthesize parallel specialized sessions into one cohesive, non-opinionated review."""
-    summaries: list[str] = []
-    linear_seen: dict[str, dict[str, str]] = {}
-    findings_seen: dict[tuple[str, int | None, str], dict[str, Any]] = {}
-    has_blocking = False
-
-    for res in session_results:
-        session_key = str(res.get("session") or "review")
-        summary_text = str(res.get("summary") or "").strip()
-        if summary_text:
-            summaries.append(f"- **{session_key}:** {summary_text}")
-
-        if res.get("blocking_issues"):
-            has_blocking = True
-
-        for lc in res.get("linear_checks") or []:
-            issue_id = str(lc.get("issue_id") or "").strip()
-            if not issue_id:
-                continue
-            status = str(lc.get("status") or "not_applicable")
-            note = str(lc.get("note") or "").strip()
-            if status == "contradiction":
-                has_blocking = True
-            prior = linear_seen.get(issue_id)
-            if prior is None or status in {"contradiction", "concern"}:
-                linear_seen[issue_id] = {
-                    "issue_id": issue_id,
-                    "status": status,
-                    "note": note,
-                }
-
-        for finding in res.get("findings") or []:
-            _add_finding(findings_seen, finding, session_key)
-            if finding.get("tone") == "hard_boundary_flag" and finding.get("severity") in {
-                "critical",
-                "major",
-            }:
-                has_blocking = True
-
-    if hands_on_result:
-        if hands_on_result.get("checks_failed"):
-            has_blocking = True
-        for finding in hands_on_result.get("findings") or []:
-            _add_finding(findings_seen, finding, "hands_on")
-            if finding.get("severity") in {"critical", "major"}:
-                has_blocking = True
-
-    if session_errors:
-        summaries.append(
-            "- **session_warnings:** Some review sessions hit errors: "
-            + "; ".join(session_errors)
-        )
-
-    verdict = "REQUEST_CHANGES" if has_blocking else "COMMENT"
-    return {
-        "verdict": verdict,
-        "summary": "\n".join(summaries) if summaries else "Review completed.",
-        "linear_checks": list(linear_seen.values()),
-        "hands_on_testing": hands_on_result
-        or {
-            "ran": False,
-            "environment": "Modal Sandbox (Linux)",
-            "checks_passed": [],
-            "checks_failed": [],
-            "manual_observations": "Hands-on verification did not return structured results.",
-        },
-        "findings": list(findings_seen.values()),
-    }
-
-
-def _add_finding(
-    findings_seen: dict[tuple[str, int | None, str], dict[str, Any]],
-    finding: dict[str, Any],
-    session_key: str,
-) -> None:
-    path = finding.get("path") or ""
-    line = finding.get("line") if isinstance(finding.get("line"), int) else None
-    norm_title = re.sub(r"\s+", " ", str(finding.get("title") or "").strip().lower())
-    key = (path, line, norm_title)
-    enriched = {**finding, "sessions": [session_key]}
-    existing = findings_seen.get(key)
-    if existing is None:
-        findings_seen[key] = enriched
-    elif session_key not in existing["sessions"]:
-        existing["sessions"].append(session_key)
-
-
-def format_review_markdown(
-    review: dict[str, Any],
-    extra_findings: list[dict[str, Any]],
-) -> str:
-    verdict = review.get("verdict", "COMMENT")
-    verdict_badge = {
-        "APPROVE": "APPROVE",
-        "REQUEST_CHANGES": "REQUEST CHANGES",
-        "COMMENT": "COMMENT",
-    }.get(verdict, verdict)
-
-    lines: list[str] = [
-        f"## Muse Code PR Review (`muse-ember-1.0` / `max`) — `{verdict_badge}`",
-        "",
-        review.get("summary", "").strip(),
-    ]
-
-    linear_checks = review.get("linear_checks") or []
-    if linear_checks:
-        lines.extend(["", "### Linear (`PRA`) Alignment"])
-        for lc in linear_checks:
-            lines.append(
-                f"- **{lc.get('issue_id')}** (`{lc.get('status')}`): {lc.get('note', '').strip()}"
-            )
-
-    testing = review.get("hands_on_testing") or {}
-    lines.extend(["", "### Hands-On App Testing"])
-    ran = testing.get("ran", False)
-    env_desc = testing.get("environment") or "Modal Sandbox (Linux)"
-    lines.append(f"- **Executed:** {'Yes' if ran else 'No'} ({env_desc})")
-
-    passed = testing.get("checks_passed") or []
-    failed = testing.get("checks_failed") or []
-    if passed:
-        lines.append("- **Passed:**")
-        for item in passed:
-            lines.append(f"  - `{item}`")
-    if failed:
-        lines.append("- **Failed:**")
-        for item in failed:
-            lines.append(f"  - `{item}`")
-
-    observations = (testing.get("manual_observations") or "").strip()
-    if observations:
-        lines.extend(["", observations])
-
-    if extra_findings:
-        lines.extend(["", "### Findings & Offers (Cross-File / General)"])
-        for finding in extra_findings:
-            lines.append(_format_finding_bullet(finding))
-
-    return "\n".join(lines).strip()
-
-
-def _format_finding_bullet(finding: dict[str, Any]) -> str:
-    sev = str(finding.get("severity", "minor")).upper()
-    sessions = ",".join(finding.get("sessions") or [])
-    tag = f"[{sessions}] " if sessions else ""
-    path = finding.get("path") or "<cross-file>"
-    line = finding.get("line")
-    loc = f"`{path}:{line}`" if line else f"`{path}`"
-    ref = f" *(ref: `{finding['rule_or_issue']}`)*" if finding.get("rule_or_issue") else ""
-    title = finding.get("title", "Finding")
-    body = (finding.get("body") or "").strip()
-    out = f"- **{tag}[{sev}] {title}** ({loc}{ref}): {body}"
-    suggestion = (finding.get("suggestion") or "").strip()
-    if suggestion:
-        out += f"\n  - *Option / suggestion:* {suggestion}"
-    return out
+def is_fork_pr(pr: dict[str, Any]) -> bool:
+    """True when the head branch lives in another repository (or its repository was deleted)."""
+    head_repo = ((pr.get("head") or {}).get("repo") or {}).get("full_name")
+    base_repo = ((pr.get("base") or {}).get("repo") or {}).get("full_name")
+    return not head_repo or head_repo != base_repo
 
 
 def submit_pr_review(
@@ -396,63 +267,91 @@ def submit_pr_review(
     pr_number: int,
     head_sha: str,
     review: dict[str, Any],
-    diff_line_map: dict[str, set[int]],
 ) -> dict[str, Any]:
-    inline_comments: list[dict[str, Any]] = []
-    extra_findings: list[dict[str, Any]] = []
-
-    for finding in review.get("findings") or []:
-        path = finding.get("path")
-        line = finding.get("line")
-        valid_lines = diff_line_map.get(path or "", set())
-        if path and isinstance(line, int) and line in valid_lines:
-            sev = str(finding.get("severity", "minor")).upper()
-            sessions = ",".join(finding.get("sessions") or [])
-            tag = f"[{sessions}] " if sessions else ""
-            title = finding.get("title", "Finding")
-            body = (finding.get("body") or "").strip()
-            suggestion = (finding.get("suggestion") or "").strip()
-            ref = finding.get("rule_or_issue")
-            parts = [f"**{tag}[{sev}] {title}**"]
-            if ref:
-                parts.append(f"*Ref: `{ref}`*")
-            parts.extend(["", body])
-            if suggestion:
-                parts.extend(["", f"**Option / suggestion:** {suggestion}"])
-            inline_comments.append(
-                {
-                    "path": path,
-                    "line": line,
-                    "side": "RIGHT",
-                    "body": "\n".join(parts),
-                }
-            )
-        else:
-            extra_findings.append(finding)
-
-    body = format_review_markdown(review, extra_findings)
-    desired_event = review.get("verdict", "COMMENT")
-    if desired_event not in {"APPROVE", "REQUEST_CHANGES", "COMMENT"}:
-        desired_event = "COMMENT"
-
+    """Post a review built by `review.build_review`; auth failures raise GitHubAuthError."""
     reviews_url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/reviews"
     payload = {
         "commit_id": head_sha,
-        "body": body,
-        "event": desired_event,
-        "comments": inline_comments,
+        "body": review["body"],
+        "event": review["verdict"],
+        "comments": review["comments"],
     }
 
     resp = client.post(reviews_url, json=payload)
-    if resp.status_code == 422 and desired_event in NON_COMMENT_VERDICTS:
-        # GitHub rejects APPROVE/REQUEST_CHANGES when the token belongs to the PR author.
-        payload["event"] = "COMMENT"
+    if resp.status_code == 422 and payload["event"] == VERDICT_REQUEST_CHANGES:
+        # GitHub rejects REQUEST_CHANGES when the token belongs to the PR author.
+        payload["event"] = VERDICT_COMMENT
         resp = client.post(reviews_url, json=payload)
 
-    if resp.status_code == 422 and inline_comments:
+    if resp.status_code == 422 and payload["comments"]:
         payload["comments"] = []
-        payload["body"] = format_review_markdown(review, list(review.get("findings") or []))
+        payload["body"] = body_with_inline_comments(review)
         resp = client.post(reviews_url, json=payload)
 
-    resp.raise_for_status()
+    raise_for_github(resp, "post the review")
     return resp.json()
+
+
+REVIEW_THREADS_QUERY = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100) {
+        nodes { isResolved comments(first: 20) { nodes { body author { login __typename } } } }
+      }
+    }
+  }
+}
+"""
+WONT_FIX_PATTERN = re.compile(
+    r"won[\'’]?t\s*fix|wontfix|false\s+positive|not\s+an?\s+(?:issue|problem|bug)",
+    re.IGNORECASE,
+)
+FINDING_MARKER_PATTERN = re.compile(r"<!-- muse-finding:(?P<rule>[A-Za-z0-9.-]+) -->")
+OUTCOME_WONT_FIX = "wont_fix"
+OUTCOME_RESOLVED = "resolved"
+OUTCOME_OPEN = "open"
+
+
+def classify_review_threads(threads: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """One `{rule_id, outcome}` per reviewer thread; a human reply saying "won't fix" wins over resolved."""
+    outcomes: list[dict[str, str]] = []
+    for thread in threads:
+        comments = ((thread.get("comments") or {}).get("nodes")) or []
+        if not comments:
+            continue
+        marker = FINDING_MARKER_PATTERN.search(comments[0].get("body") or "")
+        if not marker:
+            continue
+        human_replies = [
+            comment.get("body") or ""
+            for comment in comments[1:]
+            if ((comment.get("author") or {}).get("__typename")) != "Bot"
+        ]
+        if any(WONT_FIX_PATTERN.search(reply) for reply in human_replies):
+            outcome = OUTCOME_WONT_FIX
+        elif thread.get("isResolved"):
+            outcome = OUTCOME_RESOLVED
+        else:
+            outcome = OUTCOME_OPEN
+        outcomes.append({"rule_id": marker.group("rule"), "outcome": outcome})
+    return outcomes
+
+
+def fetch_review_thread_outcomes(
+    client: httpx.Client,
+    repo: str,
+    pr_number: int,
+) -> list[dict[str, str]]:
+    owner, name = repo.split("/", 1)
+    resp = client.post(
+        "https://api.github.com/graphql",
+        json={
+            "query": REVIEW_THREADS_QUERY,
+            "variables": {"owner": owner, "name": name, "number": pr_number},
+        },
+    )
+    raise_for_github(resp, "read review threads")
+    data = (resp.json().get("data") or {}).get("repository") or {}
+    threads = (((data.get("pullRequest") or {}).get("reviewThreads") or {}).get("nodes")) or []
+    return classify_review_threads(threads)

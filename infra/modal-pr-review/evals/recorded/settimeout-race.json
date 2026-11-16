@@ -1,0 +1,50 @@
+{
+  "name": "settimeout-race",
+  "gates": [],
+  "sessions": {
+    "abstractions": {
+      "session": "abstractions",
+      "findings": [
+        {
+          "rule_id": "R2.unit-suffix",
+          "file": "cloud/apps/web/src/chat/scroll-to-latest.ts",
+          "line": 1,
+          "evidence": "const SCROLL_DELAY_MS = 50;",
+          "failure_scenario": "The constant name has a unit already but maybe needs a comment.",
+          "suggestion": null,
+          "confidence": "low",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    },
+    "maintainability": {
+      "session": "maintainability",
+      "findings": []
+    },
+    "conciseness": {
+      "session": "conciseness",
+      "findings": []
+    },
+    "logic_bs": {
+      "session": "logic_bs",
+      "findings": [
+        {
+          "rule_id": "R3.root-cause",
+          "file": "cloud/apps/web/src/chat/scroll-to-latest.ts",
+          "line": 4,
+          "evidence": "setTimeout(() => {",
+          "failure_scenario": "On a slow device layout takes longer than 50 ms, so the scroll runs before the new row exists and the chat stays one message short.",
+          "suggestion": "Could this run after the row is committed?",
+          "confidence": "medium",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    },
+    "security": {
+      "session": "security",
+      "findings": []
+    }
+  }
+}

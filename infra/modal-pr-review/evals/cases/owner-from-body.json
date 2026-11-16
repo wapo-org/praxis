@@ -1,0 +1,15 @@
+{
+  "name": "owner-from-body",
+  "description": "A public route trusts userId from the request body.",
+  "pr_title": "Add file share route",
+  "pr_body": "Lets a user create a share link for a file.",
+  "files": {
+    "cloud/apps/api/src/features/media/share-routes.ts": "import { Hono } from 'hono';\nimport { z } from 'zod';\nimport type { AdapterBundle } from '../../contracts.js';\n\nconst ShareRequestSchema = z.object({ userId: z.string(), fileId: z.string() });\n\nexport function registerShareRoutes(app: Hono, adapters: AdapterBundle): void {\n  app.post('/v1/files/share', async (c) => {\n    const { userId, fileId } = ShareRequestSchema.parse(await c.req.json());\n    const link = await adapters.store.createShareLink(userId, fileId);\n    return c.json({ link });\n  });\n}\n"
+  },
+  "expected": [
+    {
+      "rule_id": "R5.owner-from-auth",
+      "file": "cloud/apps/api/src/features/media/share-routes.ts"
+    }
+  ]
+}

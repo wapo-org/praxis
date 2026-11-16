@@ -1,0 +1,15 @@
+{
+  "name": "compat-shim",
+  "description": "A backward-compatibility shim although there are no production users.",
+  "pr_title": "Rename chat list response field",
+  "pr_body": "Renames `items` to `chats`; keeps the old shape for old clients.",
+  "files": {
+    "cloud/apps/api/src/features/chats/legacy-routes.ts": "import { Hono } from 'hono';\nimport type { AdapterBundle } from '../../contracts.js';\nimport { session } from '../../session.js';\n\nexport function registerLegacyChatRoutes(app: Hono, adapters: AdapterBundle): void {\n  // Old web bundles still expect `items`.\n  app.get('/v1/chats/legacy', async (c) => {\n    const chats = await adapters.store.listChats(session(c).userId);\n    return c.json({ items: chats });\n  });\n}\n"
+  },
+  "expected": [
+    {
+      "rule_id": "G.clean-break",
+      "file": "cloud/apps/api/src/features/chats/legacy-routes.ts"
+    }
+  ]
+}

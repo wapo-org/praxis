@@ -1,0 +1,61 @@
+{
+  "name": "ssrf-raw-fetch",
+  "gates": [],
+  "sessions": {
+    "abstractions": {
+      "session": "abstractions",
+      "findings": []
+    },
+    "maintainability": {
+      "session": "maintainability",
+      "findings": []
+    },
+    "conciseness": {
+      "session": "conciseness",
+      "findings": []
+    },
+    "logic_bs": {
+      "session": "logic_bs",
+      "findings": [
+        {
+          "rule_id": "R5.ssrf-egress",
+          "file": "cloud/apps/api/src/features/tools/fetch-page.ts",
+          "line": 8,
+          "evidence": "const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_PAGE_TIMEOUT_MS) });",
+          "failure_scenario": "Internal addresses can be fetched because the guard is missing here.",
+          "suggestion": null,
+          "confidence": "high",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    },
+    "security": {
+      "session": "security",
+      "findings": [
+        {
+          "rule_id": "R5.ssrf-egress",
+          "file": "cloud/apps/api/src/features/tools/fetch-page.ts",
+          "line": 8,
+          "evidence": "const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_PAGE_TIMEOUT_MS) });",
+          "failure_scenario": "The model can pass http://169.254.169.254/ or an internal host and read the response back into the chat.",
+          "suggestion": null,
+          "confidence": "high",
+          "linear_issue": null,
+          "linear_quote": null
+        },
+        {
+          "rule_id": "R5.ssrf-egress",
+          "file": "cloud/apps/api/src/features/tools/fetch-page.ts",
+          "line": 7,
+          "evidence": "const { url } = InputSchema.parse(input);",
+          "failure_scenario": "The url is only checked for shape, so an internal address passes and is fetched two lines later.",
+          "suggestion": null,
+          "confidence": "medium",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    }
+  }
+}

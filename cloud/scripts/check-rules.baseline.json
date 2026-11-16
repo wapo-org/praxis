@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "maxFileLines": 400,
+  "rules": {
+    "R3.file-length": {
+      "apps/web/e2e/m1.pw.ts": 519,
+      "apps/web/e2e/morph.pw.ts": 615,
+      "apps/web/e2e/stretch.pw.ts": 442,
+      "apps/web/src/components/chat/ElicitationCards.tsx": 440,
+      "apps/web/src/components/chat/chatMotion.ts": 464,
+      "apps/web/src/components/chat/tray.test.tsx": 414,
+      "apps/web/src/components/chat/useSearchJump.ts": 465,
+      "apps/web/src/lib/api.ts": 445,
+      "packages/agent/src/runner.ts": 454,
+      "packages/glass/src/dropdown/dropdown.pw.ts": 440,
+      "packages/glass/src/morph/engine.ts": 564,
+      "scripts/comment-sweep.mjs": 710
+    },
+    "R4.convex-v-any": {
+      "convex/auth.ts": 1,
+      "convex/schema.ts": 3,
+      "convex/store.ts": 2,
+      "convex/tools.ts": 1
+    },
+    "R4.no-any": {
+      "apps/api/src/account-routes.ts": 1,
+      "apps/api/src/adapters/account-redis.test.ts": 2,
+      "apps/api/src/adapters/security.ts": 1,
+      "apps/api/src/server.ts": 1,
+      "apps/api/src/service.ts": 6,
+      "apps/api/src/sync-routes.ts": 1,
+      "apps/api/src/tests/account-delete.test.ts": 5,
+      "apps/api/src/tests/app.test.ts": 1,
+      "apps/api/src/tests/execution.test.ts": 2,
+      "apps/api/src/tests/harness.ts": 1,
+      "apps/api/src/tests/k1-evidence.ts": 1,
+      "apps/api/src/tests/k1.test.ts": 4,
+      "apps/api/src/tests/local-flow.test.ts": 4,
+      "apps/api/src/tests/m1-start-timing.test.ts": 1,
+      "apps/api/src/tests/modules.test.ts": 4,
+      "apps/api/src/tests/openrouter.test.ts": 10,
+      "apps/api/src/tests/parity.test.ts": 9,
+      "apps/api/src/tests/rev-a1.test.ts": 7,
+      "apps/api/src/tests/review-r1.test.ts": 1,
+      "apps/api/src/tests/saved-values.test.ts": 5,
+      "apps/api/src/tests/title-openrouter.test.ts": 10,
+      "apps/api/src/tests/wp-l1.test.ts": 1,
+      "apps/web/e2e/account-sync.pw.ts": 13,
+      "apps/web/e2e/l2.pw.ts": 1,
+      "apps/web/e2e/n2.pw.ts": 7,
+      "apps/web/e2e/saved-values.pw.ts": 6,
+      "apps/web/e2e/stream.pw.ts": 11,
+      "apps/web/scripts/m1-start-probe.ts": 3,
+      "convex/account.ts": 4,
+      "convex/auth.ts": 1,
+      "convex/functions.ts": 4,
+      "packages/glass/src/dropdown/dropdown.pw.ts": 3,
+      "scripts/deploy.test.ts": 9
+    },
+    "R5.banned-primitives": {
+      "apps/api/src/tests/local-persistence.test.ts": 1
+    },
+    "R5.client-owner-arg": {
+      "convex/account.ts": 3,
+      "convex/files.ts": 6,
+      "convex/search.ts": 4,
+      "convex/store.ts": 7,
+      "convex/tools.ts": 3
+    }
+  }
+}

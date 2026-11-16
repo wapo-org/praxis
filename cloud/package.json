@@ -13,6 +13,7 @@
   "scripts": {
     "typecheck": "npm run -ws --if-present typecheck",
     "test": "vitest run --passWithNoTests",
+    "check:rules": "node scripts/check-rules.mjs",
     "dev:local": "npm run dev:local -w @praxis/api"
   },
   "devDependencies": {

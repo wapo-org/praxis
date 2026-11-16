@@ -1,0 +1,15 @@
+{
+  "name": "ssrf-raw-fetch",
+  "description": "A model-supplied URL is fetched without the egress guard.",
+  "pr_title": "Add fetch_page tool",
+  "pr_body": "Simple page fetch tool for the agent.",
+  "files": {
+    "cloud/apps/api/src/features/tools/fetch-page.ts": "import { z } from 'zod';\n\nconst FETCH_PAGE_TIMEOUT_MS = 10_000;\nconst InputSchema = z.object({ url: z.string().url() });\n\nexport async function fetchPage(input: unknown): Promise<string> {\n  const { url } = InputSchema.parse(input);\n  const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_PAGE_TIMEOUT_MS) });\n  return await response.text();\n}\n"
+  },
+  "expected": [
+    {
+      "rule_id": "R5.ssrf-egress",
+      "file": "cloud/apps/api/src/features/tools/fetch-page.ts"
+    }
+  ]
+}

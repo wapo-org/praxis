@@ -1,0 +1,62 @@
+{
+  "name": "compat-shim",
+  "gates": [],
+  "sessions": {
+    "abstractions": {
+      "session": "abstractions",
+      "findings": []
+    },
+    "maintainability": {
+      "session": "maintainability",
+      "findings": [
+        {
+          "rule_id": "G.clean-break",
+          "file": "cloud/apps/api/src/features/chats/legacy-routes.ts",
+          "line": 7,
+          "evidence": "app.get('/v1/chats/legacy', async (c) => {",
+          "failure_scenario": "The old response shape stays alive with no caller in this repo, so the next schema change has to keep two shapes in sync.",
+          "suggestion": "Could the legacy route be deleted in this PR?",
+          "confidence": "high",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    },
+    "conciseness": {
+      "session": "conciseness",
+      "findings": [
+        {
+          "rule_id": "G.dead-code",
+          "file": "cloud/apps/api/src/features/chats/legacy-routes.ts",
+          "line": 6,
+          "evidence": "comment says old bundles expect items",
+          "failure_scenario": "The comment narrates the code and should be shorter.",
+          "suggestion": null,
+          "confidence": "medium",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    },
+    "logic_bs": {
+      "session": "logic_bs",
+      "findings": []
+    },
+    "security": {
+      "session": "security",
+      "findings": [
+        {
+          "rule_id": "INJECTION",
+          "file": "cloud/apps/api/src/features/chats/legacy-routes.ts",
+          "line": 9,
+          "evidence": "return c.json({ items: chats });",
+          "failure_scenario": "The response could contain data that is not escaped properly.",
+          "suggestion": null,
+          "confidence": "medium",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    }
+  }
+}
