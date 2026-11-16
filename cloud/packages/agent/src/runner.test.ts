@@ -39,6 +39,15 @@ describe('scripted durable loop',()=>{
     const h=harness(),runner=createScriptedRunner(h.ports,'tools'),cp=await runner.run(input(),1);expect(cp.run.status).toBe('continuing');
     const done=await runner.advance(CheckpointSchema.parse(JSON.parse(JSON.stringify(cp))));expect(done.run.outcome).toBe('completed');
   });
+  it('yields for continuation when shouldYield flips after 2 steps',async()=>{
+    const h=harness();let checks=0;
+    const runner=new AgentRunner({ports:h.ports,provider:createScriptedProvider('tools'),tools:scriptedTools(),shouldYield:()=>++checks>=2});
+    const cp=await runner.run(input());
+    expect(cp.run.status).toBe('continuing');expect(cp.phase).toBe('model');expect(cp.iteration).toBe(1);
+    expect(h.events.at(-1)).toEqual({type:'run.parked',reason:'continuation'});
+    const done=await new AgentRunner({ports:h.ports,provider:createScriptedProvider('tools'),tools:scriptedTools()}).advance(cp);
+    expect(done.run.outcome).toBe('completed');
+  });
   it('cancel before provider and while parked is terminal',async()=>{
     const h=harness();h.cancel();const runner=createScriptedRunner(h.ports);const cp=await runner.run(input());expect(cp.run.outcome).toBe('cancelled');expect(cp.messages).toHaveLength(1);
     const h2=harness(),r2=createScriptedRunner(h2.ports,'approval'),park=await r2.run(input());expect((await r2.cancel(park)).run.status).toBe('cancelled');

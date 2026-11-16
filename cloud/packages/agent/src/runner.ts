@@ -81,6 +81,7 @@ export class AgentRunner {
     let cp=CheckpointSchema.parse(structuredClone(checkpoint));
     for(let n=0;n<maxSteps;n++) {
       if(terminal(cp.run)||cp.approval||cp.elicitation)return cp;
+      if(n>0&&this.options.shouldYield?.())break;
       cp=await this.step(cp);
     }
     if(!terminal(cp.run)&&!cp.approval&&!cp.elicitation) {

@@ -109,4 +109,5 @@ export interface AgentRunnerOptions {
   provider:ModelProvider;tools?:AgentTool[];ports:AgentPorts;
   maxResultCharacters?:number;toolTimeoutMs?:number;streamTimeoutMs?:number;
   contextWindow?:number;compactAt?:number;
+  shouldYield?:()=>boolean;
 }
