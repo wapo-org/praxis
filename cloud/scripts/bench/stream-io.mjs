@@ -78,7 +78,9 @@ export function calculate(options = {}) {
     const finalBytes = documentBytes(payloadBytes);
     row.readBytes += readers * finalBytes;
     row.writeBytes += finalBytes + indexBytes;
-    row.writes = row.strategy === 'redis' ? 1 : flushes * 2 + 1;
+    row.writes = 1;
+    if (row.strategy === 'cumulative') row.writes += flushes + Number(flushes > 0);
+    if (row.strategy === 'deltas') row.writes += flushes * 2;
   }
   if (flushes > 0) {
     rows.cumulative.readBytes += previousDocumentBytes;

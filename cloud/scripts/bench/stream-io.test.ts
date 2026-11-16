@@ -8,7 +8,7 @@ describe('stream I/O model', () => {
     expect(result.totalTokens).toBe(2);
     expect(result.payloadBytes).toBe(4);
     expect(result.rows).toEqual([
-      { strategy: 'cumulative', readBytes: 106, writeBytes: 64, writes: 5, redisPayloadBytes: 0, totalBytes: 170, responsesPerMonth: 5 },
+      { strategy: 'cumulative', readBytes: 106, writeBytes: 64, writes: 4, redisPayloadBytes: 0, totalBytes: 170, responsesPerMonth: 5 },
       { strategy: 'deltas', readBytes: 136, writeBytes: 68, writes: 5, redisPayloadBytes: 0, totalBytes: 204, responsesPerMonth: 4 },
       { strategy: 'redis', readBytes: 28, writeBytes: 20, writes: 1, redisPayloadBytes: 12, totalBytes: 48, responsesPerMonth: 20 },
     ]);
