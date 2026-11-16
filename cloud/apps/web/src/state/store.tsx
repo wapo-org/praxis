@@ -1462,5 +1462,31 @@ export function PraxisStoreProvider({ children }: { children: React.ReactNode })
     refreshAll,
   };
 
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as unknown as Record<string, unknown>).__PRAXIS_DEBUG__ = {
+        ...value,
+        setChats,
+        setActiveChatId,
+        setMessagesByChat,
+        setLiveRunsByChat,
+        setProviders,
+        setModels,
+        setConnectors,
+        setConnectorTools,
+        setSkills,
+        setRegistries,
+        setRegistryEntries,
+        setConsents,
+        setPreferences,
+        setActiveSheet,
+        setEditingProviderId,
+        setPlusTrayOpen,
+        setPendingConsentPrompt,
+        setThemeMode,
+      };
+    }
+  });
+
   return <PraxisStoreContext.Provider value={value}>{children}</PraxisStoreContext.Provider>;
 }
