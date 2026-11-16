@@ -26,7 +26,7 @@ interface SimctlDevices {
   devices: Record<string, {udid: string; name: string; state: string; isAvailable: boolean}[]>;
 }
 
-/** `wanted` (udid or name) wins; otherwise newest iOS runtime, preferring a shut-down device so a run never takes over one in use. */
+/** `wanted` (udid or name) wins; else a shut-down iPhone before a booted one (never take one in use), newest runtime first. */
 export function pickSimulator(listing: SimctlDevices, wanted?: string): Simulator | undefined {
   const candidates = Object.entries(listing.devices)
     .filter(([runtime]) => /SimRuntime\.iOS-\d+/.test(runtime))
@@ -35,7 +35,7 @@ export function pickSimulator(listing: SimctlDevices, wanted?: string): Simulato
   const version = (runtime: string) => (/iOS-(\d+)(?:-(\d+))?/.exec(runtime) ?? []).slice(1).map(part => Number(part ?? 0));
   candidates.sort((a, b) => {
     const [aMajor = 0, aMinor = 0] = version(a.runtime), [bMajor = 0, bMinor = 0] = version(b.runtime);
-    return bMajor - aMajor || bMinor - aMinor || Number(a.state === 'Booted') - Number(b.state === 'Booted');
+    return Number(a.state === 'Booted') - Number(b.state === 'Booted') || bMajor - aMajor || bMinor - aMinor;
   });
   const best = candidates[0];
   return best && {udid: best.udid, name: best.name, runtime: best.runtime, state: best.state};

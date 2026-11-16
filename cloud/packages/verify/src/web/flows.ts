@@ -3,23 +3,20 @@ import {expect, type Page} from '@playwright/test';
 import {fuzzChatFlow} from './fuzz.js';
 import type {FlowContext, WebFlow} from './flow-types.js';
 import {SIGNED_OUT_SESSION_PROBE} from './judge.js';
+import {signIn} from './session.js';
 
 /** Vite serves web sources as modules, so a flow can drive the real client the app uses. */
 const API_MODULE = '/src/lib/api.ts';
 const SCRIPTED_MODEL_NAMES = ['Praxis Scripted', 'Praxis Vision'];
 const TOOL_RUNS_MAX = 30;
+/** A scripted tool run settles in milliseconds locally; this only bounds a slow CI runner. */
+const RUN_SETTLE_TIMEOUT_MS = 10_000;
 
 interface ApiModule {
   apiClient: {
     createConnector(input: {name: string; url: string}): Promise<unknown>;
     bootstrap(): Promise<unknown>;
   };
-}
-
-export async function signIn(page: Page, base: string): Promise<void> {
-  await page.goto(base);
-  await page.getByRole('button', {name: 'Continue as local dev user'}).click();
-  await page.getByTestId('chat-top-bar').waitFor();
 }
 
 function composer(page: Page) {
@@ -131,7 +128,12 @@ async function toolRuns({api, request, note}: Pick<FlowContext, 'api' | 'request
     const started = await request.post(`${api}/v1/runs`, {headers, data: {type: 'run.start', chatId: chat.id, text: 'Tools probe', script: 'tools'}});
     assert(started.ok(), `run ${i}: HTTP ${started.status()} ${await started.text()}`);
     const run = await started.json();
-    assert((await request.get(`${api}/v1/runs/${run.id}/snapshot`, {headers})).ok(), `run ${i}: snapshot failed`);
+    // One chat allows one active run; waiting for each to settle keeps the loop deterministic on slow runners.
+    await expect.poll(async () => {
+      const snapshot = await request.get(`${api}/v1/runs/${run.id}/snapshot`, {headers});
+      assert(snapshot.ok(), `run ${i}: snapshot failed with HTTP ${snapshot.status()}`);
+      return (await snapshot.json()).run.status;
+    }, {message: `run ${i} never settled`, timeout: RUN_SETTLE_TIMEOUT_MS}).toMatch(/^(completed|failed|cancelled)$/);
   }
   assert((await request.get(`${api}/health`)).ok(), 'API unhealthy after tool runs');
   note(`${TOOL_RUNS_MAX} tool runs with snapshots`);

@@ -1,6 +1,7 @@
 import {expect, type Page} from '@playwright/test';
 import type {WebFlow} from './flow-types.js';
 import {SIGNED_OUT_SESSION_PROBE} from './judge.js';
+import {signIn} from './session.js';
 
 /** Long enough to mix every action several times; each step is one user gesture. */
 const FUZZ_STEPS_MAX = 24;
@@ -59,9 +60,7 @@ export const fuzzChatFlow: WebFlow = {
   default: false,
   allow: [SIGNED_OUT_SESSION_PROBE],
   async run({page, base, seed, note}) {
-    await page.goto(base);
-    await page.getByRole('button', {name: 'Continue as local dev user'}).click();
-    await page.getByTestId('chat-top-bar').waitFor();
+    await signIn(page, base);
     const plan = actionPlan(seed);
     note(`seed ${seed}: ${plan.join(' ')}`);
     for (const [index, action] of plan.entries()) {
