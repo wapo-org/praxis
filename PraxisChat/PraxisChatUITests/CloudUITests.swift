@@ -40,6 +40,7 @@ final class CloudUITests: XCTestCase {
         app.buttons["Settings"].tap()
         let row = app.buttons["cloudAccountServer"]
         XCTAssertTrue(row.waitForExistence(timeout: 10), "The default engine must expose cloud settings")
+        shot("cloud-settings-root")
         row.tap()
         XCTAssertTrue(app.staticTexts["cloudServerURL"].waitForExistence(timeout: 10))
     }
@@ -97,7 +98,10 @@ final class CloudUITests: XCTestCase {
         XCTAssertTrue(text("Cloud run is waiting for Stop.").waitForExistence(timeout: 15))
         stop.tap()
         XCTAssertTrue(stop.waitForNonExistence(timeout: 15))
-        XCTAssertTrue(text("Stopped after").waitForExistence(timeout: 10))
+        // This script streams text without a tool/activity block. A stopped
+        // text-only run retains its partial answer and offers Retry.
+        XCTAssertTrue(text("Cloud run is waiting for Stop.").waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Retry"].waitForExistence(timeout: 10))
         shot("cloud-cancelled")
     }
     func testReconnectResumesWithoutDuplicatingAnswer() {
