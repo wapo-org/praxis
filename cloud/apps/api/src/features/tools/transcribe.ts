@@ -3,7 +3,7 @@ import {TranscriptionSchema} from '@praxis/protocol';
 import type {FeatureContext} from '../../contracts.js';
 import {unseal} from '../../secrets.js';
 import {ApiError} from '../../service.js';
-import {readLimited} from './http.js';
+import {hostConsent,readLimited} from './http.js';
 import type {ToolsPorts} from './ports.js';
 const Options=z.object({model:z.enum(['whisper-large-v3','whisper-large-v3-turbo']).optional(),language:z.string().max(20).regex(/^[a-zA-Z-]*$/).optional(),prompt:z.string().max(10000).optional()});
 export async function transcribe(req:Request,ctx:FeatureContext,ports:ToolsPorts){
@@ -23,6 +23,7 @@ export async function transcribe(req:Request,ctx:FeatureContext,ports:ToolsPorts
  const opts=Options.parse({model:input.model??voice.model??'whisper-large-v3-turbo',language:input.language??voice.language,prompt:input.prompt});
  let key=await ports.voiceKey?.(ctx);if(!key){const secret=await ctx.store.get(ctx.userId,'voiceSecret','current');if(secret&&!secret.deleted&&typeof secret.value.key==='string'){if(!ctx.encryptionKey)throw new ApiError(503,'encryption_unconfigured','Voice secret cannot be read');key=unseal(secret.value.key,ctx.userId,'voice',ctx.encryptionKey);}}
  key??=process.env.GROQ_API_KEY;if(!key)throw new ApiError(503,'voice_unconfigured','Voice transcription is not configured');
+ await hostConsent(ctx,'api.groq.com');
  const form=new FormData();form.set('file',audio,name);form.set('model',opts.model!);form.set('response_format','verbose_json');if(opts.language)form.set('language',opts.language);if(opts.prompt!==undefined)form.set('prompt',opts.prompt);
  let response:Response;try{response=await ctx.fetch('https://api.groq.com/openai/v1/audio/transcriptions',{method:'POST',headers:{Authorization:`Bearer ${key}`},body:form,signal:AbortSignal.timeout(60000)});}catch{throw new ApiError(502,'transcription_failed','Transcription provider is unavailable');}
  if(!response.ok)throw new ApiError(response.status===429?429:502,'transcription_failed','Transcription provider rejected the request');

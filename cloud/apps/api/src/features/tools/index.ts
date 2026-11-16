@@ -8,14 +8,14 @@ import {jsonBody,page,readLimited} from './http.js';
 import {requireRow,saveSkill} from './skills.js';
 import {installSkill,registryEntries} from './registries.js';
 import {transcribe} from './transcribe.js';
-import {createLocalToolsStorage} from './local-storage.js';
+import {toolsStorage} from './local-storage.js';
 import type {ToolsPorts} from './ports.js';
 export type {ToolsStorage,ToolsPorts,VisionProvider,UploadInput} from './ports.js';
 export {createLocalToolsStorage} from './local-storage.js';
 export {parseSkillDocument} from './skills.js';
 export function createToolsRoutes(context:(req:Request)=>Promise<FeatureContext>,ports:ToolsPorts={}):Hono{
- const app=new Hono();let localStorage:ReturnType<typeof createLocalToolsStorage>|undefined;
- const storage=(ctx:FeatureContext,req:Request)=>{if(ports.storage)return ports.storage;if(ctx.local)return localStorage??=createLocalToolsStorage(req.url);throw new ApiError(503,'storage_unconfigured','Attachment storage is not configured');};
+ const app=new Hono();
+ const storage=(ctx:FeatureContext,req:Request)=>toolsStorage(ctx,ports,req.url);
  app.onError((e,c)=>{if(e instanceof ApiError)return c.json({type:'error',code:e.code,message:e.message},e.status as 400);if(e instanceof z.ZodError)return c.json({type:'error',code:'validation_error',message:'Request does not match the protocol'},400);return c.json({type:'error',code:'internal_error',message:'Request could not be completed'},500);});
  for(const [path,kind,input,schema] of [['skills','skill',SkillInputSchema,SkillSchema],['skill-registries','registry',RegistryInputSchema,RegistrySchema]] as const){
   app.get(`/${path}`,async c=>{const ctx=await context(c.req.raw),query=PageQuerySchema.parse(c.req.query());let rows=(await ctx.store.list(ctx.userId,kind)).filter(r=>!r.deleted).map(r=>schema.parse(r.value));if(query.q)rows=rows.filter(r=>JSON.stringify(r).toLowerCase().includes(query.q!.toLowerCase()));rows.sort((a,b)=>a.id.localeCompare(b.id));return c.json(page(rows,query,JSON.stringify([ctx.userId,path,query.q??''])));});
@@ -37,3 +37,5 @@ export function createToolsRoutes(context:(req:Request)=>Promise<FeatureContext>
  app.post('/transcribe',async c=>c.json(await transcribe(c.req.raw,await context(c.req.raw),ports)));
  return app;
 }
+
+export {getBuiltinTools,type BuiltinOptions} from './builtins.js';

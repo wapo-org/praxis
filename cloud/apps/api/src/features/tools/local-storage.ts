@@ -15,3 +15,10 @@ export function createLocalToolsStorage(baseUrl:string):ToolsStorage{
   async delete(userId,id){file(userId,id);files.delete(id);},
  };
 }
+
+const fixtureStores=new WeakMap<object,ToolsStorage>();
+export function toolsStorage(ctx:import('../../contracts.js').FeatureContext,ports:import('./ports.js').ToolsPorts,baseUrl='http://localhost:8787'):ToolsStorage{
+ if(ports.storage)return ports.storage;
+ if(!ctx.local)throw new ApiError(503,'storage_unconfigured','Attachment storage is not configured');
+ let adapter=fixtureStores.get(ctx.store);if(!adapter){adapter=createLocalToolsStorage(baseUrl);fixtureStores.set(ctx.store,adapter);}return adapter;
+}
