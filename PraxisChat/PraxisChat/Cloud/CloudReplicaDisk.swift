@@ -39,8 +39,11 @@ actor CloudReplicaDisk {
             }
         }
         var next = replica
-        try next.apply(page, file: file)
+        try next.apply(page, file: file, changedChatIDs: changed)
         return (next, changed)
+    }
+    func acknowledge(_ replica: CloudCursorReplica, file: URL) throws -> CloudCursorReplica {
+        var next = replica; try next.acknowledgeChanges(file: file); return next
     }
     func remove(_ url: URL) throws {
         if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }

@@ -414,6 +414,10 @@ struct Turn: Identifiable, Equatable, Codable {
     var engine: EngineKind?
     /// Durable server run identity; cloud recovery replays its wire journal.
     var cloudRunID: String?
+    /// Opaque server turn key; UUIDs below remain presentation identities only.
+    var cloudClientTurnID: String?
+    /// Synced turns may only attach to existing server work, never start it.
+    var cloudRemoteOrigin: Bool?
     enum Feedback: String, Equatable, Codable { case none, up, down }
 }
 

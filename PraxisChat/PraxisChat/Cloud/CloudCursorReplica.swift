@@ -48,16 +48,28 @@ struct CloudCursorReplica: Codable, Sendable {
     var cursor = "0"
     var values: [String: JSONValue] = [:]
     var quarantine: [String: JSONValue]? = nil
+    var quarantineBuildVersion: String? = nil
+    var pendingChangedChatIDs: Set<String>? = nil
+    static var buildVersion: String {
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown") + "." +
+        (Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown")
+    }
     private static let log = Logger(subsystem: "com.praxis.chat", category: "CloudSync")
 
-    static func load(_ url: URL) throws -> Self {
+    static func load(_ url: URL, buildVersion: String = Self.buildVersion) throws -> Self {
         guard FileManager.default.fileExists(atPath: url.path) else { return Self() }
         var replica = try JSONDecoder().decode(Self.self, from: Data(contentsOf: url))
+        if replica.quarantineBuildVersion != buildVersion {
+            for (key, value) in replica.quarantine ?? [:] where replica.values[key] == nil { replica.values[key] = value }
+            replica.quarantine = nil
+        }
+        replica.quarantineBuildVersion = buildVersion
         replica.quarantineInvalidRows()
         return replica
     }
-    mutating func apply(_ page: Page, file: URL) throws {
+    mutating func apply(_ page: Page, file: URL, changedChatIDs: Set<String> = []) throws {
         var next = self
+        next.pendingChangedChatIDs = (next.pendingChangedChatIDs ?? []).union(changedChatIDs)
         for row in page.entities {
             if row.deleted { next.values.removeValue(forKey: row.key); next.quarantine?.removeValue(forKey: row.key) }
             else if let value = row.value { next.values[row.key] = value; next.quarantine?.removeValue(forKey: row.key) }
@@ -65,6 +77,11 @@ struct CloudCursorReplica: Codable, Sendable {
         next.quarantineInvalidRows()
         next.cursor = page.cursor
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(next).write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        self = next
+    }
+    mutating func acknowledgeChanges(file: URL) throws {
+        var next = self; next.pendingChangedChatIDs = nil
         try JSONEncoder().encode(next).write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         self = next
     }

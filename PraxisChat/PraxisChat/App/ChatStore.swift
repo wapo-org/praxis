@@ -535,6 +535,9 @@ final class ChatStore {
         let handle = RunHandle(conversationID: conv.id, turnID: turnID, turnIndex: ti)
         var request = makeRequest(conv, turnIndex: ti)
         request.cloudChatID = conv.cloudChatID
+        request.cloudRunID = conv.turns[ti].cloudRunID
+        request.cloudClientTurnID = conv.turns[ti].cloudClientTurnID
+        request.cloudMayStart = conv.turns[ti].cloudRemoteOrigin != true
         let flag = handle.cancelled
         request.isCancelled = { flag.isCancelled }
         request.elicitationScope = handle.elicitationScope
