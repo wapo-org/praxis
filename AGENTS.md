@@ -2,13 +2,14 @@
 
 - **Plans, roadmaps, and migration specs** live in Linear team `PRA` — do not add root plan/summary `.md` files to git. New `*.md` at the repo root or under `cloud/` must be named `README`, `AGENTS`, `ARCHITECTURE`, `DEPLOY`, `PROTOCOL` or `DESIGN`, or live in `cloud/docs/**`. `[R5.docs-commit]`
 - **Clean break pre-launch:** zero production users exist; delete superseded code, adapters, and corresponding sections of `cloud/ARCHITECTURE.md` / `cloud/docs/function-maps/*` in the same PR rather than adding backward-compatibility shims.
-- **Verification (`cloud/`):**
+- **Verification (`cloud/`):** `npm --prefix cloud run verify -- gate` runs this whole list, one result line per step (`--json` for machines):
   - `npm --prefix cloud run typecheck`
   - `npm --prefix cloud test`
-  - `npm --prefix cloud run build -w @praxis/web`
   - `npm --prefix cloud run check:rules` (mechanical rules below; see `cloud/scripts/check-rules.mjs`)
   - `npm --prefix cloud run lint` (oxlint, see **Lint** below)
   - `node cloud/scripts/comment-sweep.mjs check`
+  - `npm --prefix cloud run build -w @praxis/web` and `-w @praxis/api`
+- **Behaviour checks:** `verify -- web` (Playwright flows: accessibility snapshot, screenshot, fail on console errors or unlisted 4xx/5xx), `verify -- api`, `verify -- ios` (macOS), `verify -- map --check`. Every flow, check and live suite is owned by a feature in `cloud/verify/feature-map.json`; add the entry with the code. Live checks: `verify -- live <suite>` writes a redacted `proof.json` (contract in `cloud/packages/verify/README.md`).
 - **Comment hygiene (`cloud/scripts/comment-sweep.mjs`):**
   - Keep comments to "why / invariant" (one sentence max, `<= 130` chars); avoid narrating what code does.
   - A lone `//` line whose every word is already on the next code line (`// user id` above `const userId`) fails `check:rules`: delete it, or say why. `[R3.narrating-comment]`

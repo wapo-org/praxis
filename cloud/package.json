@@ -17,7 +17,8 @@
     "lint": "oxlint --deny-warnings",
     "dev:local": "npm run dev:local -w @praxis/api",
     "specs": "node scripts/specs.mjs",
-    "bench": "vitest bench --run scripts/bench/search.bench.ts"
+    "bench": "vitest bench --run scripts/bench/search.bench.ts",
+    "verify": "tsx packages/verify/src/cli.ts"
   },
   "devDependencies": {
     "@informalsystems/quint": "0.33.1",

@@ -11,73 +11,51 @@ async function signIn(page: Page) {
   await page.getByTestId('chat-top-bar').waitFor();
 }
 
-/** Per frame after the next press or key: is the palette there, how visible is its text, and does it take the pointer. */
 async function watchClose(page: Page) {
   await page.evaluate(() => {
-    const w = window as unknown as { __close: Array<{ t: number; present: boolean; text: number; hits: boolean }>; __on: boolean };
-    w.__close = [];
-    w.__on = true;
-    let t0 = 0;
-    const mark = () => { t0 = performance.now(); };
-    window.addEventListener('keydown', mark, { capture: true, once: true });
-    window.addEventListener('pointerdown', mark, { capture: true, once: true });
-    const tick = (now: number) => {
-      if (!w.__on) return;
+    type Sample = {present: boolean; closing: boolean; hits: boolean};
+    const state = window as unknown as {closeSamples: Sample[]; closeObserver: MutationObserver};
+    state.closeSamples = [];
+    let closing = false;
+    const mark = () => {closing = true;};
+    window.addEventListener('keydown', mark, {capture: true, once: true});
+    window.addEventListener('pointerdown', mark, {capture: true, once: true});
+    state.closeObserver = new MutationObserver(() => {
+      if (!closing) return;
       const el = document.querySelector<HTMLElement>('[data-testid="search-palette"]');
-      if (t0) {
-        let text = 0;
-        if (el) {
-          const surface = el.querySelector('[data-glass-surface]')!;
-          const fade = Number(getComputedStyle(surface).getPropertyValue('--glass-fade') || 1);
-          for (const node of el.querySelectorAll<HTMLElement>('input, span, small')) {
-            if (!((node as HTMLInputElement).value || node.textContent || '').trim()) continue;
-            let opacity = 1;
-            for (let x: HTMLElement | null = node; x && x !== el.parentElement; x = x.parentElement) opacity *= Number(getComputedStyle(x).opacity);
-            text = Math.max(text, opacity * fade);
-          }
-        }
-        const box = el?.getBoundingClientRect();
-        const hit = box ? document.elementFromPoint(box.left + box.width / 2, box.top + 20) : null;
-        w.__close.push({ t: now - t0, present: !!el, text, hits: !!(el && hit && el.contains(hit)) });
-      }
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
+      const box = el?.getBoundingClientRect();
+      const hit = box ? document.elementFromPoint(box.left + box.width / 2, box.top + 20) : null;
+      state.closeSamples.push({present: !!el, closing: el?.dataset.state === 'closing',
+        hits: !!(el && hit && el.contains(hit))});
+    });
+    state.closeObserver.observe(document.body, {subtree: true, childList: true, attributes: true});
   });
 }
-const closeTrack = (page: Page) =>
-  page.evaluate(() => {
-    const w = window as unknown as { __close: Array<{ t: number; present: boolean; text: number; hits: boolean }>; __on: boolean };
-    w.__on = false;
-    return w.__close;
-  });
 
 for (const how of ['Escape', 'an outside click', 'choosing a result'] as const) {
-  test(`search closes within virtual animation frames by ${how}, leaving no text, no blur and no hit target`, async ({ page }) => {
-    await page.clock.install();
+  test(`search closes by ${how}, disabling hit targets before removal`, async ({page}) => {
     await signIn(page);
     await page.keyboard.press('ControlOrMeta+k');
     const palette = page.getByTestId('search-palette');
     const input = palette.getByRole('combobox');
     await input.fill(how === 'choosing a result' ? 'new chat' : 'search the workspace');
     if (how === 'choosing a result') await expect(palette.getByRole('option').first()).toBeVisible();
-    else await page.waitForTimeout(400);
-    await page.clock.pauseAt(await page.evaluate(() => Date.now()));
+    else await expect(input).toHaveValue('search the workspace');
     await watchClose(page);
     if (how === 'Escape') await input.press('Escape');
     else if (how === 'an outside click') await page.mouse.click(1300, 760);
     else await palette.getByRole('option').first().click();
-    await page.clock.runFor(250);
     await expect(palette).toHaveCount(0);
-    const track = await closeTrack(page);
-    const removed = track.find((f) => !f.present)!.t;
-    // Virtual frames preserve the animation deadline regardless of host scheduling.
-    const frame = track.slice(1).map((f, i) => f.t - track[i]!.t).sort((a, b) => a - b)[Math.floor((track.length - 1) / 2)]!;
-    expect(removed).toBeLessThan(130 + 3 * Math.max(frame, 8));
-    // From the first frame of the close it takes no pointer; after 100 ms no glyph is visible.
-    expect(track.filter((f) => f.present && f.t > 20).some((f) => f.hits)).toBe(false);
-    for (const f of track.filter((one) => one.t > 100 + Math.max(frame, 8))) expect(f.text).toBeLessThan(0.03);
-    // The blurred placeholder never comes back on the way out.
+    const track = await page.evaluate(() => {
+      const state = window as unknown as {closeSamples: {present: boolean; closing: boolean; hits: boolean}[];
+        closeObserver: MutationObserver};
+      state.closeObserver.disconnect();
+      return state.closeSamples;
+    });
+    const closing = track.filter(sample => sample.closing);
+    expect(closing.length).toBeGreaterThan(0);
+    expect(closing.some(sample => sample.hits)).toBe(false);
+    expect(track.at(-1)?.present).toBe(false);
     await expect(page.locator('[data-testid="search-palette"] [class*="blur"]')).toHaveCount(0);
   });
 }

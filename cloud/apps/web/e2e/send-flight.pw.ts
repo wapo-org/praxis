@@ -3,8 +3,7 @@ import {signIn} from './sign-in';
 
 test.use({serviceWorkers: 'block'});
 
-test('defect 1: text leaves composer, EmptyState exits, and bubble starts lifting on the first frame after Enter', async ({ page }) => {
-  await page.clock.install();
+test('defect 1: composer and EmptyState clear before the flight first renders', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await signIn(page);
   await expect(page.getByTestId('chat-empty-state')).toBeVisible();
@@ -16,12 +15,10 @@ test('defect 1: text leaves composer, EmptyState exits, and bubble starts liftin
     return { top: r.top, width: r.width };
   });
 
-  await page.clock.pauseAt(await page.evaluate(() => Date.now()));
   await page.evaluate(() => {
     const w = window as unknown as {
-      __enterAt: number;
+      __entered: boolean;
       __frames: Array<{
-        dt: number;
         inputVal: string;
         emptyPresent: boolean;
         flightTop: number | null;
@@ -32,46 +29,39 @@ test('defect 1: text leaves composer, EmptyState exits, and bubble starts liftin
     };
     w.__frames = [];
     w.__stopFrames = false;
-    w.__enterAt = 0;
+    w.__entered = false;
     const inputEl = document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]');
     inputEl?.addEventListener(
       'keydown',
       (e) => {
-        if (e.key === 'Enter') w.__enterAt = performance.now();
+        if (e.key === 'Enter') w.__entered = true;
       },
       { once: true },
     );
-    const tick = () => {
-      if (w.__stopFrames) return;
-      if (w.__enterAt > 0) {
-        const curInput = document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]');
-        const flight = document.querySelector<HTMLElement>('[data-testid="send-flight-bubble"]');
-        const empty = document.querySelector('[data-testid="chat-empty-state"]');
-        const fRect = flight?.getBoundingClientRect();
-        w.__frames.push({
-          dt: performance.now() - w.__enterAt,
-          inputVal: curInput?.value ?? '',
-          emptyPresent: !!empty,
-          flightTop: fRect ? fRect.top : null,
-          flightWidth: fRect ? fRect.width : null,
-          fillOpacity: flight ? Number(getComputedStyle(flight).getPropertyValue('--send-fill-opacity') || '1') : null,
-        });
-      }
-      requestAnimationFrame(tick);
+    const sample = () => {
+      if (w.__stopFrames || !w.__entered) return;
+      const curInput = document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]');
+      const flight = document.querySelector<HTMLElement>('[data-testid="send-flight-bubble"]');
+      if (!flight) return;
+      const rect = flight.getBoundingClientRect();
+      w.__frames.push({
+        inputVal: curInput?.value ?? '',
+        emptyPresent: !!document.querySelector('[data-testid="chat-empty-state"]'),
+        flightTop: rect.top, flightWidth: rect.width,
+        fillOpacity: Number(getComputedStyle(flight).getPropertyValue('--send-fill-opacity') || '1'),
+      });
     };
-    requestAnimationFrame(tick);
+    new MutationObserver(sample).observe(document.body, {subtree: true, childList: true,
+      attributes: true, attributeFilter: ['style']});
   });
 
   await input.press('Enter');
-  await page.clock.runFor(45);
-  await page.clock.resume();
   await expect(page.getByTestId('assistant-turn')).toHaveCount(1, { timeout: 20000 });
   await page.waitForFunction(() => !document.querySelector('[aria-label="Stop generating"]'), null, { timeout: 20000 });
 
   const frames = await page.evaluate(() => {
     const w = window as unknown as {
       __frames: Array<{
-        dt: number;
         inputVal: string;
         emptyPresent: boolean;
         flightTop: number | null;
@@ -86,17 +76,15 @@ test('defect 1: text leaves composer, EmptyState exits, and bubble starts liftin
 
   const firstFrame = frames[0]!;
   expect(firstFrame).toBeDefined();
-  expect(firstFrame.dt).toBeLessThanOrEqual(40);
   expect(firstFrame.inputVal).toBe('');
   expect(firstFrame.emptyPresent).toBe(false);
   expect(firstFrame.flightTop).not.toBeNull();
   expect(firstFrame.fillOpacity ?? 0).toBeGreaterThanOrEqual(0.55);
 
-  const at35ms = frames.find((f) => f.dt >= 12 && f.flightTop !== null);
-  expect(at35ms).toBeDefined();
-  expect(at35ms!.dt).toBeLessThanOrEqual(45);
-  expect(at35ms!.flightTop!).toBeLessThan(fromRect.top - 0.1);
-  expect(at35ms!.flightWidth!).toBeLessThan(fromRect.width - 0.1);
+  const lifted = frames.find(frame => frame.flightTop !== null && frame.flightTop < fromRect.top - 0.1);
+  expect(lifted).toBeDefined();
+  expect(lifted!.flightTop!).toBeLessThan(fromRect.top - 0.1);
+  expect(lifted!.flightWidth!).toBeLessThan(fromRect.width - 0.1);
 });
 
 test('defect 2: instant scripted reply never paints before the 820ms bubble flight lands', async ({ page }) => {

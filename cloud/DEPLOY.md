@@ -144,7 +144,7 @@ Never drop a key before step 3 reports `failed: 0`: values sealed only with that
 cd cloud && npm ci && npm run -ws --if-present typecheck && npm test
 cd apps/api && npm run build                      # esbuild bundle → dist/index.mjs (~5.4 MB)
 PORT=8789 node scripts/serve-bundle.mjs &         # bundled handler on memory adapters (local only)
-PORT=8789 node scripts/smoke-local.mjs            # bootstrap → SSE → approval → cancel → resume
+npm --prefix ../.. run verify -- api --api http://127.0.0.1:8789   # bootstrap → SSE → approval → cancel → replay
 ```
 `npx vercel build` needs a Vercel login or token (`login_required` without one), so it was not run by agents.
 Live Convex and Upstash contract tests run when their env vars are set: `CONVEX_URL` + `PRAXIS_CONVEX_SERVER_TOKEN`, and `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`.

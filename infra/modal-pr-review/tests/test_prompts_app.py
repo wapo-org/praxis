@@ -75,7 +75,7 @@ def test_pr_text_is_fenced_as_untrusted_and_truncated() -> None:
 def test_hands_on_prompt_does_not_rerun_the_gates() -> None:
     prompt = build_hands_on_prompt(**SHARED)
     assert "Do not run `typecheck`, `npm test`, `check:rules` or `comment-sweep`" in prompt
-    assert "smoke:local" in prompt and "p0-check.mjs" in prompt
+    assert "verify -- api" in prompt and "verify -- web" in prompt
     assert "npm --prefix cloud run typecheck" not in prompt
     assert HANDS_ON_SESSION_PROFILE.max_steps == "80"
     assert {profile.max_steps for profile in REVIEW_SESSION_PROFILES} == {"40"}
