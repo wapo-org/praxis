@@ -6,11 +6,7 @@ import { usePraxisStore } from '../../state/store.js';
 import styles from './Screen.module.css';
 import { Card, Field, ScreenButton, Section, TaskError, useScreenTask } from './ScreenUI.js';
 
-/**
- * The one place a model key is managed: the user's own OpenRouter key. Connect by signing in at OpenRouter
- * (PKCE) or by pasting a key; once connected it shows the masked key, its label and remaining credit.
- * `navigate` leaves the app for OpenRouter's sign-in page (replaceable in tests).
- */
+/** `navigate` leaves the app for OpenRouter's sign-in page; tests replace it. */
 export function OpenRouterCard({
   navigate = (url) => window.location.assign(url),
 }: {

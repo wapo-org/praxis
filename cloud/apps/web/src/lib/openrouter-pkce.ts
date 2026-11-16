@@ -1,8 +1,4 @@
-/**
- * OpenRouter's PKCE sign-in, browser side. The verifier lives in sessionStorage (this tab only) between the
- * redirect to OpenRouter and the callback, and is removed the moment the callback reads it, so a code can't
- * be completed twice or from another tab.
- */
+/** The verifier stays in this tab's sessionStorage and is removed when read, so a code completes once. */
 export const OPENROUTER_AUTH_URL = 'https://openrouter.ai/auth';
 export const OPENROUTER_CALLBACK_PATH = '/settings/openrouter/callback';
 const VERIFIER_KEY = 'praxis.openrouter.pkce-verifier';

@@ -1,7 +1,4 @@
-// WP-PRA59 visual check: Settings → Models with the OpenRouter card (not connected, paste form, connected,
-// rejected key), the catalogue in the tray, the PKCE redirect URL, and the composer with no key.
-// Desktop 1440×900 and phone 402×874. Needs the web dev server (BASE) proxying a dev:local API.
-// OpenRouter itself is never called with a key: the key endpoints are answered by route stubs.
+// WP-PRA59 visual check; key endpoints are route-stubbed, so OpenRouter is never called with a key.
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';

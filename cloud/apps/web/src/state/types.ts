@@ -164,7 +164,7 @@ export interface PraxisStoreContextValue {
   deleteChats: (chatIds: string[]) => Promise<void>;
   toggleChatConnector: (chatId: string, connectorId: string, enabled: boolean) => Promise<void>;
 
-  /** Resolves false when the message was not sent because no OpenRouter key is connected: the connect card opens instead, and the caller keeps the draft. */
+  /** Resolves false when the connect card opened instead (no OpenRouter key); the caller keeps the draft. */
   sendMessage: (
     text: string,
     options?: {

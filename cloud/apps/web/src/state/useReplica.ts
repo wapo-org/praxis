@@ -83,8 +83,7 @@ export function useReplica(
       const boot = await apiClient.bootstrap();
       setChats(boot.chats);
       setModelKey(boot.modelKey ?? null);
-      // The catalogue is not part of bootstrap: its first page (pinned, then recommended) seeds the picker.
-      // A failure here must not block the app; the model list reports it when opened.
+      // The catalogue is not in bootstrap; a failed first page must not block the app.
       const catalogue = await apiClient
         .listModels({ limit: 100 })
         .then((page) => page.items)

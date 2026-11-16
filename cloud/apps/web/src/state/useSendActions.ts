@@ -140,8 +140,7 @@ export function useSendActions(
         return true;
       } catch (err) {
         if (err instanceof PraxisApiError && err.code === 'model_key_missing') {
-          // The server found no key (another client removed it): take the optimistic message back and
-          // show the connect card, not an error.
+          // Another client removed the key: undo the optimistic message and show the connect card.
           setMessagesByChat((prev) => ({
             ...prev,
             [targetChatId!]: (prev[targetChatId!] ?? []).filter((m) => m.id !== optimisticUserMsg.id),

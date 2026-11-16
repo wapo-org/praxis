@@ -6,11 +6,7 @@ import type { useSendActions } from './useSendActions';
 
 type SendOptions = Parameters<ReturnType<typeof useSendActions>['executeSendMessage']>[1];
 
-/**
- * The step before a message goes out. Models are reached with the user's own OpenRouter key, so with no key
- * connected (and no key rejected by OpenRouter) sending opens the connect card instead of starting a run that
- * can only fail. Connecting the key is the consent to send chats to OpenRouter.
- */
+/** With no OpenRouter key, sending opens the connect card instead of starting a run that can only fail. */
 export function useSendGate(
   state: PraxisState,
   { executeSendMessage }: Pick<ReturnType<typeof useSendActions>, 'executeSendMessage'>,

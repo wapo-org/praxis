@@ -7,10 +7,7 @@ import { ScreenBody, ScreenButton } from './ScreenUI.js';
 
 type Connect = (input: { method: 'pkce'; code: string; codeVerifier: string }) => Promise<ModelKey>;
 
-/**
- * One exchange per code, whoever asks. React may mount this page twice (StrictMode); the verifier is single
- * use, so the second mount must join the first exchange instead of finding the verifier gone.
- */
+/** One exchange per code: the verifier is single use, so a StrictMode remount must join the first exchange. */
 const exchanges = new Map<string, Promise<ModelKey>>();
 function exchangeOnce(code: string, connect: Connect): Promise<ModelKey> {
   let exchange = exchanges.get(code);
