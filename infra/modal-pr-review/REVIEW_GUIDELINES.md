@@ -1,38 +1,60 @@
 # Praxis PR Review Guidelines
 
-Automated PR reviews run inside Modal Sandboxes across **6 specialized `muse-ember-1.0` (`max` reasoning effort) sessions** plus live `cloud/` verification.
+Automated PR reviews run in a Modal Sandbox. The review model is `muse-ember-1.0`, a small model, so the design assumes it will sometimes be wrong: **scripts decide everything that can be decided mechanically, and the server deletes every model finding it cannot verify.**
 
-## Core Review Posture (Non-Opinionated & Collaborative)
+## Who decides what
 
-- **Ask and offer rather than dictate.** Because the review model is smaller than frontier implementation models, frame architectural, abstraction, refactoring, and conciseness suggestions as questions or options (`"Could we extract..."`, `"Consider whether..."`, `"Would it help to...?"`), not commands (`"You must..."`, `"Always..."`).
-- **Verify against Linear (`PRA-*`).** Every review session has read-only access to Linear team `PRA` (via the `linear` MCP server and `/usr/local/bin/linear-read`). Check the linked/matching `PRA-*` issue(s) to confirm acceptance criteria, scope, and architectural invariants (`PRA-72`–`PRA-81`) before flagging design choices.
-- **Check across files.** Trace callers, sibling adapters, shared schemas (`@praxis/protocol`), and Web/iOS parity (`@praxis/glass` ↔ `Tokens.swift`) beyond the raw diff lines.
-- **Ground every finding in evidence.** Only report issues verified in files read, cross-file traces, Linear specs, or observed tool/test output. Cite exact `path:line`, Linear issue IDs, or failing command output.
-- **Only block (`REQUEST_CHANGES`) on objective failures:**
-  - Security or tenant-isolation vulnerabilities, secret leakage, or SSRF/egress bypasses.
-  - Broken logic, race conditions, or runtime/typecheck/test/Playwright failures.
-  - Violations of explicit **HARD boundaries** in `AGENTS.md` or direct contradictions of a Linear `PRA-*` spec.
-  - Use `COMMENT` for questions, offers, abstraction ideas, and conciseness suggestions.
+1. **Deterministic gates — run by the server, never judged by a model.**
+   `npm --prefix cloud run typecheck`, `npm --prefix cloud test`, `npm --prefix cloud run check:rules` (compared against the merge-base baseline, so a PR cannot pass by growing its own baseline) and `node cloud/scripts/comment-sweep.mjs check`. `check:rules` lines are posted verbatim.
+2. **Five read-only model sessions, one narrow job each**, plus one `hands_on` session that boots the app. A session may only cite the rule ids in its own checklist, returns at most 5 findings, and is told to say nothing when unsure.
+3. **Server-side validation.** A finding is posted only if all of this holds; otherwise it is dropped and the reason is logged:
+   - `rule_id` is on the closed list below, is a judgement rule, and belongs to that session;
+   - `file` and `line` are in the PR diff, and `evidence` is found verbatim in that file's diff (whitespace-insensitive);
+   - `confidence` is `high` or `medium`;
+   - a Linear claim carries a `linear_quote` that appears in the issue text the server fetches itself;
+   - it does not duplicate another finding (same file, same rule, within 3 lines).
 
-## Specialized Review Sessions & Assigned Skills
+## Review posture (collaborative, non-opinionated)
 
-All skills from `cursor/plugins/pstack/skills` are installed under `/root/.config/muse/skills/`. Each session MUST read its assigned `SKILL.md` files before reviewing:
+- **Ask and offer rather than dictate.** Suggestions are phrased as questions or options (`"Could we…?"`, `"Would it help to…?"`), never orders.
+- **Ground every finding in evidence:** an exact quote of the changed line and a concrete failure scenario (input → wrong outcome). No "might", no general advice.
+- **Blocking (`REQUEST_CHANGES`) happens only when** a deterministic gate fails, or a **HARD** rule finding with verified evidence has `high` confidence. Everything else is a `COMMENT`. The reviewer never approves.
+- A session that returns nothing, or malformed JSON, contributes nothing: the review states that the session had no usable output, and its raw text goes to the run log only.
 
-1. **`abstractions` — Layer Boundaries, Plug-and-Play Modularity & Constants**
-   - Skills: `principle-boundary-discipline`, `principle-model-the-domain`, `principle-type-system-discipline`, `principle-foundational-thinking`, `typescript-best-practices`, `architect`
-   - Checks: protocol-first schemas (`@praxis/protocol`), pure port isolation (`@praxis/agent`), `AdapterBundle`/`FeatureModule`/`@praxis/credentials` seams, pluggable/unpluggable module boundaries, and moving scattered static strings, routes, keys, timeouts, limits, and design tokens into named constants in the owning layer.
-2. **`maintainability` — Long-Term Maintenance, Blast Radius & Clean Break**
-   - Skills: `blast-radius`, `principle-migrate-callers-then-delete-legacy-apis`, `principle-minimize-reader-load`, `principle-make-operations-idempotent`, `how`, `why`
-   - Checks: cross-file/cross-client blast radius (`cloud/` + `PraxisChat/`), file size (~400-line cap), single-line compression hurting readability, deleting obsolete shims/docs (`PRA-73`) in the same PR, idempotent retries/checkpoints, and alignment with Linear `PRA-*` tasks.
-3. **`conciseness` — Code Conciseness, Subtraction & Comment Hygiene**
-   - Skills: `no-comments`, `principle-subtract-before-you-add`, `principle-minimize-reader-load`, `unslop`
-   - Checks: unnecessary wrappers/indirections, verbose or repetitive code that can be expressed more concisely, dead code, narrating comments (`comment-sweep.mjs`), AI-slop prose, and stray `.md` files. *(Reports findings as offers; does not edit files or spawn subagents.)*
-4. **`logic_bs` — Logic, Efficiency, Root Causes & Bullshit Detection**
-   - Skills: `principle-fix-root-causes`, `principle-attack-the-premise`, `principle-explain-the-number`, `principle-prove-it-works`, `interrogate`
-   - Checks: symptom/band-aid fixes (`setTimeout` hacks, duplicate guards), inefficient I/O or Convex budget bloat (`PRA-80`), split-brain state, unjustified magic numbers, unverified claims, and mismatches with Linear task requirements.
-5. **`security` — Security, Isolation, Taint & Secrets**
-   - Skills: `principle-boundary-discipline`, `principle-type-system-discipline`, `blast-radius`, `principle-fix-root-causes`, `interrogate`
-   - Checks: auth/session-derived `userId` (`PRA-35`), secret redaction (`SealedSecret`, logs, URLs, Redis keys), SSRF egress validation, banned execution primitives (`child_process`, `eval`, `new Function`, `vm`, `worker_threads` in `apps/api`), inner-action tool classification & taint propagation (`PRA-76`), and fail-closed production adapters.
-6. **`hands_on` — Live App Verification**
-   - Skills: `principle-prove-it-works`, `principle-fix-root-causes`
-   - Checks: `npm --prefix cloud run typecheck`, `npm --prefix cloud test`, `node cloud/scripts/comment-sweep.mjs check`, live `cloud/` API (`:8797`) + Vite web (`:5173`), `smoke:local`, `p0-check.mjs`, and an ad-hoc Playwright Chromium script testing the PR's changed user flows.
+## Rule ids (closed list)
+
+Script-owned ids are the `[R…]` tags in [`AGENTS.md`](../../AGENTS.md) plus `GATE.typecheck`, `GATE.test`, `GATE.check-rules` and `GATE.comment-sweep`; a model finding that cites one is dropped. Judgement ids:
+
+| Rule id | Kind | Session | Meaning |
+| --- | --- | --- | --- |
+| `R1.single-shape` | HARD | abstractions | API/event shape declared outside `@praxis/protocol`, or twice |
+| `R1.api-thin-routes` | HARD | abstractions | Route handler bypasses `AdapterBundle`, or a new public Hono route / `FeatureModule` (PRA-13, PRA-41) |
+| `R1.client-policy-dup` | HARD | abstractions | Client re-implements server policy or secret logic |
+| `R2.shared-constant` | advisory | abstractions | Cross-layer value (error code, route, header, key prefix, timeout, limit) written inline; UI copy is exempt |
+| `R2.unit-suffix` | advisory | abstractions | Numeric limit/timeout constant without a unit in its name |
+| `R3.readable-functions` | advisory | maintainability | New or touched function compressed into multi-statement lines |
+| `R3.root-cause` | advisory | logic_bs | Timer race, swallowed error, or fallback hiding an upstream bug |
+| `R3.fail-closed` | HARD | security | Production path degrades instead of failing (exceptions: PRA-61 cooldowns, PRA-59 catalogue) |
+| `R4.boundary-parse` | HARD | abstractions | Untrusted input cast or trusted without a Zod / `Codable` parse |
+| `R4.illegal-states` | advisory | abstractions | Optional-field bag where a discriminated union fits |
+| `R4.adhoc-brand` | advisory | abstractions | Ad-hoc `TenantId` / `SealedSecret` (owned by PRA-36 / PRA-72) |
+| `R5.owner-from-auth` | HARD | security | Owner id taken from client input instead of verified auth |
+| `R5.secret-leak` | HARD | security | Secret reaches a log, response, URL, Redis key or telemetry |
+| `R5.ssrf-egress` | HARD | security | User/model URL fetched without the SSRF-guarded `egress` fetch |
+| `R5.taint` | HARD | security | Inner tool action unclassified, or taint not propagated |
+| `G.clean-break` | advisory | maintainability | Compatibility shim, un-migrated caller, or docs made false by the PR |
+| `G.plan-docs` | advisory | maintainability | Plan/summary `.md` file committed at the repo root |
+| `G.dead-code` | advisory | conciseness | New code with no caller, or a pass-through wrapper |
+| `G.duplicate-logic` | advisory | conciseness | Same logic added twice, or a copy of an existing helper |
+| `G.unproven-claim` | advisory | logic_bs | PR description claims something the diff does not do |
+| `G.linear-contradiction` | advisory | maintainability | Changed line contradicts the linked `PRA-*` issue (needs a verified quote) |
+| `CORRECTNESS` | advisory | logic_bs, hands_on | A concrete input gives a wrong result |
+| `SECURITY` | advisory | security | Another concrete, exploitable weakness |
+
+`rules.py` mirrors this table and `tests/test_rules.py` fails when they drift.
+
+## Seeing slop
+
+- Every run is written to the Modal Volume `praxis-pr-review-runs` (never to GitHub): per session the raw model output, parsed findings, kept findings, dropped findings with the reason, timings and step/token counts; plus gate results and the final verdict.
+- `modal run app.py::slop_report` summarises the last N runs: drop rate by reason and session, findings per PR, rule frequency, sessions with no usable output, and the share of posted findings a human answered with "won't fix" (read from GitHub review threads).
+- `evals/` holds fixture diffs with seeded issues and clean diffs. `python evals/harness.py` scores recorded outputs offline; `modal run app.py::run_evals` scores the live model (costs model calls).

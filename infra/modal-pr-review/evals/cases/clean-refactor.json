@@ -1,0 +1,10 @@
+{
+  "name": "clean-refactor",
+  "description": "Clean: a small pure helper with a named limit.",
+  "pr_title": "Add chunk helper",
+  "pr_body": "Splits a list into pages for the sync upload.",
+  "files": {
+    "cloud/packages/sync/src/chunk.ts": "export const SYNC_PAGE_SIZE_MAX = 100;\n\nexport function chunk<T>(items: readonly T[], size: number = SYNC_PAGE_SIZE_MAX): T[][] {\n  if (!Number.isInteger(size) || size < 1) {\n    throw new RangeError(`chunk size must be a positive integer, got ${size}`);\n  }\n  const pages: T[][] = [];\n  for (let start = 0; start < items.length; start += size) {\n    pages.push(items.slice(start, start + size));\n  }\n  return pages;\n}\n"
+  },
+  "expected": []
+}

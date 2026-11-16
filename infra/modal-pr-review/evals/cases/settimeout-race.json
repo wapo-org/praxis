@@ -1,0 +1,15 @@
+{
+  "name": "settimeout-race",
+  "description": "A timer hides an ordering problem.",
+  "pr_title": "Fix chat not scrolling to the newest message",
+  "pr_body": "Adds a small delay so the list is ready.",
+  "files": {
+    "cloud/apps/web/src/chat/scroll-to-latest.ts": "const SCROLL_DELAY_MS = 50;\n\nexport function scrollToLatest(list: HTMLElement): void {\n  setTimeout(() => {\n    list.scrollTo({ top: list.scrollHeight });\n  }, SCROLL_DELAY_MS);\n}\n"
+  },
+  "expected": [
+    {
+      "rule_id": "R3.root-cause",
+      "file": "cloud/apps/web/src/chat/scroll-to-latest.ts"
+    }
+  ]
+}

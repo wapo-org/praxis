@@ -1,0 +1,62 @@
+{
+  "name": "fail-open-store",
+  "gates": [],
+  "sessions": {
+    "abstractions": {
+      "session": "abstractions",
+      "findings": []
+    },
+    "maintainability": {
+      "session": "maintainability",
+      "findings": []
+    },
+    "conciseness": {
+      "session": "conciseness",
+      "findings": [
+        {
+          "rule_id": "G.dead-code",
+          "file": "cloud/apps/api/src/adapters/other.ts",
+          "line": 1,
+          "evidence": "export function unused() {}",
+          "failure_scenario": "This helper has no callers anywhere in the repository.",
+          "suggestion": null,
+          "confidence": "medium",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    },
+    "logic_bs": {
+      "session": "logic_bs",
+      "findings": [
+        {
+          "rule_id": "R3.root-cause",
+          "file": "cloud/apps/api/src/adapters/run-store.ts",
+          "line": 9,
+          "evidence": "return createMemoryRunStore();",
+          "failure_scenario": "The fallback hides a missing configuration value instead of reporting it, so runs vanish with no error.",
+          "suggestion": null,
+          "confidence": "medium",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    },
+    "security": {
+      "session": "security",
+      "findings": [
+        {
+          "rule_id": "R3.fail-closed",
+          "file": "cloud/apps/api/src/adapters/run-store.ts",
+          "line": 9,
+          "evidence": "return createMemoryRunStore();",
+          "failure_scenario": "A production deploy with a missing CONVEX_URL starts fine and loses every run when the function instance is recycled.",
+          "suggestion": "Could this throw at startup instead?",
+          "confidence": "high",
+          "linear_issue": null,
+          "linear_quote": null
+        }
+      ]
+    }
+  }
+}
