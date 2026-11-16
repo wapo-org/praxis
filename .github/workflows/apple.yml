@@ -1,0 +1,64 @@
+name: Apple
+on:
+  push:
+    branches: [main, develop]
+    paths: ['PraxisChat/**', 'Packages/**', '.github/workflows/apple.yml']
+  pull_request:
+    paths: ['PraxisChat/**', 'Packages/**', '.github/workflows/apple.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: apple-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  ios:
+    name: Apple / iOS build and unit tests
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Select an available iPhone simulator
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available --json > "$RUNNER_TEMP/devices.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          devices = json.loads(Path(os.environ['RUNNER_TEMP'], 'devices.json').read_text())['devices']
+          iphones = [device for runtime, group in devices.items() if 'iOS-26' in runtime
+                     for device in group if device['name'].startswith('iPhone') and device['isAvailable']]
+          if not iphones:
+              raise SystemExit('No available iOS 26 iPhone simulator on this runner')
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write(f"SIMULATOR_ID={iphones[0]['udid']}\n")
+          PY
+      - name: Build for iOS Simulator
+        run: >-
+          xcodebuild build -project PraxisChat/PraxisChat.xcodeproj -scheme PraxisChat
+          -destination "platform=iOS Simulator,id=$SIMULATOR_ID"
+          CODE_SIGNING_ALLOWED=NO
+      - name: Run PraxisChat unit tests
+        run: >-
+          xcodebuild test -project PraxisChat/PraxisChat.xcodeproj -scheme PraxisChat
+          -destination "platform=iOS Simulator,id=$SIMULATOR_ID"
+          -only-testing:PraxisChatTests CODE_SIGNING_ALLOWED=NO
+  packages:
+    name: Apple / Swift package tests
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Test Swift packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' manifest; do
+            swift test --package-path "$(dirname "$manifest")"
+          done < <(find Packages -name .build -prune -o -name Package.swift -print0)

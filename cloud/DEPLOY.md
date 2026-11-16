@@ -157,3 +157,45 @@ Production uses Clerk JWT bearer sessions. `DELETE /v1/account` requires a first
 The production eraser locks account activation, marks the account as deleting, freezes owner Redis writes, purges indexed Redis data (streams, caches, OAuth state and leases), then hard-deletes every owner-scoped Convex table and uploaded blobs in bounded batches. The caller’s session and credential survive until the final atomic auth deletion, so interrupted deletion can retry. Redis ownership indexes are registered atomically with writes as a sorted set scored by key expiry, pruned on every owner write so it stays bounded; the purge removes keys in chunks and drops them from the index as it goes, so a retry resumes. Activation verifies that the Convex account remains active. The global blob sweep stores its cursor on the user row, so a retried request continues it. Generic Convex writes are fenced once deletion begins. Blob ownership tags also permit deleting interrupted, unbound uploads. New data tables must be included in `convex/account.ts`; new owner KV writes must carry `ownerId` (feature contexts do so automatically).
 
 No hosted deletion, provider call, deployment, or credential access was performed by the implementation worker. Local tests use a fake Clerk interface and locally signed JWTs, plus legacy Better Auth migration/conformance fixtures. No hosted account is created. See `docs/WP-H1-AUTH-SYNC.md` for migration, conflict rules and the native client requirements.
+
+
+## CI
+
+GitHub Actions runs Node 22 / npm 11 typecheck, unit tests, web/API builds,
+comment sweep, and the production high-severity npm audit as parallel checks
+on `blacksmith-4vcpu-ubuntu-2404`. The comment job also runs `check:rules`
+when `cloud/scripts/check-rules.mjs` exists. Modal reviewer pytest uses the
+same runner and the locked Python 3.12 environment without calling Modal.
+Apple changes run the iOS Simulator build, `PraxisChatTests`, and every Swift
+package's tests on GitHub-hosted `macos-26`; UI tests are outside this check.
+Workflow changes also trigger their own checks. All jobs have timeouts,
+read-only repository permissions, pinned actions and cancellation of older runs.
+
+SonarCloud scans `wapo-org_praxis` in organization `wapo-org` on Blacksmith.
+In SonarCloud, open the project → Administration → Analysis Method and disable
+Automatic Analysis. Generate an analysis token under My Account → Security;
+in GitHub Settings → Secrets and variables → Actions add repository secret
+`SONAR_TOKEN`. Missing credentials fail explicitly. The scan publishes the gate
+without waiting for it: configure a new-code-only “Clean as You Code” gate under
+Quality Gates, baseline `develop`, then set `sonar.qualitygate.wait=true` once
+that gate passes. Coverage is omitted because no Vitest coverage provider is
+installed; adding dependencies is outside this change.
+
+The web e2e suite is omitted: it requires externally started servers, includes
+headed 120 Hz/display-specific probes and explicit browser skips, and writes
+worker-specific design captures. It has no deterministic headless CI contract.
+The cloud unit suite currently contains live Convex/Upstash/storage tests and a
+local MiniLM-cache probe that skip without their prerequisites. CI rejects a
+nonzero skipped/todo count rather than reporting that suite as fully passing.
+These tests need a separate explicit live-service contract before this check
+can be required; no tests are disabled by these workflows.
+
+Owner setup: install/enable the Blacksmith GitHub App for this repository;
+grant the pushing fine-grained PAT repository **Workflows: read and write**.
+After all checks pass, GitHub Settings → Rules → Rulesets (or Branches → branch
+protection) for `develop` and `main`: require `Cloud / typecheck`, `Cloud / tests`,
+`Cloud / web-build`, `Cloud / api-build`, `Cloud / comments`, and `Cloud / audit`.
+Do not require path-filtered Apple/Modal checks globally: unrelated PRs never
+create them. Require `SonarCloud / scan` only after the token and analysis method
+are configured; require the SonarCloud quality-gate check only after the new-code
+gate is green. There is no merge or deployment step in CI.
