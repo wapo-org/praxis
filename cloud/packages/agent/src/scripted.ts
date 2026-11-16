@@ -130,10 +130,7 @@ export function splitIntoSimulatedChunks(
   return out;
 }
 
-export function createScriptedProvider(
-  script: Script = 'text',
-  _simOptions?: StreamSimOptions,
-): ModelProvider {
+export function createScriptedProvider(script: Script = 'text'): ModelProvider {
   StartRunSchema.shape.script.parse(script);
   return {capabilities:CapabilitiesSchema.parse({tools:true,vision:true,reasoningEffort:true}),
     async *stream(request:ProviderRequest,signal:AbortSignal):AsyncGenerator<ProviderEvent> {
