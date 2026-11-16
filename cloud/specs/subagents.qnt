@@ -5,9 +5,9 @@
 module subagents {
   pure val NODES = Set(0, 1, 2)
   var s: {live: Set[int], cancelling: Set[int], done: Set[int],
-    handles: Set[int], sent: Set[int], delivered: List[int], discarded: Set[int], results: Set[int]}
+    handles: Set[int], sent: Set[int], delivered: List[int], discarded: Set[int]}
   action init = s' = {live: Set(0), cancelling: Set(), done: Set(),
-    handles: Set(), sent: Set(), delivered: [], discarded: Set(), results: Set()}
+    handles: Set(), sent: Set(), delivered: [], discarded: Set()}
   action spawn(node) = all {
     node > 0, s.live.contains(node - 1), not(s.cancelling.contains(node - 1)),
     not(s.live.contains(node)), not(s.done.contains(node)),
@@ -35,7 +35,7 @@ module subagents {
   }
   action result(node) = all {
     node > 0, s.live.contains(node), s.live.contains(node - 1),
-    not(s.cancelling.contains(node - 1)), s' = {...s, results: s.results.union(Set(node))}
+    not(s.cancelling.contains(node - 1)), s' = s
   }
   action step = {
     nondet node = NODES.oneOf()

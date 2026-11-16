@@ -8,10 +8,10 @@ module durable {
   pure val HANDOFF_TURNS_MAX = 4
   pure val TURNS_MAX = 12
   var s: {head: int, ledger: List[int], usage: int, status: str,
-    generation: int, boundary: int, decision: bool, resumes: int, children: bool, stopHead: int}
+    generation: int, boundary: int, decisions: int -> int, wait: int, resumes: List[int], children: bool, stopHead: int}
 
   action init = s' = {head: 0, ledger: [], usage: 0, status: "running",
-    generation: 0, boundary: 0, decision: false, resumes: 0, children: false, stopHead: 0}
+    generation: 0, boundary: 0, decisions: Map(0 -> 0, 1 -> 0), wait: -1, resumes: [], children: false, stopHead: 0}
   action commit(expected) = all {
     s.status == "running", expected == s.head, s.head < TURNS_MAX,
     s.head - s.boundary < HANDOFF_TURNS_MAX,
@@ -21,10 +21,17 @@ module durable {
     s.status == "running", not(s.children), s.head - s.boundary == HANDOFF_TURNS_MAX,
     s' = {...s, generation: s.generation + 1, boundary: s.head}
   }
-  action pause = all {s.status == "running", not(s.decision), s' = {...s, status: "paused"}}
-  action answer = s' = {...s, decision: true}
+  action pause(id) = all {
+    s.status == "running", not(s.resumes.indices().exists(i => s.resumes[i] == id)),
+    s' = {...s, status: "paused", wait: id}
+  }
+  action answer(id, decision) = all {
+    s.decisions.get(id) == 0 or s.decisions.get(id) == decision,
+    s' = {...s, decisions: s.decisions.set(id, decision)}
+  }
   action wake = all {
-    s.status == "paused", s.decision, s' = {...s, status: "running", resumes: s.resumes + 1}
+    s.status == "paused", s.decisions.get(s.wait) != 0,
+    s' = {...s, status: "running", resumes: s.resumes.append(s.wait), wait: -1}
   }
   action stop = all {
     Set("running", "paused").contains(s.status), s' = {...s, status: "cancelling", stopHead: s.head}
@@ -36,13 +43,15 @@ module durable {
   }
   action step = {
     nondet index = 0.to(TURNS_MAX).oneOf()
-    any {commit(index), handoff, pause, answer, wake, stop, finalize, rewind(index),
+    nondet id = Set(0, 1).oneOf()
+    nondet decision = Set(1, 2).oneOf()
+    any {commit(index), handoff, pause(id), answer(id, decision), wake, stop, finalize, rewind(index),
       all {s.status == "running", s' = {...s, children: not(s.children)}}, s' = s}
   }
   val TurnCommitOnce = s.ledger.length() == s.head and s.ledger.indices().forall(i => s.ledger[i] == i)
   val CheckpointReplayStable = s.usage >= s.head
   val HandoffBounded = s.status == "cancelled" or s.head - s.boundary <= HANDOFF_TURNS_MAX
-  val ResumeOnce = s.resumes <= 1
+  val ResumeOnce = s.resumes.length() == s.resumes.indices().map(i => s.resumes[i]).size()
   val RewindKeepsUsage = s.usage >= s.ledger.length()
   val HandoffSingleOwner = s.boundary == s.generation * HANDOFF_TURNS_MAX
   val CancelFence = (not(Set("cancelling", "cancelled").contains(s.status)) or s.head <= s.stopHead) and
@@ -53,13 +62,19 @@ module durable {
     .then(commit(4)).then(commit(5)).then(commit(6)).then(commit(7)).then(handoff)
     .then(commit(8)).then(commit(9)).then(commit(10)).then(commit(11))
     .expect(TurnCommitOnce and s.head == 12 and s.generation == 2)
-  run stopWakeTest = init.then(pause).then(answer).then(stop)
+  run stopWakeTest = init.then(pause(0)).then(answer(0, 1)).then(stop)
     .then(finalize)
-    .expect(CancelFence and s.resumes == 0)
+    .expect(CancelFence and s.resumes.length() == 0)
   run duplicateCommitTest = init.then(commit(0))
     .expect(TurnCommitOnce and s.usage == 1)
-  run stoppedWakeRejectedTest = init.then(pause).then(answer).then(stop).then(wake).fail()
+  run stoppedWakeRejectedTest = init.then(pause(0)).then(answer(0, 1)).then(stop).then(wake).fail()
   run duplicateRejectedTest = init.then(commit(0)).then(commit(0)).fail()
+  run successiveWaitsTest = init.then(answer(0, 1)).then(pause(0)).then(wake)
+    .then(commit(0)).then(pause(1)).then(answer(0, 1)).then(answer(1, 2)).then(wake)
+    .expect(ResumeOnce and s.resumes == [0, 1])
+  run staleDecisionRejectedTest = init.then(pause(0)).then(answer(0, 1)).then(wake)
+    .then(pause(1)).then(answer(0, 1)).then(wake).fail()
+  run conflictingDecisionRejectedTest = init.then(answer(0, 1)).then(answer(0, 2)).fail()
   run rewindTest = init.then(commit(0)).then(commit(1)).then(stop).then(finalize).then(rewind(1))
     .expect(TurnCommitOnce and RewindKeepsUsage and s.usage == 2 and s.head == 1)
 }

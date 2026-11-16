@@ -10,7 +10,7 @@ const SEED = '75075';
 const MODELS = {
   credentials: ['OneRetryRound', 'NoSlotStarved', 'HealthyFailover'],
   durable: ['TurnCommitOnce', 'CheckpointReplayStable', 'HandoffBounded', 'HandoffSingleOwner', 'ResumeOnce', 'RewindKeepsUsage', 'CancelFence'],
-  streaming: ['ClientTurnDedup', 'StreamCommitAtomic', 'NoCommittedDrop', 'OrderedPrefix', 'StopPrefix', 'ReconnectCoherent'],
+  streaming: ['ClientTurnDedup', 'FinalLiveDedup', 'NoCommittedDrop', 'OrderedPrefix', 'StopPrefix', 'ReconnectCoherent'],
   subagents: ['NoOrphanRuns', 'NoOrphanHandles', 'CascadeStop', 'InboxExactlyOnce', 'TerminalCleanup'],
   security: ['TaintMonotonic', 'AtomicSpendCap', 'ChargeOnce', 'ApprovalRequired'],
 };

@@ -1,3 +1,4 @@
+import {cancellationKey} from '../run-keys.js';
 import {expect, it} from 'vitest';
 import fc from 'fast-check';
 import {RunEventPayloadSchema, type RunSnapshot, type Message} from '@praxis/protocol';
@@ -97,7 +98,7 @@ it('StopPrefix / CancelFence: cancelling between arbitrary chunks keeps only the
         start: async (userId, run, chat, messages) => {
           const runner = new AgentRunner({provider, ports: {
             save: async () => {},
-            isCancelled: async () => Boolean(await service.adapters.kv.get(`cancel:${userId}:${run.id}`)),
+            isCancelled: async () => Boolean(await service.adapters.kv.get(cancellationKey(userId, run.id))),
             emit: async (_user, _run, event) => {
               const id = await service.emit(userId, run.id, event);
               if (event.type === 'text.delta' && ++accepted === stopAt) await service.cancel(userId, run.id);
