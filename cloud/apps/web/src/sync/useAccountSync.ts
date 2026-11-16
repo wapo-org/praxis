@@ -61,7 +61,6 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
           if (pending.some(e => e.path === '/v1/sync/settings' && JSON.parse(e.body!).field === field)) continue;
           remote.current[field] = value;
           if (field === 'theme' && ['light','dark','system'].includes(value)) s.setThemeMode(value as 'light'|'dark'|'system');
-          // A synced 'button' row is the removed button-colour option (WP-I1): ignored.
           if (field === 'palette') {
             applySidebarLook(value);
             localStorage.setItem('praxis-sidebar-palette', value);

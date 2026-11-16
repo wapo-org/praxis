@@ -20,11 +20,11 @@ describe('WP-W3: MCP consent is keyed by host plus port, like provider consent',
     await expect(requireConsent(c, connector('http://127.0.0.1:8788/mcp'))).resolves.toBeUndefined();
     await expect(requireConsent(c, connector('http://127.0.0.1:9999/mcp'))).rejects.toMatchObject({code: 'consent_required'});
   });
-  it('still honours hostname-only records saved before the change, unless a host:port record says no', async () => {
+  it('does not let a hostname-only record stand in for a non-default port', async () => {
     const c = ctx();
     await allow(c, 'mcp.example.com');
-    await expect(requireConsent(c, connector('https://mcp.example.com:8443/mcp'))).resolves.toBeUndefined();
-    await allow(c, 'mcp.example.com:8443', false);
     await expect(requireConsent(c, connector('https://mcp.example.com:8443/mcp'))).rejects.toMatchObject({code: 'consent_required'});
+    await allow(c, 'mcp.example.com:8443');
+    await expect(requireConsent(c, connector('https://mcp.example.com:8443/mcp'))).resolves.toBeUndefined();
   });
 });
