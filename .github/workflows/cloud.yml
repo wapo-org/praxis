@@ -85,3 +85,37 @@ jobs:
           name: quint-traces
           path: cloud/.spec-traces/
           if-no-files-found: ignore
+  verify-web:
+    name: Cloud / verify-web
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # Measured ~15 s of flows locally; the budget covers npm ci and a cold browser install.
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+      - run: npm install --global npm@11
+      - run: npm --prefix cloud ci
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('cloud/package-lock.json') }}
+      - name: Install Chromium and its system libraries
+        working-directory: cloud
+        run: npx playwright install --with-deps chromium
+      - name: Run the web flows
+        run: npm --prefix cloud run verify -- web
+      - name: Keep screenshots, snapshots and server logs
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: verify-web-${{ github.run_id }}-${{ github.run_attempt }}
+          path: cloud/artifacts/verify/
+          if-no-files-found: ignore
+          retention-days: 7
