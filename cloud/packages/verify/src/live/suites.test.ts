@@ -41,7 +41,9 @@ describe('openrouter suite', () => {
 
   it('passes tools-reasoning only with a succeeded tool, reasoning, a signed stored reasoning part and a completed follow-up', async () => {
     const tool = {type: 'tool.state', activity: {type: 'tool.activity', id: 't1', name: 'run_javascript', source: {type: 'javascript'}, presentation: {category: 'command', runningTitle: 'Running', finishedTitle: 'Ran'}}, argumentsJson: '{}', running: false, completion: {type: 'tool.completion', status: 'succeeded', summary: '42', preview: '42'}, progress: []};
-    const message = {type: 'message', id: 'm1', chatId: 'c1', runId: 'r1', role: 'assistant', parts: [{type: 'reasoning', text: 'think', signature: 'sig'}], createdAt: NOW, updatedAt: NOW};
+    // Shape produced by the agent's stream decoder (streams.ts): the signature lives in raw.data.reasoning_details, not in parts.
+    const raw = {type: 'provider.payload', data: {role: 'assistant', content: '42', reasoning_details: [{type: 'reasoning.text', index: 0, text: 'think', signature: 'sig-1', format: 'anthropic-claude-v1'}]}};
+    const message = {type: 'message', id: 'm1', chatId: 'c1', runId: 'r1', role: 'assistant', parts: [{type: 'reasoning', text: 'think', shape: 'raw'}], raw, createdAt: NOW, updatedAt: NOW};
     const step = await run('openrouter', 'tools-reasoning', HOSTED, url => {
       if (url.endsWith('/v1/chats')) return chat;
       if (url.endsWith('/v1/runs')) return run_;
@@ -50,6 +52,18 @@ describe('openrouter suite', () => {
     });
     expect(step.summary).not.toMatch(/violates/);
     expect(step.status).toBe('pass');
+  });
+
+  it('fails tools-reasoning when the stored message has reasoning parts but no signed reasoning_details', async () => {
+    const tool = {type: 'tool.state', activity: {type: 'tool.activity', id: 't1', name: 'run_javascript', source: {type: 'javascript'}, presentation: {category: 'command', runningTitle: 'Running', finishedTitle: 'Ran'}}, argumentsJson: '{}', running: false, completion: {type: 'tool.completion', status: 'succeeded', summary: '42', preview: '42'}, progress: []};
+    const unsigned = {type: 'message', id: 'm1', chatId: 'c1', runId: 'r1', role: 'assistant', parts: [{type: 'reasoning', text: 'think'}], raw: {type: 'provider.payload', data: {reasoning_details: [{type: 'reasoning.text', text: 'think'}]}}, createdAt: NOW, updatedAt: NOW};
+    const step = await run('openrouter', 'tools-reasoning', HOSTED, url => {
+      if (url.endsWith('/v1/chats')) return chat;
+      if (url.endsWith('/v1/runs')) return run_;
+      if (url.includes('/messages')) return {type: 'page', items: [unsigned], nextCursor: null};
+      return snapshot({blocks: [block('reasoning', 'think'), block('text', '42')], tools: [tool]});
+    });
+    expect(step.summary).toMatch(/no signed reasoning_details/);
   });
 
   it('turns a rejected paste into a pass only for 400 model_key_rejected', async () => {
@@ -65,6 +79,14 @@ describe('openrouter suite', () => {
 });
 
 describe('credential-pool suite', () => {
+  it('fails vercel-env on a malformed target instead of matching a substring', async () => {
+    const env = {VERCEL_TOKEN: 'vercel-token-0123456789', VERCEL_PROJECT_ID: 'prj_1'};
+    const bad = await run('credential-pool', 'vercel-env', env, () => ({envs: [{key: 'GROQ_API_KEY', target: 'not-production'}, {key: 'GROQ_API_KEY_2', target: 'not-production'}]}));
+    expect(bad.status).toBe('fail');
+    const good = await run('credential-pool', 'vercel-env', env, () => ({envs: [{key: 'GROQ_API_KEY', target: ['production']}, {key: 'GROQ_API_KEY_2', target: ['production', 'preview']}]}));
+    expect(good.status).toBe('pass');
+  });
+
   const env = {UPSTASH_REDIS_REST_URL: 'https://redis.example.test', UPSTASH_REDIS_REST_TOKEN: 'upstash-token-0123456789', GROQ_API_KEY: 'gsk_slotone0123456789abcdefghij'};
   const upstash = (ttl: unknown, value: unknown) => (_url: string, init?: RequestInit) => (JSON.parse(String(init?.body))[0] === 'TTL' ? ttl : value);
 

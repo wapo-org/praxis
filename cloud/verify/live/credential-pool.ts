@@ -11,6 +11,8 @@ const UpstashReply = z.union([z.object({result: z.unknown()}).strict(), z.object
 /** Redis TTL: seconds, or -1 (no expiry) / -2 (no key). */
 const Ttl = z.number().int().min(-2);
 const StoredValue = z.string().nullable();
+/** Vercel v9 env listing: `target` is an array of environment names; anything else is a broken reply, not evidence. */
+const VercelEnvs = z.object({envs: z.array(z.object({key: z.string(), target: z.array(z.enum(['production', 'preview', 'development'])).optional()}))});
 
 async function upstash<S extends z.ZodType>(context: StepContext, command: string[], schema: S): Promise<z.infer<S>> {
   const response = await fetch(context.config('UPSTASH_REDIS_REST_URL'), {
@@ -42,7 +44,7 @@ export default defineSuite({
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
         if (!response.ok) return {status: 'fail', summary: `Vercel env listing answered HTTP ${response.status}`};
-        const {envs} = (await response.json()) as {envs: {key: string; target?: string[]}[]};
+        const {envs} = VercelEnvs.parse(await response.json());
         const wanted = [1, 2].map(slot => `${GROQ_POOL.name}${slotSuffix(slot)}`);
         const production = new Set(envs.filter(env => env.target?.includes('production')).map(env => env.key));
         const missing = wanted.filter(name => !production.has(name));

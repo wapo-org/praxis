@@ -1,7 +1,8 @@
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {ModelKeySchema, PageSchema, ModelListItemSchema} from '@praxis/protocol';
+import {ModelKeySchema, ModelListItemSchema, PageSchema, type Message} from '@praxis/protocol';
+import {z} from 'zod';
 import {CLOUD_DIR, HOSTED_API_URL, chatMessages, defineSuite, expectOk, hosted, hostedTurn, replyText, runCommand, withHosted, type HostedResult, type HostedTurn, type StepContext, type StepOutcome} from '@praxis/verify';
 
 /** A funded key on the live-check account; every auto step that needs a working model reads it. */
@@ -33,6 +34,15 @@ function toolTurnProblems(turn: HostedTurn): string[] {
   if (!turn.blocks.some(block => block.type === 'reasoning')) problems.push('no reasoning block');
   if (!replyText(turn).includes('42')) problems.push(`answer lacks 42: "${replyText(turn).slice(0, 80)}"`);
   return problems;
+}
+
+const ReasoningDetails = z.object({reasoning_details: z.array(z.object({type: z.string(), signature: z.string().optional(), data: z.string().optional()}).loose())}).loose();
+
+/** The next turn replays `raw.data.reasoning_details` (agent wire.ts); Anthropic accepts back only signed or encrypted entries. */
+function replaysSignedReasoning(message: Message): boolean {
+  const raw = ReasoningDetails.safeParse(message.raw?.data);
+  if (!raw.success) return false;
+  return raw.data.reasoning_details.some(detail => (detail.type === 'reasoning.text' && !!detail.signature) || (detail.type === 'reasoning.encrypted' && !!detail.data));
 }
 
 export default defineSuite({
@@ -112,11 +122,10 @@ export default defineSuite({
         const problems = toolTurnProblems(first);
         if (problems.length) return {status: 'fail', summary: `tool turn ${first.run.id}: ${problems.join('; ')}`};
         const stored = (await chatMessages(context, first.chatId)).filter(message => message.role === 'assistant' && message.runId === first.run.id);
-        const replayable = stored.some(message => message.parts.some(part => part.type === 'reasoning' && !!(part.signature ?? part.data)));
-        if (!replayable) return {status: 'fail', summary: `run ${first.run.id} stored no signed reasoning part, so nothing can be replayed`};
+        if (!stored.some(replaysSignedReasoning)) return {status: 'fail', summary: `run ${first.run.id} stored no signed reasoning_details, so nothing can be replayed`};
         const second = await hostedTurn(context, {text: 'Which number did you compute? Answer with the number only.', chatId: first.chatId});
         const replayed = second.run.status === 'completed' && replyText(second).includes('42');
-        return replayed ? {status: 'pass', summary: `tool + reasoning turn ${first.run.id}, signed reasoning stored, follow-up ${second.run.id} completed on ${CLAUDE_MODEL}`} : {status: 'fail', summary: `follow-up with replayed reasoning ended ${second.run.status} ${second.run.errorCode ?? ''}`};
+        return replayed ? {status: 'pass', summary: `tool + reasoning turn ${first.run.id}, signed reasoning_details stored, follow-up ${second.run.id} completed on ${CLAUDE_MODEL}`} : {status: 'fail', summary: `follow-up with replayed reasoning ended ${second.run.status} ${second.run.errorCode ?? ''}`};
       },
     },
     {

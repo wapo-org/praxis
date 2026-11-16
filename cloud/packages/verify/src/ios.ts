@@ -26,16 +26,16 @@ interface SimctlDevices {
   devices: Record<string, {udid: string; name: string; state: string; isAvailable: boolean}[]>;
 }
 
-/** `wanted` (udid or name) wins; else a shut-down iPhone before a booted one (never take one in use), newest runtime first. */
+/** `wanted` (udid or name) may be booted; automatic choice takes only shut-down iPhones (never one in use), newest runtime first. */
 export function pickSimulator(listing: SimctlDevices, wanted?: string): Simulator | undefined {
   const candidates = Object.entries(listing.devices)
     .filter(([runtime]) => /SimRuntime\.iOS-\d+/.test(runtime))
     .flatMap(([runtime, devices]) => devices.filter(device => device.isAvailable && device.name.startsWith('iPhone')).map(device => ({...device, runtime})))
-    .filter(device => !wanted || device.udid === wanted || device.name === wanted);
+    .filter(device => (wanted ? device.udid === wanted || device.name === wanted : device.state !== 'Booted'));
   const version = (runtime: string) => (/iOS-(\d+)(?:-(\d+))?/.exec(runtime) ?? []).slice(1).map(part => Number(part ?? 0));
   candidates.sort((a, b) => {
     const [aMajor = 0, aMinor = 0] = version(a.runtime), [bMajor = 0, bMinor = 0] = version(b.runtime);
-    return Number(a.state === 'Booted') - Number(b.state === 'Booted') || bMajor - aMajor || bMinor - aMinor;
+    return bMajor - aMajor || bMinor - aMinor;
   });
   const best = candidates[0];
   return best && {udid: best.udid, name: best.name, runtime: best.runtime, state: best.state};
@@ -72,7 +72,7 @@ export async function runIos(options: {json: boolean; skipTests: boolean; simula
   const listing = await runCommand('xcrun', ['simctl', 'list', 'devices', 'available', '--json'], {cwd: REPO_DIR});
   const simulator = listing.code === 0 ? pickSimulator(JSON.parse(listing.output) as SimctlDevices, options.simulator) : undefined;
   if (!simulator) {
-    const error = options.simulator ? `no available iPhone simulator matches ${options.simulator}` : 'no available iPhone simulator';
+    const error = options.simulator ? `no available iPhone simulator matches ${options.simulator}` : 'no shut-down iPhone simulator; name a booted one with --simulator to use it';
     report.steps.push({id: 'simulator', ok: false, ms: 0, error});
     print(options.json ? JSON.stringify(report) : `FAIL simulator: ${error}`);
     return report;

@@ -2,6 +2,7 @@ import {describe, expect, it} from 'vitest';
 import {parsePorts, UsageError} from './args.js';
 import {DEFAULT_API_PORT, DEFAULT_WEB_PORT} from './constants.js';
 import {formatStepLine, GATE_STEPS, runGate, selectSteps, tail} from './gate.js';
+import {gitState} from './run-context.js';
 
 describe('gate', () => {
   it('runs the AGENTS.md verification list in CI order', () => {
@@ -46,5 +47,12 @@ describe('ports', () => {
     expect(parsePorts(undefined)).toEqual({web: DEFAULT_WEB_PORT, api: DEFAULT_API_PORT});
     expect(parsePorts('5300,8900')).toEqual({web: 5300, api: 8900});
     for (const bad of ['5300', '5300,5300', 'a,b', '0,8900', '5300,70000']) expect(() => parsePorts(bad)).toThrow(UsageError);
+  });
+});
+
+describe('git state', () => {
+  it('reads the checkout with the fixed git, and reports unknown and dirty without one', () => {
+    expect(gitState().sha).toMatch(/^([0-9a-f]{40}|unknown)$/);
+    expect(gitState('/nonexistent/git')).toEqual({sha: 'unknown', dirty: true});
   });
 });

@@ -46,7 +46,7 @@ describe('feature map', () => {
 
 describe('ios simulator choice', () => {
   const device = (udid: string, name: string, state = 'Shutdown', isAvailable = true) => ({udid, name, state, isAvailable});
-  it('prefers a shut-down iPhone on the newest runtime, skips iPads and unavailable devices, and honours a wanted device', () => {
+  it('picks only shut-down iPhones on the newest runtime automatically, skips iPads and unavailable devices, and honours a wanted device', () => {
     const listing = {
       devices: {
         'com.apple.CoreSimulator.SimRuntime.iOS-18-2': [device('old', 'iPhone 16', 'Booted')],
@@ -61,5 +61,8 @@ describe('ios simulator choice', () => {
     expect(pickSimulator({devices: {}})).toBeUndefined();
     const onlyBootedOnNewest = {devices: {'com.apple.CoreSimulator.SimRuntime.iOS-26-1': [device('busy', 'iPhone 17', 'Booted')], 'com.apple.CoreSimulator.SimRuntime.iOS-18-2': [device('idle', 'iPhone 16')]}};
     expect(pickSimulator(onlyBootedOnNewest)?.udid).toBe('idle');
+    const allBooted = {devices: {'com.apple.CoreSimulator.SimRuntime.iOS-26-1': [device('busy', 'iPhone 17', 'Booted')]}};
+    expect(pickSimulator(allBooted)).toBeUndefined();
+    expect(pickSimulator(allBooted, 'busy')?.udid).toBe('busy');
   });
 });

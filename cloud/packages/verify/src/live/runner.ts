@@ -75,9 +75,13 @@ function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-function fileEvidence(directory: string, relativePath: string): Evidence {
-  const bytes = readFileSync(join(directory, relativePath));
-  return {kind: 'file', path: relativePath, sha256: sha256(bytes), bytes: bytes.length};
+/** The one way evidence reaches disk: redact (or refuse) first, then hash what was written. */
+function storeEvidence(directory: string, stepId: string, name: string, bytes: Uint8Array, redactor: Redactor): Evidence {
+  const relativePath = join('evidence', `${stepId}-${basename(name)}`);
+  const stored = evidenceBytes(name, bytes, redactor);
+  mkdirSync(join(directory, 'evidence'), {recursive: true});
+  writeFileSync(join(directory, relativePath), stored);
+  return {kind: 'file', path: relativePath, sha256: sha256(stored), bytes: stored.length};
 }
 
 function context(step: LiveStep, options: LiveRunOptions, redactor: Redactor, log: string[], evidence: Evidence[], state: Map<string, string>): StepContext {
@@ -95,11 +99,8 @@ function context(step: LiveStep, options: LiveRunOptions, redactor: Redactor, lo
     },
     log: line => log.push(redactor.apply(line)),
     attach: (name, content) => {
-      const relativePath = join('evidence', `${step.id}-${basename(name)}`);
-      mkdirSync(join(options.directory, 'evidence'), {recursive: true});
       const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
-      writeFileSync(join(options.directory, relativePath), evidenceBytes(name, bytes, redactor));
-      evidence.push(fileEvidence(options.directory, relativePath));
+      evidence.push(storeEvidence(options.directory, step.id, name, bytes, redactor));
     },
     state,
   };
@@ -112,10 +113,7 @@ function manualEvidence(step: LiveStep & {kind: 'manual'}, value: string, option
     return {kind: 'url', url: redactor.apply(url.href)};
   }
   if (!existsSync(value)) throw new Error(`evidence file for ${step.id} not found: ${value}`);
-  const relativePath = join('evidence', `${step.id}-${basename(value)}`);
-  mkdirSync(join(options.directory, 'evidence'), {recursive: true});
-  writeFileSync(join(options.directory, relativePath), evidenceBytes(value, readFileSync(value), redactor));
-  return fileEvidence(options.directory, relativePath);
+  return storeEvidence(options.directory, step.id, value, readFileSync(value), redactor);
 }
 
 async function runStep(step: LiveStep, options: LiveRunOptions, redactor: Redactor, state: Map<string, string>): Promise<ProofStep> {
