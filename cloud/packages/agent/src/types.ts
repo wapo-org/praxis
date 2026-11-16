@@ -3,8 +3,7 @@ import {ReasoningShapeSchema,StreamAnnotationSchema} from '@praxis/protocol';
 import {
   ApprovalSchema, CapabilitiesSchema, ChatSchema, ConversationSetupSchema, ElicitationSchema,
   IdSchema, JsonObjectSchema, JsonValueSchema, MessagePartSchema, MessageSchema, RunSchema,
-  UsageSchema, type Capabilities, type JsonObject, type JsonValue, type Message,
-  type Mode, type RunEventPayload, type ToolSpec,
+  UsageSchema, type Capabilities, type JsonObject, type JsonValue, type Mode, type RunEventPayload, type ToolSpec,
 } from '@praxis/protocol';
 
 export const ProviderRequestSchema = z.object({

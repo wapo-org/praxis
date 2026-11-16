@@ -28,7 +28,6 @@ export function useSendActions(
     webSearch,
     selectedEffort,
     selectedMode,
-    catalogReady,
     liveRunsByChat,
     setLiveRunsByChat,
   } = state;

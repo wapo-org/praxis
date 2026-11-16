@@ -1,5 +1,6 @@
 import type {CooldownStore,CredentialLog,CredentialPool} from '@praxis/credentials';
 import type {Attachment,JsonObject} from '@praxis/protocol';
+import type {SealedSecret} from '@praxis/types';
 import type {FeatureContext} from '../../contracts.js';
 export interface UploadInput {name:string;mediaType:string;size:number;chatId?:string}
 /** Implementations MUST authorize every storageId for userId; never trust the client claim. */
@@ -24,7 +25,7 @@ export interface VisionProvider {
  host:string;
  read(input:{userId:string;attachment:Attachment;bytes:Uint8Array;question:string;region?:{x:number;y:number;width:number;height:number}}):Promise<string>;
 }
-export interface PlatformVoice {pool:CredentialPool<string>;cooldowns:CooldownStore;log?:CredentialLog}
+export interface PlatformVoice {pool:CredentialPool<SealedSecret>;cooldowns:CooldownStore;log?:CredentialLog}
 export interface ToolsPorts {
  storage?:ToolsStorage;
  vision?:VisionProvider;

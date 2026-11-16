@@ -7,7 +7,6 @@ import type {Chat, Connector} from '@praxis/protocol';
 import type {FeatureContext} from '../../contracts.js';
 import {fixtures} from '../../tests/fixture.js';
 import {createMcpRoutes, getMcpTools} from './index.js';
-import {qualifiedName} from './tools.js';
 import {connectorTurnNotes, probeConnector, recordFailure, RECHECK_MS} from './health.js';
 import {connector, McpError, saveConnector, writeSecret} from './shared.js';
 import {fixtureServer} from './fixture.js';

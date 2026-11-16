@@ -1,4 +1,4 @@
-import { BASE, API } from './check-env.mjs';
+import { BASE } from './check-env.mjs';
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 const browser = await chromium.launch();

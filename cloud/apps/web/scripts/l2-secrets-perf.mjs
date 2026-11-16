@@ -39,7 +39,6 @@ for (const q of ['var_12', 'token_2', 'value 7', 'zzz', 'var_29']) {
     const settled = () => {
       const r = [...boxEl.querySelectorAll('[data-testid^="saved-value-"]')].filter((n) => n.dataset.testid !== 'saved-value-skeleton');
       const empty = boxEl.textContent.includes('No matches.');
-      const name = q.split(' ')[0];
       return !boxEl.querySelector('[data-testid="saved-value-skeleton"]') && (empty || (r.length > 0 && r.every((n) => n.textContent.toLowerCase().includes(q.toLowerCase()))));
     };
     const t0 = performance.now();

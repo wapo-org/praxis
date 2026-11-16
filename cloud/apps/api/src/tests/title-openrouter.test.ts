@@ -1,4 +1,5 @@
 import {afterEach,expect,it} from 'vitest';
+import {SealedSecret} from '@praxis/types';
 import {createServer,type Server} from 'node:http';
 import {randomBytes} from 'node:crypto';
 import {createPraxisApp} from '../server.js';
@@ -30,7 +31,7 @@ async function fixture(mode:'success'|'429'|'empty'|'timeout'|'slow'|'error'='su
  const chat=await req('/v1/chats',{type:'chat.input',modelId:'vendor/mini-a'}).then(r=>r.json());
  const title=(text='Run a shell command that lists files')=>service.driver!.title!('local-user',chat,text);
  const metric=()=>service.require<any>('local-user','titleMetric',chat.id);
- return {service,req,chat,requests,title,metric,provider: createOpenRouterProvider({apiKey:'sk-or-SYNTHETIC-KEY',capabilities:CapabilitiesSchema.parse({})},fetcher)};
+ return {service,req,chat,requests,title,metric,provider: createOpenRouterProvider({apiKey:SealedSecret.of('sk-or-SYNTHETIC-KEY'),capabilities:CapabilitiesSchema.parse({})},fetcher)};
 }
 it('confirms old free selection yields 429 and reasoning-only completion is empty; new metadata excludes both and image-only models',async()=>{
  const f=await fixture();const input={model:'vendor/free:free',system:'Title',messages:[],tools:[],capabilities:CapabilitiesSchema.parse({}),maxTokens:20,webSearch:false};

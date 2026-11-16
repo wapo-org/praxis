@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { FILE_LENGTH_MAX, RULES, checkFile, isSourceFile } from './check-rules-checks.mjs';
+import { DISABLED_RULES, FILE_LENGTH_MAX, RULES, checkDocFile, checkFile, isSourceFile } from './check-rules-checks.mjs';
 
 const BASELINE_VERSION = 1;
 const DEFAULT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -20,8 +20,8 @@ function isSkipped(file) {
   return file.split('/').some((part) => SKIPPED_DIRECTORIES.has(part) || part.startsWith('.'));
 }
 
-function gitFiles(root) {
-  const out = execFileSync('git', ['ls-files', '-co', '--exclude-standard', '-z'], {
+function gitFiles(root, extra = []) {
+  const out = execFileSync('git', ['ls-files', '-co', '--exclude-standard', '-z', ...extra], {
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
@@ -40,23 +40,38 @@ function walkFiles(root, directory = '') {
   return files;
 }
 
-export function listSourceFiles(root) {
+function listFiles(root) {
   let files;
   try {
     files = gitFiles(root);
   } catch {
     files = walkFiles(root);
   }
-  return files
-    .map(toPosix)
-    .filter((file) => isSourceFile(file) && !isSkipped(file) && existsSync(path.join(root, file)))
-    .sort();
+  return files.map(toPosix).filter((file) => !isSkipped(file) && existsSync(path.join(root, file)));
 }
 
-export function collectViolations(root) {
+export function listSourceFiles(root) {
+  return listFiles(root).filter(isSourceFile).sort();
+}
+
+/** Markdown directly in the repository root, as `../NAME.md`; empty when `root` is not one level inside a git checkout. */
+function repoRootDocs(root) {
+  try {
+    const names = gitFiles(root, ['--full-name', '--', ':(top,glob)*.md']);
+    return names.filter((name) => existsSync(path.join(root, '..', name))).map((name) => `../${name}`);
+  } catch {
+    return [];
+  }
+}
+
+export function collectViolations(root, enabled = []) {
   const violations = [];
   for (const file of listSourceFiles(root)) {
-    violations.push(...checkFile(file, readFileSync(path.join(root, file), 'utf8')));
+    violations.push(...checkFile(file, readFileSync(path.join(root, file), 'utf8'), enabled));
+  }
+  for (const file of [...listFiles(root), ...repoRootDocs(root)].sort()) {
+    const violation = checkDocFile(file);
+    if (violation) violations.push(violation);
   }
   return violations;
 }
@@ -132,12 +147,18 @@ export function summarize(violations) {
   return counts;
 }
 
+function disabledRule(rule) {
+  if (!(rule in DISABLED_RULES)) throw new Error(`--enable takes one of ${Object.keys(DISABLED_RULES).join(', ')}`);
+  return rule;
+}
+
 function parseArgs(argv) {
-  const options = { root: DEFAULT_ROOT, baseline: null, update: false, all: false };
+  const options = { root: DEFAULT_ROOT, baseline: null, update: false, all: false, enabled: [] };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--update-baseline') options.update = true;
     else if (arg === '--all') options.all = true;
+    else if (arg === '--enable') options.enabled.push(disabledRule(argv[(index += 1)]));
     else if (arg === '--root') options.root = path.resolve(argv[(index += 1)] ?? '');
     else if (arg === '--baseline') options.baseline = path.resolve(argv[(index += 1)] ?? '');
     else throw new Error(`unknown argument ${arg}`);
@@ -150,11 +171,12 @@ function parseArgs(argv) {
 }
 
 const USAGE = [
-  'usage: node scripts/check-rules.mjs [--update-baseline] [--all] [--root <dir>] [--baseline <file>]',
+  'usage: node scripts/check-rules.mjs [--update-baseline] [--all] [--enable <rule>] [--root <dir>] [--baseline <file>]',
   '  (default)          fail on violations that are not in the ratchet baseline',
   '  --update-baseline  rewrite the baseline from the current tree (only do this to shrink it)',
   '  --all              list every violation, baselined or not, and exit 0',
   '  --baseline <file>  compare against another baseline, e.g. the base branch copy',
+  `  --enable <rule>    also run a rule that is off by default (${Object.keys(DISABLED_RULES).join(', ')})`,
 ].join('\n');
 
 export function run(argv, write = (line) => console.log(line)) {
@@ -165,7 +187,7 @@ export function run(argv, write = (line) => console.log(line)) {
     write(`check-rules: ${error.message}\n${USAGE}`);
     return EXIT_USAGE;
   }
-  const violations = collectViolations(options.root);
+  const violations = collectViolations(options.root, options.enabled);
 
   if (options.all) {
     for (const violation of violations) write(formatViolation(violation));

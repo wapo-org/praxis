@@ -2,7 +2,7 @@ import { blobOwnerTag } from '../../../../convex/blob-owner.js';
 import { accountEraser } from '../account-deletion.js';
 import { createApp } from '../app.js';
 import { ApiService } from '../service.js';
-import { it, expect, vi } from 'vitest';
+import { it, expect } from 'vitest';
 import { convexHarness } from '../adapters/testing/convex-harness.js';
 import { fakeRedis } from '../adapters/testing/fake-redis.js';
 import type { Redis } from '@upstash/redis';

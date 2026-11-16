@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import {CredentialsUnavailableError,memoryCooldownStore,pool,withCredential} from '@praxis/credentials';
 import {TranscriptionSchema} from '@praxis/protocol';
+import {SealedSecret} from '@praxis/types';
 import type {FeatureContext} from '../../contracts.js';
 import {unseal} from '../../secrets.js';
 import {ApiError} from '../../service.js';
@@ -28,14 +29,14 @@ export async function transcribe(req:Request,ctx:FeatureContext,ports:ToolsPorts
  const opts=Options.parse({model:input.model??voice.model??'whisper-large-v3-turbo',language:input.language??voice.language,prompt:input.prompt});
  let key=await ports.voiceKey?.(ctx);if(!key){const secret=await ctx.store.get(ctx.userId,'voiceSecret','current');if(secret&&!secret.deleted&&typeof secret.value.key==='string'){if(!ctx.encryptionKey)throw new ApiError(503,'encryption_unconfigured','Voice secret cannot be read');key=unseal(secret.value.key,ctx.userId,'voice',ctx.encryptionKey);}}
  const platform=key?undefined:ports.platformVoice??platformVoice();if(platform&&!platform.pool.slots.length)throw new ApiError(503,'voice_unconfigured','Voice transcription is not configured');
- const call=async(bearer:string)=>{
+ const call=async(bearer:SealedSecret)=>{
   const form=new FormData();form.set('file',audio,name);form.set('model',opts.model!);form.set('response_format','verbose_json');if(opts.language)form.set('language',opts.language);if(opts.prompt!==undefined)form.set('prompt',opts.prompt);
-  try{return await ctx.fetch('https://api.groq.com/openai/v1/audio/transcriptions',{method:'POST',headers:{Authorization:`Bearer ${bearer}`},body:form,signal:AbortSignal.timeout(60000)});}catch{throw new ApiError(502,'transcription_failed','Transcription provider is unavailable');}
+  try{return await ctx.fetch('https://api.groq.com/openai/v1/audio/transcriptions',{method:'POST',headers:{Authorization:`Bearer ${bearer.reveal()}`},body:form,signal:AbortSignal.timeout(60000)});}catch{throw new ApiError(502,'transcription_failed','Transcription provider is unavailable');}
  };
  // User keys aren't retried; platform keys cool on 401/402/403/429/5xx and fail over.
  let response:Response;
- if(key)response=await call(key);
- else try{response=(await withCredential(platform!.pool,platform!.cooldowns,call,{...(platform!.log?{log:platform!.log}:{})})).value;}
+ if(key)response=await call(SealedSecret.of(key));
+ else try{response=(await withCredential(platform!.pool,platform!.cooldowns,call,(platform!.log?{log:platform!.log}:{}))).value;}
  catch(error){if(!(error instanceof CredentialsUnavailableError))throw error;throw new ApiError(error.slots.every(s=>s.reason==='rateLimited')?429:502,'transcription_failed','Transcription provider rejected the request');}
  if(!response.ok)throw new ApiError(response.status===429?429:502,'transcription_failed','Transcription provider rejected the request');
  const result=z.object({text:z.string(),language:z.string().optional(),segments:z.array(z.object({start:z.number(),end:z.number(),text:z.string()})).optional()}).parse(JSON.parse(new TextDecoder().decode(await readLimited(response.body,2000000))));

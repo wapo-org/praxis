@@ -79,7 +79,7 @@ function note(value: Connector): string {
 
 /** Emits connector status notes derived from transcript history for determinism. */
 export async function connectorTurnNotes(ctx: FeatureContext, chat: Chat, previousNotes: string[]): Promise<string[]> {
-  const off = new Set([...chat.disabledConnectorIds]);
+  const off = new Set(chat.disabledConnectorIds);
   const values = (await listConnectorsMemo(ctx))
     .filter(v => v.enabled && !off.has(v.id))
     .sort((a, b) => a.id.localeCompare(b.id));

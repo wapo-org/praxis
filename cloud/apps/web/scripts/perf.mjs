@@ -1,4 +1,4 @@
-import { BASE, API } from './check-env.mjs';
+import { BASE } from './check-env.mjs';
 // Requires API 8817 + Vite 5191.
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';

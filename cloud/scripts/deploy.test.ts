@@ -170,7 +170,7 @@ it('never puts a secret in argv; each credential reaches only the tool that need
   const plan = deploymentPlan(SECRETS);
   const argv = plan.map((s: any) => s.args.join(' ') + ' ' + maskCommand(s)).join('\n');
   for (const [key, value] of Object.entries(SECRETS))
-    if (!/_ID$/.test(key)) expect(argv, key).not.toContain(value);
+    if (!key.endsWith('_ID')) expect(argv, key).not.toContain(value);
   expect(argv).not.toContain('--token');
   for (const step of plan) {
     const env = stepEnv(step, SECRETS, 'https://api.test');

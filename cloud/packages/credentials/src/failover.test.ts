@@ -1,11 +1,12 @@
 import {describe, expect, it, vi} from 'vitest';
+import type {SealedSecret} from '@praxis/types';
 import {CredentialSignalError, CredentialsUnavailableError, classifyHttp, cooldownKey, memoryCooldownStore, pool, redisCooldownStore, withCredential, type CredentialLogEvent} from './index.js';
 import {fakeClock, testRedis} from './testing.js';
 
 const KEYS = {EXA_API_KEY: 'sk-secret-one', EXA_API_KEY_2: 'sk-secret-two', EXA_API_KEY_3: 'sk-secret-three'};
 const exa = () => pool('EXA_API_KEY', KEYS, {service: 'exa'});
-const service = (failing: Record<string, Response | (() => Response)>) => vi.fn(async (key: string, _slot: number) => {
-  const r = failing[key];
+const service = (failing: Record<string, Response | (() => Response)>) => vi.fn(async (key: SealedSecret, _slot: number) => {
+  const r = failing[key.reveal()];
   return r ? (typeof r === 'function' ? r() : r.clone()) : new Response('ok');
 });
 
@@ -92,9 +93,9 @@ describe('withCredential failover', () => {
     const log = vi.fn();
     let release!: () => void;
     const gate = new Promise<void>(r => { release = r; });
-    const fn = async (key: string) => {
-      if (key === 'sk-secret-one') await gate;
-      return key === 'sk-secret-one' ? new Response('', {status: 429}) : new Response('ok');
+    const fn = async (key: SealedSecret) => {
+      if (key.reveal() === 'sk-secret-one') await gate;
+      return key.reveal() === 'sk-secret-one' ? new Response('', {status: 429}) : new Response('ok');
     };
     const calls = Array.from({length: 20}, () => withCredential(exa(), store, fn, {now: clock.now, log}));
     release();

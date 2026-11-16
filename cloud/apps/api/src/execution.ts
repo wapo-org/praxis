@@ -8,8 +8,7 @@ import {
   type AgentCheckpoint, type AgentPorts, type AgentTool, type ModelProvider, type Script,
 } from '@praxis/agent';
 import {
-  REASONING_EFFORTS, RunEventPayloadSchema,
-  type CatalogModel, type Chat, type ConversationSetup, type StreamSimOptions, type Message, type MessagePart, type Run, type StartRun,
+  REASONING_EFFORTS, type CatalogModel, type Chat, type ConversationSetup, type StreamSimOptions, type Message, type MessagePart, type Run, type StartRun,
 } from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from './contracts.js';
 import {buildSystemPrompt, skillCatalogSection, turnNotes, type CatalogSkill} from './conversation.js';

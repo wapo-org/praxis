@@ -1,15 +1,18 @@
 import {describe, expect, it} from 'vitest';
+import {inspect} from 'node:util';
 import {pool} from './index.js';
+import {revealedSlots} from './testing.js';
 
 describe('credential pool discovery', () => {
   it('reads a single key as slot 1', () => {
     const p = pool('EXA_API_KEY', {EXA_API_KEY: 'k1'});
-    expect(p).toMatchObject({service: 'exa_api_key', slots: [{slot: 1, credential: 'k1'}], warnings: []});
+    expect(p).toMatchObject({service: 'exa_api_key', warnings: []});
+    expect(revealedSlots(p)).toEqual([{slot: 1, credential: 'k1'}]);
   });
 
   it('reads three numbered keys in order', () => {
     const p = pool('EXA_API_KEY', {EXA_API_KEY_3: 'k3', EXA_API_KEY: 'k1', EXA_API_KEY_2: ' k2 ', EXA_API_KEY_OTHER: 'x', OTHER_EXA_API_KEY_2: 'y'});
-    expect(p.slots).toEqual([{slot: 1, credential: 'k1'}, {slot: 2, credential: 'k2'}, {slot: 3, credential: 'k3'}]);
+    expect(revealedSlots(p)).toEqual([{slot: 1, credential: 'k1'}, {slot: 2, credential: 'k2'}, {slot: 3, credential: 'k3'}]);
     expect(p.warnings).toEqual([]);
   });
 
@@ -33,7 +36,7 @@ describe('credential pool discovery', () => {
   it('groups multi-part credentials by suffix', () => {
     const p = pool(['MODAL_TOKEN_ID', 'MODAL_TOKEN_SECRET'], {MODAL_TOKEN_ID: 'i1', MODAL_TOKEN_SECRET: 's1', MODAL_TOKEN_ID_2: 'i2', MODAL_TOKEN_SECRET_2: 's2'}, {service: 'modal'});
     expect(p.service).toBe('modal');
-    expect(p.slots).toEqual([
+    expect(revealedSlots(p)).toEqual([
       {slot: 1, credential: {MODAL_TOKEN_ID: 'i1', MODAL_TOKEN_SECRET: 's1'}},
       {slot: 2, credential: {MODAL_TOKEN_ID: 'i2', MODAL_TOKEN_SECRET: 's2'}},
     ]);
@@ -52,7 +55,15 @@ describe('credential pool discovery', () => {
     const env: Record<string, string> = {EXA_API_KEY: 'k1', EXA_API_KEY_2: 'k2'};
     expect(pool('EXA_API_KEY', env).slots.map(s => s.slot)).toEqual([1, 2]);
     env.EXA_API_KEY_3 = 'k3';
-    expect(pool('EXA_API_KEY', env).slots.at(-1)).toEqual({slot: 3, credential: 'k3'});
+    expect(revealedSlots(pool('EXA_API_KEY', env)).at(-1)).toEqual({slot: 3, credential: 'k3'});
+  });
+
+  it('never prints a key value when a pool is logged or serialised', () => {
+    const single = pool('EXA_API_KEY', {EXA_API_KEY: 'sk-single-value', EXA_API_KEY_2: 'sk-second-value'});
+    const multi = pool(['MODAL_TOKEN_ID', 'MODAL_TOKEN_SECRET'], {MODAL_TOKEN_ID: 'id-value-one', MODAL_TOKEN_SECRET: 'secret-value-one'});
+    const printed = [JSON.stringify(single), JSON.stringify(multi), inspect(single, {depth: null}), inspect(multi, {depth: null}), String(single.slots[0]!.credential)].join('\n');
+    for (const value of ['sk-single-value', 'sk-second-value', 'id-value-one', 'secret-value-one']) expect(printed).not.toContain(value);
+    expect(printed).toContain('[redacted]');
   });
 
   it('rejects names that are not environment variable names', () => {

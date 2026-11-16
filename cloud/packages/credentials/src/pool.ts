@@ -1,3 +1,5 @@
+import {SealedSecret} from '@praxis/types';
+
 /** Empty or whitespace env values count as missing. */
 export type Env = Record<string, string | undefined>;
 
@@ -7,7 +9,7 @@ export interface CredentialSlot<C> {
   credential: C;
 }
 
-export interface CredentialPool<C = string> {
+export interface CredentialPool<C = SealedSecret> {
   /** Service name for cool-down keys and logs; never a key value. */
   service: string;
   names: readonly string[];
@@ -25,20 +27,20 @@ const present = (env: Env, name: string) => !!env[name]?.trim();
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Reads NAME, NAME_2... slots until first gap; partial multi-var slots fail closed. */
-export function pool(name: string, env: Env, options?: PoolOptions): CredentialPool<string>;
-export function pool(names: readonly string[], env: Env, options?: PoolOptions): CredentialPool<Record<string, string>>;
-export function pool(nameOrNames: string | readonly string[], env: Env, options: PoolOptions = {}): CredentialPool<string> | CredentialPool<Record<string, string>> {
+export function pool(name: string, env: Env, options?: PoolOptions): CredentialPool<SealedSecret>;
+export function pool(names: readonly string[], env: Env, options?: PoolOptions): CredentialPool<Record<string, SealedSecret>>;
+export function pool(nameOrNames: string | readonly string[], env: Env, options: PoolOptions = {}): CredentialPool<SealedSecret> | CredentialPool<Record<string, SealedSecret>> {
   const single = typeof nameOrNames === 'string';
   const names = single ? [nameOrNames] : [...nameOrNames];
   if (!names.length || names.some(n => !/^[A-Z][A-Z0-9_]*$/.test(n))) throw new Error('Credential pool names must be upper-case environment variable names');
   const service = options.service ?? names[0]!.toLowerCase();
-  const slots: CredentialSlot<string | Record<string, string>>[] = [];
+  const slots: CredentialSlot<SealedSecret | Record<string, SealedSecret>>[] = [];
   for (let slot = 1; ; slot++) {
     const vars = names.map(n => `${n}${slotSuffix(slot)}`);
     const missing = vars.filter(v => !present(env, v));
     if (missing.length === vars.length) break;
     if (missing.length) throw new Error(`Credential slot ${slot} of ${service} is half-defined: ${missing.join(', ')} is missing while ${vars.filter(v => !missing.includes(v)).join(', ')} is set`);
-    const values = vars.map(v => env[v]!.trim());
+    const values = vars.map(v => SealedSecret.of(env[v]!.trim()));
     slots.push({slot, credential: single ? values[0]! : Object.fromEntries(names.map((n, i) => [n, values[i]!]))});
   }
   const ignored: {name: string; slot: number}[] = [];
@@ -54,5 +56,5 @@ export function pool(nameOrNames: string | readonly string[], env: Env, options:
   const warnings = ignored.map(i => i.slot === 1
     ? `${i.name} is ignored: slot 1 of ${service} is the name without a suffix`
     : `${i.name} is ignored: ${gap} is missing, and slots must be numbered without gaps`);
-  return {service, names, slots, warnings} as CredentialPool<string> | CredentialPool<Record<string, string>>;
+  return {service, names, slots, warnings} as CredentialPool<SealedSecret> | CredentialPool<Record<string, SealedSecret>>;
 }

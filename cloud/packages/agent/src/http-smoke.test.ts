@@ -1,4 +1,5 @@
 import {createServer} from 'node:http';
+import {SealedSecret} from '@praxis/types';
 import {it,expect} from 'vitest';
 import {CapabilitiesSchema,type JsonObject} from '@praxis/protocol';
 import {AgentRunner,OPENROUTER_API_BASE,createOpenRouterProvider,scriptedTools,type AgentCheckpoint} from './index.js';
@@ -17,7 +18,7 @@ it('runs a complete model→tool→model turn through real HTTP on the chat comp
   try{
     // Redirects the pinned OpenRouter URL to the local test server.
     const toLocal=((url,init)=>fetch(String(url).replace(new URL(OPENROUTER_API_BASE).origin,'http://127.0.0.1:8788'),init)) as typeof fetch;
-    const provider=createOpenRouterProvider({apiKey:'local-only',capabilities:CapabilitiesSchema.parse({tools:true})},toLocal);let last:AgentCheckpoint|undefined;let eventId=0;
+    const provider=createOpenRouterProvider({apiKey:SealedSecret.of('local-only'),capabilities:CapabilitiesSchema.parse({tools:true})},toLocal);let last:AgentCheckpoint|undefined;let eventId=0;
     const runner=new AgentRunner({provider,tools:scriptedTools(),ports:{save:async(user,cp)=>{expect(user).toBe('http-user');last=structuredClone(cp);},emit:async()=>++eventId,isCancelled:async()=>false}});
     const time=new Date().toISOString();const cp=await runner.run({userId:'http-user',run:{type:'run',id:'r-http',chatId:'http-chat',status:'queued',createdAt:time,updatedAt:time,lastEventId:0,clientTurnId:'client-turn'},chat:{type:'chat',id:'http-chat',title:'HTTP',pinned:false,mode:'build',connectorIds:[],disabledConnectorIds:[],createdAt:time,updatedAt:time},modelId:'local-model',messages:[{type:'message',id:'user',chatId:'http-chat',role:'user',parts:[{type:'text',text:'Use the echo tool'}],createdAt:time,updatedAt:time}]});
     expect(cp.run.outcome).toBe('completed');expect(last?.run.status).toBe('completed');expect(cp.messages).toHaveLength(4);expect(cp.messages.at(-1)?.parts[0]?.text).toBe('HTTP complete');expect(cp.messages.at(-1)?.clientTurnId).toBe('client-turn');

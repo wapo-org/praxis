@@ -1,4 +1,18 @@
+import {SealedSecret} from '@praxis/types';
 import type {RedisLike} from './cooldown.js';
+import type {CredentialPool} from './pool.js';
+
+type Sealed = SealedSecret | Record<string, SealedSecret>;
+
+/** Test-only: the key values behind a credential, so assertions can compare them. */
+export function revealed(credential: Sealed): string | Record<string, string> {
+  if (credential instanceof SealedSecret) return credential.reveal();
+  return Object.fromEntries(Object.entries(credential).map(([name, part]) => [name, part.reveal()]));
+}
+
+export function revealedSlots(pool: CredentialPool<Sealed>) {
+  return pool.slots.map(({slot, credential}) => ({slot, credential: revealed(credential)}));
+}
 
 export function testRedis(now: () => number) {
   const data = new Map<string, {value: string; expires: number}>();

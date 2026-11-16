@@ -42,7 +42,7 @@ describe('Convex direct uploads',()=>{
   finally{process.env.CONVEX_SITE_URL=before;}
  });
  it('handles 25 MB without passing bytes through a function argument',async()=>{
-  const {t,storage}=current=harness(),user='big',size=25_000_000,input={name:'big.bin',mediaType:'application/octet-stream',size};
+  const {storage}=current=harness(),user='big',size=25_000_000,input={name:'big.bin',mediaType:'application/octet-stream',size};
   const url=await storage.createUpload(user,input);expect(url.method).toBe('POST');
   const id=await convexUpload(storage,user,url,new Uint8Array(size),input.mediaType);
   await storage.verify(user,id,input);expect((await storage.read(user,id)).bytes.byteLength).toBe(size);

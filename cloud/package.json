@@ -14,11 +14,13 @@
     "typecheck": "npm run -ws --if-present typecheck",
     "test": "vitest run --passWithNoTests",
     "check:rules": "node scripts/check-rules.mjs",
+    "lint": "oxlint --deny-warnings",
     "dev:local": "npm run dev:local -w @praxis/api"
   },
   "devDependencies": {
+    "@types/node": "^24.0.0",
+    "oxlint": "1.93.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.0",
-    "@types/node": "^24.0.0"
+    "vitest": "^4.0.0"
   }
 }

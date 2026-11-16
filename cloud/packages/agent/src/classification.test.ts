@@ -1,6 +1,6 @@
 import {it,expect} from 'vitest';
 import {CapabilitiesSchema,type JsonValue,type ToolSpec} from '@praxis/protocol';
-import {AgentRunner,textResult,type AgentTool,type AgentCheckpoint,type ModelProvider,type RunInput} from './index.js';
+import {AgentRunner,textResult,type AgentTool,type ModelProvider,type RunInput} from './index.js';
 const time='2026-10-29T00:00:00.000Z';
 function input():RunInput{return {userId:'u',run:{type:'run',id:'r',chatId:'c',status:'queued',lastEventId:0,createdAt:time,updatedAt:time},chat:{type:'chat',id:'c',title:'Test',pinned:false,mode:'auto',connectorIds:[],disabledConnectorIds:[],createdAt:time,updatedAt:time},messages:[{type:'message',id:'m',chatId:'c',role:'user',parts:[{type:'text',text:'Save skill'}],createdAt:time,updatedAt:time}]};}
 function fixture(args:JsonValue,classification:()=>{traits:ToolSpec['traits'];policyKey?:string}) {

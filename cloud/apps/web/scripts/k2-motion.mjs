@@ -59,7 +59,6 @@ if (ONLY.has('fold')) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Animation.enable');
   await cdp.send('Animation.setPlaybackRate', { playbackRate: 0.1 });
-  const turn = page.getByTestId('live-run-streaming-turn');
   await page.getByTestId('reasoning-peek').waitFor({ timeout: 20000 });
   const files = []; const log = [];
   const t0 = Date.now();

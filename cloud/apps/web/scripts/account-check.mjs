@@ -1,4 +1,4 @@
-import { BASE, API } from './check-env.mjs';
+import { BASE } from './check-env.mjs';
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 const browser = await chromium.launch();
@@ -19,7 +19,6 @@ try {
   if (await page.getByTestId('nav-history-button').isVisible()) await page.getByTestId('nav-history-button').click();
   await page.getByText(title, { exact: true }).first().waitFor();
   await page.evaluate(async suffix => {
-    const { apiClient } = await import('/src/lib/api.ts');
     await (await import('/src/lib/dev-auth.ts')).devAuth(`wp-b1-B-${suffix}`);
   }, suffix);
   await page.addInitScript(title => {

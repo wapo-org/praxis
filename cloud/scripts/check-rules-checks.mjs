@@ -1,23 +1,23 @@
 import path from 'node:path';
 import ts from 'typescript';
+import {
+  DISABLED_RULES,
+  RULES,
+  TEST_FILE,
+  TYPESCRIPT_EXTENSIONS,
+  importSpecifiers,
+  lineOf,
+  matchesPackage,
+  resolveRelative,
+  scriptKind,
+  walk,
+} from './check-rules-ast.mjs';
+import {checkApiImportsAgent, checkTenantIdBoundary, checkWebEffects, isWebComponentFile} from './check-rules-boundaries.mjs';
+
+export {DISABLED_RULES, RULES, isSourceFile} from './check-rules-ast.mjs';
+export {checkDocFile} from './check-rules-boundaries.mjs';
 
 export const FILE_LENGTH_MAX = 400;
-
-export const RULES = {
-  protocolImports: 'R1.protocol-imports',
-  agentImports: 'R1.agent-imports',
-  webImports: 'R1.web-imports',
-  credentialsPool: 'R1.credentials-pool',
-  fileLength: 'R3.file-length',
-  noAny: 'R4.no-any',
-  convexVAny: 'R4.convex-v-any',
-  bannedPrimitives: 'R5.banned-primitives',
-  clientOwnerArg: 'R5.client-owner-arg',
-};
-
-const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']);
-const TYPESCRIPT_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
-const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
 
 const PROTOCOL_ALLOWED = ['zod'];
 const PROTOCOL_TEST_ALLOWED = ['zod', 'vitest'];
@@ -54,53 +54,6 @@ const PUBLIC_CONVEX_BUILDERS = new Set([
 ]);
 const OWNER_ARG_NAMES = new Set(['userId', 'ownerId']);
 const NUMBERED_ENV_KEY = /_\d+$/;
-
-export function isSourceFile(file) {
-  return SOURCE_EXTENSIONS.has(path.extname(file));
-}
-
-function matchesPackage(specifier, names) {
-  return names.some((name) => specifier === name || specifier.startsWith(`${name}/`));
-}
-
-function scriptKind(file) {
-  const extension = path.extname(file);
-  if (extension === '.tsx') return ts.ScriptKind.TSX;
-  if (extension === '.jsx') return ts.ScriptKind.JSX;
-  return TYPESCRIPT_EXTENSIONS.has(extension) ? ts.ScriptKind.TS : ts.ScriptKind.JS;
-}
-
-function lineOf(source, node) {
-  return source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
-}
-
-function walk(node, visit) {
-  visit(node);
-  ts.forEachChild(node, (child) => walk(child, visit));
-}
-
-function importSpecifiers(source) {
-  const found = [];
-  walk(source, (node) => {
-    const isStatic = ts.isImportDeclaration(node) || ts.isExportDeclaration(node);
-    if (isStatic && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-      found.push({ specifier: node.moduleSpecifier.text, node });
-      return;
-    }
-    if (!ts.isCallExpression(node)) return;
-    const isDynamic = node.expression.kind === ts.SyntaxKind.ImportKeyword;
-    const isRequire = ts.isIdentifier(node.expression) && node.expression.text === 'require';
-    const first = node.arguments[0];
-    if ((isDynamic || isRequire) && first && ts.isStringLiteralLike(first)) {
-      found.push({ specifier: first.text, node });
-    }
-  });
-  return found;
-}
-
-function resolveRelative(file, specifier) {
-  return path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier));
-}
 
 function checkProtocolImports(file, source, report) {
   const allowed = TEST_FILE.test(file) ? PROTOCOL_TEST_ALLOWED : PROTOCOL_ALLOWED;
@@ -267,7 +220,7 @@ export function countLines(text) {
 }
 
 /** `file` is POSIX-style and relative to the cloud root; returns `{rule, path, line, message}` records. */
-export function checkFile(file, text) {
+export function checkFile(file, text, enabled = []) {
   const violations = [];
   const lines = countLines(text);
   if (lines > FILE_LENGTH_MAX) {
@@ -281,6 +234,7 @@ export function checkFile(file, text) {
   }
 
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, scriptKind(file));
+  const isOn = (rule) => !(rule in DISABLED_RULES) || enabled.includes(rule);
   const report = (rule, node, message) => {
     violations.push({ rule, path: file, line: lineOf(source, node), message });
   };
@@ -288,6 +242,9 @@ export function checkFile(file, text) {
   if (file.startsWith('packages/protocol/')) checkProtocolImports(file, source, report);
   if (file.startsWith('packages/agent/')) checkAgentImports(file, source, report);
   if (file.startsWith('apps/web/src/') && !TEST_FILE.test(file)) checkWebImports(file, source, report);
+  if (isWebComponentFile(file)) checkWebEffects(source, report);
+  if (file.startsWith('apps/api/') && isOn(RULES.apiImportsAgent)) checkApiImportsAgent(file, source, report);
+  if (isOn(RULES.tenantIdBoundary)) checkTenantIdBoundary(file, source, report);
   if (!file.startsWith('packages/credentials/')) checkCredentialsPool(source, report);
   if (TYPESCRIPT_EXTENSIONS.has(path.extname(file))) checkNoAny(source, report);
   if (file.startsWith('apps/api/')) checkBannedPrimitives(source, report);

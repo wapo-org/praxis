@@ -122,7 +122,7 @@ export function ElicitationCards({
           runId={runId}
           values={elicitationValues[elicitation.id] ?? {}}
           setValue={(key, value) =>
-            setElicitationValues((prev) => ({ ...prev, [elicitation.id]: { ...(prev[elicitation.id] ?? {}), [key]: value } }))
+            setElicitationValues((prev) => ({ ...prev, [elicitation.id]: { ...prev[elicitation.id], [key]: value } }))
           }
           onResolve={onResolveElicitation}
           onSettled={(entry) => setSettled((prev) => {const next={...prev};if(entry)next[elicitation.id]=entry;else delete next[elicitation.id];return next;})}

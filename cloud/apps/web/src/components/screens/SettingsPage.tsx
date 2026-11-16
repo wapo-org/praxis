@@ -13,7 +13,6 @@ import {
 } from './ConnectorsScreen.js';
 import { ImageReaderScreen } from './ImageReaderScreen.js';
 import { BackButton, ScreenBody } from './ScreenUI.js';
-import screen from './Screen.module.css';
 import {
   AccountSection,
   ConsentsSection,
@@ -29,7 +28,6 @@ import { settingsPage, type SettingsSheet } from './settingsNav';
 export type { SettingsSheet } from './settingsNav';
 
 function PageContent({ sheet, onOpenGlassLab }: { sheet: SettingsSheet; onOpenGlassLab?: () => void }) {
-  const store = usePraxisStore();
   switch (sheet) {
     case 'settings':
     case 'general':

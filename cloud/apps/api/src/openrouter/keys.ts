@@ -1,4 +1,5 @@
 import {ModelKeySchema, type ModelKey, type ModelKeyConnectInput} from '@praxis/protocol';
+import {SealedSecret} from '@praxis/types';
 import {seal, unseal} from '../secrets.js';
 import {ApiError, type ApiService} from '../service.js';
 import {OpenRouterError, exchangeCode, fetchKeyInfo, type KeyInfo} from './client.js';
@@ -10,7 +11,7 @@ export const MODEL_KEY_RESOURCE = 'modelKey';
 /** The row field holding the sealed key. `ModelKeySchema` does not know it, so parsing a row drops it. */
 export const SEALED_FIELD = 'sealed';
 
-export const maskKey = (key: string) => `••••${key.slice(-4)}`;
+export const maskKey = (key: SealedSecret) => `••••${key.reveal().slice(-4)}`;
 
 const missing = () => new ApiError(400, 'model_key_missing', 'Connect your OpenRouter key to use models');
 
@@ -25,7 +26,7 @@ export class ModelKeys {
   }
 
   async connect(userId: string, input: ModelKeyConnectInput): Promise<ModelKey> {
-    let apiKey: string, info: KeyInfo | undefined;
+    let apiKey: SealedSecret, info: KeyInfo | undefined;
     if (input.method === 'pkce') {
       try {
         apiKey = await exchangeCode(this.fetcher, input.code, input.codeVerifier);
@@ -35,8 +36,9 @@ export class ModelKeys {
       // The exchange already proved the key; a failed info call must not lose it.
       info = await fetchKeyInfo(this.fetcher, apiKey).catch(() => undefined);
     } else {
-      apiKey = input.apiKey.trim();
-      if (!apiKey.startsWith('sk-or-')) throw new ApiError(400, 'model_key_rejected', 'This is not an OpenRouter key. OpenRouter keys start with "sk-or-".');
+      const pasted = input.apiKey.trim();
+      if (!pasted.startsWith('sk-or-')) throw new ApiError(400, 'model_key_rejected', 'This is not an OpenRouter key. OpenRouter keys start with "sk-or-".');
+      apiKey = SealedSecret.of(pasted);
       try {
         info = await fetchKeyInfo(this.fetcher, apiKey);
       } catch (error) {
@@ -50,7 +52,7 @@ export class ModelKeys {
       ...(info?.label ? {label: info.label} : {}),
       ...(info ? {limit: info.limit, limitRemaining: info.limitRemaining} : {}),
     };
-    await this.save(userId, record, seal(apiKey, userId, MODEL_KEY_RESOURCE, this.encryptionKey));
+    await this.save(userId, record, seal(apiKey.reveal(), userId, MODEL_KEY_RESOURCE, this.encryptionKey));
     return record;
   }
 
@@ -74,13 +76,13 @@ export class ModelKeys {
   }
 
   /** The key itself, for one OpenRouter call on behalf of `userId`. Callers must not persist or log it. */
-  async reveal(userId: string): Promise<string> {
+  async reveal(userId: string): Promise<SealedSecret> {
     const row = await this.service.adapters.store.get(userId, MODEL_KEY_KIND, MODEL_KEY_ID);
     const sealed = row && !row.deleted ? row.value[SEALED_FIELD] : undefined;
     if (typeof sealed !== 'string') throw missing();
     if (!this.encryptionKey) throw new ApiError(503, 'encryption_unconfigured', 'Secret storage is not configured');
     try {
-      return unseal(sealed, userId, MODEL_KEY_RESOURCE, this.encryptionKey);
+      return SealedSecret.of(unseal(sealed, userId, MODEL_KEY_RESOURCE, this.encryptionKey));
     } catch {
       throw new ApiError(503, 'secret_unavailable', 'The OpenRouter key could not be read');
     }

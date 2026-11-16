@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {CredentialsUnavailableError, credentialFor, healthySlots, memoryCooldownStore, orphanedSlots, placeOwner, pool} from './index.js';
-import {fakeClock} from './testing.js';
+import {revealed, fakeClock} from './testing.js';
 
 const NAMES = ['MODAL_TOKEN_ID', 'MODAL_TOKEN_SECRET'];
 function modal(slots: number) {
@@ -41,7 +41,7 @@ describe('sticky placement', () => {
     const stored = new Map(owners.map(o => [o, placeOwner(four, o, all(4))]));
     let moved = 0;
     for (const [owner, slot] of stored) {
-      expect(await credentialFor(five, slot)).toEqual({MODAL_TOKEN_ID: `id-${slot}`, MODAL_TOKEN_SECRET: `secret-${slot}`});
+      expect(revealed(await credentialFor(five, slot))).toEqual({MODAL_TOKEN_ID: `id-${slot}`, MODAL_TOKEN_SECRET: `secret-${slot}`});
       const fresh = placeOwner(five, owner, all(5));
       if (fresh !== slot) {
         moved++;
@@ -74,9 +74,9 @@ describe('sticky placement', () => {
     const cooling = await credentialFor(four, 3, store, clock.now).catch(e => e);
     expect(cooling).toBeInstanceOf(CredentialsUnavailableError);
     expect(cooling).toMatchObject({service: 'modal', detail: 'cooling', retryAt: new Date(clock.now() + 60_000)});
-    expect(await credentialFor(four, 3)).toMatchObject({MODAL_TOKEN_ID: 'id-3'});
+    expect(revealed(await credentialFor(four, 3))).toMatchObject({MODAL_TOKEN_ID: 'id-3'});
     clock.advance(60_000);
-    expect(await credentialFor(four, 3, store, clock.now)).toMatchObject({MODAL_TOKEN_ID: 'id-3'});
+    expect(revealed(await credentialFor(four, 3, store, clock.now))).toMatchObject({MODAL_TOKEN_ID: 'id-3'});
     await expect(credentialFor(modal(2), 3, store, clock.now)).rejects.toMatchObject({name: 'CredentialsUnavailableError', detail: 'missing', retryAt: null});
   });
 
