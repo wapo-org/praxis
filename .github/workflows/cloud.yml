@@ -43,15 +43,19 @@ jobs:
       - run: npm install --global npm@11
       - run: npm --prefix cloud ci
       - run: ${{ matrix.command }}
-      - name: Reject skipped cloud tests
+      - name: Fail on new skipped tests
         if: matrix.check == 'tests'
+        env:
+          # Live-service suites (Convex, Upstash, storage, semantic search) skip without credentials; never raise this.
+          MAX_SKIPPED_TESTS: "12"
         run: |
           node --input-type=module - <<'JS'
           import { readFileSync } from 'node:fs';
           const results = JSON.parse(readFileSync('cloud/test-results.json', 'utf8'));
-          if (results.numPendingTests !== 0 || results.numTodoTests !== 0) {
-            throw new Error('Cloud tests contain skipped/todo tests; configure live service tests before requiring this check.');
-          }
+          const skipped = results.numPendingTests + results.numTodoTests;
+          const max = Number(process.env.MAX_SKIPPED_TESTS);
+          console.log(`skipped/todo tests: ${skipped} (max ${max})`);
+          if (skipped > max) throw new Error(`New skipped/todo tests: ${skipped} > ${max}. Make them run or gate them on live credentials explicitly.`);
           JS
       - name: Check architectural rules when available
         if: matrix.check == 'comments' && hashFiles('cloud/scripts/check-rules.mjs') != ''

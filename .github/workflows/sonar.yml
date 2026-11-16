@@ -19,14 +19,18 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Require SonarCloud credentials
+      - name: Check SonarCloud credentials
+        id: creds
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           if [ -z "$SONAR_TOKEN" ]; then
-            echo '::error::Owner must add the SONAR_TOKEN Actions repository secret.'
-            exit 1
+            echo '::notice::SonarCloud scan skipped: add the SONAR_TOKEN repository secret and disable Automatic Analysis in SonarCloud.'
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2 # v7
+      - if: steps.creds.outputs.enabled == 'true'
+        uses: SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2 # v7
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
