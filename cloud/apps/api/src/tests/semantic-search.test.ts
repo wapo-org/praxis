@@ -1,5 +1,7 @@
+import * as embedding from '../embedding.js';
+import {searchWorkload, SEARCH_QUERIES} from './search-workload.js';
 import { existsSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ChatSchema, MessageSchema } from '@praxis/protocol';
 import { createApp } from '../app.js';
 import { createMemoryAdapters } from '../adapters/memory.js';
@@ -178,31 +180,37 @@ describe('semantic search: parts', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it('meets p95 < 150 ms over 2,000 chats in dev (memory vectors, offline embedder)', async () => {
-    const service = new ApiService(createMemoryAdapters(), true);
-    const indexer = new SearchIndexer({ embedder: hashEmbedder, vectors: memoryVectorIndex(), load: (u, c) => loadChatDocs(service, u, c), defer: () => {}, debounceMs: 60_000 });
-    const now = service.now();
-    const words = 'alpha beta gamma delta lisbon packing regex date budget travel kettle harbor ember compass meadow comet'.split(' ');
-    for (let i = 0; i < 2000; i++) {
-      const id = `c${i}`;
-      await service.put('u', 'chat', id, ChatSchema.parse({ type: 'chat', id, mode: 'ask', title: `${words[i % 16]} ${words[(i * 7) % 16]} ${i}`, createdAt: now, updatedAt: now }));
-      for (let m = 0; m < 3; m++)
-        await service.put('u', 'message', `${id}-${m}`, MessageSchema.parse({ type: 'message', id: `${id}-${m}`, chatId: id, sequence: m + 1, role: 'user', parts: [{ type: 'text', text: `${words[(i + m) % 16]} notes about ${words[(i * 3 + m) % 16]} and ${words[(i * 5 + m) % 16]} for item ${i}.` }], createdAt: now, updatedAt: now }));
+  it.each([500, 2000])('bounds warm search work over %i chats without re-embedding indexed rows', async count => {
+    const w = await searchWorkload(count);
+    const {searchChats} = await import('../search.js');
+    const cosine = vi.spyOn(embedding, 'cosine');
+    const embed = vi.spyOn(hashEmbedder, 'embed');
+    const query = vi.spyOn(w.vectors, 'search');
+    const ids = vi.spyOn(w.vectors, 'ids');
+    const upsert = vi.spyOn(w.vectors, 'upsert');
+    try {
+      expect(w.vectorCount).toBeGreaterThan(count);
+      for (const text of SEARCH_QUERIES) {
+        w.resetWork();
+        cosine.mockClear();
+        embed.mockClear();
+        query.mockClear();
+        const hits = await searchChats(w.service, 'u', text);
+        expect(query).toHaveBeenCalledExactlyOnceWith('u', hashEmbedder.id, expect.any(Float32Array), 200);
+        expect(hits.length).toBeGreaterThan(0);
+        expect(cosine).toHaveBeenCalledTimes(w.vectorCount);
+        expect(embed).toHaveBeenCalledExactlyOnceWith([text]);
+        expect(ids).not.toHaveBeenCalled();
+        expect(upsert).not.toHaveBeenCalled();
+        expect(w.work.listCalls).toBe(2);
+        expect(w.work.rowsRead).toBe(count + w.messageCount);
+        expect(w.work.messageChatReads).toBeLessThanOrEqual(w.messageCount * 2);
+      }
+    } finally {
+      vi.restoreAllMocks();
     }
-    service.search = indexer;
-    await indexer.sync('u', await loadChatDocs(service, 'u'));
-    const { searchChats } = await import('../search.js');
-    const times: number[] = [];
-    for (let i = 0; i < 40; i++) {
-      const t = performance.now();
-      await searchChats(service, 'u', ['how to pack for a trip', 'date regex', 'kettle harbor', 'budget'][i % 4]!);
-      times.push(performance.now() - t);
-    }
-    times.sort((a, b) => a - b);
-    const p95 = times[Math.floor(times.length * 0.95)]!;
-    console.info(`search p95 over 2000 chats / 8000 vectors: ${p95.toFixed(1)} ms`);
-    expect(p95).toBeLessThan(150);
-  }, 60_000);
+  });
+
 });
 
 const MINILM_CACHE = `${process.env.HOME ?? '.'}/.cache/praxis-embeddings`;
