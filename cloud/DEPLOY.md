@@ -168,7 +168,10 @@ when `cloud/scripts/check-rules.mjs` exists. Modal reviewer pytest uses the
 same runner and the locked Python 3.12 environment without calling Modal.
 Apple changes run the iOS Simulator build, `PraxisChatTests`, and every Swift
 package's tests on GitHub-hosted `macos-26`; UI tests are outside this check.
-Workflow changes also trigger their own checks. All jobs have timeouts,
+The iOS job ad-hoc signs the simulator app so real Keychain tests retain their
+entitlements without a developer certificate. It builds once for testing and
+runs unit tests serially on one prebooted simulator, uploading `.xcresult`
+bundles on failure. Workflow changes also trigger their own checks. All jobs have timeouts,
 read-only repository permissions, pinned actions and cancellation of older runs.
 
 SonarCloud scans `wapo-org_praxis` in organization `wapo-org` on Blacksmith.

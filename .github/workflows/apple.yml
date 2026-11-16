@@ -37,16 +37,36 @@ jobs:
           with open(os.environ['GITHUB_ENV'], 'a') as output:
               output.write(f"SIMULATOR_ID={iphones[0]['udid']}\n")
           PY
-      - name: Build for iOS Simulator
+      - name: Boot the selected simulator
+        run: |
+          xcrun simctl boot "$SIMULATOR_ID"
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+      - name: Build app and unit tests for iOS Simulator
         run: >-
-          xcodebuild build -project PraxisChat/PraxisChat.xcodeproj -scheme PraxisChat
+          xcodebuild build-for-testing -project PraxisChat/PraxisChat.xcodeproj -scheme PraxisChat
           -destination "platform=iOS Simulator,id=$SIMULATOR_ID"
-          CODE_SIGNING_ALLOWED=NO
+          -derivedDataPath "$RUNNER_TEMP/PraxisChatDerivedData"
+          -resultBundlePath "$RUNNER_TEMP/PraxisChatBuild.xcresult"
+          -only-testing:PraxisChatTests
+          CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
       - name: Run PraxisChat unit tests
         run: >-
-          xcodebuild test -project PraxisChat/PraxisChat.xcodeproj -scheme PraxisChat
+          xcodebuild test-without-building -project PraxisChat/PraxisChat.xcodeproj -scheme PraxisChat
           -destination "platform=iOS Simulator,id=$SIMULATOR_ID"
-          -only-testing:PraxisChatTests CODE_SIGNING_ALLOWED=NO
+          -derivedDataPath "$RUNNER_TEMP/PraxisChatDerivedData"
+          -resultBundlePath "$RUNNER_TEMP/PraxisChatTests.xcresult"
+          -parallel-testing-enabled NO
+          -only-testing:PraxisChatTests
+          CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+      - name: Upload failed test results
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: PraxisChatTests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/PraxisChatBuild.xcresult
+            ${{ runner.temp }}/PraxisChatTests.xcresult
+          retention-days: 7
   packages:
     name: Apple / Swift package tests
     runs-on: macos-26
