@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "maxFileLines": 400,
+  "rules": {
+    "R3.file-length": {
+      "apps/web/src/components/screens/screens.test.tsx": 432,
+      "apps/web/src/lib/api.ts": 403,
+      "packages/agent/src/runner.ts": 425,
+      "scripts/comment-sweep.mjs": 710
+    },
+    "R4.convex-v-any": {
+      "convex/auth.ts": 1,
+      "convex/schema.ts": 3,
+      "convex/store.ts": 2,
+      "convex/tools.ts": 1
+    },
+    "R4.no-any": {
+      "apps/api/src/account-routes.ts": 1,
+      "apps/api/src/adapters/account-redis.test.ts": 2,
+      "apps/api/src/adapters/security.ts": 1,
+      "apps/api/src/server.ts": 1,
+      "apps/api/src/service.ts": 6,
+      "apps/api/src/sync-routes.ts": 1,
+      "apps/api/src/tests/account-delete.test.ts": 5,
+      "apps/api/src/tests/app.test.ts": 1,
+      "apps/api/src/tests/execution.test.ts": 1,
+      "apps/api/src/tests/harness.ts": 1,
+      "apps/api/src/tests/local-flow.test.ts": 1,
+      "apps/api/src/tests/modules.test.ts": 4,
+      "apps/api/src/tests/openrouter.test.ts": 10,
+      "apps/api/src/tests/parity.test.ts": 9,
+      "apps/api/src/tests/rev-a1.test.ts": 7,
+      "apps/api/src/tests/review-r1.test.ts": 1,
+      "convex/account.ts": 4,
+      "convex/auth.ts": 1,
+      "convex/functions.ts": 4,
+      "scripts/deploy.test.ts": 9
+    },
+    "R5.client-owner-arg": {
+      "convex/account.ts": 3,
+      "convex/files.ts": 6,
+      "convex/store.ts": 7,
+      "convex/tools.ts": 3
+    }
+  }
+}
