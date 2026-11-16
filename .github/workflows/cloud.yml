@@ -62,3 +62,26 @@ jobs:
       - name: Check architectural rules when available
         if: matrix.check == 'comments' && hashFiles('cloud/scripts/check-rules.mjs') != ''
         run: npm --prefix cloud run check:rules
+  specs:
+    name: Cloud / specs
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+      - run: npm install --global npm@11
+      - run: npm --prefix cloud ci
+      - run: npm --prefix cloud run specs
+      - name: Retain counterexample traces
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: quint-traces
+          path: cloud/.spec-traces/
+          if-no-files-found: ignore
