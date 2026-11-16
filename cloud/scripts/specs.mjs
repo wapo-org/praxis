@@ -1,4 +1,4 @@
-import {mkdirSync} from 'node:fs';
+import {mkdirSync, readdirSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
@@ -14,6 +14,12 @@ const MODELS = {
   subagents: ['NoOrphanRuns', 'NoOrphanHandles', 'CascadeStop', 'InboxExactlyOnce', 'TerminalCleanup'],
   security: ['TaintMonotonic', 'AtomicSpendCap', 'ChargeOnce', 'ApprovalRequired'],
 };
+
+const specNames = readdirSync(new URL('../specs/', import.meta.url))
+  .filter(name => name.endsWith('.qnt')).map(name => name.slice(0, -4)).sort();
+if (JSON.stringify(specNames) !== JSON.stringify(Object.keys(MODELS).sort())) {
+  throw new Error('Every Quint model must declare its CI invariants in MODELS');
+}
 
 mkdirSync(new URL('../.spec-traces/', import.meta.url), {recursive: true});
 

@@ -5,9 +5,9 @@
 module subagents {
   pure val NODES = Set(0, 1, 2)
   var s: {live: Set[int], cancelling: Set[int], done: Set[int],
-    handles: Set[int], sent: Set[int], delivered: Set[int], discarded: Set[int], results: Set[int]}
+    handles: Set[int], sent: Set[int], delivered: List[int], discarded: Set[int], results: Set[int]}
   action init = s' = {live: Set(0), cancelling: Set(), done: Set(),
-    handles: Set(), sent: Set(), delivered: Set(), discarded: Set(), results: Set()}
+    handles: Set(), sent: Set(), delivered: [], discarded: Set(), results: Set()}
   action spawn(node) = all {
     node > 0, s.live.contains(node - 1), not(s.cancelling.contains(node - 1)),
     not(s.live.contains(node)), not(s.done.contains(node)),
@@ -24,14 +24,14 @@ module subagents {
     s.cancelling.contains(node), not(s.handles.contains(node)),
     not(s.live.exists(n => n > node)),
     s' = {...s, live: s.live.exclude(Set(node)), cancelling: s.cancelling.exclude(Set(node)),
-      done: s.done.union(Set(node)), discarded: s.discarded.union(s.sent.filter(n => n == node))}
+      done: s.done.union(Set(node)), discarded: s.discarded.union(s.sent.filter(n => n == node and not(s.delivered.indices().exists(i => s.delivered[i] == n))))}
   }
   action send(node) = all {
     s.live.contains(node), not(s.cancelling.contains(node)), s' = {...s, sent: s.sent.union(Set(node))}
   }
   action deliver(node) = all {
     s.sent.contains(node), s.live.contains(node), not(s.cancelling.contains(node)),
-    s' = {...s, delivered: s.delivered.union(Set(node))}
+    s' = {...s, delivered: if (s.delivered.indices().exists(i => s.delivered[i] == node)) s.delivered else s.delivered.append(node)}
   }
   action result(node) = all {
     node > 0, s.live.contains(node), s.live.contains(node - 1),
@@ -44,16 +44,23 @@ module subagents {
   val NoOrphanRuns = s.live.forall(n => n == 0 or s.live.contains(n - 1))
   val NoOrphanHandles = s.handles.subseteq(s.live)
   val CascadeStop = s.cancelling.forall(n => s.live.filter(c => c >= n).subseteq(s.cancelling))
-  val InboxExactlyOnce = s.delivered.subseteq(s.sent)
+  val InboxExactlyOnce = s.delivered.length() == s.delivered.indices().map(i => s.delivered[i]).size() and
+    s.delivered.indices().forall(i => s.sent.contains(s.delivered[i])) and
+    s.delivered.indices().forall(i => not(s.discarded.contains(s.delivered[i])))
   val TerminalCleanup = s.done.intersect(s.handles).size() == 0
 
   run cascadeTest = init.then(spawn(1)).then(spawn(2)).then(stop(0))
-    
     .then(cleanup(2)).then(finalize(2)).then(cleanup(1)).then(finalize(1)).then(finalize(0))
     .expect(NoOrphanRuns and TerminalCleanup and s.live.size() == 0 and s.handles.size() == 0)
   run lateResultRejectedTest = init.then(spawn(1)).then(stop(0)).then(result(1)).fail()
   run earlyFinalizeRejectedTest = init.then(spawn(1)).then(stop(0)).then(finalize(0)).fail()
+  run deliveredThenStopTest = init.then(spawn(1)).then(send(1)).then(deliver(1))
+    .then(stop(1)).then(cleanup(1)).then(finalize(1))
+    .expect(InboxExactlyOnce and not(s.discarded.contains(1)))
+  run pendingThenStopTest = init.then(spawn(1)).then(send(1))
+    .then(stop(1)).then(cleanup(1)).then(finalize(1))
+    .expect(InboxExactlyOnce and s.discarded.contains(1) and s.delivered.length() == 0)
   run inboxTest = init.then(spawn(1)).then(send(1)).then(deliver(1)).then(deliver(1))
     .then(stop(0))
-    .expect(InboxExactlyOnce and s.delivered.size() == 1)
+    .expect(InboxExactlyOnce and s.delivered.length() == 1)
 }
