@@ -147,6 +147,17 @@ and serialize access across workers, as required by PRA-19. Syntax diagnostics r
 
 ## Stateful subagent core
 
+`createSubagentHarness(port)` registers exactly the four shared tools and their boundary classifier.
+Freeze its tool specs into the turn catalog and combine its classifier with the executable tool registry.
+Its injected `SubagentHarnessPort` binds authenticated actor/tenant and stable child/message IDs,
+commits reducer state and launch/wake/kill outbox atomically, and owns durable wait deadlines and wakeups.
+PRA-114 implements that persistence port; PRA-116 supplies confinement and immutable handoff verification.
+Trusted tool metadata filters default delegation grants; explicit server grants can allow approval-capable tools,
+but every child action still passes the inherited one-turn boundary and receipts in its confined workspace.
+Authorized model capabilities and effort lists are checked before create/configure/resume without clamping.
+The harness joins adapter result taint before the next call; collaboration instructions are frozen and deterministic.
+No production persistence or sandbox adapter is implemented by this registry.
+
 `packages/agent/src/subagents` owns the pure addressed lifecycle reducer, permission narrowing,
 ordered inboxes, asynchronous cascading cancellation and verified artifact handoffs (PRA-79).
 The four wire tools and durable state schemas live in `packages/protocol/src/subagents.ts`.
@@ -161,6 +172,12 @@ addressing, atomic persistence and sandbox confinement
 remain adapter responsibilities under PRA-15/71/58; the current runner does not register these tools.
 PRA-75's five named subagent invariants run as fast-check properties against the reducer.
 
+### Optional sandbox browser (PRA-20)
+
+`packages/sandbox-tools/src/modal/browser-image.ts` adds Chromium and the deterministic `praxis-browser` CLI above the tools image. The isolated runtime lock pins the existing Playwright, tsx and Zod dependencies and their transitives; Playwright pins Chromium, and system dependencies resolve against the base layer's frozen Debian snapshot. Only selected CLI/evidence sources enter the image. Stagehand and a model relay are deferred per PRA-101. Non-browser sandboxes keep the tools image.
+
+The `browser` sandbox tool uses argv-only SandboxPort execution and chat-confined sessions. Its action-specific classification uses the existing approval/taint boundary; screenshots are bounded exports with verified SHA-256 proof. Browser provisioning must apply `browserSandboxOptions()` for public-only IPv4 egress and explicitly attest that restriction in the trusted tool context. `verify -- live browser` is opt-in and records installed image-directory apparent bytes and cold start with unconditional termination.
+
 ## Built-in web tools (PRA-60)
 
 `features/web` exposes `web_search` and `web_read` through AgentTool ports. Exa is
@@ -168,18 +185,25 @@ pinned to auto with at most ten results and no summaries; Firecrawl requests onl
 main-content Markdown with file parsers disabled, bounding each scrape to one credit.
 `WebPorts` injects pooled platform credentials, guarded egress, accounting, cache and
 output spill. Tool schemas remain identical when disabled or unavailable.
-`webToolClassifier` is the trusted thin-harness registry entry: both tools have read
-and external-egress capabilities and untrusted provenance. PRA-76's existing egress
-approval policy applies; results must retain taint in the durable turn dispatcher.
+Each tool carries its PRA-76 classification (`AgentTool.boundary`: read plus
+external-egress, untrusted source). The AgentRunner decides classified tools with
+`boundaryDecision` (`run-boundary.ts`): egress asks for approval in Build/Auto and is
+refused in Ask/Plan; always-allow applies only before taint. Executing an untrusted
+source sets the checkpoint's `tainted` flag, which is also seeded from earlier
+untrusted tool results in the chat; while tainted, non-read-only tools need a fresh
+approval. `read_tool_output` is classified as an untrusted read.
 
+The accounting RPC shapes (`WebSpendRequest`, `WebSpendSettlement`, admission) live
+in `@praxis/protocol`; Convex derives its validators from them and parses with them.
 Convex `webTools` actions authenticate the server before invoking internal atomic
 mutations. User allowance, spend reservation and sliding hourly admission share a
 transaction; provider attempts separately enforce global QPS/minute and browser
 concurrency caps, including credential failover attempts. The pure `@praxis/spend`
 ledger prices/reserves/settles calls. Completed call receipts are separate rows so
 monthly ledger records do not accumulate closed-call history. Interrupted calls
-retain reservations until reconciliation; neither retries nor settlement errors
-release a completed charge. PRA-22 owns allowance provisioning and orphan reconciliation.
+retain reservations until reconciliation. A 2xx provider response is settled before
+parsing, caching or spilling, so downstream failures never refund it; only calls that
+never dispatched or got a non-2xx answer are released. PRA-22 owns allowance provisioning and orphan reconciliation.
 
 The shared public-page cache uses the injected Upstash KV, a `praxis:v1` key with a
 SHA-256 URL digest, a 15-minute TTL and schema validation. Query-bearing URLs bypass

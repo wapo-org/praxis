@@ -36,7 +36,7 @@ export interface ModelProvider {
   readonly capabilities: Capabilities;
   stream(request:ProviderRequest,signal:AbortSignal):AsyncIterable<ProviderEvent>;
 }
-const ToolResultContent = {content: z.array(JsonObjectSchema), outputRef: IdSchema.optional()};
+const ToolResultContent = {content: z.array(JsonObjectSchema), outputRef: IdSchema.optional(), tainted: z.boolean().optional()};
 export const ToolResultSchema = z.discriminatedUnion('isError', [
   z.object({...ToolResultContent, isError: z.literal(false).default(false), error: z.never().optional()}),
   z.object({...ToolResultContent, isError: z.literal(true), error: ToolErrorSchema.optional()}),
@@ -49,6 +49,7 @@ export function textResult(text:string,isError=false):ToolResult {
   return isError ? {content, isError: true} : {content, isError: false};
 }
 export interface ToolContext {
+  tainted?:boolean;
   userId:string; chatId:string; runId:string; mode:Mode; signal:AbortSignal;
   /** Stable idempotency key for side-effecting tools. */
   callId:string;

@@ -2,6 +2,8 @@ import type {ExportSink, SandboxPort} from '../port.js';
 
 export interface SandboxToolContext {
   port: SandboxPort;
+  /** Set only for sandboxes created with browserSandboxOptions, which blocks private and metadata networks. */
+  browserNetworkRestricted?: boolean;
   /** The chat directory, e.g. `/workspace/chats/<chatId>`; every path argument resolves inside it. */
   root: string;
   exports: ExportSink;

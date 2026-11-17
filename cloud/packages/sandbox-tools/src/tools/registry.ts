@@ -1,3 +1,4 @@
+import {browser, BrowserInputSchema, BROWSER_DESCRIPTION, browserCapabilities} from './browser.js';
 import {executeBoundary, shellPolicy, ToolBoundaryError, toolError, type BoundaryContext, type GateResult, type ToolClassification, type ToolClassifier} from '@praxis/agent';
 import type {JsonValue, ToolCapability, ToolInvocation} from '@praxis/protocol';
 import {posix} from 'node:path';
@@ -21,6 +22,10 @@ export interface SandboxToolDefinition {
 
 /** Workspace tools share the approval boundary and return untrusted diagnostics inline. */
 export const SANDBOX_TOOLS: readonly SandboxToolDefinition[] = [
+  {
+    name: 'browser', description: BROWSER_DESCRIPTION, input: BrowserInputSchema,
+    capabilities: ['read', 'write', 'external-egress'], untrustedSource: true, run: browser,
+  },
   {
     name: 'shell',
     description: 'Run a command in the chat workspace. Long work: background=true, then wait_for_job.',
@@ -77,6 +82,7 @@ export const sandboxToolClassifier: ToolClassifier = {
     const base = {capabilities: tool.capabilities, untrustedSource: tool.untrustedSource};
     const parsed = tool.input.safeParse(call.args);
     if (!parsed.success || !lexicallyConfined(tool.name, parsed.data as Record<string, unknown>)) return {...base, decision: 'deny'};
+    if (tool.name === 'browser') return {...base, capabilities: browserCapabilities(BrowserInputSchema.parse(parsed.data)), decision: 'allow'};
     const decision = tool.name === 'shell' ? shellPolicy((parsed.data as {command: string}).command) : 'allow';
     return {...base, decision};
   },
