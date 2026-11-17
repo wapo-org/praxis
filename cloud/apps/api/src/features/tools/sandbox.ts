@@ -5,15 +5,12 @@ import {z} from 'zod';
 import {JsonValueSchema,type JsonValue} from '@praxis/protocol';
 import type {FeatureContext,FeatureTool} from '../../contracts.js';
 import {ApiError} from '../../service.js';
-import {requireConsent} from '../mcp/shared.js';
-import {publicFetch} from './http.js';
 export type ToolExecution=Parameters<FeatureTool['execute']>[1]&{signal?:AbortSignal;callId?:string};
 export interface SandboxFiles {list():Promise<string[]>;read(name:string):Promise<Uint8Array>}
 const SANDBOX_RESULT_MAX_BYTES=400000;
 const SANDBOX_KV_MAX_BYTES=262144;
 const SandboxOutput=z.object({console:z.array(z.object({level:z.string(),text:z.string()})),result:JsonValueSchema,kv:z.record(z.string(),JsonValueSchema)});
 const Code=z.object({env:z.record(z.string(),z.string()).default({}),code:z.string().max(200000),timeout_ms:z.number().int().min(1).max(30000).default(5000)});
-const FetchInput=z.object({url:z.string().url(),method:z.enum(['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS']).default('GET'),headers:z.record(z.string(),z.string()).default({}),body:z.string().max(1000000).optional()});
 /** WASM receives JSON/strings only; no Node objects, loader, or FS access. */
 export async function runSandbox(args:JsonValue,ctx:FeatureContext,execution:ToolExecution,files:SandboxFiles,toolNames:string[],toolState:ToolsState){
  const input=Code.parse(args);if(execution.mode==='ask')throw new ApiError(403,'mode_denied','Running JavaScript is unavailable in Ask mode');
@@ -22,7 +19,7 @@ export async function runSandbox(args:JsonValue,ctx:FeatureContext,execution:Too
  const quickJS=await getQuickJS(),runtime=quickJS.newRuntime();runtime.setMemoryLimit(16*1024*1024);runtime.setMaxStackSize(512*1024);
  const started=Date.now(),deadline=started+input.timeout_ms;const controller=new AbortController();const signal=execution.signal?AbortSignal.any([execution.signal,controller.signal]):controller.signal;
  runtime.setInterruptHandler(()=>Date.now()>=deadline||signal.aborted);
- const vm=runtime.newContext(),deferred=new Set<QuickJSDeferredPromise>(),pending=new Set<Promise<void>>();let alive=true,fetches=0,calls=0,hostFailure:unknown;
+ const vm=runtime.newContext(),deferred=new Set<QuickJSDeferredPromise>(),pending=new Set<Promise<void>>();let alive=true,calls=0,hostFailure:unknown;
  function hostValue(value:unknown){return vm.newString(JSON.stringify(value)??'null');}
  const bridge=vm.newFunction('__host',(opHandle,dataHandle)=>{
   const op=vm.getString(opHandle),raw=vm.getString(dataHandle);if(Buffer.byteLength(raw)>1000000)return {error:vm.newError('Bridge input exceeds limit')};
@@ -30,14 +27,7 @@ export async function runSandbox(args:JsonValue,ctx:FeatureContext,execution:Too
   const work=(async()=>{try{
    if(signal.aborted||Date.now()>=deadline)throw new Error('Execution cancelled or timed out');
    const data=JSON.parse(raw);let result:unknown;
-   if(op==='fetch'){
-    if(++fetches>16)throw new Error('Fetch call limit exceeded');const request=FetchInput.parse(data);
-    if(execution.mode==='plan'&&!['GET','HEAD'].includes(request.method))throw new ApiError(403,'method_denied','Plan mode permits GET and HEAD only');
-    const forbidden=['authorization','cookie','host','connection','proxy-authorization','transfer-encoding'];if(Object.keys(request.headers).some(h=>forbidden.includes(h.toLowerCase())))throw new Error('Credential and routing headers are not allowed');
-    try { await requireConsent(ctx,{url:request.url} as import('@praxis/protocol').Connector,execution); } catch(error) {hostFailure=error;throw error;}
-    const {response,bytes}=await publicFetch(ctx,request.url,{method:request.method,headers:request.headers,body:['GET','HEAD'].includes(request.method)?undefined:request.body,signal},true,1000000);
-    result={status:response.status,statusText:response.statusText,url:request.url,headers:[...response.headers.entries()],body:new TextDecoder().decode(bytes)};
-   }else if(op==='fs.list')result=await files.list();
+   if(op==='fs.list')result=await files.list();
    else if(op==='fs.read'){
     const name=z.string().min(1).max(240).parse(data);if(name.includes('/')||name.includes('\\')||name.includes('\0')||name==='.'||name==='..'||name.startsWith('~'))throw new Error('Expected a plain attached filename');
     const bytes=await files.read(name);if(bytes.length>1000000)throw new Error('File exceeds 1 MB');result=[...bytes];
@@ -60,7 +50,6 @@ export async function runSandbox(args:JsonValue,ctx:FeatureContext,execution:Too
  const __logs=[];let __logBytes=0;const console=Object.fromEntries(['log','info','warn','error','debug'].map(level=>[level,(...a)=>{if(__logs.length>=100)return;const text=a.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ').slice(0,4000);if((__logBytes+=text.length)<=32000)__logs.push({level,text});}]));
  const __kv=new Map(Object.entries(${JSON.stringify(initial)}));const kv={get:k=>__kv.get(String(k))??null,set:(k,v)=>{k=String(k);if(k.length>200)throw new Error('KV key too long');const n=new Map(__kv);n.set(k,v);if(n.size>256||JSON.stringify(Object.fromEntries(n)).length>262144)throw new Error('KV quota exceeded');__kv.set(k,JSON.parse(JSON.stringify(v)));},delete:k=>__kv.delete(String(k)),keys:()=>[...__kv.keys()].sort()};
  const fs={list:()=>__rpc('fs.list',null),readBytes:async n=>new Uint8Array(await __rpc('fs.read',n)),readText:async n=>{const a=await __rpc('fs.read',n);return decodeURIComponent(escape(String.fromCharCode(...a)));}};
- const fetch=async(url,init={})=>{const r=await __rpc('fetch',{url:String(url),method:String(init.method??'GET').toUpperCase(),headers:init.headers??{},...(init.body!==undefined?{body:typeof init.body==='string'?init.body:JSON.stringify(init.body)}:{})});return {status:r.status,ok:r.status>=200&&r.status<300,statusText:r.statusText,url:r.url,headers:{get:k=>r.headers.find(([n])=>n.toLowerCase()===k.toLowerCase())?.[1]??null,entries:()=>r.headers[Symbol.iterator]()},text:async()=>r.body,json:async()=>JSON.parse(r.body)};};
  const callTool=(name,args={})=>__rpc('tool',{name,args});const tools=Object.create(null);for(const name of ${JSON.stringify(toolNames.filter(n=>n!=='run_javascript'))})tools[name]=args=>callTool(name,args);
  `;
  try{

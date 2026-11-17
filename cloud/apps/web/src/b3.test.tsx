@@ -88,10 +88,11 @@ it('debounces server model search, loads cursors, and ignores stale responses', 
   await act(async () => finish({ type: 'page', items: [model('old')], nextCursor: null } as never));
   expect(result.items.map(m => m.id)).toEqual(['new']);
 });
-it('shows iOS tray order, offers reasoning effort from the catalogue entry, and keeps Web search off', async () => {
+it('shows iOS tray order, offers reasoning effort from the catalogue entry, and toggles web tools per chat', async () => {
   vi.spyOn(apiClient, 'bootstrap').mockRejectedValue(new Error('Offline'));
-  vi.spyOn(apiClient, 'createChat').mockResolvedValue({ type: 'chat', id: 'new', title: 'New chat', mode: 'build', pinned: false, connectorIds: [], disabledConnectorIds: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-  vi.spyOn(apiClient, 'patchChat').mockResolvedValue({} as never);
+  const created = { type: 'chat' as const, id: 'new', title: 'New chat', mode: 'build' as const, pinned: false, connectorIds: [], disabledConnectorIds: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  vi.spyOn(apiClient, 'createChat').mockResolvedValue(created);
+  const patch = vi.spyOn(apiClient, 'patchChat').mockImplementation(async (_id, changes) => ({ ...created, ...changes }));
   const start = vi.spyOn(apiClient, 'startRun').mockRejectedValue(new Error('Run unavailable'));
   let store!: ReturnType<typeof usePraxisStore>;
   function Probe() { store = usePraxisStore(); return <PlusTray onPickFiles={() => {}} />; }
@@ -103,10 +104,17 @@ it('shows iOS tray order, offers reasoning effort from the catalogue entry, and 
   const groups = [...node.querySelectorAll('[role="group"]')];
   expect(groups.map(g => g.getAttribute('aria-label'))).toEqual(['Mode', 'Reasoning effort']);
   expect([...node.querySelectorAll('[data-testid^="tray-tile-"]')].map(n => n.textContent)).toEqual(['Photos', 'Camera', 'Files', 'Screenshot']);
-  // OpenRouter runs have no hosted web search: the toggle is present but off for every model.
-  expect(node.querySelector<HTMLInputElement>('[aria-label="Web search"]')!.disabled).toBe(true);
+  // Web tools are a persisted chat setting, so the switch waits for the chat to exist.
+  expect(node.querySelector<HTMLInputElement>('[aria-label="Web tools"]')!.disabled).toBe(true);
   await act(async () => { await store.sendMessage('Question'); });
-  expect(start).toHaveBeenCalledWith(expect.objectContaining({ modelId: 'hosted', webSearch: false }));
+  expect(start).toHaveBeenCalledWith(expect.objectContaining({ modelId: 'hosted' }));
+  expect(start.mock.calls[0]![0]).not.toHaveProperty('webSearch');
+  const webSwitch = () => node.querySelector<HTMLInputElement>('[aria-label="Web tools"]')!;
+  expect(webSwitch().disabled).toBe(false);
+  expect(webSwitch().checked).toBe(true);
+  await act(async () => { webSwitch().click(); });
+  expect(patch).toHaveBeenCalledWith('new', { webToolsEnabled: false });
+  expect(webSwitch().checked).toBe(false);
   expect(start.mock.calls[0]![0]).not.toHaveProperty('providerId');
   await act(async () => { store.cacheModels([{ ...model('plain'), capabilities: { tools: true, reasoning: false, images: false, files: false } }]); store.setSelectedModel('plain'); });
   expect([...node.querySelectorAll('[role="group"]')].map(g => g.getAttribute('aria-label'))).toEqual(['Mode']);

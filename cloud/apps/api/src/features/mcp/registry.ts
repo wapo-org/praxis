@@ -11,7 +11,7 @@ const Listing=z.object({servers:z.array(z.object({server:z.object({name:z.string
 export async function searchRegistry(ctx:FeatureContext,query:Record<string,string>):Promise<JsonObject>{
  const q=Query.parse(query),key=JSON.stringify(['mcp-registry',ctx.userId,q]);const cached=await ctx.kv.get<JsonObject>(key);if(cached)return cached;
  const url=new URL('https://registry.modelcontextprotocol.io/v0.1/servers');url.searchParams.set('version','latest');url.searchParams.set('limit','50');if(q.q)url.searchParams.set('search',q.q);if(q.cursor)url.searchParams.set('cursor',q.cursor);
- const {response,bytes}=await publicFetch(ctx,url.href,{headers:{Accept:'application/json'}},false,8<<20);
+ const {response,bytes}=await publicFetch(ctx,url.href,{headers:{Accept:'application/json'}},8<<20);
  if(!response.ok)throw new McpError(502,'registry_failed','MCP registry request failed');
  const listing=Listing.parse(JSON.parse(new TextDecoder().decode(bytes)));const items=[];
  for(const entry of listing.servers){

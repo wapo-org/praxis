@@ -9,12 +9,10 @@ export function privateAddress(raw:string){const h=raw.toLowerCase().replace(/^\
  if(isIP(h)===6){if(h.startsWith('::ffff:')){const tail=h.slice(7);if(tail.includes('.'))return privateAddress(tail);const words=tail.split(':');if(words.length===2){const n=parseInt(words[0]!,16)*65536+parseInt(words[1]!,16);return privateAddress([n>>>24,(n>>>16)&255,(n>>>8)&255,n&255].join('.'));}return true;}return h==='::'||h==='::1'||/^(fc|fd|fe[89abcdef])/.test(h);}
  return false;
 }
-export async function hostConsent(ctx:FeatureContext,host:string){const row=await ctx.store.get(ctx.userId,'consent',host.toLowerCase());if(!row||row.deleted||row.value.allowed!==true)throw new ApiError(403,'consent_required',`AI-data consent required for ${host}`);}
 /** Routes user URLs through ctx.egress for DNS pinning against rebinding. */
-export async function publicFetch(ctx:FeatureContext,raw:string,init:RequestInit={},consent=false,max=1000000){
+export async function publicFetch(ctx:FeatureContext,raw:string,init:RequestInit={},max=1000000){
  const url=new URL(z.string().url().max(8000).parse(raw));
  if(!['https:','http:'].includes(url.protocol)||url.username||url.password||privateAddress(url.hostname))throw new ApiError(403,'network_denied','Only public HTTP(S) hosts are allowed');
- if(consent)await hostConsent(ctx,url.host);
  let response:Response;
  try{response=await ctx.egress(url,{...init,redirect:'manual',credentials:'omit',signal:init.signal??AbortSignal.timeout(15000)});}
  catch(error){const message=error instanceof Error?error.message:'';if(/Private egress|Egress requires/.test(message))throw new ApiError(403,'network_denied','Private network addresses are blocked');if(/Redirect/.test(message))throw new ApiError(400,'redirect_denied','Use the final URL; redirects are not followed');throw new ApiError(502,'network_failed','Network request failed');}

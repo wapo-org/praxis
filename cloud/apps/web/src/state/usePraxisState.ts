@@ -115,7 +115,6 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   const [selectedModelId, setSelectedModelId] = React.useState<string>(() => readStoredSelection(replicaKey.current)?.modelId ?? '');
   const [catalogReady, setCatalogReady] = React.useState(false);
   const pendingPickRef = React.useRef<{chatId: string; modelId: string} | null>(null);
-  const [webSearch, setWebSearch] = React.useState(false);
   const cacheModels = React.useCallback(
     (items: ModelListItem[]) =>
       setModels((prev) => [
@@ -257,8 +256,6 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     catalogReady,
     setCatalogReady,
     pendingPickRef,
-    webSearch,
-    setWebSearch,
     cacheModels,
     selectedEffort,
     setSelectedEffort,

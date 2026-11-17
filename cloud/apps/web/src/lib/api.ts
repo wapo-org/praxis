@@ -101,6 +101,7 @@ export class PraxisApiClient extends UploadApiClient {
         modelId?: string;
       effort?: string;
       disabledConnectorIds?: string[];
+      webToolsEnabled?: boolean;
     },
   ): Promise<Chat> {
     const offline = (): Chat => {
@@ -159,7 +160,6 @@ export class PraxisApiClient extends UploadApiClient {
     modelId?: string;
     mode?: 'ask' | 'plan' | 'build' | 'auto';
     effort?: string;
-    webSearch?: boolean;
     attachmentIds?: string[];
     disabledConnectorIds?: string[];
     clientTurnId?: string;
