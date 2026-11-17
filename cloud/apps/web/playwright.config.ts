@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 import { DEFAULT_WEB_PORT } from '../../packages/verify/src/constants.js';
 export default defineConfig({
   testDir: 'e2e',
-  globalSetup: './e2e/setup.ts',
+  globalSetup: '../../packages/verify/src/web/browser-setup.ts',
   testMatch: '*.pw.ts',
   outputDir: process.env.PW_OUTPUT_DIR ?? '/tmp/praxis-pw-web',
   workers: 1,

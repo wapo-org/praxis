@@ -45,7 +45,13 @@ export interface ApiClientConfig {
   bearerToken?: string;
 }
 
+// Multi-request operations carry the owner scope that started them, so a session switch cannot lend them a new token.
+export interface SessionScope {
+  readonly signal: AbortSignal;
+  readonly bearerToken: string;
+}
 
+export type ApiRequestInit = RequestInit & { headers?: Record<string, string>; session?: SessionScope };
 
 export class ApiTransport {
   onUnauthorized?: () => void;
@@ -62,6 +68,12 @@ export class ApiTransport {
     this.sessionController.abort();
     this.sessionIdentity = userId;
     if (userId !== null) this.sessionController = new AbortController();
+  }
+
+  captureSession(): SessionScope {
+    const signal = this.getSessionSignal();
+    signal.throwIfAborted();
+    return { signal, bearerToken: this.bearerToken };
   }
 
   async freshToken(): Promise<string> {
@@ -114,39 +126,44 @@ export class ApiTransport {
     }
   }
 
-  protected headers(extra?: Record<string, string>): Record<string, string> {
+  protected headers(extra?: Record<string, string>, session?: SessionScope): Record<string, string> {
+    const token = session ? session.bearerToken : this.bearerToken;
     const h: Record<string, string> = {
-      ...(this.bearerToken ? { Authorization: `Bearer ${this.bearerToken}` } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...extra,
     };
     return h;
   }
 
-  async request<T>(
-    path: string,
-    init?: RequestInit & { headers?: Record<string, string> },
-  ): Promise<T> {
-    const sessionSignal = this.getSessionSignal();
-    const signal = init?.signal ? AbortSignal.any([sessionSignal, init.signal]) : sessionSignal;
+  // A 401 from a scope that has since ended belongs to the old owner and must not sign out the current one.
+  protected reportUnauthorized(signal: AbortSignal): void {
     signal.throwIfAborted();
-    await this.freshToken();
+    this.onUnauthorized?.();
+  }
+
+  async request<T>(path: string, init?: ApiRequestInit): Promise<T> {
+    const { session, ...fetchInit } = init ?? {};
+    const sessionSignal = session?.signal ?? this.getSessionSignal();
+    const signal = fetchInit.signal ? AbortSignal.any([sessionSignal, fetchInit.signal]) : sessionSignal;
+    signal.throwIfAborted();
+    if (!session) await this.freshToken();
     signal.throwIfAborted();
     const headers: Record<string, string> = {
-      ...(init?.body && typeof init.body === 'string'
+      ...(fetchInit.body && typeof fetchInit.body === 'string'
         ? { 'Content-Type': 'application/json' }
         : {}),
-      ...this.headers(init?.headers),
+      ...this.headers(fetchInit.headers, session),
     };
 
     const res = await fetch(this.url(path), {
-      ...init,
+      ...fetchInit,
       credentials: 'include',
       headers,
       signal,
     });
 
     signal.throwIfAborted();
-    if (res.status === 401) this.onUnauthorized?.();
+    if (res.status === 401) this.reportUnauthorized(signal);
     if (!res.ok) {
       let code = 'http_error';
       let message = `HTTP ${res.status}`;

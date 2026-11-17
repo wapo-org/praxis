@@ -91,3 +91,73 @@ it('ignores a stale unauthorized response after another owner has signed in', as
   expect(unauthorized).not.toHaveBeenCalled();
   expect(client.getBearerToken()).toBe('owner-b-token');
 });
+
+function stubUpload(transfer: (init: RequestInit) => Promise<Response>) {
+  const fetcher = vi.fn(async (url: string, init: RequestInit) => {
+    if (url.endsWith('/v1/uploads')) return new Response(JSON.stringify({ type: 'upload.url', uploadUrl: '/v1/uploads/blob', expiresAt: '' }));
+    if (url.endsWith('/v1/uploads/blob')) return transfer(init);
+    return new Response(JSON.stringify({ id: 'att-a' }));
+  });
+  vi.stubGlobal('fetch', fetcher);
+  return fetcher;
+}
+
+function bearers(fetcher: ReturnType<typeof stubUpload>): string[] {
+  return fetcher.mock.calls.map(([, init]) => (init.headers as Record<string, string>).Authorization ?? '');
+}
+
+it('binds an upload and its completion to the owner session that started it', async () => {
+  const client = new PraxisApiClient();
+  client.setSessionIdentity('owner-a');
+  client.setBearerToken('owner-a-token');
+  let transferring!: () => void;
+  const started = new Promise<void>(resolve => { transferring = resolve; });
+  const fetcher = stubUpload(init => new Promise<Response>((_resolve, reject) => {
+    init.signal!.addEventListener('abort', () => reject(init.signal!.reason), { once: true });
+    transferring();
+  }));
+  const pending = client.uploadAttachment(new File(['a'], 'a.txt', { type: 'text/plain' }));
+  const cancelled = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  await started;
+  client.setSessionIdentity(null);
+  client.setSessionIdentity('owner-b');
+  client.setBearerToken('owner-b-token');
+  await cancelled;
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(bearers(fetcher)).toEqual(['Bearer owner-a-token', 'Bearer owner-a-token']);
+});
+
+it('ignores a delayed upload 401 after another owner has signed in', async () => {
+  const client = new PraxisApiClient();
+  client.setSessionIdentity('owner-a');
+  client.setBearerToken('owner-a-token');
+  let deliver!: (response: Response) => void;
+  const started = new Promise<void>(resolve => {
+    stubUpload(() => new Promise<Response>(settle => { deliver = settle; resolve(); }));
+  });
+  const unauthorized = vi.fn();
+  client.onUnauthorized = unauthorized;
+  const pending = client.uploadAttachment(new File(['a'], 'a.txt', { type: 'text/plain' }));
+  const cancelled = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  await started;
+  client.setSessionIdentity(null);
+  client.setSessionIdentity('owner-b');
+  client.setBearerToken('owner-b-token');
+  deliver(new Response('{}', { status: 401 }));
+  await cancelled;
+  expect(unauthorized).not.toHaveBeenCalled();
+  expect(client.getBearerToken()).toBe('owner-b-token');
+});
+
+it('completes an upload with the token captured at entry when the same owner refreshes it', async () => {
+  const client = new PraxisApiClient();
+  client.setSessionIdentity('owner-a');
+  client.setBearerToken('owner-a-token');
+  const fetcher = stubUpload(async () => {
+    client.setBearerToken('owner-a-refreshed');
+    client.setSessionIdentity('owner-a');
+    return new Response(JSON.stringify({ storageId: 'blob-a' }));
+  });
+  await expect(client.uploadAttachment(new File(['a'], 'a.txt', { type: 'text/plain' }))).resolves.toMatchObject({ id: 'att-a' });
+  expect(bearers(fetcher)).toEqual(['Bearer owner-a-token', 'Bearer owner-a-token', 'Bearer owner-a-token']);
+});

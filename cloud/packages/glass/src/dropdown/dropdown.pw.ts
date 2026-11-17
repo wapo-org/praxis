@@ -1,8 +1,7 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { signedInTest as test } from '../../../verify/src/web/stack-test.js';
 const shot = (info: import('@playwright/test').TestInfo, name: string) => info.outputPath(name);
 test.beforeEach(async ({ page }) => {
-  const auth = await page.request.post('/v1/auth/dev', { data: { type: 'auth.dev', userId: 'dropdown-check' } });
-  expect(auth.ok()).toBeTruthy();
   await page.goto('/lab/glass?dropdown');
   await page.getByTestId('position-top-start').waitFor();
   await page.evaluate(() => document.fonts.ready);

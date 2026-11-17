@@ -327,6 +327,7 @@ export class PraxisApiClient extends FeatureApiClient {
 
   // Uploads & Voice Transcription
   async uploadAttachment(file: File, chatId?: string): Promise<Attachment> {
+    const session = this.captureSession();
     const req = await this.request<{
       type: 'upload.url';
       uploadUrl: string;
@@ -341,6 +342,7 @@ export class PraxisApiClient extends FeatureApiClient {
         size: Math.max(1, file.size),
         ...(chatId ? { chatId } : {}),
       }),
+      session,
     });
 
     const direct = this.isApiOriginUrl(req.uploadUrl);
@@ -353,7 +355,7 @@ export class PraxisApiClient extends FeatureApiClient {
     const isApiOrigin = direct || viaApi !== null;
     const uploadHeaders: Record<string, string> = {
       'Content-Type': file.type || 'application/octet-stream',
-      ...(isApiOrigin ? this.headers() : {}),
+      ...(isApiOrigin ? this.headers(undefined, session) : {}),
     };
 
     const uploadRes = await fetch(uploadTargetUrl, {
@@ -361,9 +363,11 @@ export class PraxisApiClient extends FeatureApiClient {
       headers: uploadHeaders,
       body: file,
       credentials: isApiOrigin ? 'include' : 'omit',
+      signal: session.signal,
     });
 
-    if (isApiOrigin && uploadRes.status === 401) this.onUnauthorized?.();
+    session.signal.throwIfAborted();
+    if (isApiOrigin && uploadRes.status === 401) this.reportUnauthorized(session.signal);
     if (!uploadRes.ok) {
       let code = 'upload_failed';
       let message = `Upload failed with HTTP ${uploadRes.status}`;
@@ -407,6 +411,7 @@ export class PraxisApiClient extends FeatureApiClient {
         storageId,
         ...(chatId ? { chatId } : {}),
       }),
+      session,
     });
   }
 
