@@ -108,3 +108,19 @@ Tool-boundary dependencies: `shell-quote` **1.12.0**, pinned, dependency-free pu
 Pinned dev dependencies: `@informalsystems/quint` runs protocol simulations without
 Java; `fast-check` generates checkpoint, API dedup/truncation and failover cases.
 Run `npm run specs` for models and `npm test` for implementation properties.
+
+## Stateful subagent core
+
+`packages/agent/src/subagents` owns the pure addressed lifecycle reducer, permission narrowing,
+ordered inboxes, asynchronous cascading cancellation and verified artifact handoffs (PRA-79).
+The four wire tools and durable state schemas live in `packages/protocol/src/subagents.ts`.
+Injected workspace operations prepare isolated roots, hash artifact bytes, rerun configured checks and
+kill handles; no Convex, Modal or model SDK is imported into the core. `waitAgents` refuses unverified
+completions. Discovery and waits return `{tree, result}` with structural taint on the result and each agent;
+adapters commit the returned state before exposing names, statuses, handoffs or errors to a model.
+Both join visible/returned source taint into the caller and its descendants. Message enqueue and delivery
+join message provenance into the recipient subtree. One lifecycle schema requires completed handoffs and
+failed errors in both persisted nodes and wait results. Workflow scheduling, authenticated
+addressing, atomic persistence and sandbox confinement
+remain adapter responsibilities under PRA-15/71/58; the current runner does not register these tools.
+PRA-75's five named subagent invariants run as fast-check properties against the reducer.
