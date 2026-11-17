@@ -3,6 +3,9 @@ import {join} from 'node:path';
 import {chromium, request as playwrightRequest, type Browser, type Page} from '@playwright/test';
 import {CAPTURE_VIEWPORT, FLOW_ACTION_TIMEOUT_MS, FLOW_TIMEOUT_MS} from '../constants.js';
 import type {WebFlow} from './flow-types.js';
+import {createTestAccount} from './auth-account.js';
+import {createAuthChallengeBudget} from './auth-budget.js';
+import {openSignedInPage, readSessionState, signIn, type SessionState} from './session.js';
 import {accessibilitySnapshot, screenshotEvidence} from './evidence.js';
 import {describeIssue, unexpectedIssues, type BrowserIssue} from './judge.js';
 
@@ -68,9 +71,15 @@ async function capture(page: Page, directory: string, id: string): Promise<{scre
   return files;
 }
 
-async function runFlow(browser: Browser, flow: WebFlow, options: HarnessOptions): Promise<FlowResult> {
+interface RunSession {
+  budgetDirectory: string;
+  state?: SessionState;
+}
+
+async function runFlow(browser: Browser, flow: WebFlow, options: HarnessOptions, session: RunSession): Promise<FlowResult> {
   const started = Date.now();
-  const context = await browser.newContext({viewport: CAPTURE_VIEWPORT});
+  const storageState = flow.session === 'shared' ? session.state : undefined;
+  const context = await browser.newContext({viewport: CAPTURE_VIEWPORT, storageState});
   const request = await playwrightRequest.newContext();
   const page = await context.newPage();
   page.setDefaultTimeout(FLOW_ACTION_TIMEOUT_MS);
@@ -78,14 +87,33 @@ async function runFlow(browser: Browser, flow: WebFlow, options: HarnessOptions)
   const notes: string[] = [];
   watch(page, issues);
   let error: string | undefined;
+  let signedIn = false;
   try {
-    await withTimeout(flow.run({page, base: options.base, api: options.api, convexUrl: options.convexUrl, request, seed: options.seed, note: line => notes.push(line)}), FLOW_TIMEOUT_MS, flow.id);
+    const run = async () => {
+      if (storageState) {
+        await openSignedInPage(page, '/', options.base);
+      } else if (flow.session) {
+        const account = await createTestAccount(options.convexUrl, session.budgetDirectory);
+        await signIn(page, options.base, account);
+      }
+      signedIn = flow.session !== undefined;
+      await flow.run({page, api: options.api, request, seed: options.seed, note: line => notes.push(line)});
+    };
+    await withTimeout(run(), FLOW_TIMEOUT_MS, flow.id);
   } catch (caught) {
     error = caught instanceof Error ? caught.message.split('\n')[0] : String(caught);
   }
   const files = await capture(page, options.directory, flow.id);
-  await request.dispose();
-  await context.close();
+  try {
+    if (flow.session === 'shared' && signedIn) {
+      session.state = await readSessionState(context, options.base);
+    }
+  } catch (caught) {
+    error ??= caught instanceof Error ? caught.message : String(caught);
+  } finally {
+    await request.dispose();
+    await context.close();
+  }
   const unexpected = unexpectedIssues(issues, flow.allow).map(describeIssue);
   const allowed = issues.filter(issue => issue.kind === 'response' && !unexpected.includes(describeIssue(issue))).map(describeIssue);
   const issuesFile = join(options.directory, `${flow.id}.issues.json`);
@@ -104,11 +132,12 @@ async function runFlow(browser: Browser, flow: WebFlow, options: HarnessOptions)
 }
 
 export async function runFlows(flows: readonly WebFlow[], options: HarnessOptions, onResult: (result: FlowResult) => void): Promise<FlowResult[]> {
+  const session = {budgetDirectory: await createAuthChallengeBudget(options.directory)};
   const browser = await chromium.launch({headless: !options.headed});
   const results: FlowResult[] = [];
   try {
     for (const flow of flows) {
-      const result = await runFlow(browser, flow, options);
+      const result = await runFlow(browser, flow, options, session);
       results.push(result);
       onResult(result);
     }

@@ -1,7 +1,7 @@
-import { apiRequest, signIn as convexSignIn } from './sign-in';
-import { expect, test } from '@playwright/test';
+import { apiRequest, openSignedInPage, signedInTest as test } from './sign-in';
+import { expect } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
-  await convexSignIn(page);
+  await openSignedInPage(page);
   await page.goto('/');
   await page.getByTestId('sidebar-new-chat').waitFor();
   await page.evaluate(() => document.fonts.ready);

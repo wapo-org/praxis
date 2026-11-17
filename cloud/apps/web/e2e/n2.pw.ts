@@ -1,5 +1,5 @@
-import { signIn as convexSignIn } from './sign-in';
-import {test,expect,type Page} from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import {expect,type Page} from '@playwright/test';
 // WP-N2: the shadcn code block port, fence features, per-block wrap, the wrap scroll jump and streaming.
 const F='```';
 const longLine=`const url = 'https://example.com/api/v1/articles?fields=title,author,published_at,reading_time,tags&sort=-published_at&page[size]=50&filter[status]=published&include=author';`;
@@ -28,7 +28,7 @@ async function chat(page:Page,text:string,script='text'){
 const block=(page:Page,text:string)=>page.getByTestId('markdown-code-block').filter({hasText:text}).last();
 
 test('wrap is per block: the button shows only on a block that overflows, and toggling it wraps that block alone',async({page})=>{
-  await convexSignIn(page);await chat(page,DOC);
+  await openSignedInPage(page);await chat(page,DOC);
   const short=block(page,'Build and deploy'),long=block(page,'include=author'),two=block(page,'authors?fields');
   await expect(long.getByTestId('code-wrap-button')).toBeVisible();
   await expect(short.getByTestId('code-wrap-button')).toHaveCount(0);
@@ -49,7 +49,7 @@ test('wrap is per block: the button shows only on a block that overflows, and to
 });
 
 test('wrapping a block mid-page keeps its button within 1 px; only the content below moves (N-ref/04)',async({page})=>{
-  await convexSignIn(page);await chat(page,DOC);
+  await openSignedInPage(page);await chat(page,DOC);
   const viewport=page.getByTestId('chat-scroll-viewport');
   const target=block(page,'include=author');
   await viewport.hover();
@@ -79,7 +79,7 @@ test('wrapping a block mid-page keeps its button within 1 px; only the content b
 });
 
 test('the fixture chat shows every fence feature',async({page})=>{
-  await convexSignIn(page);await chat(page,'Show me every code block feature','codeFeatures');
+  await openSignedInPage(page);await chat(page,'Show me every code block feature','codeFeatures');
   const titled=block(page,'readingTime');
   await expect(titled.locator('[data-slot=code-block-title]')).toHaveText('src/lib/reading.ts');
   await expect(titled.locator('pre')).toHaveAttribute('data-numbered','true');
@@ -112,7 +112,7 @@ test('the fixture chat shows every fence feature',async({page})=>{
 });
 
 test('a selection copies blank lines and never line numbers, diff markers or prompts',async({page})=>{
-  await convexSignIn(page);
+  await openSignedInPage(page);
   await chat(page,['Blocks:',fence('ts showLineNumbers','const a = 1;','','const b = 2;'),fence('diff','-old','+new'),fence('terminal','$ ls','file.txt')].join('\n\n'));
   const select=(text:string)=>block(page,text).locator('pre').evaluate(pre=>{const r=document.createRange();r.selectNodeContents(pre);const s=getSelection()!;s.removeAllRanges();s.addRange(r);return s.toString();});
   expect((await select('const a')).replace(/\n$/,'')).toBe('const a = 1;\n\nconst b = 2;');
@@ -121,7 +121,7 @@ test('a selection copies blank lines and never line numbers, diff markers or pro
 });
 
 test('a long block streams in small chunks without colour flicker or height going back',async({page})=>{
-  await convexSignIn(page);
+  await openSignedInPage(page);
   // The codeFeatures fixture streams ~4 characters every 6 ms; its last block is 36 lines (it collapses at 20).
   const id=await page.evaluate(async()=>{
     // @ts-expect-error Vite source import.

@@ -3,7 +3,7 @@ import {expect, type Page} from '@playwright/test';
 import {browserCliFlow} from './browser-flow.js';
 import {fuzzChatFlow} from './fuzz.js';
 import type {FlowContext, WebFlow} from './flow-types.js';
-import {signIn, sessionHeaders} from './session.js';
+import {sessionHeaders} from './session.js';
 
 /** Vite serves web sources as modules, so a flow can drive the real client the app uses. */
 const API_MODULE = '/src/lib/api.ts';
@@ -25,11 +25,11 @@ function composer(page: Page) {
 
 const loadApp: WebFlow = {
   id: 'load-app',
-  title: 'Signed-out shell, Convex Auth sign-in, empty chat with a usable composer',
+  title: 'The signed-in Convex Auth shell shows an empty chat with a usable composer',
   default: true,
+  session: 'shared',
   allow: [],
-  async run({page, convexUrl, base}) {
-    await signIn(page, base, convexUrl);
+  async run({page}) {
     await expect(page.getByRole('heading', {level: 1})).toBeVisible();
     await expect(composer(page)).toBeEditable();
   },
@@ -39,9 +39,9 @@ const settingsModels: WebFlow = {
   id: 'settings-models',
   title: 'Settings → Models shows the OpenRouter card, not connected',
   default: true,
+  session: 'shared',
   allow: [],
-  async run({page, convexUrl, base}) {
-    await signIn(page, base, convexUrl);
+  async run({page}) {
     await page.getByTestId('nav-settings-button').click();
     await page.getByRole('navigation', {name: 'Settings sections'}).getByRole('button', {name: 'Models', exact: true}).click();
     await expect(page.getByTestId('openrouter-disconnected')).toBeVisible();
@@ -54,9 +54,9 @@ const modelSearch: WebFlow = {
   id: 'model-search',
   title: 'Composer model list opens and its search narrows to the scripted models',
   default: true,
+  session: 'shared',
   allow: [],
-  async run({page, convexUrl, base}) {
-    await signIn(page, base, convexUrl);
+  async run({page}) {
     await page.getByRole('button', {name: 'Open attachments and controls'}).click();
     await page.getByTestId('tray-model-picker-trigger').click();
     const list = page.getByRole('listbox', {name: 'Models'});
@@ -72,9 +72,9 @@ const scriptedChat: WebFlow = {
   id: 'scripted-chat',
   title: 'Send a message on the scripted model and see the streamed reply',
   default: true,
+  session: 'shared',
   allow: [],
-  async run({page, convexUrl, base, note}) {
-    await signIn(page, base, convexUrl);
+  async run({page, note}) {
     const text = `Verify ${Date.now().toString(36)}`;
     await composer(page).fill(text);
     await page.getByTestId('composer-send-button').click();
@@ -91,12 +91,12 @@ const apiResilience: WebFlow = {
   id: 'api-resilience',
   title: 'Missing route errors, a 401 signs out, 30 tool runs keep the API alive',
   default: true,
+  session: 'isolated',
   allow: [
     {kind: 'response', pattern: /^\/v1\/connectors$/, status: 404, reason: 'the flow stubs a missing connectors route'},
     {kind: 'response', pattern: /^\/v1\/bootstrap$/, status: 401, reason: 'the flow stubs an expired session'},
   ],
-  async run({page, convexUrl, base, api, request, note}) {
-    await signIn(page, base, convexUrl);
+  async run({page, api, request, note}) {
     await page.route('**/v1/connectors', route => route.fulfill({status: 404, body: '{}'}));
     const unavailable = await page.evaluate(async path => {
       const {apiClient} = (await import(path)) as ApiModule;

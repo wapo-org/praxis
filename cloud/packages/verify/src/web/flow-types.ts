@@ -3,11 +3,8 @@ import type {AllowedIssue} from './judge.js';
 
 export interface FlowContext {
   page: Page;
-  /** Web origin the browser loads. */
-  base: string;
   /** API origin for direct requests, bypassing the web proxy. */
   api: string;
-  convexUrl: string;
   request: APIRequestContext;
   /** Seed for flows that make random choices; the same seed replays the same actions. */
   seed: number;
@@ -20,6 +17,7 @@ export interface WebFlow {
   title: string;
   /** Off-by-default flows (fuzzing) run only when named in `--flows`. */
   default: boolean;
+  session?: 'shared' | 'isolated';
   allow: readonly AllowedIssue[];
   run(context: FlowContext): Promise<void>;
 }

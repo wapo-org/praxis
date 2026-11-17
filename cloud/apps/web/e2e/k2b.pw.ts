@@ -1,5 +1,5 @@
-import { signIn as convexSignIn } from './sign-in';
-import { test, expect, type Page } from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import { expect, type Page } from '@playwright/test';
 test.use({ serviceWorkers: 'block' });
 
 const now = '2026-11-11T00:00:00.000Z';
@@ -64,7 +64,7 @@ async function scriptedChat(page: Page, title: string) {
 
 test('a model picked in a new chat stays picked', async ({ page }) => {
   await withRouter(page);
-  await convexSignIn(page);
+  await openSignedInPage(page);
   await page.getByTestId('nav-new-chat-desktop').click();
   await pick(page, 'K2b Muse');
   await holds(page, 'K2b Muse');
@@ -79,7 +79,7 @@ test('a model picked in a new chat stays picked', async ({ page }) => {
 
 test('a model picked in an existing chat stays picked while the save is slow', async ({ page }) => {
   await withRouter(page);
-  await convexSignIn(page);
+  await openSignedInPage(page);
   const id = await scriptedChat(page, 'Slow save');
   await page.goto(`/c/${id}`);
   await expect(headerModel(page)).toHaveText(/Scripted/);
@@ -98,7 +98,7 @@ test('a model picked in an existing chat stays picked while the save is slow', a
 
 test('a failed save shows an error and does not silently revert', async ({ page }) => {
   await withRouter(page);
-  await convexSignIn(page);
+  await openSignedInPage(page);
   const id = await scriptedChat(page, 'Failing save');
   await page.goto(`/c/${id}`);
   await expect(headerModel(page)).toHaveText(/Scripted/);
@@ -114,7 +114,7 @@ test('a failed save shows an error and does not silently revert', async ({ page 
 
 test('reload keeps the selection, in an existing chat and in a new one', async ({ page }) => {
   await withRouter(page);
-  await convexSignIn(page);
+  await openSignedInPage(page);
   const id = await scriptedChat(page, 'Reload keeps');
   await page.goto(`/c/${id}`);
   await pick(page, 'K2b Lumen');

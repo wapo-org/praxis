@@ -1,11 +1,11 @@
-import {expect, test} from '@playwright/test';
-import {signIn} from './sign-in';
+import {expect} from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
 
 test.use({serviceWorkers: 'block'});
 
 test('defect 1: composer and EmptyState clear before the flight first renders', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await signIn(page);
+  await openSignedInPage(page);
   await expect(page.getByTestId('chat-empty-state')).toBeVisible();
 
   const input = page.getByTestId('composer-input');
@@ -89,7 +89,7 @@ test('defect 1: composer and EmptyState clear before the flight first renders', 
 
 test('defect 2: instant scripted reply never paints before the 820ms bubble flight lands', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await signIn(page);
+  await openSignedInPage(page);
 
   await page.evaluate(() => {
     const w = window as unknown as {
