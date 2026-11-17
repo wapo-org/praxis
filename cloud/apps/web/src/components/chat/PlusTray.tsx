@@ -93,7 +93,8 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
   );
   const modes = actionOptions('mode', store);
   const efforts = actionOptions('effort', store);
-  const searchSupported = false;
+  const webChat = store.activeChat;
+  const webToolsOn = webChat?.webToolsEnabled !== false;
   const enabledConnectors = store.connectors.filter((c) => c.enabled);
   const inSubView = view !== 'main';
   const coarsePointer = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
@@ -179,21 +180,21 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                 ))}
               </div>
               <RowGroup>
-                <label className={`${rowClass(searchSupported)} ${styles.row}`}>
+                <label className={`${rowClass(!!webChat)} ${styles.row}`}>
                   <span className={styles.rowIcon}>
                     <Globe size={18} />
                   </span>
                   <span className={styles.rowCopy}>
                     <span className={styles.rowTitle}>{ACTIONS.web.label}</span>
-                    {!searchSupported ? (
-                      <span className={styles.rowDetail}>Not supported by this model</span>
-                    ) : null}
+                    <span className={styles.rowDetail}>
+                      {webChat ? 'Search and read the web in this chat' : 'Available once the chat starts'}
+                    </span>
                   </span>
                   <Switch
-                    label="Web search"
-                    checked={store.webSearch && searchSupported}
-                    disabled={!searchSupported}
-                    onChange={store.setWebSearch}
+                    label="Web tools"
+                    checked={webToolsOn}
+                    disabled={!webChat}
+                    onChange={(enabled) => { if (webChat) void store.setChatWebTools(webChat.id, enabled); }}
                   />
                 </label>
                 <button

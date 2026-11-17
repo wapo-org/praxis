@@ -26,7 +26,7 @@ it('ClientTurnDedup: concurrent retries and completed retries produce one user t
     fc.integer({min: 2, max: RETRIES_MAX}),
     async (text, retries) => {
       const service = await fixture();
-      const input = {type: 'run.start' as const, chatId: CHAT, text, webSearch: false, attachmentIds: [],
+      const input = {type: 'run.start' as const, chatId: CHAT, text, attachmentIds: [],
         script: 'text' as const, clientTurnId: crypto.randomUUID()};
       const runs = await Promise.all(Array.from({length: retries}, () => service.start(USER, input)));
       await service.drain();
@@ -56,7 +56,7 @@ it('OrderedPrefix: truncate deletes the selected turn and its suffix, preserving
         const clientTurnId = crypto.randomUUID();
         turnIds.push(clientTurnId);
         await service.start(USER, {type: 'run.start', chatId: CHAT, text: `turn ${i}`,
-          webSearch: false, attachmentIds: [], script: 'text', clientTurnId});
+          attachmentIds: [], script: 'text', clientTurnId});
         await service.drain();
       }
       const before = (await service.list<Message>(USER, 'message', CHAT)).sort((a, b) => a.sequence! - b.sequence!);
@@ -67,7 +67,7 @@ it('OrderedPrefix: truncate deletes the selected turn and its suffix, preserving
       expect(after).toEqual(before.slice(0, cut));
       expect(result.removedMessageIds).toEqual(before.slice(cut).map(m => m.id));
       const restarted = await service.start(USER, {type: 'run.start', chatId: CHAT, text: `turn ${cutTurn}`,
-        webSearch: false, attachmentIds: [], script: 'text', clientTurnId: crypto.randomUUID()});
+        attachmentIds: [], script: 'text', clientTurnId: crypto.randomUUID()});
       await service.drain();
       expect(result.removedRunIds).not.toContain(restarted.id);
       const continued = (await service.list<Message>(USER, 'message', CHAT)).sort((a, b) => a.sequence! - b.sequence!);
@@ -108,7 +108,7 @@ it('StopPrefix / CancelFence: cancelling between arbitrary chunks keeps only the
           await runner.run({userId, run, chat, messages});
         },
       };
-      const run = await service.start(USER, {type: 'run.start', chatId: CHAT, text: 'stop test', webSearch: false, attachmentIds: []});
+      const run = await service.start(USER, {type: 'run.start', chatId: CHAT, text: 'stop test', attachmentIds: []});
       await service.drain();
       const snapshot = await service.require<RunSnapshot>(USER, 'snapshot', run.id);
       expect(snapshot.run.status).toBe('cancelled');

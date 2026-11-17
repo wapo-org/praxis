@@ -2,7 +2,7 @@ import {toolDisplay} from './tool-display.js';
 import { z } from 'zod';
 import {
   ApprovalDecisionSchema,ElicitationResponseSchema,JsonObjectSchema,JsonValueSchema,
-  ElicitationSchema,RunEventPayloadSchema,TimestampSchema,ToolSpecSchema,
+  ElicitationSchema,RunEventPayloadSchema,TimestampSchema,ToolSpecSchema,READ_TOOL_OUTPUT_TOOL_NAME,
   type JsonValue,type Message,type MessagePart,type Run,type RunErrorCode,type RunEventPayload,type ToolSpec,type Usage,
 } from '@praxis/protocol';
 import {ProviderFailure,runErrorCode} from './provider-error.js';
@@ -11,7 +11,8 @@ import {
   type AgentCheckpoint,type AgentRunnerOptions,type AgentTool,type PendingCall,type ProviderRequest,
   type ProviderResponse,type RunInput,type ToolResult,
 } from './types.js';
-import {alwaysAllowKey,canonical,decideTool,fingerprint} from './policy.js';
+import {alwaysAllowKey,canonical,fingerprint} from './policy.js';
+import {historyTainted,runToolDecision} from './run-boundary.js';
 
 class Park extends Error {}
 /** Loop control signals; tool adapters must rethrow rather than stringify. */
@@ -77,7 +78,7 @@ export class AgentRunner {
     const cp=CheckpointSchema.parse({
       version:1,userId:i.userId,run:{...i.run,status:'running'},chat:{...i.chat,setup},setup,
       messages:i.messages,modelId:i.modelId??i.chat.modelId??'scripted',effort:i.effort,
-      capabilities:this.options.provider.capabilities,policy:i.policy??{},phase:'model',iteration:0,
+      capabilities:this.options.provider.capabilities,policy:i.policy??{},phase:'model',iteration:0,tainted:historyTainted(i.messages,this.tools),
       // Hidden tools freeze with setup; older setups fall back to current tools.
       hiddenTools:setup.hiddenTools??[...this.tools.values()].filter(t=>t.hidden).map(t=>t.spec),pending:[],calls:{},resolutions:{},maxIterations:i.maxIterations,maxTokens:i.maxTokens,
       modelMaxTokens:i.modelMaxTokens,maxRetries:i.maxRetries,usage:emptyUsage(),
@@ -344,7 +345,6 @@ export class AgentRunner {
     if(message.parts.length)await this.commit(cp,message);
     if(!cp.pending.length)await this.finish(cp,'completed');else await this.save(cp);
   }
-
   private activity(id:string,name:string,spec?:ToolSpec,parentCallId?:string,args?:JsonValue) {
     const display=toolDisplay(name,spec,args);
     return {display,type:'tool.activity' as const,id,name,source:spec?.source??{type:'builtin' as const},
@@ -380,7 +380,7 @@ export class AgentRunner {
     // A changed live subject invalidates a parked one-shot approval too.
     if(entry.key&&entry.key!==key)delete call.decision;
     entry.key=key;
-    const decision=decideTool(effectiveSpec,cp.chat.mode,cp.policy,key);
+    const decision=runToolDecision(cp,live,effectiveSpec,key);
     if(decision.decision==='refuse')return this.completeTool(cp,call,textResult(decision.reason,true),'denied');
     if(call.decision==='deny')return this.completeTool(cp,call,textResult('The user declined this tool call.',true),'denied');
     if(decision.decision==='ask'&&!call.decision) {
@@ -392,7 +392,7 @@ export class AgentRunner {
     if(entry.started&&!effectiveSpec.traits.some(t=>t==='idempotent'||t==='readOnly'))
       return this.completeTool(cp,call,textResult('Tool execution was interrupted before it reported a result. It was not retried automatically because it may have side effects; check its effect before calling it again.',true),'failed');
     await this.checkCancel(cp);await this.emit(cp,{type:'tool.ready',activity:this.activity(call.id,call.name,spec,call.parentCallId,call.arguments)});
-    entry.started=true;await this.emit(cp,{type:'tool.running',callId:call.id});await this.save(cp);
+    entry.started=true;cp.tainted||=live.boundary?.untrustedSource===true;await this.emit(cp,{type:'tool.running',callId:call.id});await this.save(cp);
     let nestedIndex=0,elicitationIndex=0;
     try {
       const output=await this.controlled(cp,signal=>live.execute(call.arguments,{
@@ -426,7 +426,7 @@ export class AgentRunner {
     const full=result.content.map(c=>typeof c.text==='string'?c.text:JSON.stringify(c)).join('\n');
     if(full.length>max) {
       const ref=await this.options.ports.spill?.(cp.userId,cp.run.id,call.id,full);
-      result={...result,content:[{type:'text',text:full.slice(0,max)+`\n[Output truncated${ref?`; read_tool_output ${ref}`:''}]`}],...(ref?{outputRef:ref}:{})};
+      result={...result,content:[{type:'text',text:full.slice(0,max)+`\n[Output truncated${ref?`; ${READ_TOOL_OUTPUT_TOOL_NAME} ${ref}`:''}]`}],...(ref?{outputRef:ref}:{})};
     }
     cp.calls[call.id]={...cp.calls[call.id],call,result};await this.save(cp);
     await this.emit(cp,{type:'tool.finished',callId:call.id,completion:{type:'tool.completion',status,summary:status,preview:full.slice(0,500),content:result.content,outputRef:result.outputRef}});

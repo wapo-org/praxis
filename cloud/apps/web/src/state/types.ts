@@ -147,8 +147,6 @@ export interface PraxisStoreContextValue {
 
   // Selected Composer Controls
   selectedModelId: string;
-  webSearch: boolean;
-  setWebSearch: (value: boolean) => void;
   cacheModels: (items: ModelListItem[]) => void;
   selectedEffort: string;
   selectedMode: Mode;
@@ -170,6 +168,7 @@ export interface PraxisStoreContextValue {
   togglePinChat: (chatId: string) => Promise<void>;
   deleteChats: (chatIds: string[]) => Promise<void>;
   toggleChatConnector: (chatId: string, connectorId: string, enabled: boolean) => Promise<void>;
+  setChatWebTools: (chatId: string, enabled: boolean) => Promise<void>;
 
   /** Resolves false when the connect card opened instead (no OpenRouter key); the caller keeps the draft. */
   sendMessage: (

@@ -5,6 +5,7 @@ import {
   IdSchema, JsonObjectSchema, JsonValueSchema, MessagePartSchema, MessageSchema, RunSchema,
   UsageSchema, type Capabilities, type JsonObject, type JsonValue, type Mode, type RunEventPayload, type ToolSpec,
 } from '@praxis/protocol';
+import type {ToolClassification} from './boundary/policy.js';
 
 export const ProviderRequestSchema = z.object({
   model: IdSchema, system: z.string(), messages: z.array(MessageSchema),
@@ -64,6 +65,8 @@ export interface AgentTool {
   unavailableReason?:string;
   /** Trusted adapter classification; the displayed frozen catalog stays unchanged. */
   classify?(args:JsonValue):{traits:ToolSpec['traits'];policyKey?:string};
+  /** PRA-76 classification; when set it replaces decideTool and an untrusted source taints the run. */
+  boundary?:ToolClassification;
   execute(args:JsonValue,context:ToolContext):Promise<ToolResult>;
 }
 export const PolicySchema=z.object({trustedSources:z.array(z.string()).default([]),alwaysAllow:z.array(z.string()).default([])});
@@ -92,6 +95,8 @@ export const CheckpointSchema = z.object({
   pauses:z.number().int().nonnegative().default(0),maxPauses:z.number().int().nonnegative().default(5),
   compaction:z.object({covered:z.number().int().positive(),fingerprint:z.string(),summary:z.string()}).optional(),
   usage:UsageSchema,
+  /** Set once untrusted content enters context; gates later side effects behind fresh approval. */
+  tainted:z.boolean().default(false),
 });
 export type AgentCheckpoint=z.infer<typeof CheckpointSchema>;
 export type PendingCall=z.infer<typeof PendingCallSchema>;

@@ -10,14 +10,14 @@ export async function registryEntries(ctx:FeatureContext,id:string):Promise<Regi
  const row=await requireRow(ctx,'registry',id);if(row.value.enabled===false)throw new ApiError(409,'registry_disabled','Registry is disabled');
  const url=z.string().url().parse(row.value.url);const key=JSON.stringify(['tools','registry',ctx.userId,id,url]);const cached=await ctx.kv.get<RegistryEntry[]>(key);if(cached)return cached;
  if(ctx.local&&new URL(url).hostname==='skills.praxis.local'){return [{id:'local-example',name:'local-example',description:'Local fixture skill',document:'---\nname: local-example\ndescription: Local fixture skill\n---\nUse the local deterministic tools.'}];}
- const {response,bytes}=await publicFetch(ctx,url,{},false,2000000);if(!response.ok)throw new ApiError(502,'registry_failed','Could not fetch registry');
+ const {response,bytes}=await publicFetch(ctx,url,{},2000000);if(!response.ok)throw new ApiError(502,'registry_failed','Could not fetch registry');
  const data=z.union([z.array(Entry).max(2000),z.object({skills:z.array(Entry).max(2000)}),z.object({entries:z.array(Entry).max(2000)})]).parse(JSON.parse(new TextDecoder().decode(bytes)));
  const entries=Array.isArray(data)?data:'skills' in data?data.skills:data.entries;
  if(new Set(entries.map(e=>e.id)).size!==entries.length)throw new ApiError(400,'invalid_registry','Duplicate registry entry IDs');await ctx.kv.set(key,entries,600);return entries;
 }
 export async function installSkill(ctx:FeatureContext,id:string,skillId:string,existingId?:string){
  const entries=await registryEntries(ctx,id),entry=entries.find(e=>e.id===skillId);if(!entry)throw new ApiError(404,'not_found','Registry skill not found');let document=entry.document;
- if(document===undefined){if(!entry.url)throw new ApiError(400,'invalid_registry','Registry entry has no SKILL.md URL');const {response,bytes}=await publicFetch(ctx,entry.url,{},false,500000);if(!response.ok)throw new ApiError(502,'registry_failed','Could not fetch SKILL.md');if(entry.digest&&`sha256:${createHash('sha256').update(bytes).digest('hex')}`!==entry.digest.toLowerCase())throw new ApiError(400,'digest_mismatch','SKILL.md digest mismatch');document=new TextDecoder().decode(bytes);}
+ if(document===undefined){if(!entry.url)throw new ApiError(400,'invalid_registry','Registry entry has no SKILL.md URL');const {response,bytes}=await publicFetch(ctx,entry.url,{},500000);if(!response.ok)throw new ApiError(502,'registry_failed','Could not fetch SKILL.md');if(entry.digest&&`sha256:${createHash('sha256').update(bytes).digest('hex')}`!==entry.digest.toLowerCase())throw new ApiError(400,'digest_mismatch','SKILL.md digest mismatch');document=new TextDecoder().decode(bytes);}
  else if(entry.digest&&`sha256:${createHash('sha256').update(document).digest('hex')}`!==entry.digest.toLowerCase())throw new ApiError(400,'digest_mismatch','SKILL.md digest mismatch');
  const parsed=parseSkillDocument(document);if((await ctx.store.list(ctx.userId,'skill')).some(r=>!r.deleted&&r.id!==existingId&&r.value.name===parsed.name))throw new ApiError(409,'skill_exists','A skill with that name is already installed');
  return saveSkill(ctx,{name:parsed.name,description:parsed.description,document,enabled:true,registryId:id,registryEntryId:entry.id,registryDigest:`sha256:${createHash('sha256').update(document).digest('hex')}`},existingId);

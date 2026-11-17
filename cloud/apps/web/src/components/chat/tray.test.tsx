@@ -138,8 +138,8 @@ describe('composer tray', () => {
     expect(tray.textContent).not.toContain('Your browser grants');
     const order = ['Auto', 'Execute'];
     expect(tray.textContent!.indexOf(order[0]!)).toBeLessThan(tray.textContent!.indexOf('Photos'));
-    expect(tray.textContent!.indexOf('Photos')).toBeLessThan(tray.textContent!.indexOf('Web search'));
-    expect(tray.textContent!.indexOf('Web search')).toBeLessThan(tray.textContent!.indexOf('Connectors'));
+    expect(tray.textContent!.indexOf('Photos')).toBeLessThan(tray.textContent!.indexOf('Web tools'));
+    expect(tray.textContent!.indexOf('Web tools')).toBeLessThan(tray.textContent!.indexOf('Connectors'));
     expect(tray.textContent!.indexOf('Connectors')).toBeLessThan(tray.textContent!.indexOf('Models & OpenRouter'));
   });
 

@@ -85,6 +85,7 @@ export const ToolSourceSchema = z.object({type:z.enum(['builtin','skill','javasc
 export const ToolPresentationSchema = z.object({type:z.literal('tool.presentation').default('tool.presentation'),category:z.enum(['integration','command','webSearch','webFetch','readFile','edit','skill','other']),runningTitle:z.string(),finishedTitle:z.string()});
 export const ToolSpecSchema = z.object({originalName:z.string().optional(),type:z.literal('tool.spec'),name:z.string(),description:z.string(),inputSchema:JsonObjectSchema,source:ToolSourceSchema,traits:z.array(z.enum(['readOnly','destructive','idempotent','openWorld','sandboxed']))});
 export type ToolSpec = z.infer<typeof ToolSpecSchema>;
+export const READ_TOOL_OUTPUT_TOOL_NAME = 'read_tool_output';
 export const ATTACHMENT_LIMITS = {uploadBytes: 25_000_000, inlineDocumentBytes: 10 << 20, inlineTextBytes: 200_000, codeReadBytes: 1_000_000} as const;
 export const AttachmentSchema = z.object({type:z.literal('attachment'),id:IdSchema,name:z.string(),mediaType:z.string(),size:z.number().int().nonnegative(),url:z.string().optional(),hiddenFromCode:z.boolean().default(false)});
 export type Attachment = z.infer<typeof AttachmentSchema>;
@@ -109,12 +110,12 @@ export type Message = z.infer<typeof MessageSchema>;
 export const ConversationSetupSchema = z.object({type:z.literal('conversation.setup'),system:z.string(),tools:z.array(ToolSpecSchema),hiddenTools:z.array(ToolSpecSchema).optional(),skillCatalog:z.string(),connectorIds:z.array(IdSchema),createdAt:TimestampSchema});
 export type ConversationSetup = z.infer<typeof ConversationSetupSchema>;
 export const ChatSchema = z.object({
-  type:z.literal('chat'),titleRevision:z.string().optional(),id:IdSchema,pinned:z.boolean().default(false),title:z.string(),mode:ModeSchema,modelId:z.string().optional(),effort:z.string().optional(),
+  type:z.literal('chat'),webToolsEnabled:z.boolean().optional(),titleRevision:z.string().optional(),id:IdSchema,pinned:z.boolean().default(false),title:z.string(),mode:ModeSchema,modelId:z.string().optional(),effort:z.string().optional(),
   connectorIds:z.array(IdSchema).default([]),disabledConnectorIds:z.array(IdSchema).default([]),
   setup:ConversationSetupSchema.optional(),createdAt:TimestampSchema,updatedAt:TimestampSchema,deletedAt:TimestampSchema.optional(),activeRunId:IdSchema.optional(),
 });
 export type Chat = z.infer<typeof ChatSchema>;
-export const ChatInputSchema = z.object({type:z.literal('chat.input'),id:IdSchema.optional(),pinned:z.boolean().optional(),title:z.string().max(300).default('New chat'),mode:ModeSchema.default('build'),modelId:z.string().optional(),effort:z.string().optional(),connectorIds:z.array(IdSchema).default([]),disabledConnectorIds:z.array(IdSchema).default([])});
+export const ChatInputSchema = z.object({type:z.literal('chat.input'),webToolsEnabled:z.boolean().optional(),id:IdSchema.optional(),pinned:z.boolean().optional(),title:z.string().max(300).default('New chat'),mode:ModeSchema.default('build'),modelId:z.string().optional(),effort:z.string().optional(),connectorIds:z.array(IdSchema).default([]),disabledConnectorIds:z.array(IdSchema).default([])});
 export const ChatPatchSchema = ChatInputSchema.partial().extend({type:z.literal('chat.patch'),title:ChatInputSchema.shape.title.removeDefault().optional(),mode:ChatInputSchema.shape.mode.removeDefault().optional(),connectorIds:ChatInputSchema.shape.connectorIds.removeDefault().optional(),disabledConnectorIds:ChatInputSchema.shape.disabledConnectorIds.removeDefault().optional()});
 export const RunStatusSchema = z.enum(['queued','running','awaitingApproval','awaitingElicitation','continuing','completed','cancelled','failed']);
 export const RunOutcomeSchema = z.enum(['completed','truncated','maxIterations','refused','cancelled','failed']);
@@ -133,7 +134,7 @@ export type StreamSimOptions = z.infer<typeof StreamSimOptionsSchema>;
 export const StartRunSchema = z.object({regenerateMessageId:IdSchema.optional(),suggestedTitle:z.string().max(42).optional(),
   type:z.literal('run.start'),chatId:IdSchema,text:z.string().max(200000).default(''),
   modelId:z.string().optional(),mode:ModeSchema.optional(),effort:z.string().optional(),
-  attachmentIds:z.array(IdSchema).default([]),webSearch:z.boolean().default(false),idempotencyKey:IdSchema.optional(),clientTurnId:IdSchema.optional(),
+  attachmentIds:z.array(IdSchema).default([]),idempotencyKey:IdSchema.optional(),clientTurnId:IdSchema.optional(),
   script:z.enum([
     'text','tools','approval','nestedApproval','elicitation','elicitationURL','error','long','compaction','vision',
     'reasoningTitles','reasoningSummary','reasoningRaw','reasoningRedacted','reasoningNone','reasoningInterleaved','helloReplay','realShape','streamSim','codeFeatures','bursty',
@@ -294,3 +295,4 @@ export const TurnResultSchema = z.discriminatedUnion('status', [
 ]).refine(result => new TextEncoder().encode(JSON.stringify(result)).byteLength < TURN_RESULT_MAX_BYTES);
 export type TurnResult = z.infer<typeof TurnResultSchema>;
 export * from './subagents.js';
+export * from './web-tools.js';

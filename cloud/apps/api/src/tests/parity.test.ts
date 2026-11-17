@@ -44,6 +44,15 @@ describe('attachments reach the model (parity: AttachmentMedia)', () => {
     const resumed=JSON.stringify(f.fake.requests[1].messages);expect(resumed).toContain('data.zip');expect(resumed).toContain('80,75,3,4');
   });
 
+  it('gives run_javascript no network path; the web goes through web_search and web_read', async () => {
+    const f = setup([toolCall('run_javascript', {code: "return typeof fetch"})]);
+    const chat = await f.chat();
+    expect((await f.run(chat.id, 'Check the network')).run.outcome).toBe('completed');
+    expect(JSON.stringify(f.fake.requests[1].messages)).toContain('undefined');
+    const tools: {function: {name: string; description: string}}[] = f.fake.requests[0].tools;
+    expect(tools.find(t => t.function.name === 'run_javascript')?.function.description).not.toContain('fetch(');
+  });
+
   it('re-encodes oversized images like the app (max 2000 px side) and sends nothing for a blind model', async () => {
     const f = setup();
     const chat = await f.chat();
@@ -91,6 +100,7 @@ describe('read_tool_output (parity: ReadToolOutputTool)', () => {
     const id = /read_tool_output ([0-9a-f-]{36})/.exec(note)?.[1] ?? '';
     expect(id).toBeTruthy();
     const tool = readToolOutputTool(f.service);
+    expect(tool.boundary).toEqual({capabilities: ['read'], decision: 'allow', untrustedSource: true});
     const ctx = (chatId: string) => ({userId: 'local-user', chatId, runId: snap.run.id, mode: 'build' as const, callId: 'c', signal: new AbortController().signal, callTool: async () => ({content: [], isError: false}), elicit: async () => ({type: 'elicitation.response' as const, elicitationId: 'e', action: 'cancel' as const}), emit: async () => {}});
     const tail = await tool.execute({id, offset: 50_000}, ctx(chat.id));
     expect(tail.isError).toBe(false);

@@ -1,3 +1,5 @@
+import {webTools} from './features/web/tools.js';
+import type {WebPortsFor} from './features/web/ports.js';
 import {selectRunTools} from './tool-selection.js';
 import {cropImage, cropImageReaderTool} from './features/tools/image-crop.js';
 import {connectorToolNotes} from './features/tools/tool-notes.js';
@@ -16,6 +18,7 @@ import {currentRunTiming, timedStep} from './timing.js';
 
 export interface ModuleOptions {
   storage?: ToolsStorage;
+  web?: WebPortsFor;
   mcp?: McpOptions;
   platformVoice?: PlatformVoice;
 }
@@ -57,7 +60,10 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
           const js = javascriptTool(ctx, {attachmentIds, hostToolNames, ...(storage ? {storage} : {})});
           return [...skills, js, ...await selectRunTools(ctx, chat, connectors, service.search?.embedder)] satisfies FeatureTool[];
         },
-        agentTools: async (ctx, {chat}) => timedStep('visionTools', () => visionTools(service, ctx, chat, storage)),
+        agentTools: async (ctx, {chat}) => [
+          ...webTools(options.web?.(ctx), chat.webToolsEnabled !== false),
+          ...await timedStep('visionTools', () => visionTools(service, ctx, chat, storage)),
+        ],
       },
     },
   ];

@@ -12,7 +12,7 @@ import type {FeatureContext} from '../contracts.js';
 import {png, setup} from './harness.js';
 
 const caps = CapabilitiesSchema.parse({vision: true, documents: true, tools: true});
-const request = (parts: MessagePart[]) => ({model: 'm', system: '', messages: [{type: 'message', id: 'm', chatId: 'c', role: 'user', parts, createdAt: '', updatedAt: ''}], tools: [], capabilities: caps, webSearch: false}) as unknown as ProviderRequest;
+const request = (parts: MessagePart[]) => ({model: 'm', system: '', messages: [{type: 'message', id: 'm', chatId: 'c', role: 'user', parts, createdAt: '', updatedAt: ''}], tools: [], capabilities: caps}) as unknown as ProviderRequest;
 const userText = (f: ReturnType<typeof setup>, i: number) => JSON.stringify(f.fake.requests[i].messages.filter((m: any) => m.role === 'user'));
 
 describe('REV-R1 P1 2/3: attachments never break a conversation', () => {
