@@ -26,7 +26,6 @@ const emailPassword = setupEmailPassword(auth, {
 }).attachUserCallbacks({ createUser: internal.users.createUser, onSignIn: internal.users.onEmailSignIn });
 export const {
   signUpWithEmailPassword, completeSignUpWithEmailPassword, signInWithEmailPassword,
-  changePassword,
   startPasswordRecovery, checkPasswordRecovery, completePasswordRecovery,
 } = emailPassword;
 export const { startSignInWithGoogle, completeSignInWithGoogle } = setupGoogle(auth, {

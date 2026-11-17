@@ -49,7 +49,7 @@ It never falls back to memory adapters or dev auth.
 | `CLERK_PUBLISHABLE_KEY` | yes | Clerk instance publishable key. |
 | `CLERK_SECRET_KEY` | yes | Server-only Clerk key for identity lookup and account deletion. |
 | `CLERK_JWT_KEY` | yes | Clerk instance PEM public key for networkless JWT verification. |
-| `VITE_CLERK_PUBLISHABLE_KEY` | web build | Same instance publishable key; enables the custom Clerk sign-in/register flow. |
+| `VITE_CONVEX_URL` | web build | Convex deployment client URL; web sign-in is Convex Auth v2, configured in the Convex deployment (see [Convex Auth v2 web](#convex-auth-v2-web-pra-34)). |
 | `CONVEX_URL` | yes | Convex dashboard → deployment → Settings → URL (`https://<name>.convex.cloud`). |
 | `PRAXIS_CONVEX_SERVER_TOKEN` | yes | API-to-Convex credential, ≥ 32 chars: `openssl rand -base64 48`. Set the **same value** in the Convex deployment env (below). |
 | `UPSTASH_REDIS_REST_URL` | yes | Upstash console → Redis database → REST API → URL. |
@@ -118,7 +118,8 @@ Create a second project with Root Directory `cloud/apps/web` (see `cloud/docs/we
 | Native app return after connector OAuth (handled by the app, nothing to register server-side) | `praxis-app://oauth/callback?state=…` |
 | Web return after connector OAuth | an origin listed in `PRAXIS_WEB_ORIGINS` |
 | QStash continuation (no registration; it must be publicly reachable) | `PRAXIS_API_URL/internal/continue` |
-| Clerk OAuth callback | Web origin + `/auth/callback`; enable Google and Apple in Clerk. |
+| Google sign-in redirect (Convex Auth v2) | `<CONVEX_SITE_URL>/oauth/google/callback` |
+| Apple sign-in return URL (Convex Auth v2, public HTTPS) | `<CONVEX_SITE_URL>/oauth/apple/callback` |
 
 ## Security notes
 
@@ -217,8 +218,7 @@ For the local API, set `PRAXIS_LOCAL_CONVEX_URL` to the same loopback HTTP deplo
 `PRAXIS_LOCAL_CONVEX_URL=http://127.0.0.1:3210 npm run dev:local`.
 Without this API variable, the legacy local API accepts dev tokens rather than Convex sessions.
 The managed browser verification stack sets both URLs automatically; the local API variable is not a production setting.
-Google's registered redirect URI is `<CONVEX_SITE_URL>/oauth/google/callback`.
-Apple's Services ID return URL is `<CONVEX_SITE_URL>/oauth/apple/callback`; Apple requires public HTTPS.
+Register the Google redirect URI and Apple Services ID return URL listed under [OAuth and callback URLs](#oauth-and-callback-urls-to-register).
 The HTTPS page for the future iOS handoff must share the SITE_URL origin.
 No cloud deployment is part of PRA-34 verification.
 Component tests use the upstream fake Resend component, retaining the real password WASM and auth code.
