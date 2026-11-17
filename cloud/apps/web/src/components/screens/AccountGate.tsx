@@ -37,11 +37,7 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
     let active = true;
     setReadyUser(null);
     apiClient.setSessionIdentity(user && hasToken && !emailLanding ? user : null);
-    if (user === null) return <AuthFrame>
-    <p role="alert">This account is unavailable.</p>
-    <button onClick={() => void signOutSession()}>Sign out</button>
-  </AuthFrame>;
-  if (!user || !hasToken || emailLanding) { void clearReplica(); return; }
+    if (!user || !hasToken || emailLanding) { void clearReplica(); return; }
     void setReplicaIdentity(apiClient.getBaseUrl(), user).then(loadReplica).then(() => {
       if (active) setReadyUser(user);
     });
