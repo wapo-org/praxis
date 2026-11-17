@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@praxis/credentials": "*",
     "@praxis/protocol": "*",
     "@praxis/types": "*",
     "shell-quote": "1.12.0",

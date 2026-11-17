@@ -1,13 +1,13 @@
 import {createOpenRouterProvider, type ModelProvider} from '@praxis/agent';
 import {
   DEFAULT_MODEL_ID, ModelPreferenceRecordSchema, RECOMMENDED_MODELS,
-  type CatalogModel, type ModelListItem, type ModelPreferenceRecord,
+  type CatalogModel, type ModelListItem, type ModelPreferenceRecord, type ReasoningEffort,
 } from '@praxis/protocol';
 import {ApiError, type ApiService} from '../service.js';
-import {ModelCatalog, capabilitiesOf} from './catalog.js';
+import {ModelCatalog, capabilitiesOf, resolveEffort} from './catalog.js';
 import {ModelKeys} from './keys.js';
 
-export {ModelCatalog, capabilitiesOf, parseCatalogModel, CATALOG_TTL_MS, CATALOG_RETRY_MS} from './catalog.js';
+export {ModelCatalog, capabilitiesOf, parseCatalogModel, resolveEffort, CATALOG_TTL_MS, CATALOG_RETRY_MS} from './catalog.js';
 export {ModelKeys, MODEL_KEY_KIND, MODEL_KEY_ID, MODEL_KEY_RESOURCE, SEALED_FIELD, maskKey} from './keys.js';
 export {OpenRouterError} from './client.js';
 
@@ -20,7 +20,13 @@ export const SCRIPTED_MODELS: CatalogModel[] = [['scripted', 'Praxis Scripted'],
 }));
 export const isScripted = (modelId: string | undefined) => !!modelId && SCRIPTED_MODELS.some(m => m.id === modelId);
 
-export interface RunModel {provider: ModelProvider; model: CatalogModel; note?: string}
+export interface RunModel {
+  provider: ModelProvider;
+  model: CatalogModel;
+  /** Resolved against `model`'s catalogue entry; absent when the model takes no reasoning. */
+  effort?: ReasoningEffort;
+  note?: string;
+}
 
 /** OpenRouter with the user's own key: the only way a model is reached. */
 export class OpenRouterModels {
@@ -67,17 +73,23 @@ export class OpenRouterModels {
     return next;
   }
 
-  /** Resolves run model and ephemeral user-key provider; falls back to default with note. */
-  async forRun(userId: string, requestedId: string | undefined): Promise<RunModel> {
+  /** Takes the user id, not a TenantId: the stored key is sealed against it. A missing model falls back to the default. */
+  async modelFor(userId: string, modelId: string | undefined, effort: string | undefined): Promise<RunModel> {
     const apiKey = await this.keys.reveal(userId);
-    const wanted = requestedId ?? DEFAULT_MODEL_ID;
+    const wanted = modelId ?? DEFAULT_MODEL_ID;
     let model = await this.catalog.find(wanted), note: string | undefined;
     if (!model) {
       model = await this.catalog.find(DEFAULT_MODEL_ID);
       if (!model) throw new ApiError(503, 'model_unavailable', `${wanted} is not available on OpenRouter, and neither is the default model. Choose another model.`);
       note = `${wanted} is no longer available on OpenRouter. This turn used ${model.name} instead.`;
     }
-    return {model, provider: createOpenRouterProvider({apiKey, capabilities: capabilitiesOf(model)}, this.fetcher), ...(note ? {note} : {})};
+    const resolved = resolveEffort(model, effort);
+    return {
+      model,
+      provider: createOpenRouterProvider({apiKey, capabilities: capabilitiesOf(model)}, this.fetcher),
+      ...(resolved ? {effort: resolved} : {}),
+      ...(note ? {note} : {}),
+    };
   }
 
   /** A provider for an auxiliary model (the image reader), or null when it can't be used: no key, or not listed. */

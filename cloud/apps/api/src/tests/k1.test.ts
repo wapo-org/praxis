@@ -61,12 +61,12 @@ it('calls Firecrawl directly on the first model turn and exposes ask_user in Exe
  expect(f.fake.requests[0].tools.some((t:any)=>t.function.name===name)).toBe(true);
  expect(f.fake.requests[0].tools.some((t:any)=>t.function.name==='ask_user')).toBe(true);
 });
-it('titles use one non-streaming 32-token provider request and never replace a rename',async()=>{
+it('titles use one streamed 32-token provider request and never replace a rename',async()=>{
  const {setup}=await import('./harness.js');
  const f=setup(),chat=await f.chat();
  await f.run(chat.id,'Please help plan a trip to Lisbon');
  expect(f.fake.titleRequests).toHaveLength(1);
- expect(f.fake.titleRequests[0]!.stream).toBe(false);
+ expect(f.fake.titleRequests[0]!.stream).toBe(true);
  expect(f.fake.titleRequests[0]!.max_tokens??f.fake.titleRequests[0]!.max_completion_tokens).toBe(32);
  await f.req('/v1/chats/'+chat.id,{type:'chat.patch',title:'My own title'},'PATCH');
  await f.run(chat.id,'Second message');

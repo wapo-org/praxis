@@ -1,7 +1,7 @@
 import {expect, it} from 'vitest';
 import fc from 'fast-check';
 import {runOneTurn, UncertainToolCall} from './one-turn.js';
-import {fixture, response} from './one-turn-fixture.js';
+import {answerWith, fixture, response} from './one-turn-fixture.js';
 import {argsHash, issueApproval} from './boundary/receipt.js';
 import {textResult} from './types.js';
 
@@ -46,10 +46,10 @@ it('a lost final commit reply replays flags without the model or tools', async (
 
 it('CancelFence: stop during the model fences response persistence and tool execution', async () => {
   const f = await fixture(true);
-  f.provider.complete = async () => {
+  answerWith(f.provider, async () => {
     f.store.stop();
     return response(true);
-  };
+  });
   expect((await runOneTurn(f)).status).toBe('stopped');
   expect(f.store.data.response).toBeUndefined();
   expect(f.counts.tool).toBe(0);
@@ -60,7 +60,7 @@ it('CancelFence: stop after one tool prevents the next tool and the final commit
   const f = await fixture(true);
   const r = response(true);
   r.parts.push({...r.parts[0]!, callId: 'second'});
-  f.provider.complete = async () => r;
+  answerWith(f.provider, async () => r);
   f.tools = [{...f.tools[0]!, async execute() {
     f.counts.tool++;
     f.store.stop();
@@ -98,7 +98,7 @@ it('PRA-76: structural taint requires an exactly bound receipt before an effect'
 it('invalid arguments and unknown tools return actionable schema errors without dispatch', async () => {
   for (const part of [{name: 'read', arguments: '{'}, {name: 'unknown', arguments: '{}'}, {name: 'read', arguments: '{"query":1}'}]) {
     const f = await fixture(true);
-    f.provider.complete = async () => ({...response(true), parts: [{type: 'toolCall', callId: 'call', ...part}]});
+    answerWith(f.provider, async () => ({...response(true), parts: [{type: 'toolCall', callId: 'call', ...part}]}));
     await runOneTurn(f);
     expect(f.counts.tool).toBe(0);
     expect(f.store.data.calls.call?.result).toMatchObject({ok: false, error: {code: part.name === 'unknown' ? 'policy-denied' : 'schema'}});
@@ -109,7 +109,7 @@ it('duplicate call identities are rejected before dispatch', async () => {
   const f = await fixture(true);
   const r = response(true);
   r.parts.push(r.parts[0]!);
-  f.provider.complete = async () => r;
+  answerWith(f.provider, async () => r);
   await expect(runOneTurn(f)).rejects.toThrow('duplicate');
   expect(f.counts.tool).toBe(0);
 });
