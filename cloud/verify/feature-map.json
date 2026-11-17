@@ -2,6 +2,13 @@
   "$schema": "praxis-verify/feature-map@1",
   "features": [
     {
+      "id": "agents.stateful-core",
+      "title": "Four-tool subagent contract, lifecycle invariants, permission narrowing and verified handoffs",
+      "issue": "PRA-79",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
       "id": "repo.gate",
       "title": "Typecheck, tests, boundary rules, lint, comment hygiene and both builds",
       "issue": "PRA-72",
