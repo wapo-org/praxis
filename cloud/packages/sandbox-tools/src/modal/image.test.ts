@@ -1,6 +1,6 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {Image, ModalClient} from 'modal';
-import {BASE_IMAGE, DEBIAN_PACKAGES, DEBIAN_SNAPSHOT, sandboxBaseImage, sandboxToolsImage} from './image.js';
+import {BASE_IMAGE, DEBIAN_PACKAGES, DEBIAN_SNAPSHOT, sandboxBaseImage, sandboxToolsImage, sandboxNotebookImage} from './image.js';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -15,6 +15,14 @@ describe('sandbox image', () => {
     expect(BASE_IMAGE).toMatch(/^node:22\.16\.0-bookworm-slim@sha256:[a-f0-9]{64}$/);
     expect(base).not.toBe(tools);
     expect(browser).not.toBe(tools);
+  });
+
+  it('adds Jupyter after the shared tools layer', () => {
+    const layer = vi.spyOn(Image.prototype, 'dockerfileCommands');
+    sandboxNotebookImage(new ModalClient({tokenId: 'unused', tokenSecret: 'unused'}));
+    expect(layer).toHaveBeenCalledTimes(2);
+    expect(layer.mock.calls[0]![0].join(' ')).toContain('WORKDIR /workspace');
+    expect(layer.mock.calls[1]![0].join(' ')).toContain('ipykernel==6.29.5');
   });
 
   it('freezes package resolution and bounds installation without weakening apt signatures', () => {

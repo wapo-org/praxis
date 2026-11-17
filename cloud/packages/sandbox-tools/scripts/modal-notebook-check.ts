@@ -7,11 +7,10 @@ import {approvalKey, argsHash, issueApproval, type BoundaryContext} from '@praxi
 import {SealedSecret} from '@praxis/types';
 import {MemoryExportSink} from '../src/fake.js';
 import {modalSandboxPort} from '../src/modal/port.js';
-import {withNotebookLayer} from '../src/modal/notebook-image.js';
+import {sandboxNotebookImage} from '../src/modal/image.js';
 import {executeSandboxTool} from '../src/tools/registry.js';
 
 const APP_NAME = 'praxis-pra105-notebook-check';
-const BASE_IMAGE = 'node:22-bookworm';
 const ROOT = '/workspace/chats/notebook-check';
 const SANDBOX_TIMEOUT_MS = 180_000;
 const EXEC_TIMEOUT_MS = 10_000;
@@ -27,7 +26,7 @@ function log(message: string) {
 
 const modal = new ModalClient();
 const app = await modal.apps.fromName(APP_NAME, {createIfMissing: true});
-const image = withNotebookLayer(modal.images.fromRegistry(BASE_IMAGE));
+const image = sandboxNotebookImage(modal);
 log('image build requested (1/2 maximum); sandbox boot requested (1/4 maximum)');
 const sandbox = await modal.sandboxes.create(app, image, {
   cpu: 0.25, memoryMiB: 512, timeoutMs: SANDBOX_TIMEOUT_MS, tags: {wp: 'PRA-105'},
