@@ -1,0 +1,8 @@
+[
+  {
+    "id": "GHSA-fc5q-39xc-vjpf",
+    "package": "picomatch",
+    "reason": "No fixed picomatch release exists. It reaches the production tree only as a devOptional peer: better-auth (apps/api) declares an optional vitest peer, pulling vitest/vite/picomatch. Nothing at runtime loads them. better-auth is removed by PRA-64.",
+    "expires": "2026-12-15"
+  }
+]
