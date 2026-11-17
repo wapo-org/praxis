@@ -1,0 +1,22 @@
+{
+  "name": "@praxis/sandbox-tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./modal": "./src/modal/port.ts",
+    "./image": "./src/modal/image.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "smoke:modal": "tsx scripts/modal-adapter-check.ts"
+  },
+  "dependencies": {
+    "@praxis/agent": "*",
+    "@praxis/protocol": "*",
+    "@praxis/types": "*",
+    "modal": "0.11.1",
+    "zod": "^4.0.0"
+  }
+}

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {expect, type Page} from '@playwright/test';
+import {browserCliFlow} from './browser-flow.js';
 import {fuzzChatFlow} from './fuzz.js';
 import type {FlowContext, WebFlow} from './flow-types.js';
 import {SIGNED_OUT_SESSION_PROBE} from './judge.js';
@@ -139,7 +140,7 @@ async function toolRuns({api, request, note}: Pick<FlowContext, 'api' | 'request
   note(`${TOOL_RUNS_MAX} tool runs with snapshots`);
 }
 
-export const WEB_FLOWS: readonly WebFlow[] = [loadApp, settingsModels, modelSearch, scriptedChat, apiResilience, fuzzChatFlow];
+export const WEB_FLOWS: readonly WebFlow[] = [loadApp, settingsModels, modelSearch, scriptedChat, apiResilience, browserCliFlow, fuzzChatFlow];
 
 export function selectFlows(ids: readonly string[] | undefined): WebFlow[] {
   if (!ids?.length) return WEB_FLOWS.filter(flow => flow.default);

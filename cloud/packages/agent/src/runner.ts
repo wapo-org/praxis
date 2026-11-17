@@ -199,7 +199,7 @@ export class AgentRunner {
     let system=cp.setup.system;
     if(this.options.toolNotes!==undefined) {
       system=system.replace(/\n\nConnected tools:\n[\s\S]*?(?=\n\n|$)/,'');
-      if(this.options.toolNotes.length)system+='\n\nConnected tools:\n'+this.options.toolNotes.map(n=>'- '+n).join('\n');
+      if(this.options.toolNotes.length)system+='\n\nConnected tools:\n'+[...new Set(this.options.toolNotes)].sort((a,b)=>a < b ? -1 : a > b ? 1 : 0).map(n=>'- '+n).join('\n');
     }
     return {model:cp.modelId,system:system+(cp.setup.skillCatalog?`\n\n${cp.setup.skillCatalog}`:''),messages,
       tools:cp.capabilities.tools?cp.setup.tools.filter(spec=>spec.source.type!=='mcp'||(this.tools.has(spec.name)&&!this.tools.get(spec.name)!.unavailableReason)):[],capabilities:cp.capabilities,
