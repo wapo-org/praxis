@@ -79,7 +79,8 @@ describe('browser over SandboxPort', () => {
     const {port, context} = setup();
     port.on(() => ({stdout: '{"ok":true,"snapshot":"untrusted"}'}));
     expect(await executeSandboxTool({tool: 'browser', args: {action: 'snapshot'}}, await boundary(), context)).toMatchObject({ok: true, taint: {tainted: true}});
-    for (const args of ([{action: 'goto', url: 'https://example.com'}, {action: 'click', target: 'e1'}, {action: 'type', target: 'textbox:Email', text: 'hello'}] satisfies JsonValue[])) {
+    const actions: JsonValue[] = [{action: 'goto', url: 'https://example.com'}, {action: 'click', target: 'e1'}, {action: 'type', target: 'textbox:Email', text: 'hello'}];
+    for (const args of actions) {
       expect(await executeSandboxTool({tool: 'browser', args}, await boundary(true), context)).toMatchObject({ok: false});
       expect(sandboxToolClassifier.classify({tool: 'browser', args})?.capabilities).toContain('external-egress');
     }
