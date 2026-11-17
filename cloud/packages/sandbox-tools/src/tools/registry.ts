@@ -5,6 +5,8 @@ import {z} from 'zod';
 import {WORKSPACE_ROOT} from '../constants.js';
 import type {SandboxToolContext} from './context.js';
 import {editFile, EditFileInputSchema, exportFile, ExportFileInputSchema, readFile, ReadFileInputSchema} from './files.js';
+import {SYMBOL_DESCRIPTION} from '../symbols/constants.js';
+import {replaceSymbol, ReplaceSymbolInputSchema} from './symbols.js';
 import {shell, ShellInputSchema, waitForJob, WaitForJobInputSchema} from './process.js';
 
 export interface SandboxToolDefinition {
@@ -17,7 +19,7 @@ export interface SandboxToolDefinition {
   run(context: SandboxToolContext, args: unknown): Promise<unknown>;
 }
 
-/** The simplified Modal v1 tool set (PRA-77): no tmux, no notebook, no AST editor yet. */
+/** Workspace tools share the approval boundary and return untrusted diagnostics inline. */
 export const SANDBOX_TOOLS: readonly SandboxToolDefinition[] = [
   {
     name: 'shell',
@@ -36,6 +38,11 @@ export const SANDBOX_TOOLS: readonly SandboxToolDefinition[] = [
     input: EditFileInputSchema, capabilities: ['write', 'exec'], untrustedSource: true, run: editFile,
   },
   {
+    name: 'replace_symbol',
+    description: SYMBOL_DESCRIPTION,
+    input: ReplaceSymbolInputSchema, capabilities: ['write', 'exec'], untrustedSource: true, run: replaceSymbol,
+  },
+  {
     name: 'export_file',
     description: 'Hand a workspace file to the user as a downloadable artifact.',
     input: ExportFileInputSchema, capabilities: ['read', 'write'], untrustedSource: false, run: exportFile,
@@ -52,7 +59,7 @@ const byName = new Map(SANDBOX_TOOLS.map(tool => [tool.name, tool]));
 const CLASSIFIER_ROOT = `${WORKSPACE_ROOT}/chats/root`;
 
 /** Path arguments per tool: an escape from the workspace is denied before any receipt or execution. */
-const PATH_ARGUMENTS: Record<string, readonly string[]> = {shell: ['cwd'], read_file: ['path'], edit_file: ['path'], export_file: ['path']};
+const PATH_ARGUMENTS: Record<string, readonly string[]> = {shell: ['cwd'], read_file: ['path'], edit_file: ['path'], replace_symbol: ['path'], export_file: ['path']};
 
 function lexicallyConfined(tool: string, args: Record<string, unknown>): boolean {
   return (PATH_ARGUMENTS[tool] ?? []).every(key => {

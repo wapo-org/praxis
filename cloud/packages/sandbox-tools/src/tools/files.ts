@@ -2,7 +2,7 @@ import {posix} from 'node:path';
 import {z} from 'zod';
 import {EXPORT_FILE_MAX_BYTES, READ_FILE_LINES_DEFAULT, READ_FILE_MAX_BYTES} from '../constants.js';
 import {runDiagnostics, type DiagnosticsReport} from '../diagnostics.js';
-import {assertNotInternal, containedPath, decodeText, fail, sha256, withFileLock} from '../support.js';
+import {assertNotInternal, containedPath, decodeText, fail, sha256, withFileLock, withWorkspaceLock} from '../support.js';
 import type {SandboxToolContext} from './context.js';
 
 export const ReadFileInputSchema = z.object({
@@ -24,7 +24,7 @@ export const EditFileInputSchema = z.object({
 
 export const ExportFileInputSchema = z.object({path: z.string().min(1), name: z.string().min(1).max(200).optional()}).strict();
 
-async function readText(context: SandboxToolContext, path: string): Promise<{text: string; bytes: Uint8Array}> {
+export async function readText(context: SandboxToolContext, path: string): Promise<{text: string; bytes: Uint8Array}> {
   const stat = await context.port.stat(path);
   if (!stat) fail('not-found', `${path} does not exist.`);
   if (stat.type !== 'file') fail('schema', `${path} is a ${stat.type}, not a file.`);
@@ -60,7 +60,7 @@ function countOccurrences(haystack: string, needle: string): number {
 }
 
 /** Exact-match replace, then the workspace's diagnostics; problems come back inline instead of failing the edit. */
-export async function editFile(context: SandboxToolContext, raw: unknown): Promise<{path: string; sha256: string; replacements: number; created: boolean; diagnostics: DiagnosticsReport}> {
+async function editFileLocked(context: SandboxToolContext, raw: unknown): Promise<{path: string; sha256: string; replacements: number; created: boolean; diagnostics: DiagnosticsReport}> {
   const input = EditFileInputSchema.parse(raw);
   const {path, root} = await containedPath(context.port, context.root, input.path);
   assertNotInternal(root, path);
@@ -110,4 +110,8 @@ export async function exportFile(context: SandboxToolContext, raw: unknown) {
   const digest = sha256(bytes);
   const {ref} = await context.exports.put({name, mediaType, bytes, sha256: digest});
   return {path, name, mediaType, bytes: bytes.length, sha256: digest, ref};
+}
+
+export async function editFile(context: SandboxToolContext, raw: unknown) {
+  return withWorkspaceLock(context.port, context.root, () => editFileLocked(context, raw));
 }

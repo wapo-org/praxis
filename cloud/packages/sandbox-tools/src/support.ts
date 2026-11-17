@@ -28,13 +28,13 @@ export async function containedPath(port: SandboxPort, root: string, input: stri
 }
 
 const locks = new WeakMap<SandboxPort, Map<string, Promise<unknown>>>();
+const workspaceLocks = new WeakMap<SandboxPort, Map<string, Promise<unknown>>>();
 
 /** Serializes read-check-write per file on one port, so a concurrent edit cannot pass a stale hash check and lose an update. */
-export async function withFileLock<T, R>(port: SandboxPort, path: string, check: () => Promise<T>, write: (checked: T) => Promise<R>): Promise<R> {
-  const held = locks.get(port) ?? new Map<string, Promise<unknown>>();
-  locks.set(port, held);
+async function withLock<T>(pool: WeakMap<SandboxPort, Map<string, Promise<unknown>>>, port: SandboxPort, path: string, work: () => Promise<T>): Promise<T> {
+  const held = pool.get(port) ?? new Map<string, Promise<unknown>>();
+  pool.set(port, held);
   const previous = held.get(path) ?? Promise.resolve();
-  const work = async () => write(await check());
   const next = previous.then(work, work);
   const settled = next.catch(() => undefined);
   held.set(path, settled);
@@ -43,6 +43,10 @@ export async function withFileLock<T, R>(port: SandboxPort, path: string, check:
   } finally {
     if (held.get(path) === settled) held.delete(path);
   }
+}
+
+export async function withFileLock<T, R>(port: SandboxPort, path: string, check: () => Promise<T>, write: (checked: T) => Promise<R>): Promise<R> {
+  return withLock(locks, port, path, async () => write(await check()));
 }
 
 /** The tools' own bookkeeping is off limits to edit_file and export_file. */
@@ -83,4 +87,9 @@ export function decodeText(bytes: Uint8Array): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** A checkpoint must see a complete workspace mutation, including all writes before diagnostics finish. */
+export async function withWorkspaceLock<T>(port: SandboxPort, root: string, work: () => Promise<T>): Promise<T> {
+  return withLock(workspaceLocks, port, await port.realpath(root), work);
 }

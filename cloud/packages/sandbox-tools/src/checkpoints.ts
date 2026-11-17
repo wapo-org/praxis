@@ -1,7 +1,7 @@
 import {posix} from 'node:path';
 import {GIT_TIMEOUT_MS, PRAXIS_DIR} from './constants.js';
 import type {SandboxPort} from './port.js';
-import {capOutput, fail} from './support.js';
+import {capOutput, fail, withWorkspaceLock} from './support.js';
 
 /** Commits made by the runner carry this trailer, so rewind can refuse commits a user or agent made by hand. */
 export const CHECKPOINT_TRAILER = 'Praxis-Turn';
@@ -35,7 +35,7 @@ export async function ensureRepository(port: SandboxPort, root: string): Promise
 }
 
 /** Called by the runner at the end of every turn: one commit if the turn changed files, none otherwise. */
-export async function checkpointTurn(port: SandboxPort, root: string, turnId: string): Promise<{sha: string | null; files: string[]}> {
+async function checkpointTurnLocked(port: SandboxPort, root: string, turnId: string): Promise<{sha: string | null; files: string[]}> {
   await ensureRepository(port, root);
   await gitOk(port, root, ['add', '-A']);
   const staged = await git(port, root, ['diff', '--cached', '--quiet']);
@@ -66,10 +66,18 @@ export async function diffSince(port: SandboxPort, root: string, sha: string): P
 }
 
 /** PRA-63 rewind: the working tree returns exactly to a checkpoint the runner made; `.praxis/` survives. */
-export async function rewindTo(port: SandboxPort, root: string, sha: string): Promise<void> {
+async function rewindToLocked(port: SandboxPort, root: string, sha: string): Promise<void> {
   if (!COMMIT_SHA.test(sha)) fail('schema', 'Checkpoint ids are 40-character commit hashes.');
   const known = await listCheckpoints(port, root, 1_000);
   if (!known.some(checkpoint => checkpoint.sha === sha)) fail('not-found', `${sha} is not a Praxis checkpoint in this chat.`);
   await gitOk(port, root, ['reset', '-q', '--hard', sha]);
   await gitOk(port, root, ['clean', '-fdq', '-e', `${PRAXIS_DIR}/`]);
+}
+
+export async function checkpointTurn(port: SandboxPort, root: string, turnId: string): Promise<{sha: string | null; files: string[]}> {
+  return withWorkspaceLock(port, root, () => checkpointTurnLocked(port, root, turnId));
+}
+
+export async function rewindTo(port: SandboxPort, root: string, sha: string): Promise<void> {
+  return withWorkspaceLock(port, root, () => rewindToLocked(port, root, sha));
 }
