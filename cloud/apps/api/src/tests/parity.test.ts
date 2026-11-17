@@ -5,6 +5,7 @@ import {RunSnapshotSchema, type Message} from '@praxis/protocol';
 import {createLocalAdapters} from '../local-memory.js';
 import {localModules} from '../modules.js';
 import {createPraxisApp} from '../server.js';
+import {TITLE_SYSTEM} from '../title-generation.js';
 import {catalogEntry, connectKey, delta, fakeOpenRouter, png, setup, toolCall} from './harness.js';
 
 describe('attachments reach the model (parity: AttachmentMedia)', () => {
@@ -139,7 +140,7 @@ describe('MCP gateway above 30 connector tools (parity: MCPGateway / gatewayThre
 });
 
 describe('capabilities come from the catalogue, not from learning', () => {
-  it('a refused tool request is retried without tools inside the run, and the next run offers tools again', async () => {
+  it('a refused tool request fails the run without stripping tools, and the next run offers tools again', async () => {
     const bodies: any[] = [];
     let rejections = 0;
     const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -156,10 +157,11 @@ describe('capabilities come from the catalogue, not from learning', () => {
     const chat = await (await req('/v1/chats', {type: 'chat.input', modelId: 'm'})).json();
     const run = async () => { const r = await (await req('/v1/runs', {type: 'run.start', chatId: chat.id, text: 'hi'})).json(); await service.drain(); return RunSnapshotSchema.parse(await (await req(`/v1/runs/${r.id}/snapshot`)).json()); };
 
-    expect((await run()).run.outcome).toBe('completed');
-    expect(rejections).toBe(1); // Retried without tools inside the run.
-    expect((await run()).run.outcome).toBe('completed');
-    expect(rejections).toBe(2); // Catalogue still lists tools; next run offers them again.
+    expect((await run()).run.outcome).toBe('failed');
+    expect(rejections).toBe(1);
+    expect((await run()).run.outcome).toBe('failed');
+    expect(rejections).toBe(2);
+    expect(bodies.every(body => body.messages?.[0]?.content === TITLE_SYSTEM || body.tools?.length > 0)).toBe(true);
     expect(await service.adapters.store.list('local-user', 'modelLearning')).toEqual([]);
   });
 });
