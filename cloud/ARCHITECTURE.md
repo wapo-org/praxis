@@ -43,11 +43,14 @@ Shell denials cannot be approved; unrecognized syntax fails closed and unknown c
 `boundaryDecision` permits untainted allow calls in Build/Auto when the adapter certifies workspace
 confinement without secrets or network effects; tainted side effects and egress require verified receipts.
 Auto also requires approval for destructive or untrusted writes; Ask/Plan deny all side effects.
+Failures after tool execution carry `untrustedSource` and monotonic `taint` just like successes; rejections before
+execution preserve incoming taint. Runners persist taint on both outcomes before dispatching the next call. Durable dispatchers keep uncertain outcomes fenced for reconciliation.
 
 ## Sandbox tools and browser CLI (PRA-77)
 
 `packages/sandbox-tools` is the Modal v1 tool set: `shell`, `read_file`, `edit_file` (exact-match, then the
-workspace's `.praxis/diagnostics.json` checks inline), `export_file`, `wait_for_job`, `notebook_run`, and per-turn git checkpoints
+workspace's `.praxis/diagnostics.json` checks inline), `replace_symbol` (Python/TypeScript/JavaScript declarations, methods and dotted nested names),
+`export_file`, `wait_for_job`, `notebook_run`, and per-turn git checkpoints
 with rewind (PRA-63). Tools run only through `executeSandboxTool`, which goes through `executeBoundary`; `shell`
 is classified by `shellPolicy`. They speak to a `SandboxPort`: an in-memory fake for tests, a local temp-dir port,
 and `@praxis/sandbox-tools/modal`, which uses Modal's native exec and filesystem APIs (no in-sandbox server).
@@ -114,6 +117,16 @@ with OS locks across API workers. Timeouts interrupt the kernel; kernel restarts
 PNG and HTML outputs pass through `export_file`; arbitrary notebook code requires an approval receipt.
 The opt-in `PRAXIS_MODAL_NOTEBOOK_CHECK=1 npm run verify -- live notebook` suite records standard proof and composes a Jupyter layer
 (`ipykernel` 6.29.5, `jupyter-client` 8.6.3) on PRA-51 via `sandboxNotebookImage()`; no HTTP server or new npm dependency is needed.
+
+
+Symbol editing dependencies (PRA-106): `web-tree-sitter` **0.25.10** runs the pure parser in-process;
+`@vscode/tree-sitter-wasm` **0.3.1** supplies immutable prebuilt Python, JavaScript, TypeScript and TSX grammars.
+No workspace code executes in the parser and no image layer is required; diagnostics still run through the sandbox port.
+Each replacement preserves bytes outside the AST range (including BOM/CRLF); Python decorators belong to the range,
+while export modifiers and leading indentation stay outside it. Single arrow/function/class bindings replace the whole
+declaration; multi-binding declarations use `edit_file`. Unsupported extensions return that remediation without writing.
+Edits and checkpoint/rewind operations serialize per workspace on the same port; the runner must retain the port
+and serialize access across workers, as required by PRA-19. Syntax diagnostics remain inline and do not roll back edits.
 
 ## Stateful subagent core
 

@@ -2,7 +2,7 @@ import {posix} from 'node:path';
 import {z} from 'zod';
 import {EXPORT_FILE_MAX_BYTES, READ_FILE_LINES_DEFAULT, READ_FILE_MAX_BYTES} from '../constants.js';
 import {runDiagnostics, type DiagnosticsReport} from '../diagnostics.js';
-import {assertNotInternal, containedPath, decodeText, fail, sha256, withFileLock} from '../support.js';
+import {assertNotInternal, containedPath, decodeText, fail, sha256, withWorkspaceLock} from '../support.js';
 import type {SandboxToolContext} from './context.js';
 
 export const ReadFileInputSchema = z.object({
@@ -24,7 +24,7 @@ export const EditFileInputSchema = z.object({
 
 export const ExportFileInputSchema = z.object({path: z.string().min(1), name: z.string().min(1).max(200).optional()}).strict();
 
-async function readText(context: SandboxToolContext, path: string): Promise<{text: string; bytes: Uint8Array}> {
+export async function readText(context: SandboxToolContext, path: string): Promise<{text: string; bytes: Uint8Array}> {
   const stat = await context.port.stat(path);
   if (!stat) fail('not-found', `${path} does not exist.`);
   if (stat.type !== 'file') fail('schema', `${path} is a ${stat.type}, not a file.`);
@@ -60,29 +60,22 @@ function countOccurrences(haystack: string, needle: string): number {
 }
 
 /** Exact-match replace, then the workspace's diagnostics; problems come back inline instead of failing the edit. */
-export async function editFile(context: SandboxToolContext, raw: unknown): Promise<{path: string; sha256: string; replacements: number; created: boolean; diagnostics: DiagnosticsReport}> {
+async function editFileLocked(context: SandboxToolContext, raw: unknown): Promise<{path: string; sha256: string; replacements: number; created: boolean; diagnostics: DiagnosticsReport}> {
   const input = EditFileInputSchema.parse(raw);
   const {path, root} = await containedPath(context.port, context.root, input.path);
   assertNotInternal(root, path);
-  const written = await withFileLock(context.port, path, async () => {
-    const exists = await context.port.stat(path);
-    if (input.old_text === '') {
-      if (exists) fail('conflict', `${path} already exists; give old_text to change it.`);
-      return {next: input.new_text, replacements: 1, created: true};
-    }
-    const {text, bytes} = await readText(context, path);
-    if (input.expected_sha256 && input.expected_sha256 !== sha256(bytes)) fail('conflict', `${path} changed since it was read.`);
-    const replacements = countOccurrences(text, input.old_text);
-    if (replacements === 0) fail('conflict', `old_text was not found in ${path}.`);
-    if (replacements > 1 && !input.replace_all) fail('conflict', `old_text matches ${replacements} places in ${path}; add surrounding lines or set replace_all.`);
-    return {next: text.split(input.old_text).join(input.new_text), replacements, created: false};
-  }, async edit => {
-    const bytes = new TextEncoder().encode(edit.next);
-    await context.port.writeFile(path, bytes);
-    return {...edit, bytes};
-  });
-  const diagnostics = await runDiagnostics(context.port, root, posix.relative(root, path), written.next, {trustedConfigs: context.trustedDiagnostics ?? new Set(), ...(context.now ? {now: context.now} : {})});
-  return {path, sha256: sha256(written.bytes), replacements: written.replacements, created: written.created, diagnostics};
+  const exists = await context.port.stat(path);
+  if (input.old_text === '') {
+    if (exists) fail('conflict', `${path} already exists; give old_text to change it.`);
+    return {...await completeEdit(context, root, path, input.new_text), replacements: 1, created: true};
+  }
+  const {text, bytes} = await readText(context, path);
+  if (input.expected_sha256 && input.expected_sha256 !== sha256(bytes)) fail('conflict', `${path} changed since it was read.`);
+  const replacements = countOccurrences(text, input.old_text);
+  if (replacements === 0) fail('conflict', `old_text was not found in ${path}.`);
+  if (replacements > 1 && !input.replace_all) fail('conflict', `old_text matches ${replacements} places in ${path}; add surrounding lines or set replace_all.`);
+  const next = text.split(input.old_text).join(input.new_text);
+  return {...await completeEdit(context, root, path, next), replacements, created: false};
 }
 
 const MEDIA_TYPES: Record<string, string> = {
@@ -110,4 +103,17 @@ export async function exportFile(context: SandboxToolContext, raw: unknown) {
   const digest = sha256(bytes);
   const {ref} = await context.exports.put({name, mediaType, bytes, sha256: digest});
   return {path, name, mediaType, bytes: bytes.length, sha256: digest, ref};
+}
+
+export async function editFile(context: SandboxToolContext, raw: unknown) {
+  return withWorkspaceLock(context.port, context.root, () => editFileLocked(context, raw));
+}
+
+export async function completeEdit(context: SandboxToolContext, root: string, path: string, next: string) {
+  const bytes = new TextEncoder().encode(next);
+  await context.port.writeFile(path, bytes);
+  const diagnostics = await runDiagnostics(context.port, root, posix.relative(root, path), next, {
+    trustedConfigs: context.trustedDiagnostics ?? new Set(), ...(context.now ? {now: context.now} : {}),
+  });
+  return {path, sha256: sha256(bytes), diagnostics};
 }
