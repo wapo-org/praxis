@@ -6,7 +6,7 @@ import {canonical} from '../policy.js';
 import {toolError} from '../boundary/errors.js';
 import {propagateTaint} from '../boundary/policy.js';
 import {VerifiedHandoff} from './handoff.js';
-import {canSee, childPermissions, controls, isDescendant, nodeById, rejectSubagent, terminal, workspaceFor} from './permissions.js';
+import {canSee, childPermissions, controls, isDescendant, nodeById, rejectSubagent, setLifecycle, terminal, workspaceFor} from './permissions.js';
 
 export type SubagentEvent =
   | {type: 'spawn'; actorId: string; id: string; callId: string; request: Extract<SpawnAgent, {action: 'create'}>}
@@ -49,8 +49,7 @@ function discardPending(node: SubagentNode): void {
 function cancelBranch(tree: SubagentTree, id: string): void {
   for (const node of tree.nodes) {
     if ((node.id === id || isDescendant(tree, id, node.id)) && !terminal(node)) {
-      node.status = 'cancelling';
-      node.handoff = null;
+      setLifecycle(node, {status: 'cancelling', handoff: null, error: node.error});
       discardPending(node);
     }
   }
@@ -112,14 +111,11 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
     active(actor);
     if (!controls(actor, node)) return rejectSubagent('Only the parent may resume a child.');
     if (!['waiting', 'completed', 'failed'].includes(node.status)) return rejectSubagent('Only waiting or finished agents may resume.');
-    const previousStatus = node.status;
-    node.status = 'waiting';
+    setLifecycle(node, {status: 'waiting', handoff: null, error: null});
     configure(node, request);
-    if (previousStatus === 'failed') node.error = null;
     if (node.turns >= node.permissions.turn_cap) return rejectSubagent('The turn cap cannot be reset by resume.');
     node.revision++;
-    node.status = 'running';
-    node.handoff = null;
+    setLifecycle(node, {status: 'running', handoff: null, error: null});
     return tree;
   }
   const node = nodeById(tree, event.id);
@@ -127,21 +123,22 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
     case 'start':
       if (node.status !== 'spawning') return rejectSubagent('Only a spawning child may start.');
       ensureLiveParent(tree, node);
-      node.status = 'running';
+      setLifecycle(node, {status: 'running', handoff: null, error: null});
       break;
     case 'turn':
       if (node.status !== 'running') return rejectSubagent('Only running agents may consume turns.');
       ensureLiveParent(tree, node);
       if (node.turns >= node.permissions.turn_cap) {
-        node.error = toolError('budget', 'Subagent turn cap exhausted; close this agent or start a separately budgeted task.');
         cancelBranch(tree, node.id);
+        setLifecycle(node, {status: 'cancelling', handoff: null,
+          error: toolError('budget', 'Subagent turn cap exhausted; close this agent or start a separately budgeted task.')});
       } else {
         node.turns++;
       }
       break;
     case 'pause':
       if (node.status !== 'running') return rejectSubagent('Only running agents may wait.');
-      node.status = 'waiting';
+      setLifecycle(node, {status: 'waiting', handoff: null, error: null});
       break;
     case 'configure': {
       const actor = nodeById(tree, event.actorId);
@@ -197,7 +194,7 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
     case 'finalize':
       if (node.status !== 'cancelling') return rejectSubagent('Only cancelling agents may finalize cancellation.');
       noActiveChildren(tree, node);
-      node.status = 'cancelled';
+      setLifecycle(node, {status: 'cancelled', handoff: null, error: node.error});
       joinParentTaint(tree, node);
       break;
     case 'complete':
@@ -205,11 +202,10 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
       ensureLiveParent(tree, node);
       noActiveChildren(tree, node);
       if (!VerifiedHandoff.valid(event.proof, node.id, node.revision, node.permissions.required_checks)) {
-        node.status = 'failed';
-        node.error = toolError('schema', 'Unverified completion: recompute artifact hashes and rerun required checks before handing off.');
+        setLifecycle(node, {status: 'failed', handoff: null,
+          error: toolError('schema', 'Unverified completion: recompute artifact hashes and rerun required checks before handing off.')});
       } else {
-        node.status = 'completed';
-        node.handoff = event.proof!.record;
+        setLifecycle(node, {status: 'completed', handoff: event.proof!.record, error: null});
       }
       discardPending(node);
       joinParentTaint(tree, node);
@@ -217,8 +213,7 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
     case 'fail':
       active(node);
       noActiveChildren(tree, node);
-      node.status = 'failed';
-      node.error = toolError('upstream', event.message);
+      setLifecycle(node, {status: 'failed', handoff: null, error: toolError('upstream', event.message)});
       discardPending(node);
       joinParentTaint(tree, node);
       break;

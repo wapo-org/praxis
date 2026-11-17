@@ -1,4 +1,4 @@
-import {ArtifactPathSchema, HandoffRecordSchema, SubagentCheckSchema, type HandoffRecord} from '@praxis/protocol';
+import {HandoffRecordSchema, SubagentCheckSchema, type HandoffRecord} from '@praxis/protocol';
 import {z} from 'zod';
 import {argsHash} from '../boundary/receipt.js';
 import {workspaceFor} from './permissions.js';
@@ -33,7 +33,7 @@ export class VerifiedHandoff {
       if (checks.length !== record.checks.length || new Set(checks.map(c => c.id)).size !== checks.length ||
         record.checks.some(c => !checks.some(v => v.id === c.id && v.status === 'passed'))) return null;
       for (const artifact of record.artifacts) {
-        const bytes = await port.readArtifact(root, ArtifactPathSchema.parse(artifact.path));
+        const bytes = await port.readArtifact(root, artifact.path);
         const hash = await crypto.subtle.digest('SHA-256', bytes);
         const actual = Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, '0')).join('');
         if (actual !== artifact.sha256) return null;

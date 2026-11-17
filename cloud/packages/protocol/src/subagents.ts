@@ -5,15 +5,18 @@ export const SUBAGENT_LIMITS = {
   DEPTH_MAX: 8, DEPTH_DEFAULT: 1, TURNS_MAX: 100, TURNS_DEFAULT: 15,
   CHILDREN_MAX: 4, VISIBILITY_DEPTH_MAX: 16, WAIT_TIMEOUT_MS_MAX: 120_000,
   MESSAGE_MAX_CHARACTERS: 32_000, ARTIFACTS_MAX: 100, CHECKS_MAX: 32,
+  TOOLS_MAX: 256, NAME_MAX_CHARACTERS: 100, MODEL_MAX_CHARACTERS: 200,
+  ARTIFACT_PATH_MAX_CHARACTERS: 500, ID_MAX_CHARACTERS: 80,
+  SHA256_HEX_CHARACTERS: 64,
 } as const;
 export const SUBAGENT_WORKSPACE_ROOT = '/workspace/.agents';
 export const SUBAGENT_TOOL_NAMES = ['spawn_agent', 'message_agent', 'wait_agents', 'close_agent'] as const;
-export const SubagentIdSchema = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/);
+export const SubagentIdSchema = z.string().regex(new RegExp(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,${SUBAGENT_LIMITS.ID_MAX_CHARACTERS - 1}}$`));
 export const SubagentStatusSchema = z.enum(['spawning', 'running', 'waiting', 'completed', 'failed', 'cancelling', 'cancelled']);
 export type SubagentStatus = z.infer<typeof SubagentStatusSchema>;
-const ToolNames = z.array(z.string().min(1)).max(256).refine(a => new Set(a).size === a.length);
+const ToolNames = z.array(z.string().min(1)).max(SUBAGENT_LIMITS.TOOLS_MAX).refine(a => new Set(a).size === a.length);
 const Configuration = {
-  name: z.string().min(1).max(100).optional(), model: z.string().min(1).max(200).optional(),
+  name: z.string().min(1).max(SUBAGENT_LIMITS.NAME_MAX_CHARACTERS).optional(), model: z.string().min(1).max(SUBAGENT_LIMITS.MODEL_MAX_CHARACTERS).optional(),
   effort: z.enum(['low', 'medium', 'high']).optional(),
 };
 export const SpawnAgentSchema = z.discriminatedUnion('action', [
@@ -44,10 +47,10 @@ export const SubagentToolCallSchema = z.discriminatedUnion('tool', [
   z.object({tool: z.literal('wait_agents'), args: WaitAgentsSchema}).strict(),
   z.object({tool: z.literal('close_agent'), args: CloseAgentSchema}).strict(),
 ]);
-export const ArtifactPathSchema = z.string().min(1).max(500).refine(path =>
+export const ArtifactPathSchema = z.string().min(1).max(SUBAGENT_LIMITS.ARTIFACT_PATH_MAX_CHARACTERS).refine(path =>
   !path.startsWith('/') && !path.includes('\\') && !path.includes('\0') && !path.includes('%') &&
   path.split('/').every(p => p !== '' && p !== '.' && p !== '..'), 'Expected an isolated relative artifact path');
-const HashSchema = z.string().regex(/^[a-f0-9]{64}$/);
+const HashSchema = z.string().regex(new RegExp(`^[a-f0-9]{${SUBAGENT_LIMITS.SHA256_HEX_CHARACTERS}}$`));
 export const SubagentCheckSchema = z.object({id: z.string().min(1), status: z.enum(['passed', 'failed', 'skipped'])}).strict();
 export const HandoffRecordSchema = z.object({
   subagent_id: SubagentIdSchema, revision: z.number().int().nonnegative(), status: z.literal('completed'),
@@ -70,20 +73,31 @@ export const SubagentMessageSchema = z.object({
   text: z.string().min(1).max(SUBAGENT_LIMITS.MESSAGE_MAX_CHARACTERS), tainted: z.boolean(),
   disposition: z.enum(['pending', 'delivered', 'discarded']),
 }).strict();
-export const SubagentNodeSchema = z.object({
+const SubagentNodeFields = {
   id: SubagentIdSchema, parent_id: SubagentIdSchema.nullable(), spawn_call_id: z.string().min(1),
   spawn_fingerprint: z.string(), prompt: z.string(), depth: z.number().int().nonnegative(), permissions: SubagentPermissionsSchema,
   name: z.string(), model: z.string(), effort: z.enum(['low', 'medium', 'high']),
-  status: SubagentStatusSchema, turns: z.number().int().nonnegative(), revision: z.number().int().nonnegative(),
+  turns: z.number().int().nonnegative(), revision: z.number().int().nonnegative(),
   tainted: z.boolean(), workspace: z.string(), handles: z.array(z.string().min(1)),
-  inbox: z.array(SubagentMessageSchema), handoff: HandoffRecordSchema.nullable(), error: ToolErrorSchema.nullable(),
-}).strict();
+  inbox: z.array(SubagentMessageSchema),
+};
+const EmptyLifecycle = {handoff: z.null(), error: z.null()};
+const StoppedLifecycle = {handoff: z.null(), error: ToolErrorSchema.nullable()};
+export const SubagentNodeSchema = z.discriminatedUnion('status', [
+  z.object({...SubagentNodeFields, status: z.literal('spawning'), ...EmptyLifecycle}).strict(),
+  z.object({...SubagentNodeFields, status: z.literal('running'), ...EmptyLifecycle}).strict(),
+  z.object({...SubagentNodeFields, status: z.literal('waiting'), ...EmptyLifecycle}).strict(),
+  z.object({...SubagentNodeFields, status: z.literal('completed'), handoff: HandoffRecordSchema, error: z.null()}).strict(),
+  z.object({...SubagentNodeFields, status: z.literal('failed'), handoff: z.null(), error: ToolErrorSchema}).strict(),
+  z.object({...SubagentNodeFields, status: z.literal('cancelling'), ...StoppedLifecycle}).strict(),
+  z.object({...SubagentNodeFields, status: z.literal('cancelled'), ...StoppedLifecycle}).strict(),
+]);
 export type SubagentNode = z.infer<typeof SubagentNodeSchema>;
 export const SubagentTreeSchema = z.object({nodes: z.array(SubagentNodeSchema).min(1)}).strict();
 export type SubagentTree = z.infer<typeof SubagentTreeSchema>;
 export const WaitAgentsResultSchema = z.object({
-  status: z.enum(['ready', 'waiting', 'timeout']),
+  status: z.enum(['ready', 'waiting', 'timeout']), tainted: z.boolean(),
   agents: z.array(z.object({subagent_id: SubagentIdSchema, status: SubagentStatusSchema,
-    handoff: HandoffRecordSchema.nullable(), error: ToolErrorSchema.nullable()}).strict()),
+    tainted: z.boolean(), handoff: HandoffRecordSchema.nullable(), error: ToolErrorSchema.nullable()}).strict()),
 }).strict();
 export type WaitAgentsResult = z.infer<typeof WaitAgentsResultSchema>;

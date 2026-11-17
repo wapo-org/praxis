@@ -64,3 +64,11 @@ export function controls(actor: SubagentNode, target: SubagentNode): boolean {
 export function terminal(node: SubagentNode): boolean {
   return ['completed', 'failed', 'cancelled'].includes(node.status);
 }
+
+type Lifecycle = {
+  [Status in SubagentNode['status']]: Pick<Extract<SubagentNode, {status: Status}>, 'status' | 'handoff' | 'error'>;
+}[SubagentNode['status']];
+
+export function setLifecycle(node: SubagentNode, lifecycle: Lifecycle): void {
+  Object.assign(node, lifecycle);
+}

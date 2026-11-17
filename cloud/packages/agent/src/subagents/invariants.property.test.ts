@@ -1,7 +1,7 @@
 import {it, expect} from 'vitest';
 import fc from 'fast-check';
 import {z} from 'zod';
-import type {SubagentTree} from '@praxis/protocol';
+import {SubagentTreeSchema, type SubagentTree} from '@praxis/protocol';
 import {ToolBoundaryError} from '../boundary/errors.js';
 import {reduceSubagents, type SubagentEvent} from './reducer.js';
 import {isDescendant, nodeById, terminal} from './permissions.js';
@@ -28,6 +28,7 @@ function step(tree: SubagentTree, event: SubagentEvent): SubagentTree {
   try {
     const result = reduceSubagents(tree, event);
     expect(tree).toEqual(before);
+    expect(SubagentTreeSchema.safeParse(result).success).toBe(true);
     return result;
   } catch (error) {
     expect(tree).toEqual(before);
