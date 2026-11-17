@@ -110,6 +110,9 @@ jobs:
       - name: Install Chromium and its system libraries
         working-directory: cloud
         run: ./node_modules/.bin/playwright install --with-deps chromium
+      # Ubuntu 24.04 runners restrict unprivileged user namespaces, which Chromium's sandbox needs for praxis-browser.
+      - name: Allow Chromium's sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Run the web flows
         run: npm --prefix cloud run verify -- web
       - name: Keep screenshots, snapshots and server logs
