@@ -6,6 +6,7 @@ import {z} from 'zod';
 import {WORKSPACE_ROOT} from '../constants.js';
 import type {SandboxToolContext} from './context.js';
 import {editFile, EditFileInputSchema, exportFile, ExportFileInputSchema, readFile, ReadFileInputSchema} from './files.js';
+import {notebookRun, NotebookInputSchema} from './notebook.js';
 import {SYMBOL_DESCRIPTION} from '../symbols/constants.js';
 import {replaceSymbol, ReplaceSymbolInputSchema} from './symbols.js';
 import {shell, ShellInputSchema, waitForJob, WaitForJobInputSchema} from './process.js';
@@ -20,8 +21,13 @@ export interface SandboxToolDefinition {
   run(context: SandboxToolContext, args: unknown): Promise<unknown>;
 }
 
-/** Workspace tools share the approval boundary and return untrusted diagnostics inline. */
+/** Sandbox tools share one boundary gate and injected ports. */
 export const SANDBOX_TOOLS: readonly SandboxToolDefinition[] = [
+  {
+    name: 'notebook_run',
+    description: 'Execute Python on the sandbox kernel; retains variables and exports PNG/HTML artifacts.',
+    input: NotebookInputSchema, capabilities: ['exec', 'read'], untrustedSource: true, run: notebookRun,
+  },
   {
     name: 'browser', description: BROWSER_DESCRIPTION, input: BrowserInputSchema,
     capabilities: ['read', 'write', 'external-egress'], untrustedSource: true, run: browser,
@@ -83,7 +89,7 @@ export const sandboxToolClassifier: ToolClassifier = {
     const parsed = tool.input.safeParse(call.args);
     if (!parsed.success || !lexicallyConfined(tool.name, parsed.data as Record<string, unknown>)) return {...base, decision: 'deny'};
     if (tool.name === 'browser') return {...base, capabilities: browserCapabilities(BrowserInputSchema.parse(parsed.data)), decision: 'allow'};
-    const decision = tool.name === 'shell' ? shellPolicy((parsed.data as {command: string}).command) : 'allow';
+    const decision = tool.name === 'notebook_run' ? 'approve' : tool.name === 'shell' ? shellPolicy((parsed.data as {command: string}).command) : 'allow';
     return {...base, decision};
   },
 };

@@ -50,7 +50,7 @@ execution preserve incoming taint. Runners persist taint on both outcomes before
 
 `packages/sandbox-tools` is the Modal v1 tool set: `shell`, `read_file`, `edit_file` (exact-match, then the
 workspace's `.praxis/diagnostics.json` checks inline), `replace_symbol` (Python/TypeScript/JavaScript declarations, methods and dotted nested names),
-`export_file`, `wait_for_job`, and per-turn git checkpoints
+`export_file`, `wait_for_job`, `notebook_run`, and per-turn git checkpoints
 with rewind (PRA-63). Tools run only through `executeSandboxTool`, which goes through `executeBoundary`; `shell`
 is classified by `shellPolicy`. They speak to a `SandboxPort`: an in-memory fake for tests, a local temp-dir port,
 and `@praxis/sandbox-tools/modal`, which uses Modal's native exec and filesystem APIs (no in-sandbox server).
@@ -111,6 +111,17 @@ Tool-boundary dependencies: `shell-quote` **1.12.0**, pinned, dependency-free pu
 Pinned dev dependencies: `@informalsystems/quint` runs protocol simulations without
 Java; `fast-check` generates checkpoint, API dedup/truncation and failover cases.
 Run `npm run specs` for models and `npm test` for implementation properties.
+
+`notebook_run` (PRA-105) uses a detached Python driver, one Jupyter kernel per sandbox, and file mailboxes
+with OS locks across API workers. Timeouts interrupt the kernel; an unacknowledged interrupt stops it for restart.
+Kernel restarts report "variables were lost".
+PNG and HTML outputs pass through `export_file`; arbitrary notebook code requires an approval receipt.
+The opt-in `PRAXIS_MODAL_NOTEBOOK_CHECK=1 npm run verify -- live notebook` suite records standard proof and composes a Jupyter layer
+on PRA-51 via `sandboxNotebookImage()`; its checked-in `modal/notebook-requirements.lock` pins and hashes every Python dependency.
+Pip installs wheels with `--require-hashes` and verifies the graph with `pip check`. Output-processing errors interrupt
+and drain the active cell before returning; artifact count and encoded size are checked before decoding.
+Workspace setup verifies the canonical cwd and a successful execute reply before dispatch; user-cell success also requires its execute reply.
+
 
 
 ## Convex Auth v2 (PRA-34)

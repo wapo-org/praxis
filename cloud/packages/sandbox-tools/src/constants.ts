@@ -21,3 +21,10 @@ export const JOB_POLL_INTERVAL_MS = 500;
 export const DIAGNOSTICS_BUDGET_MS = 20_000;
 export const DIAGNOSTICS_PROBLEMS_MAX = 50;
 export const GIT_TIMEOUT_MS = 30_000;
+
+export const NOTEBOOK_ARTIFACTS_MAX = 32;
+export const NOTEBOOK_STARTUP_SECONDS = 15;
+export const NOTEBOOK_INTERRUPT_SECONDS = 5;
+/** The outer exec must outlive the driver deadline so it can return its recovery result. */
+export const NOTEBOOK_EXEC_MARGIN_MS = 5_000;
+export const NOTEBOOK_EXEC_ALLOWANCE_MS = (NOTEBOOK_STARTUP_SECONDS + NOTEBOOK_INTERRUPT_SECONDS) * 1_000 + NOTEBOOK_EXEC_MARGIN_MS;
