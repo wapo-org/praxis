@@ -5,6 +5,7 @@ import {z} from 'zod';
 import {WORKSPACE_ROOT} from '../constants.js';
 import type {SandboxToolContext} from './context.js';
 import {editFile, EditFileInputSchema, exportFile, ExportFileInputSchema, readFile, ReadFileInputSchema} from './files.js';
+import {notebookRun, NotebookInputSchema} from './notebook.js';
 import {shell, ShellInputSchema, waitForJob, WaitForJobInputSchema} from './process.js';
 
 export interface SandboxToolDefinition {
@@ -17,8 +18,13 @@ export interface SandboxToolDefinition {
   run(context: SandboxToolContext, args: unknown): Promise<unknown>;
 }
 
-/** The simplified Modal v1 tool set (PRA-77): no tmux, no notebook, no AST editor yet. */
+/** Sandbox tools share one boundary gate and injected ports. */
 export const SANDBOX_TOOLS: readonly SandboxToolDefinition[] = [
+  {
+    name: 'notebook_run',
+    description: 'Execute Python on the sandbox kernel; retains variables and exports PNG/HTML artifacts.',
+    input: NotebookInputSchema, capabilities: ['exec'], untrustedSource: true, run: notebookRun,
+  },
   {
     name: 'shell',
     description: 'Run a command in the chat workspace. Long work: background=true, then wait_for_job.',
@@ -70,7 +76,7 @@ export const sandboxToolClassifier: ToolClassifier = {
     const base = {capabilities: tool.capabilities, untrustedSource: tool.untrustedSource};
     const parsed = tool.input.safeParse(call.args);
     if (!parsed.success || !lexicallyConfined(tool.name, parsed.data as Record<string, unknown>)) return {...base, decision: 'deny'};
-    const decision = tool.name === 'shell' ? shellPolicy((parsed.data as {command: string}).command) : 'allow';
+    const decision = tool.name === 'notebook_run' ? 'approve' : tool.name === 'shell' ? shellPolicy((parsed.data as {command: string}).command) : 'allow';
     return {...base, decision};
   },
 };

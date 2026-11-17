@@ -47,7 +47,7 @@ Auto also requires approval for destructive or untrusted writes; Ask/Plan deny a
 ## Sandbox tools and browser CLI (PRA-77)
 
 `packages/sandbox-tools` is the Modal v1 tool set: `shell`, `read_file`, `edit_file` (exact-match, then the
-workspace's `.praxis/diagnostics.json` checks inline), `export_file`, `wait_for_job`, and per-turn git checkpoints
+workspace's `.praxis/diagnostics.json` checks inline), `export_file`, `wait_for_job`, `notebook_run`, and per-turn git checkpoints
 with rewind (PRA-63). Tools run only through `executeSandboxTool`, which goes through `executeBoundary`; `shell`
 is classified by `shellPolicy`. They speak to a `SandboxPort`: an in-memory fake for tests, a local temp-dir port,
 and `@praxis/sandbox-tools/modal`, which uses Modal's native exec and filesystem APIs (no in-sandbox server).
@@ -106,3 +106,9 @@ Tool-boundary dependencies: `shell-quote` **1.12.0**, pinned, dependency-free pu
 Pinned dev dependencies: `@informalsystems/quint` runs protocol simulations without
 Java; `fast-check` generates checkpoint, API dedup/truncation and failover cases.
 Run `npm run specs` for models and `npm test` for implementation properties.
+
+`notebook_run` (PRA-105) uses a detached Python driver, one Jupyter kernel per sandbox, and file mailboxes
+with OS locks across API workers. Timeouts interrupt the kernel; kernel restarts report "variables were lost".
+PNG and HTML outputs pass through `export_file`; arbitrary notebook code requires an approval receipt.
+The opt-in `packages/sandbox-tools/scripts/modal-notebook-check.ts` composes a separate Jupyter image layer
+(`ipykernel` 6.29.5, `jupyter-client` 8.6.3); no HTTP server or new npm dependency is needed.
