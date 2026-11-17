@@ -89,18 +89,21 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
             },
           }));
           return JsonValueSchema.parse(JSON.parse(JSON.stringify(result)));
-        }, options.receipts?.[id]);
+        }, options.receipts?.[id], undefined, error => {
+          if (error instanceof UncertainToolCall || context.signal.aborted) throw error;
+          throw new UncertainToolCall(id, error);
+        });
       } catch (error) {
         if (error instanceof UncertainToolCall || context.signal.aborted) throw error;
         if (dispatched) throw new UncertainToolCall(id, error);
-        result = {ok: false, error: error instanceof ToolBoundaryError
+        result = {ok: false, untrustedSource: false, taint: {tainted}, error: error instanceof ToolBoundaryError
           ? error.detail : toolError('upstream', 'Tool execution failed.')};
       }
       saved = {call, result};
       await store.saveCall(token, id, saved);
     }
     calls.push(saved);
-    if (saved.result.ok) tainted ||= saved.result.taint.tainted;
+    tainted ||= saved.result.taint.tainted;
   }
   if (!await active()) return store.flags(runId);
   return store.commit(token, response, calls, tainted);

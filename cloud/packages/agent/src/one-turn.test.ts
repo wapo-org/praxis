@@ -135,3 +135,19 @@ it('uses the landed mode decision table for confined writes and external egress'
     }
   }
 });
+
+it('replayed failed reads persist taint before the next call and final commit', async () => {
+  const f = await fixture(true);
+  const r = response(true);
+  r.parts.push({...r.parts[0]!, callId: 'second'});
+  f.store.data.response = r;
+  f.store.data.calls.call = {call: {tool: 'read', args: {query: 'hello'}}, result: {
+    ok: false, untrustedSource: true, taint: {tainted: true},
+    error: {code: 'not-found', message: 'workspace instruction', remediation: 'Choose a symbol.'},
+  }};
+  f.registry = {classify: () => ({capabilities: ['write'], decision: 'allow', untrustedSource: false})};
+  await runOneTurn(f);
+  expect(f.counts.tool).toBe(0);
+  expect(f.store.data.calls.second?.result).toMatchObject({ok: false, error: {code: 'taint-blocked'}});
+  expect(f.store.data.tainted).toBe(true);
+});
