@@ -36,3 +36,10 @@ it('propagates cancellation without converting it to a tool failure', async () =
   controller.abort();
   await expect(adaptTool(feature(new Error('cancelled'))).execute({}, {...context, signal: controller.signal})).rejects.toThrow('cancelled');
 });
+it('rejects structured errors on successful results', async () => {
+  const {ToolResultSchema} = await import('@praxis/agent');
+  const error = toolError('policy-denied', 'Denied');
+  expect(ToolResultSchema.safeParse({content: [], error}).success).toBe(false);
+  expect(ToolResultSchema.safeParse({content: [], isError: false, error}).success).toBe(false);
+  expect(ToolResultSchema.safeParse({content: [], isError: true, error}).success).toBe(true);
+});

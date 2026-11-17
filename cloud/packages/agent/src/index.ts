@@ -14,3 +14,4 @@ export * from './boundary/gate.js';
 export * from './one-turn.js';
 export * from './one-turn-state.js';
 export * from './one-turn-prompt.js';
+export * from './boundary/decision.js';
