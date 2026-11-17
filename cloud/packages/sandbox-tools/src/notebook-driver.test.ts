@@ -15,7 +15,7 @@ it('runs the actual Python driver recovery, cleanup and bounded-output regressio
     await writeFile(driver, NOTEBOOK_DRIVER);
     const fixture = fileURLToPath(new URL('./notebook-driver.fixture.py', import.meta.url));
     const result = await localExec({argv: ['python3', fixture, driver], cwd: root, timeoutMs: DRIVER_TEST_TIMEOUT_MS});
-    expect(result.stderr).toContain('Ran 6 tests');
+    expect(result.stderr).toContain('Ran 9 tests');
     expect(result.stderr).toContain('OK');
     expect(result.exitCode, result.stderr).toBe(0);
   } finally {

@@ -116,7 +116,9 @@ Run `npm run specs` for models and `npm test` for implementation properties.
 with OS locks across API workers. Timeouts interrupt the kernel; kernel restarts report "variables were lost".
 PNG and HTML outputs pass through `export_file`; arbitrary notebook code requires an approval receipt.
 The opt-in `PRAXIS_MODAL_NOTEBOOK_CHECK=1 npm run verify -- live notebook` suite records standard proof and composes a Jupyter layer
-(`ipykernel` 6.29.5, `jupyter-client` 8.6.3) on PRA-51 via `sandboxNotebookImage()`; no HTTP server or new npm dependency is needed.
+on PRA-51 via `sandboxNotebookImage()`; its checked-in `modal/notebook-requirements.lock` pins and hashes every Python dependency.
+Pip installs wheels with `--require-hashes` and verifies the graph with `pip check`. Output-processing errors interrupt
+and drain the active cell before returning; artifact count and encoded size are checked before decoding.
 
 
 Symbol editing dependencies (PRA-106): `web-tree-sitter` **0.25.10** runs the pure parser in-process;

@@ -105,6 +105,12 @@ describe('notebook_run', () => {
     }});
   });
 
+  it('explains interrupted and drained output failures in the remediation', async () => {
+    expect(await runError({status: 'output-error', message: 'Malformed PNG.'})).toMatchObject({
+      ok: false, error: {code: 'upstream', remediation: expect.stringContaining('interrupted and drained to idle')},
+    });
+  });
+
   it('rejects malformed replies, transport failures and escaped artifacts with remediations', async () => {
     expect(await runError({status: 'ok'})).toMatchObject({ok: false, error: {code: 'schema', remediation: expect.any(String)}});
     expect(await runError({...ok, artifacts: ['/etc/passwd']})).toMatchObject({ok: false, error: {code: 'path-traversal'}});

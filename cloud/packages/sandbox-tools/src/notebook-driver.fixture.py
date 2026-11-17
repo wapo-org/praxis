@@ -158,6 +158,114 @@ class KernelManager:
         small.append("small")
         self.assertEqual(small.render(), "small")
 
+    def test_malformed_display_interrupts_loop_and_drains_before_next_cell(self):
+        class Kernel:
+            interrupted = False
+            interrupts = 0
+
+            def interrupt_kernel(self):
+                self.interrupted = True
+                self.interrupts += 1
+
+            def is_alive(self):
+                return True
+
+        kernel = Kernel()
+        owner = self
+
+        class Client:
+            first = True
+            drained = False
+            executions = 0
+
+            def execute(self, code, **kwargs):
+                if self.executions >= 2:
+                    owner.assertTrue(self.drained, "Next cell started before the old execution drained")
+                self.executions += 1
+                return "cell"
+
+            def get_shell_msg(self, **kwargs):
+                return dict(parent_header=dict(msg_id="cell"))
+
+            def get_iopub_msg(self, **kwargs):
+                if self.first:
+                    self.first = False
+                    return dict(parent_header=dict(msg_id="cell"), header=dict(msg_type="display_data"),
+                                content=dict(data={"image/png": "a"}))
+                # The cell loops forever after display unless the driver interrupts it.
+                owner.assertTrue(kernel.interrupted, "Cell was left looping after malformed display")
+                self.drained = True
+                return dict(parent_header=dict(msg_id="cell"), header=dict(msg_type="status"),
+                            content=dict(execution_state="idle"))
+        client = Client()
+        request = {**self.request(), "timeout_ms": 5000}
+        result = MODULE["run_cell"](kernel, client, request, False)
+        self.assertEqual(result["status"], "output-error")
+        self.assertIn("interrupted and drained to idle", result["message"])
+        self.assertTrue(client.drained)
+        self.assertEqual(kernel.interrupts, 1)
+        self.assertEqual(MODULE["run_cell"](kernel, client, request, False)["status"], "ok")
+
+    def test_output_failure_with_ignored_interrupt_stops_busy_kernel(self):
+        clock = [0]
+
+        class Kernel:
+            stopped = False
+
+            def interrupt_kernel(self):
+                clock[0] = 10
+
+            def is_alive(self):
+                return True
+
+            def shutdown_kernel(self, **kwargs):
+                self.stopped = True
+
+        class Client:
+            first = True
+
+            def execute(self, *args, **kwargs):
+                return "cell"
+
+            def get_shell_msg(self, **kwargs):
+                return dict(parent_header=dict(msg_id="cell"))
+
+            def get_iopub_msg(self, **kwargs):
+                if self.first:
+                    self.first = False
+                    return dict(parent_header=dict(msg_id="cell"), header=dict(msg_type="display_data"),
+                                content=dict(data={"image/png": "a"}))
+                clock[0] = 20
+                raise MODULE["queue"].Empty()
+        kernel = Kernel()
+        with patch.object(time, "monotonic", side_effect=lambda: clock[0]):
+            result = MODULE["run_cell"](kernel, Client(), {**self.request(), "timeout_ms": 5000}, False)
+        self.assertTrue(kernel.stopped)
+        self.assertEqual(result["status"], "upstream")
+        self.assertIn("variables were lost", result["message"])
+        self.assertNotIn("drained to idle", result["message"])
+
+    def test_oversized_artifacts_are_rejected_before_join_or_decode(self):
+        for length in (60 * 1024 * 1024, 180 * 1024 * 1024):
+            value = "A" * length
+            for payload in (value, [value]):
+                with self.subTest(length=length, fragmented=isinstance(payload, list)):
+                    tracemalloc.start()
+                    try:
+                        with patch.object(MODULE["base64"], "b64decode") as decode:
+                            with self.assertRaises(MODULE["ArtifactBudgetError"]):
+                                MODULE["artifact_bytes"](payload, "image/png", 0)
+                            decode.assert_not_called()
+                        _, peak = tracemalloc.get_traced_memory()
+                    finally:
+                        tracemalloc.stop()
+                    self.assertLess(peak, 100000)
+        # Count rejection must precede even reading the next artifact value.
+        with self.assertRaises(MODULE["ArtifactBudgetError"]):
+            MODULE["artifact_bytes"](object(), "image/png", MODULE["ARTIFACTS_MAX"])
+        self.assertEqual(MODULE["artifact_bytes"]("aGVsbG8=", "image/png", 0), b"hello")
+        self.assertEqual(MODULE["artifact_bytes"](["<b>", "hi</b>"], "text/html", 0), b"<b>hi</b>")
+
     def test_verbose_cell_error_preserves_traceback(self):
         cell = "cell-id"
         messages = iter([

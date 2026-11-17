@@ -52,6 +52,36 @@ class TextBuffer:
         return self.head.decode(errors="replace") + middle + self.tail.decode(errors="replace")
 
 
+class ArtifactBudgetError(Exception):
+    pass
+
+
+def artifact_bytes(value, mime, count):
+    if count >= ARTIFACTS_MAX:
+        raise ArtifactBudgetError()
+    parts = value if isinstance(value, list) else (value,)
+    length = 0
+    for part in parts:
+        if not isinstance(part, str):
+            raise ValueError("Rich output must contain text")
+        length += len(part)
+    if mime == "image/png":
+        # Bound decoded bytes before joining fragments or invoking the base64 decoder.
+        if ((length + 3) // 4) * 3 > ARTIFACT_MAX_BYTES:
+            raise ArtifactBudgetError()
+        return base64.b64decode("".join(parts), validate=True)
+    if length > ARTIFACT_MAX_BYTES:
+        raise ArtifactBudgetError()
+    payload = bytearray()
+    for part in parts:
+        for offset in range(0, len(part), 65536):
+            chunk = part[offset:offset + 65536].encode()
+            if len(payload) + len(chunk) > ARTIFACT_MAX_BYTES:
+                raise ArtifactBudgetError()
+            payload.extend(chunk)
+    return payload
+
+
 def run_cell(km, client, request, restarted):
     root = request["root"]
     # Changing directories is a separate silent cell so user code retains normal notebook syntax.
@@ -61,7 +91,7 @@ def run_cell(km, client, request, restarted):
     cell = client.execute(request["code"], allow_stdin=False, stop_on_error=True)
     deadline = time.monotonic() + request["timeout_ms"] / 1000
     interrupted = False
-    output_budget = False
+    output_failure = None
     text = TextBuffer()
     artifacts = []
     failed = False
@@ -70,6 +100,10 @@ def run_cell(km, client, request, restarted):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             if interrupted:
+                if output_failure is not None:
+                    # A busy kernel cannot accept another cell safely after failed output recovery.
+                    km.shutdown_kernel(now=True)
+                    return error("upstream", "Output recovery interrupt was not acknowledged; kernel stopped; " + LOST)
                 return error("upstream", "Kernel did not acknowledge interrupt; retry when the cell finishes.")
             km.interrupt_kernel()
             interrupted = True
@@ -84,42 +118,40 @@ def run_cell(km, client, request, restarted):
             continue
         kind = message["header"]["msg_type"]
         content = message["content"]
-        chunk = ""
-        if kind == "stream":
-            chunk = content["text"]
-        elif kind == "error":
-            failed = True
-            chunk = "\n".join(content.get("traceback", []))
-        elif kind in ("display_data", "execute_result", "update_display_data"):
-            data = content.get("data", {})
-            chunk = data.get("text/plain", "")
-            for mime, extension in (("image/png", "png"), ("text/html", "html")):
-                if mime not in data:
-                    continue
-                value = data[mime]
-                if isinstance(value, list):
-                    value = "".join(value)
-                if output_budget:
-                    continue
-                payload = base64.b64decode(value) if mime == "image/png" else value.encode()
-                if len(payload) > ARTIFACT_MAX_BYTES or len(artifacts) >= ARTIFACTS_MAX:
-                    output_budget = True
-                    if not interrupted:
-                        km.interrupt_kernel()
-                        interrupted = True
-                        deadline = time.monotonic() + INTERRUPT_SECONDS
-                    continue
-                artifact_dir.mkdir(parents=True, exist_ok=True)
-                path = artifact_dir / (str(len(artifacts)) + "." + extension)
-                # Exclusive creation refuses existing symlinks planted by workspace code.
-                with path.open("xb") as output:
-                    output.write(payload)
-                artifacts.append(str(path))
-        if chunk:
-            text.append(chunk)
+        if output_failure is None:
+            try:
+                chunk = ""
+                if kind == "stream":
+                    chunk = content["text"]
+                elif kind == "error":
+                    failed = True
+                    chunk = "\n".join(content.get("traceback", []))
+                elif kind in ("display_data", "execute_result", "update_display_data"):
+                    data = content.get("data", {})
+                    chunk = data.get("text/plain", "")
+                    for mime, extension in (("image/png", "png"), ("text/html", "html")):
+                        if mime not in data:
+                            continue
+                        payload = artifact_bytes(data[mime], mime, len(artifacts))
+                        artifact_dir.mkdir(parents=True, exist_ok=True)
+                        path = artifact_dir / (str(len(artifacts)) + "." + extension)
+                        # Exclusive creation refuses existing symlinks planted by workspace code.
+                        with path.open("xb") as output:
+                            output.write(payload)
+                        artifacts.append(str(path))
+                if chunk:
+                    text.append(chunk)
+            except Exception as exc:
+                status = "budget" if isinstance(exc, ArtifactBudgetError) else "output-error"
+                output_failure = error(status, "Notebook artifact budget exceeded." if status == "budget" else "Notebook output processing failed.")
+                if not interrupted:
+                    km.interrupt_kernel()
+                    interrupted = True
+                    deadline = time.monotonic() + INTERRUPT_SECONDS
         if kind == "status" and content.get("execution_state") == "idle":
-            if output_budget:
-                return error("budget", "Notebook rich output exceeded the artifact budget; reduce output.")
+            if output_failure is not None:
+                output_failure["message"] += " Cell interrupted and drained to idle; variables remain available."
+                return output_failure
             if interrupted:
                 return error("timeout", "Cell interrupted at its timeout; kernel and variables remain available.")
             if failed:

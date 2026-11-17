@@ -32,8 +32,8 @@ beforeEach(() => {
   modal.wait.mockResolvedValue(137);
   vi.mocked(executeSandboxTool).mockImplementation(async (call, _boundary, tools) => {
     const code = call.args && typeof call.args === 'object' && 'code' in call.args ? call.args.code : '';
-    const failure = code === 'while True: pass' ? 'timeout' : String(code).startsWith('for i') ? 'budget' : code === 'import os\nos._exit(1)' ? 'upstream' : undefined;
-    if (failure) return {ok: false, error: {code: failure, message: 'cell failed', remediation: 'retry'}, untrustedSource: true, taint: {tainted: true}};
+    const failure = String(code).includes("display({'image/png': 'a'}, raw=True)") ? 'upstream' : code === 'while True: pass' ? 'timeout' : String(code).startsWith('for i') ? 'budget' : code === 'import os\nos._exit(1)' ? 'upstream' : undefined;
+    if (failure) return {ok: false, error: {code: failure, message: 'cell failed', remediation: String(code).includes("display({'image/png': 'a'}, raw=True)") ? 'interrupted and drained to idle' : 'retry'}, untrustedSource: true, taint: {tainted: true}};
     if (String(code).startsWith('from IPython.display')) {
       for (const [name, mediaType, content] of [['0.png', 'image/png', 'PNG'], ['1.html', 'text/html', '<b>hello</b>']] as const) {
         const bytes = new TextEncoder().encode(content);
@@ -59,7 +59,7 @@ describe('notebook live suite', () => {
     const {proof, path} = await run();
     expect(proof.status).toBe('complete');
     expect(ProofSchema.parse(JSON.parse(readFileSync(path, 'utf8')))).toEqual(proof);
-    expect(proof.steps[0]).toMatchObject({status: 'pass', summary: '9 notebook assertions passed; sandbox terminated'});
+    expect(proof.steps[0]).toMatchObject({status: 'pass', summary: '11 notebook assertions passed; sandbox terminated'});
     expect(proof.steps[0]!.evidence).toHaveLength(3);
     expect(proof.steps[0]!.log).toContain('PRA-105 settled sb-notebook-proof; exit=137');
     expect(modal.create).toHaveBeenCalledTimes(1);

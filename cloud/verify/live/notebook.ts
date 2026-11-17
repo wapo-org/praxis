@@ -62,6 +62,10 @@ async function checkNotebook(context: StepContext): Promise<StepOutcome> {
     assert(!budget.ok && budget.error.code === 'budget', 'artifact count budget interrupts and drains');
     const afterBudget = await cell('value');
     assert(afterBudget.ok && JSON.stringify(afterBudget.result.value).includes('42'), 'variables survive artifact budget');
+    const malformed = await cell("display({'image/png': 'a'}, raw=True)\nwhile True: pass");
+    assert(!malformed.ok && malformed.error.remediation.includes('interrupted and drained to idle'), 'malformed display interrupts and drains looping cell');
+    const afterMalformed = await cell('value');
+    assert(afterMalformed.ok && JSON.stringify(afterMalformed.result.value).includes('42'), 'variables survive malformed display');
     const dead = await cell('import os\nos._exit(1)');
     assert(!dead.ok, 'dead kernel returns ToolError');
     for (const item of exports.items) context.attach(item.name, item.bytes);
