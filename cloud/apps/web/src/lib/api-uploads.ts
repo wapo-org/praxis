@@ -5,7 +5,8 @@ import { localUploadPath } from './hosts';
 
 export class UploadApiClient extends FeatureApiClient {
   async uploadAttachment(file: File, chatId?: string): Promise<Attachment> {
-    const session = this.captureSession();
+    const session = this.getSessionSignal();
+    session.throwIfAborted();
     const req = await this.request<{
       type: 'upload.url';
       uploadUrl: string;
@@ -33,7 +34,7 @@ export class UploadApiClient extends FeatureApiClient {
     const isApiOrigin = direct || viaApi !== null;
     const uploadHeaders: Record<string, string> = {
       'Content-Type': file.type || 'application/octet-stream',
-      ...(isApiOrigin ? this.headers(undefined, session) : {}),
+      ...(isApiOrigin ? this.headers() : {}),
     };
 
     const uploadRes = await fetch(uploadTargetUrl, {
@@ -41,11 +42,11 @@ export class UploadApiClient extends FeatureApiClient {
       headers: uploadHeaders,
       body: file,
       credentials: isApiOrigin ? 'include' : 'omit',
-      signal: session.signal,
+      signal: session,
     });
 
-    session.signal.throwIfAborted();
-    if (isApiOrigin && uploadRes.status === 401) this.reportUnauthorized(session.signal);
+    session.throwIfAborted();
+    if (isApiOrigin && uploadRes.status === 401) this.reportUnauthorized(session);
     if (!uploadRes.ok) {
       let code = 'upload_failed';
       let message = `Upload failed with HTTP ${uploadRes.status}`;

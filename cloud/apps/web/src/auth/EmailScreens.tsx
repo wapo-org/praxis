@@ -70,8 +70,8 @@ export function EmailScreens() {
       <button key={next} disabled={busy} onClick={() => { setMode(next); setMessage(''); setError(''); setPassword(''); }}>{next === 'login' ? 'Sign in' : next === 'register' ? 'Create account / resend verification' : 'Forgot password?'}</button>)}</nav>
   </AuthFrame>;
 }
-function LinkStatus({ state }: { state: { status: 'loading' | 'complete' } | { status: 'error'; userError: { error: string } } }) {
-  return <>{state.status === 'error' ? <p role="alert">{authError(state.userError)}</p> : <p role="status">{state.status === 'complete' ? 'Signed in.' : AUTH_COPY.loading}</p>}
+function LinkStatus({ state }: { state: { status: 'loading' } | { status: 'error'; userError: { error: string } } }) {
+  return <>{state.status === 'error' ? <p role="alert">{authError(state.userError)}</p> : <p role="status">{AUTH_COPY.loading}</p>}
     <a href={AUTH_ROUTES.home}>{AUTH_COPY.restart}</a></>;
 }
 export function ValidateEmail({ code }: { code: string }) {

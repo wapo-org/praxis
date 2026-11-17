@@ -45,13 +45,8 @@ export interface ApiClientConfig {
   bearerToken?: string;
 }
 
-// Multi-request operations carry the owner scope that started them, so a session switch cannot lend them a new token.
-export interface SessionScope {
-  readonly signal: AbortSignal;
-  readonly bearerToken: string;
-}
-
-export type ApiRequestInit = RequestInit & { headers?: Record<string, string>; session?: SessionScope };
+// Multi-request operations pass the session signal that started them: a refresh keeps it live, an owner change aborts it.
+export type ApiRequestInit = RequestInit & { headers?: Record<string, string>; session?: AbortSignal };
 
 export class ApiTransport {
   onUnauthorized?: () => void;
@@ -68,12 +63,6 @@ export class ApiTransport {
     this.sessionController.abort();
     this.sessionIdentity = userId;
     if (userId !== null) this.sessionController = new AbortController();
-  }
-
-  captureSession(): SessionScope {
-    const signal = this.getSessionSignal();
-    signal.throwIfAborted();
-    return { signal, bearerToken: this.bearerToken };
   }
 
   async freshToken(): Promise<string> {
@@ -126,10 +115,9 @@ export class ApiTransport {
     }
   }
 
-  protected headers(extra?: Record<string, string>, session?: SessionScope): Record<string, string> {
-    const token = session ? session.bearerToken : this.bearerToken;
+  protected headers(extra?: Record<string, string>): Record<string, string> {
     const h: Record<string, string> = {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(this.bearerToken ? { Authorization: `Bearer ${this.bearerToken}` } : {}),
       ...extra,
     };
     return h;
@@ -143,16 +131,16 @@ export class ApiTransport {
 
   async request<T>(path: string, init?: ApiRequestInit): Promise<T> {
     const { session, ...fetchInit } = init ?? {};
-    const sessionSignal = session?.signal ?? this.getSessionSignal();
+    const sessionSignal = session ?? this.getSessionSignal();
     const signal = fetchInit.signal ? AbortSignal.any([sessionSignal, fetchInit.signal]) : sessionSignal;
     signal.throwIfAborted();
-    if (!session) await this.freshToken();
+    await this.freshToken();
     signal.throwIfAborted();
     const headers: Record<string, string> = {
       ...(fetchInit.body && typeof fetchInit.body === 'string'
         ? { 'Content-Type': 'application/json' }
         : {}),
-      ...this.headers(fetchInit.headers, session),
+      ...this.headers(fetchInit.headers),
     };
 
     const res = await fetch(this.url(path), {

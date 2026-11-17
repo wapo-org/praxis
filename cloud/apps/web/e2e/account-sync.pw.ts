@@ -1,4 +1,4 @@
-import { signIn, createTestAccount } from './sign-in';
+import { signIn, createTestAccount, stackConvexUrl } from './sign-in';
 import { latestEmailLink } from './test-mail';
 import { test, expect, type Page } from '@playwright/test';
 const open = async (page: Page, account: Awaited<ReturnType<typeof createTestAccount>>) => {
@@ -24,7 +24,7 @@ test('two devices converge chats, offline edits, settings, live messages and sto
   const a = await browser.newContext({ baseURL: testInfo.project.use.baseURL }); const b = await browser.newContext({ baseURL: testInfo.project.use.baseURL });
   const one = await a.newPage(); const two = await b.newPage();
   try {
-    const account = await createTestAccount(process.env.PW_CONVEX_URL!);
+    const account = await createTestAccount(stackConvexUrl());
     await open(one, account); await open(two, account);
     const title = `Sync ${Date.now()}`;
     const chat = await action(one, 'createChat', { title });
@@ -133,7 +133,7 @@ test('phone sign-in fits without scrolling at rest', async ({ page }) => {
 });
 
 test('a signed-in session cannot bypass an uncompleted recovery link', async ({ page }) => {
-  const account = await createTestAccount(process.env.PW_CONVEX_URL!);
+  const account = await createTestAccount(stackConvexUrl());
   await page.goto('/');
   await page.getByRole('button', { name: 'Forgot password?', exact: true }).click();
   await page.getByLabel('Email', { exact: true }).fill(account.email);

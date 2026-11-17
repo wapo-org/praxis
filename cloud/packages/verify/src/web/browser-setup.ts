@@ -5,10 +5,7 @@ import type { Page } from '@playwright/test';
 import { startLocalStack } from './servers.js';
 import { signIn } from './session.js';
 import type { TestAccount } from './auth-account.js';
-import { DEFAULT_API_PORT, DEFAULT_WEB_PORT } from '../constants.js';
-
-/** Set by the global setup for every worker; the auth deployment browser suites create accounts in. */
-export const PW_CONVEX_URL_ENV = 'PW_CONVEX_URL';
+import { DEFAULT_API_PORT, DEFAULT_WEB_PORT, PW_CONVEX_URL_ENV } from '../constants.js';
 
 export function stackConvexUrl(): string {
   const url = process.env[PW_CONVEX_URL_ENV];

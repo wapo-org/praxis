@@ -149,15 +149,25 @@ it('ignores a delayed upload 401 after another owner has signed in', async () =>
   expect(client.getBearerToken()).toBe('owner-b-token');
 });
 
-it('completes an upload with the token captured at entry when the same owner refreshes it', async () => {
+it('completes an upload with the refreshed token when the same owner refreshes mid-transfer', async () => {
   const client = new PraxisApiClient();
   client.setSessionIdentity('owner-a');
   client.setBearerToken('owner-a-token');
-  const fetcher = stubUpload(async () => {
-    client.setBearerToken('owner-a-refreshed');
-    client.setSessionIdentity('owner-a');
-    return new Response(JSON.stringify({ storageId: 'blob-a' }));
+  const unauthorized = vi.fn();
+  client.onUnauthorized = unauthorized;
+  const fetcher = vi.fn(async (url: string, init: RequestInit) => {
+    const bearer = (init.headers as Record<string, string>).Authorization;
+    if (url.endsWith('/v1/uploads')) return new Response(JSON.stringify({ type: 'upload.url', uploadUrl: '/v1/uploads/blob', expiresAt: '' }));
+    if (url.endsWith('/v1/uploads/blob')) {
+      client.setBearerToken('owner-a-refreshed');
+      client.setSessionIdentity('owner-a');
+      return new Response(JSON.stringify({ storageId: 'blob-a' }));
+    }
+    if (bearer !== 'Bearer owner-a-refreshed') return new Response('{}', { status: 401 });
+    return new Response(JSON.stringify({ id: 'att-a' }));
   });
+  vi.stubGlobal('fetch', fetcher);
   await expect(client.uploadAttachment(new File(['a'], 'a.txt', { type: 'text/plain' }))).resolves.toMatchObject({ id: 'att-a' });
-  expect(bearers(fetcher)).toEqual(['Bearer owner-a-token', 'Bearer owner-a-token', 'Bearer owner-a-token']);
+  expect(bearers(fetcher)).toEqual(['Bearer owner-a-token', 'Bearer owner-a-token', 'Bearer owner-a-refreshed']);
+  expect(unauthorized).not.toHaveBeenCalled();
 });
