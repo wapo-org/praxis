@@ -29,6 +29,10 @@ PRA-7/13 must implement and verify it against Convex before adopting this protot
 - `commit` atomically stores messages, usage exactly once, joined taint, control
   flags and increments turnIndex under the fence. A lost reply returns saved flags.
   Stop owns a separate atomic partial/truncated commit; late worker commits lose.
+- `fail` ends the turn as `failed` under the fence when the model call hits a revoked key or
+  spent credit (`model_key_invalid` / `model_credit_exhausted` with remediation), releases the
+  claim and keeps turnIndex; redelivery sees the failure, not `busy`. Suspending until the user
+  reconnects and resuming belongs to PRA-32's `awaitEvent`.
 
 Tests use an atomic fake and explicit JSON round-trips. They are not evidence of
 implemented distributed persistence, full streaming truncation, live model fidelity,

@@ -1,6 +1,7 @@
-import {ProviderFailure,type ModelProvider} from '@praxis/agent';
-import {REASONING_EFFORTS,type Chat,type JsonObject,type StartRun} from '@praxis/protocol';
-import {ApiError,type ApiService} from './service.js';
+import {ProviderFailure,collectResponse,type ModelProvider,type ProviderRequest} from '@praxis/agent';
+import {type Chat,type JsonObject,type StartRun} from '@praxis/protocol';
+import {type ApiService} from './service.js';
+import {resolveEffort} from './openrouter/index.js';
 import {timedStep} from './timing.js';
 import {titleModels,validateTitle} from './title-model.js';
 
@@ -39,17 +40,24 @@ export function createTitleGenerator(
        try {
 
         const resolved=await resolveProvider(userId,chat,{type:'run.start',chatId:chat.id,modelId:model.id,text,attachmentIds:[],webSearch:false});
-        const effort = 'low' as const;
-        const request={model:model.id,system:TITLE_SYSTEM,messages:[{type:'message' as const,id:'title',chatId:chat.id,role:'user' as const,parts:[{type:'text' as const,text:formatTitleUserMessage(text)}],createdAt:service.now(),updatedAt:service.now()}],tools:[],capabilities:resolved.provider.capabilities,maxTokens:32,temperature:0,effort,supportedEfforts:REASONING_EFFORTS.slice(),titleReasoning:effort,webSearch:false};
-        let result;
-                  if (!resolved.provider.complete) throw new ApiError(503, 'title_unavailable', 'Title completion unavailable');
-        result = await resolved.provider.complete(request, signal);
-        const rawText=result?.parts.filter(p=>p.type==='text').map(p=>p.text??'').join('')??'';
-        if(result)Object.assign(attempt,{inputTokens:result.usage.inputTokens,outputTokens:result.usage.outputTokens});
+        const effort=resolveEffort(model,'low');
+        const request:ProviderRequest={
+          model:model.id,system:TITLE_SYSTEM,tools:[],capabilities:resolved.provider.capabilities,maxTokens:32,temperature:0,
+          messages:[{type:'message',id:'title',chatId:chat.id,role:'user',parts:[{type:'text',text:formatTitleUserMessage(text)}],createdAt:service.now(),updatedAt:service.now()}],
+          ...(effort?{effort}:{}),
+        };
+        const result=await collectResponse(resolved.provider,request,signal);
+        const rawText=result.parts.filter(p=>p.type==='text').map(p=>p.text??'').join('');
+        Object.assign(attempt,{inputTokens:result.usage.inputTokens,outputTokens:result.usage.outputTokens});
         const validated=validateTitle(rawText,text);
         if(validated){attempt.outcome='success';attempts.push(attempt);await metric();return validated;}
         attempt.reason=rawText.trim()?'rejected':'empty';
-       }catch(error){if (error instanceof ProviderFailure && ['keyInvalid','creditExhausted'].includes(error.kind)) return; const status=(error as {status?:number}).status;attempt.reason=signal.aborted?'timeout':status===429?'rate_limited':`provider_error: ${typeof status==='number'?status:'unknown'}`;}
+       }catch(error){
+        // The run itself reports a revoked key or spent credit; titles must not spend a second call on it.
+        if(error instanceof ProviderFailure&&(error.kind==='keyInvalid'||error.kind==='creditExhausted'))return;
+        const status=error instanceof ProviderFailure?error.status:undefined;
+        attempt.reason=signal.aborted?'timeout':status===429?'rate_limited':`provider_error: ${typeof status==='number'?status:'unknown'}`;
+       }
        attempts.push(attempt);await metric();
       }
       return;

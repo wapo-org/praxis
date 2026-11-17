@@ -1,0 +1,10 @@
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-1763380803-ImAgEiNpUtReAd01","provider":"Google AI Studio","model":"google/gemini-3.8-flash","object":"chat.completion.chunk","created":1763380800,"choices":[{"index":0,"delta":{"role":"assistant","content":"A red square"},"finish_reason":null,"native_finish_reason":null,"logprobs":null}]}
+
+data: {"id":"gen-1763380803-ImAgEiNpUtReAd01","provider":"Google AI Studio","model":"google/gemini-3.8-flash","object":"chat.completion.chunk","created":1763380800,"choices":[{"index":0,"delta":{"role":"assistant","content":" on white."},"finish_reason":null,"native_finish_reason":null,"logprobs":null}]}
+
+data: {"id":"gen-1763380803-ImAgEiNpUtReAd01","provider":"Google AI Studio","model":"google/gemini-3.8-flash","object":"chat.completion.chunk","created":1763380800,"choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":"stop","native_finish_reason":"STOP","logprobs":null}],"usage":{"prompt_tokens":1290,"completion_tokens":7,"total_tokens":1297,"cost":0.000132,"is_byok":false,"prompt_tokens_details":{"cached_tokens":0},"cost_details":{"upstream_inference_cost":null},"completion_tokens_details":{"reasoning_tokens":0}}}
+
+data: [DONE]
+

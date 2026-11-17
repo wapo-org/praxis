@@ -1,5 +1,5 @@
 import {JsonObjectSchema,type JsonObject,type MessagePart,type Usage,type ReasoningShape,type StreamAnnotation} from '@praxis/protocol';
-import {ProviderFailure} from './runner.js';
+import {ProviderFailure,classifyProviderError} from './provider-error.js';
 import {type ProviderEvent,type ProviderResponse} from './types.js';
 import {array,number,object,string} from './wire.js';
 
@@ -12,35 +12,22 @@ export async function* parseSSE(body:ReadableStream<Uint8Array>,signal?:AbortSig
     if(value.startsWith(':'))return;
     const colon=value.indexOf(':'),field=colon<0?value:value.slice(0,colon);let val=colon<0?'':value.slice(colon+1);if(val.startsWith(' '))val=val.slice(1);
     if(field==='event')event=val;
-    if(field==='data'){size+=val.length;if(size>limits.maxEventBytes)throw new ProviderFailure('SSE event exceeds buffer limit');data.push(val);}
+    if(field==='data'){size+=val.length;if(size>limits.maxEventBytes)throw new ProviderFailure('fatal','SSE event exceeds buffer limit');data.push(val);}
   }
   try {
     while(true) {
       if(signal?.aborted)throw signal.reason??new Error('Aborted');
-      const {done,value}=await reader.read();if(value){total+=value.byteLength;if(total>limits.maxBytes)throw new ProviderFailure('SSE stream exceeds buffer limit');buffer+=decoder.decode(value,{stream:true});}
+      const {done,value}=await reader.read();if(value){total+=value.byteLength;if(total>limits.maxBytes)throw new ProviderFailure('fatal','SSE stream exceeds buffer limit');buffer+=decoder.decode(value,{stream:true});}
       if(done)buffer+=decoder.decode();
       while(true){const match=/[\r\n]/.exec(buffer);if(!match)break;const i=match.index;if(buffer[i]==='\r'&&i===buffer.length-1&&!done)break;
         const width=buffer[i]==='\r'&&buffer[i+1]==='\n'?2:1,frame=line(buffer.slice(0,i));buffer=buffer.slice(i+width);if(frame)yield frame;
       }
-      if(buffer.length>limits.maxEventBytes)throw new ProviderFailure('SSE line exceeds buffer limit');
+      if(buffer.length>limits.maxEventBytes)throw new ProviderFailure('fatal','SSE line exceeds buffer limit');
       if(done){if(buffer){const frame=line(buffer);if(frame)yield frame;}const frame=line('');if(frame)yield frame;break;}
     }
   }finally {await reader.cancel().catch(()=>{});reader.releaseLock();}
 }
 const zero=():Usage=>({type:'usage',inputTokens:0,outputTokens:0,cacheReadTokens:0,cacheWriteTokens:0});
-/** 401 = the user's key is rejected; 402 = their credit is spent. Neither is retried or degraded. */
-export function classifyProviderError(message:string,status=400,retryAfterMs?:number):ProviderFailure {
-  if(status===401)return new ProviderFailure(message,'keyInvalid',undefined,status);
-  if(status===402)return new ProviderFailure(message,'creditExhausted',undefined,status);
-  const lower=message.toLowerCase();
-  const rejection=/not support|does not support|unsupported|not allowed|unrecognized|unknown parameter|invalid/;
-  const kind=/(?:image|vision|multimodal)/.test(lower)&&rejection.test(lower)?'images':
-    /no endpoints found that support tool use/.test(lower)||/(?:tools?|tool_choice|function calling)/.test(lower)&&rejection.test(lower)?'tools':
-    /(?:reasoning_effort|reasoning effort|reasoning\.effort)/.test(lower)&&(rejection.test(lower)||/must be|should be/.test(lower))?'effort':
-    /context[_ ]?(length|window)|prompt.{0,8}too long|too many (input )?tokens|maximum context|request_too_large/.test(lower)||status===413?'context':
-    [408,409,429].includes(status)||status>=500?'retryable':'fatal';
-  return new ProviderFailure(message,kind,retryAfterMs,status);
-}
 /** OpenRouter's error text, with the upstream provider's own message when it adds one. */
 export function errorMessage(error:JsonObject,fallback:string):string {
   const message=string(error.message)||fallback,upstream=object(error.metadata).raw;
@@ -51,7 +38,8 @@ function streamError(json:JsonObject):void {
   if(json.error||json.type==='error') {
     const error=object(json.error),message=errorMessage(error,string(json.message)||'Provider stream error');
     const kind=string(error.type)||string(json.code),code=number(error.code);
-    throw classifyProviderError(message,code>=400?code:/overload|api_error|rate_limit|server_error|timeout/.test(kind)?500:400);
+    const status=code>=400?code:/rate_limit/.test(kind)?429:/overload|api_error|server_error|timeout/.test(kind)?500:400;
+    throw classifyProviderError(status,message);
   }
 }
 function stop(reason:string,hasTools=false):ProviderResponse['stop'] {
@@ -254,7 +242,7 @@ export async function* decodeOpenAIChat(frames:AsyncIterable<SSEFrame>):AsyncGen
     const choice=object(choices[0]),delta=object(choice.delta);
     if(choice.finish_reason){
       reason=string(choice.finish_reason);
-      if(reason==='error')throw new ProviderFailure('Provider stopped with an error','retryable');
+      if(reason==='error')throw new ProviderFailure('unavailable','Provider stopped with an error');
     }
 
     // 1. Structured reasoning details (OpenRouter / multi-block reasoning)
@@ -351,12 +339,12 @@ export async function* decodeOpenAIChat(frames:AsyncIterable<SSEFrame>):AsyncGen
     }
   }
   if(thinkBuf)yield* processContentWithThinkTags('',true);
-  if(!done&&!reason)throw new ProviderFailure('Chat stream ended before completion','retryable');
+  if(!done&&!reason)throw new ProviderFailure('unavailable','Chat stream ended before completion');
   yield* closeActiveSegment();
 
   const calls=slots.filter(s=>s.started);
   if(!calls.length&&!text&&!reasoning&&! segments.some(s=>s.redacted)&&/tool_calls|function_call/.test(reason)) {
-    throw new ProviderFailure('Provider promised tools without naming one');
+    throw new ProviderFailure('fatal','Provider promised tools without naming one');
   }
   const parts:MessagePart[]=[];
   for(const seg of segments) {
