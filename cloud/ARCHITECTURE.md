@@ -135,3 +135,29 @@ failed errors in both persisted nodes and wait results. Workflow scheduling, aut
 addressing, atomic persistence and sandbox confinement
 remain adapter responsibilities under PRA-15/71/58; the current runner does not register these tools.
 PRA-75's five named subagent invariants run as fast-check properties against the reducer.
+
+## Built-in web tools (PRA-60)
+
+`features/web` exposes `web_search` and `web_read` through AgentTool ports. Exa is
+pinned to auto with at most ten results and no summaries; Firecrawl requests only
+main-content Markdown with file parsers disabled, bounding each scrape to one credit.
+`WebPorts` injects pooled platform credentials, guarded egress, accounting, cache and
+output spill. Tool schemas remain identical when disabled or unavailable.
+`webToolClassifier` is the trusted thin-harness registry entry: both tools have read
+and external-egress capabilities and untrusted provenance. PRA-76's existing egress
+approval policy applies; results must retain taint in the durable turn dispatcher.
+
+Convex `webTools` actions authenticate the server before invoking internal atomic
+mutations. User allowance, spend reservation and sliding hourly admission share a
+transaction; provider attempts separately enforce global QPS/minute and browser
+concurrency caps, including credential failover attempts. The pure `@praxis/spend`
+ledger prices/reserves/settles calls. Completed call receipts are separate rows so
+monthly ledger records do not accumulate closed-call history. Interrupted calls
+retain reservations until reconciliation; neither retries nor settlement errors
+release a completed charge. PRA-22 owns allowance provisioning and orphan reconciliation.
+
+The shared public-page cache uses the injected Upstash KV, a `praxis:v1` key with a
+SHA-256 URL digest, a 15-minute TTL and schema validation. Query-bearing URLs bypass
+shared caching. Cache errors fall through to the bounded provider call; accounting
+errors fail closed. Long Markdown is persisted as owner/chat-scoped output and can
+be paged with `read_tool_output`. No new third-party dependency is introduced.

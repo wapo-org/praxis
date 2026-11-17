@@ -30,7 +30,8 @@
     "tldts": "^6.1.86",
     "undici": "7.30.1",
     "yaml": "^2.8.1",
-    "zod": "^4.0.0"
+    "zod": "^4.0.0",
+    "@praxis/spend": "*"
   },
   "devDependencies": {
     "@huggingface/transformers": "^4.3.2",

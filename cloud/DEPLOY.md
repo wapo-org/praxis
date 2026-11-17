@@ -230,3 +230,24 @@ PRA-38 supplies the contract and authentication boundary. Until PRA-39 supplies
 replace that with a successful dummy result. Execution must validate owner/chat/run
 relationships against durable state and return only flags and addressed child IDs;
 verified subagent handoffs and message content remain in durable state.
+
+### Built-in web search and reading (PRA-60)
+
+Configure `EXA_API_KEY` and `FIRECRAWL_API_KEY` in the API environment. Both support
+contiguous `_2`, `_3`, … siblings through `@praxis/credentials`; cooldowns use Upstash.
+Missing keys return a structured unavailable result and never use a development key.
+Deploy the `convex/webTools.ts` actions and internal mutations alongside the API.
+
+PRA-22 must provision an owner-scoped `toolState` row with kind `platformAllowance`,
+id equal to the UTC billing month (`YYYY-MM`), and value `{allowanceMicroUsd: integer}`.
+No row means no paid admission. PRA-102 determines the amount; this feature supplies
+no default allowance or unauthenticated allowance setter. Usage rows have kind
+`platformUsage` and contain payer, provider service, serving slot and micro-USD cost.
+PRA-22 reconciliation must settle or release interrupted `webAccounting` reservations
+and preserve `webSpendCall` receipts across the retry horizon.
+
+The thin turn worker must include `webToolClassifier` when composing its trusted
+classification registry; external-egress retains PRA-76 approval requirements.
+The account deletion sweep already purges owner `toolState` and output records.
+Verify real search, scrape, credential failover, Upstash TTL and usage settlement in
+the `Live check: PRA-60` sub-issue before moving the parent to Done.

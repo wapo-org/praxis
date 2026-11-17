@@ -1,3 +1,5 @@
+import {productionWebPorts} from './features/web/production.js';
+import {WEB_PROVIDERS} from './features/web/constants.js';
 import {Hono} from 'hono';
 import {readTurnKeys} from './turn/auth.js';
 import {registerTurnRoute} from './turn/routes.js';
@@ -36,7 +38,7 @@ export type ProductionEnv = Record<(typeof PRODUCTION_ENV)[number], string> & {P
 export const CONTINUATION_PATH = '/internal/continue';
 
 /** Optional pooled platform keys using un-gapped _2, _3, ... suffixes. */
-export const PLATFORM_POOLS: readonly PoolSpec[] = [{service: GROQ_POOL.service, names: GROQ_POOL.name}];
+export const PLATFORM_POOLS: readonly PoolSpec[] = [{service: GROQ_POOL.service, names: GROQ_POOL.name}, ...Object.values(WEB_PROVIDERS).map(p => ({service: p.service, names: p.name}))];
 export interface PoolSpec {service: string; names: string | readonly string[]}
 export interface ReadEnvOptions {pools?: readonly PoolSpec[]; warn?: (message: string) => void}
 
@@ -127,6 +129,7 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
     log: jsonLog,
     modules: service => featureModules(service, {
       storage,
+      web: context => productionWebPorts(context, accountRPC, upstash.redis, rawEnv),
       platformVoice: {pool: pool(GROQ_POOL.name, rawEnv, {service: GROQ_POOL.service}), cooldowns: redisCooldownStore(upstash.redis), log: credentialLog},
       mcp: {publicOrigin: origin, webReturnOrigins: webOrigins, safeFetch: egress, consumeOAuthState: key => upstash.consumeOnce(key), lease: upstash.lease},
     }),
