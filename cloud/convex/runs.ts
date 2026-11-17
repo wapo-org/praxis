@@ -1,11 +1,9 @@
-import {getAuthUserId} from '@convex-dev/auth/server';
-import {mutation} from './_generated/server.js';
 import {ConvexError, v} from 'convex/values';
 import {vResultValidator, vWorkflowId} from '@convex-dev/workflow';
 import {z} from 'zod';
 import {IdSchema, TURN_INDEX_MAX} from '@praxis/protocol';
 import {internal} from './_generated/api.js';
-import {internalMutation, internalQuery, type QueryCtx} from './functions.js';
+import {authedMutation, internalMutation, internalQuery, type QueryCtx} from './functions.js';
 import {workflow} from './workflows/agentRun.js';
 import {activeOwner} from './accountOwner.js';
 import {runScope} from './workflows/validators.js';
@@ -19,12 +17,10 @@ export async function scopedRun(ctx: QueryCtx, args: {userId: string; chatId: st
   return run && run.userId === args.userId && run.chatId === args.chatId && run.generation === args.generation ? run : null;
 }
 
-export const start = mutation({
+export const start = authedMutation({
   args: {chatId: v.string(), startTurnIndex: v.optional(v.number())},
   handler: async (ctx, args): Promise<Id<'runs'>> => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new ConvexError(WORKFLOW_ERRORS.unauthenticated);
-    if (!await activeOwner(ctx, userId)) throw new ConvexError(WORKFLOW_ERRORS.unavailable);
+    const userId = (args as typeof args & {userId: string}).userId;
     const chatId = IdSchema.parse(args.chatId);
     const startTurnIndex = indexSchema.parse(args.startTurnIndex ?? 0);
     const chat = await ctx.db.query('records').withIndex('owner_kind_id', q =>
@@ -42,11 +38,11 @@ export const start = mutation({
   },
 });
 
-export const cancel = mutation({
+export const cancel = authedMutation({
   args: {runId: v.id('runs')},
-  handler: async (ctx, {runId}) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new ConvexError(WORKFLOW_ERRORS.unauthenticated);
+  handler: async (ctx, args) => {
+    const {runId} = args;
+    const userId = (args as typeof args & {userId: string}).userId;
     const run = await ctx.db.get(runId);
     if (!run || run.userId !== userId) throw new ConvexError(WORKFLOW_ERRORS.unavailable);
     if (run.status === 'running') await ctx.db.patch(runId, {status: 'cancelling'});

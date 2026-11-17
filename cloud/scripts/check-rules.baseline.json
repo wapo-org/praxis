@@ -92,19 +92,12 @@
       "apps/web/e2e/n2.pw.ts": 7,
       "apps/web/e2e/saved-values.pw.ts": 6,
       "convex/account.ts": 2,
-      "convex/functions.ts": 3,
       "packages/glass/src/dropdown/dropdown.pw.ts": 3,
       "scripts/deploy.test.ts": 9
     },
     "R5.banned-primitives": {
       "apps/api/src/tests/local-persistence.test.ts": 1
     },
-    "R5.client-owner-arg": {
-      "convex/account.ts": 3,
-      "convex/files.ts": 6,
-      "convex/search.ts": 4,
-      "convex/store.ts": 7,
-      "convex/tools.ts": 3
-    }
+    "R5.client-owner-arg": {}
   }
 }

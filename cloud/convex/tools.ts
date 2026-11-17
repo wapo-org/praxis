@@ -1,6 +1,6 @@
 import {v, ConvexError} from 'convex/values';
-import {query, mutation, type QueryCtx} from './functions.js';
-import {bounded, requireServer} from './access.js';
+import {serverQuery, serverMutation, type QueryCtx} from './functions.js';
+import {bounded} from './access.js';
 const address={serverToken:v.string(),userId:v.string(),kind:v.string(),id:v.string()};
 function row(ctx:QueryCtx,a:{userId:string;kind:string;id:string}) {
  [a.userId,a.kind,a.id].forEach(bounded);
@@ -10,13 +10,12 @@ function row(ctx:QueryCtx,a:{userId:string;kind:string;id:string}) {
 function files(ctx:QueryCtx,a:{userId:string;id:string}) {
  return ctx.db.query('toolSkillFiles').withIndex('owner_skill',q=>q.eq('userId',a.userId).eq('skillId',a.id)).collect();
 }
-export const get=query({args:address,handler:async(ctx,a)=>{
- await requireServer(a.serverToken);const existing=await row(ctx,a);if(!existing)return null;
+export const get=serverQuery({args:address,handler:async(ctx,a)=>{
+ const existing=await row(ctx,a);if(!existing)return null;
  if(a.kind!=='skill'||!existing.value.hasFiles)return existing.value;
  const {hasFiles:_,...value}=existing.value;return {...value,files:Object.fromEntries((await files(ctx,a)).map(f=>[f.path,f.content]))};
 }});
-export const put=mutation({args:{...address,value:v.any()},handler:async(ctx,a)=>{
- await requireServer(a.serverToken);
+export const put=serverMutation({args:{...address,value:v.any()},handler:async(ctx,a)=>{
  if(!a.value||typeof a.value!=='object'||Array.isArray(a.value)||JSON.stringify(a.value).length>6_000_000)throw new ConvexError('Invalid tools state value');
  const existing=await row(ctx,a);
  let value=a.value;
@@ -36,7 +35,7 @@ export const put=mutation({args:{...address,value:v.any()},handler:async(ctx,a)=
  else await ctx.db.insert('toolState',{userId:a.userId,kind:a.kind,id:a.id,value});
  return null;
 }});
-export const remove=mutation({args:address,handler:async(ctx,a)=>{
- await requireServer(a.serverToken);const existing=await row(ctx,a);if(existing)await ctx.db.delete(existing._id);
+export const remove=serverMutation({args:address,handler:async(ctx,a)=>{
+ const existing=await row(ctx,a);if(existing)await ctx.db.delete(existing._id);
  if(a.kind==='skill')for(const f of await files(ctx,a))await ctx.db.delete(f._id);return null;
 }});

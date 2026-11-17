@@ -1,27 +1,24 @@
 import { blobOwnerTag } from './blobOwner.js';
 import { v } from 'convex/values';
-import { mutation, query } from './functions.js';
-import { requireServer } from './access.js';
+import { serverMutation, serverQuery } from './functions.js';
 import {activeOwner, beginOwnerDeletion, deleteOwnerUser} from './accountOwner.js';
 import {ACCOUNT_OWNER_ROWS, ACCOUNT_PURGE_BATCH_MAX} from './accountTables.js';
 import {purgeOwnedRun} from './workflows/purge.js';
-export const active = query({
+export const active = serverQuery({
   args: { serverToken: v.string(), userId: v.string() },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     return activeOwner(ctx, a.userId);
   },
 });
-export const begin = mutation({
+export const begin = serverMutation({
   args: { serverToken: v.string(), userId: v.string() },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     await beginOwnerDeletion(ctx, a.userId);
     return null;
   },
 });
 /** Bounded retryable purge erasing rows, blobs, and file tickets atomically. */
-export const purge = mutation({
+export const purge = serverMutation({
   args: {
     serverToken: v.string(),
     userId: v.string(),
@@ -31,7 +28,6 @@ export const purge = mutation({
     blobsDone: v.optional(v.boolean()),
   },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     if (await purgeOwnedRun(ctx, a.userId)) return {done: false};
     for (const rowsOf of Object.values(ACCOUNT_OWNER_ROWS)) {
       const rows = await rowsOf(ctx, a.userId, ACCOUNT_PURGE_BATCH_MAX);

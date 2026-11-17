@@ -1,6 +1,6 @@
 import { ConvexError, v } from 'convex/values';
 import type { GenericId as Id } from 'convex/values';
-import { mutation, query, type QueryCtx } from './functions.js';
+import { mutation, serverMutation, serverQuery, type QueryCtx } from './functions.js';
 import { bounded, requireServer } from './access.js';
 
 /** Owner-bound storage: tickets constrain upload size/type and one-time storageId claims. */
@@ -20,7 +20,7 @@ function ticketRow(ctx: QueryCtx, userId: string, ticket: string) {
     .unique();
 }
 
-export const createTicket = mutation({
+export const createTicket = serverMutation({
   args: {
     serverToken: v.string(),
     userId: v.string(),
@@ -32,7 +32,6 @@ export const createTicket = mutation({
     expiresAt: v.number(),
   },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     [a.userId, a.ticket, a.name, a.mediaType].forEach(bounded);
     if (a.chatId !== undefined) bounded(a.chatId);
     if (!Number.isInteger(a.size) || a.size < 1 || a.size > MAX_BYTES) throw new ConvexError('Invalid upload size');
@@ -52,10 +51,9 @@ export const createTicket = mutation({
 });
 
 /** Capability URL accepts bytes only for this owner's existing ticket. */
-export const generateUploadUrl = mutation({
+export const generateUploadUrl = serverMutation({
   args: { serverToken: v.string(), userId: v.string(), ticket: v.string() },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     const row = await ticketRow(ctx, a.userId, a.ticket);
     if (!row || row.status !== 'pending' || row.expiresAt <= Date.now()) throw new ConvexError('Upload ticket unavailable');
     const site = process.env.CONVEX_SITE_URL;
@@ -65,7 +63,7 @@ export const generateUploadUrl = mutation({
 });
 
 /** Binds uploaded blob to matching owner ticket; idempotent for same owner/file. */
-export const claim = mutation({
+export const claim = serverMutation({
   args: {
     serverToken: v.string(),
     userId: v.string(),
@@ -76,7 +74,6 @@ export const claim = mutation({
     chatId: v.optional(v.string()),
   },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     [a.userId, a.name, a.mediaType].forEach(bounded);
     const storageId = ctx.db.system.normalizeId('_storage', a.storageId);
     if (!storageId) return { ok: false };
@@ -95,10 +92,9 @@ export const claim = mutation({
   },
 });
 
-export const metadata = query({
+export const metadata = serverQuery({
   args: { serverToken: v.string(), userId: v.string(), storageId: v.string() },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     bounded(a.userId);
     const row = await owned(ctx, a.userId, a.storageId);
     if (!row || row.status !== 'ready') return null;
@@ -113,10 +109,9 @@ export const metadata = query({
 });
 
 /** Short-lived read URL for an owned, ready file (the API fetches it; clients never see it). */
-export const url = query({
+export const url = serverQuery({
   args: { serverToken: v.string(), userId: v.string(), storageId: v.string() },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     bounded(a.userId);
     const row = await owned(ctx, a.userId, a.storageId);
     if (!row || row.status !== 'ready' || !row.storageId) return null;
@@ -125,10 +120,9 @@ export const url = query({
   },
 });
 
-export const remove = mutation({
+export const remove = serverMutation({
   args: { serverToken: v.string(), userId: v.string(), storageId: v.string() },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     bounded(a.userId);
     const row = await owned(ctx, a.userId, a.storageId);
     if (!row) return false;

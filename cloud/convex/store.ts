@@ -1,5 +1,5 @@
 import { ConvexError, v } from 'convex/values';
-import { mutation, query, type MutationCtx, type QueryCtx } from './functions.js';
+import { query, serverMutation, serverQuery, type MutationCtx, type QueryCtx } from './functions.js';
 import { bounded, requireServer } from './access.js';
 
 /** Owner-scoped Store requiring serverToken and userId. */
@@ -39,19 +39,17 @@ function current(ctx: QueryCtx, userId: string, kind: string, id: string) {
     .unique();
 }
 
-export const get = query({
+export const get = serverQuery({
   args: address,
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     bounded(a.userId);
     return publicRow(await current(ctx, a.userId, a.kind, a.id));
   },
 });
 
-export const list = query({
+export const list = serverQuery({
   args: { ...scope, kind: v.string(), parentId: v.optional(v.string()) },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     bounded(a.userId);
     bounded(a.kind);
     const parentId = a.parentId;
@@ -71,10 +69,9 @@ export const list = query({
   },
 });
 
-export const changes = query({
+export const changes = serverQuery({
   args: { ...scope, after: v.number(), limit: v.number() },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     bounded(a.userId);
     if (!Number.isSafeInteger(a.after) || a.after < 0 || !Number.isInteger(a.limit) || a.limit < 1 || a.limit > 1000) {
       throw new ConvexError('Invalid pagination');
@@ -102,10 +99,9 @@ export const owners = query({
   },
 });
 
-export const head = query({
+export const head = serverQuery({
   args: scope,
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     bounded(a.userId);
     const latest = await ctx.db
       .query('changes')
@@ -163,28 +159,25 @@ async function write(ctx: MutationCtx, a: WriteInput) {
   return publicRow(row)!;
 }
 
-export const put = mutation({
+export const put = serverMutation({
   args: { ...address, value: v.any(), parentId: v.optional(v.string()) },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     return write(ctx, { userId: a.userId, kind: a.kind, id: a.id, parentId: a.parentId, value: a.value, deleted: false });
   },
 });
 
-export const remove = mutation({
+export const remove = serverMutation({
   args: address,
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     await write(ctx, { userId: a.userId, kind: a.kind, id: a.id, value: {}, deleted: true });
     return null;
   },
 });
 
 /** CAS write against expectedRevision (0 = absent) for at-least-once checkpoints. */
-export const putIfRevision = mutation({
+export const putIfRevision = serverMutation({
   args: { ...address, value: v.any(), parentId: v.optional(v.string()), expectedRevision: v.number() },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     bounded(a.userId);
     const old = await current(ctx, a.userId, a.kind, a.id);
     if ((old?.revision ?? 0) !== a.expectedRevision) return null;

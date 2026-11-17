@@ -144,6 +144,9 @@ describe('R5 security', () => {
       'export const shorthand = query({ args, handler: async () => null });',
       'export const internal = internalMutation({ args: scope, handler: async () => null });',
       'export const clean = query({ args: { id: v.string() }, handler: async () => null });',
+      'export const trustedQuery = serverQuery({ args: scope, handler: async () => null });',
+      'export const trustedMutation = serverMutation({ args: scope, handler: async () => null });',
+      'export const trustedAction = serverAction({ args: scope, handler: async () => null });',
     ].join('\n');
     const found = checkFile('convex/store.ts', dirty);
     expect(found.map((violation) => [violation.rule, violation.line])).toEqual([
