@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {IdSchema, ModeSchema, type ToolInvocation} from '@praxis/protocol';
+import {IdSchema, ModeSchema, type ToolInvocation, type TurnFailure} from '@praxis/protocol';
 import {ProviderRequestSchema, type ProviderResponse, type ToolContext, type AgentTool, type ModelProvider} from './types.js';
 import type {GateResult, BoundaryContext} from './boundary/gate.js';
 import type {ToolClassifier} from './boundary/policy.js';
@@ -10,7 +10,9 @@ export const TurnSnapshotSchema = z.object({
 });
 export type TurnSnapshot = z.infer<typeof TurnSnapshotSchema>;
 export type TurnFlags = {turnIndex: number} & (
-  {status: 'ready' | 'busy'; done: false} | {status: 'stopped' | 'completed'; done: true}
+  | {status: 'ready' | 'busy'; done: false}
+  | {status: 'stopped' | 'completed'; done: true}
+  | {status: 'failed'; done: true; failure: TurnFailure}
 );
 export type SavedCall = {call: ToolInvocation; result: GateResult};
 export type TurnClaim = {token: string; snapshot: TurnSnapshot; response?: ProviderResponse};
@@ -25,6 +27,8 @@ export interface TurnStore {
   startCall(token: string, callId: string, call: ToolInvocation): Promise<CallClaim>;
   saveCall(token: string, callId: string, value: SavedCall): Promise<void>;
   commit(token: string, response: ProviderResponse, calls: SavedCall[], tainted: boolean): Promise<TurnFlags>;
+  /** Ends the turn as failed under the fence and releases the claim; turnIndex stays, and nothing of the attempt is kept. */
+  fail(token: string, failure: TurnFailure): Promise<TurnFlags>;
 }
 
 export interface OneTurnOptions {

@@ -1,4 +1,7 @@
-import {CapabilitiesSchema, CatalogModelSchema, type Capabilities, type CatalogModel} from '@praxis/protocol';
+import {
+  CapabilitiesSchema, CatalogModelSchema, REASONING_EFFORTS,
+  type Capabilities, type CatalogModel, type ReasoningEffort,
+} from '@praxis/protocol';
 import type {KV} from '../contracts.js';
 import {ApiError} from '../service.js';
 import {fetchModels} from './client.js';
@@ -50,6 +53,19 @@ export function capabilitiesOf(model: CatalogModel): Capabilities {
     reasoningEffort: model.capabilities.reasoning,
     streamUsage: true,
   });
+}
+
+/** Client effort names, including ones beyond what OpenRouter's unified `reasoning.effort` takes, in ascending order. */
+const EFFORT_SCALE = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+
+/** The effort sent for this model: none unless its entry takes reasoning; other names clamp to the nearest offered level. */
+export function resolveEffort(model: CatalogModel, wanted: string | undefined): ReasoningEffort | undefined {
+  if (!model.capabilities.reasoning || !wanted) return undefined;
+  const rank = (EFFORT_SCALE as readonly string[]).indexOf(wanted.toLowerCase());
+  if (rank <= 0) return undefined;
+  const offered = REASONING_EFFORTS.map(effort => ({effort, rank: EFFORT_SCALE.indexOf(effort)}));
+  const nearest = offered.reduce((best, next) => (Math.abs(next.rank - rank) < Math.abs(best.rank - rank) ? next : best));
+  return nearest.effort;
 }
 
 /** Shared 1h KV/memory model catalogue; serves stale snapshot if refresh fails. */

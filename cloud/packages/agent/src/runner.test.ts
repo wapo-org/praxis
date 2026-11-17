@@ -93,10 +93,27 @@ describe('scripted durable loop',()=>{
     const requests:ProviderRequest[]=[];const base=createScriptedProvider();const provider={...base,stream:(r:ProviderRequest,s:AbortSignal)=>{requests.push(r);return base.stream(r,s);}};
     const cp=await new AgentRunner({ports:{...h.ports,summarize:async()=> 'Summary'},provider,contextWindow:1000}).run(i);expect(cp.messages.slice(0,2)).toEqual(before);expect(cp.compaction?.summary).toBe('Summary');expect(JSON.stringify(requests[0]?.messages)).toContain('Summary');expect(JSON.stringify(requests[0]?.messages)).not.toContain('history history');
   });
-  it('falls back by capability after rejection and retries transient failures',async()=>{
-    const h=harness();let n=0;const base=createScriptedProvider();const requests:ProviderRequest[]=[];
-    const provider=custom(async function*(r,s){requests.push(structuredClone(r));if(n++===0)throw new ProviderFailure('Unsupported tools','tools');if(n===2)throw new ProviderFailure('Retry','retryable');yield* base.stream(r,s);});
-    const cp=await new AgentRunner({ports:h.ports,provider,tools:scriptedTools()}).run(input());expect(cp.run.status).toBe('completed');expect(requests[1]?.capabilities.tools).toBe(false);expect(h.events.filter(e=>e.type==='retrying')).toHaveLength(2);
+  it('retries rate limits and outages with the same request, honouring retry-after',async()=>{
+    const h=harness(),slept:number[]=[];let n=0;const base=createScriptedProvider();const requests:ProviderRequest[]=[];
+    const provider=custom(async function*(r,s){
+      requests.push(structuredClone(r));n++;
+      if(n===1)throw new ProviderFailure('rateLimited','Slow down',{retryAfterMs:7000});
+      if(n===2)throw new ProviderFailure('unavailable','Upstream 503');
+      yield* base.stream(r,s);
+    });
+    const i=input();i.effort='high';
+    const cp=await new AgentRunner({ports:{...h.ports,sleep:async ms=>{slept.push(ms);}},provider,tools:scriptedTools()}).run(i);
+    expect(cp.run.status).toBe('completed');
+    expect(slept).toEqual([7000,2000]);
+    expect(requests.slice(0,3).map(r=>[r.capabilities.tools,r.effort])).toEqual([[true,'high'],[true,'high'],[true,'high']]);
+    expect(h.events.filter(e=>e.type==='retrying')).toHaveLength(2);
+  });
+  it.each(['fatal','modelUnavailable','keyInvalid','creditExhausted'] as const)('fails a %s rejection once, without degrading tools, images or effort',async kind=>{
+    const h=harness();let calls=0;
+    const provider=custom(async function*(){calls++;throw new ProviderFailure(kind,'Tools are not supported');});
+    const cp=await new AgentRunner({ports:h.ports,provider,tools:scriptedTools()}).run(input());
+    expect(calls).toBe(1);expect(cp.run.status).toBe('failed');expect(cp.capabilities.tools).toBe(true);
+    expect(h.events.some(e=>e.type==='retrying')).toBe(false);
   });
   it('spills large output with a user-scoped ref',async()=>{
     const h=harness(),tools=scriptedTools();let spilled='';tools[0]!.execute=async()=>textResult('x'.repeat(200));
@@ -142,18 +159,13 @@ describe('durability and provider fallback regressions',()=>{
     const provider=custom(async function*(r,s){if(r.system.startsWith('Summarize')){summaries++;yield {type:'completed',response:{parts:[{type:'text',text:'Provider summary'}],stop:'endTurn',usage:{type:'usage',inputTokens:10,outputTokens:4,cacheReadTokens:0,cacheWriteTokens:0}}};}else yield* base.stream(r,s);});
     const cp=await new AgentRunner({ports:h.ports,provider,contextWindow:1000}).run(i);expect(summaries).toBeGreaterThan(0);expect(cp.compaction?.summary).toBe('Provider summary');expect(cp.messages[0]).toEqual(i.messages[0]);
   });
-  it('drops a rejected effort and retries without it',async()=>{
-    const h=harness(),i=input();i.effort='max';const requests:ProviderRequest[]=[];const base=createScriptedProvider();
-    const provider=custom(async function*(r,s){requests.push(structuredClone(r));if(requests.length===1)throw new ProviderFailure("Unsupported reasoning.effort 'max'.",'effort');yield* base.stream(r,s);});
-    const cp=await new AgentRunner({ports:h.ports,provider}).run(i);expect(cp.run.status).toBe('completed');expect(requests[0]?.effort).toBe('max');expect(requests[1]?.effort).toBeUndefined();
-  });
   it.each([['keyInvalid','model_key_invalid'],['creditExhausted','model_credit_exhausted']] as const)('ends the run with a typed error on %s and never retries it',async(kind,code)=>{
-    const h=harness();let calls=0;const provider=custom(async function*(){calls++;throw new ProviderFailure('OpenRouter said no',kind);});
+    const h=harness();let calls=0;const provider=custom(async function*(){calls++;throw new ProviderFailure(kind,'OpenRouter said no');});
     const cp=await new AgentRunner({ports:h.ports,provider}).run(input());expect(calls).toBe(1);expect(cp.run.status).toBe('failed');expect(cp.run.errorCode).toBe(code);expect(cp.run.error).toBe('OpenRouter said no');
     expect(h.events.at(-1)).toEqual({type:'run.finished',outcome:'failed',message:'OpenRouter said no',code});
   });
   it('leaves other failures untyped',async()=>{
-    const h=harness();const cp=await new AgentRunner({ports:h.ports,provider:custom(async function*(){throw new ProviderFailure('Model not found');})}).run(input());expect(cp.run.status).toBe('failed');expect(cp.run.errorCode).toBeUndefined();
+    const h=harness();const cp=await new AgentRunner({ports:h.ports,provider:custom(async function*(){throw new ProviderFailure('modelUnavailable','Model not found');})}).run(input());expect(cp.run.status).toBe('failed');expect(cp.run.errorCode).toBeUndefined();
   });
   it('sums OpenRouter cost across the turns of a run',async()=>{
     const h=harness();let turn=0;const usage=(cost:number)=>({type:'usage' as const,inputTokens:10,outputTokens:5,cacheReadTokens:0,cacheWriteTokens:0,cost});
