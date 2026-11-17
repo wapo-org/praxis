@@ -6,7 +6,6 @@
   "exports": {
     ".": "./src/index.ts",
     "./modal": "./src/modal/port.ts",
-    "./modal/notebook-image": "./src/modal/notebook-image.ts",
     "./image": "./src/modal/image.ts"
   },
   "scripts": {

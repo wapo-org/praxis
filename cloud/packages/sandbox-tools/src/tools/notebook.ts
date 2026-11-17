@@ -3,13 +3,12 @@ import {z} from 'zod';
 import {ToolBoundaryError, toolError} from '@praxis/agent';
 import {NOTEBOOK_DRIVER} from '../notebook-driver.js';
 import {capOutput, containedPath, fail, stripAnsi} from '../support.js';
-import {NOTEBOOK_ARTIFACTS_MAX, SHELL_TIMEOUT_DEFAULT_MS, SHELL_TIMEOUT_MAX_MS} from '../constants.js';
+import {NOTEBOOK_ARTIFACTS_MAX, NOTEBOOK_EXEC_ALLOWANCE_MS, SHELL_TIMEOUT_DEFAULT_MS, SHELL_TIMEOUT_MAX_MS} from '../constants.js';
 import type {SandboxToolContext} from './context.js';
 import {exportFile} from './files.js';
 
 export const NOTEBOOK_STATE_DIR = '/var/lib/praxis/notebook';
 export const NOTEBOOK_DRIVER_PATH = `${NOTEBOOK_STATE_DIR}/driver.py`;
-export const NOTEBOOK_OVERHEAD_MS = 25_000;
 export const NOTEBOOK_CODE_MAX = 1_048_576;
 const NOTEBOOK_INSTALL_AND_RUN = 'mv "$1" "$2" && exec python3 "$2" submit "$3" "$4"';
 const NOTEBOOK_TIMEOUT_REMEDIATION = 'Reduce the cell work or increase timeout_ms; the interrupted kernel retains its variables.';
@@ -33,7 +32,7 @@ export async function notebookRun(context: SandboxToolContext, raw: unknown) {
     await context.port.writeFile(requestPath, new TextEncoder().encode(JSON.stringify({...input, root})));
     const result = await context.port.exec({
       argv: ['sh', '-c', NOTEBOOK_INSTALL_AND_RUN, 'praxis-notebook', `${requestPath}.py`, NOTEBOOK_DRIVER_PATH, NOTEBOOK_STATE_DIR, requestPath],
-      cwd: root, timeoutMs: input.timeout_ms + NOTEBOOK_OVERHEAD_MS,
+      cwd: root, timeoutMs: input.timeout_ms + NOTEBOOK_EXEC_ALLOWANCE_MS,
     });
     if (result.timedOut || result.exitCode !== 0) fail('upstream', 'Notebook driver unavailable; retry or recreate the sandbox.');
     const reply = ReplySchema.parse(JSON.parse(result.stdout));
