@@ -33,10 +33,38 @@ describe('notebook_run', () => {
     const b = await boundary();
     const call = {tool: 'notebook_run', args: {code: 'value = 42'}};
     expect(sandboxToolClassifier.classify(call)).toMatchObject({decision: 'approve', capabilities: ['exec', 'read']});
-    expect(await executeSandboxTool(call, b, context)).toMatchObject({ok: false});
+    expect(await executeSandboxTool(call, b, context)).toMatchObject({
+      ok: false, untrustedSource: false, taint: {tainted: false}, error: {code: 'approval-required'},
+    });
     expect(port.calls).toHaveLength(0);
     const result = await executeSandboxTool(call, b, context, await receipt(b, call));
     expect(result).toMatchObject({ok: true, taint: {tainted: true}});
+  });
+
+  it('taints workspace text in a failed cell and blocks the subsequent unapproved write', async () => {
+    const code = "raise ValueError(open('untrusted.txt').read())";
+    const untrusted = 'workspace-controlled instructions';
+    const port = new FakeSandboxPort().writeText(`${ROOT}/untrusted.txt`, untrusted);
+    port.on(request => {
+      const input = JSON.parse(port.readText(request.argv[7]!)!);
+      expect(input.code).toBe(code);
+      return {stdout: JSON.stringify({status: 'execution', message: `ValueError: ${port.readText(`${ROOT}/untrusted.txt`)}`})};
+    });
+    const context = {port, root: ROOT, exports: new MemoryExportSink()};
+    const b = await boundary();
+    const call = {tool: 'notebook_run', args: {code}};
+    const failed = await executeSandboxTool(call, b, context, await receipt(b, call));
+    expect(failed).toMatchObject({
+      ok: false, untrustedSource: true, taint: {tainted: true},
+      error: {code: 'upstream', message: `ValueError: ${untrusted}`, remediation: expect.any(String)},
+    });
+    if (failed.ok) throw new Error('Expected the notebook cell to fail.');
+    const write = await executeSandboxTool({tool: 'edit_file', args: {
+      path: 'after-error.txt', old_text: '', new_text: 'unapproved write',
+    }}, {...b, toolCallId: 'after-error', taint: failed.taint}, context);
+    expect(write).toMatchObject({ok: false, error: {code: 'taint-blocked'}});
+    expect(port.readText(`${ROOT}/after-error.txt`)).toBeUndefined();
+    expect(port.calls).toHaveLength(1);
   });
 
   it('sends successive cells through the same sandbox driver and reports lost variables on restart', async () => {
