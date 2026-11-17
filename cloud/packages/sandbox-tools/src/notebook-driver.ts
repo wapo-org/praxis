@@ -67,7 +67,13 @@ def artifact_bytes(value, mime, count):
         length += len(part)
     if mime == "image/png":
         # Bound decoded bytes before joining fragments or invoking the base64 decoder.
-        if ((length + 3) // 4) * 3 > ARTIFACT_MAX_BYTES:
+        suffix = ""
+        for part in reversed(parts):
+            suffix = (part[-2:] + suffix)[-2:]
+            if len(suffix) == 2:
+                break
+        padding = len(suffix) - len(suffix.rstrip("="))
+        if ((length + 3) // 4) * 3 - padding > ARTIFACT_MAX_BYTES:
             raise ArtifactBudgetError()
         return base64.b64decode("".join(parts), validate=True)
     if length > ARTIFACT_MAX_BYTES:
@@ -82,12 +88,32 @@ def artifact_bytes(value, mime, count):
     return payload
 
 
+def execution_status(client, msg_id, deadline):
+    while time.monotonic() < deadline:
+        try:
+            reply = client.get_shell_msg(timeout=max(0, deadline - time.monotonic()))
+        except queue.Empty:
+            return None
+        if reply.get("parent_header", {}).get("msg_id") != msg_id:
+            continue
+        if reply.get("header", {}).get("msg_type") != "execute_reply":
+            return None
+        return reply.get("content", {}).get("status")
+    return None
+
+
 def run_cell(km, client, request, restarted):
     root = request["root"]
-    # Changing directories is a separate silent cell so user code retains normal notebook syntax.
-    setup = client.execute("import os as _praxis_os; _praxis_os.chdir(" + repr(root) + ")", silent=True)
-    while client.get_shell_msg(timeout=STARTUP_SECONDS).get("parent_header", {}).get("msg_id") != setup:
-        pass
+    # The persistent kernel may still be in a different chat, so setup must certify its canonical cwd before user code.
+    setup_code = ("import os as _praxis_os\n_praxis_os.chdir(" + repr(root) + ")\n"
+                  "if _praxis_os.getcwd() != " + repr(root) + ":\n"
+                  "    raise RuntimeError('Notebook workspace verification failed')")
+    setup = client.execute(setup_code, silent=True, allow_stdin=False, stop_on_error=True)
+    setup_status = execution_status(client, setup, time.monotonic() + STARTUP_SECONDS)
+    if setup_status != "ok":
+        if setup_status not in ("error", "aborted"):
+            km.interrupt_kernel()
+        return error("setup-error", "Workspace setup was not confirmed; user cell was not dispatched.")
     cell = client.execute(request["code"], allow_stdin=False, stop_on_error=True)
     deadline = time.monotonic() + request["timeout_ms"] / 1000
     interrupted = False
@@ -154,8 +180,11 @@ def run_cell(km, client, request, restarted):
                 return output_failure
             if interrupted:
                 return error("timeout", "Cell interrupted at its timeout; kernel and variables remain available.")
-            if failed:
-                return error("execution", text.render())
+            status = execution_status(client, cell, deadline)
+            if status not in ("ok", "error", "aborted"):
+                return error("upstream", "Kernel execution reply was not confirmed; retry after checking the kernel.")
+            if failed or status != "ok":
+                return error("execution", text.render() or "Cell execution failed (" + status + ").")
             return dict(status="ok", text=text.render(), truncated=text.total > TEXT_MAX_BYTES,
                         artifacts=artifacts, restarted=restarted,
                         message=LOST if restarted else "")

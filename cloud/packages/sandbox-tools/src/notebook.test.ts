@@ -111,6 +111,12 @@ describe('notebook_run', () => {
     });
   });
 
+  it('returns a remediation when workspace setup fails without dispatching code', async () => {
+    expect(await runError({status: 'setup-error', message: 'Workspace setup failed.'})).toMatchObject({
+      ok: false, error: {code: 'upstream', remediation: expect.stringContaining('no user cell was dispatched')},
+    });
+  });
+
   it('rejects malformed replies, transport failures and escaped artifacts with remediations', async () => {
     expect(await runError({status: 'ok'})).toMatchObject({ok: false, error: {code: 'schema', remediation: expect.any(String)}});
     expect(await runError({...ok, artifacts: ['/etc/passwd']})).toMatchObject({ok: false, error: {code: 'path-traversal'}});

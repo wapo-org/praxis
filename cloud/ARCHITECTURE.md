@@ -119,6 +119,7 @@ The opt-in `PRAXIS_MODAL_NOTEBOOK_CHECK=1 npm run verify -- live notebook` suite
 on PRA-51 via `sandboxNotebookImage()`; its checked-in `modal/notebook-requirements.lock` pins and hashes every Python dependency.
 Pip installs wheels with `--require-hashes` and verifies the graph with `pip check`. Output-processing errors interrupt
 and drain the active cell before returning; artifact count and encoded size are checked before decoding.
+Workspace setup verifies the canonical cwd and a successful execute reply before dispatch; user-cell success also requires its execute reply.
 
 
 Symbol editing dependencies (PRA-106): `web-tree-sitter` **0.25.10** runs the pure parser in-process;

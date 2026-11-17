@@ -11,6 +11,7 @@ export const NOTEBOOK_STATE_DIR = '/var/lib/praxis/notebook';
 export const NOTEBOOK_DRIVER_PATH = `${NOTEBOOK_STATE_DIR}/driver.py`;
 export const NOTEBOOK_CODE_MAX = 1_048_576;
 const NOTEBOOK_INSTALL_AND_RUN = 'mv "$1" "$2" && exec python3 "$2" submit "$3" "$4"';
+const NOTEBOOK_SETUP_REMEDIATION = 'Restore the canonical chat workspace and retry; no user cell was dispatched.';
 const NOTEBOOK_OUTPUT_REMEDIATION = 'Correct the rich output and retry; the cell was interrupted and drained to idle before returning.';
 const NOTEBOOK_TIMEOUT_REMEDIATION = 'Reduce the cell work or increase timeout_ms; the interrupted kernel retains its variables.';
 
@@ -21,7 +22,7 @@ export const NotebookInputSchema = z.object({
 
 const ReplySchema = z.discriminatedUnion('status', [
   z.object({status: z.literal('ok'), text: z.string(), truncated: z.boolean(), artifacts: z.array(z.string()).max(NOTEBOOK_ARTIFACTS_MAX), restarted: z.boolean(), message: z.string()}),
-  z.object({status: z.enum(['timeout', 'conflict', 'upstream', 'execution', 'budget', 'output-error']), message: z.string()}),
+  z.object({status: z.enum(['timeout', 'conflict', 'upstream', 'execution', 'budget', 'output-error', 'setup-error']), message: z.string()}),
 ]);
 
 export async function notebookRun(context: SandboxToolContext, raw: unknown) {
@@ -40,6 +41,7 @@ export async function notebookRun(context: SandboxToolContext, raw: unknown) {
     if (reply.status !== 'ok') {
       const message = capOutput(stripAnsi(reply.message)).text;
       if (reply.status === 'timeout') throw new ToolBoundaryError({...toolError('timeout', message), remediation: NOTEBOOK_TIMEOUT_REMEDIATION});
+      if (reply.status === 'setup-error') throw new ToolBoundaryError({...toolError('upstream', message), remediation: NOTEBOOK_SETUP_REMEDIATION});
       if (reply.status === 'output-error') throw new ToolBoundaryError({...toolError('upstream', message), remediation: NOTEBOOK_OUTPUT_REMEDIATION});
       fail(reply.status === 'execution' ? 'upstream' : reply.status, message);
     }

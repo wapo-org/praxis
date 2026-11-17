@@ -91,7 +91,7 @@ class KernelManager:
     def wait_for_ready(self, **kwargs): pass
     def is_alive(self): return True
     def execute(self, *args, **kwargs): return 'cell'
-    def get_shell_msg(self, **kwargs): return dict(parent_header=dict(msg_id='cell'))
+    def get_shell_msg(self, **kwargs): return dict(parent_header=dict(msg_id='cell'), header=dict(msg_type='execute_reply'), content=dict(status='ok'))
     def get_iopub_msg(self, **kwargs):
         return dict(parent_header=dict(msg_id='cell'), header=dict(msg_type='status'), content=dict(execution_state='idle'))
 """)
@@ -185,7 +185,7 @@ class KernelManager:
                 return "cell"
 
             def get_shell_msg(self, **kwargs):
-                return dict(parent_header=dict(msg_id="cell"))
+                return dict(parent_header=dict(msg_id="cell"), header=dict(msg_type="execute_reply"), content=dict(status="ok"))
 
             def get_iopub_msg(self, **kwargs):
                 if self.first:
@@ -228,7 +228,7 @@ class KernelManager:
                 return "cell"
 
             def get_shell_msg(self, **kwargs):
-                return dict(parent_header=dict(msg_id="cell"))
+                return dict(parent_header=dict(msg_id="cell"), header=dict(msg_type="execute_reply"), content=dict(status="ok"))
 
             def get_iopub_msg(self, **kwargs):
                 if self.first:
@@ -266,6 +266,104 @@ class KernelManager:
         self.assertEqual(MODULE["artifact_bytes"]("aGVsbG8=", "image/png", 0), b"hello")
         self.assertEqual(MODULE["artifact_bytes"](["<b>", "hi</b>"], "text/html", 0), b"<b>hi</b>")
 
+    def test_failed_workspace_setup_never_dispatches_user_writes(self):
+        expected = self.state / "expected"
+        previous = self.state / "other-chat"
+        previous.mkdir()
+        owner = self
+        for status in ("error", "aborted", "unknown", None):
+            with self.subTest(status=status):
+                class Kernel:
+                    def interrupt_kernel(self):
+                        pass
+
+                class Client:
+                    calls = []
+
+                    def execute(self, code, **kwargs):
+                        self.calls.append(code)
+                        if len(self.calls) > 1:
+                            (previous / "unauthorized.txt").write_text("escaped")
+                        return "setup"
+
+                    def get_shell_msg(self, **kwargs):
+                        return dict(parent_header=dict(msg_id="setup"), header=dict(msg_type="execute_reply"),
+                                    content=dict(status=status))
+
+                    def get_iopub_msg(self, **kwargs):
+                        owner.fail("User execution must not start after setup failure")
+                client = Client()
+                result = MODULE["run_cell"](Kernel(), client, {
+                    **self.request(), "root": str(expected), "code": "open('unauthorized.txt', 'w').write('escaped')",
+                }, False)
+                self.assertEqual(result["status"], "setup-error")
+                self.assertEqual(len(client.calls), 1)
+                self.assertIn("_praxis_os.getcwd() != " + repr(str(expected)), client.calls[0])
+                self.assertFalse((previous / "unauthorized.txt").exists())
+                self.assertFalse(expected.exists())
+
+    def test_setup_verification_rejects_a_different_canonical_directory(self):
+        import types
+        previous = self.state / "other-chat"
+        previous.mkdir()
+        expected = self.state / "expected"
+        expected.mkdir()
+        os_module = types.SimpleNamespace(chdir=lambda path: None, getcwd=lambda: str(previous))
+        with patch.dict(sys.modules, {"os": os_module}):
+            class Client:
+                calls = 0
+                status = "ok"
+
+                def execute(self, code, **kwargs):
+                    self.calls += 1
+                    try:
+                        exec(code, {})
+                    except RuntimeError:
+                        self.status = "error"
+                    return "setup"
+
+                def get_shell_msg(self, **kwargs):
+                    return dict(parent_header=dict(msg_id="setup"), header=dict(msg_type="execute_reply"),
+                                content=dict(status=self.status))
+            client = Client()
+            result = MODULE["run_cell"](None, client, {**self.request(), "root": str(expected)}, False)
+        self.assertEqual(result["status"], "setup-error")
+        self.assertEqual(client.calls, 1)
+
+    def test_execution_reply_status_is_required_for_success(self):
+        for status in ("error", "aborted", "unknown", None):
+            with self.subTest(status=status):
+                class Client:
+                    executions = 0
+
+                    def execute(self, code, **kwargs):
+                        self.executions += 1
+                        return "cell"
+
+                    def get_shell_msg(self, **kwargs):
+                        return dict(parent_header=dict(msg_id="cell"), header=dict(msg_type="execute_reply"),
+                                    content=dict(status="ok" if self.executions == 1 else status))
+
+                    def get_iopub_msg(self, **kwargs):
+                        return dict(parent_header=dict(msg_id="cell"), header=dict(msg_type="status"),
+                                    content=dict(execution_state="idle"))
+                result = MODULE["run_cell"](None, Client(), {**self.request(), "timeout_ms": 5000}, False)
+                self.assertNotEqual(result["status"], "ok")
+
+    def test_png_limit_includes_padding_without_allocating_oversized_output(self):
+        limit = MODULE["ARTIFACT_MAX_BYTES"]
+        for size in (limit, limit + 1):
+            encoded = MODULE["base64"].b64encode(b"x" * size).decode()
+            if size == limit:
+                self.assertEqual(len(MODULE["artifact_bytes"](encoded, "image/png", 0)), limit)
+                fragmented = [encoded[:-2], encoded[-2:-1], encoded[-1:], ""]
+                self.assertEqual(len(MODULE["artifact_bytes"](fragmented, "image/png", 0)), limit)
+            else:
+                with patch.object(MODULE["base64"], "b64decode") as decode:
+                    with self.assertRaises(MODULE["ArtifactBudgetError"]):
+                        MODULE["artifact_bytes"](encoded, "image/png", 0)
+                    decode.assert_not_called()
+
     def test_verbose_cell_error_preserves_traceback(self):
         cell = "cell-id"
         messages = iter([
@@ -279,7 +377,7 @@ class KernelManager:
                 return cell
 
             def get_shell_msg(self, **kwargs):
-                return dict(parent_header=dict(msg_id=cell))
+                return dict(parent_header=dict(msg_id=cell), header=dict(msg_type="execute_reply"), content=dict(status="ok"))
 
             def get_iopub_msg(self, **kwargs):
                 return dict(parent_header=dict(msg_id=cell), **next(messages))
