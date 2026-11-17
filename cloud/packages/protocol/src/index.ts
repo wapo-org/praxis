@@ -77,6 +77,8 @@ export const DEFAULT_MODEL_ID = 'anthropic/claude-sonnet-5.5';
 export const RECOMMENDED_MODELS = ['anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5', 'anthropic/claude-haiku-5.5', 'openai/gpt-5.6-sol', 'google/gemini-3.8-flash', 'deepseek/deepseek-v4.1-flash'] as const;
 /** Effort levels offered for models whose catalogue entry supports reasoning. */
 export const REASONING_EFFORTS = ['low', 'medium', 'high'] as const;
+export const ReasoningEffortSchema = z.enum(REASONING_EFFORTS);
+export type ReasoningEffort = z.infer<typeof ReasoningEffortSchema>;
 export const RunErrorCodeSchema = z.enum(['model_key_missing', 'model_key_invalid', 'model_credit_exhausted']);
 export type RunErrorCode = z.infer<typeof RunErrorCodeSchema>;
 export const ToolSourceSchema = z.object({type:z.enum(['builtin','skill','javascript','mcp','server']),serverId:IdSchema.optional(),serverName:z.string().optional()});
@@ -271,9 +273,24 @@ const TurnResultFields = {
   turnIndex: z.number().int().nonnegative().max(TURN_INDEX_MAX),
   subagents: z.array(SubagentIdSchema).max(SUBAGENT_LIMITS.CHILDREN_MAX).refine(ids => new Set(ids).size === ids.length),
 };
-export const TurnResultSchema = z.discriminatedUnion('done', [
+/** UTF-8 bytes a string occupies inside serialized JSON, escapes included, without its quotes. */
+export function jsonStringBytes(text: string): number {
+  return new TextEncoder().encode(JSON.stringify(text)).byteLength - 2;
+}
+/** With every other field at its maximum (480 B), both caps keep a failed result under TURN_RESULT_MAX_BYTES. */
+export const TURN_FAILURE_MESSAGE_MAX_BYTES = 320;
+export const TURN_FAILURE_REMEDIATION_MAX_BYTES = 160;
+/** A model failure only the user can fix (reconnect, top up): the turn ends instead of holding its claim. */
+export const TurnFailureSchema = z.object({
+  code: RunErrorCodeSchema,
+  message: z.string().refine(text => jsonStringBytes(text) <= TURN_FAILURE_MESSAGE_MAX_BYTES),
+  remediation: z.string().min(1).refine(text => jsonStringBytes(text) <= TURN_FAILURE_REMEDIATION_MAX_BYTES),
+}).strict();
+export type TurnFailure = z.infer<typeof TurnFailureSchema>;
+export const TurnResultSchema = z.discriminatedUnion('status', [
   z.object({...TurnResultFields, done: z.literal(false), status: z.enum(['ready', 'busy'])}).strict(),
   z.object({...TurnResultFields, done: z.literal(true), status: z.enum(['stopped', 'completed'])}).strict(),
+  z.object({...TurnResultFields, done: z.literal(true), status: z.literal('failed'), failure: TurnFailureSchema}).strict(),
 ]).refine(result => new TextEncoder().encode(JSON.stringify(result)).byteLength < TURN_RESULT_MAX_BYTES);
 export type TurnResult = z.infer<typeof TurnResultSchema>;
 export * from './subagents.js';

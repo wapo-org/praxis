@@ -2,13 +2,13 @@ import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {inspect} from 'node:util';
 import {CapabilitiesSchema,type JsonObject,type Message} from '@praxis/protocol';
-import {OPENROUTER_API_BASE,createOpenRouterProvider,parseSSE,decodeOpenAIChat,buildProviderRequest,clampEffort,classifyProviderError,redactKey,scriptedTools,type ProviderEvent,type ProviderRequest} from './index.js';
+import {OPENROUTER_API_BASE,createOpenRouterProvider,parseSSE,decodeOpenAIChat,buildProviderRequest,classifyProviderError,redactKey,scriptedTools,type ProviderEvent,type ProviderRequest} from './index.js';
 import {SealedSecret} from '@praxis/types';
 import * as agent from './index.js';
 const time='2026-10-29T12:00:00.000Z';
 const caps=CapabilitiesSchema.parse({tools:true,vision:true,reasoningEffort:true});
 const message=(role:Message['role'],parts:Message['parts']):Message=>({type:'message',id:crypto.randomUUID(),chatId:'c',role,parts,createdAt:time,updatedAt:time});
-const request=():ProviderRequest=>({model:'anthropic/test-model',system:'System',messages:[message('user',[{type:'text',text:'Hello'}])],tools:scriptedTools().map(t=>t.spec),capabilities:caps,maxTokens:1000,effort:'high',webSearch:false});
+const request=():ProviderRequest=>({model:'anthropic/test-model',system:'System',messages:[message('user',[{type:'text',text:'Hello'}])],tools:scriptedTools().map(t=>t.spec),capabilities:caps,maxTokens:1000,effort:'high'});
 const fixture=(name:string)=>readFileSync(new URL(`../../../../Packages/PraxisAgent/Tests/AgentProvidersTests/Fixtures/${name}`,import.meta.url),'utf8');
 function bytes(value:string,chunk=7):ReadableStream<Uint8Array>{const data=new TextEncoder().encode(value);return new ReadableStream({start(controller){for(let i=0;i<data.length;i+=chunk)controller.enqueue(data.slice(i,i+chunk));controller.close();}});}
 async function collect<T>(source:AsyncIterable<T>):Promise<T[]>{const events:T[]=[];for await(const event of source)events.push(event);return events;}
@@ -59,7 +59,7 @@ describe('chat stream decoding',()=>{
     const req=request();req.messages.push({...message('assistant',response.parts),raw:response.raw},message('user',[{type:'toolResult',callId:'call1',content:[{type:'text',text:'ok'}]}]));
     const wire=buildProviderRequest(req).messages as JsonObject[];expect(wire[2]?.reasoning_details).toEqual(details);expect(wire[3]).toEqual({role:'tool',tool_call_id:'call1',content:'ok'});
   });
-  it.each([[401,'keyInvalid'],[402,'creditExhausted'],[429,'retryable']] as const)('classifies a mid-stream error chunk with code %d as %s',async(code,kind)=>{
+  it.each([[401,'keyInvalid'],[402,'creditExhausted'],[429,'rateLimited'],[502,'unavailable']] as const)('classifies a mid-stream error chunk with code %d as %s',async(code,kind)=>{
     const stream=`data: ${JSON.stringify(chunk({content:'partial'}))}\n\ndata: ${JSON.stringify({error:{code,message:'Stopped'},choices:[{index:0,delta:{content:''},finish_reason:'error'}]})}\n\n`;
     await expect(collect(decodeOpenAIChat(parseSSE(bytes(stream))))).rejects.toMatchObject({kind,message:'Stopped'});
   });
@@ -79,7 +79,11 @@ describe('request building',()=>{
     const r=request();r.messages=[message('user',[{type:'text',text:'Look'},{type:'image',attachmentId:'img',data:'AAAA',mediaType:'image/png'}])];
     expect((buildProviderRequest(r).messages as JsonObject[])[1]?.content).toEqual([{type:'text',text:'Look'},{type:'image_url',image_url:{url:'data:image/png;base64,AAAA'}}]);
   });
-  it('clamps effort down on ties and drops known unsupported effort',()=>{expect(clampEffort('high',['medium','max'])).toBe('medium');expect(clampEffort('max',['low','medium','high'])).toBe('high');expect(clampEffort('high',[])).toBeUndefined();expect(clampEffort('high',undefined)).toBe('high');});
+  it('sends the resolved effort as given and omits it when absent',()=>{
+    expect(buildProviderRequest({...request(),effort:'low'}).reasoning).toEqual({effort:'low'});
+    const {effort:_effort,...rest}=request();
+    expect(buildProviderRequest(rest).reasoning).toBeUndefined();
+  });
 });
 
 describe('OpenRouter provider',()=>{
@@ -102,22 +106,45 @@ describe('OpenRouter provider',()=>{
   });
   it('surfaces the upstream reason from error metadata (data policy, moderation)',async()=>{
     const p=createOpenRouterProvider({apiKey:SealedSecret.of('k'),capabilities:caps},(async()=>Response.json({error:{code:404,message:'No endpoints found matching your data policy',metadata:{raw:'Enable prompt training'}}},{status:404})) as typeof fetch);
-    await expect(collect(p.stream(request(),signal()))).rejects.toMatchObject({kind:'fatal',message:'No endpoints found matching your data policy: Enable prompt training'});
+    await expect(collect(p.stream(request(),signal()))).rejects.toMatchObject({kind:'modelUnavailable',message:'No endpoints found matching your data policy: Enable prompt training'});
   });
   it('redacts the key from errors and honours retry-after',async()=>{
     const p=createOpenRouterProvider({apiKey:SealedSecret.of('sk-or-v1-do-not-leak'),capabilities:caps},(async()=>new Response(JSON.stringify({error:{message:'Failure sk-or-v1-do-not-leak'}}),{status:429,headers:{'retry-after':'2'}})) as typeof fetch);
-    await expect(collect(p.stream(request(),signal()))).rejects.toMatchObject({message:'Failure [redacted]',kind:'retryable',retryAfterMs:2000});
+    await expect(collect(p.stream(request(),signal()))).rejects.toMatchObject({message:'Failure [redacted]',kind:'rateLimited',retryable:true,retryAfterMs:2000});
     expect(redactKey('Authorization: Bearer abc.def and sk-or-v1-0123456789abcdef',SealedSecret.of('other'))).toBe('Authorization: Bearer [redacted] and [redacted]');
   });
   it('reports an unreachable OpenRouter as retryable and refuses to call without a key',async()=>{
     const down=createOpenRouterProvider({apiKey:SealedSecret.of('k'),capabilities:caps},(async()=>{throw new TypeError('fetch failed');}) as typeof fetch);
-    await expect(collect(down.stream(request(),signal()))).rejects.toMatchObject({kind:'retryable'});
+    await expect(collect(down.stream(request(),signal()))).rejects.toMatchObject({kind:'unavailable',retryable:true});
     let called=false;const none=createOpenRouterProvider({apiKey:SealedSecret.of(''),capabilities:caps},(async()=>{called=true;return new Response('');}) as typeof fetch);
     await expect(collect(none.stream(request(),signal()))).rejects.toMatchObject({kind:'keyInvalid'});expect(called).toBe(false);
   });
-  it('classifies feature rejections before status, and 401/402 before text',()=>{
-    expect(classifyProviderError('Tools are not supported',500).kind).toBe('tools');expect(classifyProviderError('Image input is not supported',400).kind).toBe('images');
-    expect(classifyProviderError('Invalid tool key',401).kind).toBe('keyInvalid');expect(classifyProviderError('This request requires more credits',402).kind).toBe('creditExhausted');
+  it.each([
+    [401,'Invalid tool key','keyInvalid',false],
+    [402,'This request requires more credits','creditExhausted',false],
+    [400,'Insufficient credits on this key','fatal',false],
+    [429,'Quota exceeded for requests per minute; retry in 3 seconds','rateLimited',true],
+    [403,'You have exceeded your current quota','fatal',false],
+    [403,'Input was flagged by moderation','fatal',false],
+    [429,'Rate limit exceeded','rateLimited',true],
+    [408,'Request timed out','unavailable',true],
+    [502,'Tools are not supported','unavailable',true],
+    [400,'This model\'s maximum context length is 8192 tokens','context',false],
+    [400,'vendor/gone is not a valid model ID','modelUnavailable',false],
+    [400,'Image input is not supported','fatal',false],
+  ] as const)('classifies HTTP %d "%s" by status first: %s',(status,message,kind,retryable)=>{
+    const failure=classifyProviderError(status,message);
+    expect(failure).toMatchObject({kind,retryable,status,message});
+    expect(failure.remediation.length).toBeGreaterThan(0);
+  });
+  it('says a 403 is a moderation refusal, not a bad key',()=>{
+    expect(classifyProviderError(403,'Flagged').remediation).toMatch(/moderation/);
+    expect(classifyProviderError(401,'Bad key').remediation).toMatch(/Reconnect OpenRouter/);
+  });
+  it.each([429,503,502])('takes the %d retry delay only from a Retry-After header',status=>{
+    expect(classifyProviderError(status,'Slow',new Headers({'retry-after':'3'})).retryAfterMs).toBe(3000);
+    expect(classifyProviderError(status,'Slow',{'Retry-After':'7'}).retryAfterMs).toBe(7000);
+    expect(classifyProviderError(status,'Slow').retryAfterMs).toBeUndefined();
   });
   it('exports no multi-provider surface',()=>{
     for(const name of ['createHTTPProvider','providerURL','parseModelMetadata','parseEffortRejection','decodeAnthropic','decodeOpenAIResponses'])expect(name in agent).toBe(false);

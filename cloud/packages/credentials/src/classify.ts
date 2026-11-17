@@ -28,8 +28,8 @@ function header(headers: HeadersLike | undefined, name: string): string | undefi
   return undefined;
 }
 
-/** Parses Retry-After seconds or HTTP-date into ms. */
-function retryAfterMs(headers: HeadersLike | undefined, now: number): number | undefined {
+/** Parses Retry-After seconds or HTTP-date into ms, clamped to [1 s, 1 h]; undefined when absent or unreadable. */
+export function retryAfterMs(headers: HeadersLike | undefined, now: number): number | undefined {
   const raw = header(headers, 'retry-after')?.trim();
   if (!raw) return undefined;
   const ms = /^\d+(\.\d+)?$/.test(raw) ? Number(raw) * 1000 : Date.parse(raw) - now;

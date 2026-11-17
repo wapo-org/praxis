@@ -4,13 +4,6 @@ export function object(value:unknown):JsonObject {return value&&typeof value==='
 export function array(value:unknown):JsonValue[]{return Array.isArray(value)?value:[];}
 export function string(value:unknown):string{return typeof value==='string'?value:'';}
 export function number(value:unknown):number{return typeof value==='number'&&Number.isFinite(value)?value:0;}
-const effortOrder=['none','minimal','low','medium','high','xhigh','max'];
-export function clampEffort(want:string|undefined,supported:string[]|undefined):string|undefined {
-  if(!want||supported?.length===0)return undefined;want=want.toLowerCase();if(!supported)return want;
-  const values=supported.map(x=>x.toLowerCase());if(values.includes(want))return want;
-  const rank=effortOrder.indexOf(want);if(rank<0)return undefined;
-  return values.filter(x=>effortOrder.includes(x)).sort((a,b)=>Math.abs(effortOrder.indexOf(a)-rank)-Math.abs(effortOrder.indexOf(b)-rank)||effortOrder.indexOf(a)-effortOrder.indexOf(b))[0];
-}
 const text=(value:string):JsonObject=>({type:'text',text:value});
 const note=(p:MessagePart)=>`[Note]\n${p.text??''}`;
 const flattenCall=(p:MessagePart)=>`[Tool call ${p.name??''} ${p.callId??''}] ${p.arguments??'{}'}`;
@@ -24,7 +17,7 @@ function omitted(p:MessagePart,req:ProviderRequest):string {
 export function buildProviderRequest(raw:ProviderRequest):JsonObject {
   const req=ProviderRequestSchema.parse(raw),c=req.capabilities;
   const system=req.system+(!c.tools?'\n[Tool use is unavailable for this request. Do not call tools.]':'');
-  const effort=c.reasoningEffort?clampEffort(req.effort,req.supportedEfforts):undefined;
+  const effort=c.reasoningEffort?req.effort:undefined;
   {
     const messages:JsonObject[]=[];if(system)messages.push({role:'system',content:system});
     for(const m of req.messages) {

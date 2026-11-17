@@ -55,7 +55,7 @@
       "apps/web/src/components/chat/chatMotion.ts": 464,
       "apps/web/src/components/chat/tray.test.tsx": 412,
       "apps/web/src/components/chat/useSearchJump.ts": 465,
-      "packages/agent/src/runner.ts": 454,
+      "packages/agent/src/runner.ts": 450,
       "packages/glass/src/dropdown/dropdown.pw.ts": 439,
       "packages/glass/src/morph/engine.ts": 564,
       "scripts/comment-sweep.mjs": 710
