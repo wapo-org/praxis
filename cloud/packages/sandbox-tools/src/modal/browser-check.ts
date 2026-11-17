@@ -1,8 +1,9 @@
+import {posix} from 'node:path';
 import {readFileSync} from 'node:fs';
 import {ModalClient} from 'modal';
 import {z} from 'zod';
 import {MemoryExportSink} from '../fake.js';
-import {browser} from '../tools/browser.js';
+import {browser, BROWSER_SESSION_PATH} from '../tools/browser.js';
 import {BROWSER_MEMORY_MIB, sandboxBrowserImage} from './browser-image.js';
 import {browserSandboxOptions} from './browser-network.js';
 import {modalSandboxPort} from './port.js';
@@ -47,7 +48,7 @@ export async function checkBrowserImage() {
     const filesystemBytes = ByteCountSchema.parse(measured.stdout.trim().split(/\s+/)[0]);
     await browser(context, {action: 'open'});
     // Only the verification harness can navigate a local fixture; model-facing goto accepts HTTPS URLs only.
-    const loaded = await port.exec({argv: ['praxis-browser', 'goto', `file://${FIXTURE_PATH}`, '--session', `${ROOT}/.praxis/browser/session.json`], cwd: ROOT, timeoutMs: READY_TIMEOUT_MS});
+    const loaded = await port.exec({argv: ['praxis-browser', 'goto', `file://${FIXTURE_PATH}`, '--session', posix.join(ROOT, BROWSER_SESSION_PATH)], cwd: ROOT, timeoutMs: READY_TIMEOUT_MS});
     if (loaded.exitCode !== 0) throw new Error('Fixture navigation failed.');
     const snapshot = await browser(context, {action: 'snapshot'});
     if (!JSON.stringify(snapshot).includes('Sign in')) throw new Error('Fixture snapshot missing sign-in button.');

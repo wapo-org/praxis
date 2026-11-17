@@ -1,7 +1,7 @@
 import {posix} from 'node:path';
 import {z} from 'zod';
 import type {ToolCapability} from '@praxis/protocol';
-import {containedPath, fail, sha256, withWorkspaceLock} from '../support.js';
+import {containedPath, fail, withWorkspaceLock} from '../support.js';
 import {exportFile} from './files.js';
 import type {SandboxToolContext} from './context.js';
 
@@ -64,10 +64,7 @@ async function browserLocked(context: SandboxToolContext, input: BrowserInput) {
   if (input.action !== 'screenshot') return output;
   const proof = ScreenshotResultSchema.parse(output);
   if (proof.path !== screenshot) fail('schema', 'Browser returned an unexpected screenshot path.');
-  const bytes = await context.port.readFile(screenshot);
-  if (sha256(bytes) !== proof.sha256 || bytes.length !== proof.bytes) fail('conflict', 'Screenshot changed before export.');
-  const artifact = await exportFile(context, {path: posix.relative(context.root, screenshot)});
-  if (artifact.sha256 !== proof.sha256 || artifact.bytes !== proof.bytes) fail('conflict', 'Screenshot changed before export.');
+  const artifact = await exportFile(context, {path: posix.relative(context.root, screenshot)}, proof);
   return {ok: true, artifact};
 }
 

@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs';
-import {describe, expect, it} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
 import type {JsonValue} from '@praxis/protocol';
 import {SealedSecret} from '@praxis/types';
 import {approvalKey, type BoundaryContext} from '@praxis/agent';
@@ -47,12 +47,16 @@ describe('browser over SandboxPort', () => {
     const {port, context, exports} = setup();
     const path = `${ROOT}/browser-screenshot.png`;
     port.files.set(path, PNG);
+    const reads = vi.spyOn(port, 'readFile');
     port.on(() => ({stdout: JSON.stringify({ok: true, path, bytes: PNG.length, sha256: sha256(PNG)})}));
     expect(await browser(context, {action: 'screenshot'})).toMatchObject({artifact: {ref: 'export-1', sha256: sha256(PNG), mediaType: 'image/png'}});
     expect(exports.items[0]?.bytes).toEqual(PNG);
+    expect(reads).toHaveBeenCalledTimes(1);
     port.on(() => undefined);
     port.files.set(path, new Uint8Array([1]));
     await expect(browser(context, {action: 'screenshot'})).rejects.toThrow(/changed/);
+    expect(exports.items).toHaveLength(1);
+    expect(reads).toHaveBeenCalledTimes(2);
   });
 
   it('fails closed on unrestricted egress, invalid output, timeout and oversized snapshots', async () => {
