@@ -52,6 +52,8 @@ workspace's `.praxis/diagnostics.json` checks inline), `replace_symbol` (Python/
 with rewind (PRA-63). Tools run only through `executeSandboxTool`, which goes through `executeBoundary`; `shell`
 is classified by `shellPolicy`. They speak to a `SandboxPort`: an in-memory fake for tests, a local temp-dir port,
 and `@praxis/sandbox-tools/modal`, which uses Modal's native exec and filesystem APIs (no in-sandbox server).
+`@praxis/sandbox-tools/image` composes a digest-pinned Node Bookworm slim base and a snapshot-pinned
+Python/git/build-tools/tmux layer; browser and per-harness layers extend it independently (see `sandbox/README.md`).
 `packages/browser-cli` (`praxis-browser`) drives Chromium over CDP with accessibility-tree refs and no LLM;
 it shares snapshot and screenshot capture with `praxis-verify`. Neither package may be imported by `apps/api`
 directly while it is a Hono app (child_process lives in the local port and the browser session).
