@@ -1,18 +1,18 @@
 import {spawn} from 'node:child_process';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {chromium, type Browser, type Page} from '@playwright/test';
+import {CAPTURE_VIEWPORT} from '@praxis/verify';
 import {z} from 'zod';
 import type {RefTarget} from './refs.js';
 
 /** Chromium writes its CDP port here once it listens; reading it avoids picking a port ourselves. */
 const PORT_FILE = 'DevToolsActivePort';
+const CHROMIUM_LOG = 'chromium-stderr.log';
 const LAUNCH_TIMEOUT_MS = 15_000;
 const POLL_MS = 100;
-/** Same size as praxis-verify flows, so screenshots and snapshots from both tools compare. */
-export const VIEWPORT = {width: 1280, height: 860};
 
 const SessionSchema = z.object({
   pid: z.number().int().positive(),
@@ -36,14 +36,21 @@ export function writeSession(file: string, session: Session): void {
 export async function openSession(file: string, headed: boolean): Promise<Session> {
   if (existsSync(file)) throw new Error(`a session already exists at ${file}; run praxis-browser close first`);
   const profile = mkdtempSync(join(tmpdir(), 'praxis-browser-'));
-  const args = ['--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', `--window-size=${VIEWPORT.width},${VIEWPORT.height}`, ...(headed ? [] : ['--headless=new']), 'about:blank'];
-  const child = spawn(chromium.executablePath(), args, {detached: true, stdio: 'ignore'});
+  // Chromium refuses to run as root with its own sandbox; container users are root, and the container is the isolation.
+  const rootUser = process.getuid?.() === 0;
+  const args = ['--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', `--window-size=${CAPTURE_VIEWPORT.width},${CAPTURE_VIEWPORT.height}`, ...(rootUser ? ['--no-sandbox'] : []), ...(headed ? [] : ['--headless=new']), 'about:blank'];
+  const log = join(profile, CHROMIUM_LOG);
+  const logFd = openSync(log, 'a');
+  const child = spawn(chromium.executablePath(), args, {detached: true, stdio: ['ignore', 'ignore', logFd]});
+  closeSync(logFd);
   child.unref();
   const deadline = Date.now() + LAUNCH_TIMEOUT_MS;
   while (!existsSync(join(profile, PORT_FILE))) {
     if (Date.now() > deadline || child.exitCode !== null) {
-      if (child.pid) process.kill(child.pid);
-      throw new Error('Chromium did not open its debugging port');
+      if (child.pid !== undefined && alive(child.pid)) process.kill(child.pid);
+      const reason = readFileSync(log, 'utf8').trim().split('\n').slice(-5).join(' | ');
+      rmSync(profile, {recursive: true, force: true, maxRetries: 5, retryDelay: POLL_MS});
+      throw new Error(`Chromium did not open its debugging port${reason ? `: ${reason}` : ''}`);
     }
     await sleep(POLL_MS);
   }
@@ -77,7 +84,7 @@ export async function attach(session: Session): Promise<{browser: Browser; page:
   const context = browser.contexts()[0];
   if (!context) throw new Error('the session browser has no context');
   const page = context.pages()[0] ?? (await context.newPage());
-  await page.setViewportSize(VIEWPORT);
+  await page.setViewportSize(CAPTURE_VIEWPORT);
   return {browser, page};
 }
 

@@ -2,7 +2,7 @@ import {posix} from 'node:path';
 import {z} from 'zod';
 import {EXPORT_FILE_MAX_BYTES, READ_FILE_LINES_DEFAULT, READ_FILE_MAX_BYTES} from '../constants.js';
 import {runDiagnostics, type DiagnosticsReport} from '../diagnostics.js';
-import {assertNotInternal, decodeText, fail, resolveInside, sha256} from '../support.js';
+import {assertNotInternal, containedPath, decodeText, fail, sha256, withFileLock} from '../support.js';
 import type {SandboxToolContext} from './context.js';
 
 export const ReadFileInputSchema = z.object({
@@ -37,7 +37,7 @@ async function readText(context: SandboxToolContext, path: string): Promise<{tex
 
 export async function readFile(context: SandboxToolContext, raw: unknown) {
   const input = ReadFileInputSchema.parse(raw);
-  const path = resolveInside(context.root, input.path);
+  const {path} = await containedPath(context.port, context.root, input.path);
   const {text, bytes} = await readText(context, path);
   const lines = text.split('\n');
   const first = Math.min(input.offset, lines.length);
@@ -62,26 +62,27 @@ function countOccurrences(haystack: string, needle: string): number {
 /** Exact-match replace, then the workspace's diagnostics; problems come back inline instead of failing the edit. */
 export async function editFile(context: SandboxToolContext, raw: unknown): Promise<{path: string; sha256: string; replacements: number; created: boolean; diagnostics: DiagnosticsReport}> {
   const input = EditFileInputSchema.parse(raw);
-  const path = resolveInside(context.root, input.path);
-  assertNotInternal(context.root, path);
-  let next: string;
-  let replacements = 1;
-  const exists = await context.port.stat(path);
-  if (input.old_text === '') {
-    if (exists) fail('conflict', `${path} already exists; give old_text to change it.`);
-    next = input.new_text;
-  } else {
+  const {path, root} = await containedPath(context.port, context.root, input.path);
+  assertNotInternal(root, path);
+  const written = await withFileLock(context.port, path, async () => {
+    const exists = await context.port.stat(path);
+    if (input.old_text === '') {
+      if (exists) fail('conflict', `${path} already exists; give old_text to change it.`);
+      return {next: input.new_text, replacements: 1, created: true};
+    }
     const {text, bytes} = await readText(context, path);
     if (input.expected_sha256 && input.expected_sha256 !== sha256(bytes)) fail('conflict', `${path} changed since it was read.`);
-    replacements = countOccurrences(text, input.old_text);
+    const replacements = countOccurrences(text, input.old_text);
     if (replacements === 0) fail('conflict', `old_text was not found in ${path}.`);
     if (replacements > 1 && !input.replace_all) fail('conflict', `old_text matches ${replacements} places in ${path}; add surrounding lines or set replace_all.`);
-    next = text.split(input.old_text).join(input.new_text);
-  }
-  const bytes = new TextEncoder().encode(next);
-  await context.port.writeFile(path, bytes);
-  const diagnostics = await runDiagnostics(context.port, context.root, posix.relative(context.root, path), next, context.now);
-  return {path, sha256: sha256(bytes), replacements, created: !exists, diagnostics};
+    return {next: text.split(input.old_text).join(input.new_text), replacements, created: false};
+  }, async edit => {
+    const bytes = new TextEncoder().encode(edit.next);
+    await context.port.writeFile(path, bytes);
+    return {...edit, bytes};
+  });
+  const diagnostics = await runDiagnostics(context.port, root, posix.relative(root, path), written.next, {trustedConfigs: context.trustedDiagnostics ?? new Set(), ...(context.now ? {now: context.now} : {})});
+  return {path, sha256: sha256(written.bytes), replacements: written.replacements, created: written.created, diagnostics};
 }
 
 const MEDIA_TYPES: Record<string, string> = {
@@ -97,8 +98,8 @@ export function mediaTypeFor(path: string): string {
 /** Hands a workspace file to durable storage; the hash lets proofs and the user verify what was exported. */
 export async function exportFile(context: SandboxToolContext, raw: unknown) {
   const input = ExportFileInputSchema.parse(raw);
-  const path = resolveInside(context.root, input.path);
-  assertNotInternal(context.root, path);
+  const {path, root} = await containedPath(context.port, context.root, input.path);
+  assertNotInternal(root, path);
   const stat = await context.port.stat(path);
   if (!stat) fail('not-found', `${path} does not exist.`);
   if (stat.type !== 'file') fail('schema', `${path} is a ${stat.type}; export one file (zip a directory with shell first).`);

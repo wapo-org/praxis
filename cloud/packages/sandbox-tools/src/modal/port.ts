@@ -7,6 +7,7 @@ import type {ExecRequest, ExecResult, FileStat, SandboxPort} from '../port.js';
 const KILLED_EXIT_CODE = 137;
 /** Modal rejects exec time-outs that are not whole seconds (found by the PRA-77 adapter check). */
 const MODAL_TIMEOUT_STEP_MS = 1_000;
+const REALPATH_TIMEOUT_MS = 10_000;
 
 async function drain(stream: ReadableStream<string>): Promise<string> {
   let text = '';
@@ -27,6 +28,11 @@ export function modalSandboxPort(sandbox: Sandbox): SandboxPort {
     return {exitCode: timedOut ? null : exitCode, stdout, stderr, timedOut, durationMs};
   };
   const files = {
+    async realpath(path: string): Promise<string> {
+      const resolved = await exec({argv: ['realpath', '-m', '--', path], cwd: '/', timeoutMs: REALPATH_TIMEOUT_MS});
+      if (resolved.exitCode !== 0) throw new Error(`realpath failed for ${path}: ${resolved.stderr.trim()}`);
+      return resolved.stdout.trim();
+    },
     async stat(path: string): Promise<FileStat | undefined> {
       try {
         const info = await sandbox.filesystem.stat(path);

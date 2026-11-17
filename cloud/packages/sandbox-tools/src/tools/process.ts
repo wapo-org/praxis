@@ -2,7 +2,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {z} from 'zod';
 import {JOB_POLL_INTERVAL_MS, SHELL_TIMEOUT_DEFAULT_MS, SHELL_TIMEOUT_MAX_MS, WAIT_FOR_JOB_DEFAULT_MS, WAIT_FOR_JOB_MAX_MS} from '../constants.js';
 import type {JobStatus} from '../port.js';
-import {capOutput, fail, resolveInside, stripAnsi} from '../support.js';
+import {capOutput, containedPath, fail, stripAnsi} from '../support.js';
 import type {SandboxToolContext} from './context.js';
 
 export const ShellInputSchema = z.object({
@@ -28,7 +28,7 @@ function streams(stdout: string, stderr: string) {
 
 export async function shell(context: SandboxToolContext, raw: unknown) {
   const input = ShellInputSchema.parse(raw);
-  const cwd = resolveInside(context.root, input.cwd);
+  const {path: cwd} = await containedPath(context.port, context.root, input.cwd);
   const argv = ['sh', '-c', input.command];
   if (input.background) {
     const {id} = await context.port.startJob({argv, cwd});

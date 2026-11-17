@@ -18,6 +18,8 @@ export const SERVER_READY_TIMEOUT_MS = 60_000;
 export const SERVER_POLL_INTERVAL_MS = 250;
 /** Grace between SIGTERM and SIGKILL when stopping our own process groups. */
 export const SERVER_STOP_GRACE_MS = 3_000;
+/** One viewport for every captured page, so verify flows and praxis-browser screenshots compare. */
+export const CAPTURE_VIEWPORT = {width: 1280, height: 860} as const;
 export const FLOW_ACTION_TIMEOUT_MS = 10_000;
 export const FLOW_TIMEOUT_MS = 60_000;
 export const API_REQUEST_TIMEOUT_MS = 30_000;

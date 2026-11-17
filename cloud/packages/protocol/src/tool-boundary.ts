@@ -21,18 +21,6 @@ export const ToolErrorCodeSchema = z.enum([
   'not-found', 'conflict', 'timeout',
 ]);
 export type ToolErrorCode = z.infer<typeof ToolErrorCodeSchema>;
-const errorShape = {message: z.string(), remediation: z.string().min(1)};
-export const ToolErrorSchema = z.discriminatedUnion('code', [
-  z.object({code: z.literal('schema'), ...errorShape}),
-  z.object({code: z.literal('path-traversal'), ...errorShape}),
-  z.object({code: z.literal('taint-blocked'), ...errorShape}),
-  z.object({code: z.literal('policy-denied'), ...errorShape}),
-  z.object({code: z.literal('approval-required'), ...errorShape}),
-  z.object({code: z.literal('budget'), ...errorShape}),
-  z.object({code: z.literal('upstream-firewall'), ...errorShape}),
-  z.object({code: z.literal('upstream'), ...errorShape}),
-  z.object({code: z.literal('not-found'), ...errorShape}),
-  z.object({code: z.literal('conflict'), ...errorShape}),
-  z.object({code: z.literal('timeout'), ...errorShape}),
-]);
+/** Every code carries the same fields, so one object over the code enum is the whole schema; a new code is one enum entry. */
+export const ToolErrorSchema = z.object({code: ToolErrorCodeSchema, message: z.string(), remediation: z.string().min(1)});
 export type ToolError = z.infer<typeof ToolErrorSchema>;

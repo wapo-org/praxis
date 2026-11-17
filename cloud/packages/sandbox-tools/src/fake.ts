@@ -64,6 +64,21 @@ export class FakeSandboxPort implements SandboxPort {
     return [...this.#jobs.values()].map(job => job.status);
   }
 
+  /** `link(from, to)` makes every path under `from` resolve under `to`, like a directory symlink. */
+  readonly links = new Map<string, string>();
+
+  link(from: string, to: string): this {
+    this.links.set(from, to);
+    return this;
+  }
+
+  async realpath(path: string): Promise<string> {
+    for (const [from, to] of this.links) {
+      if (path === from || path.startsWith(`${from}/`)) return `${to}${path.slice(from.length)}`;
+    }
+    return path;
+  }
+
   async stat(path: string): Promise<FileStat | undefined> {
     const file = this.files.get(path);
     if (file) return {type: 'file', size: file.length};

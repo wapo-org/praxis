@@ -2,7 +2,8 @@ import {posix} from 'node:path';
 import {z} from 'zod';
 import {DIAGNOSTICS_BUDGET_MS, DIAGNOSTICS_CONFIG, DIAGNOSTICS_PROBLEMS_MAX} from './constants.js';
 import type {SandboxPort} from './port.js';
-import {decodeText, stripAnsi} from './support.js';
+import {shellPolicy} from '@praxis/agent';
+import {decodeText, sha256, stripAnsi} from './support.js';
 
 /** How a check's output becomes problems; `text` keeps raw lines when nothing better fits. */
 export const DiagnosticFormatSchema = z.enum(['tsc', 'gnu', 'node', 'python', 'text']);
@@ -37,8 +38,8 @@ export interface Problem {
 
 export interface DiagnosticsReport {
   ok: boolean;
-  /** `skipped` means the shared budget ran out before the check could start. */
-  ran: {check: string; outcome: 'passed' | 'failed' | 'timed-out' | 'skipped'; ms: number}[];
+  /** `skipped`: the shared budget ran out; `denied`: shellPolicy refuses the command, so it never runs. */
+  ran: {check: string; outcome: 'passed' | 'failed' | 'timed-out' | 'skipped' | 'denied'; ms: number}[];
   problems: Problem[];
   truncated: boolean;
 }
@@ -98,16 +99,31 @@ const PARSERS: Record<z.infer<typeof DiagnosticFormatSchema>, (output: string, c
   text: (output, check) => output.split('\n').map(line => line.trim()).filter(Boolean).map(message => ({check, message})),
 };
 
-async function loadChecks(port: SandboxPort, root: string): Promise<{checks: readonly DiagnosticCheck[]; problems: Problem[]}> {
+export interface DiagnosticsOptions {
+  /** sha256 of `.praxis/diagnostics.json` contents the user approved; any other config runs no commands. */
+  trustedConfigs: ReadonlySet<string>;
+  now?: () => number;
+}
+
+/** Workspace configs are untrusted input (a cloned repo or a tainted turn can write them), so they run only once approved. */
+async function loadChecks(port: SandboxPort, root: string, trusted: ReadonlySet<string>): Promise<{checks: readonly DiagnosticCheck[]; problems: Problem[]}> {
   const path = posix.join(root, DIAGNOSTICS_CONFIG);
   if (!(await port.stat(path))) return {checks: BUILTIN_CHECKS, problems: []};
-  const text = decodeText(await port.readFile(path));
+  const bytes = await port.readFile(path);
+  const digest = sha256(bytes);
+  if (!trusted.has(digest)) {
+    return {checks: BUILTIN_CHECKS, problems: [{check: 'config', file: DIAGNOSTICS_CONFIG, message: `not approved yet (sha256 ${digest}); built-in syntax checks ran instead. Ask the user to approve it.`}]};
+  }
   try {
-    return {checks: DiagnosticsConfigSchema.parse(JSON.parse(text ?? '')).checks, problems: []};
+    return {checks: DiagnosticsConfigSchema.parse(JSON.parse(decodeText(bytes) ?? '')).checks, problems: []};
   } catch (error) {
     const detail = error instanceof z.ZodError ? error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ') : 'not valid JSON';
     return {checks: [], problems: [{check: 'config', file: DIAGNOSTICS_CONFIG, message: `ignored: ${detail}`}]};
   }
+}
+
+function quoteArgv(argv: readonly string[]): string {
+  return argv.map(word => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`)).join(' ');
 }
 
 function jsonProblems(text: string, file: string): Problem[] {
@@ -120,9 +136,10 @@ function jsonProblems(text: string, file: string): Problem[] {
 }
 
 /** Runs every check matching the edited file, inside one shared budget, and returns problems instead of throwing. */
-export async function runDiagnostics(port: SandboxPort, root: string, relativeFile: string, content: string, now: () => number = Date.now): Promise<DiagnosticsReport> {
+export async function runDiagnostics(port: SandboxPort, root: string, relativeFile: string, content: string, options: DiagnosticsOptions): Promise<DiagnosticsReport> {
+  const now = options.now ?? Date.now;
   const started = now();
-  const {checks, problems} = await loadChecks(port, root);
+  const {checks, problems} = await loadChecks(port, root, options.trustedConfigs);
   const ran: DiagnosticsReport['ran'] = [];
   if (relativeFile.endsWith('.json')) problems.push(...jsonProblems(content, relativeFile));
   for (const check of checks.filter(entry => entry.files.some(glob => globToRegExp(glob).test(relativeFile)))) {
@@ -132,6 +149,10 @@ export async function runDiagnostics(port: SandboxPort, root: string, relativeFi
       continue;
     }
     const argv = check.argv.map(word => word.replaceAll('{file}', relativeFile));
+    if (shellPolicy(quoteArgv(argv)) === 'deny') {
+      ran.push({check: check.name, outcome: 'denied', ms: 0});
+      continue;
+    }
     const result = await port.exec({argv, cwd: root, timeoutMs: Math.min(check.timeoutMs ?? remaining, remaining)});
     const outcome = result.timedOut ? 'timed-out' : result.exitCode === 0 ? 'passed' : 'failed';
     ran.push({check: check.name, outcome, ms: result.durationMs});

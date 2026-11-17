@@ -1,7 +1,7 @@
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {chromium, request as playwrightRequest, type Browser, type Page} from '@playwright/test';
-import {FLOW_ACTION_TIMEOUT_MS, FLOW_TIMEOUT_MS} from '../constants.js';
+import {CAPTURE_VIEWPORT, FLOW_ACTION_TIMEOUT_MS, FLOW_TIMEOUT_MS} from '../constants.js';
 import type {WebFlow} from './flow-types.js';
 import {accessibilitySnapshot, screenshotEvidence} from './evidence.js';
 import {describeIssue, unexpectedIssues, type BrowserIssue} from './judge.js';
@@ -69,7 +69,7 @@ async function capture(page: Page, directory: string, id: string): Promise<{scre
 
 async function runFlow(browser: Browser, flow: WebFlow, options: HarnessOptions): Promise<FlowResult> {
   const started = Date.now();
-  const context = await browser.newContext({viewport: {width: 1280, height: 860}});
+  const context = await browser.newContext({viewport: CAPTURE_VIEWPORT});
   const request = await playwrightRequest.newContext();
   const page = await context.newPage();
   page.setDefaultTimeout(FLOW_ACTION_TIMEOUT_MS);

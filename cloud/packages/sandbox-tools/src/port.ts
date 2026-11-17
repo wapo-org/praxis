@@ -40,6 +40,8 @@ export interface SandboxPort {
   /** Never blocks; undefined for an unknown id. */
   jobStatus(id: string): Promise<JobStatus | undefined>;
   listJobs(): Promise<JobStatus[]>;
+  /** Resolves symlinks, including for not-yet-existing tails, so containment is checked on the real target. */
+  realpath(path: string): Promise<string>;
   /** undefined when the path does not exist. */
   stat(path: string): Promise<FileStat | undefined>;
   readFile(path: string): Promise<Uint8Array>;

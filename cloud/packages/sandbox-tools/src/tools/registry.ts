@@ -1,6 +1,8 @@
 import {executeBoundary, shellPolicy, ToolBoundaryError, toolError, type BoundaryContext, type GateResult, type ToolClassification, type ToolClassifier} from '@praxis/agent';
 import type {JsonValue, ToolCapability, ToolInvocation} from '@praxis/protocol';
+import {posix} from 'node:path';
 import {z} from 'zod';
+import {WORKSPACE_ROOT} from '../constants.js';
 import type {SandboxToolContext} from './context.js';
 import {editFile, EditFileInputSchema, exportFile, ExportFileInputSchema, readFile, ReadFileInputSchema} from './files.js';
 import {shell, ShellInputSchema, waitForJob, WaitForJobInputSchema} from './process.js';
@@ -30,7 +32,8 @@ export const SANDBOX_TOOLS: readonly SandboxToolDefinition[] = [
   {
     name: 'edit_file',
     description: 'Replace exact text (or create a file with empty old_text); returns the workspace diagnostics for the file.',
-    input: EditFileInputSchema, capabilities: ['write'], untrustedSource: false, run: editFile,
+    // Diagnostics execute in the workspace and echo workspace content, so the result is untrusted.
+    input: EditFileInputSchema, capabilities: ['write', 'exec'], untrustedSource: true, run: editFile,
   },
   {
     name: 'export_file',
@@ -45,16 +48,30 @@ export const SANDBOX_TOOLS: readonly SandboxToolDefinition[] = [
 ];
 
 const byName = new Map(SANDBOX_TOOLS.map(tool => [tool.name, tool]));
+/** The classifier only knows the workspace; the tool then enforces the exact chat directory on real paths. */
+const CLASSIFIER_ROOT = `${WORKSPACE_ROOT}/chats/root`;
 
-/** PRA-76 classification: shell commands go through its AST policy; everything else by its declared capabilities. */
+/** Path arguments per tool: an escape from the workspace is denied before any receipt or execution. */
+const PATH_ARGUMENTS: Record<string, readonly string[]> = {shell: ['cwd'], read_file: ['path'], edit_file: ['path'], export_file: ['path']};
+
+function lexicallyConfined(tool: string, args: Record<string, unknown>): boolean {
+  return (PATH_ARGUMENTS[tool] ?? []).every(key => {
+    const value = args[key];
+    if (typeof value !== 'string') return true;
+    return posix.resolve(CLASSIFIER_ROOT, value).startsWith(`${WORKSPACE_ROOT}/`);
+  });
+}
+
+/** PRA-76 decision table: `allow` certifies confinement, no network, no secrets; shell takes shellPolicy's decision. */
 export const sandboxToolClassifier: ToolClassifier = {
   classify(call: ToolInvocation): ToolClassification | undefined {
     const tool = byName.get(call.tool);
     if (!tool) return undefined;
+    const base = {capabilities: tool.capabilities, untrustedSource: tool.untrustedSource};
     const parsed = tool.input.safeParse(call.args);
-    if (!parsed.success) return {capabilities: tool.capabilities, decision: 'deny', untrustedSource: tool.untrustedSource};
-    const decision = tool.name === 'shell' ? shellPolicy(ShellInputSchema.parse(call.args).command) : 'allow';
-    return {capabilities: tool.capabilities, decision, untrustedSource: tool.untrustedSource};
+    if (!parsed.success || !lexicallyConfined(tool.name, parsed.data as Record<string, unknown>)) return {...base, decision: 'deny'};
+    const decision = tool.name === 'shell' ? shellPolicy((parsed.data as {command: string}).command) : 'allow';
+    return {...base, decision};
   },
 };
 

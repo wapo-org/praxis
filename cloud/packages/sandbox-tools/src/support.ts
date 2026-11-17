@@ -3,6 +3,7 @@ import {posix} from 'node:path';
 import {ToolBoundaryError, toolError} from '@praxis/agent';
 import type {ToolErrorCode} from '@praxis/protocol';
 import {OUTPUT_MAX_BYTES, PRAXIS_DIR} from './constants.js';
+import type {SandboxPort} from './port.js';
 
 /** Every failure leaves through PRA-76's ToolError, so the model always gets a remediation line. */
 export function fail(code: ToolErrorCode, message: string): never {
@@ -15,6 +16,32 @@ export function resolveInside(root: string, input: string): string {
   const resolved = posix.resolve(root, input);
   if (resolved !== root && !resolved.startsWith(`${root}/`)) fail('path-traversal', `${input} is outside ${root}.`);
   return resolved;
+}
+
+/** Lexical containment, then the real target: a symlink inside the chat directory cannot point the tools outside it. */
+export async function containedPath(port: SandboxPort, root: string, input: string): Promise<{path: string; root: string}> {
+  const lexical = resolveInside(root, input);
+  const [real, realRoot] = await Promise.all([port.realpath(lexical), port.realpath(root)]);
+  if (real !== realRoot && !real.startsWith(`${realRoot}/`)) fail('path-traversal', `${input} resolves through a symlink to ${real}, outside ${root}.`);
+  return {path: real, root: realRoot};
+}
+
+const locks = new WeakMap<SandboxPort, Map<string, Promise<unknown>>>();
+
+/** Serializes read-check-write per file on one port, so a concurrent edit cannot pass a stale hash check and lose an update. */
+export async function withFileLock<T, R>(port: SandboxPort, path: string, check: () => Promise<T>, write: (checked: T) => Promise<R>): Promise<R> {
+  const held = locks.get(port) ?? new Map<string, Promise<unknown>>();
+  locks.set(port, held);
+  const previous = held.get(path) ?? Promise.resolve();
+  const work = async () => write(await check());
+  const next = previous.then(work, work);
+  const settled = next.catch(() => undefined);
+  held.set(path, settled);
+  try {
+    return await next;
+  } finally {
+    if (held.get(path) === settled) held.delete(path);
+  }
 }
 
 /** The tools' own bookkeeping is off limits to edit_file and export_file. */

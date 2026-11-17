@@ -3,6 +3,7 @@ import {SealedSecret} from '@praxis/types';
 import {approvalKey, argsHash, issueApproval, type ApprovalReplayStore, type BoundaryContext} from '@praxis/agent';
 import {DIAGNOSTICS_BUDGET_MS} from './constants.js';
 import {globToRegExp, runDiagnostics} from './diagnostics.js';
+import {sha256} from './support.js';
 import {FakeSandboxPort, MemoryExportSink} from './fake.js';
 import {editFile} from './tools/files.js';
 import {executeSandboxTool, sandboxToolClassifier} from './tools/registry.js';
@@ -28,7 +29,7 @@ describe('diagnostics contract', () => {
 
   it('checks JSON in-process and reports invalid configuration instead of failing the edit', async () => {
     const port = new FakeSandboxPort().writeText(`${ROOT}/.praxis/diagnostics.json`, '{"version": 2}');
-    const report = await runDiagnostics(port, ROOT, 'data.json', '{"a": }');
+    const report = await runDiagnostics(port, ROOT, 'data.json', '{"a": }', {trustedConfigs: new Set([sha256('{"version": 2}')])});
     expect(report.problems.map(problem => problem.check)).toEqual(['config', 'json-syntax']);
     expect(report.problems[0]!.message).toMatch(/^ignored: version/);
   });
@@ -46,7 +47,7 @@ describe('diagnostics contract', () => {
       if (request.argv[0] === 'eslint') return {exitCode: 1, stdout: `src/a.ts:9:1: 'x' is defined but never used. [no-unused-vars]`};
       return undefined;
     });
-    const report = await runDiagnostics(port, ROOT, 'src/a.ts', '', () => now);
+    const report = await runDiagnostics(port, ROOT, 'src/a.ts', '', {trustedConfigs: new Set([sha256(JSON.stringify(config))]), now: () => now});
     expect(port.calls.map(call => call.argv.join(' '))).toEqual(['npx tsc --noEmit', 'eslint -f unix src/a.ts']);
     expect(report.ran.map(entry => [entry.check, entry.outcome])).toEqual([['tsc', 'failed'], ['eslint', 'failed'], ['slow', 'skipped']]);
     expect(report.problems).toEqual([
