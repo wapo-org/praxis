@@ -33,7 +33,9 @@ export class TestTurnStore implements TurnStore {
   }
   async acquire(_runId: string, expected: number) {
     if (this.data.claimed || this.data.flags.done || this.data.flags.turnIndex !== expected) {
-      return {state: 'idle' as const, flags: {...this.data.flags, status: this.data.claimed ? 'busy' as const : this.data.flags.status}};
+      const flags: TurnFlags = this.data.claimed
+        ? {turnIndex: this.data.flags.turnIndex, status: 'busy', done: false} : this.data.flags;
+      return {state: 'idle' as const, flags};
     }
     this.data.claimed = true;
     return {state: 'claimed' as const, claim: {token: 'fence', snapshot: structuredClone(this.data.snapshot), response: this.data.response}};
@@ -63,7 +65,7 @@ export class TestTurnStore implements TurnStore {
     this.data.commits++;
     this.data.usage += value.usage.inputTokens;
     this.data.tainted ||= tainted;
-    this.data.flags = {turnIndex: this.data.flags.turnIndex + 1, status: value.stop === 'toolUse' ? 'ready' : 'completed', done: value.stop !== 'toolUse'};
+    this.data.flags = {turnIndex: this.data.flags.turnIndex + 1, ...(value.stop === 'toolUse' ? {status: 'ready', done: false} : {status: 'completed', done: true})};
     this.data.claimed = false;
     return this.data.flags;
   }

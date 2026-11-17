@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import {JsonValueSchema, ToolInvocationSchema} from '@praxis/protocol';
-import {ProviderResponseSchema, ToolResultSchema, type ProviderResponse, type AgentTool} from './types.js';
+import {ProviderResponseSchema, ToolResultSchema, type ProviderResponse} from './types.js';
 import {executeBoundary, type GateResult} from './boundary/gate.js';
 import {ToolBoundaryError, toolError} from './boundary/errors.js';
 import {canonical} from './policy.js';
@@ -8,8 +8,8 @@ import {assembleTurnRequest} from './one-turn-prompt.js';
 import {TurnSnapshotSchema, type OneTurnOptions, type SavedCall, type TurnFlags} from './one-turn-state.js';
 
 export class UncertainToolCall extends Error {
-  constructor(readonly callId: string) {
-    super('Reconcile the durable tool call before resuming this turn.');
+  constructor(readonly callId: string, cause?: unknown) {
+    super('Reconcile the durable tool call before resuming this turn.', {cause});
   }
 }
 
@@ -53,7 +53,7 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
     ids.add(part.callId);
     try {
       return {id: part.callId, call: ToolInvocationSchema.parse({
-        tool: part.name, args: JsonValueSchema.parse(JSON.parse(part.arguments ?? '{}')),
+        tool: part.name, args: JSON.parse(part.arguments ?? '{}'),
       }), invalid: false};
     } catch {
       return {id: part.callId, call: {tool: part.name ?? '', args: null}, invalid: true};
@@ -69,15 +69,21 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
       if (canonical(saved.call) !== canonical(call)) throw new Error('Durable call binding mismatch');
     } else {
       const tool = options.tools.find(candidate => candidate.spec.name === call.tool);
+      const offered = request.tools.find(spec => spec.name === call.tool);
+      let dispatched = false;
       let result: GateResult;
       try {
         if (invalid) throw new ToolBoundaryError(toolError('schema', 'Malformed tool invocation.'));
-        validateArguments(tool, call.args);
+        if (!request.capabilities.tools || !offered || !tool || tool.hidden || tool.unavailableReason) {
+          throw new ToolBoundaryError(toolError('policy-denied', 'This tool is not available in the frozen catalog.'));
+        }
+        validateArguments(offered.inputSchema, call.args);
         result = await executeBoundary(call, {
           ...options.boundary, mode: snapshot.mode, runId, toolCallId: id, taint: {tainted},
         }, options.registry, async checked => {
           if (!await active()) throw new UncertainToolCall(id);
-          const result = ToolResultSchema.parse(await tool!.execute(checked.args, {
+          dispatched = true;
+          const result = ToolResultSchema.parse(await tool.execute(checked.args, {
             ...context, userId: snapshot.userId, chatId: snapshot.chatId, runId,
             mode: snapshot.mode, callId: id,
             async callTool() {
@@ -88,6 +94,7 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
         }, options.receipts?.[id]);
       } catch (error) {
         if (error instanceof UncertainToolCall || context.signal.aborted) throw error;
+        if (dispatched) throw new UncertainToolCall(id, error);
         result = {ok: false, error: error instanceof ToolBoundaryError
           ? error.detail : toolError('upstream', 'Tool execution failed.')};
       }
@@ -101,10 +108,9 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
   return store.commit(token, response, calls, tainted);
 }
 
-function validateArguments(tool: AgentTool | undefined, args: unknown): void {
-  if (!tool) throw new ToolBoundaryError(toolError('schema', 'Unknown tool.'));
+function validateArguments(schema: import('@praxis/protocol').JsonObject, args: unknown): void {
   try {
-    z.fromJSONSchema(tool.spec.inputSchema).parse(args);
+    z.fromJSONSchema(schema).parse(args);
   } catch {
     throw new ToolBoundaryError(toolError('schema', 'Arguments do not match the tool schema.'));
   }

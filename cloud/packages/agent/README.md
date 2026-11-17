@@ -22,6 +22,9 @@ PRA-7/13 must implement and verify it against Convex before adopting this protot
   reconciliation through provider idempotency/status, never blind execution.
 - All writes reject stale tokens. Stop, auth, connection validity and the attempt
   fence must also be checked by the dispatch adapter immediately before upstream I/O.
+- Exceptions after dispatch retain an uncertain call and stop the batch, including typed errors
+  and invalid results; only a returned result or pre-dispatch refusal completes a call.
+- Model dispatch requires tools enabled, a frozen offered schema and an available, non-hidden adapter.
 - `saveCall` persists result plus provenance/monotone taint, including errors.
 - `commit` atomically stores messages, usage exactly once, joined taint, control
   flags and increments turnIndex under the fence. A lost reply returns saved flags.

@@ -34,7 +34,7 @@ Keep answers concise and well structured. Use Markdown.`,
     FORMATTING_GUIDE,
   ];
   if (sections.instructions) parts.push(sections.instructions);
-  if (sections.toolNotes?.length) parts.push('Connected tools:\n' + [...new Set(sections.toolNotes)].sort().map(n => `- ${n}`).join('\n'));
+  if (sections.toolNotes?.length) parts.push('Connected tools:\n' + [...new Set(sections.toolNotes)].sort((a, b) => a < b ? -1 : a > b ? 1 : 0).map(n => `- ${n}`).join('\n'));
   const catalog = skillCatalogSection(sections.skills ?? []);
   if (catalog) parts.push(catalog);
   return parts.join('\n\n');

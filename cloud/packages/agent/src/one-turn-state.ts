@@ -9,7 +9,9 @@ export const TurnSnapshotSchema = z.object({
   request: ProviderRequestSchema, tainted: z.boolean(),
 });
 export type TurnSnapshot = z.infer<typeof TurnSnapshotSchema>;
-export type TurnFlags = {turnIndex: number; status: 'ready' | 'busy' | 'stopped' | 'completed'; done: boolean};
+export type TurnFlags = {turnIndex: number} & (
+  {status: 'ready' | 'busy'; done: false} | {status: 'stopped' | 'completed'; done: true}
+);
 export type SavedCall = {call: ToolInvocation; result: GateResult};
 export type TurnClaim = {token: string; snapshot: TurnSnapshot; response?: ProviderResponse};
 export type CallClaim = {state: 'new'} | {state: 'uncertain'} | {state: 'saved'; value: SavedCall};

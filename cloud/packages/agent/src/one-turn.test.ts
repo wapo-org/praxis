@@ -101,7 +101,7 @@ it('invalid arguments and unknown tools return actionable schema errors without 
     f.provider.complete = async () => ({...response(true), parts: [{type: 'toolCall', callId: 'call', ...part}]});
     await runOneTurn(f);
     expect(f.counts.tool).toBe(0);
-    expect(f.store.data.calls.call?.result).toMatchObject({ok: false, error: {code: 'schema'}});
+    expect(f.store.data.calls.call?.result).toMatchObject({ok: false, error: {code: part.name === 'unknown' ? 'policy-denied' : 'schema'}});
   }
 });
 
