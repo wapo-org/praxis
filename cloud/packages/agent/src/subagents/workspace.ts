@@ -13,6 +13,7 @@ export async function prepareSubagent(input: SubagentTree, id: string, port: Sub
 // Cleanup acknowledgement follows a successful kill; adapters fence its commit against the current revision.
 export async function cleanupSubagent(input: SubagentTree, id: string, port: SubagentWorkspacePort): Promise<SubagentTree> {
   const node = nodeById(input, id);
+  if (node.status === 'cancelled') return input;
   if (node.status !== 'cancelling') return rejectSubagent('Only cancelling agents may be cleaned up.');
   let tree = input;
   for (const handle of node.handles) {

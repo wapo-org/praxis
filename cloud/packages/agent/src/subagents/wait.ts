@@ -1,9 +1,9 @@
 import {z} from 'zod';
 import {WaitAgentsSchema, WaitAgentsResultSchema, type SubagentTree, type WaitAgentsResult} from '@praxis/protocol';
-import {joinSubagentTaint, nodeById, setLifecycle, terminal} from './permissions.js';
+import {joinSubagentTaint, nodeById, requireActive, setLifecycle, terminal} from './permissions.js';
 import {toolError} from '../boundary/errors.js';
 import {VerifiedHandoff, type SubagentWorkspacePort} from './handoff.js';
-import {activeWaiter, waitTargets} from './wait-scope.js';
+import {waitTargets} from './wait-scope.js';
 
 export async function waitAgents(input: SubagentTree, actorId: string, raw: unknown,
   timing: {startedAtMs: number; nowMs: number}, port: SubagentWorkspacePort): Promise<{tree: SubagentTree; result: WaitAgentsResult}> {
@@ -11,8 +11,9 @@ export async function waitAgents(input: SubagentTree, actorId: string, raw: unkn
   z.object({startedAtMs: z.number().finite().nonnegative(), nowMs: z.number().finite().nonnegative()})
     .refine(t => t.nowMs >= t.startedAtMs).parse(timing);
   const tree = structuredClone(input);
-  activeWaiter(tree, actorId);
-  const nodes = waitTargets(tree, actorId, request.subagent_ids);
+  const actor = nodeById(tree, actorId);
+  requireActive(actor, 'Stopped parents cannot accept late child results.');
+  const nodes = waitTargets(tree, actor, request.subagent_ids);
   for (const node of nodes) {
     if (node.status !== 'completed') continue;
     const proof = await VerifiedHandoff.verify(node.handoff, {
@@ -27,7 +28,6 @@ export async function waitAgents(input: SubagentTree, actorId: string, raw: unkn
   const ready = request.mode === 'any' ? finished.length > 0 : finished.length === nodes.length;
   const expired = timing.nowMs - timing.startedAtMs >= request.timeout_ms;
   const returned = ready && request.mode === 'any' ? finished : nodes;
-  const actor = nodeById(tree, actorId);
   joinSubagentTaint(tree, actorId, ...returned);
   return {tree, result: WaitAgentsResultSchema.parse({
     status: ready ? 'ready' : expired ? 'timeout' : 'waiting', tainted: actor.tainted,
