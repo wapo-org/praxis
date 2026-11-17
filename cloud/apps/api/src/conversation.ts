@@ -34,7 +34,7 @@ Keep answers concise and well structured. Use Markdown.`,
     FORMATTING_GUIDE,
   ];
   if (sections.instructions) parts.push(sections.instructions);
-  if (sections.toolNotes?.length) parts.push('Connected tools:\n' + sections.toolNotes.map(n => `- ${n}`).join('\n'));
+  if (sections.toolNotes?.length) parts.push('Connected tools:\n' + [...new Set(sections.toolNotes)].sort().map(n => `- ${n}`).join('\n'));
   const catalog = skillCatalogSection(sections.skills ?? []);
   if (catalog) parts.push(catalog);
   return parts.join('\n\n');
@@ -62,7 +62,7 @@ export function skillAdditionNote(skills: CatalogSkill[]): string {
 function skillLines(skills: CatalogSkill[]): string[] {
   const seen = new Set<string>();
   return [...skills]
-    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.description < b.description ? -1 : a.description > b.description ? 1 : 0))
     .filter(s => !seen.has(s.name) && seen.add(s.name))
     .map(s => `- ${s.name}: ${s.description.split(/\s+/).filter(Boolean).join(' ')}`);
 }

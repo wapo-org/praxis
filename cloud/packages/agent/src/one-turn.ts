@@ -15,6 +15,7 @@ export class UncertainToolCall extends Error {
 
 export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
   const {store, runId, expectedTurnIndex, provider, context} = options;
+  z.number().int().nonnegative().parse(expectedTurnIndex);
   const acquired = await store.acquire(runId, expectedTurnIndex);
   if (acquired.state === 'idle') return acquired.flags;
   const {token} = acquired.claim;
@@ -50,11 +51,15 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
   const invocations = parts.map(part => {
     if (!part.callId || ids.has(part.callId)) throw new Error('Missing or duplicate tool call id');
     ids.add(part.callId);
-    return {id: part.callId, call: ToolInvocationSchema.parse({
-      tool: part.name, args: JsonValueSchema.parse(JSON.parse(part.arguments ?? '{}')),
-    })};
+    try {
+      return {id: part.callId, call: ToolInvocationSchema.parse({
+        tool: part.name, args: JsonValueSchema.parse(JSON.parse(part.arguments ?? '{}')),
+      }), invalid: false};
+    } catch {
+      return {id: part.callId, call: {tool: part.name ?? '', args: null}, invalid: true};
+    }
   });
-  for (const {id, call} of invocations) {
+  for (const {id, call, invalid} of invocations) {
     if (!await active()) return store.flags(runId);
     const claimed = await store.startCall(token, id, call);
     if (claimed.state === 'uncertain') throw new UncertainToolCall(id);
@@ -66,18 +71,20 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
       const tool = options.tools.find(candidate => candidate.spec.name === call.tool);
       let result: GateResult;
       try {
+        if (invalid) throw new ToolBoundaryError(toolError('schema', 'Malformed tool invocation.'));
         validateArguments(tool, call.args);
         result = await executeBoundary(call, {
           ...options.boundary, mode: snapshot.mode, runId, toolCallId: id, taint: {tainted},
         }, options.registry, async checked => {
           if (!await active()) throw new UncertainToolCall(id);
-          return ToolResultSchema.parse(await tool!.execute(checked.args, {
+          const result = ToolResultSchema.parse(await tool!.execute(checked.args, {
             ...context, userId: snapshot.userId, chatId: snapshot.chatId, runId,
             mode: snapshot.mode, callId: id,
             async callTool() {
               throw new ToolBoundaryError(toolError('policy-denied', 'Nested dispatch needs its own durable boundary call.'));
             },
           }));
+          return JsonValueSchema.parse(JSON.parse(JSON.stringify(result)));
         }, options.receipts?.[id]);
       } catch (error) {
         if (error instanceof UncertainToolCall || context.signal.aborted) throw error;

@@ -92,6 +92,6 @@ export async function fixture(calls = false): Promise<OneTurnOptions & {store: T
     }}],
     registry: {classify: () => ({capabilities: ['read'], decision: 'allow', untrustedSource: true})},
     boundary: {key, nowMs: () => 1, replay: {consume: async () => true}},
-    context: {signal: new AbortController().signal, elicit: async () => ({action: 'decline'}), emit: async () => {}},
+    context: {signal: new AbortController().signal, elicit: async () => ({action: 'decline', type: 'elicitation.response', elicitationId: 'request'}), emit: async () => {}},
   };
 }

@@ -59,9 +59,9 @@ it('CancelFence: stop during the model fences response persistence and tool exec
 it('CancelFence: stop after one tool prevents the next tool and the final commit', async () => {
   const f = await fixture(true);
   const r = response(true);
-  r.parts.push({...r.parts[0], callId: 'second'});
+  r.parts.push({...r.parts[0]!, callId: 'second'});
   f.provider.complete = async () => r;
-  f.tools = [{...f.tools[0], async execute() {
+  f.tools = [{...f.tools[0]!, async execute() {
     f.counts.tool++;
     f.store.stop();
     return textResult('partial');
@@ -96,7 +96,7 @@ it('PRA-76: structural taint requires an exactly bound receipt before an effect'
 });
 
 it('invalid arguments and unknown tools return actionable schema errors without dispatch', async () => {
-  for (const part of [{name: 'unknown', arguments: '{}'}, {name: 'read', arguments: '{"query":1}'}]) {
+  for (const part of [{name: 'read', arguments: '{'}, {name: 'unknown', arguments: '{}'}, {name: 'read', arguments: '{"query":1}'}]) {
     const f = await fixture(true);
     f.provider.complete = async () => ({...response(true), parts: [{type: 'toolCall', callId: 'call', ...part}]});
     await runOneTurn(f);
@@ -108,7 +108,7 @@ it('invalid arguments and unknown tools return actionable schema errors without 
 it('duplicate call identities are rejected before dispatch', async () => {
   const f = await fixture(true);
   const r = response(true);
-  r.parts.push(r.parts[0]);
+  r.parts.push(r.parts[0]!);
   f.provider.complete = async () => r;
   await expect(runOneTurn(f)).rejects.toThrow('duplicate');
   expect(f.counts.tool).toBe(0);
@@ -122,4 +122,16 @@ it('a future turn and an incomplete stream cannot advance the durable turn', asy
   };
   await expect(runOneTurn(f)).rejects.toThrow('without a completed response');
   expect(f.store.data.commits).toBe(0);
+});
+
+it('uses the landed mode decision table for confined writes and external egress', async () => {
+  for (const mode of ['ask', 'plan', 'build', 'auto'] as const) {
+    for (const external of [false, true]) {
+      const f = await fixture(true);
+      f.store.data.snapshot.mode = mode;
+      f.registry = {classify: () => ({capabilities: external ? ['external-egress'] : ['write'], decision: 'allow', untrustedSource: false})};
+      await runOneTurn(f);
+      expect(f.counts.tool).toBe(!external && (mode === 'build' || mode === 'auto') ? 1 : 0);
+    }
+  }
 });
