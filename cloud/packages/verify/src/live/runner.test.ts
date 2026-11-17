@@ -173,7 +173,7 @@ describe('redactor', () => {
 });
 
 describe('live suites', () => {
-  it.each(['credential-pool', 'openrouter'])('%s skips every auto step and leaves manual steps pending without credentials', async id => {
+  it.each(['credential-pool', 'openrouter', 'notebook'])('%s skips every auto step and leaves manual steps pending without credentials', async id => {
     const suite = await loadSuite(id);
     expect(suite.steps.every(step => step.checklist.length > 0)).toBe(true);
     const {proof} = await runSuite(suite, {env: {}, evidence: new Map(), directory: scratch()});

@@ -3,7 +3,7 @@ import {reduceSubagents} from './reducer.js';
 import {VerifiedHandoff} from './handoff.js';
 import {waitAgents} from './wait.js';
 import {nodeById} from './permissions.js';
-import {treeFixture, spawn, createRequest, workspacePort, handoff} from './test-fixtures.js';
+import {treeFixture, spawn, createRequest, workspacePort, snapshotPort, handoff} from './test-fixtures.js';
 
 it('deduplicates spawn by parent/call and rejects changed retry arguments', () => {
   const tree = spawn(treeFixture());
@@ -78,7 +78,7 @@ it('wait rejects unverified completed results and refuses stopped parent writes'
   nodeById(tree, 'child').status = 'completed';
   nodeById(tree, 'child').handoff = handoff();
   const result = await waitAgents(tree, 'root', {subagent_ids: ['child'], mode: 'all', timeout_ms: 0}, {startedAtMs: 0, nowMs: 0},
-    {...workspacePort, verifyChecks: async () => [{id: 'typecheck', status: 'failed'}]});
+    snapshotPort({verifyChecks: async () => [{id: 'typecheck', status: 'failed'}]}));
   expect(result.result.agents[0]).toMatchObject({status: 'failed', error: {code: 'schema', remediation: expect.any(String)}});
   const stopped = reduceSubagents(tree, {type: 'stop', actorId: 'root', id: 'root'});
   await expect(waitAgents(stopped, 'root', {subagent_ids: ['child'], mode: 'all', timeout_ms: 0}, {startedAtMs: 0, nowMs: 0}, workspacePort)).rejects.toThrow('late');
