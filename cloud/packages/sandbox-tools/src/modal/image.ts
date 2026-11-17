@@ -44,3 +44,6 @@ export function sandboxToolsImage(modal: ModalClient): Image {
 export function sandboxNotebookImage(modal: ModalClient): Image {
   return sandboxToolsImage(modal).dockerfileCommands(NOTEBOOK_IMAGE_COMMANDS);
 }
+
+export {sandboxBrowserImage, BROWSER_MEMORY_MIB} from './browser-image.js';
+export {browserSandboxOptions} from './browser-network.js';

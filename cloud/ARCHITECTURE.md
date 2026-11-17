@@ -158,6 +158,17 @@ and serialize access across workers, as required by PRA-19. Syntax diagnostics r
 
 ## Stateful subagent core
 
+`createSubagentHarness(port)` registers exactly the four shared tools and their boundary classifier.
+Freeze its tool specs into the turn catalog and combine its classifier with the executable tool registry.
+Its injected `SubagentHarnessPort` binds authenticated actor/tenant and stable child/message IDs,
+commits reducer state and launch/wake/kill outbox atomically, and owns durable wait deadlines and wakeups.
+PRA-114 implements that persistence port; PRA-116 supplies confinement and immutable handoff verification.
+Trusted tool metadata filters default delegation grants; explicit server grants can allow approval-capable tools,
+but every child action still passes the inherited one-turn boundary and receipts in its confined workspace.
+Authorized model capabilities and effort lists are checked before create/configure/resume without clamping.
+The harness joins adapter result taint before the next call; collaboration instructions are frozen and deterministic.
+No production persistence or sandbox adapter is implemented by this registry.
+
 `packages/agent/src/subagents` owns the pure addressed lifecycle reducer, permission narrowing,
 ordered inboxes, asynchronous cascading cancellation and verified artifact handoffs (PRA-79).
 The four wire tools and durable state schemas live in `packages/protocol/src/subagents.ts`.
@@ -171,3 +182,9 @@ failed errors in both persisted nodes and wait results. Workflow scheduling, aut
 addressing, atomic persistence and sandbox confinement
 remain adapter responsibilities under PRA-15/71/58; the current runner does not register these tools.
 PRA-75's five named subagent invariants run as fast-check properties against the reducer.
+
+### Optional sandbox browser (PRA-20)
+
+`packages/sandbox-tools/src/modal/browser-image.ts` adds Chromium and the deterministic `praxis-browser` CLI above the tools image. The isolated runtime lock pins the existing Playwright, tsx and Zod dependencies and their transitives; Playwright pins Chromium, and system dependencies resolve against the base layer's frozen Debian snapshot. Only selected CLI/evidence sources enter the image. Stagehand and a model relay are deferred per PRA-101. Non-browser sandboxes keep the tools image.
+
+The `browser` sandbox tool uses argv-only SandboxPort execution and chat-confined sessions. Its action-specific classification uses the existing approval/taint boundary; screenshots are bounded exports with verified SHA-256 proof. Browser provisioning must apply `browserSandboxOptions()` for public-only IPv4 egress and explicitly attest that restriction in the trusted tool context. `verify -- live browser` is opt-in and records installed image-directory apparent bytes and cold start with unconditional termination.

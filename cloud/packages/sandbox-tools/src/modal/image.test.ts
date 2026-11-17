@@ -51,3 +51,14 @@ describe('sandbox image', () => {
     expect(commands).toContain('WORKDIR /workspace');
   });
 });
+
+it('adds a separately locked browser runtime and Chromium without Stagehand', async () => {
+  const {sandboxBrowserImage} = await import('./browser-image.js');
+  const layer = vi.spyOn(Image.prototype, 'dockerfileCommands');
+  sandboxBrowserImage(new ModalClient({tokenId: 'unused', tokenSecret: 'unused'}));
+  const commands = layer.mock.calls.at(-1)![0].join('\n');
+  expect(commands).toContain('npm ci');
+  expect(commands).toContain('playwright install --with-deps chromium');
+  expect(commands).toContain('PLAYWRIGHT_BROWSERS_PATH=/opt/praxis-chromium');
+  expect(commands).not.toContain('stagehand');
+});
