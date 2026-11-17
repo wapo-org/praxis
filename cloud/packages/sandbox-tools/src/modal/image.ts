@@ -39,3 +39,6 @@ export function sandboxToolsImage(modal: ModalClient): Image {
     'WORKDIR /workspace',
   ]);
 }
+
+export {sandboxBrowserImage, BROWSER_MEMORY_MIB} from './browser-image.js';
+export {browserSandboxOptions} from './browser-network.js';

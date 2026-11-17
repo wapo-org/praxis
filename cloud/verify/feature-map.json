@@ -219,6 +219,10 @@
           "flows": [
             "browser-cli"
           ]
+        },
+        {
+          "command": "live",
+          "suite": "browser"
         }
       ]
     },

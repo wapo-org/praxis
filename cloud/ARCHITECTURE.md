@@ -135,3 +135,9 @@ failed errors in both persisted nodes and wait results. Workflow scheduling, aut
 addressing, atomic persistence and sandbox confinement
 remain adapter responsibilities under PRA-15/71/58; the current runner does not register these tools.
 PRA-75's five named subagent invariants run as fast-check properties against the reducer.
+
+### Optional sandbox browser (PRA-20)
+
+`packages/sandbox-tools/src/modal/browser-image.ts` adds Chromium and the deterministic `praxis-browser` CLI above the tools image. The isolated runtime lock pins the existing Playwright, tsx and Zod dependencies and their transitives; Playwright pins Chromium, and system dependencies resolve against the base layer's frozen Debian snapshot. Only selected CLI/evidence sources enter the image. Stagehand and a model relay are deferred per PRA-101. Non-browser sandboxes keep the tools image.
+
+The `browser` sandbox tool uses argv-only SandboxPort execution and chat-confined sessions. Its action-specific classification uses the existing approval/taint boundary; screenshots are bounded exports with verified SHA-256 proof. Browser provisioning must apply `browserSandboxOptions()` for public-only IPv4 egress and explicitly attest that restriction in the trusted tool context. `verify -- live browser` is opt-in and records installed image-directory apparent bytes and cold start with unconditional termination.
