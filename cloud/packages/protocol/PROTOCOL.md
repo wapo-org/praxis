@@ -93,3 +93,14 @@ when terminal, matching the one-turn harness flags. `failed` carries a `TurnFail
 failed result with every other field at its maximum still fits `TURN_RESULT_MAX_BYTES`). Child lifecycle/handoffs use
 PRA-79's durable subagent protocol; this response never embeds handoffs or messages.
 The runtime adapter is supplied by PRA-39; absent configuration returns 503.
+
+
+## Subagent tool results
+
+Spawn, resume and configure return `SubagentAddressResultSchema` (`subagent_id`).
+Send returns `SendAgentMessageResultSchema` (`subagent_id`, `message_id`); close returns
+`CloseAgentResultSchema` (`subagent_id`, `status`). Discovery and wait use their existing
+`DiscoverAgentsResultSchema` and `WaitAgentsResultSchema` payloads. All result schemas
+are strict and validate addressed IDs. Invalid tool arguments return a schema `ToolError`
+with remediation before persistence; uncertain adapter outcomes remain fenced for recovery.
+Tool grants and wait target arrays publish `uniqueItems: true` alongside runtime uniqueness checks.

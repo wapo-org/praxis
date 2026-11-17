@@ -89,7 +89,7 @@ export function mediaTypeFor(path: string): string {
 }
 
 /** Hands a workspace file to durable storage; the hash lets proofs and the user verify what was exported. */
-export async function exportFile(context: SandboxToolContext, raw: unknown) {
+export async function exportFile(context: SandboxToolContext, raw: unknown, expected?: {sha256: string; bytes: number}) {
   const input = ExportFileInputSchema.parse(raw);
   const {path, root} = await containedPath(context.port, context.root, input.path);
   assertNotInternal(root, path);
@@ -101,6 +101,7 @@ export async function exportFile(context: SandboxToolContext, raw: unknown) {
   const name = input.name ?? posix.basename(path);
   const mediaType = mediaTypeFor(name);
   const digest = sha256(bytes);
+  if (expected && (digest !== expected.sha256 || bytes.length !== expected.bytes)) fail('conflict', 'Screenshot changed before export.');
   const {ref} = await context.exports.put({name, mediaType, bytes, sha256: digest});
   return {path, name, mediaType, bytes: bytes.length, sha256: digest, ref};
 }

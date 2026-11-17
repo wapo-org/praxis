@@ -14,7 +14,7 @@ export const SUBAGENT_TOOL_NAMES = ['spawn_agent', 'message_agent', 'wait_agents
 export const SubagentIdSchema = z.string().regex(new RegExp(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,${SUBAGENT_LIMITS.ID_MAX_CHARACTERS - 1}}$`));
 export const SubagentStatusSchema = z.enum(['spawning', 'running', 'waiting', 'completed', 'failed', 'cancelling', 'cancelled']);
 export type SubagentStatus = z.infer<typeof SubagentStatusSchema>;
-const ToolNames = z.array(z.string().min(1)).max(SUBAGENT_LIMITS.TOOLS_MAX).refine(a => new Set(a).size === a.length);
+const ToolNames = z.array(z.string().min(1)).max(SUBAGENT_LIMITS.TOOLS_MAX).refine(a => new Set(a).size === a.length).meta({uniqueItems: true});
 const Configuration = {
   name: z.string().min(1).max(SUBAGENT_LIMITS.NAME_MAX_CHARACTERS).optional(), model: z.string().min(1).max(SUBAGENT_LIMITS.MODEL_MAX_CHARACTERS).optional(),
   effort: z.enum(['low', 'medium', 'high']).optional(),
@@ -36,7 +36,7 @@ export const MessageAgentSchema = z.discriminatedUnion('action', [
 ]);
 export const WaitAgentsSchema = z.object({
   subagent_ids: z.array(SubagentIdSchema).min(1).max(SUBAGENT_LIMITS.CHILDREN_MAX)
-    .refine(a => new Set(a).size === a.length),
+    .refine(a => new Set(a).size === a.length).meta({uniqueItems: true}),
   mode: z.enum(['any', 'all']), timeout_ms: z.number().int().min(0).max(SUBAGENT_LIMITS.WAIT_TIMEOUT_MS_MAX),
 }).strict();
 export type WaitAgents = z.infer<typeof WaitAgentsSchema>;
@@ -47,6 +47,7 @@ export const SubagentToolCallSchema = z.discriminatedUnion('tool', [
   z.object({tool: z.literal('wait_agents'), args: WaitAgentsSchema}).strict(),
   z.object({tool: z.literal('close_agent'), args: CloseAgentSchema}).strict(),
 ]);
+export type SubagentToolCall = z.infer<typeof SubagentToolCallSchema>;
 export const ArtifactPathSchema = z.string().min(1).max(SUBAGENT_LIMITS.ARTIFACT_PATH_MAX_CHARACTERS).refine(path =>
   !path.startsWith('/') && !path.includes('\\') && !path.includes('\0') && !path.includes('%') &&
   path.split('/').every(p => p !== '' && p !== '.' && p !== '..'), 'Expected an isolated relative artifact path');
@@ -116,3 +117,16 @@ export const DiscoverAgentsResultSchema = z.object({
 }).strict();
 export type DiscoverAgentsResult = z.infer<typeof DiscoverAgentsResultSchema>;
 export type WaitAgentsResult = z.infer<typeof WaitAgentsResultSchema>;
+
+// Spawn, resume and configure acknowledge the same stable address.
+export const SubagentAddressResultSchema = z.object({subagent_id: SubagentIdSchema}).strict();
+export const SendAgentMessageResultSchema = SubagentAddressResultSchema.extend({message_id: SubagentIdSchema}).strict();
+export const CloseAgentResultSchema = SubagentAddressResultSchema.extend({status: SubagentStatusSchema}).strict();
+export const SubagentToolResultSchema = z.union([
+  SubagentAddressResultSchema, SendAgentMessageResultSchema, CloseAgentResultSchema,
+  DiscoverAgentsResultSchema, WaitAgentsResultSchema,
+]);
+export type SubagentAddressResult = z.infer<typeof SubagentAddressResultSchema>;
+export type SendAgentMessageResult = z.infer<typeof SendAgentMessageResultSchema>;
+export type CloseAgentResult = z.infer<typeof CloseAgentResultSchema>;
+export type SubagentToolResult = z.infer<typeof SubagentToolResultSchema>;
