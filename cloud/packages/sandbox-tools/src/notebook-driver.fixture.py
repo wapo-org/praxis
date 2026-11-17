@@ -1,6 +1,7 @@
 import contextlib
 import fcntl
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -11,8 +12,9 @@ import tracemalloc
 import unittest
 from unittest.mock import patch
 
-DRIVER = Path(sys.argv.pop(1)).read_text()
-MODULE = {"__file__": "driver.py"}
+DRIVER_PATH = Path(sys.argv.pop(1))
+DRIVER = DRIVER_PATH.read_text()
+MODULE = {"__file__": str(DRIVER_PATH)}
 with patch.object(sys, "argv", ["driver.py", "submit", "/unused"]):
     exec(compile(DRIVER.rsplit('\nif sys.argv[1]', 1)[0], 'driver.py', 'exec'), MODULE)
 
@@ -67,6 +69,55 @@ class NotebookDriverTests(unittest.TestCase):
         self.assertEqual(result, dict(status="ok", restarted=True))
         spawn.assert_called_once()
         self.assertFalse((self.state / "request.json").exists())
+
+    def test_child_acquires_daemon_lock_before_parent_resumes(self):
+        module = self.state / "jupyter_client.py"
+        module.write_text("""
+import fcntl
+from pathlib import Path
+original_flock = fcntl.flock
+
+def acknowledge_ownership(file, flags):
+    original_flock(file, flags)
+    Path(__file__).with_name('ownership-acquired').touch()
+
+fcntl.flock = acknowledge_ownership
+
+class KernelManager:
+    def __init__(self, **kwargs): pass
+    def start_kernel(self, **kwargs): pass
+    def blocking_client(self): return self
+    def start_channels(self): pass
+    def wait_for_ready(self, **kwargs): pass
+    def is_alive(self): return True
+    def execute(self, *args, **kwargs): return 'cell'
+    def get_shell_msg(self, **kwargs): return dict(parent_header=dict(msg_id='cell'))
+    def get_iopub_msg(self, **kwargs):
+        return dict(parent_header=dict(msg_id='cell'), header=dict(msg_type='status'), content=dict(execution_state='idle'))
+""")
+        processes = []
+        real_popen = subprocess.Popen
+
+        def launch(*args, **kwargs):
+            child = real_popen(*args, **kwargs, env={**os.environ, "PYTHONPATH": str(self.state)})
+            processes.append(child)
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                self.assertIsNone(child.poll(), "Daemon exited before parent completed Popen")
+                if (self.state / "ownership-acquired").exists():
+                    return child
+                time.sleep(0.001)
+            self.fail("Child did not acquire daemon ownership before parent resumed")
+        try:
+            with patch.object(subprocess, "Popen", side_effect=launch):
+                result = MODULE["submit_request"]({**self.request(), "timeout_ms": 1000})
+            self.assertEqual(result["status"], "ok", result)
+            self.assertEqual(len(processes), 1)
+            self.assertFalse((self.state / "request.json").exists())
+        finally:
+            for child in processes:
+                child.kill()
+                child.wait(timeout=2)
 
     def test_conflicting_calls_remove_private_request(self):
         for held in ("client.lock", "daemon.lock"):

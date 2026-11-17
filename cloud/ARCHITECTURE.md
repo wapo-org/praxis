@@ -112,7 +112,7 @@ Run `npm run specs` for models and `npm test` for implementation properties.
 `notebook_run` (PRA-105) uses a detached Python driver, one Jupyter kernel per sandbox, and file mailboxes
 with OS locks across API workers. Timeouts interrupt the kernel; kernel restarts report "variables were lost".
 PNG and HTML outputs pass through `export_file`; arbitrary notebook code requires an approval receipt.
-The opt-in `packages/sandbox-tools/scripts/modal-notebook-check.ts` composes a separate Jupyter image layer
+The opt-in `PRAXIS_MODAL_NOTEBOOK_CHECK=1 npm run verify -- live notebook` suite records standard proof and composes a Jupyter layer
 (`ipykernel` 6.29.5, `jupyter-client` 8.6.3) on PRA-51 via `sandboxNotebookImage()`; no HTTP server or new npm dependency is needed.
 
 ## Stateful subagent core

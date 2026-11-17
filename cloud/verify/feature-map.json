@@ -221,6 +221,20 @@
           ]
         }
       ]
+    },
+    {
+      "id": "sandbox.notebook",
+      "title": "Persistent Python kernel, bounded text, rich artifacts and interrupt recovery",
+      "issue": "PRA-105",
+      "surfaces": [
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "live",
+          "suite": "notebook"
+        }
+      ]
     }
   ]
 }

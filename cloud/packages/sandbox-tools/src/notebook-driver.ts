@@ -5,7 +5,6 @@ export const NOTEBOOK_DRIVER = String.raw`
 import base64
 import fcntl
 import json
-import os
 from pathlib import Path
 import queue
 import subprocess
@@ -192,11 +191,11 @@ def submit_request(request):
                 if alive:
                     return error("conflict", "A notebook cell is still recovering; retry shortly.")
                 inbox.unlink()
-            if not alive:
-                # No daemon holds its lifetime lock, so the mailbox belongs to an abandoned cell.
-                subprocess.Popen([sys.executable, __file__, "daemon", str(STATE)],
-                                 start_new_session=True, stdin=subprocess.DEVNULL,
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if not alive:
+            # The client lock excludes other submitters; release the ownership probe before the child acquires it.
+            subprocess.Popen([sys.executable, __file__, "daemon", str(STATE)],
+                             start_new_session=True, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         request["id"] = str(uuid.uuid4())
         response = STATE / (request["id"] + ".json")
         atomic(inbox, request)
