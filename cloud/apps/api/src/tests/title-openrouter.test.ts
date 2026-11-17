@@ -4,12 +4,16 @@ import {createServer,type Server} from 'node:http';
 import {randomBytes} from 'node:crypto';
 import {createPraxisApp} from '../server.js';
 import {createLocalAdapters} from '../local-memory.js';
-import {createOpenRouterProvider} from '@praxis/agent';
+import {collectResponse,createOpenRouterProvider} from '@praxis/agent';
 import {CapabilitiesSchema,StartRunSchema} from '@praxis/protocol';
 import {makeTitle} from '../attachments.js';
 import {titleModels,validateTitle} from '../title-model.js';
 const servers:Server[]=[];
 afterEach(async()=>{await Promise.all(servers.splice(0).map(s=>new Promise<void>(resolve=>{s.close(()=>resolve());s.closeAllConnections();})));});
+/** OpenRouter's streamed completion: one content chunk carrying usage, then the end marker. */
+function sseCompletion(content:string,usage:object):string {
+ return `data: ${JSON.stringify({choices:[{index:0,delta:{content},finish_reason:'stop'}],usage})}\n\ndata: [DONE]\n\n`;
+}
 const priced=(id:string,extra:object={})=>({id,pricing:{prompt:'0.000001',completion:'0.000002'},context_length:128000,architecture:{output_modalities:['text']},...extra});
 async function fixture(mode:'success'|'429'|'empty'|'timeout'|'slow'|'error'='success'){
  const requests:any[]=[];
@@ -21,7 +25,9 @@ async function fixture(mode:'success'|'429'|'empty'|'timeout'|'slow'|'error'='su
   if(body.model.endsWith(':free')||(mode==='429'&&body.model==='vendor/mini-a')){res.writeHead(429,{'content-type':'application/json'});res.end(JSON.stringify({error:{message:'sk-or-SYNTHETIC-KEY must never enter titleMetric'}}));return;}
   if(mode==='timeout'&&body.model==='vendor/mini-a'){return;} // closed by the client's abort
   if(mode==='slow')await new Promise(r=>setTimeout(r,3300));
-  res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{content:(body.model==='vendor/reasoning'||mode==='empty'&&body.model==='vendor/mini-a')?'':'Shell Command File Listing'},finish_reason:'stop'}],usage:{prompt_tokens:25,completion_tokens:6}}));
+  const content=(body.model==='vendor/reasoning'||mode==='empty'&&body.model==='vendor/mini-a')?'':'Shell Command File Listing';
+  res.setHeader('content-type','text/event-stream');
+  res.end(sseCompletion(content,{prompt_tokens:25,completion_tokens:6}));
  });servers.push(server);await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
  const port=(server.address() as {port:number}).port;
  const fetcher:typeof fetch=(input,init)=>fetch('http://127.0.0.1:'+port+new URL(String(input)).pathname,init);
@@ -34,13 +40,13 @@ async function fixture(mode:'success'|'429'|'empty'|'timeout'|'slow'|'error'='su
  return {service,req,chat,requests,title,metric,provider: createOpenRouterProvider({apiKey:SealedSecret.of('sk-or-SYNTHETIC-KEY'),capabilities:CapabilitiesSchema.parse({})},fetcher)};
 }
 it('confirms old free selection yields 429 and reasoning-only completion is empty; new metadata excludes both and image-only models',async()=>{
- const f=await fixture();const input={model:'vendor/free:free',system:'Title',messages:[],tools:[],capabilities:CapabilitiesSchema.parse({}),maxTokens:20,webSearch:false};
- await expect(f.provider.complete!(input,AbortSignal.timeout(3000))).rejects.toMatchObject({kind:'retryable'});
- const reasoning=await f.provider.complete!({...input,model:'vendor/reasoning'},AbortSignal.timeout(3000));expect(reasoning.parts[0]?.text).toBe('');
+ const f=await fixture();const input={model:'vendor/free:free',system:'Title',messages:[],tools:[],capabilities:CapabilitiesSchema.parse({}),maxTokens:20};
+ await expect(collectResponse(f.provider,input,AbortSignal.timeout(3000))).rejects.toMatchObject({kind:'rateLimited'});
+ const reasoning=await collectResponse(f.provider,{...input,model:'vendor/reasoning'},AbortSignal.timeout(3000));expect(reasoning.parts.filter(p=>p.type==='text')).toEqual([]);
  const selected=titleModels(await f.service.models!.catalog.list());expect(selected.map(m=>m.id)).toEqual(['vendor/mini-a','vendor/mini-b']);
  expect(await f.title()).toBe('Shell Command File Listing');
  const reqBody=f.requests.at(-1);
- expect(reqBody).toMatchObject({model:'vendor/mini-a',stream:false,max_tokens:32,temperature:0});
+ expect(reqBody).toMatchObject({model:'vendor/mini-a',stream:true,max_tokens:32,temperature:0,usage:{include:true}});
  expect(reqBody.messages[0].content).toContain('<message>...</message>');
  expect(reqBody.messages[0].content).toContain('Examples:');
  expect(reqBody.messages[1].content).toContain('<message>\nRun a shell command that lists files\n</message>');
@@ -50,8 +56,8 @@ it.each(['429','empty','timeout'] as const)('records %s safely and tries exactly
  const metric=await f.metric();expect(metric.attempts[0].reason).toBe(mode==='429'?'rate_limited':mode);expect(metric.outcome).toBe('success');expect(JSON.stringify(metric)).not.toContain('sk-or-SYNTHETIC-KEY');
 },15000);
 it('a queued completion beyond the old 3-second timeout succeeds under the new deadline',async()=>{
- const f=await fixture('slow');const input={model:'vendor/mini-a',system:'Title',messages:[],tools:[],capabilities:CapabilitiesSchema.parse({}),maxTokens:20,webSearch:false};
- await expect(f.provider.complete!(input,AbortSignal.timeout(3000))).rejects.toBeDefined();expect(await f.title()).toBe('Shell Command File Listing');
+ const f=await fixture('slow');const input={model:'vendor/mini-a',system:'Title',messages:[],tools:[],capabilities:CapabilitiesSchema.parse({}),maxTokens:20};
+ await expect(collectResponse(f.provider,input,AbortSignal.timeout(3000))).rejects.toBeDefined();expect(await f.title()).toBe('Shell Command File Listing');
 },15000);
 it.each(['custom','same'] as const)('starts and finishes the run before title resolution, uses defer, and preserves %s rename',async rename=>{
  const f=await fixture();let release!:(value:string)=>void;const pending=new Promise<string>(r=>release=r);let titleStarted=false,runFinished=false;const deferred:Promise<unknown>[]=[];
@@ -128,8 +134,8 @@ it.each([
    }
    let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);
    const content=secondGood&&body.model==='nvidia/llama-3.1-nemotron-nano-8b-v1'?goodOutput:badOutput;
-   res.setHeader('content-type','application/json');
-   res.end(JSON.stringify({choices:[{message:{content},finish_reason:'stop'}],usage:{prompt_tokens:20,completion_tokens:8}}));
+   res.setHeader('content-type','text/event-stream');
+   res.end(sseCompletion(content,{prompt_tokens:20,completion_tokens:8}));
   });
   servers.push(server);await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
   const port=(server.address() as {port:number}).port;
