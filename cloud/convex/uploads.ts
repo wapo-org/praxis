@@ -1,4 +1,4 @@
-import {blobOwnerTag} from './blob-owner.js';
+import {blobOwnerTag} from './blobOwner.js';
 import {v} from 'convex/values';
 import {makeFunctionReference, type GenericActionCtx, type GenericDataModel} from 'convex/server';
 import {internalMutation} from './functions.js';

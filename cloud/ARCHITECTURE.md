@@ -2,7 +2,7 @@
 
 ## Components and boundaries
 
-Praxis Cloud is an npm workspace running on Node 24 in Vercel Fluid Compute. `apps/api` uses Hono and one function entry; it validates JSON using `packages/protocol` Zod schemas. Both React and Swift call this API; neither talks directly to Convex or Upstash. The web and iOS apps paint an existing local replica before requesting `/v1/bootstrap` and resumable user change events. Resource IDs are opaque strings, dates ISO-8601 UTC, and events plain discriminated JSON.
+Praxis Cloud is an npm workspace running on Node 24 in Vercel Fluid Compute. `apps/api` uses Hono and one function entry; it validates JSON using `packages/protocol` Zod schemas. React signs in directly to Convex Auth v2; existing application data still uses the API until PRA-35. Swift auth moves in PRA-37. The web and iOS apps paint an existing local replica before requesting `/v1/bootstrap` and resumable user change events. Resource IDs are opaque strings, dates ISO-8601 UTC, and events plain discriminated JSON.
 
 `packages/agent` is a platform-independent TypeScript state machine. It imports protocol types but no Vercel, Convex or Upstash modules. Storage, KV, ordered events, clock, fetch, model provider and tools are injected ports. `packages/sync` holds portable canonical serialization and the hash-tree experiment. `packages/types` has no dependencies and holds the two type-level guards: `SealedSecret` (key material that prints as `[redacted]` everywhere except `reveal()`; the OpenRouter key and every credential-pool value travel as one) and the branded `TenantId` with `deriveTenantId` (HMAC-SHA256; integrations adopt it in PRA-36). Convex functions and schema live in `cloud/convex/`; server-side adapter modules live under `apps/api/src/adapters/`. The Swift runtime is read-only reference. Its append-only transcript, mode policy and capability gates remain invariants.
 
@@ -106,3 +106,22 @@ Tool-boundary dependencies: `shell-quote` **1.12.0**, pinned, dependency-free pu
 Pinned dev dependencies: `@informalsystems/quint` runs protocol simulations without
 Java; `fast-check` generates checkpoint, API dedup/truncation and failover cases.
 Run `npm run specs` for models and `npm test` for implementation properties.
+
+
+## Convex Auth v2 (PRA-34)
+
+Web sign-in uses the core, password, email, Google, Apple and Resend components.
+The deployment owns credentials, JWT signing and session rotation; the React provider owns browser secrets and refresh.
+Required deployment variables are declared in `convex/convex.config.ts`; missing values prevent deployment.
+Only `SITE_URL` is allowed as the OAuth return origin (including the future iOS HTTPS handoff page).
+Email validation and recovery land on `/validate-email` and `/reset-password`.
+Verified emails shared across methods are rejected rather than automatically linked.
+OAuth-first email collisions reject password verification transactionally; pending signup rows are not authenticated identities.
+PRA-64 owns deletion of those pending rows, `oauthEmails`, component credentials and the legacy API adapter.
+Legacy Better Auth RPCs are isolated in `convex/legacyAuth.ts` until PRA-64; the web never calls them.
+PRA-35 must connect the new session identity to application data boundaries; account deletion remains unavailable until PRA-64.
+
+Dependencies:
+- `@convex-dev/auth@2.0.0`: component authentication and browser session lifecycle (latest dist-tag confirmed v2).
+- `@convex-dev/resend@0.2.10`: documented email delivery component for verification and recovery.
+- `convex@1.50.0`: component environment declarations and deployment-signed JWT support.

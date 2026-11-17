@@ -1,0 +1,62 @@
+// @vitest-environment jsdom
+import React, { act } from 'react';
+import { createRoot } from 'react-dom/client';
+import { beforeEach, expect, it, vi } from 'vitest';
+import { EmailScreens, ResetPassword, ValidateEmail } from './EmailScreens';
+
+const hooks = vi.hoisted(() => ({
+  login: vi.fn(), signup: vi.fn(), recovery: vi.fn(), reset: vi.fn(),
+  validateState: { status: 'error', userError: { error: 'MISSING_SECRET' } },
+}));
+vi.mock('@convex-dev/auth/methods/email-password/react', () => ({
+  useSignInWithEmailPassword: () => ({ signIn: hooks.login, pending: false }),
+  useSignUpWithEmailPassword: () => ({ signUp: hooks.signup, pending: false }),
+  useStartPasswordRecovery: () => ({ startPasswordRecovery: hooks.recovery, pending: false }),
+  useCompleteSignUpWithEmailPassword: () => hooks.validateState,
+  useCompletePasswordRecovery: () => ({ status: 'ready', completePasswordRecovery: hooks.reset, pending: false }),
+}));
+vi.mock('@convex-dev/auth/methods/google/react', () => ({
+  useSignInWithGoogle: () => ({ signIn: vi.fn() }), useOauth: () => ({ flowError: null }),
+}));
+vi.mock('@convex-dev/auth/methods/apple/react', () => ({
+  useSignInWithApple: () => ({ signIn: vi.fn() }),
+}));
+beforeEach(() => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.clearAllMocks();
+});
+it('uses v2 hooks for login, signup, and browser-bound recovery', async () => {
+  hooks.login.mockResolvedValue({ status: 'error', userError: { error: 'INVALID_CREDENTIALS' } });
+  hooks.signup.mockResolvedValue({ success: true });
+  hooks.recovery.mockResolvedValue({ success: true });
+  const node = document.createElement('div');
+  const root = createRoot(node);
+  await act(async () => root.render(<EmailScreens />));
+  async function submit() {
+    await act(async () => node.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  }
+  await submit();
+  expect(hooks.login).toHaveBeenCalled();
+  expect(node.querySelector('[role=alert]')?.textContent).toContain('incorrect');
+  await act(async () => [...node.querySelectorAll('nav button')].find(b => b.textContent?.includes('Create'))!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+  await submit();
+  expect(hooks.signup).toHaveBeenCalled();
+  expect(node.querySelector('[role=status]')?.textContent).toContain('this browser');
+  await act(async () => [...node.querySelectorAll('nav button')].find(b => b.textContent?.includes('Forgot'))!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+  expect(node.querySelector('input[type=password]')).toBeNull();
+  await submit();
+  expect(hooks.recovery).toHaveBeenCalled();
+  await act(async () => root.unmount());
+});
+it('explains wrong-browser validation and submits recovery through its ready state', async () => {
+  hooks.reset.mockResolvedValue({ status: 'error', userError: { error: 'PASSWORD_TOO_SHORT', minimumLength: 10 } });
+  const node = document.createElement('div');
+  const root = createRoot(node);
+  await act(async () => root.render(<ValidateEmail code="invalid" />));
+  expect(node.querySelector('[role=alert]')?.textContent).toContain('browser that requested');
+  await act(async () => root.render(<ResetPassword code="reset" />));
+  await act(async () => node.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(hooks.reset).toHaveBeenCalledWith({ newPassword: '' });
+  expect(node.querySelector('[role=alert]')?.textContent).toContain('10 characters');
+  await act(async () => root.unmount());
+});

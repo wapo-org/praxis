@@ -202,3 +202,20 @@ Do not require path-filtered Apple/Modal checks globally: unrelated PRs never
 create them. Require `SonarCloud / scan` only after the token and analysis method
 are configured; require the SonarCloud quality-gate check only after the new-code
 gate is green. There is no merge or deployment step in CI.
+
+
+## Convex Auth v2 web (PRA-34)
+
+Install with `cd cloud && npm install`, then run `CONVEX_AGENT_MODE=anonymous npx convex dev` for local development.
+Set deployment variables with `npx convex env set NAME` (enter secret values interactively):
+`RESEND_API_KEY`, `SENDER_EMAIL`, `SENDER_NAME`, `SITE_URL`,
+`AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET`,
+`AUTH_APPLE_CLIENT_ID`, `AUTH_APPLE_TEAM_ID`, `AUTH_APPLE_KEY_ID`, `AUTH_APPLE_PRIVATE_KEY`.
+All are required; use a Resend-verified sender and the actual web origin for SITE_URL.
+Set web `VITE_CONVEX_URL` to the deployment's client URL; no provider credentials belong in Vite.
+Google's registered redirect URI is `<CONVEX_SITE_URL>/oauth/google/callback`.
+Apple's Services ID return URL is `<CONVEX_SITE_URL>/oauth/apple/callback`; Apple requires public HTTPS.
+The HTTPS page for the future iOS handoff must share the SITE_URL origin.
+No cloud deployment is part of PRA-34 verification.
+Component tests use the upstream fake Resend component, retaining the real password WASM and auth code.
+Run them with `npx vitest run tests/auth-v2.test.ts`.

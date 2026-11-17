@@ -29,7 +29,7 @@
       "apps/web/src/components/chat/useSpeechInput.ts": 1,
       "apps/web/src/components/chat/useStreamAnchor.ts": 5,
       "apps/web/src/components/lab/StreamLabPage.tsx": 1,
-      "apps/web/src/components/screens/AccountGate.tsx": 3,
+      "apps/web/src/components/screens/AccountGate.tsx": 2,
       "apps/web/src/components/screens/ConnectorRegistry.tsx": 2,
       "apps/web/src/components/screens/ConnectorsScreen.tsx": 1,
       "apps/web/src/components/screens/ConsentPopover.tsx": 3,
@@ -62,7 +62,6 @@
       "scripts/comment-sweep.mjs": 710
     },
     "R4.convex-v-any": {
-      "convex/auth.ts": 1,
       "convex/schema.ts": 3,
       "convex/store.ts": 2,
       "convex/tools.ts": 1
@@ -94,7 +93,6 @@
       "apps/web/e2e/n2.pw.ts": 7,
       "apps/web/e2e/saved-values.pw.ts": 6,
       "convex/account.ts": 4,
-      "convex/auth.ts": 1,
       "convex/functions.ts": 4,
       "packages/glass/src/dropdown/dropdown.pw.ts": 3,
       "scripts/deploy.test.ts": 9

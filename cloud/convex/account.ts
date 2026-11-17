@@ -1,4 +1,4 @@
-import { blobOwnerTag } from './blob-owner.js';
+import { blobOwnerTag } from './blobOwner.js';
 import { v } from 'convex/values';
 import { mutation, query } from './functions.js';
 import { requireServer } from './access.js';
