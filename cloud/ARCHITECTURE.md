@@ -60,9 +60,11 @@ directly while it is a Hono app (child_process lives in the local port and the b
 `packages/spend` (dependency-free) is the pre-reservation ledger for platform-paid calls only (Exa, Firecrawl,
 Modal; OpenRouter is the user's key). `reserve` holds a worst-case estimate (integer micro-USD from the named
 estimators) or returns `budget_exhausted`; `settle` charges the billed amount and refunds the rest; `release`
-returns a cancelled call's reservation; every key is idempotent and TTL-expired reservations are reclaimed.
-Each operation maps to one Convex mutation over the user's account row, so parallel sub-agents are serialized.
-fast-check properties check PRA-75's `AtomicSpendCap` and `ChargeOnce` on the real code.
+returns a call the provider never billed; every key is idempotent and charged at most once.
+TTL expiry only marks an orphan: its amount stays held until reconciliation settles or releases it.
+This is the pure core. PRA-22 still has to persist it, with each operation as one Convex mutation over the user's
+account row so parallel sub-agents are serialized; nothing calls it in production yet. fast-check properties check
+PRA-75's `AtomicSpendCap` and `ChargeOnce` on interleaved, serially applied operations, TTL expiry included.
 
 iOS OpenRouter PKCE: `ASWebAuthenticationSession` opens OpenRouter with `callback_url` set to the hosted
 `/settings/openrouter/app-callback`, which needs no session and only forwards a well-formed `code` to

@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import {describe, expect, it} from 'vitest';
-import {availableMicroUsd, openLedger, reclaimExpired, release, reserve, reservedMicroUsd, settle, type Ledger, type PlatformService} from './ledger.js';
+import {availableMicroUsd, expireOrphans, openLedger, release, reserve, reservedMicroUsd, settle, type Ledger, type PlatformService} from './ledger.js';
 
 /** Same scale idea as PRA-75 `security.qnt` (BUDGET_UNITS_MAX 10, CALL_COST_UNITS_MAX 4), in micro-USD. */
 const ALLOWANCE_MICRO_USD = 10_000;
@@ -27,10 +27,21 @@ const call = (overrun: boolean) => fc.record({
   repeats: fc.integer({min: 1, max: 3}),
 });
 
+/** Time between commits; gaps up to most of a TTL, so many schedules settle calls after their reservation expired. */
+const GAP_MAX_MS = 700;
+
+/** One committed mutation: an agent's next op, after a time gap, sometimes preceded by the orphan cron. */
+interface Tick {
+  agent: number;
+  gapMs: number;
+  cron: boolean;
+}
+
 /** Parallel sub-agents, each a sequence of calls, plus an interleaving: the order mutations commit in Convex. */
 const workload = (overrun: boolean) => fc.array(fc.array(call(overrun), {minLength: 1, maxLength: 5}), {minLength: 2, maxLength: 6}).chain(agents => {
   const steps = agents.reduce((sum, calls) => sum + calls.length * 4, 0);
-  return fc.tuple(fc.constant(agents), fc.array(fc.nat({max: agents.length - 1}), {minLength: steps, maxLength: steps}));
+  const tick = fc.record({agent: fc.nat({max: agents.length - 1}), gapMs: fc.integer({min: 1, max: GAP_MAX_MS}), cron: fc.boolean()});
+  return fc.tuple(fc.constant(agents), fc.array(tick, {minLength: steps, maxLength: steps}));
 });
 
 type Op = (ledger: Ledger, nowMs: number) => Ledger;
@@ -55,14 +66,18 @@ function agentOps(agent: number, calls: readonly Call[]): Op[][] {
 }
 
 /** Applies ops one at a time in the generated order: each op is one serializable Convex mutation. */
-function interleave(agents: readonly (readonly Call[])[], order: readonly number[], check: (ledger: Ledger) => void): Ledger {
+function interleave(agents: readonly (readonly Call[])[], order: readonly Tick[], check: (ledger: Ledger) => void): Ledger {
   const queues = agents.map((calls, agent) => agentOps(agent, calls).flat());
   let ledger = openLedger(ALLOWANCE_MICRO_USD);
   let nowMs = 0;
-  for (const pick of order) {
-    const queue = queues[pick]!.length ? queues[pick]! : queues.find(q => q.length);
+  for (const tick of order) {
+    const queue = queues[tick.agent]!.length ? queues[tick.agent]! : queues.find(q => q.length);
     if (!queue) break;
-    nowMs += 1;
+    nowMs += tick.gapMs;
+    if (tick.cron) {
+      ledger = expireOrphans(ledger, nowMs).ledger;
+      check(ledger);
+    }
     ledger = queue.shift()!(ledger, nowMs);
     check(ledger);
   }
@@ -76,7 +91,7 @@ function chargeOnce(ledger: Ledger): void {
 }
 
 describe('PRA-75 security.qnt invariants on the real ledger', () => {
-  it('AtomicSpendCap: parallel sub-agents never commit past the allowance when actual <= reserved', () => {
+  it('AtomicSpendCap: parallel sub-agents never commit past the allowance when actual <= reserved, TTL expiry included', () => {
     fc.assert(fc.property(workload(false), ([agents, order]) => {
       interleave(agents, order, ledger => {
         expect(ledger.spentMicroUsd + reservedMicroUsd(ledger)).toBeLessThanOrEqual(ALLOWANCE_MICRO_USD);
@@ -108,18 +123,17 @@ describe('PRA-75 security.qnt invariants on the real ledger', () => {
     }), {numRuns: RUNS});
   });
 
-  it('expired reservations are reclaimed, and only those', () => {
+  it('TTL expiry marks exactly the due reservations as orphans and frees no money', () => {
     fc.assert(fc.property(fc.array(fc.record({estimate: fc.integer({min: 1, max: 2_000}), at: fc.nat({max: 3_000})}), {maxLength: 8}), fc.nat({max: 6_000}), (calls, nowMs) => {
       let ledger = openLedger(ALLOWANCE_MICRO_USD);
       calls.forEach((spec, index) => {
         ledger = reserve(ledger, {key: `k${index}`, service: 'modal', estimateMicroUsd: spec.estimate, nowMs: spec.at, ttlMs: TTL_MS}).ledger;
       });
-      const before = availableMicroUsd(ledger);
-      const due = Object.values(ledger.reservations).filter(reservation => reservation.expiresAtMs <= nowMs);
-      const {ledger: after, outcome} = reclaimExpired(ledger, nowMs);
-      expect(outcome.reclaimed.sort()).toEqual(due.map(reservation => reservation.key).sort());
-      expect(Object.values(after.reservations).every(reservation => reservation.expiresAtMs > nowMs)).toBe(true);
-      expect(availableMicroUsd(after)).toBe(Math.min(ALLOWANCE_MICRO_USD, before + due.reduce((sum, reservation) => sum + reservation.estimateMicroUsd, 0)));
+      const due = Object.values(ledger.reservations).filter(reservation => !reservation.orphaned && reservation.expiresAtMs <= nowMs);
+      const {ledger: after, outcome} = expireOrphans(ledger, nowMs);
+      expect(outcome.orphaned.sort()).toEqual(due.map(reservation => reservation.key).sort());
+      expect(Object.values(after.reservations).every(reservation => reservation.orphaned || reservation.expiresAtMs > nowMs)).toBe(true);
+      expect(availableMicroUsd(after)).toBe(availableMicroUsd(ledger));
       expect(after.spentMicroUsd).toBe(ledger.spentMicroUsd);
     }), {numRuns: RUNS});
   });

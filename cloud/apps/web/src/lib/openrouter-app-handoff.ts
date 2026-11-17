@@ -1,17 +1,16 @@
-/** iOS PKCE (PRA-81): OpenRouter only redirects to https, so this page forwards the code to the app that holds the verifier. */
-export const OPENROUTER_APP_CALLBACK_PATH = '/settings/openrouter/app-callback';
-/** Registered in PraxisChat's Info.plist; ASWebAuthenticationSession listens for this scheme. */
-export const OPENROUTER_APP_REDIRECT = 'praxis-app://openrouter/callback';
-/** OpenRouter codes are opaque tokens; anything else is not forwarded, so the page cannot be used to inject a URL. */
-const CODE = /^[A-Za-z0-9._~-]{8,512}$/;
+import { OPENROUTER_APP_CALLBACK_PATH, OPENROUTER_APP_REDIRECT, OpenRouterAuthCodeSchema, type OpenRouterAppHandoffError } from '@praxis/protocol';
 
-/** The app URL for a callback query: the code when it is well formed, otherwise an error the app shows. */
+/** The app URL for a callback query: the code when it parses under the shared schema, otherwise an error the app shows. */
 export function appHandoffUrl(search: string): string {
   const params = new URLSearchParams(search);
   const target = new URL(OPENROUTER_APP_REDIRECT);
-  const code = params.get('code');
-  if (code && CODE.test(code)) target.searchParams.set('code', code);
-  else target.searchParams.set('error', params.has('code') ? 'invalid_code' : 'missing_code');
+  const code = OpenRouterAuthCodeSchema.safeParse(params.get('code'));
+  if (code.success) {
+    target.searchParams.set('code', code.data);
+  } else {
+    const error: OpenRouterAppHandoffError = params.has('code') ? 'invalid_code' : 'missing_code';
+    target.searchParams.set('error', error);
+  }
   return target.toString();
 }
 
