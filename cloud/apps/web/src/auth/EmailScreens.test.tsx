@@ -5,9 +5,11 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { EmailScreens, ResetPassword, ValidateEmail } from './EmailScreens';
 
 const hooks = vi.hoisted(() => ({
-  oauth: vi.fn(), login: vi.fn(), signup: vi.fn(), recovery: vi.fn(), reset: vi.fn(),
+  signedIn: false, signOut: vi.fn(async () => {}), oauth: vi.fn(), login: vi.fn(), signup: vi.fn(), recovery: vi.fn(), reset: vi.fn(),
   validateState: { status: 'error', userError: { error: 'MISSING_SECRET' } },
 }));
+vi.mock('convex/react', () => ({ useConvexAuth: () => ({ isAuthenticated: hooks.signedIn }) }));
+vi.mock('@convex-dev/auth/react', () => ({ useAuthActions: () => ({ signOut: hooks.signOut }) }));
 vi.mock('@convex-dev/auth/methods/email-password/react', () => ({
   useSignInWithEmailPassword: () => ({ signIn: hooks.login, pending: false }),
   useSignUpWithEmailPassword: () => ({ signUp: hooks.signup, pending: false }),
@@ -24,6 +26,7 @@ vi.mock('@convex-dev/auth/methods/apple/react', () => ({
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.clearAllMocks();
+  hooks.signedIn = false;
 });
 it('uses v2 hooks for login, signup, and browser-bound recovery', async () => {
   hooks.login.mockResolvedValue({ status: 'error', userError: { error: 'INVALID_CREDENTIALS' } });
@@ -72,5 +75,23 @@ it.each(['Google', 'Apple'])('re-enables sign-in and shows a resolved %s initiat
   expect([...node.querySelectorAll('button')].every(b => !b.disabled)).toBe(true);
   await act(async () => button.click());
   expect(hooks.oauth).toHaveBeenCalledTimes(2);
+  await act(async () => root.unmount());
+});
+
+it('finishes the existing session before adopting a recovered session', async () => {
+  hooks.signedIn = true;
+  let signedOut!: () => void;
+  hooks.signOut.mockImplementationOnce(() => new Promise<void>(resolve => { signedOut = resolve; }));
+  hooks.reset.mockResolvedValue({ status: 'error', userError: { error: 'PASSWORD_TOO_SHORT', minimumLength: 10 } });
+  const node = document.createElement('div');
+  const root = createRoot(node);
+  await act(async () => root.render(<ResetPassword code="reset" />));
+  await act(async () => node.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(hooks.signOut).toHaveBeenCalledOnce();
+  expect(hooks.reset).not.toHaveBeenCalled();
+  expect(node.querySelector('button')!.disabled).toBe(true);
+  await act(async () => { signedOut(); });
+  expect(hooks.reset).toHaveBeenCalledOnce();
+  expect(node.querySelector('[role=alert]')?.textContent).toContain('10 characters');
   await act(async () => root.unmount());
 });

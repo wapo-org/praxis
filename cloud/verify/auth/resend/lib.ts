@@ -7,9 +7,9 @@ export const sendEmail = mutationGeneric({
     html: v.optional(v.string()), text: v.optional(v.string()),
   },
   returns: v.string(),
-  handler: async (ctx, args) => ctx.db.insert('emails', { text: args.text }),
+  handler: async (ctx, args) => ctx.db.insert('emails', { to: args.to, text: args.text }),
 });
 export const latest = queryGeneric({
-  args: {},
-  handler: async ctx => (await ctx.db.query('emails').order('desc').first())?.text ?? null,
+  args: { email: v.string() },
+  handler: async (ctx, args) => (await ctx.db.query('emails').order('desc').collect()).find(row => row.to.includes(args.email))?.text ?? null,
 });

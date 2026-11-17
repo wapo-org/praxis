@@ -213,6 +213,10 @@ Set deployment variables with `npx convex env set NAME` (enter secret values int
 `AUTH_APPLE_CLIENT_ID`, `AUTH_APPLE_TEAM_ID`, `AUTH_APPLE_KEY_ID`, `AUTH_APPLE_PRIVATE_KEY`.
 All are required; use a Resend-verified sender and the actual web origin for SITE_URL.
 Set web `VITE_CONVEX_URL` to the deployment's client URL; no provider credentials belong in Vite.
+For the local API, set `PRAXIS_LOCAL_CONVEX_URL` to the same loopback HTTP deployment:
+`PRAXIS_LOCAL_CONVEX_URL=http://127.0.0.1:3210 npm run dev:local`.
+Without this API variable, the legacy local API accepts dev tokens rather than Convex sessions.
+The managed browser verification stack sets both URLs automatically; the local API variable is not a production setting.
 Google's registered redirect URI is `<CONVEX_SITE_URL>/oauth/google/callback`.
 Apple's Services ID return URL is `<CONVEX_SITE_URL>/oauth/apple/callback`; Apple requires public HTTPS.
 The HTTPS page for the future iOS handoff must share the SITE_URL origin.

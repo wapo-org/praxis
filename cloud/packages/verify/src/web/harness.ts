@@ -22,6 +22,7 @@ export interface FlowResult {
 export interface HarnessOptions {
   base: string;
   api: string;
+  convexUrl: string;
   seed: number;
   headed: boolean;
   directory: string;
@@ -78,7 +79,7 @@ async function runFlow(browser: Browser, flow: WebFlow, options: HarnessOptions)
   watch(page, issues);
   let error: string | undefined;
   try {
-    await withTimeout(flow.run({page, base: options.base, api: options.api, request, seed: options.seed, note: line => notes.push(line)}), FLOW_TIMEOUT_MS, flow.id);
+    await withTimeout(flow.run({page, base: options.base, api: options.api, convexUrl: options.convexUrl, request, seed: options.seed, note: line => notes.push(line)}), FLOW_TIMEOUT_MS, flow.id);
   } catch (caught) {
     error = caught instanceof Error ? caught.message.split('\n')[0] : String(caught);
   }

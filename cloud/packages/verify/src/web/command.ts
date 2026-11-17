@@ -45,7 +45,9 @@ export async function runWeb(options: WebOptions, print: (line: string) => void 
     stack = await startLocalStack(options.ports, directory);
   }
   try {
-    const results = await runFlows(flows, {base: stack.base, api: stack.api, seed: options.seed, headed: options.headed, directory}, result => {
+    const convexUrl = stack.convexUrl ?? process.env.PW_CONVEX_URL;
+    if (!convexUrl) throw new Error('Existing browser stacks require PW_CONVEX_URL');
+    const results = await runFlows(flows, {base: stack.base, api: stack.api, convexUrl, seed: options.seed, headed: options.headed, directory}, result => {
       if (!options.json) print(flowLine(result));
     });
     const report: WebReport = {type: 'verify.web', runId, gitSha: gitState().sha, ok: results.every(result => result.ok), base: stack.base, api: stack.api, directory, flows: results};

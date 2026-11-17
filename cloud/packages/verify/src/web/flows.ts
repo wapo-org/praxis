@@ -28,8 +28,8 @@ const loadApp: WebFlow = {
   title: 'Signed-out shell, Convex Auth sign-in, empty chat with a usable composer',
   default: true,
   allow: [],
-  async run({page, base}) {
-    await signIn(page, base);
+  async run({page, convexUrl, base}) {
+    await signIn(page, base, convexUrl);
     await expect(page.getByRole('heading', {level: 1})).toBeVisible();
     await expect(composer(page)).toBeEditable();
   },
@@ -40,8 +40,8 @@ const settingsModels: WebFlow = {
   title: 'Settings → Models shows the OpenRouter card, not connected',
   default: true,
   allow: [],
-  async run({page, base}) {
-    await signIn(page, base);
+  async run({page, convexUrl, base}) {
+    await signIn(page, base, convexUrl);
     await page.getByTestId('nav-settings-button').click();
     await page.getByRole('navigation', {name: 'Settings sections'}).getByRole('button', {name: 'Models', exact: true}).click();
     await expect(page.getByTestId('openrouter-disconnected')).toBeVisible();
@@ -55,8 +55,8 @@ const modelSearch: WebFlow = {
   title: 'Composer model list opens and its search narrows to the scripted models',
   default: true,
   allow: [],
-  async run({page, base}) {
-    await signIn(page, base);
+  async run({page, convexUrl, base}) {
+    await signIn(page, base, convexUrl);
     await page.getByRole('button', {name: 'Open attachments and controls'}).click();
     await page.getByTestId('tray-model-picker-trigger').click();
     const list = page.getByRole('listbox', {name: 'Models'});
@@ -73,8 +73,8 @@ const scriptedChat: WebFlow = {
   title: 'Send a message on the scripted model and see the streamed reply',
   default: true,
   allow: [],
-  async run({page, base, note}) {
-    await signIn(page, base);
+  async run({page, convexUrl, base, note}) {
+    await signIn(page, base, convexUrl);
     const text = `Verify ${Date.now().toString(36)}`;
     await composer(page).fill(text);
     await page.getByTestId('composer-send-button').click();
@@ -95,8 +95,8 @@ const apiResilience: WebFlow = {
     {kind: 'response', pattern: /^\/v1\/connectors$/, status: 404, reason: 'the flow stubs a missing connectors route'},
     {kind: 'response', pattern: /^\/v1\/bootstrap$/, status: 401, reason: 'the flow stubs an expired session'},
   ],
-  async run({page, base, api, request, note}) {
-    await signIn(page, base);
+  async run({page, convexUrl, base, api, request, note}) {
+    await signIn(page, base, convexUrl);
     await page.route('**/v1/connectors', route => route.fulfill({status: 404, body: '{}'}));
     const unavailable = await page.evaluate(async path => {
       const {apiClient} = (await import(path)) as ApiModule;

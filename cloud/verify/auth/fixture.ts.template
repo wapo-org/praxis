@@ -1,6 +1,7 @@
+import { v } from 'convex/values';
 import { query } from './_generated/server.js';
 import { components } from './_generated/api.js';
 export const latestEmail = query({
-  args: {},
-  handler: ctx => ctx.runQuery(components.resend.lib.latest, {}),
+  args: { email: v.string() },
+  handler: (ctx, args) => ctx.runQuery(components.resend.lib.latest, args),
 });

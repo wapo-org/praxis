@@ -6,7 +6,7 @@ import { DEFAULT_API_PORT, DEFAULT_WEB_PORT } from '../../../packages/verify/src
 
 export default async function setup() {
   if (process.env.PW_BASE_URL) {
-    if (!process.env.PW_CONVEX_URL) throw new Error('Existing browser stacks require PW_CONVEX_URL and the verification fixture account');
+    if (!process.env.PW_CONVEX_URL) throw new Error('Existing browser stacks require PW_CONVEX_URL and the isolated verification auth deployment');
     return;
   }
   const directory = await mkdtemp(join(tmpdir(), 'praxis-browser-'));

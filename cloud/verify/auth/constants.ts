@@ -1,5 +1,4 @@
 export const VERIFY_AUTH = {
-  email: 'browser-verification@example.test',
   password: 'browser mango zebra telescope orchard',
   resendKey: 'local-test-only',
   senderEmail: 'auth@example.test',

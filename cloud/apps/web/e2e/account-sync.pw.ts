@@ -1,8 +1,8 @@
-import { signIn } from './sign-in';
+import { signIn, createTestAccount } from './sign-in';
 import { latestEmailLink } from './test-mail';
 import { test, expect, type Page } from '@playwright/test';
-const open = async (page: Page) => {
-  await signIn(page);
+const open = async (page: Page, account: Awaited<ReturnType<typeof createTestAccount>>) => {
+  await signIn(page, '/', account);
   await page.evaluate(async () => {
     // @ts-expect-error Vite source module.
     (window as any).__api = (await import('/src/lib/api.ts')).apiClient;
@@ -10,7 +10,9 @@ const open = async (page: Page) => {
     (window as any).__replica = (await import('/src/lib/idb.ts')).readReplicaSync;
   });
 };
-const openApi = async (page: Page) => { await page.evaluate(async () => {
+const openApi = async (page: Page) => {
+  await page.getByTestId('chat-top-bar').waitFor();
+  await page.evaluate(async () => {
   // @ts-expect-error Vite source module.
   (window as any).__api = (await import('/src/lib/api.ts')).apiClient;
   // @ts-expect-error Vite source module.
@@ -22,7 +24,8 @@ test('two devices converge chats, offline edits, settings, live messages and sto
   const a = await browser.newContext({ baseURL: testInfo.project.use.baseURL }); const b = await browser.newContext({ baseURL: testInfo.project.use.baseURL });
   const one = await a.newPage(); const two = await b.newPage();
   try {
-    await open(one); await open(two);
+    const account = await createTestAccount(process.env.PW_CONVEX_URL!);
+    await open(one, account); await open(two, account);
     const title = `Sync ${Date.now()}`;
     const chat = await action(one, 'createChat', { title });
     await expect.poll(async () => (await chats(two)).find((c: any) => c.id === chat.id)?.title).toBe(title);
@@ -91,7 +94,7 @@ test('email signup and recovery links return to the chat screen', async ({ page 
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Open the link in this browser');
-  await page.goto(await latestEmailLink());
+  await page.goto(await latestEmailLink(email));
   await expect(page).toHaveURL(/\/$/);
   await page.getByTestId('chat-top-bar').waitFor();
   await page.goto('/settings/account');
@@ -100,7 +103,7 @@ test('email signup and recovery links return to the chat screen', async ({ page 
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByRole('button', { name: 'Send recovery link', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Open the link in this browser');
-  await page.goto(await latestEmailLink());
+  await page.goto(await latestEmailLink(email));
   await page.getByLabel('New password', { exact: true }).fill(password + 'new');
   await page.getByRole('button', { name: 'Change password', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
@@ -127,4 +130,21 @@ test('phone sign-in fits without scrolling at rest', async ({ page }) => {
     const overflow = await page.evaluate(() => Math.max(document.documentElement.scrollHeight - innerHeight, document.querySelector('main')!.scrollHeight - document.querySelector('main')!.clientHeight));
     expect(overflow, screen).toBeLessThanOrEqual(0);
   }
+});
+
+test('a signed-in session cannot bypass an uncompleted recovery link', async ({ page }) => {
+  const account = await createTestAccount(process.env.PW_CONVEX_URL!);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Forgot password?', exact: true }).click();
+  await page.getByLabel('Email', { exact: true }).fill(account.email);
+  await page.getByRole('button', { name: 'Send recovery link', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Open the link in this browser');
+  const link = await latestEmailLink(account.email);
+  await signIn(page, '/', account);
+  await page.goto(link);
+  await expect(page.getByLabel('New password', { exact: true })).toBeVisible();
+  await page.getByLabel('New password', { exact: true }).fill(account.password + 'new');
+  await page.getByRole('button', { name: 'Change password', exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.getByTestId('chat-top-bar').waitFor();
 });

@@ -50,8 +50,29 @@ export interface ApiClientConfig {
 export class ApiTransport {
   onUnauthorized?: () => void;
   tokenProvider?: () => Promise<string | null>;
+  // Cookie clients start unbound; a closed verified session requires an explicit owner before dispatch can resume.
+  private sessionIdentity: string | null | undefined;
+  private sessionController = new AbortController();
+
+  getSessionSignal(): AbortSignal {
+    return this.sessionController.signal;
+  }
+
+  setSessionIdentity(userId: string | null): void {
+    if (userId !== null && userId === this.sessionIdentity && !this.sessionController.signal.aborted) return;
+    this.sessionController.abort();
+    this.sessionIdentity = userId;
+    if (userId !== null) this.sessionController = new AbortController();
+  }
+
   async freshToken(): Promise<string> {
-    if (this.tokenProvider) this.bearerToken = await this.tokenProvider() ?? '';
+    const signal = this.getSessionSignal();
+    signal.throwIfAborted();
+    if (this.tokenProvider) {
+      const token = await this.tokenProvider();
+      signal.throwIfAborted();
+      this.bearerToken = token ?? '';
+    }
     return this.bearerToken;
   }
   private baseUrl: string;
@@ -111,7 +132,11 @@ export class ApiTransport {
     path: string,
     init?: RequestInit & { headers?: Record<string, string> },
   ): Promise<T> {
+    const sessionSignal = this.getSessionSignal();
+    const signal = init?.signal ? AbortSignal.any([sessionSignal, init.signal]) : sessionSignal;
+    signal.throwIfAborted();
     await this.freshToken();
+    signal.throwIfAborted();
     const headers: Record<string, string> = {
       ...(init?.body && typeof init.body === 'string'
         ? { 'Content-Type': 'application/json' }
@@ -123,8 +148,10 @@ export class ApiTransport {
       ...init,
       credentials: 'include',
       headers,
+      signal,
     });
 
+    signal.throwIfAborted();
     if (res.status === 401) this.onUnauthorized?.();
     if (!res.ok) {
       let code = 'http_error';
@@ -145,7 +172,9 @@ export class ApiTransport {
       throw new PraxisApiError(res.status, code, message, requestId);
     }
 
-    return (await res.json()) as T;
+    const result = await res.json() as T;
+    signal.throwIfAborted();
+    return result;
   }
 
 }

@@ -1,4 +1,7 @@
 import React from 'react';
+import { Navigate } from 'react-router-dom';
+import { useConvexAuth } from 'convex/react';
+import { useAuthActions } from '@convex-dev/auth/react';
 import { GlassChip } from '@praxis/glass';
 import {
   useCompleteSignUpWithEmailPassword, useCompletePasswordRecovery,
@@ -73,21 +76,39 @@ function LinkStatus({ state }: { state: { status: 'loading' | 'complete' } | { s
 }
 export function ValidateEmail({ code }: { code: string }) {
   const state = useCompleteSignUpWithEmailPassword(api.auth, { emailCode: code });
+  if (state.status === 'complete') return <Navigate to={AUTH_ROUTES.home} replace />;
   return <AuthFrame><LinkStatus state={state} /></AuthFrame>;
 }
 export function ResetPassword({ code }: { code: string }) {
+  const { isAuthenticated } = useConvexAuth();
+  const { signOut } = useAuthActions();
+  const [submitting, setSubmitting] = React.useState(false);
   const state = useCompletePasswordRecovery(api.auth, { emailCode: code });
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState('');
+  if (state.status === 'complete') return <Navigate to={AUTH_ROUTES.home} replace />;
   if (state.status !== 'ready') return <AuthFrame><LinkStatus state={state} /></AuthFrame>;
+  async function complete() {
+    if (state.status !== 'ready') return;
+    setSubmitting(true);
+    setError('');
+    try {
+      // Recovery replaces credentials; finish the current session before the hook adopts the recovered session.
+      if (isAuthenticated) await signOut();
+      const result = await state.completePasswordRecovery({ newPassword: password });
+      if ('userError' in result) setError(authError(result.userError));
+    } catch {
+      setError(AUTH_COPY.unknown);
+    } finally {
+      setSubmitting(false);
+    }
+  }
   return <AuthFrame><form onSubmit={e => {
     e.preventDefault();
-    void state.completePasswordRecovery({ newPassword: password }).then(result => {
-      if ('userError' in result) setError(authError(result.userError));
-    });
+    void complete();
   }}>
     <label className={styles.field}>New password<input type="password" autoComplete="new-password" required value={password} onChange={e => setPassword(e.target.value)} /></label>
-    <GlassChip type="submit" className={authStyles.button} disabled={state.pending}>Change password</GlassChip>
+    <GlassChip type="submit" className={authStyles.button} disabled={state.pending || submitting}>Change password</GlassChip>
     {error && <p role="alert">{error}</p>}
   </form></AuthFrame>;
 }

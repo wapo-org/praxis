@@ -58,8 +58,8 @@ export const fuzzChatFlow: WebFlow = {
   title: 'Seeded random send / stop / reload / new / switch with a usable composer after each step',
   default: false,
   allow: [],
-  async run({page, base, seed, note}) {
-    await signIn(page, base);
+  async run({page, convexUrl, base, seed, note}) {
+    await signIn(page, base, convexUrl);
     const plan = actionPlan(seed);
     note(`seed ${seed}: ${plan.join(' ')}`);
     for (const [index, action] of plan.entries()) {
