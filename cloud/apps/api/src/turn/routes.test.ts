@@ -6,7 +6,7 @@ import {describe, expect, it, vi} from 'vitest';
 import fc from 'fast-check';
 import {
  TURN_PATH, TURN_SIGNATURE_HEADER, TURN_TIMESTAMP_HEADER, TURN_CLOCK_SKEW_MS,
- TURN_BODY_MAX_BYTES, TurnRequestSchema, TurnResultSchema, TURN_SUBAGENTS_MAX,
+ TURN_BODY_MAX_BYTES, TurnRequestSchema, TurnResultSchema, SUBAGENT_LIMITS,
 } from '@praxis/protocol';
 import {runOneTurn} from '@praxis/agent';
 import {fixture} from '../../../../packages/agent/src/one-turn-fixture.js';
@@ -58,8 +58,16 @@ describe('turn contract', () => {
    {...flags, done: true}, {...flags, status: 'completed'}, {...flags, message: 'private'},
    {...flags, subagents: ['same', 'same']},
    {...flags, subagents: ['\u0000'.repeat(200)]},
-   {...flags, subagents: Array.from({length: TURN_SUBAGENTS_MAX + 1}, (_, i) => String(i))},
+   {...flags, subagents: Array.from({length: SUBAGENT_LIMITS.CHILDREN_MAX + 1}, (_, i) => String(i))},
   ]) expect(TurnResultSchema.safeParse(value).success).toBe(false);
+ });
+ it('uses PRA-79 child ID syntax and bounds for compact scheduler references', () => {
+  const subagents = Array.from({length: SUBAGENT_LIMITS.CHILDREN_MAX}, (_, index) =>
+   String(index) + 'a'.repeat(SUBAGENT_LIMITS.ID_MAX_CHARACTERS - 1));
+  expect(TurnResultSchema.parse({...flags, subagents}).subagents).toEqual(subagents);
+  for (const id of ['child/path', 'child.id', 'a'.repeat(SUBAGENT_LIMITS.ID_MAX_CHARACTERS + 1)]) {
+   expect(TurnResultSchema.safeParse({...flags, subagents: [id]}).success).toBe(false);
+  }
  });
  it('validates required current and optional rotation keys', () => {
   expect(() => readTurnKeys({})).toThrow(TURN_CURRENT_KEY_ENV);

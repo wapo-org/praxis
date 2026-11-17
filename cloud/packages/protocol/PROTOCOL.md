@@ -84,7 +84,9 @@ are not accepted. See `cloud/DEPLOY.md` for canonical signing and replay rules.
 The request carries signed `userId`, `chatId`, `runId`,
 `expectedTurnIndex` and an optional structured approval/elicitation decision.
 Results carry `turnIndex`, `done`, `status` and `subagents` (unique addressed
-child IDs, maximum four). Status is ready/busy while active and stopped/completed
+child IDs using PRA-79 `SubagentIdSchema` and
+`SUBAGENT_LIMITS.CHILDREN_MAX`, currently four). Status is ready/busy while active
+and stopped/completed
 when terminal, matching the one-turn harness flags. Child lifecycle/handoffs use
 PRA-79's durable subagent protocol; this response never embeds handoffs or messages.
 The runtime adapter is supplied by PRA-39; absent configuration returns 503.
