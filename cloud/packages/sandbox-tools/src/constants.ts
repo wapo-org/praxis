@@ -21,3 +21,5 @@ export const JOB_POLL_INTERVAL_MS = 500;
 export const DIAGNOSTICS_BUDGET_MS = 20_000;
 export const DIAGNOSTICS_PROBLEMS_MAX = 50;
 export const GIT_TIMEOUT_MS = 30_000;
+
+export const NOTEBOOK_ARTIFACTS_MAX = 32;

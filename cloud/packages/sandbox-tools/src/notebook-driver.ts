@@ -1,4 +1,4 @@
-import {EXPORT_FILE_MAX_BYTES, OUTPUT_MAX_BYTES} from './constants.js';
+import {EXPORT_FILE_MAX_BYTES, NOTEBOOK_ARTIFACTS_MAX, OUTPUT_MAX_BYTES} from './constants.js';
 
 /** File mailboxes survive API workers; the daemon alone owns the kernel and its interrupt channel. */
 export const NOTEBOOK_DRIVER = String.raw`
@@ -19,7 +19,7 @@ STARTUP_SECONDS = 15
 INTERRUPT_SECONDS = 5
 TEXT_MAX_BYTES = ${OUTPUT_MAX_BYTES}
 ARTIFACT_MAX_BYTES = ${EXPORT_FILE_MAX_BYTES}
-ARTIFACTS_MAX = 32
+ARTIFACTS_MAX = ${NOTEBOOK_ARTIFACTS_MAX}
 LOST = "variables were lost"
 
 
@@ -33,6 +33,26 @@ def error(code, message):
     return dict(status=code, message=message)
 
 
+class TextBuffer:
+    def __init__(self):
+        self.head = b""
+        self.tail = b""
+        self.total = 0
+
+    def append(self, chunk):
+        encoded = chunk.encode()
+        self.total += len(encoded)
+        half = TEXT_MAX_BYTES // 2
+        take = min(half - len(self.head), len(encoded))
+        self.head += encoded[:take]
+        self.tail = (self.tail + encoded[take:])[-half:]
+
+    def render(self):
+        omitted = self.total - len(self.head) - len(self.tail)
+        middle = ("\n… " + str(omitted) + " bytes omitted …\n") if omitted > 0 else ""
+        return self.head.decode(errors="replace") + middle + self.tail.decode(errors="replace")
+
+
 def run_cell(km, client, request, restarted):
     root = request["root"]
     # Changing directories is a separate silent cell so user code retains normal notebook syntax.
@@ -43,9 +63,7 @@ def run_cell(km, client, request, restarted):
     deadline = time.monotonic() + request["timeout_ms"] / 1000
     interrupted = False
     output_budget = False
-    text = []
-    text_bytes = 0
-    truncated = False
+    text = TextBuffer()
     artifacts = []
     failed = False
     artifact_dir = Path(root) / ("notebook-" + request["id"])
@@ -99,19 +117,15 @@ def run_cell(km, client, request, restarted):
                     output.write(payload)
                 artifacts.append(str(path))
         if chunk:
-            encoded = chunk.encode()
-            available = max(0, TEXT_MAX_BYTES - text_bytes)
-            text.append(encoded[:available].decode(errors="replace"))
-            text_bytes += min(available, len(encoded))
-            truncated = truncated or len(encoded) > available
+            text.append(chunk)
         if kind == "status" and content.get("execution_state") == "idle":
             if output_budget:
                 return error("budget", "Notebook rich output exceeded the artifact budget; reduce output.")
             if interrupted:
                 return error("timeout", "Cell interrupted at its timeout; kernel and variables remain available.")
             if failed:
-                return error("execution", "".join(text))
-            return dict(status="ok", text="".join(text), truncated=truncated,
+                return error("execution", text.render())
+            return dict(status="ok", text=text.render(), truncated=text.total > TEXT_MAX_BYTES,
                         artifacts=artifacts, restarted=restarted,
                         message=LOST if restarted else "")
 
@@ -161,34 +175,50 @@ def daemon():
                 km.shutdown_kernel(now=True)
 
 
-def submit():
-    STATE.mkdir(parents=True, exist_ok=True)
+def submit_request(request):
     with (STATE / "client.lock").open("w") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            print(json.dumps(error("conflict", "Another notebook cell is running; retry when it finishes.")))
-            return
+            return error("conflict", "Another notebook cell is running; retry when it finishes.")
         inbox = STATE / "request.json"
-        if inbox.exists():
-            print(json.dumps(error("conflict", "A notebook cell is still recovering; retry shortly.")))
-            return
-        request = json.loads(Path(sys.argv[3]).read_text())
-        Path(sys.argv[3]).unlink()
+        with (STATE / "daemon.lock").open("w") as ownership:
+            try:
+                fcntl.flock(ownership, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                alive = False
+            except BlockingIOError:
+                alive = True
+            if inbox.exists():
+                if alive:
+                    return error("conflict", "A notebook cell is still recovering; retry shortly.")
+                inbox.unlink()
+            if not alive:
+                # No daemon holds its lifetime lock, so the mailbox belongs to an abandoned cell.
+                subprocess.Popen([sys.executable, __file__, "daemon", str(STATE)],
+                                 start_new_session=True, stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         request["id"] = str(uuid.uuid4())
         response = STATE / (request["id"] + ".json")
-        subprocess.Popen([sys.executable, __file__, "daemon", str(STATE)],
-                         start_new_session=True, stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         atomic(inbox, request)
         deadline = time.monotonic() + request["timeout_ms"] / 1000 + STARTUP_SECONDS + INTERRUPT_SECONDS
         while time.monotonic() < deadline:
             if response.exists():
-                print(response.read_text())
+                result = json.loads(response.read_text())
                 response.unlink()
-                return
+                return result
             time.sleep(POLL_SECONDS)
-        print(json.dumps(error("upstream", "Notebook driver unavailable; retry or recreate the sandbox.")))
+        return error("upstream", "Notebook driver unavailable; retry or recreate the sandbox.")
+
+
+def submit():
+    STATE.mkdir(parents=True, exist_ok=True)
+    source = Path(sys.argv[3])
+    try:
+        request = json.loads(source.read_text())
+        result = submit_request(request)
+        print(json.dumps(result))
+    finally:
+        source.unlink(missing_ok=True)
 
 
 if sys.argv[1] == "daemon":

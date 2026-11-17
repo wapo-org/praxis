@@ -23,7 +23,7 @@ export const SANDBOX_TOOLS: readonly SandboxToolDefinition[] = [
   {
     name: 'notebook_run',
     description: 'Execute Python on the sandbox kernel; retains variables and exports PNG/HTML artifacts.',
-    input: NotebookInputSchema, capabilities: ['exec'], untrustedSource: true, run: notebookRun,
+    input: NotebookInputSchema, capabilities: ['exec', 'read'], untrustedSource: true, run: notebookRun,
   },
   {
     name: 'shell',

@@ -3,7 +3,7 @@ import {z} from 'zod';
 import {ToolBoundaryError, toolError} from '@praxis/agent';
 import {NOTEBOOK_DRIVER} from '../notebook-driver.js';
 import {capOutput, containedPath, fail, stripAnsi} from '../support.js';
-import {SHELL_TIMEOUT_DEFAULT_MS, SHELL_TIMEOUT_MAX_MS} from '../constants.js';
+import {NOTEBOOK_ARTIFACTS_MAX, SHELL_TIMEOUT_DEFAULT_MS, SHELL_TIMEOUT_MAX_MS} from '../constants.js';
 import type {SandboxToolContext} from './context.js';
 import {exportFile} from './files.js';
 
@@ -11,8 +11,6 @@ export const NOTEBOOK_STATE_DIR = '/var/lib/praxis/notebook';
 export const NOTEBOOK_DRIVER_PATH = `${NOTEBOOK_STATE_DIR}/driver.py`;
 export const NOTEBOOK_OVERHEAD_MS = 25_000;
 export const NOTEBOOK_CODE_MAX = 1_048_576;
-export const NOTEBOOK_ARTIFACTS_MAX = 32;
-export const NOTEBOOK_LOST_MESSAGE = 'variables were lost';
 const NOTEBOOK_INSTALL_AND_RUN = 'mv "$1" "$2" && exec python3 "$2" submit "$3" "$4"';
 const NOTEBOOK_TIMEOUT_REMEDIATION = 'Reduce the cell work or increase timeout_ms; the interrupted kernel retains its variables.';
 
@@ -48,7 +46,7 @@ export async function notebookRun(context: SandboxToolContext, raw: unknown) {
     for (const path of reply.artifacts) artifacts.push(await exportFile(context, {path}));
     const text = capOutput(stripAnsi(reply.text));
     return {text: text.text, truncated: reply.truncated || text.truncated, artifacts, restarted: reply.restarted,
-      message: reply.restarted ? NOTEBOOK_LOST_MESSAGE : reply.message};
+      message: reply.message};
   } catch (error) {
     if (error instanceof ToolBoundaryError) throw error;
     if (error instanceof z.ZodError) fail('schema', 'Invalid notebook input or driver response; check code and timeout_ms.');

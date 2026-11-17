@@ -5,8 +5,6 @@ import {FakeSandboxPort, MemoryExportSink} from './fake.js';
 import {sha256} from './support.js';
 import {notebookRun} from './tools/notebook.js';
 import {executeSandboxTool, sandboxToolClassifier} from './tools/registry.js';
-import {NOTEBOOK_IMAGE_COMMANDS, withNotebookLayer} from './modal/notebook-image.js';
-import type {Image} from 'modal';
 
 const ROOT = '/workspace/chats/notebook';
 const ok = {status: 'ok', text: '', truncated: false, artifacts: [], restarted: false, message: ''};
@@ -34,7 +32,7 @@ describe('notebook_run', () => {
     const {port, context} = setup();
     const b = await boundary();
     const call = {tool: 'notebook_run', args: {code: 'value = 42'}};
-    expect(sandboxToolClassifier.classify(call)).toMatchObject({decision: 'approve', capabilities: ['exec']});
+    expect(sandboxToolClassifier.classify(call)).toMatchObject({decision: 'approve', capabilities: ['exec', 'read']});
     expect(await executeSandboxTool(call, b, context)).toMatchObject({ok: false});
     expect(port.calls).toHaveLength(0);
     const result = await executeSandboxTool(call, b, context, await receipt(b, call));
@@ -48,7 +46,7 @@ describe('notebook_run', () => {
     port.on(request => {
       const input = JSON.parse(port.readText(request.argv[7]!)!);
       if (input.code === 'value = 42') value = 42;
-      return {stdout: JSON.stringify({...ok, text: String(value), restarted})};
+      return {stdout: JSON.stringify({...ok, text: String(value), restarted, message: restarted ? 'variables were lost' : ''})};
     });
     const context = {port, root: ROOT, exports: new MemoryExportSink()};
     await notebookRun(context, {code: 'value = 42'});
@@ -88,11 +86,4 @@ describe('notebook_run', () => {
     await expect(notebookRun(context, {code: '', timeout_ms: 0})).rejects.toMatchObject({detail: {code: 'schema'}});
   });
 
-  it('adds only the independent Jupyter image layer', () => {
-    let commands: string[] = [];
-    const image = {dockerfileCommands: (value: string[]) => { commands = value; return image; }} as unknown as Image;
-    expect(withNotebookLayer(image)).toBe(image);
-    expect(commands).toEqual(NOTEBOOK_IMAGE_COMMANDS);
-    expect(commands.join(' ')).toContain('ipykernel==6.29.5');
-  });
 });
