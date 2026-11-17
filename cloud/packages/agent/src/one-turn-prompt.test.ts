@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {SUBAGENT_LIMITS} from '@praxis/protocol';
 import {expect, it} from 'vitest';
 import {assembleTurnRequest, ONE_TURN_SYSTEM, COLLABORATION_INSTRUCTIONS} from './one-turn-prompt.js';
 import {snapshot, testTool} from './one-turn-fixture.js';
@@ -34,6 +35,7 @@ it('collaboration instructions and shared tool bytes are deterministic and idemp
   expect(assembleTurnRequest(first)).toEqual(first);
   expect(first.system).toBe(`${ONE_TURN_SYSTEM}\n\n${COLLABORATION_INSTRUCTIONS}`);
   expect(createHash('sha256').update(COLLABORATION_INSTRUCTIONS).digest('hex')).toBe('05cebc8897d0941549281dd333934fbf08c02afa8a8621d258bf52debb51bccd');
+  expect(COLLABORATION_INSTRUCTIONS).toContain(`0..${SUBAGENT_LIMITS.VISIBILITY_DEPTH_MAX}`);
   expect(Buffer.byteLength(COLLABORATION_INSTRUCTIONS)).toBeLessThan(800);
   expect(assembleTurnRequest(snapshot().request).system).toBe(ONE_TURN_SYSTEM);
 });

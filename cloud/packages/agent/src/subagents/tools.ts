@@ -1,12 +1,13 @@
 import {z} from 'zod';
 import {
   SUBAGENT_TOOL_NAMES, SpawnAgentSchema, MessageAgentSchema, WaitAgentsSchema, CloseAgentSchema,
-  SubagentToolCallSchema, JsonObjectSchema, JsonValueSchema, WaitAgentsResultSchema,
-  type JsonValue, type SubagentTree, type WaitAgents,
+  SubagentToolCallSchema, JsonObjectSchema, WaitAgentsResultSchema,
+  SubagentAddressResultSchema, SendAgentMessageResultSchema, CloseAgentResultSchema, DiscoverAgentsResultSchema,
+  type SubagentToolCall, type SubagentToolResult, type SubagentTree, type WaitAgents,
 } from '@praxis/protocol';
 import type {AgentTool, ToolContext} from '../types.js';
 import type {ToolClassification, ToolClassifier} from '../boundary/policy.js';
-import {ToolBoundaryError} from '../boundary/errors.js';
+import {ToolBoundaryError, toolError} from '../boundary/errors.js';
 import {canSee, controls, discoverAgents, joinSubagentTaint, narrowTools, nodeById, rejectSubagent, requireActive} from './permissions.js';
 import {reduceSubagents} from './reducer.js';
 
@@ -36,7 +37,7 @@ export interface SubagentTransaction {
   models: readonly DelegationModel[];
   tools: readonly DelegationTool[];
 }
-export type SubagentTransition = {tree: SubagentTree; result: JsonValue; tainted: boolean};
+export type SubagentTransition = {tree: SubagentTree; result: SubagentToolResult | null; tainted: boolean};
 // The adapter binds actor/tenant, fences retries, and commits state plus outbox before returning any result.
 export interface SubagentHarnessPort {
   transact(context: ToolContext, transition: (state: SubagentTransaction) => SubagentTransition): Promise<SubagentTransition>;
@@ -58,14 +59,27 @@ function validateModel(state: SubagentTransaction, model: string, effort: string
     rejectSubagent(`Effort ${effort} is unsupported for ${model}; choose one of: ${configured.supportedEfforts.join(', ')}.`);
   }
 }
-function transition(state: SubagentTransaction, raw: unknown, context: ToolContext): SubagentTransition {
-  const call = SubagentToolCallSchema.parse(raw);
+function resultSchema(call: SubagentToolCall): z.ZodType<SubagentToolResult> {
+  switch (call.tool) {
+    case 'spawn_agent': return SubagentAddressResultSchema;
+    case 'message_agent':
+      switch (call.args.action) {
+        case 'send': return SendAgentMessageResultSchema;
+        case 'configure': return SubagentAddressResultSchema;
+        case 'discover': return DiscoverAgentsResultSchema;
+      }
+      break;
+    case 'close_agent': return CloseAgentResultSchema;
+    case 'wait_agents': return WaitAgentsResultSchema;
+  }
+}
+function transition(state: SubagentTransaction, call: SubagentToolCall, context: ToolContext): SubagentTransition {
   let tree = structuredClone(state.tree);
   const actor = nodeById(tree, state.actorId);
   if (call.tool !== 'close_agent') requireActive(actor);
   if (!actor.permissions.tools.includes(call.tool)) rejectSubagent('Collaboration tool is outside the actor grant.');
   joinSubagentTaint(tree, actor.id, {tainted: context.tainted ?? false});
-  let result: JsonValue;
+  let result: SubagentToolResult | null;
   if (call.tool === 'spawn_agent') {
     const request = call.args;
     if (request.action === 'create') {
@@ -90,7 +104,7 @@ function transition(state: SubagentTransaction, raw: unknown, context: ToolConte
     if (request.action === 'discover') {
       const discovered = discoverAgents(tree, actor.id);
       tree = discovered.tree;
-      result = JsonValueSchema.parse(discovered.result);
+      result = discovered.result;
     } else if (request.action === 'send') {
       tree = reduceSubagents(tree, {type: 'send', actorId: actor.id, id: request.subagent_id,
         messageId: state.messageId, text: request.message});
@@ -112,7 +126,7 @@ function transition(state: SubagentTransaction, raw: unknown, context: ToolConte
     }
     result = null;
   }
-  return {tree, result, tainted: nodeById(tree, actor.id).tainted};
+  return {tree, result: result === null ? null : resultSchema(call).parse(result), tainted: nodeById(tree, actor.id).tainted};
 }
 
 export function createSubagentHarness(port: SubagentHarnessPort): {tools: AgentTool[]; registry: ToolClassifier} {
@@ -124,14 +138,19 @@ export function createSubagentHarness(port: SubagentHarnessPort): {tools: AgentT
         traits: ['readOnly'], inputSchema: JsonObjectSchema.parse(z.toJSONSchema(schemas[name], {io: 'input'}))},
       async execute(args, context) {
         let tainted = context.tainted ?? false;
+        const parsed = SubagentToolCallSchema.safeParse({tool: name, args});
+        if (!parsed.success) {
+          const error = toolError('schema', 'Invalid subagent arguments; use unique tool names and target IDs.');
+          return {content: [JsonObjectSchema.parse(error)], isError: true, error, tainted};
+        }
+        const call = parsed.data;
         try {
-          const call = SubagentToolCallSchema.parse({tool: name, args});
           const committed = await port.transact(context, state => transition(state, call, context));
           tainted ||= committed.tainted;
-          const returned = call.tool === 'wait_agents'
-            ? WaitAgentsResultSchema.parse(await port.wait(context, call.args)) : committed;
-          const value = 'result' in returned ? returned.result : returned;
-          return {content: [{type: 'text', text: JSON.stringify(value)}], isError: false, tainted: tainted || returned.tainted};
+          const value = call.tool === 'wait_agents'
+            ? WaitAgentsResultSchema.parse(await port.wait(context, call.args)) : resultSchema(call).parse(committed.result);
+          tainted ||= 'tainted' in value && value.tainted;
+          return {content: [{type: 'text', text: JSON.stringify(value)}], isError: false, tainted};
         } catch (error) {
           if (!(error instanceof ToolBoundaryError)) throw error;
           return {content: [JsonObjectSchema.parse(error.detail)], isError: true, error: error.detail, tainted};
