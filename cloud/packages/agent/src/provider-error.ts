@@ -61,7 +61,8 @@ const MODEL_TEXT = /not a valid model|model .{0,80}(?:does not exist|not found)|
 
 /** Status-coded OpenRouter errors; credential statuses go through `@praxis/credentials` so pools and runs agree. */
 export function classifyProviderError(status: number, message: string, headers?: HeadersLike): ProviderFailure {
-  const signal = classifyHttp(status, headers, message);
+  // OpenRouter signals spent credit only by 402; quota wording on a 429 is a temporary limit, so no body is passed.
+  const signal = classifyHttp(status, headers);
   if (signal.kind === 'exhausted') return new ProviderFailure('creditExhausted', message, {status});
   if (signal.kind === 'invalid') {
     return status === 403

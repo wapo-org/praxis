@@ -122,7 +122,9 @@ describe('OpenRouter provider',()=>{
   it.each([
     [401,'Invalid tool key','keyInvalid',false],
     [402,'This request requires more credits','creditExhausted',false],
-    [400,'Insufficient credits on this key','creditExhausted',false],
+    [400,'Insufficient credits on this key','fatal',false],
+    [429,'Quota exceeded for requests per minute; retry in 3 seconds','rateLimited',true],
+    [403,'You have exceeded your current quota','fatal',false],
     [403,'Input was flagged by moderation','fatal',false],
     [429,'Rate limit exceeded','rateLimited',true],
     [408,'Request timed out','unavailable',true],

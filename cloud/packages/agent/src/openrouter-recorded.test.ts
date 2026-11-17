@@ -125,6 +125,14 @@ describe('runOneTurn on the OpenRouter provider', () => {
     expect(f.counts.tool).toBe(0);
   });
 
+  it('a 429 worded as a quota is a rate limit, not spent credit: the turn is not ended as failed', async () => {
+    const f = await fixture(true);
+    const body = {error: {code: 429, message: 'Quota exceeded for requests per minute; retry in 3 seconds'}};
+    f.provider = provider(recordedTransport({status: 429, body, headers: {'retry-after': '3'}}).fetcher);
+    await expect(runOneTurn(f)).rejects.toMatchObject({kind: 'rateLimited', retryable: true, retryAfterMs: 3000, status: 429});
+    expect(f.store.data.flags).toEqual({turnIndex: 0, status: 'ready', done: false});
+  });
+
   it('other provider failures still propagate and keep the claim for fenced recovery', async () => {
     const f = await fixture(true);
     f.provider = provider(recordedTransport({status: 400, body: {error: {code: 400, message: 'Bad request'}}}).fetcher);
@@ -136,8 +144,12 @@ describe('runOneTurn on the OpenRouter provider', () => {
 });
 
 describe('Retry-After on the OpenRouter provider', () => {
-  it.each([429, 503] as const)('a %d with Retry-After waits that long before the next attempt', async status => {
-    const transport = recordedTransport({status, body: {error: {code: status, message: 'Try later'}}, headers: {'retry-after': '30'}}, recording('text.sse'));
+  it.each([
+    [429, 'Quota exceeded for requests per minute; retry in 3 seconds'],
+    [429, 'Rate limit exceeded'],
+    [503, 'Try later'],
+  ] as const)('a %d "%s" with Retry-After waits that long, then completes', async (status, text) => {
+    const transport = recordedTransport({status, body: {error: {code: status, message: text}}, headers: {'retry-after': '30'}}, recording('text.sse'));
     const waits: number[] = [];
     const ports: AgentPorts = {save: async () => {}, emit: async () => {}, isCancelled: async () => false, sleep: async ms => { waits.push(ms); }};
     const run = {type: 'run' as const, id: 'run', chatId: 'chat', status: 'queued' as const, createdAt: time, updatedAt: time, lastEventId: 0};
