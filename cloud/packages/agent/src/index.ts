@@ -15,3 +15,8 @@ export * from './one-turn.js';
 export * from './one-turn-state.js';
 export * from './one-turn-prompt.js';
 export * from './boundary/decision.js';
+export * from './subagents/permissions.js';
+export * from './subagents/handoff.js';
+export * from './subagents/reducer.js';
+export * from './subagents/wait.js';
+export * from './subagents/workspace.js';

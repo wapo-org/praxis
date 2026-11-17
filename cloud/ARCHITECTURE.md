@@ -118,3 +118,18 @@ while export modifiers and leading indentation stay outside it. Single arrow/fun
 declaration; multi-binding declarations use `edit_file`. Unsupported extensions return that remediation without writing.
 Edits and checkpoint/rewind operations serialize per workspace on the same port; the runner must retain the port
 and serialize access across workers, as required by PRA-19. Syntax diagnostics remain inline and do not roll back edits.
+## Stateful subagent core
+
+`packages/agent/src/subagents` owns the pure addressed lifecycle reducer, permission narrowing,
+ordered inboxes, asynchronous cascading cancellation and verified artifact handoffs (PRA-79).
+The four wire tools and durable state schemas live in `packages/protocol/src/subagents.ts`.
+Injected workspace operations prepare isolated roots, hash artifact bytes, rerun configured checks and
+kill handles; no Convex, Modal or model SDK is imported into the core. `waitAgents` refuses unverified
+completions. Discovery and waits return `{tree, result}` with structural taint on the result and each agent;
+adapters commit the returned state before exposing names, statuses, handoffs or errors to a model.
+Both join visible/returned source taint into the caller and its descendants. Message enqueue and delivery
+join message provenance into the recipient subtree. One lifecycle schema requires completed handoffs and
+failed errors in both persisted nodes and wait results. Workflow scheduling, authenticated
+addressing, atomic persistence and sandbox confinement
+remain adapter responsibilities under PRA-15/71/58; the current runner does not register these tools.
+PRA-75's five named subagent invariants run as fast-check properties against the reducer.

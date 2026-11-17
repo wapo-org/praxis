@@ -247,3 +247,4 @@ export const TranscribeRequestSchema = z.object({type:z.literal('transcribe.requ
 export const AccountDeleteSchema=z.object({type:z.literal('account.delete').optional(),password:z.string().min(1).max(1024).optional()});
 export const AccountDeletedSchema=z.object({type:z.literal('account.deleted')});
 export * from './tool-boundary.js';
+export * from './subagents.js';
