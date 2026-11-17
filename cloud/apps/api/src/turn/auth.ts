@@ -1,4 +1,5 @@
 import {createHash, createHmac, timingSafeEqual} from 'node:crypto';
+import {SealedSecret} from '@praxis/types';
 import {TurnRequestSchema, TURN_CLOCK_SKEW_MS, type TurnRequest} from '@praxis/protocol';
 import type {Store} from '../contracts.js';
 import {
@@ -6,7 +7,7 @@ import {
  TURN_HMAC_ALGORITHM, TURN_SIGNATURE_HEX_CHARACTERS, TURN_RECEIPT_KIND,
 } from './constants.js';
 
-export interface TurnKeys {current: string; next?: string}
+export interface TurnKeys {current: SealedSecret; next?: SealedSecret}
 
 export function readTurnKeys(env: Record<string, string | undefined>): TurnKeys {
  const current = env[TURN_CURRENT_KEY_ENV];
@@ -16,7 +17,7 @@ export function readTurnKeys(env: Record<string, string | undefined>): TurnKeys 
    throw new Error(`${name} must be at least ${TURN_KEY_MIN_CHARACTERS} characters`);
   }
  }
- return {current: current!, ...(next === undefined ? {} : {next})};
+ return {current: SealedSecret.of(current!), ...(next === undefined ? {} : {next: SealedSecret.of(next)})};
 }
 
 export function validTurnHeaders(signature: string | undefined, timestamp: string | undefined, nowMs: number): boolean {
@@ -28,8 +29,8 @@ export function validTurnHeaders(signature: string | undefined, timestamp: strin
 function verifyTurnBody(keys: TurnKeys, signature: string, timestamp: string, bytes: Uint8Array): boolean {
  const supplied = Buffer.from(signature, 'hex');
  let valid = false;
- for (const key of [keys.current, keys.next].filter((key): key is string => key !== undefined)) {
-  const expected = createHmac(TURN_HMAC_ALGORITHM, key).update(timestamp).update('.').update(bytes).digest();
+ for (const key of [keys.current, keys.next].filter((key): key is SealedSecret => key !== undefined)) {
+  const expected = createHmac(TURN_HMAC_ALGORITHM, key.reveal()).update(timestamp).update('.').update(bytes).digest();
   valid = timingSafeEqual(expected, supplied) || valid;
  }
  return valid;

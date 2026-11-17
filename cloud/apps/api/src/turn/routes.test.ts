@@ -1,3 +1,5 @@
+import {inspect} from 'node:util';
+import {REDACTED, SealedSecret} from '@praxis/types';
 import {createHmac} from 'node:crypto';
 import {Hono} from 'hono';
 import {describe, expect, it, vi} from 'vitest';
@@ -14,10 +16,13 @@ import {readTurnKeys} from './auth.js';
 import {TURN_CURRENT_KEY_ENV, TURN_NEXT_KEY_ENV, TURN_KEY_MIN_CHARACTERS} from './constants.js';
 
 const NOW_MS = 1_800_000_000_000;
-const keys = {current: 'c'.repeat(TURN_KEY_MIN_CHARACTERS), next: 'n'.repeat(TURN_KEY_MIN_CHARACTERS)};
+const rawKeys = {current: 'c'.repeat(TURN_KEY_MIN_CHARACTERS), next: 'n'.repeat(TURN_KEY_MIN_CHARACTERS)};
+const keys = readTurnKeys({
+ [TURN_CURRENT_KEY_ENV]: rawKeys.current, [TURN_NEXT_KEY_ENV]: rawKeys.next,
+});
 const input = {userId: 'owner', chatId: 'chat', runId: 'run', expectedTurnIndex: 0};
 const flags = {done: false as const, status: 'ready' as const, turnIndex: 1, subagents: []};
-function headers(body: string, timestamp = NOW_MS, key = keys.current) {
+function headers(body: string, timestamp = NOW_MS, key = rawKeys.current) {
  const time = String(timestamp);
  return {
   [TURN_TIMESTAMP_HEADER]: time,
@@ -58,14 +63,28 @@ describe('turn contract', () => {
  });
  it('validates required current and optional rotation keys', () => {
   expect(() => readTurnKeys({})).toThrow(TURN_CURRENT_KEY_ENV);
-  expect(() => readTurnKeys({[TURN_CURRENT_KEY_ENV]: keys.current, [TURN_NEXT_KEY_ENV]: 'short'})).toThrow(TURN_NEXT_KEY_ENV);
-  expect(readTurnKeys({[TURN_CURRENT_KEY_ENV]: keys.current})).toEqual({current: keys.current});
+  expect(() => readTurnKeys({[TURN_CURRENT_KEY_ENV]: rawKeys.current, [TURN_NEXT_KEY_ENV]: 'short'})).toThrow(TURN_NEXT_KEY_ENV);
+  const currentOnly = readTurnKeys({[TURN_CURRENT_KEY_ENV]: rawKeys.current});
+  expect(currentOnly.current).toBeInstanceOf(SealedSecret);
+  expect(currentOnly.next).toBeUndefined();
+ });
+ it('redacts both validated signing keys during serialization and inspection', () => {
+  expect(keys.current).toBeInstanceOf(SealedSecret);
+  expect(keys.next).toBeInstanceOf(SealedSecret);
+  const serialized = JSON.stringify(keys);
+  expect(JSON.parse(serialized)).toEqual({current: REDACTED, next: REDACTED});
+  const inspected = inspect(keys, {depth: null, showHidden: true, getters: true});
+  for (const output of [serialized, inspected]) {
+   expect(output).toContain(REDACTED);
+   expect(output).not.toContain(rawKeys.current);
+   expect(output).not.toContain(rawKeys.next);
+  }
  });
 });
 
 describe('Convex-only turn route', () => {
  it('accepts either signing key and binds the owner to the signed payload', async () => {
-  for (const key of [keys.current, keys.next]) {
+  for (const key of [rawKeys.current, rawKeys.next]) {
    const {app, execute, cas} = setup();
    const body = JSON.stringify(input);
    expect((await send(app, body, headers(body, NOW_MS, key))).status).toBe(200);
