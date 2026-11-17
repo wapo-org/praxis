@@ -4,10 +4,7 @@ import { signInToStack } from './browser-setup.js';
 type StorageState = Exclude<BrowserContextOptions['storageState'], string | undefined>;
 interface StackSession { state: StorageState }
 
-/**
- * Auth v2 limits sign-ups per IP and password checks per account, so each worker signs one account in once
- * and every test starts a fresh context from that real Convex session.
- */
+// Auth v2 rate-limits sign-ups per IP and password checks per account, so tests share one real session per worker.
 export const signedInTest = base.extend<{ persistStackSession: void }, { stackSession: StackSession }>({
   stackSession: [async ({ browser }, use, workerInfo) => {
     const context = await browser.newContext({ baseURL: workerInfo.project.use.baseURL });
