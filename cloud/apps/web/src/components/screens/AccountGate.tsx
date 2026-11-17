@@ -37,7 +37,11 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
     let active = true;
     setReadyUser(null);
     apiClient.setSessionIdentity(user && hasToken && !emailLanding ? user : null);
-    if (!user || !hasToken || emailLanding) { void clearReplica(); return; }
+    if (user === null) return <AuthFrame>
+    <p role="alert">This account is unavailable.</p>
+    <button onClick={() => void signOutSession()}>Sign out</button>
+  </AuthFrame>;
+  if (!user || !hasToken || emailLanding) { void clearReplica(); return; }
     void setReplicaIdentity(apiClient.getBaseUrl(), user).then(loadReplica).then(() => {
       if (active) setReadyUser(user);
     });
@@ -48,6 +52,10 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
   if (location.pathname === AUTH_ROUTES.recovery) return <ResetPassword code={code} />;
   if (isLoading) return <AuthFrame>{AUTH_COPY.loading}</AuthFrame>;
   if (!isAuthenticated) return <EmailScreens />;
+  if (user === null) return <AuthFrame>
+    <p role="alert">This account is unavailable.</p>
+    <button onClick={() => void signOutSession()}>Sign out</button>
+  </AuthFrame>;
   if (!user || !hasToken || readyUser !== user) return <AuthFrame>{AUTH_COPY.loading}</AuthFrame>;
   return <AccountContext.Provider key={user} value={{
     userId: user, signOut: signOutSession,

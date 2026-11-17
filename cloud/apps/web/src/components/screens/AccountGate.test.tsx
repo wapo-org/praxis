@@ -7,6 +7,7 @@ import { apiClient } from '../../lib/api';
 import { AccountGate } from './AccountGate';
 
 const hooks = vi.hoisted(() => ({
+  user: 'verified-user' as string | null,
   token: 'test-token' as string | null,
   signup: { status: 'complete' },
   recovery: { status: 'complete', pending: false, completePasswordRecovery: vi.fn() },
@@ -14,6 +15,7 @@ const hooks = vi.hoisted(() => ({
 }));
 beforeEach(() => {
   hooks.token = 'test-token';
+  hooks.user = 'verified-user';
   hooks.signup.status = 'complete';
   hooks.recovery.status = 'complete';
 });
@@ -23,7 +25,7 @@ vi.mock('@convex-dev/auth/methods/email-password/react', () => ({
 }));
 vi.mock('convex/react', () => ({
   useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }),
-  useQuery: () => 'verified-user',
+  useQuery: () => hooks.user,
 }));
 vi.mock('@convex-dev/auth/react', () => ({
   useAuthActions: () => ({ signOut: hooks.signOut }), useAuthToken: () => hooks.token,
@@ -79,5 +81,20 @@ it('closes private work when the token disappears before cached identity updates
   </MemoryRouter>));
   expect(node.textContent).not.toContain('Private chat');
   expect(apiClient.getSessionSignal().aborted).toBe(true);
+  await act(async () => root.unmount());
+});
+
+it('allows a signed-in browser to leave an unavailable account', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  hooks.user = null;
+  const node = document.createElement('div');
+  const root = createRoot(node);
+  await act(async () => root.render(<MemoryRouter>
+    <AccountGate><p>Private chat</p></AccountGate>
+  </MemoryRouter>));
+  expect(node.querySelector('[role=alert]')?.textContent).toContain('account is unavailable');
+  expect(node.textContent).not.toContain('Private chat');
+  await act(async () => node.querySelector('button')!.click());
+  expect(hooks.signOut).toHaveBeenCalled();
   await act(async () => root.unmount());
 });
