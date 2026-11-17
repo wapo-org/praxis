@@ -6,9 +6,9 @@ import {describe, expect, it, vi} from 'vitest';
 import fc from 'fast-check';
 import {
  TURN_PATH, TURN_SIGNATURE_HEADER, TURN_TIMESTAMP_HEADER, TURN_CLOCK_SKEW_MS,
- TURN_BODY_MAX_BYTES, TurnRequestSchema, TurnResultSchema, SUBAGENT_LIMITS,
+ TURN_BODY_MAX_BYTES, TURN_FAILURE_MESSAGE_MAX_BYTES, TurnRequestSchema, TurnResultSchema, SUBAGENT_LIMITS,
 } from '@praxis/protocol';
-import {runOneTurn} from '@praxis/agent';
+import {ProviderFailure, runOneTurn} from '@praxis/agent';
 import {fixture} from '../../../../packages/agent/src/one-turn-fixture.js';
 import {createMemoryAdapters} from '../adapters/memory.js';
 import {registerTurnRoute} from './routes.js';
@@ -60,6 +60,37 @@ describe('turn contract', () => {
    {...flags, subagents: ['\u0000'.repeat(200)]},
    {...flags, subagents: Array.from({length: SUBAGENT_LIMITS.CHILDREN_MAX + 1}, (_, i) => String(i))},
   ]) expect(TurnResultSchema.safeParse(value).success).toBe(false);
+ });
+ it('carries a bounded failure for a revoked key or spent credit, and nothing looser', () => {
+  // Three-byte characters: the cap counts serialized UTF-8 bytes, not characters.
+  const failure = {code: 'model_credit_exhausted', message: '余'.repeat(Math.floor(TURN_FAILURE_MESSAGE_MAX_BYTES / 3)), remediation: 'Add credit to your OpenRouter account, then send the message again.'};
+  const failed = {...flags, done: true, status: 'failed', failure};
+  expect(TurnResultSchema.parse(failed)).toEqual(failed);
+  for (const value of [
+   {...failed, failure: undefined}, {...failed, done: false}, {...flags, done: true, status: 'completed', failure},
+   {...failed, failure: {...failure, message: '余'.repeat(Math.floor(TURN_FAILURE_MESSAGE_MAX_BYTES / 3) + 1)}},
+   {...failed, failure: {...failure, code: 'model_unavailable'}},
+  ]) expect(TurnResultSchema.safeParse(value).success).toBe(false);
+ });
+ it('answers a 402 with a long CJK message and four maximal child IDs as a failed 200, on delivery and redelivery', async () => {
+  const turn = await fixture(true);
+  turn.provider.stream = async function* () {
+   throw new ProviderFailure('creditExhausted', '余额不足'.repeat(80), {status: 402});
+  };
+  const subagents = Array.from({length: SUBAGENT_LIMITS.CHILDREN_MAX}, (_, index) =>
+   String(index) + 'a'.repeat(SUBAGENT_LIMITS.ID_MAX_CHARACTERS - 1));
+  const {app, adapters} = setup();
+  adapters.turn = {async execute(request) {
+   const result = await runOneTurn({...turn, runId: request.runId, expectedTurnIndex: request.expectedTurnIndex});
+   return {...result, subagents};
+  }};
+  const body = JSON.stringify(input);
+  for (const offset of [0, 1]) {
+   const response = await send(app, body, headers(body, NOW_MS + offset));
+   expect(response.status).toBe(200);
+   expect(await response.json()).toMatchObject({done: true, status: 'failed', turnIndex: 0, failure: {code: 'model_credit_exhausted'}});
+  }
+  expect(turn.store.data.response).toBeUndefined();
  });
  it('uses PRA-79 child ID syntax and bounds for compact scheduler references', () => {
   const subagents = Array.from({length: SUBAGENT_LIMITS.CHILDREN_MAX}, (_, index) =>

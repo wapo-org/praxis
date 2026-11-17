@@ -4,6 +4,7 @@ import {RunSnapshotSchema} from '@praxis/protocol';
 import {createLocalAdapters} from '../local-memory.js';
 import {localModules} from '../modules.js';
 import {createPraxisApp} from '../server.js';
+import {TITLE_SYSTEM} from '../title-generation.js';
 
 export const TEST_KEY = 'sk-or-v1-test-key-123456';
 export interface FakeModel {id: string; name?: string; tools?: boolean; vision?: boolean; documents?: boolean; reasoning?: boolean; context?: number; maxOutput?: number; prompt?: string; completion?: string}
@@ -27,11 +28,14 @@ export function fakeOpenRouter(turns: string[][], models: FakeModel[] = [{id: 'm
     if (url.endsWith('/api/v1/key')) return Response.json({data: {label: 'sk-or-v1-tes...456', limit: 10, limit_remaining: 7.5}});
     if (!url.endsWith('/api/v1/chat/completions')) return Response.json({error: {code: 404, message: 'Not found'}}, {status: 404});
     const body = JSON.parse(String(init?.body));
-    if (body.stream === false) { titleRequests.push(body); return Response.json({choices: [{message: {content: ''}}], usage: {prompt_tokens: 10, completion_tokens: 3}}); }
+    const sse = (frames: string[]) => new Response(frames.map(f => `data: ${f}\n\n`).join('') + 'data: [DONE]\n\n', {headers: {'content-type': 'text/event-stream'}});
+    if (body.messages?.[0]?.content === TITLE_SYSTEM) {
+      titleRequests.push(body);
+      return sse([JSON.stringify({choices: [{index: 0, delta: {content: ''}, finish_reason: 'stop'}], usage: {prompt_tokens: 10, completion_tokens: 3}})]);
+    }
     authorizations.push(new Headers(init?.headers).get('authorization') ?? '');
     requests.push(JSON.parse(String(init?.body)));
-    const frames = turns[requests.length - 1] ?? [delta({content: 'ok'}), delta({}, 'stop')];
-    return new Response(frames.map(f => `data: ${f}\n\n`).join('') + 'data: [DONE]\n\n', {headers: {'content-type': 'text/event-stream'}});
+    return sse(turns[requests.length - 1] ?? [delta({content: 'ok'}), delta({}, 'stop')]);
   }) as typeof fetch;
   return {fetcher, requests, titleRequests, authorizations, state};
 }

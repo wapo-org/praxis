@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import {ReasoningShapeSchema,StreamAnnotationSchema} from '@praxis/protocol';
+import {ReasoningEffortSchema,ReasoningShapeSchema,StreamAnnotationSchema} from '@praxis/protocol';
 import {
   ToolErrorSchema, ApprovalSchema, CapabilitiesSchema, ChatSchema, ConversationSetupSchema, ElicitationSchema,
   IdSchema, JsonObjectSchema, JsonValueSchema, MessagePartSchema, MessageSchema, RunSchema,
@@ -11,8 +11,8 @@ export const ProviderRequestSchema = z.object({
   tools: z.array(z.lazy(() => ConversationSetupSchema.shape.tools.element)),
   capabilities: CapabilitiesSchema, maxTokens: z.number().int().positive(),
   temperature: z.number().min(0).max(2).optional(),
-  titleReasoning:z.enum(['none','minimal','low']).optional(),effort: z.string().optional(), supportedEfforts: z.array(z.string()).optional(),
-  webSearch: z.boolean().default(false),
+  /** Already resolved against the model's catalogue entry; sent only when the model takes reasoning. */
+  effort: ReasoningEffortSchema.optional(),
 });
 export type ProviderRequest = z.infer<typeof ProviderRequestSchema>;
 export const ProviderResponseSchema = z.object({
@@ -33,7 +33,6 @@ export const ProviderEventSchema = z.discriminatedUnion('type', [
 export type ProviderEvent = z.infer<typeof ProviderEventSchema>;
 export interface ModelProvider {
   readonly capabilities: Capabilities;
-  complete?(request:ProviderRequest,signal:AbortSignal):Promise<ProviderResponse>;
   stream(request:ProviderRequest,signal:AbortSignal):AsyncIterable<ProviderEvent>;
 }
 const ToolResultContent = {content: z.array(JsonObjectSchema), outputRef: IdSchema.optional()};
@@ -75,7 +74,7 @@ export const PendingCallSchema=z.object({
 export const CheckpointSchema = z.object({
   version:z.literal(1),userId:IdSchema,run:RunSchema,chat:ChatSchema,
   setup:ConversationSetupSchema,messages:z.array(MessageSchema),modelId:IdSchema,
-  effort:z.string().optional(),supportedEfforts:z.array(z.string()).optional(),webSearch:z.boolean().default(false),
+  effort:ReasoningEffortSchema.optional(),
   capabilities:CapabilitiesSchema,policy:PolicySchema,
   hiddenTools:ConversationSetupSchema.shape.tools.default([]),
   lastToolCallId:IdSchema.optional(),
@@ -97,8 +96,7 @@ export type AgentCheckpoint=z.infer<typeof CheckpointSchema>;
 export type PendingCall=z.infer<typeof PendingCallSchema>;
 export const RunInputSchema = z.object({
   userId:IdSchema,run:RunSchema,chat:ChatSchema,messages:z.array(MessageSchema),
-  setup:ConversationSetupSchema.optional(),modelId:IdSchema.optional(),effort:z.string().optional(),
-  supportedEfforts:z.array(z.string()).optional(),webSearch:z.boolean().optional(),
+  setup:ConversationSetupSchema.optional(),modelId:IdSchema.optional(),effort:ReasoningEffortSchema.optional(),
   policy:PolicySchema.optional(),maxIterations:z.number().int().positive().optional(),
   maxTokens:z.number().int().positive().optional(),modelMaxTokens:z.number().int().positive().optional(),
   maxRetries:z.number().int().nonnegative().optional(),
