@@ -247,3 +247,30 @@ export const TranscribeRequestSchema = z.object({type:z.literal('transcribe.requ
 export const AccountDeleteSchema=z.object({type:z.literal('account.delete').optional(),password:z.string().min(1).max(1024).optional()});
 export const AccountDeletedSchema=z.object({type:z.literal('account.deleted')});
 export * from './tool-boundary.js';
+
+export const TURN_PATH = '/api/turn';
+export const TURN_SIGNATURE_HEADER = 'x-praxis-signature';
+export const TURN_TIMESTAMP_HEADER = 'x-praxis-timestamp';
+export const TURN_BODY_MAX_BYTES = 1_000_000;
+export const TURN_CLOCK_SKEW_MS = 5 * 60 * 1_000;
+export const TURN_SUBAGENTS_MAX = 4;
+export const TURN_RESULT_MAX_BYTES = 1_000;
+export const TURN_INDEX_MAX = Number.MAX_SAFE_INTEGER;
+export const TurnRequestSchema = z.object({
+  userId: IdSchema, chatId: IdSchema, runId: IdSchema,
+  expectedTurnIndex: z.number().int().nonnegative().max(TURN_INDEX_MAX),
+  decision: z.discriminatedUnion('type', [
+    ApprovalDecisionSchema.strict(), ElicitationResponseSchema.strict(),
+  ]).optional(),
+}).strict();
+export type TurnRequest = z.infer<typeof TurnRequestSchema>;
+// Only addressed child IDs cross the worker boundary; verified handoffs stay in durable subagent state.
+const TurnResultFields = {
+  turnIndex: z.number().int().nonnegative().max(TURN_INDEX_MAX),
+  subagents: z.array(IdSchema).max(TURN_SUBAGENTS_MAX).refine(ids => new Set(ids).size === ids.length),
+};
+export const TurnResultSchema = z.discriminatedUnion('done', [
+  z.object({...TurnResultFields, done: z.literal(false), status: z.enum(['ready', 'busy'])}).strict(),
+  z.object({...TurnResultFields, done: z.literal(true), status: z.enum(['stopped', 'completed'])}).strict(),
+]).refine(result => new TextEncoder().encode(JSON.stringify(result)).byteLength < TURN_RESULT_MAX_BYTES);
+export type TurnResult = z.infer<typeof TurnResultSchema>;
