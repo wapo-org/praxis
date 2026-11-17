@@ -94,8 +94,8 @@ describe('worst-case estimators', () => {
   it('prices Exa, Firecrawl and Modal from the named unit constants, rounding up', () => {
     expect(exaSearchMaxMicroUsd(10)).toBe(7_000);
     expect(exaSearchMaxMicroUsd(25)).toBe(22_000);
-    expect(firecrawlMaxMicroUsd(10)).toBe(316_700);
-    expect(firecrawlMaxMicroUsd(1, 3)).toBe(50_672);
+    expect(firecrawlMaxMicroUsd(10)).toBe(1_800_000);
+    expect(firecrawlMaxMicroUsd(1, 3)).toBe(255_000);
     expect(modalSandboxMaxMicroUsd(1)).toBe(3_172);
     expect(modalSandboxMaxMicroUsd(10, 0.125, 0.25)).toBe(3_965);
     expect(microUsdFromUsd(0.0071)).toBe(7_100);
