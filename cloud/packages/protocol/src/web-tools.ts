@@ -21,3 +21,8 @@ export const WebSearchInputSchema = z.object({
 export const WebReadInputSchema = z.object({url: z.url().max(WEB_TOOL_LIMITS.URL_CHARACTERS_MAX)}).strict();
 export const WebPageSchema = z.object({url: z.url(), markdown: z.string().max(WEB_TOOL_LIMITS.RESPONSE_BYTES_MAX)}).strict();
 export type WebSearchInput = z.infer<typeof WebSearchInputSchema>;
+export const WEB_OUTPUT_CHUNK_CHARACTERS_MAX = 100_000;
+export const WebOutputManifestSchema = z.object({
+  chunkIds: z.array(z.string()).max(Math.ceil(WEB_TOOL_LIMITS.RESPONSE_BYTES_MAX / WEB_OUTPUT_CHUNK_CHARACTERS_MAX)),
+  characters: z.number().int().nonnegative().max(WEB_TOOL_LIMITS.RESPONSE_BYTES_MAX),
+});

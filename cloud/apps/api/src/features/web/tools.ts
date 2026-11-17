@@ -3,7 +3,7 @@ import {z} from 'zod';
 import {ToolBoundaryError, type AgentTool, type ToolClassifier, type ToolContext} from '@praxis/agent';
 import {exaSearchMaxMicroUsd, FIRECRAWL_BASE_PAGE_CREDITS, FIRECRAWL_CREDIT_MICRO_USD} from '@praxis/spend';
 import {WEB_TOOL_LIMITS as LIMITS, WEB_TOOL_NAMES, WebPageSchema, WebReadInputSchema, WebSearchInputSchema, type JsonObject, type JsonValue} from '@praxis/protocol';
-import {WEB_CACHE_PREFIX, WEB_TEXT} from './constants.js';
+import {WEB_CACHE_PREFIX, WEB_TEXT, WEB_OUTPUT_READ_TOOL} from './constants.js';
 import type {WebPorts, WebSpendInput} from './ports.js';
 import {webRequest} from './provider.js';
 
@@ -16,7 +16,7 @@ const FirecrawlResponse = z.object({success: z.literal(true), data: z.object({ma
 export const webToolClassifier: ToolClassifier = {
   classify: call => Object.values(WEB_TOOL_NAMES).some(name => name === call.tool)
     ? {capabilities: ['read', 'external-egress'], decision: 'allow', untrustedSource: true}
-    : undefined,
+    : call.tool === WEB_OUTPUT_READ_TOOL ? {capabilities: ['read'], decision: 'allow', untrustedSource: true} : undefined,
 };
 export function webPageCacheKey(url: string): string {
   return WEB_CACHE_PREFIX + createHash('sha256').update(url).digest('hex');

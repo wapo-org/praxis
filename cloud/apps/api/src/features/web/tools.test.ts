@@ -125,3 +125,8 @@ it('does not dispatch when the global attempt allowance is exhausted', async () 
   expect(f.fetcher).not.toHaveBeenCalled();
   expect(f.accounting.release).toHaveBeenCalledTimes(1);
 });
+it('marks paged stored output as untrusted for fresh thin-harness turns', () => {
+  expect(webToolClassifier.classify({tool: 'read_tool_output', args: {id: 'output', offset: 0}})).toEqual({
+    capabilities: ['read'], decision: 'allow', untrustedSource: true,
+  });
+});

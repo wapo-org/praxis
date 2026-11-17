@@ -91,3 +91,16 @@ it('denies new reservations after account deletion starts', async () => {
   });
   expect(await f.reserve()).toBe('denied');
 });
+it('preserves sliding hourly limits when a new monthly allowance starts', async () => {
+  const f = await fixture();
+  const endOfMonth = Date.UTC(2026, 10, 30, 23, 59);
+  for (let i = 0; i < LIMITS.SEARCHES_PER_HOUR_MAX; i++) {
+    vi.setSystemTime(endOfMonth + i * 1001);
+    const input = f.input();
+    expect(await f.reserve(input)).toBe('reserved');
+    await f.finish(input, 7000);
+  }
+  vi.setSystemTime(Date.UTC(2026, 11, 1));
+  await f.t.run(ctx => ctx.db.insert('toolState', {userId: 'user', kind: 'platformAllowance', id: '2026-12', value: {allowanceMicroUsd: 1_000_000}}));
+  expect(await f.reserve({...f.input(), period: '2026-12'})).toBe('denied');
+});

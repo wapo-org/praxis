@@ -53,6 +53,17 @@ export const reserveInternal = internalMutation({
     const grant = z.object({allowanceMicroUsd: Count}).parse(allowance.value);
     const saved = await row(ctx, a.userId, KIND, a.period);
     const state = saved ? UserState.parse(decode(saved.value)) : {ledger: openLedger(grant.allowanceMicroUsd), searches: [], reads: []};
+    if (!saved) {
+      const previousPeriod = periodFor(now - LIMITS.HOUR_MS);
+      if (previousPeriod !== a.period) {
+        const previous = await row(ctx, a.userId, KIND, previousPeriod);
+        if (previous) {
+          const previousState = UserState.parse(decode(previous.value));
+          state.searches = previousState.searches;
+          state.reads = previousState.reads;
+        }
+      }
+    }
     state.ledger.allowanceMicroUsd = grant.allowanceMicroUsd;
     const key = keyFor(a);
     if (await row(ctx, a.userId, CALL_KIND, key)) return 'duplicate' as const;

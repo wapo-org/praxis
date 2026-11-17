@@ -1,3 +1,4 @@
+import {spillWebOutput} from './output.js';
 import {pool, redisCooldownStore, type RedisLike} from '@praxis/credentials';
 import {z} from 'zod';
 import type {FeatureContext} from '../../contracts.js';
@@ -40,13 +41,6 @@ export function productionWebPorts(context: FeatureContext, rpc: ConvexRPC, redi
         periods.delete(keyFor(input));
       },
     },
-    async spill(input) {
-      const id = crypto.randomUUID();
-      const run = await context.store.get(input.userId, 'run', input.runId);
-      if (!run || run.deleted || typeof run.value.chatId !== 'string') throw new Error('Web output run is unavailable');
-      await context.store.put(input.userId, 'output', id, {type: 'tool.output', id, runId: input.runId,
-        chatId: run.value.chatId, callId: input.callId, text: input.text});
-      return id;
-    },
+    spill: input => spillWebOutput(context.store, input),
   };
 }

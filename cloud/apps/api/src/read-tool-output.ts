@@ -1,3 +1,4 @@
+import {readWebOutput} from './features/web/output.js';
 import {MAX_RESULT_CHARACTERS, textResult, type AgentTool} from '@praxis/agent';
 import type {ApiService} from './service.js';
 
@@ -20,6 +21,10 @@ export function readToolOutputTool(service: ApiService): AgentTool {
       const limit = Math.min(Number.isInteger(a.limit) && (a.limit as number) > 0 ? (a.limit as number) : DEFAULT_READ, MAX_READ_CHARACTERS);
       const row = await service.adapters.store.get(context.userId, 'output', a.id);
       if (!row || row.deleted || row.value.chatId !== context.chatId) return textResult(`No stored output with id ${a.id}. Stored output is kept per conversation.`, true);
+      if (row.value.chunkIds) {
+        const {page, characters} = await readWebOutput(service.adapters.store, context.userId, context.chatId, row.value, offset, limit);
+        return textResult(`[characters ${offset}–${Math.min(characters, offset + page.length)} of ${characters}]\n${page}`);
+      }
       const text = String(row.value.text ?? '');
       const page = text.slice(offset, offset + limit);
       return textResult(`[characters ${offset}–${Math.min(text.length, offset + page.length)} of ${text.length}]\n${page}`);
