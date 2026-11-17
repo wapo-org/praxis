@@ -1,9 +1,11 @@
+import {WORKSPACE_ERRORS} from './subagent-constants.js';
 import {posix} from 'node:path';
 import {ArtifactPathSchema} from '@praxis/protocol';
 import type {ExecRequest, ExecResult, SandboxPort} from './port.js';
 import {fail} from './support.js';
 
 export const ISOLATION_TIMEOUT_MS = 30_000;
+// Capture bounds keep verification memory independent of arbitrary workspace growth.
 export const SNAPSHOT_MAX_BYTES = 16 * 1024 * 1024;
 export const SNAPSHOT_FILES_MAX = 10_000;
 const SYSTEM_DIRECTORIES = ['/usr', '/bin', '/lib', '/lib64'];
@@ -71,20 +73,20 @@ else:
 
 export function relativePath(input: string): string {
   const parsed = ArtifactPathSchema.safeParse(input);
-  if (!parsed.success) fail('path-traversal', 'Expected a canonical child-relative path.');
+  if (!parsed.success) fail('path-traversal', WORKSPACE_ERRORS.CANONICAL_PATH);
   return parsed.data;
 }
 
 export async function canonicalRoot(port: SandboxPort, root: string): Promise<void> {
   for (let path = root; ; path = posix.dirname(path)) {
-    if (await port.realpath(path) !== path) fail('path-traversal', 'Workspace ancestors must not be symlinks.');
+    if (await port.realpath(path) !== path) fail('path-traversal', WORKSPACE_ERRORS.CANONICAL_ROOT);
     if (path === '/') break;
   }
 }
 
 export async function checkedExec(port: SandboxPort, request: ExecRequest): Promise<ExecResult> {
   const result = await port.exec(request);
-  if (result.timedOut || result.exitCode !== 0) fail('upstream', 'Confined sandbox operation failed.');
+  if (result.timedOut || result.exitCode !== 0) fail('upstream', WORKSPACE_ERRORS.ISOLATION_FAILED);
   return result;
 }
 
