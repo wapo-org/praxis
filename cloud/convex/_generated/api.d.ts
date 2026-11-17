@@ -27,10 +27,12 @@ import type * as tools from "../tools.js";
 import type * as turns from "../turns.js";
 import type * as uploads from "../uploads.js";
 import type * as users from "../users.js";
+import type * as webTools from "../webTools.js";
 import type * as workflows_agentRun from "../workflows/agentRun.js";
 import type * as workflows_constants from "../workflows/constants.js";
 import type * as workflows_purge from "../workflows/purge.js";
 import type * as workflows_validators from "../workflows/validators.js";
+import type * as zodValidator from "../zodValidator.js";
 
 import type {
   ApiFromModules,
@@ -58,10 +60,12 @@ declare const fullApi: ApiFromModules<{
   turns: typeof turns;
   uploads: typeof uploads;
   users: typeof users;
+  webTools: typeof webTools;
   "workflows/agentRun": typeof workflows_agentRun;
   "workflows/constants": typeof workflows_constants;
   "workflows/purge": typeof workflows_purge;
   "workflows/validators": typeof workflows_validators;
+  zodValidator: typeof zodValidator;
 }>;
 
 /**
