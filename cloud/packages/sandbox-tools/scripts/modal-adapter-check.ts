@@ -3,6 +3,7 @@ import {appendFileSync, mkdirSync} from 'node:fs';
 import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {ModalClient, type Sandbox} from 'modal';
+import {DIAGNOSTICS_CONFIG} from '../src/constants.js';
 import {sandboxToolsImage, NODE_VERSION, PYTHON_VERSION} from '../src/modal/image.js';
 import {sha256} from '../src/support.js';
 import {checkpointTurn, diffSince, listCheckpoints, rewindTo} from '../src/checkpoints.js';
@@ -89,7 +90,7 @@ try {
   });
   await check('approved workspace diagnostics + Python', async () => {
     const config = new TextEncoder().encode(JSON.stringify({version: 1, checks: [{name: 'fixture-python', files: ['**/*.py'], argv: ['python3', '-m', 'py_compile', '{file}'], format: 'python'}]}));
-    await port.writeFile(`${ROOT}/.praxis/diagnostics.json`, config);
+    await port.writeFile(`${ROOT}/${DIAGNOSTICS_CONFIG}`, config);
     const approved = {...context, trustedDiagnostics: new Set([sha256(config)])};
     const broken = await editFile(approved, {path: 'app.py', old_text: '', new_text: 'def broken(:\n'});
     const fixed = await editFile(approved, {path: 'app.py', old_text: 'def broken(:', new_text: 'value = 1'});
