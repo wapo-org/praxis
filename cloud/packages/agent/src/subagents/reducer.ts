@@ -5,7 +5,7 @@ import {
 import {canonical} from '../policy.js';
 import {toolError} from '../boundary/errors.js';
 import {VerifiedHandoff} from './handoff.js';
-import {canSee, childPermissions, controls, isDescendant, joinSubagentTaint, nodeById, rejectSubagent, setLifecycle, taintSubtree, terminal, workspaceFor} from './permissions.js';
+import {canSee, childPermissions, controls, isDescendant, joinSubagentTaint, nodeById, rejectSubagent, requireActive, setLifecycle, taintSubtree, terminal, workspaceFor} from './permissions.js';
 
 export type SubagentEvent =
   | {type: 'spawn'; actorId: string; id: string; callId: string; request: Extract<SpawnAgent, {action: 'create'}>}
@@ -33,9 +33,6 @@ export function createSubagentTree(rootId: string, permissions: SubagentPermissi
     handles: [], inbox: [], handoff: null, error: null,
   }]};
 }
-function active(node: SubagentNode): void {
-  if (terminal(node) || node.status === 'cancelling') rejectSubagent('The subagent is no longer active.');
-}
 function noActiveChildren(tree: SubagentTree, node: SubagentNode): void {
   if (tree.nodes.some(n => isDescendant(tree, node.id, n.id) && !terminal(n))) {
     rejectSubagent('Clean up all descendants before finalizing the parent.');
@@ -54,7 +51,7 @@ function cancelBranch(tree: SubagentTree, id: string): void {
   }
 }
 function ensureLiveParent(tree: SubagentTree, node: SubagentNode): void {
-  if (node.parent_id !== null) active(nodeById(tree, node.parent_id));
+  if (node.parent_id !== null) requireActive(nodeById(tree, node.parent_id));
 }
 function joinParentTaint(tree: SubagentTree, node: SubagentNode): void {
   if (node.parent_id !== null) joinSubagentTaint(tree, node.parent_id, node);
@@ -71,7 +68,7 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
   const tree = structuredClone(input);
   if (event.type === 'spawn') {
     const parent = nodeById(tree, event.actorId);
-    active(parent);
+    requireActive(parent);
     if (!parent.permissions.tools.includes('spawn_agent')) return rejectSubagent('Spawn permission is not granted to this agent.');
     const request = SpawnAgentSchema.parse(event.request);
     if (request.action !== 'create') return rejectSubagent('Expected a create request.');
@@ -99,7 +96,7 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
     if (request.action !== 'resume') return rejectSubagent('Expected a resume request.');
     const actor = nodeById(tree, event.actorId);
     const node = nodeById(tree, request.subagent_id);
-    active(actor);
+    requireActive(actor);
     if (!controls(actor, node)) return rejectSubagent('Only the parent may resume a child.');
     if (!['waiting', 'completed', 'failed'].includes(node.status)) return rejectSubagent('Only waiting or finished agents may resume.');
     setLifecycle(node, {status: 'waiting', handoff: null, error: null});
@@ -133,15 +130,15 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
       break;
     case 'configure': {
       const actor = nodeById(tree, event.actorId);
-      active(actor);
+      requireActive(actor);
       if (!controls(actor, node)) return rejectSubagent('Only the parent may configure a child.');
       configure(node, event);
       break;
     }
     case 'send': {
       const actor = nodeById(tree, event.actorId);
-      active(actor);
-      active(node);
+      requireActive(actor);
+      requireActive(node);
       if (!canSee(tree, actor, node)) return rejectSubagent('The target is outside the sender visibility scope.');
       const existing = node.inbox.find(m => m.id === event.messageId);
       if (existing) {
@@ -155,7 +152,7 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
       break;
     }
     case 'deliver': {
-      active(node);
+      requireActive(node);
       const message = node.inbox.find(m => m.id === event.messageId);
       if (!message || message.disposition === 'discarded') return rejectSubagent('Message is not deliverable.');
       if (node.inbox.some(m => m.sequence < message.sequence && m.disposition === 'pending')) {
@@ -166,7 +163,7 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
       break;
     }
     case 'handle':
-      active(node);
+      requireActive(node);
       if (!event.handle || tree.nodes.some(n => n.handles.includes(event.handle))) return rejectSubagent('Handle is already owned.');
       node.handles.push(event.handle);
       break;
@@ -186,7 +183,7 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
       joinParentTaint(tree, node);
       break;
     case 'complete':
-      active(node);
+      requireActive(node);
       ensureLiveParent(tree, node);
       noActiveChildren(tree, node);
       if (!VerifiedHandoff.valid(event.proof, node.id, node.revision, node.permissions.required_checks)) {
@@ -199,14 +196,14 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
       joinParentTaint(tree, node);
       break;
     case 'fail':
-      active(node);
+      requireActive(node);
       noActiveChildren(tree, node);
       setLifecycle(node, {status: 'failed', handoff: null, error: toolError('upstream', event.message)});
       discardPending(node);
       joinParentTaint(tree, node);
       break;
     case 'taint':
-      active(node);
+      requireActive(node);
       taintSubtree(tree, node.id);
       break;
   }

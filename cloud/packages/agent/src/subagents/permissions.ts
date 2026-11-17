@@ -67,7 +67,7 @@ export function joinSubagentTaint(tree: SubagentTree, id: string, ...sources: re
 export function discoverAgents(input: SubagentTree, actorId: string): {tree: SubagentTree; result: DiscoverAgentsResult} {
   const tree = structuredClone(input);
   const actor = nodeById(tree, actorId);
-  if (terminal(actor) || actor.status === 'cancelling') return rejectSubagent('Stopped agents cannot discover child results.');
+  requireActive(actor, 'Stopped agents cannot discover child results.');
   const visible = tree.nodes.filter(n => canSee(tree, actor, n));
   joinSubagentTaint(tree, actorId, ...visible);
   return {tree, result: {tainted: actor.tainted, agents: visible.map(n => ({
@@ -79,6 +79,10 @@ export function controls(actor: SubagentNode, target: SubagentNode): boolean {
 }
 export function terminal(node: SubagentNode): boolean {
   return ['completed', 'failed', 'cancelled'].includes(node.status);
+}
+
+export function requireActive(node: SubagentNode, message = 'The subagent is no longer active.'): void {
+  if (terminal(node) || node.status === 'cancelling') rejectSubagent(message);
 }
 
 export function setLifecycle(node: SubagentNode, lifecycle: SubagentLifecycle): void {
