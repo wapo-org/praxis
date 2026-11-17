@@ -223,3 +223,30 @@ The HTTPS page for the future iOS handoff must share the SITE_URL origin.
 No cloud deployment is part of PRA-34 verification.
 Component tests use the upstream fake Resend component, retaining the real password WASM and auth code.
 Run them with `npx vitest run tests/auth-v2.test.ts`.
+### Internal turn caller (PRA-38)
+
+Set `PRAXIS_TURN_CURRENT_SIGNING_KEY` to a random secret of at least 32 characters,
+shared only by Convex server actions and the Vercel worker. Optionally set
+`PRAXIS_TURN_NEXT_SIGNING_KEY` (same minimum length) during rotation. Both keys
+verify; switch the caller before promoting the next key. These are signing keys,
+not HTTP provider credential pools.
+
+Convex sends `POST /api/turn` with `x-praxis-timestamp` containing canonical Unix
+milliseconds and `x-praxis-signature` containing lowercase SHA-256 HMAC hex over
+the exact UTF-8 timestamp, a dot, and the raw request bytes. Skew is limited to
+±5 minutes. The signed body binds `userId`; the Convex caller must derive that
+owner from its verified auth/workflow context. A browser cookie or bearer session
+cannot authorize this route. The streamed raw body limit is 1,000,000 bytes.
+
+The worker atomically records a hashed envelope receipt through
+`AdapterBundle.store.putIfRevision` in Convex. Exact replay returns 401 across
+instances and signing-key rotation. Retries must use a fresh timestamp/signature
+while preserving `expectedTurnIndex`; durable turn acquisition/commit makes
+those retries idempotent. Receipt rows contain only expiry, not credentials;
+a future retention sweep may remove them only after `expiresAtMs`.
+
+PRA-38 supplies the contract and authentication boundary. Until PRA-39 supplies
+`AdapterBundle.turn.execute`, an authenticated request returns 503. Never
+replace that with a successful dummy result. Execution must validate owner/chat/run
+relationships against durable state and return only flags and addressed child IDs;
+verified subagent handoffs and message content remain in durable state.
