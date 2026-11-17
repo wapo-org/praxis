@@ -1,3 +1,4 @@
+import {LOCAL_CONVEX_URL_ENV} from '@praxis/protocol';
 import {startAuthBackend} from './convex-auth.js';
 import {join} from 'node:path';
 import {CLOUD_DIR, LOOPBACK_HOST} from '../constants.js';
@@ -22,7 +23,7 @@ function apiEnv(apiPort: number): NodeJS.ProcessEnv {
 export async function startApi(apiPort: number, logDirectory: string, convexUrl?: string): Promise<{api: string; server: ManagedServer}> {
   await assertPortFree(apiPort);
   const api = `http://${LOOPBACK_HOST}:${apiPort}`;
-  const server = startServer('api', join(BIN, 'tsx'), ['src/local.ts'], {cwd: join(CLOUD_DIR, 'apps', 'api'), env: {...apiEnv(apiPort), ...(convexUrl ? {PRAXIS_LOCAL_CONVEX_URL: convexUrl} : {})}, logFile: join(logDirectory, 'api.log')});
+  const server = startServer('api', join(BIN, 'tsx'), ['src/local.ts'], {cwd: join(CLOUD_DIR, 'apps', 'api'), env: {...apiEnv(apiPort), ...(convexUrl ? {[LOCAL_CONVEX_URL_ENV]: convexUrl} : {})}, logFile: join(logDirectory, 'api.log')});
   try {
     await waitForUrl(`${api}/health`, undefined, () => !server.exited);
   } catch (error) {

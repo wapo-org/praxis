@@ -7,6 +7,7 @@ afterEach(() => vi.unstubAllGlobals());
 it('cancels an in-flight snapshot and blocks further work after the owner session ends', async () => {
   const client = new PraxisApiClient();
   client.setSessionIdentity('owner-a');
+  client.setBearerToken('owner-a-token');
   let dispatched!: () => void;
   const started = new Promise<void>(resolve => { dispatched = resolve; });
   const fetcher = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
@@ -23,18 +24,17 @@ it('cancels an in-flight snapshot and blocks further work after the owner sessio
   expect(fetcher).toHaveBeenCalledOnce();
 });
 
-it('does not dispatch a queued request under a replacement owner after token acquisition', async () => {
+it('does not dispatch a queued request with a replacement owner bearer token', async () => {
   const client = new PraxisApiClient();
   client.setSessionIdentity('owner-a');
-  let deliverToken!: (token: string) => void;
-  client.tokenProvider = () => new Promise(resolve => { deliverToken = resolve; });
+  client.setBearerToken('owner-a-token');
   const fetcher = vi.fn(async () => new Response('{}'));
   vi.stubGlobal('fetch', fetcher);
   const pending = client.bootstrap();
   const cancelled = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
   client.setSessionIdentity(null);
   client.setSessionIdentity('owner-b');
-  deliverToken('old-owner-token');
+  client.setBearerToken('owner-b-token');
   await cancelled;
   expect(fetcher).not.toHaveBeenCalled();
 });
@@ -42,9 +42,11 @@ it('does not dispatch a queued request under a replacement owner after token acq
 it('refreshing a token for the same owner does not cancel the current session scope', () => {
   const client = new PraxisApiClient();
   client.setSessionIdentity('owner-a');
+  client.setBearerToken('owner-a-token');
   const signal = client.getSessionSignal();
   client.setBearerToken('refreshed-token');
   client.setSessionIdentity('owner-a');
+  expect(client.getBearerToken()).toBe('refreshed-token');
   expect(client.getSessionSignal()).toBe(signal);
   expect(signal.aborted).toBe(false);
 });
@@ -52,6 +54,7 @@ it('refreshing a token for the same owner does not cancel the current session sc
 it.each(['runs', 'users'])('aborts the %s event stream when the owner session ends', async kind => {
   const client = new PraxisApiClient();
   client.setSessionIdentity('owner-a');
+  client.setBearerToken('owner-a-token');
   let dispatched!: (signal: AbortSignal) => void;
   const started = new Promise<AbortSignal>(resolve => { dispatched = resolve; });
   const fetcher = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
@@ -72,6 +75,7 @@ it.each(['runs', 'users'])('aborts the %s event stream when the owner session en
 it('ignores a stale unauthorized response after another owner has signed in', async () => {
   const client = new PraxisApiClient();
   client.setSessionIdentity('owner-a');
+  client.setBearerToken('owner-a-token');
   let deliverResponse!: (response: Response) => void;
   vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { deliverResponse = resolve; })));
   const unauthorized = vi.fn();

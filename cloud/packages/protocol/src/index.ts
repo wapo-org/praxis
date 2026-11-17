@@ -249,3 +249,4 @@ export const AccountDeletedSchema=z.object({type:z.literal('account.deleted')});
 export * from './tool-boundary.js';
 
 export * from './auth.js';
+export * from './auth-config.js';

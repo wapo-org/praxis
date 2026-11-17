@@ -49,7 +49,6 @@ export interface ApiClientConfig {
 
 export class ApiTransport {
   onUnauthorized?: () => void;
-  tokenProvider?: () => Promise<string | null>;
   // Cookie clients start unbound; a closed verified session requires an explicit owner before dispatch can resume.
   private sessionIdentity: string | null | undefined;
   private sessionController = new AbortController();
@@ -68,11 +67,6 @@ export class ApiTransport {
   async freshToken(): Promise<string> {
     const signal = this.getSessionSignal();
     signal.throwIfAborted();
-    if (this.tokenProvider) {
-      const token = await this.tokenProvider();
-      signal.throwIfAborted();
-      this.bearerToken = token ?? '';
-    }
     return this.bearerToken;
   }
   private baseUrl: string;

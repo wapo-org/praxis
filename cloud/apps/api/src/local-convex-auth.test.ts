@@ -1,3 +1,4 @@
+import { LOCAL_CONVEX_URL_ENV } from '@praxis/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { localConvexSession } from './local-convex-auth.js';
 import { createLocalAdapters } from './local-memory.js';
@@ -13,11 +14,11 @@ vi.mock('convex/browser', () => ({
 describe('explicit local Convex authentication', () => {
   it('requires a loopback deployment and refuses production', () => {
     expect(localConvexSession({})).toBeUndefined();
-    expect(() => localConvexSession({ PRAXIS_LOCAL_CONVEX_URL: 'https://untrusted.example' })).toThrow('loopback');
-    expect(() => localConvexSession({ PRAXIS_LOCAL_CONVEX_URL: 'http://127.0.0.1:8861', NODE_ENV: 'production' })).toThrow('development only');
+    expect(() => localConvexSession({ [LOCAL_CONVEX_URL_ENV]: 'https://untrusted.example' })).toThrow('loopback');
+    expect(() => localConvexSession({ [LOCAL_CONVEX_URL_ENV]: 'http://127.0.0.1:8861', NODE_ENV: 'production' })).toThrow('development only');
   });
   it('derives the owner from the verified query and never falls back to dev tokens', async () => {
-    const resolveSession = localConvexSession({ PRAXIS_LOCAL_CONVEX_URL: 'http://127.0.0.1:8861' })!;
+    const resolveSession = localConvexSession({ [LOCAL_CONVEX_URL_ENV]: 'http://127.0.0.1:8861' })!;
     expect(await resolveSession(new Request('http://local/v1/bootstrap'))).toBeNull();
     query.mockResolvedValueOnce('verified-user');
     const session = await resolveSession(new Request('http://local/v1/bootstrap', {
@@ -34,7 +35,7 @@ describe('explicit local Convex authentication', () => {
   });
   it('fails closed when the configured backend is unavailable', async () => {
     query.mockRejectedValueOnce(new Error('Backend unavailable'));
-    const resolveSession = localConvexSession({ PRAXIS_LOCAL_CONVEX_URL: 'http://127.0.0.1:8861' })!;
+    const resolveSession = localConvexSession({ [LOCAL_CONVEX_URL_ENV]: 'http://127.0.0.1:8861' })!;
     await expect(resolveSession(new Request('http://local/', { headers: { Authorization: 'Bearer fixture-token' } }))).rejects.toThrow('Backend unavailable');
   });
 });

@@ -1,8 +1,8 @@
+import { LOCAL_CONVEX_URL_ENV } from '@praxis/protocol';
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import { z } from 'zod';
 
-const LOCAL_CONVEX_URL_ENV = 'PRAXIS_LOCAL_CONVEX_URL';
 const LOCAL_SESSION_MAX_MS = 60_000;
 const LocalUrl = z.url().refine(value => {
   const url = new URL(value);
