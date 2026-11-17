@@ -12,7 +12,7 @@ concurrency:
 jobs:
   checks:
     name: Cloud / ${{ matrix.check }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -64,7 +64,7 @@ jobs:
         run: npm --prefix cloud run check:rules
   specs:
     name: Cloud / specs
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -87,7 +87,7 @@ jobs:
           if-no-files-found: ignore
   verify-web:
     name: Cloud / verify-web
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     # Measured ~15 s of flows locally; the budget covers npm ci and a cold browser install.
     timeout-minutes: 8
     steps:
