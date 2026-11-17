@@ -1,15 +1,8 @@
+import { signIn as convexSignIn } from './sign-in';
 import { expect, test, type Page } from '@playwright/test';
 
 // WP-G4 A: what leaves leaves at once, the corner never swaps at rest, and the rows land before the shape.
 test.use({ serviceWorkers: 'block' });
-
-async function signIn(page: Page) {
-  await page.goto('/');
-  const dev = page.getByRole('button', { name: /local dev user/i });
-  await Promise.race([dev.waitFor(), page.getByTestId('chat-top-bar').waitFor()]);
-  if (await dev.isVisible().catch(() => false)) await dev.click();
-  await page.getByTestId('chat-top-bar').waitFor();
-}
 
 async function watchClose(page: Page) {
   await page.evaluate(() => {
@@ -34,7 +27,7 @@ async function watchClose(page: Page) {
 
 for (const how of ['Escape', 'an outside click', 'choosing a result'] as const) {
   test(`search closes by ${how}, disabling hit targets before removal`, async ({page}) => {
-    await signIn(page);
+    await convexSignIn(page);
     await page.keyboard.press('ControlOrMeta+k');
     const palette = page.getByTestId('search-palette');
     const input = palette.getByRole('combobox');
@@ -62,7 +55,7 @@ for (const how of ['Escape', 'an outside click', 'choosing a result'] as const) 
 
 test.describe('menus', () => {
   test.beforeEach(async ({ page }) => {
-    expect((await page.request.post('/v1/auth/dev', { data: { type: 'auth.dev', userId: 'close-check' } })).ok()).toBeTruthy();
+    await convexSignIn(page);
     await page.goto('/lab/glass?morph');
     await page.getByTestId('morph-lab').waitFor();
     await page.waitForTimeout(400);

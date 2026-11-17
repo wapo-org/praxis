@@ -251,6 +251,8 @@ export const AccountDeleteSchema=z.object({type:z.literal('account.delete').opti
 export const AccountDeletedSchema=z.object({type:z.literal('account.deleted')});
 export * from './tool-boundary.js';
 
+export * from './auth.js';
+export * from './auth-config.js';
 export const TURN_PATH = '/api/turn';
 export const TURN_SIGNATURE_HEADER = 'x-praxis-signature';
 export const TURN_TIMESTAMP_HEADER = 'x-praxis-timestamp';
