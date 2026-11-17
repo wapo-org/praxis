@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {posix} from 'node:path';
+import {stripVTControlCharacters} from 'node:util';
 import {ToolBoundaryError, toolError} from '@praxis/agent';
 import type {ToolErrorCode} from '@praxis/protocol';
 import {OUTPUT_MAX_BYTES, PRAXIS_DIR} from './constants.js';
@@ -70,13 +71,9 @@ export function capOutput(text: string, maxBytes = OUTPUT_MAX_BYTES): Capped {
   return {text: `${head}\n… ${dropped} bytes omitted …\n${tail}`, truncated: true};
 }
 
-const ESC = String.fromCharCode(27);
-const BEL = String.fromCharCode(7);
-const ANSI = new RegExp(`${ESC}\\[[0-9;?]*[ -/]*[@-~]|${ESC}\\][^${BEL}]*${BEL}`, 'g');
-
 /** Strips terminal colour and cursor sequences so the model sees plain text. */
 export function stripAnsi(text: string): string {
-  return text.replace(ANSI, '');
+  return stripVTControlCharacters(text);
 }
 
 export function decodeText(bytes: Uint8Array): string | undefined {
