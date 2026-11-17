@@ -49,8 +49,8 @@ describe('attachments reach the model (parity: AttachmentMedia)', () => {
     const chat = await f.chat();
     expect((await f.run(chat.id, 'Check the network')).run.outcome).toBe('completed');
     expect(JSON.stringify(f.fake.requests[1].messages)).toContain('undefined');
-    const tool = f.fake.requests[0].tools.find((t: any) => t.function.name === 'run_javascript');
-    expect(tool.function.description).not.toContain('fetch(');
+    const tools: {function: {name: string; description: string}}[] = f.fake.requests[0].tools;
+    expect(tools.find(t => t.function.name === 'run_javascript')?.function.description).not.toContain('fetch(');
   });
 
   it('re-encodes oversized images like the app (max 2000 px side) and sends nothing for a blind model', async () => {
