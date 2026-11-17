@@ -2,12 +2,12 @@ import {describe, expect, it} from 'vitest';
 import {CapabilitiesSchema, type JsonObject, type Message} from '@praxis/protocol';
 import {SealedSecret} from '@praxis/types';
 import {createOpenRouterProvider} from './openrouter.js';
-import {ProviderFailure, runErrorCode} from './provider-error.js';
 import {collectResponse} from './collect.js';
 import {runOneTurn} from './one-turn.js';
+import {AgentRunner} from './runner.js';
 import {fixture} from './one-turn-fixture.js';
 import {recordedTransport, recording} from './recorded-transport.js';
-import type {ProviderEvent, ProviderRequest, ProviderResponse} from './types.js';
+import type {AgentPorts, ProviderEvent, ProviderRequest, ProviderResponse} from './types.js';
 
 const KEY = 'sk-or-v1-recorded-transport-key';
 const time = '2026-11-17T12:00:00.000Z';
@@ -107,16 +107,44 @@ describe('runOneTurn on the OpenRouter provider', () => {
     expect(transport.calls[0]?.body.usage).toEqual({include: true});
   });
 
-  it('a 402 stops the turn before a response is saved or a tool runs', async () => {
+  it.each([
+    [401, 'User not found.', 'model_key_invalid', /Reconnect OpenRouter/],
+    [402, 'Insufficient credits. Add more at https://openrouter.ai/settings/credits', 'model_credit_exhausted', /Add credit/],
+  ] as const)('a %d ends the turn as failed, releases the claim, and keeps nothing of the attempt', async (status, message, code, remediation) => {
     const f = await fixture(true);
-    f.provider = provider(recordedTransport({status: 402, body: {error: {code: 402, message: 'Insufficient credits. Add more at https://openrouter.ai/settings/credits'}}}).fetcher);
-    const failure = await runOneTurn(f).catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(ProviderFailure);
-    expect(failure).toMatchObject({kind: 'creditExhausted', retryable: false, status: 402});
-    expect(runErrorCode(failure)).toBe('model_credit_exhausted');
+    const transport = recordedTransport({status, body: {error: {code: status, message}}});
+    f.provider = provider(transport.fetcher);
+    const failed = {turnIndex: 0, status: 'failed', done: true, failure: {code, message, remediation: expect.stringMatching(remediation)}};
+    expect(await runOneTurn(f)).toEqual(failed);
+    expect(f.store.data.claimed).toBe(false);
+    expect(await runOneTurn(f)).toEqual(failed);
+    expect(transport.calls).toHaveLength(1);
     expect(f.store.data.response).toBeUndefined();
     expect(f.store.data.calls).toEqual({});
     expect(f.store.data.commits).toBe(0);
     expect(f.counts.tool).toBe(0);
+  });
+
+  it('other provider failures still propagate and keep the claim for fenced recovery', async () => {
+    const f = await fixture(true);
+    f.provider = provider(recordedTransport({status: 400, body: {error: {code: 400, message: 'Bad request'}}}).fetcher);
+    await expect(runOneTurn(f)).rejects.toMatchObject({kind: 'fatal', status: 400});
+    expect(f.store.data.claimed).toBe(true);
+    expect(f.store.data.flags).toEqual({turnIndex: 0, status: 'ready', done: false});
+    expect(f.store.data.response).toBeUndefined();
+  });
+});
+
+describe('Retry-After on the OpenRouter provider', () => {
+  it.each([429, 503] as const)('a %d with Retry-After waits that long before the next attempt', async status => {
+    const transport = recordedTransport({status, body: {error: {code: status, message: 'Try later'}}, headers: {'retry-after': '30'}}, recording('text.sse'));
+    const waits: number[] = [];
+    const ports: AgentPorts = {save: async () => {}, emit: async () => {}, isCancelled: async () => false, sleep: async ms => { waits.push(ms); }};
+    const run = {type: 'run' as const, id: 'run', chatId: 'chat', status: 'queued' as const, createdAt: time, updatedAt: time, lastEventId: 0};
+    const chat = {type: 'chat' as const, id: 'chat', title: 'Chat', pinned: false, mode: 'auto' as const, connectorIds: [], disabledConnectorIds: [], createdAt: time, updatedAt: time};
+    const cp = await new AgentRunner({provider: provider(transport.fetcher), ports}).run({userId: 'user', run, chat, messages: [message('user', [{type: 'text', text: 'Hi'}])]});
+    expect(cp.run.status).toBe('completed');
+    expect(waits).toEqual([30_000]);
+    expect(transport.calls).toHaveLength(2);
   });
 });

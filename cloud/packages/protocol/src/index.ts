@@ -271,9 +271,17 @@ const TurnResultFields = {
   turnIndex: z.number().int().nonnegative().max(TURN_INDEX_MAX),
   subagents: z.array(SubagentIdSchema).max(SUBAGENT_LIMITS.CHILDREN_MAX).refine(ids => new Set(ids).size === ids.length),
 };
-export const TurnResultSchema = z.discriminatedUnion('done', [
+/** Keeps a failed result under TURN_RESULT_MAX_BYTES even when OpenRouter's message is long. */
+export const TURN_FAILURE_MESSAGE_MAX_CHARS = 240;
+/** A model failure only the user can fix (reconnect, top up): the turn ends instead of holding its claim. */
+export const TurnFailureSchema = z.object({
+  code: RunErrorCodeSchema, message: z.string().max(TURN_FAILURE_MESSAGE_MAX_CHARS), remediation: z.string().min(1).max(200),
+}).strict();
+export type TurnFailure = z.infer<typeof TurnFailureSchema>;
+export const TurnResultSchema = z.discriminatedUnion('status', [
   z.object({...TurnResultFields, done: z.literal(false), status: z.enum(['ready', 'busy'])}).strict(),
   z.object({...TurnResultFields, done: z.literal(true), status: z.enum(['stopped', 'completed'])}).strict(),
+  z.object({...TurnResultFields, done: z.literal(true), status: z.literal('failed'), failure: TurnFailureSchema}).strict(),
 ]).refine(result => new TextEncoder().encode(JSON.stringify(result)).byteLength < TURN_RESULT_MAX_BYTES);
 export type TurnResult = z.infer<typeof TurnResultSchema>;
 export * from './subagents.js';

@@ -139,9 +139,10 @@ describe('OpenRouter provider',()=>{
     expect(classifyProviderError(403,'Flagged').remediation).toMatch(/moderation/);
     expect(classifyProviderError(401,'Bad key').remediation).toMatch(/Reconnect OpenRouter/);
   });
-  it('takes the retry delay only from a Retry-After header',()=>{
-    expect(classifyProviderError(429,'Slow',new Headers({'retry-after':'3'})).retryAfterMs).toBe(3000);
-    expect(classifyProviderError(429,'Slow').retryAfterMs).toBeUndefined();
+  it.each([429,503,502])('takes the %d retry delay only from a Retry-After header',status=>{
+    expect(classifyProviderError(status,'Slow',new Headers({'retry-after':'3'})).retryAfterMs).toBe(3000);
+    expect(classifyProviderError(status,'Slow',{'Retry-After':'7'}).retryAfterMs).toBe(7000);
+    expect(classifyProviderError(status,'Slow').retryAfterMs).toBeUndefined();
   });
   it('exports no multi-provider surface',()=>{
     for(const name of ['createHTTPProvider','providerURL','parseModelMetadata','parseEffortRejection','decodeAnthropic','decodeOpenAIResponses'])expect(name in agent).toBe(false);

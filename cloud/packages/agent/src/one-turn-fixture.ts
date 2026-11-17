@@ -3,6 +3,7 @@ import {approvalKey} from './boundary/receipt.js';
 import {SealedSecret} from '@praxis/types';
 import {textResult, type ProviderResponse, type AgentTool, type ModelProvider} from './types.js';
 import {ONE_TURN_SYSTEM} from './one-turn-prompt.js';
+import type {TurnFailure} from '@praxis/protocol';
 import type {CallClaim, OneTurnOptions, SavedCall, TurnFlags, TurnSnapshot, TurnStore} from './one-turn-state.js';
 
 export const response = (calls = false): ProviderResponse => ({
@@ -72,6 +73,12 @@ export class TestTurnStore implements TurnStore {
     this.data.usage += value.usage.inputTokens;
     this.data.tainted ||= tainted;
     this.data.flags = {turnIndex: this.data.flags.turnIndex + 1, ...(value.stop === 'toolUse' ? {status: 'ready', done: false} : {status: 'completed', done: true})};
+    this.data.claimed = false;
+    return this.data.flags;
+  }
+  async fail(_token: string, failure: TurnFailure) {
+    if (!await this.active()) return this.data.flags;
+    this.data.flags = {turnIndex: this.data.flags.turnIndex, status: 'failed', done: true, failure};
     this.data.claimed = false;
     return this.data.flags;
   }

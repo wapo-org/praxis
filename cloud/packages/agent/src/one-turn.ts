@@ -1,7 +1,8 @@
 import {z} from 'zod';
-import {JsonValueSchema, ToolInvocationSchema} from '@praxis/protocol';
+import {JsonValueSchema, ToolInvocationSchema, TURN_FAILURE_MESSAGE_MAX_CHARS} from '@praxis/protocol';
 import {ProviderResponseSchema, ToolResultSchema, type ProviderResponse} from './types.js';
 import {collectResponse} from './collect.js';
+import {ProviderFailure, runErrorCode} from './provider-error.js';
 import {executeBoundary, type GateResult} from './boundary/gate.js';
 import {ToolBoundaryError, toolError} from './boundary/errors.js';
 import {canonical} from './policy.js';
@@ -28,8 +29,16 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
   if (acquired.claim.response) {
     response = ProviderResponseSchema.parse(acquired.claim.response);
   } else {
-    // A provider failure (402, revoked key) propagates before saveResponse, so nothing of the turn is kept.
-    response = await collectResponse(provider, request, context.signal);
+    try {
+      response = await collectResponse(provider, request, context.signal);
+    } catch (error) {
+      const code = runErrorCode(error);
+      // A revoked key or spent credit cannot succeed on redelivery; other failures keep the claim for recovery.
+      if (!code || !(error instanceof ProviderFailure)) throw error;
+      if (!await active()) return store.flags(runId);
+      const message = error.message.slice(0, TURN_FAILURE_MESSAGE_MAX_CHARS);
+      return store.fail(token, {code, message, remediation: error.remediation});
+    }
     if (!await active()) return store.flags(runId);
     await store.saveResponse(token, response);
   }

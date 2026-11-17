@@ -1,4 +1,4 @@
-import {classifyHttp, type HeadersLike} from '@praxis/credentials';
+import {classifyHttp, retryAfterMs, type HeadersLike} from '@praxis/credentials';
 import type {RunErrorCode, ToolError} from '@praxis/protocol';
 import {toolError} from './boundary/errors.js';
 
@@ -68,20 +68,15 @@ export function classifyProviderError(status: number, message: string, headers?:
       ? new ProviderFailure('fatal', message, {status, remediation: MODERATION_REMEDIATION})
       : new ProviderFailure('keyInvalid', message, {status});
   }
-  if (signal.kind === 'rateLimited') {
-    const hinted = hasRetryAfter(headers) ? signal.cooldownMs : undefined;
-    return new ProviderFailure('rateLimited', message, {status, retryAfterMs: hinted});
+  // Only an explicit Retry-After sets the delay; without one the runner backs off exponentially.
+  const hinted = retryAfterMs(headers, Date.now());
+  if (signal.kind === 'rateLimited') return new ProviderFailure('rateLimited', message, {status, retryAfterMs: hinted});
+  if (signal.kind === 'serverError' || status === 408) {
+    return new ProviderFailure('unavailable', message, {status, retryAfterMs: hinted});
   }
-  if (signal.kind === 'serverError' || status === 408) return new ProviderFailure('unavailable', message, {status});
   if (status === 413 || CONTEXT_TEXT.test(message)) return new ProviderFailure('context', message, {status});
   if (status === 404 || MODEL_TEXT.test(message)) return new ProviderFailure('modelUnavailable', message, {status});
   return new ProviderFailure('fatal', message, {status});
-}
-
-function hasRetryAfter(headers: HeadersLike | undefined): boolean {
-  if (!headers) return false;
-  if (typeof (headers as {get?: unknown}).get === 'function') return (headers as Headers).get('retry-after') !== null;
-  return Object.keys(headers).some(name => name.toLowerCase() === 'retry-after');
 }
 
 /** The typed run error for a provider failure the user has to act on (reconnect, top up). */
