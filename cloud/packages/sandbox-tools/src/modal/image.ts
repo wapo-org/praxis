@@ -1,4 +1,5 @@
 import type {Image, ModalClient} from 'modal';
+import {NOTEBOOK_IMAGE_COMMANDS} from './notebook-image.js';
 
 export const NODE_VERSION = '22.16.0';
 export const NODE_IMAGE_DIGEST = 'sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34';
@@ -38,6 +39,10 @@ export function sandboxToolsImage(modal: ModalClient): Image {
     `RUN timeout ${IMAGE_BUILD_COMMAND_TIMEOUT_SECONDS}s sh -ec '${TOOLS_COMMANDS.replaceAll("'", "'\\''")}'`,
     'WORKDIR /workspace',
   ]);
+}
+
+export function sandboxNotebookImage(modal: ModalClient): Image {
+  return sandboxToolsImage(modal).dockerfileCommands(NOTEBOOK_IMAGE_COMMANDS);
 }
 
 export {sandboxBrowserImage, BROWSER_MEMORY_MIB} from './browser-image.js';

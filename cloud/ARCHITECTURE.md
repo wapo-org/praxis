@@ -50,7 +50,7 @@ execution preserve incoming taint. Runners persist taint on both outcomes before
 
 `packages/sandbox-tools` is the Modal v1 tool set: `shell`, `read_file`, `edit_file` (exact-match, then the
 workspace's `.praxis/diagnostics.json` checks inline), `replace_symbol` (Python/TypeScript/JavaScript declarations, methods and dotted nested names),
-`export_file`, `wait_for_job`, and per-turn git checkpoints
+`export_file`, `wait_for_job`, `notebook_run`, and per-turn git checkpoints
 with rewind (PRA-63). Tools run only through `executeSandboxTool`, which goes through `executeBoundary`; `shell`
 is classified by `shellPolicy`. They speak to a `SandboxPort`: an in-memory fake for tests, a local temp-dir port,
 and `@praxis/sandbox-tools/modal`, which uses Modal's native exec and filesystem APIs (no in-sandbox server).
@@ -112,6 +112,17 @@ Pinned dev dependencies: `@informalsystems/quint` runs protocol simulations with
 Java; `fast-check` generates checkpoint, API dedup/truncation and failover cases.
 Run `npm run specs` for models and `npm test` for implementation properties.
 
+`notebook_run` (PRA-105) uses a detached Python driver, one Jupyter kernel per sandbox, and file mailboxes
+with OS locks across API workers. Timeouts interrupt the kernel; an unacknowledged interrupt stops it for restart.
+Kernel restarts report "variables were lost".
+PNG and HTML outputs pass through `export_file`; arbitrary notebook code requires an approval receipt.
+The opt-in `PRAXIS_MODAL_NOTEBOOK_CHECK=1 npm run verify -- live notebook` suite records standard proof and composes a Jupyter layer
+on PRA-51 via `sandboxNotebookImage()`; its checked-in `modal/notebook-requirements.lock` pins and hashes every Python dependency.
+Pip installs wheels with `--require-hashes` and verifies the graph with `pip check`. Output-processing errors interrupt
+and drain the active cell before returning; artifact count and encoded size are checked before decoding.
+Workspace setup verifies the canonical cwd and a successful execute reply before dispatch; user-cell success also requires its execute reply.
+
+
 
 ## Convex Auth v2 (PRA-34)
 
@@ -161,15 +172,28 @@ No production persistence or sandbox adapter is implemented by this registry.
 `packages/agent/src/subagents` owns the pure addressed lifecycle reducer, permission narrowing,
 ordered inboxes, asynchronous cascading cancellation and verified artifact handoffs (PRA-79).
 The four wire tools and durable state schemas live in `packages/protocol/src/subagents.ts`.
-Injected workspace operations prepare isolated roots, hash artifact bytes, rerun configured checks and
-kill handles; no Convex, Modal or model SDK is imported into the core. `waitAgents` refuses unverified
-completions. Discovery and waits return `{tree, result}` with structural taint on the result and each agent;
-adapters commit the returned state before exposing names, statuses, handoffs or errors to a model.
-Both join visible/returned source taint into the caller and its descendants. Message enqueue and delivery
-join message provenance into the recipient subtree. One lifecycle schema requires completed handoffs and
-failed errors in both persisted nodes and wait results. Workflow scheduling, authenticated
-addressing, atomic persistence and sandbox confinement
-remain adapter responsibilities under PRA-15/71/58; the current runner does not register these tools.
+`SandboxSubagentWorkspace` in `packages/sandbox-tools` binds a server-supplied TenantId, child and revision.
+It requires Linux bubblewrap (`bwrap`) and Python in the provisioned sandbox image; namespace or tool
+unavailability fails preparation closed. No packages are installed at runtime. Child commands receive
+only their writable root plus read-only system runtimes, private PID/network namespaces and a cleared
+environment. All child effects still require PRA-76 authorization; this adapter grants no outbound network.
+File operations use directory descriptors and O_NOFOLLOW to reject symlinks without a check/open race.
+Their trusted script is installed outside child data and mounted read-only, runs from `/` with Python `-I`,
+and receives binary writes through staged read-only files, never argv; staging is removed even on failure.
+Built-in Python syntax diagnostics also use `-I` to prevent workspace or PYTHONPATH module substitution.
+Snapshot capture rejects special files and enforces named count/byte limits, preserving executable bits.
+Content-addressed manifests live outside child mounts under tenant/child/revision. Checks are server-configured
+argv executed against a read-only snapshot; every open, check and artifact read verifies stored content.
+Handoffs persist snapshot_sha256; opaque proofs are recreated by verification and never deserialized.
+Explicit export must use the verified snapshot view and pass its own authority check; no automatic merge exists.
+`completeSubagent` passes expected/next trees and the verified digest to PRA-114's atomic compareAndSwap;
+the store must persist the digest and compare the complete expected tree, including parent cancellation.
+`waitAgents` re-verifies snapshots and returns `{tree, result}`; PRA-114 must CAS-fence that state before exposure.
+Discovery, waits, messages and terminal returns join structural taint before model-visible exposure.
+PRA-58 owns durable handle registration, termination probing and idempotence: its injected cleanup must
+verify tenant/child/revision ownership and return dead/absent only after confirmation, never kill a shared sandbox.
+Uncertain cleanup remains cancelling. Authenticated workflow wiring and tool registration remain PRA-114/115.
+`verify -- live subagent-workspaces` records required Modal and durable race evidence; fake tests are not live proof.
 PRA-75's five named subagent invariants run as fast-check properties against the reducer.
 
 ### Optional sandbox browser (PRA-20)

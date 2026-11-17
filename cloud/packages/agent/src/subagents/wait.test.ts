@@ -5,7 +5,7 @@ import {boundaryDecision} from '../boundary/decision.js';
 import {VerifiedHandoff} from './handoff.js';
 import {nodeById} from './permissions.js';
 import {reduceSubagents} from './reducer.js';
-import {handoff, spawn, treeFixture, workspacePort} from './test-fixtures.js';
+import {handoff, spawn, treeFixture, workspacePort, snapshotPort} from './test-fixtures.js';
 import {waitAgents} from './wait.js';
 
 it('joins returned descendant taint monotonically before exposing wait results', async () => {
@@ -31,9 +31,9 @@ it('joins returned descendant taint monotonically before exposing wait results',
       const before = structuredClone(tree);
       const waited = await waitAgents(tree, 'root', {
         subagent_ids: ['grandchild', 'sibling'], mode, timeout_ms: 10,
-      }, {startedAtMs: 0, nowMs: expired ? 10 : 0}, {
-        ...workspacePort, verifyChecks: async () => [{id: 'typecheck', status: verificationPasses ? 'passed' : 'failed'}],
-      });
+      }, {startedAtMs: 0, nowMs: expired ? 10 : 0}, snapshotPort({
+        verifyChecks: async () => [{id: 'typecheck', status: verificationPasses ? 'passed' : 'failed'}],
+      }));
       expect(tree).toEqual(before);
       expect(waited.tree.nodes.every(node => node.tainted)).toBe(true);
       expect(WaitAgentsResultSchema.parse(waited.result).tainted).toBe(true);

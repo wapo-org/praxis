@@ -25,7 +25,7 @@ export type DiagnosticCheck = z.infer<typeof DiagnosticCheckSchema>;
 
 export const BUILTIN_CHECKS: readonly DiagnosticCheck[] = [
   {name: 'node-syntax', files: ['**/*.js', '**/*.mjs', '**/*.cjs'], argv: ['node', '--check', '{file}'], format: 'node'},
-  {name: 'python-syntax', files: ['**/*.py'], argv: ['python3', '-m', 'py_compile', '{file}'], format: 'python'},
+  {name: 'python-syntax', files: ['**/*.py'], argv: ['python3', '-I', '-m', 'py_compile', '{file}'], format: 'python'},
 ];
 
 export interface Problem {

@@ -12,8 +12,21 @@
       "id": "agents.stateful-core",
       "title": "Four-tool subagent contract, lifecycle invariants, permission narrowing and verified handoffs",
       "issue": "PRA-79",
+      "surfaces": [
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "gate"
+        }
+      ]
+    },
+    {
+      "id": "agents.confined-workspaces",
+      "title": "Confined child execution and immutable snapshot handoffs",
+      "issue": "PRA-116",
       "surfaces": ["api"],
-      "covers": [{"command": "gate"}]
+      "covers": [{"command": "gate"}, {"command": "live", "suite": "subagent-workspaces"}]
     },
     {
       "id": "repo.gate",
@@ -243,6 +256,20 @@
       "covers": [
         {
           "command": "gate"
+        }
+      ]
+    },
+    {
+      "id": "sandbox.notebook",
+      "title": "Persistent Python kernel, bounded text, rich artifacts and interrupt recovery",
+      "issue": "PRA-105",
+      "surfaces": [
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "live",
+          "suite": "notebook"
         }
       ]
     }
