@@ -1,6 +1,5 @@
 import {expect, type Page} from '@playwright/test';
 import type {WebFlow} from './flow-types.js';
-import {SIGNED_OUT_SESSION_PROBE} from './judge.js';
 import {signIn} from './session.js';
 
 /** Long enough to mix every action several times; each step is one user gesture. */
@@ -58,9 +57,9 @@ export const fuzzChatFlow: WebFlow = {
   id: 'fuzz-chat',
   title: 'Seeded random send / stop / reload / new / switch with a usable composer after each step',
   default: false,
-  allow: [SIGNED_OUT_SESSION_PROBE],
-  async run({page, base, seed, note}) {
-    await signIn(page, base);
+  allow: [],
+  async run({page, convexUrl, base, seed, note}) {
+    await signIn(page, base, convexUrl);
     const plan = actionPlan(seed);
     note(`seed ${seed}: ${plan.join(' ')}`);
     for (const [index, action] of plan.entries()) {

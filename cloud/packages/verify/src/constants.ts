@@ -12,6 +12,8 @@ export const LIVE_SUITES_DIR = join(CLOUD_DIR, 'verify', 'live');
 export const DEFAULT_WEB_PORT = 5240;
 export const DEFAULT_API_PORT = 8860;
 export const LOOPBACK_HOST = '127.0.0.1';
+/** Set by browser setup for every Playwright worker: the isolated auth deployment tests create accounts in. */
+export const PW_CONVEX_URL_ENV = 'PW_CONVEX_URL';
 
 /** Cold vite + tsx start on a busy laptop stays well under this. */
 export const SERVER_READY_TIMEOUT_MS = 60_000;

@@ -42,3 +42,10 @@ and memory now provide cached rendering. The older localStorage claim above is o
 
 The web implementation now imports Tabler through `src/lib/icons.ts`; Lucide remains
 in the shared glass package (including the dropdown) and is not reworked by WP-B3.
+
+
+## PRA-34 authentication
+
+- `@convex-dev/auth@2.0.0`: React session provider and password, email-link, Google and Apple hooks.
+- `convex@1.50.0`: authenticated Convex client and reactive identity query.
+- Removed `@clerk/clerk-react` and the fake Clerk driver; no email-code or magic-link login is offered.

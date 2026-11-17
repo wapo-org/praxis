@@ -1,3 +1,4 @@
+import {localConvexSession} from './local-convex-auth.js';
 import {serve} from '@hono/node-server';
 import {localRuntime} from './local-persistence.js';
 import {createPraxisApp} from './server.js';
@@ -14,7 +15,7 @@ const port=Number(process.env.PORT??8787);if(!Number.isInteger(port)||port<1||po
 const origins=(process.env.PRAXIS_ALLOWED_ORIGINS??'').split(',').map(s=>s.trim()).filter(Boolean);
 const embedder=await selectEmbedder(process.env,true);
 if(embedder)console.info(`Praxis local search: ${embedder.id}`);
-const {app,service}=createPraxisApp({adapters:runtime.adapters,local:true,...(embedder?{search:{embedder,vectors:memoryVectorIndex()}}:{}),encryptionKey:runtime.encryptionKey,modules:localModules(`http://127.0.0.1:${port}`),...(origins.length?{allowedOrigins:[...origins,'http://localhost:5173','http://127.0.0.1:5173']}:{})});
+const {app,service}=createPraxisApp({adapters:runtime.adapters,local:true,resolveSession:localConvexSession(process.env),...(embedder?{search:{embedder,vectors:memoryVectorIndex()}}:{}),encryptionKey:runtime.encryptionKey,modules:localModules(`http://127.0.0.1:${port}`),...(origins.length?{allowedOrigins:[...origins,'http://localhost:5173','http://127.0.0.1:5173']}:{})});
 await service.seed('local-user');
-const server=serve({fetch:app.fetch,port,hostname:process.env.HOST??'127.0.0.1'},()=>{console.info(`Praxis local API: http://127.0.0.1:${port} (Bearer dev-local)`);});
+const server=serve({fetch:app.fetch,port,hostname:process.env.HOST??'127.0.0.1'},()=>{console.info(`Praxis local API: http://127.0.0.1:${port}`);});
 for(const signal of ['SIGINT','SIGTERM'] as const)process.on(signal,()=>{runtime.flush();server.close(()=>{runtime.close();process.exit(0);});setTimeout(()=>{runtime.close();process.exit(0);},1500).unref();});

@@ -17,6 +17,7 @@ export function subscribeRunEvents(
   handlers: RunStreamHandlers,
 ): () => void {
   const controller = new AbortController();
+  const signal = AbortSignal.any([controller.signal, client.getSessionSignal()]);
   let lastEventId = initialAfterEventId;
   let stopped = false;
   let markedFirstToken = false;
@@ -24,11 +25,12 @@ export function subscribeRunEvents(
 
   async function loop() {
     let attempt = 0;
-    while (!stopped && !controller.signal.aborted) {
+    while (!stopped && !signal.aborted) {
       try {
         const base = client.getBaseUrl();
         const url = `${base}/v1/runs/${encodeURIComponent(runId)}/events?after=${lastEventId}`;
         const token = await client.freshToken();
+        signal.throwIfAborted();
         const res = await fetch(url, {
           method: 'GET',
           credentials: 'include',
@@ -39,9 +41,10 @@ export function subscribeRunEvents(
               : {}),
             'Last-Event-ID': String(lastEventId),
           },
-          signal: controller.signal,
+          signal,
         });
 
+        signal.throwIfAborted();
         if (res.status === 401) {
           client.onUnauthorized?.();
           return;
@@ -66,13 +69,13 @@ export function subscribeRunEvents(
         const decoder = new TextDecoder();
         let buffer = '';
 
-        while (!stopped && !controller.signal.aborted) {
+        while (!stopped && !signal.aborted) {
           const { value, done } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
 
           let boundary: RegExpExecArray | null;
-          while ((boundary = /\r?\n\r?\n/.exec(buffer)) !== null) {
+          while (!signal.aborted && (boundary = /\r?\n\r?\n/.exec(buffer)) !== null) {
             const rawBlock = buffer.slice(0, boundary.index);
             buffer = buffer.slice(boundary.index + boundary[0].length);
 
@@ -119,6 +122,7 @@ export function subscribeRunEvents(
           }
         }
 
+        signal.throwIfAborted();
         const run = await client.getRun(runId);
         if (
           ['completed', 'cancelled', 'failed'].includes(run.status) &&
@@ -129,7 +133,7 @@ export function subscribeRunEvents(
           return;
         }
       } catch (err) {
-        if (stopped || controller.signal.aborted) return;
+        if (stopped || signal.aborted) return;
         handlers.onError?.(err);
         attempt += 1;
         const delay = Math.min(2000, 150 * Math.pow(1.6, attempt));

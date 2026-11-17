@@ -1,6 +1,6 @@
 import {writeFileSync} from 'node:fs';
 import {join, relative} from 'node:path';
-import {CLOUD_DIR} from '../constants.js';
+import {CLOUD_DIR, PW_CONVEX_URL_ENV} from '../constants.js';
 import {artifactDir, gitState, newRunId} from '../run-context.js';
 import {selectFlows} from './flows.js';
 import {runFlows, type FlowResult} from './harness.js';
@@ -45,7 +45,9 @@ export async function runWeb(options: WebOptions, print: (line: string) => void 
     stack = await startLocalStack(options.ports, directory);
   }
   try {
-    const results = await runFlows(flows, {base: stack.base, api: stack.api, seed: options.seed, headed: options.headed, directory}, result => {
+    const convexUrl = stack.convexUrl ?? process.env[PW_CONVEX_URL_ENV];
+    if (!convexUrl) throw new Error(`Existing browser stacks require ${PW_CONVEX_URL_ENV}`);
+    const results = await runFlows(flows, {base: stack.base, api: stack.api, convexUrl, seed: options.seed, headed: options.headed, directory}, result => {
       if (!options.json) print(flowLine(result));
     });
     const report: WebReport = {type: 'verify.web', runId, gitSha: gitState().sha, ok: results.every(result => result.ok), base: stack.base, api: stack.api, directory, flows: results};

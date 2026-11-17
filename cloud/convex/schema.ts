@@ -14,6 +14,8 @@ const row = {
 };
 
 export default defineSchema({
+  users: defineTable({}),
+  oauthEmails: defineTable({ userId: v.id('users'), email: v.string() }).index('email', ['email']),
   toolSkillFiles: defineTable({userId:v.string(),skillId:v.string(),path:v.string(),content:v.string()})
     .index('owner_skill', ['userId','skillId']),
   toolState: defineTable({userId:v.string(),kind:v.string(),id:v.string(),value:v.any()})

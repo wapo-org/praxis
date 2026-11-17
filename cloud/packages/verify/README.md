@@ -9,7 +9,7 @@ npm run verify -- <command>          # or: npx praxis-verify <command>
 | Command | What it does | Exit |
 | --- | --- | --- |
 | `gate [--only a,b] [--json]` | The AGENTS.md verification list (typecheck, test, check-rules, lint, comment-sweep, web-build, api-build). Runs every step even after a failure; one line per step; logs in `artifacts/gate/<run>/`. | 0 / 1 |
-| `web [--flows a,b] [--ports web,api] [--base URL --api URL] [--seed n] [--headed] [--json]` | Starts the local API and web (default ports 5240 and 8860, in-memory store, hash embedder), runs Playwright flows, stops its own process groups. Refuses an occupied port. With `--base`/`--api` it verifies servers someone else started. | 0 / 1 |
+| `web [--flows a,b] [--ports web,api] [--base URL --api URL] [--seed n] [--headed] [--json]` | Starts local Convex Auth, the API and web (web/API ports 5240/8860, auth ports API+1/API+2, in-memory application store, hash embedder), runs Playwright flows, stops its own process groups. Refuses an occupied port. With `--base`/`--api` it verifies servers someone else started. | 0 / 1 |
 | `api [--port n \| --api URL] [--json]` | The local API smoke: bootstrap, models, chat, text SSE, snapshot, nested approval, disconnect + cancel + Last-Event-ID replay. | 0 / 1 |
 | `ios [--simulator udid\|name] [--skip-tests] [--json]` | macOS only: uses `--simulator` (may be booted), or else only a shut-down iPhone simulator on the newest runtime (never one someone has booted), `xcodebuild build-for-testing` + `test-without-building` for `PraxisChatTests` (as `apple.yml`), installs and launches the app and saves a `simctl` screenshot. Uses the shared-machine `slot.sh` when present. | 0 / 1 |
 | `map --check` | `cloud/verify/feature-map.json` against the code, both ways: a mapped flow/check/suite without code fails, and so does code no feature covers. | 0 / 1 |
@@ -21,9 +21,14 @@ Usage errors exit 2. Artifacts live under `cloud/artifacts/` (gitignored).
 
 Every flow runs in a fresh browser context and gets three files: `<flow>.aria.yml` (accessibility snapshot), `<flow>.png` (full-page screenshot, also on failure) and `<flow>.issues.json`. A flow **fails** on any console error, page error, failed request or 4xx/5xx response that its `allow` list does not name, with a reason. Chrome's console echo of a judged response and `net::ERR_ABORTED` (navigation, cancelled SSE) are not counted.
 
-Default flows: `load-app`, `settings-models`, `model-search`, `scripted-chat`, `api-resilience` (formerly `apps/web/scripts/p0-check.mjs`). Off by default: `fuzz-chat`, a seeded random walk over send / stop / reload / new chat / switch chat that checks the composer stays usable after every step (`--flows fuzz-chat --seed 3`).
+Default flows: `browser-cli`, `load-app`, `settings-models`, `model-search`, `scripted-chat`, `api-resilience` (formerly `apps/web/scripts/p0-check.mjs`). Off by default: `fuzz-chat`, a seeded random walk over send / stop / reload / new chat / switch chat that checks the composer stays usable after every step (`--flows fuzz-chat --seed 3`).
 
 Add a flow in `src/web/flows.ts`, then a feature entry that covers it; `map --check` fails until both exist.
+
+Browser checks sign in through the real email/password form. Each managed stack creates an isolated anonymous local Convex deployment, copies the current production auth source and replaces only Resend with the test mailbox in `cloud/verify/auth`. It creates a separate real-auth account for each browser context through signup and email verification; no dev-token route or production provider credential is used. The local API accepts only identities verified by that deployment when `PRAXIS_LOCAL_CONVEX_URL` is configured.
+
+`cd cloud/apps/web && npx playwright test` starts and stops the same stack automatically. To use existing servers, set `PW_BASE_URL` and `PW_CONVEX_URL`; they must expose the isolated local auth fixture and its test mailbox. Paired-device tests explicitly share an account and use separate sessions. The email mailbox endpoint exists only in the isolated test deployment. These tests do not verify Google/Apple credentials or real Resend delivery.
+
 
 ## Live suites and `proof.json`
 

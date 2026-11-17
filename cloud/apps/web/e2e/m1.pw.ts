@@ -3,7 +3,6 @@ import {signIn} from './sign-in';
 
 test.use({ serviceWorkers: 'block' });
 
-
 test('empty-state send clears EmptyState on frame 1, avoids 404s, and renders a single bubble', async ({ page }) => {
   const notFoundUrls: string[] = [];
   page.on('response', (res) => {
@@ -146,7 +145,6 @@ test('existing-chat send flies smoothly without losing or duplicating the bubble
   await expect(page.getByTestId('user-message-bubble')).toHaveCount(2);
   await expect(page.locator('[data-user-bubble]').last()).toHaveCSS('opacity', '1');
 });
-
 
 test('defect 3: text-only turns show no work group or usage flash and keep reply y invariant across live-to-saved swap', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });

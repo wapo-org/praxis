@@ -14,7 +14,7 @@ function fixture() {
 describe('Clerk account binding', () => {
   it('retains legacy id and binds once for a verified same-email login', async () => {
     const f = fixture();
-    await f.rpc.mutation('auth:execute', { operation: 'create', input: { model: 'user', data: { id: 'legacy', email: 'legacy@example.test', name: 'Legacy' } } });
+    await f.rpc.mutation('legacyAuth:execute', { operation: 'create', input: { model: 'user', data: { id: 'legacy', email: 'legacy@example.test', name: 'Legacy' } } });
     const store = storeFromRPC(f.rpc);
     await store.put('legacy', 'chat', 'kept-chat', { title: 'Keep my history' });
     expect((await f.auth.resolveSession(f.request))?.user.id).toBe('legacy');
@@ -31,7 +31,7 @@ describe('Clerk account binding', () => {
     vi.mocked(f.backend.user).mockResolvedValueOnce({ id: 'clerk-1', email: 'legacy@example.test', verified: false, name: 'Name' });
     expect(await f.auth.resolveSession(f.request)).toBeNull();
     await f.auth.resolveSession(f.request);
-    await f.rpc.mutation('auth:execute', { operation: 'update', input: { model: 'user', where: [{ field: 'id', value: 'clerk-1' }], update: { deleting: true } } });
+    await f.rpc.mutation('legacyAuth:execute', { operation: 'update', input: { model: 'user', where: [{ field: 'id', value: 'clerk-1' }], update: { deleting: true } } });
     expect(await f.auth.resolveSession(f.request)).toBeNull();
   });
   it('returns unauthorized for a deleted Clerk subject instead of recreating it', async () => {
@@ -85,6 +85,6 @@ it('retains a retryable Clerk binding through provider deletion failure and purg
   expect(await f.auth.confirmDeletion(retry)).toMatchObject({userId:'clerk-1'});
   await erase('clerk-1','session-1');
   expect(f.backend.deleteUser).toHaveBeenLastCalledWith('clerk-1');
-  const user = await f.rpc.query('auth:read',{operation:'findOne',input:{model:'user',where:[{field:'id',value:'clerk-1'}]}});
+  const user = await f.rpc.query('legacyAuth:read',{operation:'findOne',input:{model:'user',where:[{field:'id',value:'clerk-1'}]}});
   expect(user).toBeNull();
 });
