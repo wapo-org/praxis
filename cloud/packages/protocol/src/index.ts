@@ -85,6 +85,7 @@ export const ToolSourceSchema = z.object({type:z.enum(['builtin','skill','javasc
 export const ToolPresentationSchema = z.object({type:z.literal('tool.presentation').default('tool.presentation'),category:z.enum(['integration','command','webSearch','webFetch','readFile','edit','skill','other']),runningTitle:z.string(),finishedTitle:z.string()});
 export const ToolSpecSchema = z.object({originalName:z.string().optional(),type:z.literal('tool.spec'),name:z.string(),description:z.string(),inputSchema:JsonObjectSchema,source:ToolSourceSchema,traits:z.array(z.enum(['readOnly','destructive','idempotent','openWorld','sandboxed']))});
 export type ToolSpec = z.infer<typeof ToolSpecSchema>;
+export const READ_TOOL_OUTPUT_TOOL_NAME = 'read_tool_output';
 export const ATTACHMENT_LIMITS = {uploadBytes: 25_000_000, inlineDocumentBytes: 10 << 20, inlineTextBytes: 200_000, codeReadBytes: 1_000_000} as const;
 export const AttachmentSchema = z.object({type:z.literal('attachment'),id:IdSchema,name:z.string(),mediaType:z.string(),size:z.number().int().nonnegative(),url:z.string().optional(),hiddenFromCode:z.boolean().default(false)});
 export type Attachment = z.infer<typeof AttachmentSchema>;

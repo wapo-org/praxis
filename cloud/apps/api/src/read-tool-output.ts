@@ -1,5 +1,6 @@
 import {readWebOutput} from './features/web/output.js';
 import {MAX_RESULT_CHARACTERS, textResult, type AgentTool} from '@praxis/agent';
+import {READ_TOOL_OUTPUT_TOOL_NAME} from '@praxis/protocol';
 import type {ApiService} from './service.js';
 
 /** Leaves room for the page header below MAX_RESULT_CHARACTERS. */
@@ -10,10 +11,12 @@ const DEFAULT_READ = 20_000;
 export function readToolOutputTool(service: ApiService): AgentTool {
   return {
     spec: {
-      type: 'tool.spec', name: 'read_tool_output', source: {type: 'builtin'}, traits: ['readOnly', 'idempotent'],
+      type: 'tool.spec', name: READ_TOOL_OUTPUT_TOOL_NAME, source: {type: 'builtin'}, traits: ['readOnly', 'idempotent'],
       description: 'Read more of a tool result that was truncated. Pass the id from the truncation note and a character offset.',
       inputSchema: {type: 'object', properties: {id: {type: 'string', description: 'Id from the truncation note'}, offset: {type: 'integer', description: 'Character offset to start at'}, limit: {type: 'integer', description: `Characters to read (default ${DEFAULT_READ}, at most ${MAX_READ_CHARACTERS})`}}, required: ['id', 'offset']},
     },
+    // Spilled output is external tool data, so paging it back in taints the run like the original result.
+    boundary: {capabilities: ['read'], decision: 'allow', untrustedSource: true},
     async execute(args, context) {
       const a = (args && typeof args === 'object' && !Array.isArray(args) ? args : {}) as {id?: unknown; offset?: unknown; limit?: unknown};
       if (typeof a.id !== 'string') return textResult('Missing id', true);

@@ -23,3 +23,4 @@ export * from './subagents/handoff.js';
 export * from './subagents/reducer.js';
 export * from './subagents/wait.js';
 export * from './subagents/workspace.js';
+export * from './run-boundary.js';

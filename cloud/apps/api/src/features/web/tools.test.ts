@@ -4,7 +4,7 @@ import {WEB_TOOL_LIMITS as LIMITS, JsonValueSchema, type JsonValue} from '@praxi
 import type {ToolContext} from '@praxis/agent';
 import {assertPublicUrl} from '../../adapters/security.js';
 import type {WebPorts} from './ports.js';
-import {webPageCacheKey, webToolClassifier, webTools} from './tools.js';
+import {WEB_TOOL_BOUNDARY, webPageCacheKey, webTools} from './tools.js';
 
 function fixture() {
   const cache = new Map<string, unknown>();
@@ -36,7 +36,7 @@ it('pins Exa auto, limits results, reserves before dispatch and settles platform
   expect(result.isError).toBe(false);
   const body = JSON.parse(String(f.fetcher.mock.calls[0]![1]!.body));
   expect(body).toEqual({query: 'news', type: 'auto', numResults: 8, contents: {highlights: true}});
-  expect(f.accounting.settle).toHaveBeenCalledWith(expect.objectContaining({payer: 'platform', actualMicroUsd: 7000, slot: 1}));
+  expect(f.accounting.settle).toHaveBeenCalledWith({userId: 'user', runId: 'run', callId: 'call', service: 'exa', estimateMicroUsd: 7000, actualMicroUsd: 7000, slot: 1});
   expect(JSON.stringify(result)).not.toContain('fake-one');
   expect(result.content[0]).toMatchObject({type: 'untrusted-data', results: [{highlight: 'Snippet'}]});
 });
@@ -74,7 +74,8 @@ it('pins markdown-only scraping without PDF parsing, caps and spills long pages,
   expect(JSON.parse(String(f.fetcher.mock.calls[0]![1]!.body))).toMatchObject({formats: ['markdown'], onlyMainContent: true, parsers: []});
   await f.read();
   expect(f.fetcher).toHaveBeenCalledTimes(1);
-  expect(f.accounting.settle).toHaveBeenLastCalledWith(expect.objectContaining({actualMicroUsd: 0}));
+  expect(f.accounting.reserve).toHaveBeenCalledTimes(1);
+  expect(f.accounting.settle).toHaveBeenCalledTimes(1);
 });
 it('treats malformed or unavailable cache as a miss and never shares URLs with query parameters', async () => {
   const f = fixture();
@@ -87,14 +88,39 @@ it('treats malformed or unavailable cache as a miss and never shares URLs with q
   expect(f.fetcher).toHaveBeenCalledTimes(3);
   expect([...f.cache.keys()].join()).not.toContain('private');
 });
-it('releases reservations on provider failures and does not leak provider messages', async () => {
+it('keeps an uncertain dispatch reserved for reconciliation and does not leak provider messages', async () => {
   const f = fixture();
   f.fetcher.mockRejectedValue(new Error('fake-one secret provider response'));
   const result = await f.search();
   expect(result).toMatchObject({isError: true, error: {code: 'upstream', remediation: expect.any(String)}});
   expect(JSON.stringify(result)).not.toContain('fake-one');
+  expect(f.accounting.release).not.toHaveBeenCalled();
+  expect(f.accounting.settle).not.toHaveBeenCalled();
+});
+it('releases a call the provider answered with an unbilled error status', async () => {
+  const f = fixture();
+  f.fetcher.mockResolvedValue(new Response('bad request', {status: 400}));
+  expect(await f.search()).toMatchObject({isError: true, error: {code: 'upstream'}});
   expect(f.accounting.release).toHaveBeenCalledTimes(1);
   expect(f.accounting.settle).not.toHaveBeenCalled();
+});
+it('settles a billed scrape when spilling its output fails afterwards', async () => {
+  const f = fixture();
+  const events: string[] = [];
+  f.accounting.settle.mockImplementation(async () => {events.push('settled');});
+  f.accounting.release.mockImplementation(async () => {events.push('released');});
+  f.fetcher.mockResolvedValue(Response.json({success: true, data: {markdown: 'x'.repeat(LIMITS.PAGE_CHARACTERS_MAX + 1)}}));
+  f.ports.spill = vi.fn(async () => {throw new Error('storage down');});
+  expect((await f.read()).isError).toBe(true);
+  expect(events).toEqual(['settled']);
+  expect(f.accounting.settle).toHaveBeenCalledWith(expect.objectContaining({service: 'firecrawl', actualMicroUsd: 5000, slot: 1}));
+});
+it('settles a billed search whose response body is malformed', async () => {
+  const f = fixture();
+  f.fetcher.mockResolvedValue(new Response('{not json', {status: 200}));
+  expect((await f.search()).isError).toBe(true);
+  expect(f.accounting.settle).toHaveBeenCalledTimes(1);
+  expect(f.accounting.release).not.toHaveBeenCalled();
 });
 it('holds the reservation when settlement fails instead of releasing a billed call', async () => {
   const f = fixture();
@@ -102,14 +128,15 @@ it('holds the reservation when settlement fails instead of releasing a billed ca
   expect((await f.search()).isError).toBe(true);
   expect(f.accounting.release).not.toHaveBeenCalled();
 });
-it('keeps the catalog stable while disabled or unconfigured and exposes structural taint classification', async () => {
+it('keeps the catalog stable while disabled or unconfigured and carries the PRA-76 classification', async () => {
   const f = fixture();
   const enabled = webTools(f.ports), disabled = webTools(f.ports, false), unavailable = webTools(undefined);
   expect(enabled.map(t => t.spec)).toEqual(disabled.map(t => t.spec));
   expect(enabled.map(t => t.spec)).toEqual(unavailable.map(t => t.spec));
   expect(await disabled[0]!.execute({query: 'x'}, f.context)).toMatchObject({isError: true, error: {code: 'policy-denied'}});
   expect(f.fetcher).not.toHaveBeenCalled();
-  expect(webToolClassifier.classify({tool: 'web_read', args: {url: 'https://example.com'}})).toEqual({capabilities: ['read', 'external-egress'], decision: 'allow', untrustedSource: true});
+  expect(enabled.map(t => t.boundary)).toEqual([WEB_TOOL_BOUNDARY, WEB_TOOL_BOUNDARY]);
+  expect(WEB_TOOL_BOUNDARY).toEqual({capabilities: ['read', 'external-egress'], decision: 'allow', untrustedSource: true});
 });
 it('falls through an unavailable cache and returns bounded provider data', async () => {
   const f = fixture();
@@ -124,9 +151,4 @@ it('does not dispatch when the global attempt allowance is exhausted', async () 
   expect(await f.search()).toMatchObject({isError: true, error: {code: 'budget'}});
   expect(f.fetcher).not.toHaveBeenCalled();
   expect(f.accounting.release).toHaveBeenCalledTimes(1);
-});
-it('marks paged stored output as untrusted for fresh thin-harness turns', () => {
-  expect(webToolClassifier.classify({tool: 'read_tool_output', args: {id: 'output', offset: 0}})).toEqual({
-    capabilities: ['read'], decision: 'allow', untrustedSource: true,
-  });
 });

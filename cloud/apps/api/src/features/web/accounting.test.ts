@@ -13,7 +13,8 @@ async function fixture(allowanceMicroUsd = 1_000_000) {
   const input = (service: 'exa' | 'firecrawl' = 'exa', userId = 'user') => ({userId, runId: 'run', callId: String(id++), service,
     estimateMicroUsd: service === 'exa' ? 7000 : 5000, period: '2026-11'});
   const reserve = (args = input()) => rpc.action('webTools:reserve', {request: args});
-  const finish = (args: ReturnType<typeof input>, actualMicroUsd?: number) => rpc.action('webTools:finish', {request: {...args, ...(actualMicroUsd === undefined ? {} : {actualMicroUsd, slot: 1})}});
+  const finish = (args: ReturnType<typeof input>, actualMicroUsd?: number) => actualMicroUsd === undefined
+    ? rpc.action('webTools:release', {request: args}) : rpc.action('webTools:settle', {request: {...args, actualMicroUsd, slot: 1}});
   const attempt = (args: ReturnType<typeof input>) => rpc.action('webTools:attempt', {request: args});
   return {t, rpc, input, reserve, finish, attempt};
 }
@@ -103,4 +104,12 @@ it('preserves sliding hourly limits when a new monthly allowance starts', async 
   vi.setSystemTime(Date.UTC(2026, 11, 1));
   await f.t.run(ctx => ctx.db.insert('toolState', {userId: 'user', kind: 'platformAllowance', id: '2026-12', value: {allowanceMicroUsd: 1_000_000}}));
   expect(await f.reserve({...f.input(), period: '2026-12'})).toBe('denied');
+});
+it('rejects settlements that break the shared protocol contract', async () => {
+  const f = await fixture();
+  const input = f.input();
+  expect(await f.reserve(input)).toBe('reserved');
+  await expect(f.rpc.action('webTools:settle', {request: {...input, actualMicroUsd: 7000}})).rejects.toThrow();
+  await expect(f.rpc.action('webTools:settle', {request: {...input, actualMicroUsd: -1, slot: 1}})).rejects.toThrow();
+  await expect(f.rpc.action('webTools:reserve', {request: {...f.input(), period: 'November'}})).rejects.toThrow();
 });

@@ -91,6 +91,7 @@ describe('read_tool_output (parity: ReadToolOutputTool)', () => {
     const id = /read_tool_output ([0-9a-f-]{36})/.exec(note)?.[1] ?? '';
     expect(id).toBeTruthy();
     const tool = readToolOutputTool(f.service);
+    expect(tool.boundary).toEqual({capabilities: ['read'], decision: 'allow', untrustedSource: true});
     const ctx = (chatId: string) => ({userId: 'local-user', chatId, runId: snap.run.id, mode: 'build' as const, callId: 'c', signal: new AbortController().signal, callTool: async () => ({content: [], isError: false}), elicit: async () => ({type: 'elicitation.response' as const, elicitationId: 'e', action: 'cancel' as const}), emit: async () => {}});
     const tail = await tool.execute({id, offset: 50_000}, ctx(chat.id));
     expect(tail.isError).toBe(false);

@@ -26,3 +26,22 @@ export const WebOutputManifestSchema = z.object({
   chunkIds: z.array(z.string()).max(Math.ceil(WEB_TOOL_LIMITS.RESPONSE_BYTES_MAX / WEB_OUTPUT_CHUNK_CHARACTERS_MAX)),
   characters: z.number().int().nonnegative().max(WEB_TOOL_LIMITS.RESPONSE_BYTES_MAX),
 });
+
+// Accounting RPC between the API and Convex; one definition so both boundaries parse the same shape.
+const MicroUsd = z.number().int().nonnegative();
+export const WEB_SPEND_PERIOD_PATTERN = /^\d{4}-(?:0[1-9]|1[0-2])$/;
+export const WebSpendServiceSchema = z.enum(['exa', 'firecrawl']);
+export const WebSpendCallSchema = z.object({
+  userId: z.string().min(1), runId: z.string().min(1), callId: z.string().min(1),
+  service: WebSpendServiceSchema, estimateMicroUsd: MicroUsd,
+}).strict();
+const WebSpendChargeFields = {actualMicroUsd: MicroUsd, slot: z.number().int().nonnegative()};
+export const WebSpendChargeSchema = WebSpendCallSchema.extend(WebSpendChargeFields);
+export const WebSpendRequestSchema = WebSpendCallSchema.extend({period: z.string().regex(WEB_SPEND_PERIOD_PATTERN)});
+export const WebSpendSettlementSchema = WebSpendRequestSchema.extend(WebSpendChargeFields);
+export const WebSpendAdmissionSchema = z.enum(['reserved', 'denied', 'duplicate']);
+export type WebSpendCall = z.infer<typeof WebSpendCallSchema>;
+export type WebSpendCharge = z.infer<typeof WebSpendChargeSchema>;
+export type WebSpendRequest = z.infer<typeof WebSpendRequestSchema>;
+export type WebSpendSettlement = z.infer<typeof WebSpendSettlementSchema>;
+export type WebSpendAdmission = z.infer<typeof WebSpendAdmissionSchema>;
