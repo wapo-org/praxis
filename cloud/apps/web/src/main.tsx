@@ -13,6 +13,7 @@ if (typeof document !== 'undefined' && document.fonts) {
 }
 import './styles/theme.css';
 import { syncSidebarLook } from './lib/sidebarPalette';
+import { handOffToAppIfCallback } from './lib/openrouter-app-handoff';
 
 syncSidebarLook();
 
@@ -50,7 +51,7 @@ function RoutedApp() {
 }
 
 const rootEl = document.getElementById('root');
-if (rootEl) {
+if (rootEl && !handOffToAppIfCallback(window.location)) {
   ReactDOM.createRoot(rootEl).render(
     <React.StrictMode>
       <BrowserRouter>
