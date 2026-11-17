@@ -23,7 +23,13 @@ export const agentRun = workflow.define({
       if (flags.turnIndex !== expectedTurnIndex || flags.subagents.length > 0 || flags.status === 'busy') {
         throw new Error(WORKFLOW_ERRORS.flags);
       }
-      if (flags.done) return flags.status === 'stopped' ? 'cancelled' : 'completed';
+      if (flags.done) {
+        switch (flags.status) {
+          case 'stopped': return 'cancelled';
+          case 'completed': return 'completed';
+          case 'failed': return 'failed';
+        }
+      }
       expectedTurnIndex += 1;
     }
   },

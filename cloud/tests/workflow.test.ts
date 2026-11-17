@@ -28,7 +28,10 @@ async function setup() {
 
 describe('durable workflow skeleton', () => {
   beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
   it('runs exactly three actions, completes, and journals only bounded flags', async () => {
     const {t, runId} = await setup();
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
@@ -43,6 +46,18 @@ describe('durable workflow skeleton', () => {
       expect(Object.keys(TurnResultSchema.parse(turn.runResult.returnValue)).sort()).toEqual(['done', 'status', 'subagents', 'turnIndex']);
       expect(JSON.stringify(turn.runResult.returnValue).length).toBeLessThan(TURN_RESULT_MAX_BYTES);
     }
+  });
+  it('preserves a terminal worker failure instead of completing the run', async () => {
+    const parse = TurnResultSchema.parse.bind(TurnResultSchema);
+    vi.spyOn(TurnResultSchema, 'parse').mockImplementation(input => {
+      const flags = parse(input);
+      return flags.done ? {...flags, status: 'failed', failure: {
+        code: 'model_key_invalid', message: 'Provider unavailable', remediation: 'Reconnect provider',
+      }} : flags;
+    });
+    const {t, runId} = await setup();
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+    expect((await t.run(ctx => ctx.db.get(runId)))?.status).toBe('failed');
   });
   it('redelivers committed turns concurrently without advancing twice', async () => {
     const {t, scope, runId} = await setup();
