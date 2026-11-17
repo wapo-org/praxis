@@ -171,6 +171,14 @@ export function useChatActions(
     [chats],
   );
 
+  const setChatWebTools = React.useCallback(
+    async (chatId: string, enabled: boolean) => {
+      const updated = await apiClient.patchChat(chatId, { webToolsEnabled: enabled });
+      setChats((prev) => prev.map((c) => (c.id === chatId ? updated : c)));
+    },
+    [],
+  );
+
   return {
     selectChat,
     createNewChat,
@@ -178,5 +186,6 @@ export function useChatActions(
     togglePinChat,
     deleteChats,
     toggleChatConnector,
+    setChatWebTools,
   };
 }

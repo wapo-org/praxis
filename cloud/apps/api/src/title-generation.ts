@@ -39,7 +39,7 @@ export function createTitleGenerator(
        const signal=AbortSignal.timeout(timeoutMs??8000),attempt:JsonObject={modelId:model.id};
        try {
 
-        const resolved=await resolveProvider(userId,chat,{type:'run.start',chatId:chat.id,modelId:model.id,text,attachmentIds:[],webSearch:false});
+        const resolved=await resolveProvider(userId,chat,{type:'run.start',chatId:chat.id,modelId:model.id,text,attachmentIds:[]});
         const effort=resolveEffort(model,'low');
         const request:ProviderRequest={
           model:model.id,system:TITLE_SYSTEM,tools:[],capabilities:resolved.provider.capabilities,maxTokens:32,temperature:0,

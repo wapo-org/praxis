@@ -11,7 +11,7 @@ it('regenerates a middle reply with the original user message once and branches 
  const {service}=createPraxisApp({adapters:createLocalAdapters(),local:true});await service.seed('u');
  const received:Message[][]=[];
  service.driver={async start(u,r,_c,m){received.push(structuredClone(m));const now=service.now();await service.emit(u,r.id,{type:'messages.committed',messages:[{type:'message',id:r.id+'-reply',chatId:r.chatId,runId:r.id,role:'assistant',parts:[{type:'text',text:'answer'}],createdAt:now,updatedAt:now}]});await service.emit(u,r.id,{type:'run.finished',outcome:'completed'});},async resume(){}};
- const start=async(text:string,regenerateMessageId?:string)=>{const run=await service.start('u',{type:'run.start',chatId:'welcome',text,attachmentIds:[],webSearch:false,clientTurnId:crypto.randomUUID(),regenerateMessageId});await service.drain();return run;};
+ const start=async(text:string,regenerateMessageId?:string)=>{const run=await service.start('u',{type:'run.start',chatId:'welcome',text,attachmentIds:[],clientTurnId:crypto.randomUUID(),regenerateMessageId});await service.drain();return run;};
  const first=await start('Closer');await start('Later question');
  const regenerated=await start('Closer',first.id+'-reply');
  expect(regenerated.promptStartedAt).toBe(regenerated.createdAt);
@@ -48,7 +48,7 @@ it('acks all question actions with the form resolved while continuation is still
   const {service}=createPraxisApp({adapters:createLocalAdapters(),local:true});await service.seed('u');
   let release!:()=>void;const blocked=new Promise<void>(r=>release=r);
   service.driver={async start(u,r){await service.emit(u,r.id,{type:'elicitation.requested',elicitation:{type:'elicitation',id:'e',message:'Name?',schema:{type:'object'}}});},async resume(){await blocked;}};
-  const run=await service.start('u',{type:'run.start',chatId:'welcome',text:'q',attachmentIds:[],webSearch:false});await service.drain();
+  const run=await service.start('u',{type:'run.start',chatId:'welcome',text:'q',attachmentIds:[]});await service.drain();
   try{await service.decision('u',run.id,{type:'elicitation.response',elicitationId:'e',action});expect((await service.require<any>('u','snapshot',run.id)).pendingElicitations).toEqual([]);}finally{release();await service.drain();}
  }
 });
