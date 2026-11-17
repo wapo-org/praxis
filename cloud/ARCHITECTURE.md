@@ -44,6 +44,17 @@ Shell denials cannot be approved; unrecognized syntax fails closed and unknown c
 confinement without secrets or network effects; tainted side effects and egress require verified receipts.
 Auto also requires approval for destructive or untrusted writes; Ask/Plan deny all side effects.
 
+## Sandbox tools and browser CLI (PRA-77)
+
+`packages/sandbox-tools` is the Modal v1 tool set: `shell`, `read_file`, `edit_file` (exact-match, then the
+workspace's `.praxis/diagnostics.json` checks inline), `export_file`, `wait_for_job`, and per-turn git checkpoints
+with rewind (PRA-63). Tools run only through `executeSandboxTool`, which goes through `executeBoundary`; `shell`
+is classified by `shellPolicy`. They speak to a `SandboxPort`: an in-memory fake for tests, a local temp-dir port,
+and `@praxis/sandbox-tools/modal`, which uses Modal's native exec and filesystem APIs (no in-sandbox server).
+`packages/browser-cli` (`praxis-browser`) drives Chromium over CDP with accessibility-tree refs and no LLM;
+it shares snapshot and screenshot capture with `praxis-verify`. Neither package may be imported by `apps/api`
+directly while it is a Hono app (child_process lives in the local port and the browser session).
+
 ## Dependencies and deployment
 
 Runtime dependency inventory (features add their package only when implemented):
@@ -69,7 +80,10 @@ No accounts/projects are created or deployed by agents. Required credentials, ex
 
 - fflate: small in-memory streaming ZIP decoder for skill imports; declared and actual sizes, entry types, paths and counts are bounded before persistence. Tar parsing and bounded gzip use Node built-ins.
 
+Sandbox dependency: `modal` **0.11.1**, pinned, the official Modal JavaScript SDK (sandboxes, exec, filesystem, volumes, tunnels), used only by `@praxis/sandbox-tools/modal` and its opt-in scripts.
+
 Tool-boundary dependencies: `shell-quote` **1.12.0**, pinned, dependency-free pure JS token scanner for the restricted shell AST; `@types/shell-quote` **1.7.5** for compile-time declarations. `fast-check` **4.10.2**, pinned dev dependency, checks shell obfuscation and monotone taint properties; `npm test` runs the boundary suite; `npm run specs` runs the PRA-75 formal models.
+
 ## Formal protocol checks
 
 `specs/` models the v2 Linear designs before their implementations exist; see

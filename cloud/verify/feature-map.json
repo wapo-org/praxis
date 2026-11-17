@@ -5,90 +5,215 @@
       "id": "repo.gate",
       "title": "Typecheck, tests, boundary rules, lint, comment hygiene and both builds",
       "issue": "PRA-72",
-      "surfaces": ["web", "api"],
-      "covers": [{"command": "gate"}]
+      "surfaces": [
+        "web",
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "gate"
+        }
+      ]
     },
     {
       "id": "web.shell",
       "title": "Signed-out shell, dev sign-in and an empty chat with a usable composer",
       "issue": "PRA-28",
-      "surfaces": ["web", "api"],
+      "surfaces": [
+        "web",
+        "api"
+      ],
       "covers": [
-        {"command": "web", "flows": ["load-app"]},
-        {"command": "api", "checks": ["bootstrap"]}
+        {
+          "command": "web",
+          "flows": [
+            "load-app"
+          ]
+        },
+        {
+          "command": "api",
+          "checks": [
+            "bootstrap"
+          ]
+        }
       ]
     },
     {
       "id": "web.failure-surfaces",
       "title": "Missing routes error instead of fabricating data; a 401 signs out; tool runs keep the API alive",
       "issue": "PRA-28",
-      "surfaces": ["web", "api"],
-      "covers": [{"command": "web", "flows": ["api-resilience"]}]
+      "surfaces": [
+        "web",
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "web",
+          "flows": [
+            "api-resilience"
+          ]
+        }
+      ]
     },
     {
       "id": "web.chat-fuzz",
       "title": "Seeded random send, stop, reload, new and switch keep the composer usable",
       "issue": "PRA-28",
-      "surfaces": ["web"],
-      "covers": [{"command": "web", "flows": ["fuzz-chat"]}]
+      "surfaces": [
+        "web"
+      ],
+      "covers": [
+        {
+          "command": "web",
+          "flows": [
+            "fuzz-chat"
+          ]
+        }
+      ]
     },
     {
       "id": "chat.send-stream",
       "title": "Send a message, stream the reply over SSE and read it back from the run snapshot",
       "issue": "PRA-9",
-      "surfaces": ["web", "api"],
+      "surfaces": [
+        "web",
+        "api"
+      ],
       "covers": [
-        {"command": "web", "flows": ["scripted-chat"]},
-        {"command": "api", "checks": ["chat", "text-sse", "snapshot"]}
+        {
+          "command": "web",
+          "flows": [
+            "scripted-chat"
+          ]
+        },
+        {
+          "command": "api",
+          "checks": [
+            "chat",
+            "text-sse",
+            "snapshot"
+          ]
+        }
       ]
     },
     {
       "id": "runs.approvals",
       "title": "A nested destructive tool parks the run for approval and resumes after allowOnce",
       "issue": "PRA-56",
-      "surfaces": ["api"],
-      "covers": [{"command": "api", "checks": ["nested-approval"]}]
+      "surfaces": [
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "api",
+          "checks": [
+            "nested-approval"
+          ]
+        }
+      ]
     },
     {
       "id": "runs.stop-replay",
       "title": "Disconnect, cancel and Last-Event-ID replay without duplicate events",
       "issue": "PRA-58",
-      "surfaces": ["api"],
-      "covers": [{"command": "api", "checks": ["disconnect-cancel-replay"]}]
+      "surfaces": [
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "api",
+          "checks": [
+            "disconnect-cancel-replay"
+          ]
+        }
+      ]
     },
     {
       "id": "models.openrouter-key",
-      "title": "Settings → Models OpenRouter card; connecting, rejecting and using a real key",
+      "title": "Settings \u2192 Models OpenRouter card; connecting, rejecting and using a real key",
       "issue": "PRA-59",
-      "surfaces": ["web", "api"],
+      "surfaces": [
+        "web",
+        "api"
+      ],
       "covers": [
-        {"command": "web", "flows": ["settings-models"]},
-        {"command": "live", "suite": "openrouter"}
+        {
+          "command": "web",
+          "flows": [
+            "settings-models"
+          ]
+        },
+        {
+          "command": "live",
+          "suite": "openrouter"
+        }
       ]
     },
     {
       "id": "models.catalogue",
       "title": "Model catalogue lists and searches models, scripted models included in local dev",
       "issue": "PRA-59",
-      "surfaces": ["web", "api"],
+      "surfaces": [
+        "web",
+        "api"
+      ],
       "covers": [
-        {"command": "web", "flows": ["model-search"]},
-        {"command": "api", "checks": ["models"]}
+        {
+          "command": "web",
+          "flows": [
+            "model-search"
+          ]
+        },
+        {
+          "command": "api",
+          "checks": [
+            "models"
+          ]
+        }
       ]
     },
     {
       "id": "credentials.pool",
       "title": "Suffixed platform keys fail over, cool down in Upstash and never leak key material",
       "issue": "PRA-61",
-      "surfaces": ["api"],
-      "covers": [{"command": "live", "suite": "credential-pool"}]
+      "surfaces": [
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "live",
+          "suite": "credential-pool"
+        }
+      ]
     },
     {
       "id": "ios.unit",
       "title": "PraxisChat builds for the simulator, passes its unit tests and launches",
       "issue": "PRA-62",
-      "surfaces": ["ios"],
-      "covers": [{"command": "ios"}]
+      "surfaces": [
+        "ios"
+      ],
+      "covers": [
+        {
+          "command": "ios"
+        }
+      ]
+    },
+    {
+      "id": "browser.cli",
+      "title": "praxis-browser: deterministic accessibility-tree browsing with refs, waits and hashed screenshots, no LLM",
+      "issue": "PRA-20",
+      "surfaces": [
+        "web"
+      ],
+      "covers": [
+        {
+          "command": "web",
+          "flows": [
+            "browser-cli"
+          ]
+        }
+      ]
     }
   ]
 }

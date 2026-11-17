@@ -9,6 +9,9 @@ export const TOOL_REMEDIATION: Record<ToolErrorCode, string> = {
   'approval-required': 'Request fresh user approval for this exact tool call and arguments.',
   budget: 'Reduce the request or ask the user to increase the budget.',
   'upstream-firewall': 'Inspect the upstream refusal and use a permitted request; do not bypass the firewall.',
+  'not-found': 'Check the path or id (list the directory or jobs first), then retry.',
+  conflict: 'Re-read the current state, then retry with an edit that matches it exactly.',
+  timeout: 'Run it in the background and poll with wait_for_job, or narrow the work.',
 };
 export function toolError(code: ToolErrorCode, message: string): ToolError {
   return ToolErrorSchema.parse({code, message, remediation: TOOL_REMEDIATION[code]});

@@ -18,17 +18,9 @@ export type ApprovalBinding = z.infer<typeof ApprovalBindingSchema>;
 export type ApprovalReceiptWire = z.infer<typeof ApprovalReceiptWireSchema>;
 export const ToolErrorCodeSchema = z.enum([
   'schema', 'path-traversal', 'taint-blocked', 'policy-denied', 'approval-required', 'budget', 'upstream-firewall', 'upstream',
+  'not-found', 'conflict', 'timeout',
 ]);
 export type ToolErrorCode = z.infer<typeof ToolErrorCodeSchema>;
-const errorShape = {message: z.string(), remediation: z.string().min(1)};
-export const ToolErrorSchema = z.discriminatedUnion('code', [
-  z.object({code: z.literal('schema'), ...errorShape}),
-  z.object({code: z.literal('path-traversal'), ...errorShape}),
-  z.object({code: z.literal('taint-blocked'), ...errorShape}),
-  z.object({code: z.literal('policy-denied'), ...errorShape}),
-  z.object({code: z.literal('approval-required'), ...errorShape}),
-  z.object({code: z.literal('budget'), ...errorShape}),
-  z.object({code: z.literal('upstream-firewall'), ...errorShape}),
-  z.object({code: z.literal('upstream'), ...errorShape}),
-]);
+/** Every code carries the same fields, so one object over the code enum is the whole schema; a new code is one enum entry. */
+export const ToolErrorSchema = z.object({code: ToolErrorCodeSchema, message: z.string(), remediation: z.string().min(1)});
 export type ToolError = z.infer<typeof ToolErrorSchema>;
