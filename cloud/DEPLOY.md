@@ -49,7 +49,7 @@ It never falls back to memory adapters or dev auth.
 | `CLERK_PUBLISHABLE_KEY` | yes | Clerk instance publishable key. |
 | `CLERK_SECRET_KEY` | yes | Server-only Clerk key for identity lookup and account deletion. |
 | `CLERK_JWT_KEY` | yes | Clerk instance PEM public key for networkless JWT verification. |
-| `VITE_CLERK_PUBLISHABLE_KEY` | web build | Same instance publishable key; enables the custom Clerk sign-in/register flow. |
+| `VITE_CONVEX_URL` | web build | Convex deployment client URL; web sign-in is Convex Auth v2, configured in the Convex deployment (see [Convex Auth v2 web](#convex-auth-v2-web-pra-34)). |
 | `CONVEX_URL` | yes | Convex dashboard → deployment → Settings → URL (`https://<name>.convex.cloud`). |
 | `PRAXIS_CONVEX_SERVER_TOKEN` | yes | API-to-Convex credential, ≥ 32 chars: `openssl rand -base64 48`. Set the **same value** in the Convex deployment env (below). |
 | `UPSTASH_REDIS_REST_URL` | yes | Upstash console → Redis database → REST API → URL. |
@@ -118,7 +118,8 @@ Create a second project with Root Directory `cloud/apps/web` (see `cloud/docs/we
 | Native app return after connector OAuth (handled by the app, nothing to register server-side) | `praxis-app://oauth/callback?state=…` |
 | Web return after connector OAuth | an origin listed in `PRAXIS_WEB_ORIGINS` |
 | QStash continuation (no registration; it must be publicly reachable) | `PRAXIS_API_URL/internal/continue` |
-| Clerk OAuth callback | Web origin + `/auth/callback`; enable Google and Apple in Clerk. |
+| Google sign-in redirect (Convex Auth v2) | `<CONVEX_SITE_URL>/oauth/google/callback` |
+| Apple sign-in return URL (Convex Auth v2, public HTTPS) | `<CONVEX_SITE_URL>/oauth/apple/callback` |
 
 ## Security notes
 
@@ -203,6 +204,25 @@ create them. Require `SonarCloud / scan` only after the token and analysis metho
 are configured; require the SonarCloud quality-gate check only after the new-code
 gate is green. There is no merge or deployment step in CI.
 
+
+## Convex Auth v2 web (PRA-34)
+
+Install with `cd cloud && npm install`, then run `CONVEX_AGENT_MODE=anonymous npx convex dev` for local development.
+Set deployment variables with `npx convex env set NAME` (enter secret values interactively):
+`RESEND_API_KEY`, `SENDER_EMAIL`, `SENDER_NAME`, `SITE_URL`,
+`AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET`,
+`AUTH_APPLE_CLIENT_ID`, `AUTH_APPLE_TEAM_ID`, `AUTH_APPLE_KEY_ID`, `AUTH_APPLE_PRIVATE_KEY`.
+All are required; use a Resend-verified sender and the actual web origin for SITE_URL.
+Set web `VITE_CONVEX_URL` to the deployment's client URL; no provider credentials belong in Vite.
+For the local API, set `PRAXIS_LOCAL_CONVEX_URL` to the same loopback HTTP deployment:
+`PRAXIS_LOCAL_CONVEX_URL=http://127.0.0.1:3210 npm run dev:local`.
+Without this API variable, the legacy local API accepts dev tokens rather than Convex sessions.
+The managed browser verification stack sets both URLs automatically; the local API variable is not a production setting.
+Register the Google redirect URI and Apple Services ID return URL listed under [OAuth and callback URLs](#oauth-and-callback-urls-to-register).
+The HTTPS page for the future iOS handoff must share the SITE_URL origin.
+No cloud deployment is part of PRA-34 verification.
+Component tests use the upstream fake Resend component, retaining the real password WASM and auth code.
+Run them with `npx vitest run tests/auth-v2.test.ts`.
 ### Internal turn caller (PRA-38)
 
 Set `PRAXIS_TURN_CURRENT_SIGNING_KEY` to a random secret of at least 32 characters,

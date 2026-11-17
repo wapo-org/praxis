@@ -27,5 +27,10 @@
     "oxlint": "1.93.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"
+  },
+  "dependencies": {
+    "@convex-dev/auth": "2.0.0",
+    "@convex-dev/resend": "0.2.10",
+    "convex": "1.50.0"
   }
 }

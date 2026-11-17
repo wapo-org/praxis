@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {actionPlan, seededRandom} from './fuzz.js';
-import {describeIssue, SIGNED_OUT_SESSION_PROBE, unexpectedIssues, type BrowserIssue} from './judge.js';
+import {describeIssue, unexpectedIssues, type BrowserIssue} from './judge.js';
 
 const response = (url: string, status: number): BrowserIssue => ({kind: 'response', method: 'GET', url: `http://127.0.0.1:5240${url}`, status});
 
@@ -21,8 +21,8 @@ describe('browser issue judge', () => {
   });
 
   it('allows only the listed path and status', () => {
-    const issues = [response('/v1/auth/session', 401), response('/v1/auth/session', 500), response('/v1/auth/session/x', 401)];
-    expect(unexpectedIssues(issues, [SIGNED_OUT_SESSION_PROBE]).map(describeIssue)).toEqual(['HTTP 500 GET /v1/auth/session', 'HTTP 401 GET /v1/auth/session/x']);
+    const issues = [response('/v1/bootstrap', 401), response('/v1/bootstrap', 500), response('/v1/bootstrap/x', 401)];
+    expect(unexpectedIssues(issues, [{kind: 'response', pattern: /^\/v1\/bootstrap$/, status: 401, reason: 'explicitly rejected session'}]).map(describeIssue)).toEqual(['HTTP 500 GET /v1/bootstrap', 'HTTP 401 GET /v1/bootstrap/x']);
   });
 
   it('drops the console echo of a judged response and aborted requests', () => {

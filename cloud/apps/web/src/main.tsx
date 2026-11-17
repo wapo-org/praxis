@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { ConvexRoot } from './auth/ConvexRoot';
 import { AccountGate } from './components/screens/AccountGate';
 import { BrowserRouter, useNavigate } from 'react-router-dom';
 const AuthenticatedApp = React.lazy(() => import('./AuthenticatedApp'));
@@ -54,9 +55,11 @@ const rootEl = document.getElementById('root');
 if (rootEl && !handOffToAppIfCallback(window.location)) {
   ReactDOM.createRoot(rootEl).render(
     <React.StrictMode>
+      <ConvexRoot>
       <BrowserRouter>
         <RoutedApp />
       </BrowserRouter>
+      </ConvexRoot>
     </React.StrictMode>,
   );
 }

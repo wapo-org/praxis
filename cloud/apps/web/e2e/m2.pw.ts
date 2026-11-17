@@ -1,3 +1,4 @@
+import { signIn as convexSignIn } from './sign-in';
 import { test, expect } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 test.use({ serviceWorkers: 'block', video: 'on' });
@@ -16,8 +17,7 @@ test('real Hello turn stays ordered, copies the whole turn, and output scrolls t
       },
     });
   });
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Continue as local dev user' }).click();
+  await convexSignIn(page);
   await page.getByTestId('chat-top-bar').waitFor();
   await page.route('**/v1/runs', async (route) => {
     if (route.request().method() !== 'POST') return route.continue();

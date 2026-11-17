@@ -1,6 +1,7 @@
+import { signIn } from './sign-in';
 import {test,expect,type Page} from '@playwright/test';
 const paragraph='A careful release keeps the reader in control. Check the evidence and keep the next action clear.';
-async function signIn(page:Page){await page.goto('/');await page.getByRole('button',{name:'Continue as local dev user'}).waitFor();await page.getByRole('button',{name:'Continue as local dev user'}).click();await page.getByTestId('chat-top-bar').waitFor();}
+
 async function seed(page:Page,script:'text'|'long'='text'){
   const id=await page.evaluate(async({script,text})=>{
     // @ts-expect-error Vite source import.

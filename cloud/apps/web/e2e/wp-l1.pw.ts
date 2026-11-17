@@ -1,6 +1,7 @@
+import { signIn as convexSignIn } from './sign-in';
 import {expect,test} from '@playwright/test';
 test.beforeEach(async({page})=>{
- await page.request.post('/v1/auth/dev',{data:{type:'auth.dev',userId:'l1-e2e-'+crypto.randomUUID()}});
+ await convexSignIn(page);
  await page.goto('/');await page.getByTestId('composer-input').waitFor();
 });
 test('regenerating the middle reply keeps one prompt, removes later turns, and survives reload',async({page})=>{

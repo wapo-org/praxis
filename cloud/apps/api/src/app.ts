@@ -57,8 +57,9 @@ export function createApp(options:AppOptions){
  const devCreated=new Map<string,number>();
  const devTokens=new Map<string,string>([['dev-local','local-user']]);
  async function session(request:Request){
+  if(options.resolveSession)return options.resolveSession(request);
   if(service.local){const token=request.headers.get('authorization')?.replace(/^Bearer /i,'')??request.headers.get('cookie')?.split(';').map(x=>x.trim()).find(x=>x.startsWith('praxis_session='))?.slice('praxis_session='.length);const id=token?devTokens.get(token):undefined;if(id)return {user:{type:'user' as const,id,name:'Local developer'},expiresAt:new Date(Date.now()+86400000).toISOString()};return null;}
-  if(!options.resolveSession)throw new ApiError(503,'auth_unconfigured','Production authentication is not configured');return options.resolveSession(request);
+  throw new ApiError(503,'auth_unconfigured','Production authentication is not configured');
  }
  app.post('/v1/auth/dev',async c=>{
   if(!service.local)throw new ApiError(404,'not_found','Endpoint not found');

@@ -1,3 +1,5 @@
+import {LOCAL_CONVEX_URL_ENV} from '@praxis/protocol';
+import {startAuthBackend} from './convex-auth.js';
 import {join} from 'node:path';
 import {CLOUD_DIR, LOOPBACK_HOST} from '../constants.js';
 import {assertPortFree, startServer, waitForUrl, type ManagedServer} from '../proc.js';
@@ -5,6 +7,7 @@ import {assertPortFree, startServer, waitForUrl, type ManagedServer} from '../pr
 export interface LocalStack {
   base: string;
   api: string;
+  convexUrl?: string;
   stop(): Promise<void>;
 }
 
@@ -17,10 +20,10 @@ function apiEnv(apiPort: number): NodeJS.ProcessEnv {
   return env;
 }
 
-export async function startApi(apiPort: number, logDirectory: string): Promise<{api: string; server: ManagedServer}> {
+export async function startApi(apiPort: number, logDirectory: string, convexUrl?: string): Promise<{api: string; server: ManagedServer}> {
   await assertPortFree(apiPort);
   const api = `http://${LOOPBACK_HOST}:${apiPort}`;
-  const server = startServer('api', join(BIN, 'tsx'), ['src/local.ts'], {cwd: join(CLOUD_DIR, 'apps', 'api'), env: apiEnv(apiPort), logFile: join(logDirectory, 'api.log')});
+  const server = startServer('api', join(BIN, 'tsx'), ['src/local.ts'], {cwd: join(CLOUD_DIR, 'apps', 'api'), env: {...apiEnv(apiPort), ...(convexUrl ? {[LOCAL_CONVEX_URL_ENV]: convexUrl} : {})}, logFile: join(logDirectory, 'api.log')});
   try {
     await waitForUrl(`${api}/health`, undefined, () => !server.exited);
   } catch (error) {
@@ -30,19 +33,28 @@ export async function startApi(apiPort: number, logDirectory: string): Promise<{
   return {api, server};
 }
 
-/** Both servers or neither: a half-started stack is stopped before the error propagates. */
+/** A failed startup must not leave a partial stack running. */
 export async function startLocalStack(ports: {web: number; api: number}, logDirectory: string): Promise<LocalStack> {
   await assertPortFree(ports.web);
-  const {api, server: apiServer} = await startApi(ports.api, logDirectory);
   const base = `http://${LOOPBACK_HOST}:${ports.web}`;
+  const auth = await startAuthBackend(ports.api, base, logDirectory);
+  let startedApi;
+  try {
+    startedApi = await startApi(ports.api, logDirectory, auth.url);
+  } catch (error) {
+    await auth.stop();
+    throw error;
+  }
+  const {api, server: apiServer} = startedApi;
   const web = startServer('web', join(BIN, 'vite'), ['--port', String(ports.web), '--host', LOOPBACK_HOST, '--strictPort'], {
     cwd: join(CLOUD_DIR, 'apps', 'web'),
-    env: {...process.env, VITE_API_PROXY_TARGET: api},
+    env: {...process.env, VITE_API_PROXY_TARGET: api, VITE_CONVEX_URL: auth.url},
     logFile: join(logDirectory, 'web.log'),
   });
   const stop = async () => {
     await web.stop();
     await apiServer.stop();
+    await auth.stop();
   };
   try {
     await waitForUrl(`${base}/`, undefined, () => !web.exited);
@@ -50,5 +62,5 @@ export async function startLocalStack(ports: {web: number; api: number}, logDire
     await stop();
     throw error;
   }
-  return {base, api, stop};
+  return {base, api, convexUrl: auth.url, stop};
 }
