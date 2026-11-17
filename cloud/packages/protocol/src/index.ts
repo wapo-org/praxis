@@ -271,11 +271,18 @@ const TurnResultFields = {
   turnIndex: z.number().int().nonnegative().max(TURN_INDEX_MAX),
   subagents: z.array(SubagentIdSchema).max(SUBAGENT_LIMITS.CHILDREN_MAX).refine(ids => new Set(ids).size === ids.length),
 };
-/** Keeps a failed result under TURN_RESULT_MAX_BYTES even when OpenRouter's message is long. */
-export const TURN_FAILURE_MESSAGE_MAX_CHARS = 240;
+/** UTF-8 bytes a string occupies inside serialized JSON, escapes included, without its quotes. */
+export function jsonStringBytes(text: string): number {
+  return new TextEncoder().encode(JSON.stringify(text)).byteLength - 2;
+}
+/** With every other field at its maximum (480 B), both caps keep a failed result under TURN_RESULT_MAX_BYTES. */
+export const TURN_FAILURE_MESSAGE_MAX_BYTES = 320;
+export const TURN_FAILURE_REMEDIATION_MAX_BYTES = 160;
 /** A model failure only the user can fix (reconnect, top up): the turn ends instead of holding its claim. */
 export const TurnFailureSchema = z.object({
-  code: RunErrorCodeSchema, message: z.string().max(TURN_FAILURE_MESSAGE_MAX_CHARS), remediation: z.string().min(1).max(200),
+  code: RunErrorCodeSchema,
+  message: z.string().refine(text => jsonStringBytes(text) <= TURN_FAILURE_MESSAGE_MAX_BYTES),
+  remediation: z.string().min(1).refine(text => jsonStringBytes(text) <= TURN_FAILURE_REMEDIATION_MAX_BYTES),
 }).strict();
 export type TurnFailure = z.infer<typeof TurnFailureSchema>;
 export const TurnResultSchema = z.discriminatedUnion('status', [

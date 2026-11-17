@@ -88,6 +88,8 @@ child IDs using PRA-79 `SubagentIdSchema` and
 `SUBAGENT_LIMITS.CHILDREN_MAX`, currently four). Status is ready/busy while active
 and stopped/completed/failed
 when terminal, matching the one-turn harness flags. `failed` carries a `TurnFailureSchema`
-(`model_key_invalid` / `model_credit_exhausted`, a bounded message and remediation). Child lifecycle/handoffs use
+(`model_key_invalid` / `model_credit_exhausted`, a message and remediation capped at
+`TURN_FAILURE_MESSAGE_MAX_BYTES` / `TURN_FAILURE_REMEDIATION_MAX_BYTES` of serialized UTF-8, so a
+failed result with every other field at its maximum still fits `TURN_RESULT_MAX_BYTES`). Child lifecycle/handoffs use
 PRA-79's durable subagent protocol; this response never embeds handoffs or messages.
 The runtime adapter is supplied by PRA-39; absent configuration returns 503.

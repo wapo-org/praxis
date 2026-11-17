@@ -1,8 +1,8 @@
 import {z} from 'zod';
-import {JsonValueSchema, ToolInvocationSchema, TURN_FAILURE_MESSAGE_MAX_CHARS} from '@praxis/protocol';
+import {JsonValueSchema, ToolInvocationSchema} from '@praxis/protocol';
 import {ProviderResponseSchema, ToolResultSchema, type ProviderResponse} from './types.js';
 import {collectResponse} from './collect.js';
-import {ProviderFailure, runErrorCode} from './provider-error.js';
+import {turnFailure} from './turn-failure.js';
 import {executeBoundary, type GateResult} from './boundary/gate.js';
 import {ToolBoundaryError, toolError} from './boundary/errors.js';
 import {canonical} from './policy.js';
@@ -32,12 +32,11 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
     try {
       response = await collectResponse(provider, request, context.signal);
     } catch (error) {
-      const code = runErrorCode(error);
       // A revoked key or spent credit cannot succeed on redelivery; other failures keep the claim for recovery.
-      if (!code || !(error instanceof ProviderFailure)) throw error;
+      const failure = turnFailure(error);
+      if (!failure) throw error;
       if (!await active()) return store.flags(runId);
-      const message = error.message.slice(0, TURN_FAILURE_MESSAGE_MAX_CHARS);
-      return store.fail(token, {code, message, remediation: error.remediation});
+      return store.fail(token, failure);
     }
     if (!await active()) return store.flags(runId);
     await store.saveResponse(token, response);
