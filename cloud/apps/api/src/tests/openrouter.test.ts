@@ -6,6 +6,7 @@ import {createLocalAdapters} from '../local-memory.js';
 import {localModules} from '../modules.js';
 import {CATALOG_RETRY_MS, CATALOG_TTL_MS, capabilitiesOf, parseCatalogModel} from '../openrouter/index.js';
 import {createPraxisApp, jsonLog} from '../server.js';
+import {TITLE_SYSTEM} from '../title-generation.js';
 import {unseal} from '../secrets.js';
 import {catalogEntry, delta, type FakeModel} from './harness.js';
 
@@ -77,7 +78,8 @@ function setup(options: {clock?: () => number} = {}) {
   };
   return {or, app, service, adapters, encryptionKey, bodies, client, turn};
 }
-const chatCalls = (f: ReturnType<typeof setup>) => f.or.calls.filter(c => c.url.endsWith('/chat/completions') && c.body.stream !== false);
+/** Run turns only: title requests share the endpoint and the stream but carry the title system prompt. */
+const chatCalls = (f: ReturnType<typeof setup>) => f.or.calls.filter(c => c.url.endsWith('/chat/completions') && c.body.messages?.[0]?.content !== TITLE_SYSTEM);
 
 describe('connecting a key', () => {
   it('paste: validates against key info, stores it sealed and returns only the masked record', async () => {

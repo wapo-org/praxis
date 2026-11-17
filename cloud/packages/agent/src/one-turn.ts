@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import {JsonValueSchema, ToolInvocationSchema} from '@praxis/protocol';
 import {ProviderResponseSchema, ToolResultSchema, type ProviderResponse} from './types.js';
+import {collectResponse} from './collect.js';
 import {executeBoundary, type GateResult} from './boundary/gate.js';
 import {ToolBoundaryError, toolError} from './boundary/errors.js';
 import {canonical} from './policy.js';
@@ -27,19 +28,8 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
   if (acquired.claim.response) {
     response = ProviderResponseSchema.parse(acquired.claim.response);
   } else {
-    if (provider.complete) {
-      response = ProviderResponseSchema.parse(await provider.complete(request, context.signal));
-    } else {
-      let completed: ProviderResponse | undefined;
-      for await (const event of provider.stream(request, context.signal)) {
-        if (event.type === 'completed') {
-          completed = ProviderResponseSchema.parse(event.response);
-          break;
-        }
-      }
-      if (!completed) throw new Error('Provider stream ended without a completed response');
-      response = completed;
-    }
+    // A provider failure (402, revoked key) propagates before saveResponse, so nothing of the turn is kept.
+    response = await collectResponse(provider, request, context.signal);
     if (!await active()) return store.flags(runId);
     await store.saveResponse(token, response);
   }

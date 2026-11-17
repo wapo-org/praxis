@@ -1,7 +1,7 @@
 import {CapabilitiesSchema, type ToolInvocation} from '@praxis/protocol';
 import {approvalKey} from './boundary/receipt.js';
 import {SealedSecret} from '@praxis/types';
-import {textResult, type ProviderResponse, type AgentTool} from './types.js';
+import {textResult, type ProviderResponse, type AgentTool, type ModelProvider} from './types.js';
 import {ONE_TURN_SYSTEM} from './one-turn-prompt.js';
 import type {CallClaim, OneTurnOptions, SavedCall, TurnFlags, TurnSnapshot, TurnStore} from './one-turn-state.js';
 
@@ -9,6 +9,12 @@ export const response = (calls = false): ProviderResponse => ({
   parts: calls ? [{type: 'toolCall', callId: 'call', name: 'read', arguments: '{"query":"hello"}'}] : [{type: 'text', text: 'done'}],
   stop: calls ? 'toolUse' : 'endTurn', usage: {type: 'usage', inputTokens: 10, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0},
 });
+/** Makes the fixture model answer `next()` on every call, through the stream like a real provider. */
+export function answerWith(provider: ModelProvider, next: () => Promise<ProviderResponse>): void {
+  provider.stream = async function* () {
+    yield {type: 'completed', response: await next()};
+  };
+}
 export const testTool: AgentTool = {
   spec: {type: 'tool.spec', name: 'read', description: 'Read external data.', inputSchema: {
     type: 'object', properties: {query: {type: 'string'}}, required: ['query'], additionalProperties: false,
@@ -20,7 +26,7 @@ export const testTool: AgentTool = {
 export const snapshot = (): TurnSnapshot => ({
   version: 1, userId: 'user', chatId: 'chat', mode: 'auto', tainted: false,
   request: {model: 'model', system: ONE_TURN_SYSTEM, messages: [], tools: [testTool.spec],
-    capabilities: CapabilitiesSchema.parse({}), maxTokens: 100, webSearch: false},
+    capabilities: CapabilitiesSchema.parse({}), maxTokens: 100},
 });
 
 // This fake models atomic Convex operations; production needs durable fencing, not an in-memory lease.

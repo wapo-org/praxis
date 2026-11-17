@@ -1,5 +1,5 @@
 import {expect, it} from 'vitest';
-import {fixture, response, testTool} from './one-turn-fixture.js';
+import {answerWith, fixture, response, testTool} from './one-turn-fixture.js';
 import {runOneTurn, UncertainToolCall} from './one-turn.js';
 import {ToolBoundaryError, toolError} from './boundary/errors.js';
 
@@ -8,7 +8,7 @@ it('an accepted effect with a lost reply stays uncertain and fences the rest of 
     const f = await fixture(true);
     const r = response(true);
     r.parts.push({...r.parts[0]!, callId: 'second'});
-    f.provider.complete = async () => r;
+    answerWith(f.provider, async () => r);
     let effects = 0;
     f.tools = [{...testTool, async execute() {
       effects++;
@@ -41,7 +41,7 @@ it('model dispatch cannot use hidden, unavailable, disabled or unoffered tools',
 it('the frozen schema constrains dispatch even when the live adapter schema becomes broader', async () => {
   const f = await fixture(true);
   f.tools = [{...f.tools[0]!, spec: {...testTool.spec, inputSchema: {type: 'object'}}}];
-  f.provider.complete = async () => ({...response(true), parts: [{type: 'toolCall', callId: 'call', name: 'read', arguments: '{"query":42}'}]});
+  answerWith(f.provider, async () => ({...response(true), parts: [{type: 'toolCall', callId: 'call', name: 'read', arguments: '{"query":42}'}]}));
   await runOneTurn(f);
   expect(f.counts.tool).toBe(0);
   expect(f.store.data.calls.call?.result).toMatchObject({ok: false, error: {code: 'schema'}});

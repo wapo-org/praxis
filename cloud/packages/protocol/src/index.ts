@@ -76,6 +76,8 @@ export const DEFAULT_MODEL_ID = 'anthropic/claude-sonnet-5.5';
 export const RECOMMENDED_MODELS = ['anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5', 'anthropic/claude-haiku-5.5', 'openai/gpt-5.6-sol', 'google/gemini-3.8-flash', 'deepseek/deepseek-v4.1-flash'] as const;
 /** Effort levels offered for models whose catalogue entry supports reasoning. */
 export const REASONING_EFFORTS = ['low', 'medium', 'high'] as const;
+export const ReasoningEffortSchema = z.enum(REASONING_EFFORTS);
+export type ReasoningEffort = z.infer<typeof ReasoningEffortSchema>;
 export const RunErrorCodeSchema = z.enum(['model_key_missing', 'model_key_invalid', 'model_credit_exhausted']);
 export type RunErrorCode = z.infer<typeof RunErrorCodeSchema>;
 export const ToolSourceSchema = z.object({type:z.enum(['builtin','skill','javascript','mcp','server']),serverId:IdSchema.optional(),serverName:z.string().optional()});
