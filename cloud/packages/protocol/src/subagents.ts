@@ -83,21 +83,35 @@ const SubagentNodeFields = {
 };
 const EmptyLifecycle = {handoff: z.null(), error: z.null()};
 const StoppedLifecycle = {handoff: z.null(), error: ToolErrorSchema.nullable()};
+export const SubagentLifecycleSchema = z.discriminatedUnion('status', [
+  z.object({status: z.literal('spawning'), ...EmptyLifecycle}).strict(),
+  z.object({status: z.literal('running'), ...EmptyLifecycle}).strict(),
+  z.object({status: z.literal('waiting'), ...EmptyLifecycle}).strict(),
+  z.object({status: z.literal('completed'), handoff: HandoffRecordSchema, error: z.null()}).strict(),
+  z.object({status: z.literal('failed'), handoff: z.null(), error: ToolErrorSchema}).strict(),
+  z.object({status: z.literal('cancelling'), ...StoppedLifecycle}).strict(),
+  z.object({status: z.literal('cancelled'), ...StoppedLifecycle}).strict(),
+]);
+export type SubagentLifecycle = z.infer<typeof SubagentLifecycleSchema>;
+const [firstLifecycle, ...otherLifecycles] = SubagentLifecycleSchema.options;
 export const SubagentNodeSchema = z.discriminatedUnion('status', [
-  z.object({...SubagentNodeFields, status: z.literal('spawning'), ...EmptyLifecycle}).strict(),
-  z.object({...SubagentNodeFields, status: z.literal('running'), ...EmptyLifecycle}).strict(),
-  z.object({...SubagentNodeFields, status: z.literal('waiting'), ...EmptyLifecycle}).strict(),
-  z.object({...SubagentNodeFields, status: z.literal('completed'), handoff: HandoffRecordSchema, error: z.null()}).strict(),
-  z.object({...SubagentNodeFields, status: z.literal('failed'), handoff: z.null(), error: ToolErrorSchema}).strict(),
-  z.object({...SubagentNodeFields, status: z.literal('cancelling'), ...StoppedLifecycle}).strict(),
-  z.object({...SubagentNodeFields, status: z.literal('cancelled'), ...StoppedLifecycle}).strict(),
+  firstLifecycle.extend(SubagentNodeFields), ...otherLifecycles.map(variant => variant.extend(SubagentNodeFields)),
 ]);
 export type SubagentNode = z.infer<typeof SubagentNodeSchema>;
 export const SubagentTreeSchema = z.object({nodes: z.array(SubagentNodeSchema).min(1)}).strict();
 export type SubagentTree = z.infer<typeof SubagentTreeSchema>;
+const WaitAgentFields = {subagent_id: SubagentIdSchema, tainted: z.boolean()};
+export const WaitAgentEntrySchema = z.discriminatedUnion('status', [
+  firstLifecycle.extend(WaitAgentFields), ...otherLifecycles.map(variant => variant.extend(WaitAgentFields)),
+]);
 export const WaitAgentsResultSchema = z.object({
-  status: z.enum(['ready', 'waiting', 'timeout']), tainted: z.boolean(),
-  agents: z.array(z.object({subagent_id: SubagentIdSchema, status: SubagentStatusSchema,
-    tainted: z.boolean(), handoff: HandoffRecordSchema.nullable(), error: ToolErrorSchema.nullable()}).strict()),
+  status: z.enum(['ready', 'waiting', 'timeout']), tainted: z.boolean(), agents: z.array(WaitAgentEntrySchema),
 }).strict();
+export const DiscoverAgentsResultSchema = z.object({
+  tainted: z.boolean(), agents: z.array(z.object({
+    id: SubagentIdSchema, parent_id: SubagentIdSchema.nullable(), name: z.string(),
+    status: SubagentStatusSchema, tainted: z.boolean(),
+  }).strict()),
+}).strict();
+export type DiscoverAgentsResult = z.infer<typeof DiscoverAgentsResultSchema>;
 export type WaitAgentsResult = z.infer<typeof WaitAgentsResultSchema>;

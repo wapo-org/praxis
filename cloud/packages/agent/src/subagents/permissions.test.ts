@@ -47,7 +47,7 @@ it('enforces depth and sibling discovery independently', () => {
     expect(canSee(tree, child, sibling)).toBe(siblings && depth >= 2);
     expect(canSee(tree, child, nodeById(tree, 'root'))).toBe(true);
   }
-  expect(Object.keys(discoverAgents(tree, 'child')[0]!)).toEqual(['id', 'parent_id', 'name', 'status']);
+  expect(Object.keys(discoverAgents(tree, 'child').result.agents[0]!)).toEqual(['id', 'parent_id', 'name', 'status', 'tainted']);
 });
 it('inherits taint on spawn and propagates later parent taint downward', () => {
   let tree = reduceSubagents(treeFixture(), {type: 'taint', id: 'root'});

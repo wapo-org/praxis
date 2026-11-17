@@ -1,10 +1,10 @@
 import {expect, it} from 'vitest';
-import {ArtifactPathSchema, SpawnAgentSchema, SUBAGENT_LIMITS, SubagentNodeSchema} from '@praxis/protocol';
+import {ArtifactPathSchema, SpawnAgentSchema, SUBAGENT_LIMITS, SubagentNodeSchema, WaitAgentsResultSchema} from '@praxis/protocol';
 import {toolError} from '../boundary/errors.js';
 import {createRequest, handoff, treeFixture} from './test-fixtures.js';
 
 it('requires lifecycle-specific handoffs and errors at the schema boundary', () => {
-  const node = treeFixture().nodes[0];
+  const node = treeFixture().nodes[0]!;
   const error = toolError('upstream', 'Retry the failed task.');
   for (const status of ['spawning', 'running', 'waiting', 'completed', 'failed', 'cancelling', 'cancelled']) {
     for (const payload of [null, handoff()]) {
@@ -14,6 +14,13 @@ it('requires lifecycle-specific handoffs and errors at the schema boundary', () 
           : status === 'cancelling' || status === 'cancelled' ? payload === null
           : payload === null && failure === null;
         expect(SubagentNodeSchema.safeParse({...node, status, handoff: payload, error: failure}).success).toBe(valid);
+        const parsed = WaitAgentsResultSchema.safeParse({status: 'ready', tainted: false, agents: [{
+          subagent_id: node.id, tainted: false, status, handoff: payload, error: failure,
+        }]});
+        expect(parsed.success).toBe(valid);
+        const entry = parsed.success ? parsed.data.agents[0] : undefined;
+        if (entry?.status === 'completed') expect(entry.handoff.status).toBe('completed');
+        if (entry?.status === 'failed') expect(entry.error.code).toBe('upstream');
       }
     }
   }

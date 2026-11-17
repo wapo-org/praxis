@@ -1,4 +1,5 @@
-import {SUBAGENT_WORKSPACE_ROOT, SubagentIdSchema, type SubagentNode, type SubagentTree, type SpawnAgent} from '@praxis/protocol';
+import {SUBAGENT_WORKSPACE_ROOT, SubagentIdSchema, type SubagentNode, type SubagentTree, type SpawnAgent, type DiscoverAgentsResult, type SubagentLifecycle} from '@praxis/protocol';
+import {propagateTaint, type TaintState} from '../boundary/policy.js';
 import {ToolBoundaryError, toolError} from '../boundary/errors.js';
 
 export function rejectSubagent(message: string): never {
@@ -54,9 +55,24 @@ export function canSee(tree: SubagentTree, actor: SubagentNode, target: Subagent
   if (!common) return false;
   return a.indexOf(common) + b.indexOf(common) <= actor.permissions.visibility_depth;
 }
-export function discoverAgents(tree: SubagentTree, actorId: string): Pick<SubagentNode, 'id' | 'parent_id' | 'name' | 'status'>[] {
+export function taintSubtree(tree: SubagentTree, id: string): void {
+  nodeById(tree, id);
+  for (const node of tree.nodes) {
+    if (node.id === id || isDescendant(tree, id, node.id)) node.tainted = true;
+  }
+}
+export function joinSubagentTaint(tree: SubagentTree, id: string, ...sources: readonly TaintState[]): void {
+  if (propagateTaint(nodeById(tree, id), ...sources).tainted) taintSubtree(tree, id);
+}
+export function discoverAgents(input: SubagentTree, actorId: string): {tree: SubagentTree; result: DiscoverAgentsResult} {
+  const tree = structuredClone(input);
   const actor = nodeById(tree, actorId);
-  return tree.nodes.filter(n => canSee(tree, actor, n)).map(n => ({id: n.id, parent_id: n.parent_id, name: n.name, status: n.status}));
+  if (terminal(actor) || actor.status === 'cancelling') return rejectSubagent('Stopped agents cannot discover child results.');
+  const visible = tree.nodes.filter(n => canSee(tree, actor, n));
+  joinSubagentTaint(tree, actorId, ...visible);
+  return {tree, result: {tainted: actor.tainted, agents: visible.map(n => ({
+    id: n.id, parent_id: n.parent_id, name: n.name, status: n.status, tainted: n.tainted,
+  }))}};
 }
 export function controls(actor: SubagentNode, target: SubagentNode): boolean {
   return actor.id === target.parent_id;
@@ -65,10 +81,6 @@ export function terminal(node: SubagentNode): boolean {
   return ['completed', 'failed', 'cancelled'].includes(node.status);
 }
 
-type Lifecycle = {
-  [Status in SubagentNode['status']]: Pick<Extract<SubagentNode, {status: Status}>, 'status' | 'handoff' | 'error'>;
-}[SubagentNode['status']];
-
-export function setLifecycle(node: SubagentNode, lifecycle: Lifecycle): void {
+export function setLifecycle(node: SubagentNode, lifecycle: SubagentLifecycle): void {
   Object.assign(node, lifecycle);
 }

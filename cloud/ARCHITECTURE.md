@@ -85,8 +85,11 @@ ordered inboxes, asynchronous cascading cancellation and verified artifact hando
 The four wire tools and durable state schemas live in `packages/protocol/src/subagents.ts`.
 Injected workspace operations prepare isolated roots, hash artifact bytes, rerun configured checks and
 kill handles; no Convex, Modal or model SDK is imported into the core. `waitAgents` refuses unverified
-completions, joins returned target taint into the waiter and its descendants, and exposes result taint.
-Lifecycle schemas require completed handoffs and failed errors. Workflow scheduling, authenticated
+completions. Discovery and waits return `{tree, result}` with structural taint on the result and each agent;
+adapters commit the returned state before exposing names, statuses, handoffs or errors to a model.
+Both join visible/returned source taint into the caller and its descendants. Message enqueue and delivery
+join message provenance into the recipient subtree. One lifecycle schema requires completed handoffs and
+failed errors in both persisted nodes and wait results. Workflow scheduling, authenticated
 addressing, atomic persistence and sandbox confinement
 remain adapter responsibilities under PRA-15/71/58; the current runner does not register these tools.
 PRA-75's five named subagent invariants run as fast-check properties against the reducer.

@@ -1,7 +1,6 @@
 import {z} from 'zod';
-import {WaitAgentsSchema, type SubagentTree, type WaitAgentsResult} from '@praxis/protocol';
-import {propagateTaint} from '../boundary/policy.js';
-import {isDescendant, nodeById, setLifecycle, terminal} from './permissions.js';
+import {WaitAgentsSchema, WaitAgentsResultSchema, type SubagentTree, type WaitAgentsResult} from '@praxis/protocol';
+import {joinSubagentTaint, nodeById, setLifecycle, terminal} from './permissions.js';
 import {toolError} from '../boundary/errors.js';
 import {VerifiedHandoff, type SubagentWorkspacePort} from './handoff.js';
 import {activeWaiter, waitTargets} from './wait-scope.js';
@@ -29,16 +28,11 @@ export async function waitAgents(input: SubagentTree, actorId: string, raw: unkn
   const expired = timing.nowMs - timing.startedAtMs >= request.timeout_ms;
   const returned = ready && request.mode === 'any' ? finished : nodes;
   const actor = nodeById(tree, actorId);
-  actor.tainted = propagateTaint(actor, ...returned).tainted;
-  if (actor.tainted) {
-    for (const node of tree.nodes) {
-      if (isDescendant(tree, actorId, node.id)) node.tainted = true;
-    }
-  }
-  return {tree, result: {
+  joinSubagentTaint(tree, actorId, ...returned);
+  return {tree, result: WaitAgentsResultSchema.parse({
     status: ready ? 'ready' : expired ? 'timeout' : 'waiting', tainted: actor.tainted,
     agents: returned.map(n => ({
       subagent_id: n.id, status: n.status, tainted: n.tainted, handoff: n.handoff, error: n.error,
     })),
-  }};
+  })};
 }

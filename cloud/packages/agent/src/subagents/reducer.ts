@@ -4,9 +4,8 @@ import {
 } from '@praxis/protocol';
 import {canonical} from '../policy.js';
 import {toolError} from '../boundary/errors.js';
-import {propagateTaint} from '../boundary/policy.js';
 import {VerifiedHandoff} from './handoff.js';
-import {canSee, childPermissions, controls, isDescendant, nodeById, rejectSubagent, setLifecycle, terminal, workspaceFor} from './permissions.js';
+import {canSee, childPermissions, controls, isDescendant, joinSubagentTaint, nodeById, rejectSubagent, setLifecycle, taintSubtree, terminal, workspaceFor} from './permissions.js';
 
 export type SubagentEvent =
   | {type: 'spawn'; actorId: string; id: string; callId: string; request: Extract<SpawnAgent, {action: 'create'}>}
@@ -58,15 +57,7 @@ function ensureLiveParent(tree: SubagentTree, node: SubagentNode): void {
   if (node.parent_id !== null) active(nodeById(tree, node.parent_id));
 }
 function joinParentTaint(tree: SubagentTree, node: SubagentNode): void {
-  if (node.parent_id !== null) {
-    const parent = nodeById(tree, node.parent_id);
-    parent.tainted = propagateTaint({tainted: parent.tainted}, {tainted: node.tainted}).tainted;
-    if (parent.tainted) {
-      for (const peer of tree.nodes) {
-        if (isDescendant(tree, parent.id, peer.id)) peer.tainted = true;
-      }
-    }
-  }
+  if (node.parent_id !== null) joinSubagentTaint(tree, node.parent_id, node);
 }
 function configure(node: SubagentNode, config: {name?: string; model?: string; effort?: 'low' | 'medium' | 'high'}): void {
   if (node.status !== 'waiting') rejectSubagent('Configuration changes require a waiting subagent.');
@@ -160,11 +151,7 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
       const message = SubagentMessageSchema.parse({id: event.messageId, sender_id: actor.id,
         sequence: node.inbox.length + 1, text: event.text, tainted: actor.tainted, disposition: 'pending'});
       node.inbox.push(message);
-      if (message.tainted) {
-        for (const recipient of tree.nodes) {
-          if (recipient.id === node.id || isDescendant(tree, node.id, recipient.id)) recipient.tainted = true;
-        }
-      }
+      joinSubagentTaint(tree, node.id, message);
       break;
     }
     case 'deliver': {
@@ -174,6 +161,7 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
       if (node.inbox.some(m => m.sequence < message.sequence && m.disposition === 'pending')) {
         return rejectSubagent('Inbox messages must be delivered in order.');
       }
+      joinSubagentTaint(tree, node.id, message);
       message.disposition = 'delivered';
       break;
     }
@@ -219,9 +207,7 @@ export function reduceSubagents(input: SubagentTree, event: SubagentEvent): Suba
       break;
     case 'taint':
       active(node);
-      for (const descendant of tree.nodes) {
-        if (descendant.id === node.id || isDescendant(tree, node.id, descendant.id)) descendant.tainted = true;
-      }
+      taintSubtree(tree, node.id);
       break;
   }
   return tree;
