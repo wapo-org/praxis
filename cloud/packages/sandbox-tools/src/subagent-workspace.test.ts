@@ -4,7 +4,7 @@ import {VerifiedHandoff} from '@praxis/agent';
 import {parseTenantId} from '@praxis/types';
 import {FakeSandboxPort} from './fake.js';
 import {SandboxSubagentWorkspace} from './subagent-workspace.js';
-import {FILE_OPERATION, isolatedArgv, relativePath} from './subagent-isolation.js';
+import {FILE_HELPER_PATH, FILE_INPUT_PATH, isolatedArgv, relativePath} from './subagent-isolation.js';
 import {sha256} from './support.js';
 
 const root = '/workspace/.agents/child';
@@ -17,11 +17,11 @@ function fixture() {
   let kills = 0;
   const port = new FakeSandboxPort().writeText(`${root}/result.txt`, 'verified');
   port.on(request => {
-    if (['mkdir', 'chmod'].includes(request.argv[0]!)) return {exitCode: 0};
+    if (['mkdir', 'chmod', 'rm'].includes(request.argv[0]!)) return {exitCode: 0};
     if (request.argv[0] !== 'bwrap') return undefined;
-    const script = request.argv.indexOf(FILE_OPERATION);
+    const script = request.argv.indexOf(FILE_HELPER_PATH, request.argv.indexOf('--') + 1);
     if (script !== -1) {
-      const [, op, path, payload] = request.argv.slice(script + 1);
+      const [, op, path] = request.argv.slice(script + 1);
       const mount = request.argv.indexOf('--ro-bind', request.argv.indexOf('--tmpfs'));
       const source = mount === -1 ? root : request.argv[mount + 1]!;
       if (op === 'capture') {
@@ -32,7 +32,8 @@ function fixture() {
         return {exitCode: 0, stdout: JSON.stringify(files)};
       }
       if (op === 'read') return {exitCode: 0, stdout: Buffer.from(port.files.get(`${root}/${path}`)!).toString('base64')};
-      port.files.set(`${root}/${path}`, Buffer.from(payload!, 'base64'));
+      const inputMount = request.argv.indexOf(FILE_INPUT_PATH);
+      port.files.set(`${root}/${path}`, port.files.get(request.argv[inputMount - 1]!)!);
     }
     return {exitCode: 0};
   });

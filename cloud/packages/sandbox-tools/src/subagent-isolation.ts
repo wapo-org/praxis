@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {WORKSPACE_ERRORS} from './subagent-constants.js';
 import {posix} from 'node:path';
 import {ArtifactPathSchema} from '@praxis/protocol';
@@ -10,21 +11,30 @@ export const SNAPSHOT_MAX_BYTES = 16 * 1024 * 1024;
 export const SNAPSHOT_FILES_MAX = 10_000;
 const SYSTEM_DIRECTORIES = ['/usr', '/bin', '/lib', '/lib64'];
 const PYTHON = 'python3';
+const CONTROL_ROOT = '/workspace/.praxis-subagent-files';
+export const FILE_HELPER_PATH = '/opt/praxis/subagent-files.py';
+export const FILE_INPUT_PATH = '/opt/praxis/input.bin';
+const SCRIPT_NAME = 'subagent-files.py';
+const INPUT_NAME = 'input.bin';
+const FILE_COPY_CHUNK_BYTES = 64 * 1024;
+const HELPER_CWD = '/';
+interface ReadOnlyMount {source: string; target: string}
 const PREPARE_ARGV = ['mkdir', '-p', '--'];
 const PROBE_ARGV = ['/usr/bin/true'];
 
 // Namespace mounts exclude parent/sibling workspaces, host credentials, sockets and the host network.
-export function isolatedArgv(source: string, root: string, readOnly: boolean, argv: readonly string[], cwd = root): string[] {
+export function isolatedArgv(source: string, root: string, readOnly: boolean, argv: readonly string[], cwd = root, mounts: readonly ReadOnlyMount[] = []): string[] {
   return ['bwrap', '--die-with-parent', '--unshare-all', '--new-session', '--clearenv',
     '--setenv', 'PATH', '/usr/local/bin:/usr/bin:/bin',
     ...SYSTEM_DIRECTORIES.flatMap(path => ['--ro-bind', path, path]),
     '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp',
-    readOnly ? '--ro-bind' : '--bind', source, root, '--chdir', cwd, '--', ...argv];
+    readOnly ? '--ro-bind' : '--bind', source, root,
+    ...mounts.flatMap(mount => ['--ro-bind', mount.source, mount.target]), '--chdir', cwd, '--', ...argv];
 }
 
 // O_NOFOLLOW on every component closes the path-check/open race, including symlinks pointing inside the root.
 export const FILE_OPERATION = `import os,sys,json,base64,stat
-root,op,path,payload=sys.argv[1:]
+root,op,path,input_path=sys.argv[1:]
 fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
 def open_parent(path,create=False):
     parts=path.split('/')
@@ -45,7 +55,17 @@ if op in ('read','write'):
     if not stat.S_ISREG(os.fstat(f).st_mode): raise ValueError('not a regular file')
     with os.fdopen(f,'rb' if op=='read' else 'wb') as stream:
         if op=='read': print(base64.b64encode(stream.read(${SNAPSHOT_MAX_BYTES}+1)).decode())
-        else: stream.write(base64.b64decode(payload,validate=True))
+        else:
+            source=os.open(input_path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+            if not stat.S_ISREG(os.fstat(source).st_mode): raise ValueError('not a regular input')
+            with os.fdopen(source,'rb') as incoming:
+                total=0
+                while True:
+                    chunk=incoming.read(${FILE_COPY_CHUNK_BYTES})
+                    if not chunk: break
+                    total+=len(chunk)
+                    if total>${SNAPSHOT_MAX_BYTES}: raise ValueError('input too large')
+                    stream.write(chunk)
 else:
     files=[]
     total=0
@@ -97,11 +117,30 @@ export async function prepareIsolation(port: SandboxPort, root: string): Promise
   await checkedExec(port, {argv: isolatedArgv(root, root, false, PROBE_ARGV), cwd: '/', timeoutMs: ISOLATION_TIMEOUT_MS});
 }
 
-export async function fileOperation(port: SandboxPort, source: string, root: string, op: 'read' | 'write' | 'capture', path = '', payload = ''): Promise<string> {
+export async function fileOperation(port: SandboxPort, source: string, root: string, op: 'read' | 'write' | 'capture',
+  path = '', bytes: Uint8Array = new Uint8Array(), controlRoot = CONTROL_ROOT): Promise<string> {
   await canonicalRoot(port, source);
-  const result = await checkedExec(port, {
-    argv: isolatedArgv(source, root, op !== 'write', [PYTHON, '-c', FILE_OPERATION, root, op, path, payload]),
-    cwd: '/', timeoutMs: ISOLATION_TIMEOUT_MS,
-  });
-  return result.stdout.trim();
+  await canonicalRoot(port, controlRoot);
+  if ([source, root].some(workspace => controlRoot === workspace || controlRoot.startsWith(`${workspace}/`))) {
+    fail('policy-denied', WORKSPACE_ERRORS.CONTROL_ROOT);
+  }
+  if (bytes.length > SNAPSHOT_MAX_BYTES) fail('budget', WORKSPACE_ERRORS.FILE_TOO_LARGE);
+  const directory = posix.join(controlRoot, randomUUID());
+  const helper = posix.join(directory, SCRIPT_NAME);
+  const input = posix.join(directory, INPUT_NAME);
+  const mounts = [{source: helper, target: FILE_HELPER_PATH}];
+  try {
+    await port.writeFile(helper, new TextEncoder().encode(FILE_OPERATION));
+    if (op === 'write') {
+      await port.writeFile(input, bytes);
+      mounts.push({source: input, target: FILE_INPUT_PATH});
+    }
+    const result = await checkedExec(port, {
+      argv: isolatedArgv(source, root, op !== 'write', [PYTHON, '-I', FILE_HELPER_PATH, root, op, path, FILE_INPUT_PATH], HELPER_CWD, mounts),
+      cwd: HELPER_CWD, timeoutMs: ISOLATION_TIMEOUT_MS,
+    });
+    return result.stdout.trim();
+  } finally {
+    await checkedExec(port, {argv: ['rm', '-rf', '--', directory], cwd: HELPER_CWD, timeoutMs: ISOLATION_TIMEOUT_MS});
+  }
 }

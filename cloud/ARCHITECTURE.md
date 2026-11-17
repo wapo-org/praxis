@@ -131,6 +131,9 @@ unavailability fails preparation closed. No packages are installed at runtime. C
 only their writable root plus read-only system runtimes, private PID/network namespaces and a cleared
 environment. All child effects still require PRA-76 authorization; this adapter grants no outbound network.
 File operations use directory descriptors and O_NOFOLLOW to reject symlinks without a check/open race.
+Their trusted script is installed outside child data and mounted read-only, runs from `/` with Python `-I`,
+and receives binary writes through staged read-only files, never argv; staging is removed even on failure.
+Built-in Python syntax diagnostics also use `-I` to prevent workspace or PYTHONPATH module substitution.
 Snapshot capture rejects special files and enforces named count/byte limits, preserving executable bits.
 Content-addressed manifests live outside child mounts under tenant/child/revision. Checks are server-configured
 argv executed against a read-only snapshot; every open, check and artifact read verifies stored content.

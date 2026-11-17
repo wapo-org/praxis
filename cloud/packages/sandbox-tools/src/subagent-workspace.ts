@@ -2,7 +2,7 @@ import {WORKSPACE_ERRORS} from './subagent-constants.js';
 import {posix} from 'node:path';
 import {z} from 'zod';
 import type {HandoffSnapshotPort, SubagentWorkspacePort} from '@praxis/agent';
-import {SUBAGENT_WORKSPACE_ROOT, SubagentIdSchema} from '@praxis/protocol';
+import {SUBAGENT_LIMITS, SUBAGENT_WORKSPACE_ROOT, SubagentIdSchema} from '@praxis/protocol';
 import {parseTenantId, type TenantId} from '@praxis/types';
 import type {ExecRequest, ExecResult, SandboxPort} from './port.js';
 import {fail, sha256, withWorkspaceLock} from './support.js';
@@ -13,7 +13,7 @@ const SNAPSHOT_MANIFEST = 'manifest.json';
 const SNAPSHOT_CONTENT = 'content';
 const ENCODING = 'base64';
 const SnapshotSchema = z.array(z.object({path: z.string(), executable: z.boolean(), data: z.string().regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/)}).strict()).max(SNAPSHOT_FILES_MAX);
-const DigestSchema = z.string().regex(/^[a-f0-9]{64}$/);
+const DigestSchema = z.string().regex(new RegExp(`^[a-f0-9]{${SUBAGENT_LIMITS.SHA256_HEX_CHARACTERS}}$`));
 
 export interface WorkspaceBinding {
   tenantId: TenantId;
@@ -88,7 +88,7 @@ export class SandboxSubagentWorkspace implements SubagentWorkspacePort {
   async writeFile(root: string, path: string, bytes: Uint8Array): Promise<void> {
     this.#ready(root);
     if (bytes.length > SNAPSHOT_MAX_BYTES) fail('budget', WORKSPACE_ERRORS.FILE_TOO_LARGE);
-    await withWorkspaceLock(this.port, root, () => fileOperation(this.port, root, root, 'write', relativePath(path), Buffer.from(bytes).toString(ENCODING)));
+    await withWorkspaceLock(this.port, root, () => fileOperation(this.port, root, root, 'write', relativePath(path), bytes));
   }
 
   async exec(root: string, request: ExecRequest): Promise<ExecResult> {

@@ -1,4 +1,5 @@
 export const WORKSPACE_ERRORS = {
+  CONTROL_ROOT: 'Helper control files must be outside the child workspace and snapshot.',
   CANONICAL_PATH: 'Expected a canonical child-relative path.',
   CANONICAL_ROOT: 'Workspace ancestors must not be symlinks.',
   ISOLATION_FAILED: 'Confined sandbox operation failed.',
