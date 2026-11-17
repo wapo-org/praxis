@@ -6,6 +6,7 @@ import email from '@convex-dev/auth/components/email/convex.config.js';
 import google from '@convex-dev/auth/components/google/convex.config.js';
 import apple from '@convex-dev/auth/components/apple/convex.config.js';
 import resend from '@convex-dev/resend/convex.config.js';
+import workflow from '@convex-dev/workflow/convex.config.js';
 import { AUTH_ENV, AUTH_PATHS } from './authConstants.js';
 
 const app = defineApp({
@@ -28,4 +29,5 @@ app.use(apple, {
     PRIVATE_KEY: app.env[AUTH_ENV.applePrivateKey],
   },
 });
+app.use(workflow);
 export default app;

@@ -1,5 +1,5 @@
 import { access, copyFile, cp, mkdir, mkdtemp, rm, symlink, writeFile, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { ConvexHttpClient } from 'convex/browser';
@@ -84,7 +84,10 @@ export async function startAuthBackend(apiPort: number, base: string, directory:
     const result = await runCommand(process.execPath, [cli, 'env', 'set', '--from-file', environmentFile], { cwd: project, env });
     if (result.code !== 0) throw new Error('Could not configure the local auth environment: ' + result.output);
     await stopBackend();
-    for (const file of AUTH_FIXTURE_FILES) await copyFile(join(CLOUD_DIR, 'convex', file), join(functions, file));
+    for (const file of AUTH_FIXTURE_FILES) {
+      await mkdir(dirname(join(functions, file)), { recursive: true });
+      await copyFile(join(CLOUD_DIR, 'convex', file), join(functions, file));
+    }
     const configPath = join(functions, 'convex.config.ts');
     const config = await readFile(configPath, 'utf8');
     await writeFile(configPath, config.replace("'@convex-dev/resend/convex.config.js'", "'./resend/convex.config.js'"));

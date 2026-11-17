@@ -9,4 +9,7 @@ export const AUTH_BACKEND_PORT_OFFSET = 1;
 export const AUTH_SITE_PORT_OFFSET = 2;
 export const AUTH_START_TIMEOUT_MS = 120_000;
 export const AUTH_FUNCTION_POLL_MS = 250;
-export const AUTH_FIXTURE_FILES = ['auth.ts', 'authConstants.ts', 'auth.config.ts', 'convex.config.ts', 'schema.ts', 'users.ts'] as const;
+// Must include every module `schema.ts` and `convex.config.ts` import, or the fixture deploy fails to bundle.
+export const AUTH_FIXTURE_FILES = [
+  'auth.ts', 'authConstants.ts', 'auth.config.ts', 'convex.config.ts', 'schema.ts', 'users.ts', 'workflows/validators.ts',
+] as const;

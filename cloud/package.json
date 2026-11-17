@@ -11,7 +11,7 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "npm run -ws --if-present typecheck",
+    "typecheck": "npm run -ws --if-present typecheck && tsc --noEmit -p convex",
     "test": "vitest run --passWithNoTests",
     "check:rules": "node scripts/check-rules.mjs",
     "lint": "oxlint --deny-warnings",
@@ -32,6 +32,7 @@
   "dependencies": {
     "@convex-dev/auth": "2.0.0",
     "@convex-dev/resend": "0.2.10",
+    "@convex-dev/workflow": "0.4.10",
     "convex": "1.50.0"
   }
 }

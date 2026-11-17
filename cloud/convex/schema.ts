@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import {runStatus} from './workflows/validators.js';
 
 /** Generic owner-scoped row with optional parentId index. */
 const row = {
@@ -14,8 +15,20 @@ const row = {
 };
 
 export default defineSchema({
-  users: defineTable({}),
-  oauthEmails: defineTable({ userId: v.id('users'), email: v.string() }).index('email', ['email']),
+  // `deleting` fences every owner write once account deletion begins.
+  users: defineTable({ deleting: v.optional(v.boolean()) }),
+  oauthEmails: defineTable({ userId: v.id('users'), email: v.string() })
+    .index('email', ['email'])
+    .index('user', ['userId']),
+  runs: defineTable({
+    userId: v.string(), chatId: v.string(), status: runStatus,
+    startTurnIndex: v.number(), nextTurnIndex: v.number(), generation: v.number(),
+    workflowId: v.optional(v.string()),
+  }).index('owner_chat', ['userId', 'chatId']),
+  turnFlags: defineTable({
+    runId: v.id('runs'), generation: v.number(), turnIndex: v.number(),
+    done: v.boolean(), status: v.union(v.literal('ready'), v.literal('completed'), v.literal('stopped')),
+  }).index('run_generation_turn', ['runId', 'generation', 'turnIndex']),
   toolSkillFiles: defineTable({userId:v.string(),skillId:v.string(),path:v.string(),content:v.string()})
     .index('owner_skill', ['userId','skillId']),
   toolState: defineTable({userId:v.string(),kind:v.string(),id:v.string(),value:v.any()})

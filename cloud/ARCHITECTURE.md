@@ -202,6 +202,8 @@ PRA-75's five named subagent invariants run as fast-check properties against the
 
 The `browser` sandbox tool uses argv-only SandboxPort execution and chat-confined sessions. Its action-specific classification uses the existing approval/taint boundary; screenshots are bounded exports with verified SHA-256 proof. Browser provisioning must apply `browserSandboxOptions()` for public-only IPv4 egress and explicitly attest that restriction in the trusted tool context. `verify -- live browser` is opt-in and records installed image-directory apparent bytes and cold start with unconditional termination.
 
+PRA-29 adds `@convex-dev/workflow` **0.4.10** for the durable flags-only loop; its workpool is capped at four jobs. `runs.start` atomically creates a run and workflow; the internal stub commits three turns with index-keyed flags. `onComplete` settles success, cancellation and failure; this skeleton acquires no external resources. PRA-30 replaces `turns.commitStub` with the authenticated worker, PRA-31 adds handoffs, and PRA-32 adds suspension/children. Unsupported flags fail closed until those handlers exist. `runs.start` resolves the owner with `getAuthUserId` (the Auth v2 token subject is a session). Account deletion fences the owner (`users.deleting` or the legacy auth document), so starts and stub commits fail closed; the purge cancels each owned workflow, cleans its journal, and deletes its flags and run.
+
 ## Built-in web tools (PRA-60)
 
 `features/web` exposes `web_search` and `web_read` through AgentTool ports. Exa is

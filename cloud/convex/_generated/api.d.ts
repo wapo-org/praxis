@@ -10,6 +10,8 @@
 
 import type * as access from "../access.js";
 import type * as account from "../account.js";
+import type * as accountOwner from "../accountOwner.js";
+import type * as accountTables from "../accountTables.js";
 import type * as auth from "../auth.js";
 import type * as authClerk from "../authClerk.js";
 import type * as authConstants from "../authConstants.js";
@@ -18,11 +20,19 @@ import type * as files from "../files.js";
 import type * as functions from "../functions.js";
 import type * as http from "../http.js";
 import type * as legacyAuth from "../legacyAuth.js";
+import type * as runs from "../runs.js";
 import type * as search from "../search.js";
 import type * as store from "../store.js";
 import type * as tools from "../tools.js";
+import type * as turns from "../turns.js";
 import type * as uploads from "../uploads.js";
 import type * as users from "../users.js";
+import type * as webTools from "../webTools.js";
+import type * as workflows_agentRun from "../workflows/agentRun.js";
+import type * as workflows_constants from "../workflows/constants.js";
+import type * as workflows_purge from "../workflows/purge.js";
+import type * as workflows_validators from "../workflows/validators.js";
+import type * as zodValidator from "../zodValidator.js";
 
 import type {
   ApiFromModules,
@@ -33,6 +43,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   access: typeof access;
   account: typeof account;
+  accountOwner: typeof accountOwner;
+  accountTables: typeof accountTables;
   auth: typeof auth;
   authClerk: typeof authClerk;
   authConstants: typeof authConstants;
@@ -41,11 +53,19 @@ declare const fullApi: ApiFromModules<{
   functions: typeof functions;
   http: typeof http;
   legacyAuth: typeof legacyAuth;
+  runs: typeof runs;
   search: typeof search;
   store: typeof store;
   tools: typeof tools;
+  turns: typeof turns;
   uploads: typeof uploads;
   users: typeof users;
+  webTools: typeof webTools;
+  "workflows/agentRun": typeof workflows_agentRun;
+  "workflows/constants": typeof workflows_constants;
+  "workflows/purge": typeof workflows_purge;
+  "workflows/validators": typeof workflows_validators;
+  zodValidator: typeof zodValidator;
 }>;
 
 /**
@@ -81,4 +101,5 @@ export declare const components: {
   resend: import("@convex-dev/resend/_generated/component.js").ComponentApi<"resend">;
   authGoogle: import("@convex-dev/auth/components/google/_generated/component.js").ComponentApi<"authGoogle">;
   authApple: import("@convex-dev/auth/components/apple/_generated/component.js").ComponentApi<"authApple">;
+  workflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"workflow">;
 };

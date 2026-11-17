@@ -1,5 +1,6 @@
 import { v, ConvexError } from 'convex/values';
 import { requireServer } from './access.js';
+import { activeOwner } from './accountOwner.js';
 import {
   actionGeneric,
   httpActionGeneric,
@@ -27,7 +28,9 @@ export const mutation: MutationBuilder<DataModel, 'public'> = ((definition: any)
   const original=definition.handler;
   return mutationGeneric({...definition,args:{...definition.args,requireOwner:v.optional(v.boolean())},handler:async(ctx:any,a:any)=>{
     await requireServer(a.serverToken);
-    if(a.requireOwner){const user=await ctx.db.query('authDocuments').withIndex('model_id',(q:any)=>q.eq('model','user').eq('id',a.userId)).unique();if(!user||user.data.deleting)throw new ConvexError('Account unavailable');}
+    if (a.requireOwner && !await activeOwner(ctx, a.userId)) {
+      throw new ConvexError('Account unavailable');
+    }
     return original(ctx,a);
   }});
 }) as MutationBuilder<DataModel, 'public'>;

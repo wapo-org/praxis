@@ -2,26 +2,21 @@ import { blobOwnerTag } from './blobOwner.js';
 import { v } from 'convex/values';
 import { mutation, query } from './functions.js';
 import { requireServer } from './access.js';
+import {activeOwner, beginOwnerDeletion, deleteOwnerUser} from './accountOwner.js';
+import {ACCOUNT_OWNER_ROWS, ACCOUNT_PURGE_BATCH_MAX} from './accountTables.js';
+import {purgeOwnedRun} from './workflows/purge.js';
 export const active = query({
   args: { serverToken: v.string(), userId: v.string() },
   handler: async (ctx, a) => {
     await requireServer(a.serverToken);
-    const user = await ctx.db
-      .query('authDocuments')
-      .withIndex('model_id', (q) => q.eq('model', 'user').eq('id', a.userId))
-      .unique();
-    return !!user && !user.data.deleting;
+    return activeOwner(ctx, a.userId);
   },
 });
 export const begin = mutation({
   args: { serverToken: v.string(), userId: v.string() },
   handler: async (ctx, a) => {
     await requireServer(a.serverToken);
-    const user = await ctx.db
-      .query('authDocuments')
-      .withIndex('model_id', (q) => q.eq('model', 'user').eq('id', a.userId))
-      .unique();
-    if (user) await ctx.db.patch(user._id, { data: { ...user.data, deleting: true } });
+    await beginOwnerDeletion(ctx, a.userId);
     return null;
   },
 });
@@ -37,31 +32,12 @@ export const purge = mutation({
   },
   handler: async (ctx, a) => {
     await requireServer(a.serverToken);
-    const tables = [
-      'records',
-      'changes',
-      'sequences',
-      'toolState',
-      'toolSkillFiles',
-      'files',
-      'embeddings',
-    ] as const;
-    const indexes = {
-      records: 'owner_kind_id',
-      changes: 'owner_revision',
-      sequences: 'owner',
-      toolState: 'owner_kind_id',
-      toolSkillFiles: 'owner_skill',
-      files: 'owner_status',
-      embeddings: 'owner',
-    } as const;
-    for (const table of tables) {
-      const rows = await (ctx.db.query(table) as any)
-        .withIndex(indexes[table], (q: any) => q.eq('userId', a.userId))
-        .take(100);
+    if (await purgeOwnedRun(ctx, a.userId)) return {done: false};
+    for (const rowsOf of Object.values(ACCOUNT_OWNER_ROWS)) {
+      const rows = await rowsOf(ctx, a.userId, ACCOUNT_PURGE_BATCH_MAX);
       if (rows.length) {
         for (const row of rows) {
-          if (table === 'files' && row.storageId) await ctx.storage.delete(row.storageId);
+          if (row.storageId) await ctx.storage.delete(row.storageId);
           await ctx.db.delete(row._id);
         }
         return { done: false };
@@ -133,6 +109,7 @@ export const purge = mutation({
       .collect();
     for (const row of credentials) await ctx.db.delete(row._id);
     if (user) await ctx.db.delete(user._id);
+    await deleteOwnerUser(ctx, a.userId);
     return { done: true };
   },
 });

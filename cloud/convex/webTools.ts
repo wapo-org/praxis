@@ -5,6 +5,7 @@ import {openLedger, release as releaseSpend, reserve as reserveSpend, settle as 
 import {WEB_TOOL_LIMITS as LIMITS, WebSpendAdmissionSchema, WebSpendRequestSchema, WebSpendSettlementSchema,
   type WebSpendAdmission, type WebSpendRequest, type WebSpendSettlement} from '@praxis/protocol';
 import {requireServer} from './access.js';
+import {activeOwner} from './accountOwner.js';
 import {internalMutation, action, type DataModel, type MutationCtx} from './functions.js';
 import {convexValidator} from './zodValidator.js';
 
@@ -47,8 +48,7 @@ export const reserveInternal = internalMutation({
     await requireServer(args.serverToken);
     const a = WebSpendRequestSchema.parse(args.request);
     const now = Date.now();
-    const owner = await ctx.db.query('authDocuments').withIndex('model_id', q => q.eq('model', 'user').eq('id', a.userId)).unique();
-    if (!owner || owner.data.deleting) return 'denied' as const;
+    if (!await activeOwner(ctx, a.userId)) return 'denied' as const;
     if (a.period !== periodFor(now)) return 'denied' as const;
     const allowance = await row(ctx, a.userId, ALLOWANCE_KIND, a.period);
     if (!allowance) return 'denied' as const;
@@ -93,8 +93,7 @@ export const attemptInternal = internalMutation({
     await requireServer(args.serverToken);
     const a = WebSpendRequestSchema.parse(args.request);
     const now = Date.now();
-    const owner = await ctx.db.query('authDocuments').withIndex('model_id', q => q.eq('model', 'user').eq('id', a.userId)).unique();
-    if (!owner || owner.data.deleting) return false;
+    if (!await activeOwner(ctx, a.userId)) return false;
     const saved = await row(ctx, a.userId, KIND, a.period);
     if (!saved) return false;
     const state = UserState.parse(decode(saved.value));

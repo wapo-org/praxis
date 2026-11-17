@@ -18,8 +18,9 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["./**/*"],
+  "include": ["./**/*", "../tests/workflow*.ts", "../tests/account-purge.test.ts"],
   "exclude": ["./_generated"]
 }
