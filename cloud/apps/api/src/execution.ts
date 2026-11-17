@@ -9,14 +9,14 @@ import {
   type AgentCheckpoint, type AgentPorts, type AgentTool, type ModelProvider, type Script,
 } from '@praxis/agent';
 import {
-  REASONING_EFFORTS, type CatalogModel, type Chat, type ConversationSetup, type StreamSimOptions, type Message, type MessagePart, type Run, type StartRun,
+  type Chat, type ConversationSetup, type StreamSimOptions, type Message, type MessagePart, type Run, type StartRun,
 } from '@praxis/protocol';
 import type {FeatureContext, FeatureTool} from './contracts.js';
 import {buildSystemPrompt, skillCatalogSection, turnNotes, type CatalogSkill} from './conversation.js';
 import {featureContext} from './features.js';
 import {listConnectorsMemo} from './features/mcp/tools.js';
 import {ApiError, type ApiService, type ExecutionDriver, type RunDecision} from './service.js';
-import {isScripted} from './openrouter/index.js';
+import {isScripted, type RunModel} from './openrouter/index.js';
 import {withMedia, type ModelCapabilities} from './media-provider.js';
 import {readToolOutputTool} from './read-tool-output.js';
 import {currentRunTiming, timedStep} from './timing.js';
@@ -164,7 +164,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     ...(options.encryptionKey ? {encryptionKey: options.encryptionKey} : {}),
   });
 
-  async function resolveProvider(userId: string, chat: Chat, request: RunRequest): Promise<{provider: ModelProvider; script?: Script; model?: CatalogModel; note?: string}> {
+  async function resolveProvider(userId: string, chat: Chat, request: RunRequest): Promise<{provider: ModelProvider; script?: Script} & Partial<Omit<RunModel, 'provider'>>> {
     if (request.script) {
       if (!service.local) throw new ApiError(400, 'local_only', 'Scripted runs are local only');
       return {provider: scriptedProvider(request.script), script: request.script};
@@ -174,7 +174,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     if (service.local && (!modelId || isScripted(modelId))) return {provider: scriptedProvider('text'), script: 'text'};
     if (!service.models) throw new ApiError(503, 'models_unavailable', 'Models are not configured');
     // User key is unsealed for this slice only and never checkpointed.
-    return service.models.forRun(userId, modelId);
+    return service.models.modelFor(userId, modelId, request.effort ?? chat.effort);
   }
 
   async function agentTools(userId: string, chat: Chat, run: Run, request: RunRequest, script?: Script): Promise<AgentTool[]> {
@@ -221,7 +221,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       shouldYield: () => clock() - started > budgetMs,
       ...(script === 'compaction' ? {contextWindow: 1024} : model ? {contextWindow: model.contextLength} : {}),
     } as ConstructorParameters<typeof AgentRunner>[0]);
-    return {runner, tools, model, script, note: resolved.note};
+    return {runner, tools, model, script, effort: resolved.effort, note: resolved.note};
   }
 
   async function freezeSetup(userId: string, chat: Chat, tools: AgentTool[]): Promise<ConversationSetup | undefined> {
@@ -280,10 +280,9 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       const stored: RunRequest = {...request, attachmentIds: request.attachmentIds ?? []};
       await service.put(userId, 'runRequest', run.id, stored);
       await exclusive(userId, run.id, async fence => {
-      const {runner, tools, model, note} = await runnerFor(userId, chat, run, stored, fence);
+      const {runner, tools, model, effort, note} = await runnerFor(userId, chat, run, stored, fence);
       if (note) run.note = note;
       const setup = await freezeSetup(userId, chat, tools);
-      const effort = request.effort ?? chat.effort;
       const modelId = model?.id ?? request.modelId ?? chat.modelId;
       const cp = await runner.run({
         userId, run, messages,
@@ -291,9 +290,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
         ...(setup ? {setup} : {}),
         ...(modelId ? {modelId} : {}),
         ...(effort ? {effort} : {}),
-        ...(model?.capabilities.reasoning ? {supportedEfforts: [...REASONING_EFFORTS]} : {}),
         ...(model?.maxOutput ? {modelMaxTokens: model.maxOutput} : {}),
-        webSearch: request.webSearch,
         policy: {trustedSources: await trustedSources(userId), alwaysAllow: []},
       });
       return cp;

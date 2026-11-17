@@ -1,0 +1,16 @@
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-1763380801-T00lCaLlMnOpQrSt","provider":"Anthropic","model":"anthropic/claude-sonnet-5.5","object":"chat.completion.chunk","created":1763380800,"choices":[{"index":0,"delta":{"role":"assistant","content":"Let me look that up."},"finish_reason":null,"native_finish_reason":null,"logprobs":null}]}
+
+data: {"id":"gen-1763380801-T00lCaLlMnOpQrSt","provider":"Anthropic","model":"anthropic/claude-sonnet-5.5","object":"chat.completion.chunk","created":1763380800,"choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"toolu_01ReadHello","type":"function","function":{"name":"read","arguments":""}}]},"finish_reason":null,"native_finish_reason":null,"logprobs":null}]}
+
+data: {"id":"gen-1763380801-T00lCaLlMnOpQrSt","provider":"Anthropic","model":"anthropic/claude-sonnet-5.5","object":"chat.completion.chunk","created":1763380800,"choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"type":"function","function":{"arguments":"{\"query\":"}}]},"finish_reason":null,"native_finish_reason":null,"logprobs":null}]}
+
+data: {"id":"gen-1763380801-T00lCaLlMnOpQrSt","provider":"Anthropic","model":"anthropic/claude-sonnet-5.5","object":"chat.completion.chunk","created":1763380800,"choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"type":"function","function":{"arguments":"\"hello\"}"}}]},"finish_reason":null,"native_finish_reason":null,"logprobs":null}]}
+
+data: {"id":"gen-1763380801-T00lCaLlMnOpQrSt","provider":"Anthropic","model":"anthropic/claude-sonnet-5.5","object":"chat.completion.chunk","created":1763380800,"choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":"tool_calls","native_finish_reason":"tool_use","logprobs":null}]}
+
+data: {"id":"gen-1763380801-T00lCaLlMnOpQrSt","provider":"Anthropic","model":"anthropic/claude-sonnet-5.5","object":"chat.completion.chunk","created":1763380800,"choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null,"native_finish_reason":null,"logprobs":null}],"usage":{"prompt_tokens":310,"completion_tokens":41,"total_tokens":351,"cost":0.001545,"is_byok":false,"prompt_tokens_details":{"cached_tokens":0},"cost_details":{"upstream_inference_cost":null},"completion_tokens_details":{"reasoning_tokens":0}}}
+
+data: [DONE]
+
