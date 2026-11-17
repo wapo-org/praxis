@@ -42,9 +42,18 @@ export const ModelKeySchema = z.object({
 });
 export type ModelKey = z.infer<typeof ModelKeySchema>;
 const connectType = z.literal('modelKey.connect').default('modelKey.connect');
+/** OpenRouter's one-time PKCE code; the web exchange and the iOS app handoff (PRA-81) accept exactly this. */
+export const OpenRouterAuthCodeSchema = z.string().min(1).max(2000);
+/** Hosted https page OpenRouter redirects iOS sign-ins to; it forwards the code to the app scheme. */
+export const OPENROUTER_APP_CALLBACK_PATH = '/settings/openrouter/app-callback';
+/** Registered in PraxisChat's Info.plist; the iOS ASWebAuthenticationSession listens for this scheme. */
+export const OPENROUTER_APP_REDIRECT = 'praxis-app://openrouter/callback';
+/** What the handoff sends the app (`?error=`) instead of a code. */
+export const OpenRouterAppHandoffErrorSchema = z.enum(['missing_code', 'invalid_code']);
+export type OpenRouterAppHandoffError = z.infer<typeof OpenRouterAppHandoffErrorSchema>;
 export const ModelKeyConnectInputSchema = z.discriminatedUnion('method', [
   z.object({type: connectType, method: z.literal('paste'), apiKey: z.string().min(1).max(500)}),
-  z.object({type: connectType, method: z.literal('pkce'), code: z.string().min(1).max(2000), codeVerifier: z.string().min(43).max(128)}),
+  z.object({type: connectType, method: z.literal('pkce'), code: OpenRouterAuthCodeSchema, codeVerifier: z.string().min(43).max(128)}),
 ]);
 export type ModelKeyConnectInput = z.infer<typeof ModelKeyConnectInputSchema>;
 /** One entry of the shared OpenRouter catalogue. Prices are OpenRouter's USD-per-token strings. */

@@ -55,6 +55,21 @@ and `@praxis/sandbox-tools/modal`, which uses Modal's native exec and filesystem
 it shares snapshot and screenshot capture with `praxis-verify`. Neither package may be imported by `apps/api`
 directly while it is a Hono app (child_process lives in the local port and the browser session).
 
+## Platform spend reservation (PRA-81 for PRA-22)
+
+`packages/spend` (dependency-free) is the pre-reservation ledger for platform-paid calls only (Exa, Firecrawl,
+Modal; OpenRouter is the user's key). `reserve` holds a worst-case estimate (integer micro-USD from the named
+estimators) or returns `budget_exhausted`; `settle` charges the billed amount and refunds the rest; `release`
+returns a call the provider never billed; every key is idempotent and charged at most once.
+TTL expiry only marks an orphan: its amount stays held until reconciliation settles or releases it.
+This is the pure core. PRA-22 still has to persist it, with each operation as one Convex mutation over the user's
+account row so parallel sub-agents are serialized; nothing calls it in production yet. fast-check properties check
+PRA-75's `AtomicSpendCap` and `ChargeOnce` on interleaved, serially applied operations, TTL expiry included.
+
+iOS OpenRouter PKCE: `ASWebAuthenticationSession` opens OpenRouter with `callback_url` set to the hosted
+`/settings/openrouter/app-callback`, which needs no session and only forwards a well-formed `code` to
+`praxis-app://openrouter/callback`; the app holds the verifier and exchanges the code itself.
+
 ## Dependencies and deployment
 
 Runtime dependency inventory (features add their package only when implemented):
