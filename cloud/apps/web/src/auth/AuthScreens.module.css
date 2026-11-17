@@ -1,0 +1,23 @@
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.actions button {
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-2);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.button {
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-full);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+.button:disabled {
+  cursor: wait;
+}

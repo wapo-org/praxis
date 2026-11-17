@@ -253,7 +253,7 @@ it('requires password for old sessions, accepts the current password, and limits
     method: 'DELETE',
     headers: { authorization: `Bearer ${session.bearerToken}` },
   });
-  await rpc.mutation('auth:execute', {
+  await rpc.mutation('legacyAuth:execute', {
     operation: 'updateMany',
     input: {
       model: 'session',

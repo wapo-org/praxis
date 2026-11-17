@@ -1,38 +1,19 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {convexTest} from 'convex-test';
-import workflowComponent from '@convex-dev/workflow/test';
 import {type WorkflowId} from '@convex-dev/workflow';
 import {TURN_RESULT_MAX_BYTES, TurnResultSchema} from '@praxis/protocol';
-import schema from '../convex/schema.js';
 import {api, internal} from '../convex/_generated/api.js';
 import {workflow} from '../convex/workflows/agentRun.js';
-
-const userId = 'workflow-user';
-const chatId = 'workflow-chat';
-async function setup() {
-  const t = convexTest(schema, {
-    '../convex/_generated/api.js': () => import('../convex/_generated/api.js'),
-    '../convex/account.ts': () => import('../convex/account.js'),
-    '../convex/runs.ts': () => import('../convex/runs.js'),
-    '../convex/turns.ts': () => import('../convex/turns.js'),
-    '../convex/workflows/agentRun.ts': () => import('../convex/workflows/agentRun.js'),
-  });
-  workflowComponent.register(t);
-  await t.run(ctx => ctx.db.insert('authDocuments', {model: 'user', id: userId, data: {id: userId}}));
-  await t.run(ctx => ctx.db.insert('records', {
-    userId, kind: 'chat', id: chatId, value: {}, revision: 1, updatedAt: new Date().toISOString(), deleted: false,
-  }));
-  const owner = t.withIdentity({subject: userId});
-  const runId = await owner.mutation(api.runs.start, {chatId});
-  const scope = {userId, chatId, runId, generation: 0};
-  return {t, owner, runId, scope};
-}
+import {chatId, signedInUser, startedRun as setup} from './workflow-fixture.js';
 
 describe('durable workflow skeleton', () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubEnv('CONVEX_CLOUD_URL', 'https://test.convex.cloud');
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
   it('runs exactly three actions, completes, and journals only bounded flags', async () => {
     const {t, runId} = await setup();
@@ -87,9 +68,11 @@ describe('durable workflow skeleton', () => {
   });
   it('rejects foreign users, missing auth, invalid indices and stale generations', async () => {
     const {t, owner, scope, runId} = await setup();
+    const {client: other} = await signedInUser(t);
     await expect(t.mutation(api.runs.start, {chatId})).rejects.toThrow('Authentication required');
-    await expect(t.withIdentity({subject: 'other'}).mutation(api.runs.start, {chatId})).rejects.toThrow('unavailable');
-    await expect(t.withIdentity({subject: 'other'}).mutation(api.runs.cancel, {runId})).rejects.toThrow('unavailable');
+    await expect(t.withIdentity({subject: 'unknown-session'}).mutation(api.runs.start, {chatId})).rejects.toThrow('Authentication required');
+    await expect(other.mutation(api.runs.start, {chatId})).rejects.toThrow('unavailable');
+    await expect(other.mutation(api.runs.cancel, {runId})).rejects.toThrow('unavailable');
     await expect(owner.mutation(api.runs.start, {chatId, startTurnIndex: -1})).rejects.toThrow();
     await expect(t.action(internal.turns.run, {...scope, expectedTurnIndex: 2})).rejects.toThrow('Unexpected turn');
     await expect(t.action(internal.turns.run, {...scope, expectedTurnIndex: 0, generation: 1})).rejects.toThrow('unavailable');

@@ -19,7 +19,7 @@ describe('Convex server boundary', () => {
       ['store:list', { userId: 'a', kind: 'chat' }],
       ['store:changes', { userId: 'a', after: 0, limit: 10 }],
       ['store:head', { userId: 'a' }],
-      ['auth:read', { operation: 'findOne', input: { model: 'user' } }],
+      ['legacyAuth:read', { operation: 'findOne', input: { model: 'user' } }],
     ];
     for (const [name, args] of reads) {
       await expect(t.query(makeFunctionReference<'query'>(name), { ...args, serverToken: 'wrong' })).rejects.toThrow(

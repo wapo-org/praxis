@@ -29,7 +29,9 @@
     "vitest": "^4.0.0"
   },
   "dependencies": {
+    "@convex-dev/auth": "2.0.0",
+    "@convex-dev/resend": "0.2.10",
     "@convex-dev/workflow": "0.4.10",
-    "convex": "1.48.0"
+    "convex": "1.50.0"
   }
 }

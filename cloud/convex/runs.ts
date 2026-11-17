@@ -1,3 +1,4 @@
+import {getAuthUserId} from '@convex-dev/auth/server';
 import {mutation} from './_generated/server.js';
 import {ConvexError, v} from 'convex/values';
 import {vResultValidator, vWorkflowId} from '@convex-dev/workflow';
@@ -21,9 +22,8 @@ export async function scopedRun(ctx: QueryCtx, args: {userId: string; chatId: st
 export const start = mutation({
   args: {chatId: v.string(), startTurnIndex: v.optional(v.number())},
   handler: async (ctx, args): Promise<Id<'runs'>> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError(WORKFLOW_ERRORS.unauthenticated);
-    const userId = identity.subject;
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError(WORKFLOW_ERRORS.unauthenticated);
     if (!await activeOwner(ctx, userId)) throw new ConvexError(WORKFLOW_ERRORS.unavailable);
     const chatId = IdSchema.parse(args.chatId);
     const startTurnIndex = indexSchema.parse(args.startTurnIndex ?? 0);
@@ -45,10 +45,10 @@ export const start = mutation({
 export const cancel = mutation({
   args: {runId: v.id('runs')},
   handler: async (ctx, {runId}) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError(WORKFLOW_ERRORS.unauthenticated);
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError(WORKFLOW_ERRORS.unauthenticated);
     const run = await ctx.db.get(runId);
-    if (!run || run.userId !== identity.subject) throw new ConvexError(WORKFLOW_ERRORS.unavailable);
+    if (!run || run.userId !== userId) throw new ConvexError(WORKFLOW_ERRORS.unavailable);
     if (run.status === 'running') await ctx.db.patch(runId, {status: 'cancelling'});
   },
 });

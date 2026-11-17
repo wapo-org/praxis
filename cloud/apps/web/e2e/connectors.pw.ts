@@ -1,6 +1,7 @@
+import { signIn as convexSignIn } from './sign-in';
 import {test,expect} from '@playwright/test';
 test('builtins are disabled on first server bootstrap; tool switches persist while disabled',async({page})=>{
- await page.goto('/');await page.getByRole('button',{name:'Continue as local dev user'}).waitFor();await page.getByRole('button',{name:'Continue as local dev user'}).click();await page.getByTestId('chat-top-bar').waitFor();
+ await convexSignIn(page);await page.getByTestId('chat-top-bar').waitFor();
  const initial=await page.evaluate(async()=>{const source='/src/lib/api.ts';const {apiClient}=await import(source) as typeof import('../src/lib/api');return (await apiClient.bootstrap()).connectors.filter(c=>c.id.startsWith('builtin-'));});
  expect(initial.map(c=>c.name).sort()).toEqual(['Browserbase','E2B','Exa','Firecrawl']);expect(initial.every(c=>!c.enabled)).toBe(true);
  const wasEnabled=!initial.find(c=>c.id==='builtin-exa')!.disabledTools.includes('web_search_exa');
@@ -12,12 +13,12 @@ test('builtins are disabled on first server bootstrap; tool switches persist whi
 });
 test('cold draft tray always shows the same connector rows across five openings',async({page})=>{
  for(let i=0;i<5;i++){
-  await page.goto('/');const login=page.getByRole('button',{name:'Continue as local dev user'});await expect(login.or(page.getByTestId('chat-top-bar')).first()).toBeVisible();if(await login.isVisible())await login.click();await page.getByTestId('chat-top-bar').waitFor();
+  await convexSignIn(page);
   await page.getByTestId('composer-plus-button').click();await expect(page.getByTestId('plus-tray').getByRole('button',{name:/Connectors/})).toBeVisible();await page.keyboard.press('Escape');
  }
 });
 test('connector Transport and provider Flavor selects use GlassDropdown with keyboard navigation (no native select)',async({page})=>{
- await page.request.post('/v1/auth/dev',{data:{type:'auth.dev',userId:'select-check-'+Date.now()}});
+ await convexSignIn(page);
  await page.goto('/settings/connectors');
  await page.getByRole('button',{name:/Add by URL/}).click();
  expect(await page.locator('select').count()).toBe(0);
@@ -39,7 +40,7 @@ test('connector Transport and provider Flavor selects use GlassDropdown with key
  await expect(flavor).toHaveText(/OpenAI Responses/);
 });
 test('plus tray scrolls cleanly in short windows and navigates to nested connectors view (0, 2, 30)',async({page})=>{
- await page.request.post('/v1/auth/dev',{data:{type:'auth.dev',userId:'tray-connectors-'+Date.now()}});
+ await convexSignIn(page);
  await page.setViewportSize({width:1280,height:420});
  await page.goto('/');
  await page.getByTestId('composer-plus-button').click();

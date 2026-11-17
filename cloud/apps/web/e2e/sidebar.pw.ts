@@ -1,8 +1,7 @@
+import { apiRequest, signIn as convexSignIn } from './sign-in';
 import { expect, test } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
-  await page.request.post('/v1/auth/dev', {
-    data: { type: 'auth.dev', userId: 'g4b-check-' + Date.now() },
-  });
+  await convexSignIn(page);
   await page.goto('/');
   await page.getByTestId('sidebar-new-chat').waitFor();
   await page.evaluate(() => document.fonts.ready);
@@ -179,7 +178,7 @@ test('the generic accent is gone: app controls keep their own ink, not a sidebar
   await palettes.getByRole('radio', { name: 'Plum', exact: true }).click();
   expect(await page.evaluate(() => document.documentElement.dataset.accent)).toBeUndefined();
   const chat = await (
-    await page.request.post('/v1/chats', { data: { type: 'chat.input', title: 'Accent gone' } })
+    await apiRequest(page, 'post', '/v1/chats', { data: { type: 'chat.input', title: 'Accent gone' } })
   ).json();
   await page.goto('/c/' + chat.id);
   await page.getByTestId('composer-input').fill('A message');
@@ -191,7 +190,7 @@ test('pinned rows show exactly one aligned trailing control, including menu-open
   page,
 }) => {
   const chat = await (
-    await page.request.post('/v1/chats', {
+    await apiRequest(page, 'post', '/v1/chats', {
       data: { type: 'chat.input', title: 'Pinned alignment', pinned: true },
     })
   ).json();
@@ -235,7 +234,7 @@ test('multiline and long chat titles stay strictly single-line with ellipsis tru
   ];
   for (const c of cases) {
     const chat = await (
-      await page.request.post('/v1/chats', { data: { type: 'chat.input', title: c.raw } })
+      await apiRequest(page, 'post', '/v1/chats', { data: { type: 'chat.input', title: c.raw } })
     ).json();
     await page.goto('/c/' + chat.id);
     const pill = page.getByTestId('nav-chat-title-pill');
@@ -284,10 +283,10 @@ test('argument-free approvals have no empty box and questions use a human label'
   page,
 }) => {
   const chat = await (
-    await page.request.post('/v1/chats', { data: { type: 'chat.input', mode:'auto', title: 'Card labels' } })
+    await apiRequest(page, 'post', '/v1/chats', { data: { type: 'chat.input', mode:'auto', title: 'Card labels' } })
   ).json();
   await page.goto('/c/' + chat.id);
-  await page.request.post('/v1/runs', {
+  await apiRequest(page, 'post', '/v1/runs', {
     data: { type: 'run.start', chatId: chat.id, text: 'Review a write', script: 'approval' },
   });
   const allow = page.getByTestId('approval-allow-once');
@@ -295,7 +294,7 @@ test('argument-free approvals have no empty box and questions use a human label'
   await expect(page.locator('[data-testid^=approval-card] pre')).toHaveCount(0);
   await allow.click();
   await expect(page.getByTestId('composer-stop-button')).toHaveCount(0);
-  await page.request.post('/v1/runs', {
+  await apiRequest(page, 'post', '/v1/runs', {
     data: { type: 'run.start', chatId: chat.id, text: 'A question', script: 'elicitation' },
   });
   await expect(page.getByLabel('Name', { exact: true })).toBeVisible();

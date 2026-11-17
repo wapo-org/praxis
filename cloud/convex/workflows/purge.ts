@@ -1,10 +1,11 @@
 import type {WorkflowId} from '@convex-dev/workflow';
 import type {MutationCtx} from '../functions.js';
-import {ACCOUNT_OWNER_QUERIES, ACCOUNT_PURGE_BATCH_MAX, ACCOUNT_RUN_CHILD_QUERIES} from '../accountTables.js';
+import {ACCOUNT_PURGE_BATCH_MAX, ACCOUNT_RUN_CHILD_ROWS} from '../accountTables.js';
 import {workflow} from './agentRun.js';
 
+/** Erases one owned run per call (workflow, journal, child rows, row); returns false once none remain. */
 export async function purgeOwnedRun(ctx: MutationCtx, userId: string): Promise<boolean> {
-  const run = await ACCOUNT_OWNER_QUERIES.runs(ctx, userId).first();
+  const run = await ctx.db.query('runs').withIndex('owner_chat', q => q.eq('userId', userId)).first();
   if (!run) return false;
   if (run.workflowId) {
     const workflowId = run.workflowId as WorkflowId;
@@ -14,8 +15,8 @@ export async function purgeOwnedRun(ctx: MutationCtx, userId: string): Promise<b
     // Persist cleanup progress before batching child rows so retries never address a deleted workflow.
     await ctx.db.patch(run._id, {workflowId: undefined, status: 'cancelled'});
   }
-  for (const query of Object.values(ACCOUNT_RUN_CHILD_QUERIES)) {
-    const rows = await query(ctx, run._id).take(ACCOUNT_PURGE_BATCH_MAX);
+  for (const rowsOf of Object.values(ACCOUNT_RUN_CHILD_ROWS)) {
+    const rows = await rowsOf(ctx, run._id, ACCOUNT_PURGE_BATCH_MAX);
     for (const row of rows) await ctx.db.delete(row._id);
     if (rows.length === ACCOUNT_PURGE_BATCH_MAX) return true;
   }

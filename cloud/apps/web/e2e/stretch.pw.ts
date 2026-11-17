@@ -1,13 +1,5 @@
+import { signIn as convexSignIn } from './sign-in';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-
-async function signIn(page: Page, path = '/') {
-  await page.goto(path);
-  const dev = page.getByRole('button', { name: /local dev user/i });
-  await Promise.race([dev.waitFor(), page.getByTestId('chat-top-bar').waitFor(), page.getByTestId('settings-page').waitFor()]);
-  if (await dev.isVisible().catch(() => false)) await dev.click();
-  await Promise.race([page.getByTestId('chat-top-bar').waitFor(), page.getByTestId('settings-page').waitFor()]);
-  await page.waitForTimeout(900); // anything still settling from sign-in has stopped
-}
 
 const surfaceOf = (locator: Locator) => locator.locator('xpath=ancestor-or-self::*[@data-glass-surface][1]');
 const sidebar = (page: Page) => page.locator('[data-testid="app-sidebar"] [data-glass-surface]').first();
@@ -51,7 +43,7 @@ const center = async (locator: Locator) => {
 };
 
 test.describe('the stretch', () => {
-  test.beforeEach(async ({ page }) => signIn(page));
+  test.beforeEach(async ({ page }) => convexSignIn(page));
 
   test('pulling right moves only the right edge, from any start point', async ({ page }) => {
     const surface = sidebar(page);
@@ -293,7 +285,7 @@ test.describe('the stretch', () => {
 test.describe('reduced motion', () => {
   test.use({ reducedMotion: 'reduce' });
   test('turns the stretch off and keeps the click', async ({ page }) => {
-    await signIn(page);
+    await convexSignIn(page);
     const surface = sidebar(page);
     const rest = (await surface.boundingBox())!;
     await pull(page, { x: rest.x + 130, y: rest.y + 500 }, 120, 0);
@@ -317,7 +309,7 @@ test.describe('the floating sidebar height', () => {
         return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
       };
     }, count);
-    await signIn(page);
+    await convexSignIn(page);
   };
   for (const count of [1, 100]) {
     test(`is the window minus its margins with ${count} chats, and the account row stays visible`, async ({ page }) => {
@@ -338,7 +330,7 @@ test.describe('the floating sidebar height', () => {
 
 test.describe('settings takes over the floating nav', () => {
   test('the same panel changes to the sections, with no second rail and no Done', async ({ page }) => {
-    await signIn(page);
+    await convexSignIn(page);
     const panel = sidebar(page);
     await panel.evaluate((el) => { el.setAttribute('data-probe', 'same-node'); });
     const rest = (await panel.boundingBox())!;
@@ -364,7 +356,7 @@ test.describe('settings takes over the floating nav', () => {
 
   test('narrow screens follow the same model', async ({ page }) => {
     await page.setViewportSize({ width: 402, height: 874 });
-    await signIn(page);
+    await convexSignIn(page);
     await page.getByTestId('nav-history-button').click();
     await page.getByTestId('sidebar-account').click();
     await page.getByTestId('settings-page').waitFor();
@@ -414,7 +406,7 @@ test.describe('touch inside glass', () => {
 
   test('a vertical pan scrolls the list instead of stretching', async ({ page }) => {
     await manyChats(page);
-    await signIn(page);
+    await convexSignIn(page);
     const surface = sidebar(page);
     const rest = (await surface.boundingBox())!;
     const list = listOf(page);
@@ -427,7 +419,7 @@ test.describe('touch inside glass', () => {
 
   test('sideways stretches, and a pull at the scroll limit stretches', async ({ page }) => {
     await manyChats(page);
-    await signIn(page);
+    await convexSignIn(page);
     const surface = sidebar(page);
     const rest = (await surface.boundingBox())!;
     const box = (await listOf(page).boundingBox())!;

@@ -49,7 +49,7 @@ It never falls back to memory adapters or dev auth.
 | `CLERK_PUBLISHABLE_KEY` | yes | Clerk instance publishable key. |
 | `CLERK_SECRET_KEY` | yes | Server-only Clerk key for identity lookup and account deletion. |
 | `CLERK_JWT_KEY` | yes | Clerk instance PEM public key for networkless JWT verification. |
-| `VITE_CLERK_PUBLISHABLE_KEY` | web build | Same instance publishable key; enables the custom Clerk sign-in/register flow. |
+| `VITE_CONVEX_URL` | web build | Convex deployment client URL; web sign-in is Convex Auth v2, configured in the Convex deployment (see [Convex Auth v2 web](#convex-auth-v2-web-pra-34)). |
 | `CONVEX_URL` | yes | Convex dashboard → deployment → Settings → URL (`https://<name>.convex.cloud`). |
 | `PRAXIS_CONVEX_SERVER_TOKEN` | yes | API-to-Convex credential, ≥ 32 chars: `openssl rand -base64 48`. Set the **same value** in the Convex deployment env (below). |
 | `UPSTASH_REDIS_REST_URL` | yes | Upstash console → Redis database → REST API → URL. |
@@ -118,7 +118,8 @@ Create a second project with Root Directory `cloud/apps/web` (see `cloud/docs/we
 | Native app return after connector OAuth (handled by the app, nothing to register server-side) | `praxis-app://oauth/callback?state=…` |
 | Web return after connector OAuth | an origin listed in `PRAXIS_WEB_ORIGINS` |
 | QStash continuation (no registration; it must be publicly reachable) | `PRAXIS_API_URL/internal/continue` |
-| Clerk OAuth callback | Web origin + `/auth/callback`; enable Google and Apple in Clerk. |
+| Google sign-in redirect (Convex Auth v2) | `<CONVEX_SITE_URL>/oauth/google/callback` |
+| Apple sign-in return URL (Convex Auth v2, public HTTPS) | `<CONVEX_SITE_URL>/oauth/apple/callback` |
 
 ## Security notes
 
@@ -154,7 +155,7 @@ Live Convex and Upstash contract tests run when their env vars are set: `CONVEX_
 
 Production uses Clerk JWT bearer sessions. `DELETE /v1/account` requires a first-factor authentication less than five minutes old (`fva`); sign out and sign in again if necessary. The Clerk user is deleted through the backend interface after data purge and before the final auth batch; see the documented interrupted-deletion recovery limitation. Local development/legacy test adapters: `DELETE /v1/account` accepts `{ "type": "account.delete", "password": "…" }` (password optional only for a session created less than five minutes ago). Authentication and the normal origin/CSRF checks apply. Success returns `{ "type": "account.deleted" }`, clears the local cookie, and invalidates all credentials. Repeating erasure is harmless; replaying revoked credentials returns 401. Missing confirmation returns 403. Deletion attempts have a dedicated five/hour limit in addition to the normal authenticated limit; both still apply after deletion begins. Rate-limit counters are a single self-expiring key per limit under a SHA-256 key name, are never owner-indexed, and are not erased: they expire within their window (at most one hour).
 
-The production eraser locks account activation, marks the account as deleting, freezes owner Redis writes, purges indexed Redis data (streams, caches, OAuth state and leases), then hard-deletes every owner-scoped Convex table and uploaded blobs in bounded batches. The caller’s session and credential survive until the final atomic auth deletion, so interrupted deletion can retry. Redis ownership indexes are registered atomically with writes as a sorted set scored by key expiry, pruned on every owner write so it stays bounded; the purge removes keys in chunks and drops them from the index as it goes, so a retry resumes. Activation verifies that the Convex account remains active. The global blob sweep stores its cursor on the user row, so a retried request continues it. Generic Convex writes are fenced once deletion begins. Blob ownership tags also permit deleting interrupted, unbound uploads. New data tables must be included in `convex/account.ts`; new owner KV writes must carry `ownerId` (feature contexts do so automatically).
+The production eraser locks account activation, marks the account as deleting, freezes owner Redis writes, purges indexed Redis data (streams, caches, OAuth state and leases), then hard-deletes every owner-scoped Convex table and uploaded blobs in bounded batches. The caller’s session and credential survive until the final atomic auth deletion, so interrupted deletion can retry. Redis ownership indexes are registered atomically with writes as a sorted set scored by key expiry, pruned on every owner write so it stays bounded; the purge removes keys in chunks and drops them from the index as it goes, so a retry resumes. Activation verifies that the Convex account remains active. The global blob sweep stores its cursor on the user row, so a retried request continues it. Generic Convex writes are fenced once deletion begins. Blob ownership tags also permit deleting interrupted, unbound uploads. Every Convex table must declare a deletion policy in `convex/accountTables.ts` (a missing one fails typecheck); in-flight workflows are cancelled and their journals cleaned before their runs are deleted; new owner KV writes must carry `ownerId` (feature contexts do so automatically).
 
 No hosted deletion, provider call, deployment, or credential access was performed by the implementation worker. Local tests use a fake Clerk interface and locally signed JWTs, plus legacy Better Auth migration/conformance fixtures. No hosted account is created. See `docs/WP-H1-AUTH-SYNC.md` for migration, conflict rules and the native client requirements.
 
@@ -203,6 +204,25 @@ create them. Require `SonarCloud / scan` only after the token and analysis metho
 are configured; require the SonarCloud quality-gate check only after the new-code
 gate is green. There is no merge or deployment step in CI.
 
+
+## Convex Auth v2 web (PRA-34)
+
+Install with `cd cloud && npm install`, then run `CONVEX_AGENT_MODE=anonymous npx convex dev` for local development.
+Set deployment variables with `npx convex env set NAME` (enter secret values interactively):
+`RESEND_API_KEY`, `SENDER_EMAIL`, `SENDER_NAME`, `SITE_URL`,
+`AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET`,
+`AUTH_APPLE_CLIENT_ID`, `AUTH_APPLE_TEAM_ID`, `AUTH_APPLE_KEY_ID`, `AUTH_APPLE_PRIVATE_KEY`.
+All are required; use a Resend-verified sender and the actual web origin for SITE_URL.
+Set web `VITE_CONVEX_URL` to the deployment's client URL; no provider credentials belong in Vite.
+For the local API, set `PRAXIS_LOCAL_CONVEX_URL` to the same loopback HTTP deployment:
+`PRAXIS_LOCAL_CONVEX_URL=http://127.0.0.1:3210 npm run dev:local`.
+Without this API variable, the legacy local API accepts dev tokens rather than Convex sessions.
+The managed browser verification stack sets both URLs automatically; the local API variable is not a production setting.
+Register the Google redirect URI and Apple Services ID return URL listed under [OAuth and callback URLs](#oauth-and-callback-urls-to-register).
+The HTTPS page for the future iOS handoff must share the SITE_URL origin.
+No cloud deployment is part of PRA-34 verification.
+Component tests use the upstream fake Resend component, retaining the real password WASM and auth code.
+Run them with `npx vitest run tests/auth-v2.test.ts`.
 ### Internal turn caller (PRA-38)
 
 Set `PRAXIS_TURN_CURRENT_SIGNING_KEY` to a random secret of at least 32 characters,

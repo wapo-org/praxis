@@ -2,8 +2,8 @@ import { blobOwnerTag } from './blobOwner.js';
 import { v } from 'convex/values';
 import { mutation, query } from './functions.js';
 import { requireServer } from './access.js';
-import {activeOwner} from './accountOwner.js';
-import {ACCOUNT_OWNER_QUERIES, ACCOUNT_PURGE_BATCH_MAX} from './accountTables.js';
+import {activeOwner, beginOwnerDeletion, deleteOwnerUser} from './accountOwner.js';
+import {ACCOUNT_OWNER_ROWS, ACCOUNT_PURGE_BATCH_MAX} from './accountTables.js';
 import {purgeOwnedRun} from './workflows/purge.js';
 export const active = query({
   args: { serverToken: v.string(), userId: v.string() },
@@ -16,11 +16,7 @@ export const begin = mutation({
   args: { serverToken: v.string(), userId: v.string() },
   handler: async (ctx, a) => {
     await requireServer(a.serverToken);
-    const user = await ctx.db
-      .query('authDocuments')
-      .withIndex('model_id', (q) => q.eq('model', 'user').eq('id', a.userId))
-      .unique();
-    if (user) await ctx.db.patch(user._id, { data: { ...user.data, deleting: true } });
+    await beginOwnerDeletion(ctx, a.userId);
     return null;
   },
 });
@@ -37,12 +33,11 @@ export const purge = mutation({
   handler: async (ctx, a) => {
     await requireServer(a.serverToken);
     if (await purgeOwnedRun(ctx, a.userId)) return {done: false};
-    for (const [table, query] of Object.entries(ACCOUNT_OWNER_QUERIES)) {
-      if (table === 'runs') continue;
-      const rows = await query(ctx, a.userId).take(ACCOUNT_PURGE_BATCH_MAX);
+    for (const rowsOf of Object.values(ACCOUNT_OWNER_ROWS)) {
+      const rows = await rowsOf(ctx, a.userId, ACCOUNT_PURGE_BATCH_MAX);
       if (rows.length) {
         for (const row of rows) {
-          if ('storageId' in row && row.storageId) await ctx.storage.delete(row.storageId);
+          if (row.storageId) await ctx.storage.delete(row.storageId);
           await ctx.db.delete(row._id);
         }
         return { done: false };
@@ -114,6 +109,7 @@ export const purge = mutation({
       .collect();
     for (const row of credentials) await ctx.db.delete(row._id);
     if (user) await ctx.db.delete(user._id);
+    await deleteOwnerUser(ctx, a.userId);
     return { done: true };
   },
 });
