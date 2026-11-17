@@ -122,6 +122,17 @@ Edits and checkpoint/rewind operations serialize per workspace on the same port;
 and serialize access across workers, as required by PRA-19. Syntax diagnostics remain inline and do not roll back edits.
 ## Stateful subagent core
 
+`createSubagentHarness(port)` registers exactly the four shared tools and their boundary classifier.
+Freeze its tool specs into the turn catalog and combine its classifier with the executable tool registry.
+Its injected `SubagentHarnessPort` binds authenticated actor/tenant and stable child/message IDs,
+commits reducer state and launch/wake/kill outbox atomically, and owns durable wait deadlines and wakeups.
+PRA-114 implements that persistence port; PRA-116 supplies confinement and immutable handoff verification.
+Trusted tool metadata filters default delegation grants; explicit server grants can allow approval-capable tools,
+but every child action still passes the inherited one-turn boundary and receipts in its confined workspace.
+Authorized model capabilities and effort lists are checked before create/configure/resume without clamping.
+The harness joins adapter result taint before the next call; collaboration instructions are frozen and deterministic.
+No production persistence or sandbox adapter is implemented by this registry.
+
 `packages/agent/src/subagents` owns the pure addressed lifecycle reducer, permission narrowing,
 ordered inboxes, asynchronous cascading cancellation and verified artifact handoffs (PRA-79).
 The four wire tools and durable state schemas live in `packages/protocol/src/subagents.ts`.

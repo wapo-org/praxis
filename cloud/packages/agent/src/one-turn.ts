@@ -85,11 +85,12 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
           dispatched = true;
           const result = ToolResultSchema.parse(await tool.execute(checked.args, {
             ...context, userId: snapshot.userId, chatId: snapshot.chatId, runId,
-            mode: snapshot.mode, callId: id,
+            mode: snapshot.mode, callId: id, tainted,
             async callTool() {
               throw new ToolBoundaryError(toolError('policy-denied', 'Nested dispatch needs its own durable boundary call.'));
             },
           }));
+          tainted ||= result.tainted === true;
           return JsonValueSchema.parse(JSON.parse(JSON.stringify(result)));
         }, options.receipts?.[id], undefined, error => {
           if (error instanceof UncertainToolCall || context.signal.aborted) throw error;
@@ -101,6 +102,7 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
         result = {ok: false, untrustedSource: false, taint: {tainted}, error: error instanceof ToolBoundaryError
           ? error.detail : toolError('upstream', 'Tool execution failed.')};
       }
+      result.taint = {tainted: tainted || result.taint.tainted};
       saved = {call, result};
       await store.saveCall(token, id, saved);
     }

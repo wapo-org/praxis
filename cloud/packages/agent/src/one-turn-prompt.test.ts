@@ -1,5 +1,6 @@
+import {createHash} from 'node:crypto';
 import {expect, it} from 'vitest';
-import {assembleTurnRequest, ONE_TURN_SYSTEM} from './one-turn-prompt.js';
+import {assembleTurnRequest, ONE_TURN_SYSTEM, COLLABORATION_INSTRUCTIONS} from './one-turn-prompt.js';
 import {snapshot, testTool} from './one-turn-fixture.js';
 import {buildProviderRequest} from './wire.js';
 
@@ -21,4 +22,18 @@ it('rejects ambiguous duplicate tool registrations', () => {
   const request = snapshot().request;
   request.tools.push(testTool.spec);
   expect(() => assembleTurnRequest(request)).toThrow('Duplicate tool');
+});
+
+it('collaboration instructions and shared tool bytes are deterministic and idempotent', async () => {
+  const {harnessFixture} = await import('./subagents/tools-fixture.js');
+  const tools = harnessFixture().harness.tools;
+  const request = {...snapshot().request, tools: tools.map(tool => tool.spec)};
+  const first = assembleTurnRequest(request);
+  const reversed = assembleTurnRequest({...request, tools: [...request.tools].reverse()});
+  expect(JSON.stringify(reversed)).toBe(JSON.stringify(first));
+  expect(assembleTurnRequest(first)).toEqual(first);
+  expect(first.system).toBe(`${ONE_TURN_SYSTEM}\n\n${COLLABORATION_INSTRUCTIONS}`);
+  expect(createHash('sha256').update(COLLABORATION_INSTRUCTIONS).digest('hex')).toBe('05cebc8897d0941549281dd333934fbf08c02afa8a8621d258bf52debb51bccd');
+  expect(Buffer.byteLength(COLLABORATION_INSTRUCTIONS)).toBeLessThan(800);
+  expect(assembleTurnRequest(snapshot().request).system).toBe(ONE_TURN_SYSTEM);
 });
