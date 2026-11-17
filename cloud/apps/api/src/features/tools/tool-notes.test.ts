@@ -10,3 +10,8 @@ it('groups connected tools with Swift wording, excludes descriptions and puts no
  expect(prompt.indexOf('PRODUCT')).toBeLessThan(prompt.indexOf('Connected tools:'));expect(prompt.indexOf('Connected tools:')).toBeLessThan(prompt.indexOf('skill-desc'));expect(prompt).not.toContain('UNTRUSTED');
  tools.push(tool('d','n','Notes'));expect(prompt).toContain('Notes (MCP connector): Use these connector tools for tasks in this service. Enabled tools: c.');expect(connectorToolNotes([])).toEqual([]);
 });
+
+it('tool-name discovery order does not change the connector description bytes', () => {
+ const tools=[tool('b','s','Search'),tool('a','s','Search')];
+ expect(connectorToolNotes(tools)).toEqual(connectorToolNotes([...tools].reverse()));
+});
