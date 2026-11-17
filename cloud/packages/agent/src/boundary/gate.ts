@@ -28,14 +28,14 @@ export async function executeBoundary(
   const call = structuredClone(parsed.data);
   const classification = classifyInvocation(call, registry, adapters);
   const decision = boundaryDecision(context.mode, classification, context.taint.tainted);
-  if (decision === 'deny') return failure(toolError('policy-denied', 'Tool policy denied this action.'), classification.untrustedSource);
+  if (decision === 'deny') return failure(toolError('policy-denied', 'Tool policy denied this action.'), false);
   const sideEffect = isSideEffect(classification.capabilities);
   if (decision === 'approve') {
     const binding = {runId: context.runId, toolCallId: context.toolCallId, tool: call.tool, argsHash: await argsHash(call.args)};
     const verified = await ApprovalReceipt.verify(receipt, binding, context.nowMs(), context.key, context.replay);
     if (!verified) return failure(context.taint.tainted && sideEffect
         ? toolError('taint-blocked', 'Untrusted content requires a fresh approval.')
-        : toolError('approval-required', 'This action requires a fresh approval.'), classification.untrustedSource);
+        : toolError('approval-required', 'This action requires a fresh approval.'), false);
   }
   try {
     const result = {value: await execute(call), untrustedSource: classification.untrustedSource};

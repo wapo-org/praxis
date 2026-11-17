@@ -43,8 +43,8 @@ Shell denials cannot be approved; unrecognized syntax fails closed and unknown c
 `boundaryDecision` permits untainted allow calls in Build/Auto when the adapter certifies workspace
 confinement without secrets or network effects; tainted side effects and egress require verified receipts.
 Auto also requires approval for destructive or untrusted writes; Ask/Plan deny all side effects.
-Completed tool failures carry `untrustedSource` and monotonic `taint` just like successes; runners persist both
-before dispatching the next call. Durable dispatchers keep uncertain outcomes fenced for reconciliation.
+Failures after tool execution carry `untrustedSource` and monotonic `taint` just like successes; rejections before
+execution preserve incoming taint. Runners persist taint on both outcomes before dispatching the next call. Durable dispatchers keep uncertain outcomes fenced for reconciliation.
 
 ## Sandbox tools and browser CLI (PRA-77)
 

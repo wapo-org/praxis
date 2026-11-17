@@ -154,3 +154,14 @@ it('keeps untrusted-source taint on sandbox port failures', async () => {
     ok: false, error: {code: 'upstream'}, untrustedSource: true, taint: {tainted: true},
   });
 });
+
+it('allows correcting a rejected path without adding taint or requiring approval', async () => {
+  const {context, port} = setup('a.ts', 'function target() {}');
+  const boundary = {mode: 'build' as const, runId: 'run', toolCallId: 'call', taint: {tainted: false}, nowMs: () => 1,
+    key: await approvalKey(SealedSecret.of('k'.repeat(32))), replay: {consume: async () => true}};
+  const rejected = await executeSandboxTool({tool: 'replace_symbol', args: {path: '/etc/a.ts', symbol: 'target', new_text: ''}}, boundary, context);
+  expect(rejected).toMatchObject({ok: false, error: {code: 'policy-denied'}, untrustedSource: false, taint: {tainted: false}});
+  const corrected = await executeSandboxTool({tool: 'replace_symbol', args: {path: 'a.ts', symbol: 'target', new_text: 'function target() { return 1; }'}}, {...boundary, taint: rejected.taint}, context);
+  expect(corrected).toMatchObject({ok: true, taint: {tainted: true}});
+  expect(port.readText(`${ROOT}/a.ts`)).toBe('function target() { return 1; }');
+});

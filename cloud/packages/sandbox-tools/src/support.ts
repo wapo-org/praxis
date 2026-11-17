@@ -30,9 +30,10 @@ export async function containedPath(port: SandboxPort, root: string, input: stri
 const workspaceLocks = new WeakMap<SandboxPort, Map<string, Promise<unknown>>>();
 
 /** Workspace mutations and checkpoints share a queue, so staging cannot observe a partial edit. */
-async function withLock<T>(pool: WeakMap<SandboxPort, Map<string, Promise<unknown>>>, port: SandboxPort, path: string, work: () => Promise<T>): Promise<T> {
-  const held = pool.get(port) ?? new Map<string, Promise<unknown>>();
-  pool.set(port, held);
+export async function withWorkspaceLock<T>(port: SandboxPort, root: string, work: () => Promise<T>): Promise<T> {
+  const path = await port.realpath(root);
+  const held = workspaceLocks.get(port) ?? new Map<string, Promise<unknown>>();
+  workspaceLocks.set(port, held);
   const previous = held.get(path) ?? Promise.resolve();
   const next = previous.then(work, work);
   const settled = next.catch(() => undefined);
@@ -82,9 +83,4 @@ export function decodeText(bytes: Uint8Array): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-/** A checkpoint must see a complete workspace mutation, including all writes before diagnostics finish. */
-export async function withWorkspaceLock<T>(port: SandboxPort, root: string, work: () => Promise<T>): Promise<T> {
-  return withLock(workspaceLocks, port, await port.realpath(root), work);
 }

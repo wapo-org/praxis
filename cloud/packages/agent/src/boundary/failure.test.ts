@@ -25,3 +25,20 @@ it('any completed failure from an untrusted tool carries source metadata and mon
     expect(next.ok).toBe(!(tainted || untrustedSource));
   }), {numRuns: 100});
 });
+
+it('pre-execution rejections preserve taint regardless of source classification', async () => {
+  const key = await approvalKey(SealedSecret.of('x'.repeat(32)));
+  await fc.assert(fc.asyncProperty(fc.boolean(), fc.boolean(), fc.constantFrom('schema', 'policy', 'mode', 'approval'), async (tainted, untrustedSource, rejection) => {
+    const context: BoundaryContext = {mode: rejection === 'mode' ? 'plan' : 'build', runId: 'run', toolCallId: 'call',
+      taint: {tainted}, nowMs: () => 1, key, replay: {consume: async () => true}};
+    const registry: ToolClassifier = {classify: () => ({capabilities: ['write'], untrustedSource,
+      decision: rejection === 'policy' ? 'deny' : rejection === 'approval' ? 'approve' : 'allow'})};
+    let executed = false;
+    const result = await executeBoundary({tool: rejection === 'schema' ? '' : 'write', args: {}}, context, registry, async () => {
+      executed = true;
+      return null;
+    });
+    expect(executed).toBe(false);
+    expect(result).toMatchObject({ok: false, untrustedSource: false, taint: {tainted}});
+  }), {numRuns: 100});
+});
