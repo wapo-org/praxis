@@ -51,3 +51,26 @@ it('cleanup retries preserve bottom-up cancellation for arbitrary branches and h
       expect(killed.sort()).toEqual(expectedHandles.sort());
     }), {numRuns: 500});
 });
+
+it('CAS fences verified completion against concurrent Stop and resume and persists digest', async () => {
+  for (const race of ['stop', 'resume', 'none']) {
+    const input = spawn(treeFixture());
+    let current = structuredClone(input);
+    let committedDigest: string | undefined;
+    const {completeSubagent} = await import('./workspace.js');
+    const {handoff} = await import('./test-fixtures.js');
+    const result = await completeSubagent(input, 'child', handoff(), workspacePort, {
+      compareAndSwap: async (expected, next, digest) => {
+        if (race === 'stop') current = reduceSubagents(current, {type: 'stop', actorId: 'root', id: 'root'});
+        if (race === 'resume') current.nodes.find(n => n.id === 'child')!.revision++;
+        if (JSON.stringify(current) !== JSON.stringify(expected)) return false;
+        current = next;
+        committedDigest = digest;
+        return true;
+      },
+    });
+    expect(result).toBe(race === 'none');
+    expect(current.nodes.find(n => n.id === 'child')!.status === 'completed').toBe(race === 'none');
+    if (result) expect(committedDigest).toMatch(/^[a-f0-9]{64}$/);
+  }
+});

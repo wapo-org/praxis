@@ -125,13 +125,23 @@ and serialize access across workers, as required by PRA-19. Syntax diagnostics r
 `packages/agent/src/subagents` owns the pure addressed lifecycle reducer, permission narrowing,
 ordered inboxes, asynchronous cascading cancellation and verified artifact handoffs (PRA-79).
 The four wire tools and durable state schemas live in `packages/protocol/src/subagents.ts`.
-Injected workspace operations prepare isolated roots, hash artifact bytes, rerun configured checks and
-kill handles; no Convex, Modal or model SDK is imported into the core. `waitAgents` refuses unverified
-completions. Discovery and waits return `{tree, result}` with structural taint on the result and each agent;
-adapters commit the returned state before exposing names, statuses, handoffs or errors to a model.
-Both join visible/returned source taint into the caller and its descendants. Message enqueue and delivery
-join message provenance into the recipient subtree. One lifecycle schema requires completed handoffs and
-failed errors in both persisted nodes and wait results. Workflow scheduling, authenticated
-addressing, atomic persistence and sandbox confinement
-remain adapter responsibilities under PRA-15/71/58; the current runner does not register these tools.
+`SandboxSubagentWorkspace` in `packages/sandbox-tools` binds a server-supplied TenantId, child and revision.
+It requires Linux bubblewrap (`bwrap`) and Python in the provisioned sandbox image; namespace or tool
+unavailability fails preparation closed. No packages are installed at runtime. Child commands receive
+only their writable root plus read-only system runtimes, private PID/network namespaces and a cleared
+environment. All child effects still require PRA-76 authorization; this adapter grants no outbound network.
+File operations use directory descriptors and O_NOFOLLOW to reject symlinks without a check/open race.
+Snapshot capture rejects special files and enforces named count/byte limits, preserving executable bits.
+Content-addressed manifests live outside child mounts under tenant/child/revision. Checks are server-configured
+argv executed against a read-only snapshot; every open, check and artifact read verifies stored content.
+Handoffs persist snapshot_sha256; opaque proofs are recreated by verification and never deserialized.
+Explicit export must use the verified snapshot view and pass its own authority check; no automatic merge exists.
+`completeSubagent` passes expected/next trees and the verified digest to PRA-114's atomic compareAndSwap;
+the store must persist the digest and compare the complete expected tree, including parent cancellation.
+`waitAgents` re-verifies snapshots and returns `{tree, result}`; PRA-114 must CAS-fence that state before exposure.
+Discovery, waits, messages and terminal returns join structural taint before model-visible exposure.
+PRA-58 owns durable handle registration, termination probing and idempotence: its injected cleanup must
+verify tenant/child/revision ownership and return dead/absent only after confirmation, never kill a shared sandbox.
+Uncertain cleanup remains cancelling. Authenticated workflow wiring and tool registration remain PRA-114/115.
+`verify -- live subagent-workspaces` records required Modal and durable race evidence; fake tests are not live proof.
 PRA-75's five named subagent invariants run as fast-check properties against the reducer.

@@ -54,6 +54,7 @@ const HashSchema = z.string().regex(new RegExp(`^[a-f0-9]{${SUBAGENT_LIMITS.SHA2
 export const SubagentCheckSchema = z.object({id: z.string().min(1), status: z.enum(['passed', 'failed', 'skipped'])}).strict();
 export const HandoffRecordSchema = z.object({
   subagent_id: SubagentIdSchema, revision: z.number().int().nonnegative(), status: z.literal('completed'),
+  snapshot_sha256: HashSchema,
   artifacts: z.array(z.object({path: ArtifactPathSchema, sha256: HashSchema}).strict()).max(SUBAGENT_LIMITS.ARTIFACTS_MAX)
     .refine(a => new Set(a.map(f => f.path)).size === a.length),
   checks: z.array(SubagentCheckSchema).min(1).max(SUBAGENT_LIMITS.CHECKS_MAX)
