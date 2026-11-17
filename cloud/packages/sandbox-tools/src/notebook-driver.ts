@@ -39,12 +39,23 @@ class TextBuffer:
         self.total = 0
 
     def append(self, chunk):
-        encoded = chunk.encode()
+        half = TEXT_MAX_BYTES // 2
+        if chunk.isascii():
+            self.total += len(chunk)
+            take = min(half - len(self.head), len(chunk))
+            self.head += chunk[:take].encode()
+            self.tail = (self.tail + chunk[max(take, len(chunk) - half):].encode())[-half:]
+            return
+        # Four UTF-8 bytes per character bounds encoding allocations even for one enormous Unicode message.
+        for offset in range(0, len(chunk), half // 4):
+            self.append_bytes(chunk[offset:offset + half // 4].encode())
+
+    def append_bytes(self, encoded):
         self.total += len(encoded)
         half = TEXT_MAX_BYTES // 2
         take = min(half - len(self.head), len(encoded))
         self.head += encoded[:take]
-        self.tail = (self.tail + encoded[take:])[-half:]
+        self.tail = (self.tail + encoded[max(take, len(encoded) - half):])[-half:]
 
     def render(self):
         omitted = self.total - len(self.head) - len(self.tail)
@@ -111,9 +122,12 @@ def run_cell(km, client, request, restarted):
     setup = client.execute(setup_code, silent=True, allow_stdin=False, stop_on_error=True)
     setup_status = execution_status(client, setup, time.monotonic() + STARTUP_SECONDS)
     if setup_status != "ok":
+        message = "Workspace setup was not confirmed; user cell was not dispatched."
         if setup_status not in ("error", "aborted"):
             km.interrupt_kernel()
-        return error("setup-error", "Workspace setup was not confirmed; user cell was not dispatched.")
+            km.shutdown_kernel(now=True)
+            message += " Kernel stopped; " + LOST
+        return error("setup-error", message)
     cell = client.execute(request["code"], allow_stdin=False, stop_on_error=True)
     deadline = time.monotonic() + request["timeout_ms"] / 1000
     interrupted = False
@@ -126,11 +140,11 @@ def run_cell(km, client, request, restarted):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             if interrupted:
+                # Never release the mailbox while an unresponsive execution can still block subsequent setup.
+                km.shutdown_kernel(now=True)
                 if output_failure is not None:
-                    # A busy kernel cannot accept another cell safely after failed output recovery.
-                    km.shutdown_kernel(now=True)
                     return error("upstream", "Output recovery interrupt was not acknowledged; kernel stopped; " + LOST)
-                return error("upstream", "Kernel did not acknowledge interrupt; retry when the cell finishes.")
+                return error("timeout-reset", "Timeout interrupt was not acknowledged; kernel stopped; " + LOST)
             km.interrupt_kernel()
             interrupted = True
             deadline = time.monotonic() + INTERRUPT_SECONDS
@@ -151,7 +165,10 @@ def run_cell(km, client, request, restarted):
                     chunk = content["text"]
                 elif kind == "error":
                     failed = True
-                    chunk = "\n".join(content.get("traceback", []))
+                    for index, line in enumerate(content.get("traceback", [])):
+                        if index:
+                            text.append("\n")
+                        text.append(line)
                 elif kind in ("display_data", "execute_result", "update_display_data"):
                     data = content.get("data", {})
                     chunk = data.get("text/plain", "")
@@ -225,7 +242,15 @@ def daemon():
                     if not km.is_alive():
                         restarted = True
                 except Exception as exc:
-                    result = error("upstream", "Notebook driver failed: " + str(exc))
+                    # A transport or startup exception cannot certify idle; discard this kernel before accepting another cell.
+                    if km:
+                        km.shutdown_kernel(now=True)
+                    if client:
+                        client.stop_channels()
+                    km = None
+                    client = None
+                    restarted = True
+                    result = error("upstream", "Notebook driver failed: " + str(exc) + "; " + LOST)
                 inbox.unlink()
                 atomic(STATE / (request["id"] + ".json"), result)
         finally:

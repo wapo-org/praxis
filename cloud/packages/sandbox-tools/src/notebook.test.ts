@@ -111,6 +111,12 @@ describe('notebook_run', () => {
     });
   });
 
+  it('reports variable loss when a timeout requires stopping an unresponsive kernel', async () => {
+    expect(await runError({status: 'timeout-reset', message: 'Kernel stopped; variables were lost'})).toMatchObject({
+      ok: false, error: {code: 'timeout', remediation: expect.stringContaining('variables were lost')},
+    });
+  });
+
   it('returns a remediation when workspace setup fails without dispatching code', async () => {
     expect(await runError({status: 'setup-error', message: 'Workspace setup failed.'})).toMatchObject({
       ok: false, error: {code: 'upstream', remediation: expect.stringContaining('no user cell was dispatched')},
