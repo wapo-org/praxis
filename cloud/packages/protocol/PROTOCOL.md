@@ -74,3 +74,19 @@ v1 also adds chat.pinned (default false), optional model tagline/speed/intellige
 OAuth native returnUrl is exactly `praxis-app://oauth/callback`; callback redirects include the original oauth.authorization.state on both success and error (plus optional error), after the server consumes state exactly once and stores tokens. iOS validates scheme/host/path/state then GET connector for authStatus. Web return origins are allowlisted. Empty preferences.voice.language selects Auto (clears a prior explicit language). /transcribe accepts optional multipart prompt for split-audio tail continuity. Connector v1 installation is CRUD + tools discovery; remote config import/connector registry additions will be documented as their implementation lands.
 
 Connector `authStatus:"required"` represents needs-reauth; `error:"needs_reauth"` identifies revoked OAuth credentials. Calls stop until connector sign-in succeeds; refresh failures never downgrade an OAuth connector to anonymous MCP.
+
+## Internal turn worker
+
+`POST /api/turn` uses `TurnRequestSchema` and `TurnResultSchema`. Convex signs
+the raw body and Unix-millisecond timestamp with HMAC-SHA256; session credentials
+are not accepted. See `cloud/DEPLOY.md` for canonical signing and replay rules.
+
+The request carries signed `userId`, `chatId`, `runId`,
+`expectedTurnIndex` and an optional structured approval/elicitation decision.
+Results carry `turnIndex`, `done`, `status` and `subagents` (unique addressed
+child IDs using PRA-79 `SubagentIdSchema` and
+`SUBAGENT_LIMITS.CHILDREN_MAX`, currently four). Status is ready/busy while active
+and stopped/completed
+when terminal, matching the one-turn harness flags. Child lifecycle/handoffs use
+PRA-79's durable subagent protocol; this response never embeds handoffs or messages.
+The runtime adapter is supplied by PRA-39; absent configuration returns 503.
