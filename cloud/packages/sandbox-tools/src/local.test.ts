@@ -6,6 +6,8 @@ import {checkpointTurn, diffSince, listCheckpoints, rewindTo} from './checkpoint
 import {MemoryExportSink} from './fake.js';
 import {localSandboxPort} from './local.js';
 import type {SandboxToolContext} from './tools/context.js';
+import {replaceSymbol} from './tools/symbols.js';
+import {sha256} from './support.js';
 import {editFile} from './tools/files.js';
 import {shell, waitForJob} from './tools/process.js';
 
@@ -22,6 +24,73 @@ afterEach(() => {
 });
 
 describe('local port with real processes', () => {
+  it('returns syntax errors inline and checkpoints/rewinds the entire symbol edit', async () => {
+    const context = workspace();
+    const path = join(context.root, 'app.js');
+    const source = '// 😀\nfunction target() { return 1; }\nfunction other() {}\n';
+    writeFileSync(path, source);
+    const first = await checkpointTurn(context.port, context.root, 'symbol-before');
+    const edited = await replaceSymbol(context, {path: 'app.js', symbol: 'target', new_text: 'function target() { const = 2; }'});
+    expect(edited.diagnostics).toMatchObject({ok: false, problems: [{check: 'node-syntax', line: 2}]});
+    const next = await checkpointTurn(context.port, context.root, 'symbol-after');
+    expect(next.files).toEqual(['app.js']);
+    expect((await diffSince(context.port, context.root, first.sha!)).patch).toContain('+function target() { const = 2; }');
+    await rewindTo(context.port, context.root, first.sha!);
+    expect(readFileSync(path, 'utf8')).toBe(source);
+  });
+
+  it('runs approved configured TypeScript diagnostics exactly as edit_file', async () => {
+    const context = workspace();
+    writeFileSync(join(context.root, 'app.ts'), 'function target(): number { return 1; }');
+    mkdirSync(join(context.root, '.praxis'));
+    writeFileSync(join(context.root, 'diagnose.cjs'), "console.log('app.ts:1: invalid syntax'); process.exit(1)");
+    const config = JSON.stringify({version: 1, checks: [{name: 'ts-syntax', files: ['**/*.ts'], argv: ['node', 'diagnose.cjs'], format: 'gnu'}]});
+    writeFileSync(join(context.root, '.praxis', 'diagnostics.json'), config);
+    context.trustedDiagnostics = new Set([sha256(config)]);
+    const result = await replaceSymbol(context, {path: 'app.ts', symbol: 'target', new_text: 'function target(): number { return ; }'});
+    expect(result.diagnostics).toMatchObject({ok: false, ran: [{check: 'ts-syntax', outcome: 'failed'}], problems: [{file: 'app.ts', line: 1, message: 'invalid syntax'}]});
+    const exact = await editFile(context, {path: 'app.ts', old_text: 'return ;', new_text: 'return 1;'});
+    expect(exact.diagnostics.problems).toEqual(result.diagnostics.problems);
+  });
+
+  it('does not let a checkpoint stage a partially written symbol edit', async () => {
+    const context = workspace();
+    const path = join(context.root, 'app.ts');
+    writeFileSync(path, 'function target() {}');
+    await checkpointTurn(context.port, context.root, 'before');
+    const canonicalPath = await context.port.realpath(path);
+    const write = context.port.writeFile.bind(context.port);
+    const exec = context.port.exec.bind(context.port);
+    let stagedWhileHeld = false;
+    let isHeld = true;
+    context.port.exec = async request => {
+      if (isHeld && request.argv.includes('add')) stagedWhileHeld = true;
+      return exec(request);
+    };
+    let release!: () => void;
+    let writing!: () => void;
+    const entered = new Promise<void>(resolve => { writing = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    context.port.writeFile = async (file, bytes) => {
+      if (file === canonicalPath) {
+        await write(file, bytes.subarray(0, 5));
+        writing();
+        await held;
+      }
+      await write(file, bytes);
+    };
+    const edit = replaceSymbol(context, {path: 'app.ts', symbol: 'target', new_text: 'function target() { return 2; }'});
+    await entered;
+    const checkpoint = checkpointTurn(context.port, context.root, 'after');
+    await exec({argv: ['git', 'status', '--porcelain'], cwd: context.root, timeoutMs: 10_000});
+    expect(stagedWhileHeld).toBe(false);
+    isHeld = false;
+    release();
+    await edit;
+    const result = await checkpoint;
+    const committed = await context.port.exec({argv: ['git', 'show', `${result.sha}:app.ts`], cwd: context.root, timeoutMs: 10_000});
+    expect(committed.stdout).toBe('function target() { return 2; }');
+  });
   it('commits one checkpoint per changed turn, diffs and rewinds, and never commits .praxis', async () => {
     const {port, root} = workspace();
     writeFileSync(join(root, 'a.txt'), 'one\n');
