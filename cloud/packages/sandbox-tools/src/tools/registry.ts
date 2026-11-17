@@ -84,16 +84,16 @@ export const sandboxToolClassifier: ToolClassifier = {
 
 /** The only way to run a sandbox tool: PRA-76's gate (policy, mode, approval receipt, taint), then the tool. */
 export async function executeSandboxTool(call: ToolInvocation, boundary: BoundaryContext, context: SandboxToolContext, receipt?: unknown): Promise<GateResult> {
-  try {
-    return await executeBoundary(call, boundary, sandboxToolClassifier, async accepted => {
+  return executeBoundary(call, boundary, sandboxToolClassifier, async accepted => {
+    try {
       const tool = byName.get(accepted.tool);
       if (!tool) throw new ToolBoundaryError(toolError('schema', `Unknown sandbox tool ${accepted.tool}.`));
       return JSON.parse(JSON.stringify(await tool.run(context, accepted.args))) as JsonValue;
-    }, receipt);
-  } catch (error) {
-    if (error instanceof ToolBoundaryError) return {ok: false, error: error.detail};
-    if (error instanceof z.ZodError) return {ok: false, error: toolError('schema', error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; '))};
-    // A port failure (Modal unreachable, sandbox gone) still reaches the model as a ToolError with remediation.
-    return {ok: false, error: toolError('upstream', `Sandbox call failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500))};
-  }
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new ToolBoundaryError(toolError('schema', error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ')));
+      }
+      throw error;
+    }
+  }, receipt);
 }

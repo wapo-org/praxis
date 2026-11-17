@@ -26,7 +26,7 @@ export interface SymbolRange {
   line: number;
 }
 
-function definition(node: Node): {name: string; range: Node} | undefined {
+function definition(node: Node, singleDeclaration: Node | undefined): {name: string; range: Node} | undefined {
   if (SYMBOL_DEFINITIONS.has(node.type)) {
     const name = node.childForFieldName('name');
     if (!name) return undefined;
@@ -34,11 +34,12 @@ function definition(node: Node): {name: string; range: Node} | undefined {
   }
   if (node.type !== 'variable_declarator') return undefined;
   const name = node.childForFieldName('name');
-  const value = node.childForFieldName('value');
-  const declaration = node.parent;
+  let value = node.childForFieldName('value');
+  const declaration = singleDeclaration;
   if (name?.type !== 'identifier' || !value || !declaration) return undefined;
+  while (value?.type === 'parenthesized_expression') value = value.namedChildren.find(child => child?.type !== 'comment') ?? null;
+  if (!value) return undefined;
   if (!['arrow_function', 'function_expression', 'generator_function', 'class'].includes(value.type)) return undefined;
-  if (declaration.namedChildren.length !== 1) return undefined;
   return {name: name.text, range: declaration};
 }
 
@@ -53,17 +54,21 @@ export async function symbolRanges(text: string, grammar: SymbolGrammar): Promis
     if (!tree) fail('timeout', SYMBOL_PARSE_FAILED);
     try {
       const symbols: SymbolRange[] = [];
-      const stack = [{node: tree.rootNode, scope: [] as string[]}];
+      const stack: {node: Node; scope: string; declaration?: Node}[] = [{node: tree.rootNode, scope: ''}];
       while (stack.length) {
-        const {node, scope} = stack.pop()!;
-        const found = definition(node);
-        const nextScope = found ? [...scope, found.name] : scope;
+        if (Date.now() >= deadline) fail('timeout', SYMBOL_PARSE_FAILED);
+        const {node, scope, declaration} = stack.pop()!;
+        const found = definition(node, declaration);
+        const nextScope = found ? (scope ? `${scope}.${found.name}` : found.name) : scope;
         if (found) symbols.push({
-          name: found.name, qualified: nextScope.join('.'), start: found.range.startIndex,
+          name: found.name, qualified: nextScope, start: found.range.startIndex,
           end: found.range.endIndex, line: found.range.startPosition.row + 1,
         });
-        for (const child of [...node.namedChildren].reverse()) {
-          if (child) stack.push({node: child, scope: nextScope});
+        const children = node.namedChildren;
+        const single = children.filter(child => child?.type === 'variable_declarator').length === 1 ? node : undefined;
+        for (let index = children.length - 1; index >= 0; index--) {
+          const child = children[index];
+          if (child) stack.push({node: child, scope: nextScope, declaration: single});
         }
       }
       return symbols;
