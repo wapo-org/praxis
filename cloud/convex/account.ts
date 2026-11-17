@@ -2,15 +2,14 @@ import { blobOwnerTag } from './blobOwner.js';
 import { v } from 'convex/values';
 import { mutation, query } from './functions.js';
 import { requireServer } from './access.js';
+import {activeOwner} from './accountOwner.js';
+import {ACCOUNT_OWNER_QUERIES, ACCOUNT_PURGE_BATCH_MAX} from './accountTables.js';
+import {purgeOwnedRun} from './workflows/purge.js';
 export const active = query({
   args: { serverToken: v.string(), userId: v.string() },
   handler: async (ctx, a) => {
     await requireServer(a.serverToken);
-    const user = await ctx.db
-      .query('authDocuments')
-      .withIndex('model_id', (q) => q.eq('model', 'user').eq('id', a.userId))
-      .unique();
-    return !!user && !user.data.deleting;
+    return activeOwner(ctx, a.userId);
   },
 });
 export const begin = mutation({
@@ -37,31 +36,13 @@ export const purge = mutation({
   },
   handler: async (ctx, a) => {
     await requireServer(a.serverToken);
-    const tables = [
-      'records',
-      'changes',
-      'sequences',
-      'toolState',
-      'toolSkillFiles',
-      'files',
-      'embeddings',
-    ] as const;
-    const indexes = {
-      records: 'owner_kind_id',
-      changes: 'owner_revision',
-      sequences: 'owner',
-      toolState: 'owner_kind_id',
-      toolSkillFiles: 'owner_skill',
-      files: 'owner_status',
-      embeddings: 'owner',
-    } as const;
-    for (const table of tables) {
-      const rows = await (ctx.db.query(table) as any)
-        .withIndex(indexes[table], (q: any) => q.eq('userId', a.userId))
-        .take(100);
+    if (await purgeOwnedRun(ctx, a.userId)) return {done: false};
+    for (const [table, query] of Object.entries(ACCOUNT_OWNER_QUERIES)) {
+      if (table === 'runs') continue;
+      const rows = await query(ctx, a.userId).take(ACCOUNT_PURGE_BATCH_MAX);
       if (rows.length) {
         for (const row of rows) {
-          if (table === 'files' && row.storageId) await ctx.storage.delete(row.storageId);
+          if ('storageId' in row && row.storageId) await ctx.storage.delete(row.storageId);
           await ctx.db.delete(row._id);
         }
         return { done: false };

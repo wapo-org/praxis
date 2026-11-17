@@ -6,12 +6,14 @@ import {IdSchema, TURN_INDEX_MAX} from '@praxis/protocol';
 import {internal} from './_generated/api.js';
 import {internalMutation, internalQuery, type QueryCtx} from './functions.js';
 import {workflow} from './workflows/agentRun.js';
+import {activeOwner} from './accountOwner.js';
 import {runScope} from './workflows/validators.js';
 import {STUB_TURNS_MAX, WORKFLOW_ERRORS} from './workflows/constants.js';
 import type {Id} from './_generated/dataModel.js';
 
 const indexSchema = z.number().int().nonnegative().max(TURN_INDEX_MAX - STUB_TURNS_MAX);
 export async function scopedRun(ctx: QueryCtx, args: {userId: string; chatId: string; runId: Id<'runs'>; generation: number}) {
+  if (!await activeOwner(ctx, args.userId)) return null;
   const run = await ctx.db.get(args.runId);
   return run && run.userId === args.userId && run.chatId === args.chatId && run.generation === args.generation ? run : null;
 }
@@ -22,6 +24,7 @@ export const start = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError(WORKFLOW_ERRORS.unauthenticated);
     const userId = identity.subject;
+    if (!await activeOwner(ctx, userId)) throw new ConvexError(WORKFLOW_ERRORS.unavailable);
     const chatId = IdSchema.parse(args.chatId);
     const startTurnIndex = indexSchema.parse(args.startTurnIndex ?? 0);
     const chat = await ctx.db.query('records').withIndex('owner_kind_id', q =>

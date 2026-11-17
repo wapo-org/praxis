@@ -33,6 +33,9 @@ try {
   await writeFile(path, JSON.stringify([{userId, kind: 'chat', id: chatId, value: {}, revision: 1,
     updatedAt: new Date().toISOString(), deleted: false}]));
   await cli('import', '--table', 'records', '--append', path);
+  const usersPath = join(directory, 'users.json');
+  await writeFile(usersPath, JSON.stringify([{model: 'user', id: userId, data: {id: userId}}]));
+  await cli('import', '--table', 'authDocuments', '--append', usersPath);
   const runId = await run('runs:start', {chatId}, identity);
   const deadline = Date.now() + WAIT_MAX_MS;
   let completed;

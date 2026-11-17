@@ -12,11 +12,13 @@ const chatId = 'workflow-chat';
 async function setup() {
   const t = convexTest(schema, {
     '../convex/_generated/api.js': () => import('../convex/_generated/api.js'),
+    '../convex/account.ts': () => import('../convex/account.js'),
     '../convex/runs.ts': () => import('../convex/runs.js'),
     '../convex/turns.ts': () => import('../convex/turns.js'),
     '../convex/workflows/agentRun.ts': () => import('../convex/workflows/agentRun.js'),
   });
   workflowComponent.register(t);
+  await t.run(ctx => ctx.db.insert('authDocuments', {model: 'user', id: userId, data: {id: userId}}));
   await t.run(ctx => ctx.db.insert('records', {
     userId, kind: 'chat', id: chatId, value: {}, revision: 1, updatedAt: new Date().toISOString(), deleted: false,
   }));

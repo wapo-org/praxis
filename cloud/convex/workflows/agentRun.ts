@@ -1,6 +1,5 @@
 import {WorkflowManager} from '@convex-dev/workflow';
 import {v} from 'convex/values';
-import {TurnResultSchema} from '@praxis/protocol';
 import {components, internal} from '../_generated/api.js';
 import {runScope, terminalStatus} from './validators.js';
 import {WORKFLOW_ERRORS, WORKFLOW_PARALLELISM_MAX} from './constants.js';
@@ -19,7 +18,7 @@ export const agentRun = workflow.define({
       const status = await step.runQuery(internal.runs.status, scope);
       if (status === null || status === 'cancelling' || status === 'cancelled') return 'cancelled';
       if (status !== 'running') return status;
-      const flags = TurnResultSchema.parse(await step.runAction(internal.turns.run, {...scope, expectedTurnIndex}));
+      const flags = await step.runAction(internal.turns.run, {...scope, expectedTurnIndex});
       if (flags.turnIndex !== expectedTurnIndex || flags.subagents.length > 0 || flags.status === 'busy') {
         throw new Error(WORKFLOW_ERRORS.flags);
       }
