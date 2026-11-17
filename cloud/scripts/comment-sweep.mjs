@@ -9,7 +9,7 @@ const ts = require("../node_modules/typescript");
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
 const CODE_EXTS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".swift", ".css"]);
-const SKIP_DIRS = new Set(["node_modules", ".git", ".build", "dist", "build", "DerivedData", ".turbo", ".next", "PraxisAgent"]);
+const SKIP_DIRS = new Set(["_generated", "node_modules", ".git", ".build", "dist", "build", "DerivedData", ".turbo", ".next", "PraxisAgent"]);
 
 const DIRECTIVE_RE =
   /@ts-(?:ignore|expect-error|nocheck|check)|eslint-(?:disable|enable)|prettier-ignore|biome-ignore|oxlint-ignore|(?:v8|c8|istanbul)\s+ignore|\/\*\s*(?:global|exported)|\/\/\/\s*<reference|@vitest-environment|swiftlint:|swift-format-ignore|webpackChunkName|@vite-ignore|SPDX-License-Identifier|Copyright\s+(?:\(c\)|©|\d{4})/i;

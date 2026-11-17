@@ -11,7 +11,7 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "npm run -ws --if-present typecheck",
+    "typecheck": "npm run -ws --if-present typecheck && tsc --noEmit -p convex",
     "test": "vitest run --passWithNoTests",
     "check:rules": "node scripts/check-rules.mjs",
     "lint": "oxlint --deny-warnings",
@@ -27,5 +27,9 @@
     "oxlint": "1.93.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"
+  },
+  "dependencies": {
+    "@convex-dev/workflow": "0.4.10",
+    "convex": "1.48.0"
   }
 }

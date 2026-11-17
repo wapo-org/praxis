@@ -135,3 +135,5 @@ failed errors in both persisted nodes and wait results. Workflow scheduling, aut
 addressing, atomic persistence and sandbox confinement
 remain adapter responsibilities under PRA-15/71/58; the current runner does not register these tools.
 PRA-75's five named subagent invariants run as fast-check properties against the reducer.
+
+PRA-29 adds `@convex-dev/workflow` **0.4.10** for the durable flags-only loop; its workpool is capped at four jobs. Root `convex` **1.48.0** enables local CLI/codegen (the API already pins this version). `runs.start` atomically creates a run and workflow; the internal stub commits three turns with index-keyed flags. `onComplete` settles success, cancellation and failure; this skeleton acquires no external resources. PRA-30 replaces `turns.commitStub` with the authenticated worker, PRA-31 adds handoffs, and PRA-32 adds suspension/children. Unsupported flags fail closed until those handlers exist.

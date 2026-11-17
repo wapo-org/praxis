@@ -1,4 +1,4 @@
-import { blobOwnerTag } from '../../../../convex/blob-owner.js';
+import { blobOwnerTag } from '../../../../convex/blobOwner.js';
 import { accountEraser } from '../account-deletion.js';
 import { createApp } from '../app.js';
 import { ApiService } from '../service.js';
