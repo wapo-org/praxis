@@ -125,3 +125,8 @@ Dependencies:
 - `@convex-dev/auth@2.0.0`: component authentication and browser session lifecycle (latest dist-tag confirmed v2).
 - `@convex-dev/resend@0.2.10`: documented email delivery component for verification and recovery.
 - `convex@1.50.0`: component environment declarations and deployment-signed JWT support.
+
+
+Browser verification runs an isolated anonymous local Convex deployment with the production auth source and a test-only Resend component.
+The dedicated local API entry can validate that deployment's identity via `PRAXIS_LOCAL_CONVEX_URL`; it never uses a dev token when configured.
+The verification package uses `convex@1.50.0` to seed and inspect the local auth fixture.

@@ -1,9 +1,10 @@
+import { apiRequest, signIn as convexSignIn } from './sign-in';
 import {expect,test} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
 const capture=process.env.K1_CAPTURE_DIR;
 test.beforeEach(async({page})=>{
- await page.request.post('/v1/auth/dev',{data:{type:'auth.dev',userId:'saved-values-'+Date.now()}});
+ await convexSignIn(page);
  await page.goto('/');
  await page.getByTestId('composer-input').waitFor();
 });
@@ -25,7 +26,7 @@ test('a compact question saves ordinary answers and keeps the title outside its 
  }
  await page.getByTestId('elicitation-submit-save').click();
  await expect(page.getByTestId('assistant-turn').last()).toContainText('Scripted tools completed.');
- const items=(await page.request.get('/v1/saved-values').then(r=>r.json())).items;
+ const items=(await apiRequest(page, 'get', '/v1/saved-values').then(r=>r.json())).items;
  expect(items.find((v:any)=>v.kind==='variable'&&v.name==='name')?.value).toBe('Deployment demo');
 });
 // WP-L2 (L-ref/10, 15): the forms live in modals under "Add new" and each row's Edit; the list is one line per value.
@@ -67,7 +68,7 @@ test('a separate settings page creates, renames and deletes secrets and variable
  await expect(add).toHaveCount(0);
  await expect(box.getByText('deploy_token',{exact:true})).toBeVisible();
  await expect(page.locator('body')).not.toContainText('SYNTHETIC-BROWSER-TOKEN');
- const items=(await page.request.get('/v1/saved-values').then(r=>r.json())).items;
+ const items=(await apiRequest(page, 'get', '/v1/saved-values').then(r=>r.json())).items;
  const secret=items.find((v:any)=>v.kind==='secret'),variable=items.find((v:any)=>v.kind==='variable');
  expect(secret).not.toHaveProperty('value');
  await expect(page.getByTestId('saved-value-'+secret.id)).toContainText('••••');
@@ -101,7 +102,7 @@ test('a separate settings page creates, renames and deletes secrets and variable
  await expect(page.getByTestId('saved-value-'+secret.id)).toHaveCount(0);
 });
 test('saved-values box hugs 1 and 3 rows with uniform 8px inner padding on all four sides',async({page})=>{
- await page.request.post('/v1/saved-values',{data:{name:'api_key_one',kind:'secret',value:'SYNTH-ONE'}});
+ await apiRequest(page, 'post', '/v1/saved-values',{data:{name:'api_key_one',kind:'secret',value:'SYNTH-ONE'}});
  await page.goto('/settings/saved-values');
  const box=page.getByTestId('saved-values-box');
  const rows=box.locator('[data-testid^="saved-value-"]:not([data-testid="saved-value-skeleton"])');
@@ -135,8 +136,8 @@ test('saved-values box hugs 1 and 3 rows with uniform 8px inner padding on all f
   padding:['8px','8px','8px','8px'],
   insets:{top:8,right:8,bottom:8,left:8},
  });
- await page.request.post('/v1/saved-values',{data:{name:'api_key_two',kind:'secret',value:'SYNTH-TWO'}});
- await page.request.post('/v1/saved-values',{data:{name:'deploy_region',kind:'variable',value:'us-east-1'}});
+ await apiRequest(page, 'post', '/v1/saved-values',{data:{name:'api_key_two',kind:'secret',value:'SYNTH-TWO'}});
+ await apiRequest(page, 'post', '/v1/saved-values',{data:{name:'deploy_region',kind:'variable',value:'us-east-1'}});
  await page.reload();
  await expect(rows).toHaveCount(3);
  expect(await measure()).toEqual({
@@ -172,7 +173,7 @@ test('three hundred values: lazy pages in a self-scrolling box, search and filte
  test.setTimeout(120000);
  for(let i=0;i<300;i++){
   const secret=i%4===0;
-  await page.request.post('/v1/saved-values',{data:{name:(secret?'token_':'var_')+String(i).padStart(3,'0'),kind:secret?'secret':'variable',value:secret?'SYNTH-'+i:'value '+i}});
+  await apiRequest(page, 'post', '/v1/saved-values',{data:{name:(secret?'token_':'var_')+String(i).padStart(3,'0'),kind:secret?'secret':'variable',value:secret?'SYNTH-'+i:'value '+i}});
  }
  await page.goto('/settings/saved-values');
  const box=page.getByTestId('saved-values-box');

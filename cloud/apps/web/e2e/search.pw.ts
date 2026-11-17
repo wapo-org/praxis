@@ -1,10 +1,10 @@
+import { apiRequest, signIn as convexSignIn } from './sign-in';
 import { test, expect } from '@playwright/test';
 
 test.use({ serviceWorkers: 'block' });
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /local dev user/i }).click();
+  await convexSignIn(page);
   await page.getByTestId('chat-screen').waitFor();
 });
 test('narrow History never focuses an input; explicit Search keeps focus after History exits', async ({ page }) => {
@@ -96,8 +96,8 @@ test('the last option keeps the panel inset below it, at rest and scrolled to th
 });
 test('search is semantic: chats are found by meaning through the local API', async ({ page }) => {
   for (const [title, text] of [['Trip packing list', 'Packing list for 3 days in Lisbon'], ['Regex help', 'Match a date like 2026-11-07']] as const) {
-    const chat = await (await page.request.post('/v1/chats', { data: { type: 'chat.input', title } })).json();
-    await page.request.post('/v1/runs', { data: { type: 'run.start', chatId: chat.id, text } });
+    const chat = await (await apiRequest(page, 'post', '/v1/chats', { data: { type: 'chat.input', title } })).json();
+    await apiRequest(page, 'post', '/v1/runs', { data: { type: 'run.start', chatId: chat.id, text } });
   }
   await page.keyboard.press('ControlOrMeta+k');
   const palette = page.getByTestId('search-palette');

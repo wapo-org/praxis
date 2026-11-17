@@ -17,7 +17,7 @@
     },
     {
       "id": "web.shell",
-      "title": "Signed-out shell, dev sign-in and an empty chat with a usable composer",
+      "title": "Signed-out shell, Convex Auth sign-in and an empty chat with a usable composer",
       "issue": "PRA-28",
       "surfaces": [
         "web",

@@ -42,7 +42,11 @@ export function EmailScreens() {
     setOauthPending(true);
     setError('');
     try {
-      await (provider === 'google' ? google : apple).signIn({ redirectTo: window.location.origin + AUTH_ROUTES.home });
+      const result = await (provider === 'google' ? google : apple).signIn({ redirectTo: window.location.origin + AUTH_ROUTES.home });
+      if (result.status === 'error') {
+        setError(authError(result.userError));
+        setOauthPending(false);
+      }
     } catch {
       setError(AUTH_COPY.unknown);
       setOauthPending(false);

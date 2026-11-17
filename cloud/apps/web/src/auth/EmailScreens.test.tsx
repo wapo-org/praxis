@@ -5,7 +5,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { EmailScreens, ResetPassword, ValidateEmail } from './EmailScreens';
 
 const hooks = vi.hoisted(() => ({
-  login: vi.fn(), signup: vi.fn(), recovery: vi.fn(), reset: vi.fn(),
+  oauth: vi.fn(), login: vi.fn(), signup: vi.fn(), recovery: vi.fn(), reset: vi.fn(),
   validateState: { status: 'error', userError: { error: 'MISSING_SECRET' } },
 }));
 vi.mock('@convex-dev/auth/methods/email-password/react', () => ({
@@ -16,10 +16,10 @@ vi.mock('@convex-dev/auth/methods/email-password/react', () => ({
   useCompletePasswordRecovery: () => ({ status: 'ready', completePasswordRecovery: hooks.reset, pending: false }),
 }));
 vi.mock('@convex-dev/auth/methods/google/react', () => ({
-  useSignInWithGoogle: () => ({ signIn: vi.fn() }), useOauth: () => ({ flowError: null }),
+  useSignInWithGoogle: () => ({ signIn: hooks.oauth }), useOauth: () => ({ flowError: null }),
 }));
 vi.mock('@convex-dev/auth/methods/apple/react', () => ({
-  useSignInWithApple: () => ({ signIn: vi.fn() }),
+  useSignInWithApple: () => ({ signIn: hooks.oauth }),
 }));
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -58,5 +58,19 @@ it('explains wrong-browser validation and submits recovery through its ready sta
   await act(async () => node.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
   expect(hooks.reset).toHaveBeenCalledWith({ newPassword: '' });
   expect(node.querySelector('[role=alert]')?.textContent).toContain('10 characters');
+  await act(async () => root.unmount());
+});
+
+it.each(['Google', 'Apple'])('re-enables sign-in and shows a resolved %s initiation error', async provider => {
+  hooks.oauth.mockResolvedValue({ status: 'error', userError: { error: 'EXPIRED' } });
+  const node = document.createElement('div');
+  const root = createRoot(node);
+  await act(async () => root.render(<EmailScreens />));
+  const button = [...node.querySelectorAll('button')].find(b => b.textContent === 'Continue with ' + provider)!;
+  await act(async () => button.click());
+  expect(node.querySelector('[role=alert]')?.textContent).toContain('expired');
+  expect([...node.querySelectorAll('button')].every(b => !b.disabled)).toBe(true);
+  await act(async () => button.click());
+  expect(hooks.oauth).toHaveBeenCalledTimes(2);
   await act(async () => root.unmount());
 });

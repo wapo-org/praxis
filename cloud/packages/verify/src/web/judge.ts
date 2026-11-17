@@ -19,12 +19,6 @@ const RESOURCE_ECHO = /^Failed to load resource: the server responded with a sta
 /** Navigation and cancelled SSE streams abort requests by design. */
 const ABORTED = /net::ERR_ABORTED/;
 
-export const SIGNED_OUT_SESSION_PROBE: AllowedIssue = {
-  kind: 'response',
-  pattern: /^\/v1\/auth\/session$/,
-  status: 401,
-  reason: 'the signed-out app asks for a session before the dev sign-in',
-};
 
 function pathOf(url: string): string {
   try {
