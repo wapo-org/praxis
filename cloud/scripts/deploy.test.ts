@@ -48,7 +48,7 @@ it('dry run invokes only local builds, with no inherited credentials; preserves 
   const log = vi.spyOn(console, 'log').mockImplementation(() => {});
   try {
     const file = join(dir, 'empty');
-    await writeFile(file, '');
+    await writeFile(file, 'CONVEX_URL=https://build-test.convex.cloud');
     const runner = vi.fn().mockResolvedValue(undefined);
     await mkdir(join(dir, 'dist'));
     await writeFile(join(dir, 'dist/index.html'), '<div id="root"></div>');
@@ -56,6 +56,8 @@ it('dry run invokes only local builds, with no inherited credentials; preserves 
       deployDir: join(dir, 'deploy'),
       webDist: join(dir, 'dist'),
     });
+    const webBuild = runner.mock.calls.find(([step]) => step.name === 'Local web build');
+    expect(webBuild?.[1].VITE_CONVEX_URL).toBe('https://build-test.convex.cloud');
     const printed = log.mock.calls.map((c) => String(c[0])).join('\n');
     expect(printed).toMatch(/API upload: \d+ files, no secret files/);
     expect(printed).toMatch(/Web upload: \d+ files/);

@@ -44,7 +44,6 @@ export function deploymentPlan(env) {
         (k) =>
           env[k] ||
           ![
-            'PRAXIS_COOKIE_SAMESITE',
             'PRAXIS_RUN_BUDGET_MS',
             'PRAXIS_SYNC_STRATEGY',
             'GROQ_API_KEY',
@@ -213,7 +212,9 @@ export async function deploy(args = process.argv.slice(2), runner = execute, pat
     }
     if (dry && step.remote) continue;
     if (!step.remote) {
-      await runner(step, safeBuildEnv(api));
+      const buildEnv = safeBuildEnv(api);
+      if (step.web) buildEnv.VITE_CONVEX_URL = origin(env.CONVEX_URL, 'https://preview.example.invalid');
+      await runner(step, buildEnv);
       continue;
     }
     const childEnv = stepEnv(step, env, api);

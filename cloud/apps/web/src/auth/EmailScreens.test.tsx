@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { EmailScreens, ResetPassword, ValidateEmail } from './EmailScreens';
 
 const hooks = vi.hoisted(() => ({
@@ -23,6 +23,7 @@ vi.mock('@convex-dev/auth/methods/google/react', () => ({
 vi.mock('@convex-dev/auth/methods/apple/react', () => ({
   useSignInWithApple: () => ({ signIn: hooks.oauth }),
 }));
+afterEach(() => vi.unstubAllEnvs());
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.clearAllMocks();
@@ -93,5 +94,32 @@ it('finishes the existing session before adopting a recovered session', async ()
   await act(async () => { signedOut(); });
   expect(hooks.reset).toHaveBeenCalledOnce();
   expect(node.querySelector('[role=alert]')?.textContent).toContain('10 characters');
+  await act(async () => root.unmount());
+});
+
+it('reports a transport failure and allows the email form to retry', async () => {
+  hooks.login.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  hooks.login.mockResolvedValueOnce({ status: 'error', userError: { error: 'INVALID_CREDENTIALS' } });
+  const node = document.createElement('div');
+  const root = createRoot(node);
+  await act(async () => root.render(<EmailScreens />));
+  const submit = () => node.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await act(async () => { submit(); });
+  expect(node.querySelector('[role=alert]')?.textContent).toContain('temporarily unavailable');
+  await act(async () => { submit(); });
+  expect(node.querySelector('[role=alert]')?.textContent).toContain('incorrect');
+  await act(async () => root.unmount());
+});
+
+it('keeps the signed-out screen usable when Preview simulates an unavailable provider', async () => {
+  vi.stubEnv('PRAXIS_MOCK_OAUTH', 'apple');
+  const node = document.createElement('div');
+  const root = createRoot(node);
+  await act(async () => root.render(<EmailScreens />));
+  const button = [...node.querySelectorAll('button')].find(item => item.textContent === 'Continue with Apple')!;
+  await act(async () => button.click());
+  expect(hooks.oauth).not.toHaveBeenCalled();
+  expect(node.querySelector('[role=alert]')?.textContent).toContain('unavailable Apple sign-in');
+  expect(button.disabled).toBe(false);
   await act(async () => root.unmount());
 });

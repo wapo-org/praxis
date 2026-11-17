@@ -1,4 +1,3 @@
-import {clerkAuth, realClerk} from './auth-clerk.js';
 import { createHash } from 'node:crypto';
 import { betterAuth } from 'better-auth';
 import { bearer } from 'better-auth/plugins';
@@ -6,7 +5,7 @@ import { createAdapterFactory, type CustomAdapter } from 'better-auth/adapters';
 import { AuthInputSchema, SessionSchema, type User } from '@praxis/protocol';
 import { z } from 'zod';
 import type { KV } from '../contracts.js';
-import { createConvexRPC, type ConvexRPC } from './convex.js';
+import type { ConvexRPC } from './convex.js';
 
 export interface PraxisAuth {
   handler(request: Request): Promise<Response>;
@@ -27,25 +26,6 @@ export interface AuthOptions {
   cache?: KV;
   cacheSeconds?: number;
   ownership?: {activate(userId:string):Promise<void>;isActive(userId:string):Promise<boolean>};
-}
-
-/** Production uses Clerk only. Legacy adapter below remains for migration conformance tests. */
-export function createAuth(env: Record<string, string | undefined>, _cache?: KV, ownership?:AuthOptions['ownership']) {
-  const origins = parseOrigins(z.string().min(1).parse(env.PRAXIS_WEB_ORIGINS));
-  const rpc = createConvexRPC({ url: z.url().parse(env.CONVEX_URL), serverToken: z.string().min(32).parse(env.PRAXIS_CONVEX_SERVER_TOKEN) });
-  return clerkAuth(realClerk(env, origins), rpc, ownership);
-}
-
-export function parseOrigins(value: string): string[] {
-  return value
-    .split(',')
-    .map((x) => x.trim())
-    .filter(Boolean)
-    .map((x) => {
-      const url = new URL(x);
-      if (url.origin !== x.replace(/\/$/, '')) throw new Error(`Web origin must be a bare origin: ${x}`);
-      return url.origin;
-    });
 }
 
 /** Forwards Better Auth operations to server-only functions in convex/auth.ts. */

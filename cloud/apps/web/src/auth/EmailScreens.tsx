@@ -35,13 +35,22 @@ export function EmailScreens() {
   async function submit() {
     setError('');
     setMessage('');
-    const result = mode === 'login' ? await login.signIn({ email, password })
-      : mode === 'register' ? await register.signUp({ email, password })
-      : await recovery.startPasswordRecovery({ email });
-    if ('userError' in result) setError(authError(result.userError));
-    else if (mode !== 'login') setMessage(AUTH_COPY.checkEmail);
+    try {
+      const result = mode === 'login' ? await login.signIn({ email, password })
+        : mode === 'register' ? await register.signUp({ email, password })
+        : await recovery.startPasswordRecovery({ email });
+      if ('userError' in result) setError(authError(result.userError));
+      else if (mode !== 'login') setMessage(AUTH_COPY.checkEmail);
+    } catch {
+      setError(AUTH_COPY.unavailable);
+    }
   }
   async function oauth(provider: 'google' | 'apple') {
+    if (import.meta.env.PRAXIS_MOCK_OAUTH?.includes(provider)) {
+      setMessage('');
+      setError(`This preview simulates an unavailable ${provider === 'google' ? 'Google' : 'Apple'} sign-in. Use email to continue.`);
+      return;
+    }
     setOauthPending(true);
     setError('');
     try {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMemoryAdapters } from './memory.js';
-import { authFromRPC, createAuth, parseOrigins } from './auth.js';
+import { parseOrigins } from '../origins.js';
+import { authFromRPC } from './auth.js';
 import { convexHarness } from './testing/convex-harness.js';
 
 const API = 'http://localhost:8791';
@@ -105,8 +106,6 @@ describe('Better Auth on the executable Convex database', () => {
     expect(() => authFromRPC(rpc, { ...base, baseURL: 'http://api.example.com' })).toThrow('HTTPS');
     expect(() => authFromRPC(rpc, { ...base, baseURL: API, secret: 'short' })).toThrow();
     expect(() => authFromRPC(rpc, { ...base, baseURL: API, cookieSameSite: 'none' })).toThrow('HTTPS');
-    expect(() => createAuth({})).toThrow();
-    expect(() => createAuth({ CONVEX_URL: 'https://x.convex.cloud', BETTER_AUTH_SECRET: 's'.repeat(40) })).toThrow();
     expect(() => parseOrigins('https://app.example.com/path')).toThrow();
     expect(parseOrigins('https://a.example, http://localhost:5173/')).toEqual(['https://a.example', 'http://localhost:5173']);
   });

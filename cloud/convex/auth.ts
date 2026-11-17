@@ -4,6 +4,7 @@ import { setupGoogle } from '@convex-dev/auth/methods/google/server';
 import { setupApple } from '@convex-dev/auth/methods/apple/server';
 import { components, internal } from './_generated/api.js';
 import { env, query } from './_generated/server.js';
+import { activeOwner } from './accountOwner.js';
 import { AUTH_ENV, AUTH_PATHS } from './authConstants.js';
 
 const siteUrl = new URL(env[AUTH_ENV.siteUrl]).origin;
@@ -38,5 +39,8 @@ export const { startSignInWithApple, completeSignInWithApple } = setupApple(auth
 }).attachUserCallbacks({ createUser: internal.users.createUserApple });
 export const currentUser = query({
   args: {},
-  handler: ctx => getAuthUserId(ctx),
+  handler: async ctx => {
+    const id = await getAuthUserId(ctx);
+    return id && await activeOwner(ctx, id) ? id : null;
+  },
 });

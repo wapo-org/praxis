@@ -4,9 +4,10 @@ import {Hono} from 'hono';
 import {readTurnKeys} from './turn/auth.js';
 import {registerTurnRoute} from './turn/routes.js';
 import {GROQ_POOL, pool, redisCooldownStore, type CredentialLogEvent} from '@praxis/credentials';
-import {accountEraser} from './account-deletion.js';
+import {verifiedConvexOwner} from './adapters/convex-session.js';
+import {z} from 'zod';
 import {createConvexRPC} from './adapters/convex.js';
-import {createAuth, parseOrigins} from './adapters/auth.js';
+import {parseOrigins} from './origins.js';
 import {createConvexStore} from './adapters/convex.js';
 import {createQStashScheduler, createQStashVerifier} from './adapters/qstash.js';
 import {createSafeFetch} from './adapters/security.js';
@@ -21,9 +22,6 @@ import {convexVectorIndex} from './search-index.js';
 export const PRODUCTION_ENV = [
   'PRAXIS_API_URL',
   'PRAXIS_WEB_ORIGINS',
-  'CLERK_PUBLISHABLE_KEY',
-  'CLERK_SECRET_KEY',
-  'CLERK_JWT_KEY',
   'CONVEX_URL',
   'PRAXIS_CONVEX_SERVER_TOKEN',
   'UPSTASH_REDIS_REST_URL',
@@ -104,7 +102,6 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
   const store = createConvexStore({url: env.CONVEX_URL, serverToken: env.PRAXIS_CONVEX_SERVER_TOKEN});
   const storage = createConvexToolsStorage({url: env.CONVEX_URL, serverToken: env.PRAXIS_CONVEX_SERVER_TOKEN, baseUrl: origin});
   const accountRPC=createConvexRPC({url:env.CONVEX_URL,serverToken:env.PRAXIS_CONVEX_SERVER_TOKEN});
-  const auth = createAuth(rawEnv, upstash.kv,{isActive:upstash.ownership.isActive,activate:userId=>upstash.ownership.activate(userId,async()=>!!await accountRPC.query('account:active',{userId}))});
   const egress = createSafeFetch();
   // Semantic search: off unless an embedder is configured (PRAXIS_EMBEDDER / PRAXIS_OPENAI_EMBEDDINGS_KEY).
   const embedder = productionEmbedder(rawEnv);
@@ -116,9 +113,18 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
     // Provider base URLs are user-supplied, so model calls use the same SSRF guard as tools and MCP.
     fetcher: egress,
     allowedOrigins: webOrigins,
-    resolveSession: request => auth.resolveSession(request),
-    authHandler: request => auth.handler(request),
-    accountDeletion:{confirm:auth.confirmDeletion,purge:accountEraser(accountRPC,upstash.ownership,auth.deleteExternal)},
+    resolveSession: async request => {
+      const id = await verifiedConvexOwner(request, env.CONVEX_URL);
+      if (!id) return null;
+      if (!await upstash.ownership.isActive(id)) {
+        await upstash.ownership.activate(id, async () => await accountRPC.query('account:active', { userId: id }) === true);
+      }
+      // Convex has verified this bearer; its expiry is display metadata and never authorizes a request.
+      const payload = request.headers.get('authorization')!.split('.')[1]!;
+      const { exp } = z.object({ exp: z.number().int() }).parse(JSON.parse(Buffer.from(payload, 'base64url').toString()));
+      return { user: { type: 'user', id, name: 'Praxis user' }, expiresAt: new Date(exp * 1000).toISOString() };
+    },
+    authHandler: async () => Response.json({ type: 'error', code: 'convex_auth_required', message: 'Manage your session with Convex Auth' }, { status: 410 }),
     rateLimit: createRateLimiter(upstash.redis),
     scheduler: createQStashScheduler({token: env.QSTASH_TOKEN, callbackUrl}),
     lease: upstash.lease,

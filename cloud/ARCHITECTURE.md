@@ -22,7 +22,9 @@ Events use one Redis Stream per run. A monotonically increasing numeric sequence
 
 Convex tables are scoped by userId, with indexes beginning with userId (or a server-only composite owner key): users, sessions, accounts, verifications for auth; chats; messages; runs/checkpoints; the user's sealed OpenRouter key (`modelKey`) and model pins; model preferences; connectors and OAuth state; skills/registries; consent; attachments; tool outputs; sync revisions/tombstones and event outbox. Clients cannot call unauthenticated generic mutations. API-to-Convex requests authenticate with an internal service credential; every adapter operation also supplies an authenticated owner. Public IDs are distinct from Convex document IDs. Large tool output spills and attachments go through Convex file storage; only bounded previews go into live events and model context. Deleting a chat records tombstones and cancels active runs.
 
-**Production auth: Clerk JWT bearer sessions.** The API verifies JWT signatures and allowed origins with the configured instance public key and resolves identities server-side. Account deletion requires recent first-factor authentication and deletes the Clerk identity after data purge. Local development and conformance fixtures retain the isolated Better Auth adapter; production never accepts its development bearer token.
+**Production authentication uses Convex Auth v2.** The API forwards each bearer to the configured deployment's `auth:currentUser` query. Convex verifies the session and checks that the owner is active. Account deletion through the production API remains unavailable until reauthentication and credential erasure pass PRA-64. Legacy adapter tests still exercise Better Auth.
+
+For a Vercel Preview without Apple or Google credentials, set `PRAXIS_PREVIEW_MOCK_OAUTH` on the web build to a comma-separated list such as `apple,google`. Selecting a listed provider shows its simulated unavailable response. Email sign-in still uses the configured Convex deployment. Production builds always use the real provider hooks.
 
 The user's OpenRouter key, connector header tokens and OAuth tokens are encrypted at rest using AES-256-GCM with a random 96-bit IV, a 256-bit PRAXIS_ENCRYPTION_KEY, and owner/resource binding as authenticated data. Encryption errors never fall back to cleartext. API reads expose only masks. Model/tool caches never contain keys. OAuth uses server-side PKCE with expiring, single-use state bound to the user and an allowlisted return URL; DCR and hosted CIMD are supported through the official MCP SDK. Remote connector URLs and the pinned OpenRouter endpoint use the production egress policy: deny private/link-local/metadata destinations in production and revalidate redirects, while local mode may allow test servers. Connecting OpenRouter grants model data consent; per-host consent still gates MCP requests.
 
@@ -135,7 +137,7 @@ Verified emails shared across methods are rejected rather than automatically lin
 OAuth-first email collisions reject password verification transactionally; pending signup rows are not authenticated identities.
 PRA-64 owns deletion of those pending rows, `oauthEmails`, component credentials and the legacy API adapter.
 Legacy Better Auth RPCs are isolated in `convex/legacyAuth.ts` until PRA-64; the web never calls them.
-PRA-35 must connect the new session identity to application data boundaries; account deletion remains unavailable until PRA-64.
+The API derives the application owner from the verified Convex session.
 
 Dependencies:
 - `@convex-dev/auth@2.0.0`: component authentication and browser session lifecycle (latest dist-tag confirmed v2).
