@@ -7,3 +7,4 @@ export {FakeSandboxPort, MemoryExportSink, type FakeCommand} from './fake.js';
 export {localExec, localSandboxPort} from './local.js';
 export type {SandboxToolContext} from './tools/context.js';
 export {executeSandboxTool, SANDBOX_TOOLS, sandboxToolClassifier, type SandboxToolDefinition} from './tools/registry.js';
+export {SandboxSubagentWorkspace, type WorkspaceBinding, type WorkspaceOptions, type OwnedHandleCleanup} from './subagent-workspace.js';

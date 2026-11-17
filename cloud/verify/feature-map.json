@@ -22,6 +22,13 @@
       ]
     },
     {
+      "id": "agents.confined-workspaces",
+      "title": "Confined child execution and immutable snapshot handoffs",
+      "issue": "PRA-116",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}, {"command": "live", "suite": "subagent-workspaces"}]
+    },
+    {
       "id": "repo.gate",
       "title": "Typecheck, tests, boundary rules, lint, comment hygiene and both builds",
       "issue": "PRA-72",

@@ -3,11 +3,15 @@ import {z} from 'zod';
 import {argsHash} from '../boundary/receipt.js';
 import {workspaceFor} from './permissions.js';
 
-// Adapters must scope every operation to this root and reject symlinks escaping it.
-export interface SubagentWorkspacePort {
-  prepare(root: string): Promise<void>;
+export interface HandoffSnapshotPort {
   readArtifact(root: string, relativePath: string): Promise<Uint8Array<ArrayBuffer>>;
   verifyChecks(root: string, checkIds: readonly string[]): Promise<unknown>;
+}
+
+// Snapshot views bind tenant, child and revision and expose only immutable content.
+export interface SubagentWorkspacePort {
+  prepare(root: string): Promise<void>;
+  openSnapshot(root: string, revision: number, digest: string): Promise<HandoffSnapshotPort>;
   killHandle(root: string, handle: string): Promise<void>;
 }
 const proofs = new WeakSet<VerifiedHandoff>();
@@ -29,11 +33,12 @@ export class VerifiedHandoff {
     if (invalidCheck || missingCheck) return null;
     const root = workspaceFor(expected.id);
     try {
-      const checks = z.array(SubagentCheckSchema).parse(await port.verifyChecks(root, record.checks.map(c => c.id)));
+      const snapshot = await port.openSnapshot(root, record.revision, record.snapshot_sha256);
+      const checks = z.array(SubagentCheckSchema).parse(await snapshot.verifyChecks(root, record.checks.map(c => c.id)));
       if (checks.length !== record.checks.length || new Set(checks.map(c => c.id)).size !== checks.length ||
         record.checks.some(c => !checks.some(v => v.id === c.id && v.status === 'passed'))) return null;
       for (const artifact of record.artifacts) {
-        const bytes = await port.readArtifact(root, artifact.path);
+        const bytes = await snapshot.readArtifact(root, artifact.path);
         const hash = await crypto.subtle.digest('SHA-256', bytes);
         const actual = Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, '0')).join('');
         if (actual !== artifact.sha256) return null;
