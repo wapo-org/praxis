@@ -6,10 +6,12 @@
   "exports": {
     ".": "./src/index.ts",
     "./modal": "./src/modal/port.ts",
-    "./modal/notebook-image": "./src/modal/notebook-image.ts"
+    "./modal/notebook-image": "./src/modal/notebook-image.ts",
+    "./image": "./src/modal/image.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke:modal": "tsx scripts/modal-adapter-check.ts"
   },
   "dependencies": {
     "@praxis/agent": "*",
