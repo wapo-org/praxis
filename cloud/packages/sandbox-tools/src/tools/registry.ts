@@ -5,6 +5,8 @@ import {z} from 'zod';
 import {WORKSPACE_ROOT} from '../constants.js';
 import type {SandboxToolContext} from './context.js';
 import {editFile, EditFileInputSchema, exportFile, ExportFileInputSchema, readFile, ReadFileInputSchema} from './files.js';
+import {SYMBOL_DESCRIPTION} from '../symbols/constants.js';
+import {replaceSymbol, ReplaceSymbolInputSchema} from './symbols.js';
 import {shell, ShellInputSchema, waitForJob, WaitForJobInputSchema} from './process.js';
 
 export interface SandboxToolDefinition {
@@ -17,7 +19,7 @@ export interface SandboxToolDefinition {
   run(context: SandboxToolContext, args: unknown): Promise<unknown>;
 }
 
-/** The simplified Modal v1 tool set (PRA-77): no tmux, no notebook, no AST editor yet. */
+/** Workspace tools share the approval boundary and return untrusted diagnostics inline. */
 export const SANDBOX_TOOLS: readonly SandboxToolDefinition[] = [
   {
     name: 'shell',
@@ -36,6 +38,11 @@ export const SANDBOX_TOOLS: readonly SandboxToolDefinition[] = [
     input: EditFileInputSchema, capabilities: ['write', 'exec'], untrustedSource: true, run: editFile,
   },
   {
+    name: 'replace_symbol',
+    description: SYMBOL_DESCRIPTION,
+    input: ReplaceSymbolInputSchema, capabilities: ['write', 'exec'], untrustedSource: true, run: replaceSymbol,
+  },
+  {
     name: 'export_file',
     description: 'Hand a workspace file to the user as a downloadable artifact.',
     input: ExportFileInputSchema, capabilities: ['read', 'write'], untrustedSource: false, run: exportFile,
@@ -52,7 +59,7 @@ const byName = new Map(SANDBOX_TOOLS.map(tool => [tool.name, tool]));
 const CLASSIFIER_ROOT = `${WORKSPACE_ROOT}/chats/root`;
 
 /** Path arguments per tool: an escape from the workspace is denied before any receipt or execution. */
-const PATH_ARGUMENTS: Record<string, readonly string[]> = {shell: ['cwd'], read_file: ['path'], edit_file: ['path'], export_file: ['path']};
+const PATH_ARGUMENTS: Record<string, readonly string[]> = {shell: ['cwd'], read_file: ['path'], edit_file: ['path'], replace_symbol: ['path'], export_file: ['path']};
 
 function lexicallyConfined(tool: string, args: Record<string, unknown>): boolean {
   return (PATH_ARGUMENTS[tool] ?? []).every(key => {
@@ -77,16 +84,16 @@ export const sandboxToolClassifier: ToolClassifier = {
 
 /** The only way to run a sandbox tool: PRA-76's gate (policy, mode, approval receipt, taint), then the tool. */
 export async function executeSandboxTool(call: ToolInvocation, boundary: BoundaryContext, context: SandboxToolContext, receipt?: unknown): Promise<GateResult> {
-  try {
-    return await executeBoundary(call, boundary, sandboxToolClassifier, async accepted => {
+  return executeBoundary(call, boundary, sandboxToolClassifier, async accepted => {
+    try {
       const tool = byName.get(accepted.tool);
       if (!tool) throw new ToolBoundaryError(toolError('schema', `Unknown sandbox tool ${accepted.tool}.`));
       return JSON.parse(JSON.stringify(await tool.run(context, accepted.args))) as JsonValue;
-    }, receipt);
-  } catch (error) {
-    if (error instanceof ToolBoundaryError) return {ok: false, error: error.detail};
-    if (error instanceof z.ZodError) return {ok: false, error: toolError('schema', error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; '))};
-    // A port failure (Modal unreachable, sandbox gone) still reaches the model as a ToolError with remediation.
-    return {ok: false, error: toolError('upstream', `Sandbox call failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500))};
-  }
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new ToolBoundaryError(toolError('schema', error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ')));
+      }
+      throw error;
+    }
+  }, receipt);
 }

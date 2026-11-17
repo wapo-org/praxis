@@ -27,14 +27,14 @@ export async function containedPath(port: SandboxPort, root: string, input: stri
   return {path: real, root: realRoot};
 }
 
-const locks = new WeakMap<SandboxPort, Map<string, Promise<unknown>>>();
+const workspaceLocks = new WeakMap<SandboxPort, Map<string, Promise<unknown>>>();
 
-/** Serializes read-check-write per file on one port, so a concurrent edit cannot pass a stale hash check and lose an update. */
-export async function withFileLock<T, R>(port: SandboxPort, path: string, check: () => Promise<T>, write: (checked: T) => Promise<R>): Promise<R> {
-  const held = locks.get(port) ?? new Map<string, Promise<unknown>>();
-  locks.set(port, held);
+/** Workspace mutations and checkpoints share a queue, so staging cannot observe a partial edit. */
+export async function withWorkspaceLock<T>(port: SandboxPort, root: string, work: () => Promise<T>): Promise<T> {
+  const path = await port.realpath(root);
+  const held = workspaceLocks.get(port) ?? new Map<string, Promise<unknown>>();
+  workspaceLocks.set(port, held);
   const previous = held.get(path) ?? Promise.resolve();
-  const work = async () => write(await check());
   const next = previous.then(work, work);
   const settled = next.catch(() => undefined);
   held.set(path, settled);
