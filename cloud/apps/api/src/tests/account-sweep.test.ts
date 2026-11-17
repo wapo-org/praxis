@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { blobOwnerTag } from '../../../../convex/blob-owner.js';
+import { blobOwnerTag } from '../../../../convex/blobOwner.js';
 import { convexHarness } from '../adapters/testing/convex-harness.js';
 
 it('continues the global blob sweep across retried requests instead of restarting it', async () => {

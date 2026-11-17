@@ -53,8 +53,8 @@ export function convexAuthDatabase(rpc: ConvexRPC) {
   const call = (operation: string, input: unknown) => {
     const args = { operation, input: JSON.parse(JSON.stringify(input)) };
     return ['findOne', 'findMany', 'count'].includes(operation)
-      ? rpc.query('auth:read', args)
-      : rpc.mutation('auth:execute', args);
+      ? rpc.query('legacyAuth:read', args)
+      : rpc.mutation('legacyAuth:execute', args);
   };
   return createAdapterFactory({
     config: {

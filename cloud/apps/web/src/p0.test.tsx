@@ -1,9 +1,7 @@
-import { useAccount } from './lib/account';
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { AccountGate, canUseLocalDev } from './components/screens/AccountGate';
 import { apiClient, PraxisApiClient } from './lib/api';
 import {
   clearReplica,
@@ -32,12 +30,6 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-it('never enables the local dev button for production or a non-local API', () => {
-  expect(canUseLocalDev(false, 'local')).toBe(false);
-  expect(canUseLocalDev(false, 'production')).toBe(false);
-  expect(canUseLocalDev(true, 'production')).toBe(false);
-  expect(canUseLocalDev(true, 'local')).toBe(true);
-});
 it('sends cookies without an invented bearer and notifies on 401', async () => {
   const client = new PraxisApiClient();
   const unauthorized = vi.fn();
@@ -127,56 +119,6 @@ it('does not expose user A in user B or another API origin and clears on sign-ou
   await clearReplica();
   expect(readReplicaSync()).toBeNull();
 });
-it('gates private UI, signs in through API, and removes it on any 401', async () => {
-  await import('./lib/dev-auth');
-  function AccountAction() {
-    const account = useAccount();
-    return <button onClick={() => void account?.signOut()}>Sign out</button>;
-  }
-  const request = vi.spyOn(apiClient, 'request').mockImplementation(async (path: string) => {
-    if (path === '/health') return { mode: 'local' } as never;
-    if (path === '/v1/auth/session') throw Object.assign(new Error('Sign in'), { status: 401 });
-    return { user: { id: 'A' }, bearerToken: 'issued' } as never;
-  });
-  const node = document.createElement('div');
-  const root = createRoot(node);
-  await act(async () =>
-    root.render(
-      <AccountGate>
-        <p>Private chat</p>
-        <AccountAction />
-      </AccountGate>,
-    ),
-  );
-  expect(node.textContent).not.toContain('Private chat');
-  const button = [...node.querySelectorAll('button')].find((b) =>
-    b.textContent === 'Continue as local dev user',
-  )!;
-  await act(async () => button.click());
-  expect(request).toHaveBeenCalledWith('/v1/auth/dev', expect.anything());
-  expect(node.textContent).toContain('Private chat');
-  await act(async () =>
-    [...node.querySelectorAll('button')].find((b) => b.textContent === 'Sign out')!.click(),
-  );
-  expect(request).toHaveBeenCalledWith('/v1/auth/sign-out', { method: 'POST' });
-  expect(node.textContent).not.toContain('Private chat');
-  await act(async () =>
-    node
-      .querySelector('form')!
-      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
-  );
-  expect(request).toHaveBeenCalledWith(
-    '/v1/auth/dev',
-    expect.objectContaining({
-      body: JSON.stringify({ type: 'auth.dev', userId: 'local-user' }),
-    }),
-  );
-  expect(node.textContent).toContain('Private chat');
-  await act(async () => apiClient.onUnauthorized?.());
-  expect(node.textContent).not.toContain('Private chat');
-  await act(async () => root.unmount());
-});
-
 it('excludes pinned and favorite models from both All Models branches and their count', async () => {
   const { getUnpinnedModels } = await import('./components/chat/PlusTray');
   const models = [

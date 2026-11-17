@@ -1,4 +1,4 @@
-import { blobOwnerTag } from '../../../../convex/blob-owner.js';
+import { blobOwnerTag } from '../../../../convex/blobOwner.js';
 import { accountEraser } from '../account-deletion.js';
 import { createApp } from '../app.js';
 import { ApiService } from '../service.js';
@@ -253,7 +253,7 @@ it('requires password for old sessions, accepts the current password, and limits
     method: 'DELETE',
     headers: { authorization: `Bearer ${session.bearerToken}` },
   });
-  await rpc.mutation('auth:execute', {
+  await rpc.mutation('legacyAuth:execute', {
     operation: 'updateMany',
     input: {
       model: 'session',

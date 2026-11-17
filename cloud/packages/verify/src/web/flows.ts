@@ -3,8 +3,7 @@ import {expect, type Page} from '@playwright/test';
 import {browserCliFlow} from './browser-flow.js';
 import {fuzzChatFlow} from './fuzz.js';
 import type {FlowContext, WebFlow} from './flow-types.js';
-import {SIGNED_OUT_SESSION_PROBE} from './judge.js';
-import {signIn} from './session.js';
+import {signIn, sessionHeaders} from './session.js';
 
 /** Vite serves web sources as modules, so a flow can drive the real client the app uses. */
 const API_MODULE = '/src/lib/api.ts';
@@ -26,11 +25,11 @@ function composer(page: Page) {
 
 const loadApp: WebFlow = {
   id: 'load-app',
-  title: 'Signed-out shell, dev sign-in, empty chat with a usable composer',
+  title: 'Signed-out shell, Convex Auth sign-in, empty chat with a usable composer',
   default: true,
-  allow: [SIGNED_OUT_SESSION_PROBE],
-  async run({page, base}) {
-    await signIn(page, base);
+  allow: [],
+  async run({page, convexUrl, base}) {
+    await signIn(page, base, convexUrl);
     await expect(page.getByRole('heading', {level: 1})).toBeVisible();
     await expect(composer(page)).toBeEditable();
   },
@@ -40,9 +39,9 @@ const settingsModels: WebFlow = {
   id: 'settings-models',
   title: 'Settings → Models shows the OpenRouter card, not connected',
   default: true,
-  allow: [SIGNED_OUT_SESSION_PROBE],
-  async run({page, base}) {
-    await signIn(page, base);
+  allow: [],
+  async run({page, convexUrl, base}) {
+    await signIn(page, base, convexUrl);
     await page.getByTestId('nav-settings-button').click();
     await page.getByRole('navigation', {name: 'Settings sections'}).getByRole('button', {name: 'Models', exact: true}).click();
     await expect(page.getByTestId('openrouter-disconnected')).toBeVisible();
@@ -55,9 +54,9 @@ const modelSearch: WebFlow = {
   id: 'model-search',
   title: 'Composer model list opens and its search narrows to the scripted models',
   default: true,
-  allow: [SIGNED_OUT_SESSION_PROBE],
-  async run({page, base}) {
-    await signIn(page, base);
+  allow: [],
+  async run({page, convexUrl, base}) {
+    await signIn(page, base, convexUrl);
     await page.getByRole('button', {name: 'Open attachments and controls'}).click();
     await page.getByTestId('tray-model-picker-trigger').click();
     const list = page.getByRole('listbox', {name: 'Models'});
@@ -73,9 +72,9 @@ const scriptedChat: WebFlow = {
   id: 'scripted-chat',
   title: 'Send a message on the scripted model and see the streamed reply',
   default: true,
-  allow: [SIGNED_OUT_SESSION_PROBE],
-  async run({page, base, note}) {
-    await signIn(page, base);
+  allow: [],
+  async run({page, convexUrl, base, note}) {
+    await signIn(page, base, convexUrl);
     const text = `Verify ${Date.now().toString(36)}`;
     await composer(page).fill(text);
     await page.getByTestId('composer-send-button').click();
@@ -93,12 +92,11 @@ const apiResilience: WebFlow = {
   title: 'Missing route errors, a 401 signs out, 30 tool runs keep the API alive',
   default: true,
   allow: [
-    SIGNED_OUT_SESSION_PROBE,
     {kind: 'response', pattern: /^\/v1\/connectors$/, status: 404, reason: 'the flow stubs a missing connectors route'},
     {kind: 'response', pattern: /^\/v1\/bootstrap$/, status: 401, reason: 'the flow stubs an expired session'},
   ],
-  async run({page, base, api, request, note}) {
-    await signIn(page, base);
+  async run({page, convexUrl, base, api, request, note}) {
+    await signIn(page, base, convexUrl);
     await page.route('**/v1/connectors', route => route.fulfill({status: 404, body: '{}'}));
     const unavailable = await page.evaluate(async path => {
       const {apiClient} = (await import(path)) as ApiModule;
@@ -110,6 +108,7 @@ const apiResilience: WebFlow = {
       }
     }, API_MODULE);
     assert.match(unavailable, /no longer available/);
+    await toolRuns({api, request, note}, await sessionHeaders(page));
     await page.route('**/v1/bootstrap', route => route.fulfill({status: 401, body: '{}'}));
     await page.evaluate(async path => {
       const {apiClient} = (await import(path)) as ApiModule;
@@ -117,13 +116,10 @@ const apiResilience: WebFlow = {
     }, API_MODULE);
     await page.getByRole('button', {name: 'Sign in', exact: true}).waitFor();
     assert.equal(await page.getByTestId('chat-screen').count(), 0, 'chat stayed mounted after a 401');
-    await toolRuns({api, request, note});
   },
 };
 
-async function toolRuns({api, request, note}: Pick<FlowContext, 'api' | 'request' | 'note'>): Promise<void> {
-  const session = await (await request.post(`${api}/v1/auth/dev`, {data: {type: 'auth.dev', userId: `verify-${Date.now()}`}})).json();
-  const headers = {Authorization: `Bearer ${session.bearerToken}`};
+async function toolRuns({api, request, note}: Pick<FlowContext, 'api' | 'request' | 'note'>, headers: {Authorization: string}): Promise<void> {
   const chat = await (await request.post(`${api}/v1/chats`, {headers, data: {type: 'chat.input', title: 'praxis-verify tool runs'}})).json();
   for (let i = 0; i < TOOL_RUNS_MAX; i++) {
     const started = await request.post(`${api}/v1/runs`, {headers, data: {type: 'run.start', chatId: chat.id, text: 'Tools probe', script: 'tools'}});
