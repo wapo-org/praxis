@@ -1,6 +1,10 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {registerEmail} from '@convex-dev/auth/components/email/test';
+import {registerPassword} from '@convex-dev/auth/components/password/test';
+import {registerGoogleOauth} from '@convex-dev/auth/components/google/test';
+import {registerAppleOauth} from '@convex-dev/auth/components/apple/test';
 import schema from '../convex/schema.js';
-import {api, internal} from '../convex/_generated/api.js';
+import {api, components, internal} from '../convex/_generated/api.js';
 import {workflow} from '../convex/workflows/agentRun.js';
 import {ACCOUNT_OWNER_ROWS, ACCOUNT_PURGE_POLICY, ACCOUNT_RUN_CHILD_ROWS} from '../convex/accountTables.js';
 import {chatId, SERVER_TOKEN, startedRun} from './workflow-fixture.js';
@@ -29,11 +33,16 @@ describe('account deletion of workflow state', () => {
 
   it('fences an in-flight run once deletion begins, then purges run, flags, journal and user', async () => {
     const {t, owner, userId, scope} = await startedRun();
+    // The final purge batch erases credentials in these components.
+    for (const register of [registerEmail, registerPassword, registerGoogleOauth, registerAppleOauth]) register(t);
     await t.action(internal.turns.run, {...scope, expectedTurnIndex: 0});
+    const sessions = () => t.run(ctx => ctx.runQuery(components.auth.public.listSessions, {userId}));
+    expect(await sessions()).toHaveLength(1);
     await t.mutation(api.account.begin, {serverToken: SERVER_TOKEN, userId});
+    expect(await sessions()).toHaveLength(0);
 
     await expect(t.mutation(internal.turns.commitStub, {...scope, expectedTurnIndex: 1})).rejects.toThrow('unavailable');
-    await expect(owner.mutation(api.runs.start, {chatId})).rejects.toThrow('unavailable');
+    await expect(owner.mutation(api.runs.start, {chatId})).rejects.toThrow();
     expect(await t.query(api.account.active, {serverToken: SERVER_TOKEN, userId})).toBe(false);
 
     let result: PurgeResult = {done: false};

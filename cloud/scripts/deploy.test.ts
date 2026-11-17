@@ -210,6 +210,7 @@ it('stages the API from an allowlist and rejects secret files, the iOS app and l
       'apps/api/vercel.json',
       'apps/api/src/app.ts',
       'packages/protocol/src/index.ts',
+      'patches/@convex-dev+auth+2.0.0.patch',
     ])
       await put(f);
     for (const f of [
@@ -234,6 +235,7 @@ it('stages the API from an allowlist and rejects secret files, the iOS app and l
       'cloud/package-lock.json',
       'cloud/package.json',
       'cloud/packages/protocol/src/index.ts',
+      'cloud/patches/@convex-dev+auth+2.0.0.patch',
       'cloud/tsconfig.base.json',
     ]);
     await expect(assertSafeUpload(stage, files, Object.values(SECRETS))).resolves.toBeUndefined();

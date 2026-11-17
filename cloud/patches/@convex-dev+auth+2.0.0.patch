@@ -1,0 +1,305 @@
+diff --git a/node_modules/@convex-dev/auth/dist/components/apple/_generated/component.d.ts b/node_modules/@convex-dev/auth/dist/components/apple/_generated/component.d.ts
+index 1c793b5..59e54cd 100644
+--- a/node_modules/@convex-dev/auth/dist/components/apple/_generated/component.d.ts
++++ b/node_modules/@convex-dev/auth/dist/components/apple/_generated/component.d.ts
+@@ -41,6 +41,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
+         getUserIdByAccount: FunctionReference<"query", "internal", {
+             providerAccountId: string;
+         }, string | null, Name>;
++        /** Praxis patch (PRA-64): erase this user's credential rows. */
++        deleteUser: FunctionReference<"mutation", "internal", {
++            userId: string;
++        }, null, Name>;
+     };
+ };
+ //# sourceMappingURL=component.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/@convex-dev/auth/dist/components/apple/provider.js b/node_modules/@convex-dev/auth/dist/components/apple/provider.js
+index 5e936ae..123ba05 100644
+--- a/node_modules/@convex-dev/auth/dist/components/apple/provider.js
++++ b/node_modules/@convex-dev/auth/dist/components/apple/provider.js
+@@ -1,6 +1,6 @@
+ import { env, internalMutation, mutation, query } from "./_generated/server.js";
+ import { buildProviderFunctions } from "../../lib/oauth/providerFunctions.js";
+-export const { _internal_dangerous_createAuthorizationRequest, claimAuthorizationRequest, createTicket, claimTicket, getUserIdByAccount, _internal_dangerous_createAccount, } = buildProviderFunctions({
++export const { _internal_dangerous_createAuthorizationRequest, claimAuthorizationRequest, createTicket, claimTicket, getUserIdByAccount, _internal_dangerous_createAccount, deleteUser, } = buildProviderFunctions({
+     query,
+     mutation,
+     internalMutation,
+diff --git a/node_modules/@convex-dev/auth/dist/components/google/_generated/component.d.ts b/node_modules/@convex-dev/auth/dist/components/google/_generated/component.d.ts
+index 1c793b5..59e54cd 100644
+--- a/node_modules/@convex-dev/auth/dist/components/google/_generated/component.d.ts
++++ b/node_modules/@convex-dev/auth/dist/components/google/_generated/component.d.ts
+@@ -41,6 +41,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
+         getUserIdByAccount: FunctionReference<"query", "internal", {
+             providerAccountId: string;
+         }, string | null, Name>;
++        /** Praxis patch (PRA-64): erase this user's credential rows. */
++        deleteUser: FunctionReference<"mutation", "internal", {
++            userId: string;
++        }, null, Name>;
+     };
+ };
+ //# sourceMappingURL=component.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/@convex-dev/auth/dist/components/google/provider.js b/node_modules/@convex-dev/auth/dist/components/google/provider.js
+index 5e936ae..123ba05 100644
+--- a/node_modules/@convex-dev/auth/dist/components/google/provider.js
++++ b/node_modules/@convex-dev/auth/dist/components/google/provider.js
+@@ -1,6 +1,6 @@
+ import { env, internalMutation, mutation, query } from "./_generated/server.js";
+ import { buildProviderFunctions } from "../../lib/oauth/providerFunctions.js";
+-export const { _internal_dangerous_createAuthorizationRequest, claimAuthorizationRequest, createTicket, claimTicket, getUserIdByAccount, _internal_dangerous_createAccount, } = buildProviderFunctions({
++export const { _internal_dangerous_createAuthorizationRequest, claimAuthorizationRequest, createTicket, claimTicket, getUserIdByAccount, _internal_dangerous_createAccount, deleteUser, } = buildProviderFunctions({
+     query,
+     mutation,
+     internalMutation,
+diff --git a/node_modules/@convex-dev/auth/dist/components/password/_generated/component.d.ts b/node_modules/@convex-dev/auth/dist/components/password/_generated/component.d.ts
+index 8037864..9019491 100644
+--- a/node_modules/@convex-dev/auth/dist/components/password/_generated/component.d.ts
++++ b/node_modules/@convex-dev/auth/dist/components/password/_generated/component.d.ts
+@@ -62,6 +62,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
+                 retryAfterMs: number;
+             };
+         }, Name>;
++        /** Praxis patch (PRA-64): erase this user's credential rows. */
++        deleteUser: FunctionReference<"mutation", "internal", {
++            userId: string;
++        }, null, Name>;
+     };
+ };
+ //# sourceMappingURL=component.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/@convex-dev/auth/dist/components/password/public.js b/node_modules/@convex-dev/auth/dist/components/password/public.js
+index 79a7cc5..1f7c621 100644
+--- a/node_modules/@convex-dev/auth/dist/components/password/public.js
++++ b/node_modules/@convex-dev/auth/dist/components/password/public.js
+@@ -116,6 +116,29 @@ export const verifyPassword = mutation({
+         return { success: true };
+     },
+ });
++/**
++ * Delete the user's stored password hash and reset their verification
++ * throttle.
++ *
++ * Call this when the app deletes the user. The function is idempotent.
++ *
++ * Praxis patch (PRA-64): upstream 2.0.0 has no per-user delete here.
++ */
++export const deleteUser = mutation({
++    args: { userId: v.string() },
++    returns: v.null(),
++    handler: async (ctx, { userId }) => {
++        const rows = await ctx.db
++            .query("passwords")
++            .withIndex("by_userId", (q) => q.eq("userId", userId))
++            .collect();
++        for (const row of rows) {
++            await ctx.db.delete("passwords", row._id);
++        }
++        await rateLimiter.reset(ctx, "verifyPassword", { key: userId });
++        return null;
++    },
++});
+ function passwordByUserId(ctx, userId) {
+     return ctx.db
+         .query("passwords")
+diff --git a/node_modules/@convex-dev/auth/dist/lib/oauth/dbHelpers.js b/node_modules/@convex-dev/auth/dist/lib/oauth/dbHelpers.js
+index 6181333..44bae7a 100644
+--- a/node_modules/@convex-dev/auth/dist/lib/oauth/dbHelpers.js
++++ b/node_modules/@convex-dev/auth/dist/lib/oauth/dbHelpers.js
+@@ -146,4 +146,20 @@ export async function insertAccount(ctx, { providerAccountId, userId }) {
+     await ctx.db.insert("accounts", { providerAccountId, userId });
+     return null;
+ }
++/**
++ * Delete every account connecting a provider account id to `userId`.
++ *
++ * Praxis patch (PRA-64): upstream 2.0.0 has no per-user delete here.
++ */
++export async function deleteAccountsByUserId(ctx, userId) {
++    // The same assertion as in claimAuthorizationRequest, for the same reason.
++    const accounts = (await ctx.db
++        .query("accounts")
++        .withIndex("userId", (q) => q.eq("userId", userId))
++        .collect());
++    for (const account of accounts) {
++        await ctx.db.delete("accounts", account._id);
++    }
++    return null;
++}
+ //# sourceMappingURL=dbHelpers.js.map
+\ No newline at end of file
+diff --git a/node_modules/@convex-dev/auth/dist/lib/oauth/providerFunctions.js b/node_modules/@convex-dev/auth/dist/lib/oauth/providerFunctions.js
+index 42ccb29..3879620 100644
+--- a/node_modules/@convex-dev/auth/dist/lib/oauth/providerFunctions.js
++++ b/node_modules/@convex-dev/auth/dist/lib/oauth/providerFunctions.js
+@@ -86,6 +86,12 @@ export function buildProviderFunctions(options) {
+         returns: v.null(),
+         handler: async (ctx, args) => await dbHelpers.insertAccount(ctx, args),
+     });
++    // Praxis patch (PRA-64): erase the user's accounts when the app deletes the user.
++    const deleteUser = options.mutation({
++        args: { userId: v.string() },
++        returns: v.null(),
++        handler: async (ctx, args) => await dbHelpers.deleteAccountsByUserId(ctx, args.userId),
++    });
+     return {
+         _internal_dangerous_createAuthorizationRequest,
+         claimAuthorizationRequest,
+@@ -93,6 +99,7 @@ export function buildProviderFunctions(options) {
+         claimTicket,
+         getUserIdByAccount,
+         _internal_dangerous_createAccount,
++        deleteUser,
+     };
+ }
+ //# sourceMappingURL=providerFunctions.js.map
+\ No newline at end of file
+diff --git a/node_modules/@convex-dev/auth/dist/lib/oauth/schema.js b/node_modules/@convex-dev/auth/dist/lib/oauth/schema.js
+index 6dd8caa..8ab3a44 100644
+--- a/node_modules/@convex-dev/auth/dist/lib/oauth/schema.js
++++ b/node_modules/@convex-dev/auth/dist/lib/oauth/schema.js
+@@ -70,5 +70,8 @@ export const accountFields = {
+     /** The app user id returned by the app's `createUser` callback. */
+     userId: v.string(),
+ };
+-export const accountsTable = defineTable(accountFields).index("providerAccountId", ["providerAccountId"]);
++export const accountsTable = defineTable(accountFields)
++    .index("providerAccountId", ["providerAccountId"])
++    // Praxis patch (PRA-64): lets `deleteUser` find a user's accounts.
++    .index("userId", ["userId"]);
+ //# sourceMappingURL=schema.js.map
+\ No newline at end of file
+diff --git a/node_modules/@convex-dev/auth/src/components/apple/provider.ts b/node_modules/@convex-dev/auth/src/components/apple/provider.ts
+index 1b51b8e..da13505 100644
+--- a/node_modules/@convex-dev/auth/src/components/apple/provider.ts
++++ b/node_modules/@convex-dev/auth/src/components/apple/provider.ts
+@@ -9,6 +9,7 @@ export const {
+   claimTicket,
+   getUserIdByAccount,
+   _internal_dangerous_createAccount,
++  deleteUser,
+ } = buildProviderFunctions<
+   Doc<"authorizationRequests">,
+   Doc<"tickets">,
+diff --git a/node_modules/@convex-dev/auth/src/components/google/provider.ts b/node_modules/@convex-dev/auth/src/components/google/provider.ts
+index 1b51b8e..da13505 100644
+--- a/node_modules/@convex-dev/auth/src/components/google/provider.ts
++++ b/node_modules/@convex-dev/auth/src/components/google/provider.ts
+@@ -9,6 +9,7 @@ export const {
+   claimTicket,
+   getUserIdByAccount,
+   _internal_dangerous_createAccount,
++  deleteUser,
+ } = buildProviderFunctions<
+   Doc<"authorizationRequests">,
+   Doc<"tickets">,
+diff --git a/node_modules/@convex-dev/auth/src/components/password/public.ts b/node_modules/@convex-dev/auth/src/components/password/public.ts
+index 618c1bc..09ef7a0 100644
+--- a/node_modules/@convex-dev/auth/src/components/password/public.ts
++++ b/node_modules/@convex-dev/auth/src/components/password/public.ts
+@@ -153,6 +153,30 @@ export const verifyPassword = mutation({
+   },
+ });
+ 
++/**
++ * Delete the user's stored password hash and reset their verification
++ * throttle.
++ *
++ * Call this when the app deletes the user. The function is idempotent.
++ *
++ * Praxis patch (PRA-64): upstream 2.0.0 has no per-user delete here.
++ */
++export const deleteUser = mutation({
++  args: { userId: v.string() },
++  returns: v.null(),
++  handler: async (ctx, { userId }): Promise<null> => {
++    const rows = await ctx.db
++      .query("passwords")
++      .withIndex("by_userId", (q) => q.eq("userId", userId))
++      .collect();
++    for (const row of rows) {
++      await ctx.db.delete("passwords", row._id);
++    }
++    await rateLimiter.reset(ctx, "verifyPassword", { key: userId });
++    return null;
++  },
++});
++
+ function passwordByUserId(
+   ctx: QueryCtx,
+   userId: string,
+diff --git a/node_modules/@convex-dev/auth/src/lib/oauth/dbHelpers.ts b/node_modules/@convex-dev/auth/src/lib/oauth/dbHelpers.ts
+index 8ad2ee0..e09e4eb 100644
+--- a/node_modules/@convex-dev/auth/src/lib/oauth/dbHelpers.ts
++++ b/node_modules/@convex-dev/auth/src/lib/oauth/dbHelpers.ts
+@@ -242,3 +242,23 @@ export async function insertAccount<Doc extends AccountContract>(
+   await ctx.db.insert("accounts", { providerAccountId, userId });
+   return null;
+ }
++
++/**
++ * Delete every account connecting a provider account id to `userId`.
++ *
++ * Praxis patch (PRA-64): upstream 2.0.0 has no per-user delete here.
++ */
++export async function deleteAccountsByUserId<Doc extends AccountContract>(
++  ctx: MutationCtx,
++  userId: string,
++): Promise<null> {
++  // The same assertion as in claimAuthorizationRequest, for the same reason.
++  const accounts = (await ctx.db
++    .query("accounts")
++    .withIndex("userId", (q) => q.eq("userId", userId))
++    .collect()) as (Doc & { _id: GenericId<"accounts"> })[];
++  for (const account of accounts) {
++    await ctx.db.delete("accounts", account._id);
++  }
++  return null;
++}
+diff --git a/node_modules/@convex-dev/auth/src/lib/oauth/providerFunctions.ts b/node_modules/@convex-dev/auth/src/lib/oauth/providerFunctions.ts
+index 75a2ffe..dde87c0 100644
+--- a/node_modules/@convex-dev/auth/src/lib/oauth/providerFunctions.ts
++++ b/node_modules/@convex-dev/auth/src/lib/oauth/providerFunctions.ts
+@@ -179,6 +179,17 @@ export function buildProviderFunctions<
+       await dbHelpers.insertAccount<SharedAccountDocument>(ctx, args),
+   });
+ 
++  // Praxis patch (PRA-64): erase the user's accounts when the app deletes the user.
++  const deleteUser = options.mutation({
++    args: { userId: v.string() },
++    returns: v.null(),
++    handler: async (ctx, args) =>
++      await dbHelpers.deleteAccountsByUserId<SharedAccountDocument>(
++        ctx,
++        args.userId,
++      ),
++  });
++
+   return {
+     _internal_dangerous_createAuthorizationRequest,
+     claimAuthorizationRequest,
+@@ -186,5 +197,6 @@ export function buildProviderFunctions<
+     claimTicket,
+     getUserIdByAccount,
+     _internal_dangerous_createAccount,
++    deleteUser,
+   };
+ }
+diff --git a/node_modules/@convex-dev/auth/src/lib/oauth/schema.ts b/node_modules/@convex-dev/auth/src/lib/oauth/schema.ts
+index 9c5725e..88a0b9a 100644
+--- a/node_modules/@convex-dev/auth/src/lib/oauth/schema.ts
++++ b/node_modules/@convex-dev/auth/src/lib/oauth/schema.ts
+@@ -78,7 +78,7 @@ export const accountFields = {
+   userId: v.string(),
+ };
+ 
+-export const accountsTable = defineTable(accountFields).index(
+-  "providerAccountId",
+-  ["providerAccountId"],
+-);
++export const accountsTable = defineTable(accountFields)
++  .index("providerAccountId", ["providerAccountId"])
++  // Praxis patch (PRA-64): lets `deleteUser` find a user's accounts.
++  .index("userId", ["userId"]);

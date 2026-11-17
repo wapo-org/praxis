@@ -6,6 +6,7 @@ import { root } from './deploy-config.mjs';
 export const API_SOURCES = [
   'package.json',
   'package-lock.json',
+  'patches',
   'tsconfig.base.json',
   'apps/api',
   'apps/web/package.json',

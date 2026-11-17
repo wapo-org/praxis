@@ -1,9 +1,29 @@
 import { blobOwnerTag } from './blobOwner.js';
 import { v } from 'convex/values';
+import { components } from './_generated/api.js';
 import { serverMutation, serverQuery } from './functions.js';
+import type { MutationCtx } from './functions.js';
+import type { Id } from './_generated/dataModel.js';
 import {activeOwner, beginOwnerDeletion, deleteOwnerUser} from './accountOwner.js';
 import {ACCOUNT_OWNER_ROWS, ACCOUNT_PURGE_BATCH_MAX} from './accountTables.js';
 import {purgeOwnedRun} from './workflows/purge.js';
+
+async function revokeOwnerSessions(ctx: MutationCtx, userId: Id<'users'>): Promise<void> {
+  const sessions = await ctx.runQuery(components.auth.public.listSessions, { userId });
+  await ctx.runMutation(components.auth.public.revokeSessions, {
+    sessionIds: sessions.map(session => session.sessionId),
+  });
+}
+
+// Password and OAuth deletes exist only via cloud/patches/@convex-dev+auth+2.0.0.patch (PRA-64).
+async function eraseAuthCredentials(ctx: MutationCtx, userId: Id<'users'>): Promise<void> {
+  await revokeOwnerSessions(ctx, userId);
+  await ctx.runMutation(components.authPassword.public.deleteUser, { userId });
+  await ctx.runMutation(components.authGoogle.provider.deleteUser, { userId });
+  await ctx.runMutation(components.authApple.provider.deleteUser, { userId });
+  await ctx.runMutation(components.authEmail.verifiedEmails.deleteUser, { userId });
+}
+
 export const active = serverQuery({
   args: { serverToken: v.string(), userId: v.string() },
   handler: async (ctx, a) => {
@@ -14,6 +34,8 @@ export const begin = serverMutation({
   args: { serverToken: v.string(), userId: v.string() },
   handler: async (ctx, a) => {
     await beginOwnerDeletion(ctx, a.userId);
+    const ownerId = ctx.db.normalizeId('users', a.userId);
+    if (ownerId) await revokeOwnerSessions(ctx, ownerId);
     return null;
   },
 });
@@ -44,7 +66,9 @@ export const purge = serverMutation({
       .withIndex('model_id', (q) => q.eq('model', 'user').eq('id', a.userId))
       .unique();
     // Cursor lives on the user row so retried batches resume.
-    const sweep = (user?.data.deletion ?? {}) as { blobCursor?: string; blobsDone?: boolean };
+    const ownerId = ctx.db.normalizeId('users', a.userId);
+    const owner = ownerId ? await ctx.db.get(ownerId) : null;
+    const sweep = (owner?.deletion ?? user?.data.deletion ?? {}) as { blobCursor?: string; blobsDone?: boolean };
     if (!a.blobsDone && !sweep.blobsDone) {
       const page = await ctx.db.system
         .query('_storage')
@@ -53,8 +77,9 @@ export const purge = serverMutation({
       for (const blob of page.page)
         if (blob.contentType?.split(';').some((v) => v.trim() === tag))
           await ctx.storage.delete(blob._id);
-      const deletion = page.isDone ? { blobsDone: true } : { blobCursor: page.continueCursor };
-      if (user) await ctx.db.patch(user._id, { data: { ...user.data, deletion } });
+      const deletion = page.isDone ? { blobsDone: true as const } : { blobCursor: page.continueCursor };
+      if (owner) await ctx.db.patch(owner._id, { deletion });
+      else if (user) await ctx.db.patch(user._id, { data: { ...user.data, deletion } });
       if (!page.isDone) return { done: false, blobCursor: page.continueCursor };
     }
     // Retain user row until final batch so email stays available for verification cleanup.
@@ -104,6 +129,8 @@ export const purge = serverMutation({
       .withIndex('model_user', (q) => q.eq('model', 'account').eq('data.userId', a.userId))
       .collect();
     for (const row of credentials) await ctx.db.delete(row._id);
+    // Same transaction as the users-row delete, so no credential outlives the owner it resolves to.
+    if (ownerId) await eraseAuthCredentials(ctx, ownerId);
     if (user) await ctx.db.delete(user._id);
     await deleteOwnerUser(ctx, a.userId);
     return { done: true };

@@ -16,7 +16,10 @@ const row = {
 
 export default defineSchema({
   // `deleting` fences every owner write once account deletion begins.
-  users: defineTable({ deleting: v.optional(v.boolean()) }),
+  users: defineTable({
+    deleting: v.optional(v.boolean()),
+    deletion: v.optional(v.union(v.object({ blobCursor: v.string() }), v.object({ blobsDone: v.literal(true) }))),
+  }),
   oauthEmails: defineTable({ userId: v.id('users'), email: v.string() })
     .index('email', ['email'])
     .index('user', ['userId']),
