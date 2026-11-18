@@ -147,6 +147,11 @@ describe('account deletion erases auth credentials', () => {
     expect(await otherSession.mutation(api.auth.refreshSession, {refreshToken: second.tokens.refreshToken})).toEqual({kind: 'noSession'});
     expect(await owner.query(api.account.deletionOwner, {})).toEqual({userId, pending: true});
     expect(await owner.mutation(api.account.confirmDeletion, {})).toEqual(confirmed);
+    await expect(t.mutation(api.auth.signInWithEmailPassword, {email: EMAIL, password: PASSWORD}))
+      .rejects.toThrow('Account unavailable');
+    expect(await t.run(ctx => ctx.db.query('users').collect())).toHaveLength(1);
+    const pendingSessions = await t.run(ctx => ctx.runQuery(components.auth.public.listSessions, {userId}));
+    expect(pendingSessions.map(({sessionId}) => sessionId)).toEqual([confirmed.sessionId]);
 
     await t.mutation(api.account.begin, begin);
     const result = await t.mutation(api.account.purge, begin);
@@ -166,7 +171,7 @@ describe('account deletion erases auth credentials', () => {
     const signIn = () => t.run(async ctx => ctx.runMutation(components.auth.public._internal_dangerous_signIn, {
       claims: {method: 'google', profile},
       userId, componentPath: 'authGoogle',
-      onSignInHandle: await createFunctionHandle(internal.users.onGoogleSignIn),
+      onSignInHandle: await createFunctionHandle(internal.users.onOAuthSignInGoogle),
       accessTokenTtlSeconds: TEST_ACCESS_TTL_SECONDS,
       refreshInactivityTimeoutSeconds: TEST_SESSION_TTL_SECONDS,
       sessionMaxLifetimeSeconds: TEST_SESSION_TTL_SECONDS,
