@@ -108,7 +108,7 @@ describe('production startup', () => {
       expect((await app.request('/v1/account', {method: 'DELETE'})).status).toBe(401);
       expect((await erase('incorrect-test-password')).status).toBe(403);
       expect(calls).toEqual(['account:deletionOwner', 'account:confirmDeletion']);
-      expect((await erase('verified-test-password')).status).toBe(500);
+      expect((await erase('verified-test-password')).status).toBe(503);
       expect(committedBatches).toBe(1);
       expect((await app.request('/v1/bootstrap', {headers})).status).toBe(401);
 

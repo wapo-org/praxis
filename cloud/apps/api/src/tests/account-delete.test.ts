@@ -168,7 +168,7 @@ it('deletes every owned table, blob, Redis key and session; preserves another us
   };
   expect(
     (await call('/v1/account', 'DELETE', a.bearerToken, { type: 'account.delete' })).status,
-  ).toBe(500);
+  ).toBe(503);
   expect((await call('/v1/bootstrap', 'GET', alias.bearerToken)).status).toBe(401);
   expect((await call('/v1/account', 'DELETE', a.bearerToken)).status).toBe(200);
 
