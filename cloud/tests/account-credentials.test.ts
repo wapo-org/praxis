@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {convexTest} from 'convex-test';
 import {
+  AUTH_EMAIL_METHOD_CONFLICT,
   ACCOUNT_DELETE_FRESHNESS_MS,
   INTERNAL_CONTINUATION_PATH,
 } from '@praxis/protocol';
@@ -206,9 +207,15 @@ describe('account deletion erases auth credentials', () => {
     expect(await t.mutation(api.account.purge, server)).toEqual({done: false});
     const reservationOwners = await t.run(async ctx => {
       const reservations = await ctx.db.query('oauthEmails').collect();
-      return reservations.map(reservation => reservation.userId);
+      return reservations.map(({userId, email}) => ({userId, email}));
     });
-    expect(reservationOwners.sort()).toEqual([userId, siblingId].sort());
+    expect(reservationOwners).toEqual([
+      {userId, email: EMAIL},
+      {userId: siblingId, email: 'sibling@example.test'},
+    ]);
+    await expect(t.mutation(internal.users.createUserGoogle, {method: {
+      name: 'google', profile: {...profile, id: 'competing-google-subject'},
+    }})).rejects.toThrow(AUTH_EMAIL_METHOD_CONFLICT);
     expect(await t.run(ctx => ctx.db.query('sequences').collect())).toEqual([]);
     expect(await t.run(ctx => ctx.db.get(ownerStateId))).not.toBeNull();
     await expect(signIn()).rejects.toThrow('Account unavailable');
@@ -271,7 +278,20 @@ describe('account deletion erases auth credentials', () => {
     expect(await t.query(api.account.pending, server)).toBe(false);
     expect(await credentials(t, userId)).toEqual({google: null, apple: null, emails: [], sessions: []});
     expect(await t.run(async ctx => (await ctx.db.query('users').collect()).map(user => user._id))).toEqual([siblingId]);
-    expect(await t.run(async ctx => (await ctx.db.query('oauthEmails').collect()).map(email => email.userId))).toEqual([siblingId]);
+    expect(await t.run(async ctx => (await ctx.db.query('oauthEmails').collect()).map(({userId, email}) => ({userId, email}))))
+      .toEqual([{userId: siblingId, email: 'sibling@example.test'}]);
+    const reEnrolledUserId = await t.mutation(internal.users.createUserGoogle, {method: {name: 'google', profile}});
+    await t.run(ctx => ctx.runMutation(components.authGoogle.provider._internal_dangerous_createAccount, {
+      providerAccountId: GOOGLE_SUB, userId: reEnrolledUserId,
+    }));
+    expect(await t.run(ctx => ctx.runQuery(components.authGoogle.provider.getUserIdByAccount, {
+      providerAccountId: GOOGLE_SUB,
+    }))).toBe(reEnrolledUserId);
+    expect(await t.run(async ctx => (await ctx.db.query('oauthEmails').collect()).map(({userId, email}) => ({userId, email}))))
+      .toEqual([
+        {userId: siblingId, email: 'sibling@example.test'},
+        {userId: reEnrolledUserId, email: EMAIL},
+      ]);
     expect(await t.mutation(api.auth.refreshSession, {refreshToken: fresh.refreshToken}))
       .toEqual({kind: 'noSession'});
   });
