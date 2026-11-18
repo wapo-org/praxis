@@ -35,7 +35,10 @@ class HostedPreview:
             "id": DEPLOYMENT, "projectId": PROJECT, "target": None, "readyState": "READY", "url": HOST,
             "gitSource": {"type": "github", "repoId": str(REPO_ID), "sha": SHA},
         }
-        self.anonymous = httpx.Response(401, headers={"set-cookie": "unrelated=anonymous-state; Path=/"})
+        self.anonymous = httpx.Response(302, headers={
+            "location": "https://vercel.com/sso-api?state=synthetic",
+            "set-cookie": "unrelated=anonymous-state; Path=/",
+        })
         self.exchange = httpx.Response(307, headers={"location": "/health", "set-cookie": SET_COOKIE})
         self.health = httpx.Response(200, json=HEALTH)
         self.metadata_redirect = False
@@ -207,6 +210,26 @@ def test_unrecognized_redirect_stops_after_anonymous_request(location: str) -> N
     assert preview.check() == {
         "status": "blocked", "reason": "The anonymous health request did not show Vercel protection.",
     }
+    assert len(preview.requests) == 3
+
+
+@pytest.mark.parametrize("status", [401, 403])
+@pytest.mark.parametrize("headers", [{}, {
+    "server": "Vercel", "x-vercel-id": "synthetic-request", "location": "https://vercel.com/sso-api",
+}])
+def test_app_denial_stops_before_bypass_exchange(status: int, headers: dict[str, str]) -> None:
+    preview = HostedPreview()
+    preview.anonymous = httpx.Response(status, headers=headers, json={"error": "Access denied"})
+    assert preview.check() == {
+        "status": "blocked", "reason": "The anonymous health request did not show Vercel protection.",
+    }
+    assert len(preview.requests) == 3
+
+
+def test_not_modified_with_vercel_location_is_not_an_auth_redirect() -> None:
+    preview = HostedPreview()
+    preview.anonymous = httpx.Response(304, headers={"location": "https://vercel.com/sso-api"})
+    assert preview.check()["status"] == "blocked"
     assert len(preview.requests) == 3
 
 

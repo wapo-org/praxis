@@ -24,7 +24,6 @@ BYPASS_HEADER = "x-vercel-protection-bypass"
 SET_BYPASS_COOKIE_HEADER = "x-vercel-set-bypass-cookie"
 VERCEL_COOKIE = "_vercel_jwt"
 COOKIE_VALUE = re.compile(r"[A-Za-z0-9._~%+=/-]+")
-PROTECTION_DENIAL = {401, 403}
 PROTECTION_REDIRECTS = {
     httpx.URL("https://vercel.com/login"),
     httpx.URL("https://vercel.com/sso-api"),
@@ -125,11 +124,9 @@ def _resolve_preview(client: httpx.Client, config: PreviewConfig, sha: str, repo
 
 
 def _protection_denied(response: httpx.Response) -> bool:
-    if response.status_code in PROTECTION_DENIAL:
-        return True
-    if not response.is_redirect:
+    if not response.has_redirect_location:
         return False
-    location = httpx.URL(response.headers.get("location", ""))
+    location = httpx.URL(response.headers["location"])
     return location.copy_with(query=None, fragment=None) in PROTECTION_REDIRECTS
 
 
