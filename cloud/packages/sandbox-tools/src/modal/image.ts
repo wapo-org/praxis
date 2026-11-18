@@ -28,10 +28,15 @@ const TOOLS_COMMANDS = [
   'mkdir -p /workspace/chats',
   `test "$(node --version)" = "v${NODE_VERSION}"`,
   `test "$(python3 --version)" = "Python ${PYTHON_VERSION}"`,
-  'bwrap_help="$(bwrap --help)"',
-  'printf "%s\\n" "$bwrap_help" | grep -qE "^[[:space:]]+--bind-fd[[:space:]]"',
-  'printf "%s\\n" "$bwrap_help" | grep -qE "^[[:space:]]+--ro-bind-fd[[:space:]]"',
 ].join(' && ');
+const BUBBLEWRAP_CHECK = [
+  'bwrap_help="$(bwrap --help)" &&',
+  'for flag in --bind-fd --ro-bind-fd; do',
+  '  printf "%s\\n" "$bwrap_help" | grep -qE "^[[:space:]]+$flag[[:space:]]" || {',
+  '    printf "Bubblewrap is missing %s support\\n" "$flag" >&2; exit 1;',
+  '  };',
+  'done',
+].join(' ');
 
 export function sandboxBaseImage(modal: ModalClient): Image {
   return modal.images.fromRegistry(BASE_IMAGE);
@@ -41,6 +46,7 @@ export function sandboxBaseImage(modal: ModalClient): Image {
 export function sandboxToolsImage(modal: ModalClient): Image {
   return sandboxBaseImage(modal).dockerfileCommands([
     `RUN timeout ${IMAGE_BUILD_COMMAND_TIMEOUT_SECONDS}s sh -ec '${TOOLS_COMMANDS.replaceAll("'", "'\\''")}'`,
+    'RUN ' + BUBBLEWRAP_CHECK,
     'WORKDIR /workspace',
   ]);
 }
