@@ -92,7 +92,7 @@ describe('production startup', () => {
       const {app} = createProductionApp(config);
       const headers = {authorization: `Bearer ${sessionId}`, 'content-type': 'application/json'};
       const erase = (password?: string) => app.request('/v1/account', {
-        method: 'DELETE', headers, body: JSON.stringify({password}),
+        method: 'DELETE', headers, body: JSON.stringify({password, userId: 'attacker-controlled-owner'}),
       });
       expect((await app.request('/v1/account', {method: 'DELETE'})).status).toBe(401);
       expect((await erase('incorrect-test-password')).status).toBe(403);
