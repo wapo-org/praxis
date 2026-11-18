@@ -4,6 +4,7 @@ import {posix} from 'node:path';
 import {ArtifactPathSchema} from '@praxis/protocol';
 import type {ExecRequest, ExecResult, SandboxPort} from './port.js';
 import {fail} from './support.js';
+import {MOUNT_LAUNCHER, OPEN_ENTRY} from './subagent-mount.js';
 
 export const ISOLATION_TIMEOUT_MS = 30_000;
 // Capture bounds keep verification memory independent of arbitrary workspace growth.
@@ -23,33 +24,29 @@ const PREPARE_ARGV = ['mkdir', '-p', '--'];
 const PROBE_ARGV = ['/usr/bin/true'];
 
 // Namespace mounts exclude parent/sibling workspaces, host credentials, sockets and the host network.
-export function isolatedArgv(source: string, root: string, readOnly: boolean, argv: readonly string[], cwd = root, mounts: readonly ReadOnlyMount[] = []): string[] {
-  return ['bwrap', '--die-with-parent', '--unshare-all', '--new-session', '--clearenv',
+export function isolatedArgv(
+  source: string,
+  root: string,
+  readOnly: boolean,
+  argv: readonly string[],
+  cwd = root,
+  mounts: readonly ReadOnlyMount[] = [],
+): string[] {
+  const workspaceBind = readOnly ? '--ro-bind-fd' : '--bind-fd';
+  return [PYTHON, '-I', '-c', MOUNT_LAUNCHER, String(1 + mounts.length),
+    'bwrap', workspaceBind, source, root,
+    ...mounts.flatMap(mount => ['--ro-bind-fd', mount.source, mount.target]),
+    '--die-with-parent', '--unshare-all', '--new-session', '--clearenv',
     '--setenv', 'PATH', '/usr/local/bin:/usr/bin:/bin',
     ...SYSTEM_DIRECTORIES.flatMap(path => ['--ro-bind', path, path]),
-    '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp',
-    readOnly ? '--ro-bind' : '--bind', source, root,
-    ...mounts.flatMap(mount => ['--ro-bind', mount.source, mount.target]), '--chdir', cwd, '--', ...argv];
+    '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', '--chdir', cwd, '--', ...argv];
 }
 
 export const FILE_OPERATION = `import os,sys,json,base64,stat
 root,op,path,input_path=sys.argv[1:]
 
-def open_directory(name, parent=None):
-    # Verify the directory identity because some runtimes ignore O_NOFOLLOW with O_DIRECTORY.
-    entry = os.stat(name, dir_fd=parent, follow_symlinks=False)
-    if not stat.S_ISDIR(entry.st_mode):
-        raise ValueError('not a directory entry')
-    directory = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
-    try:
-        if not os.path.samestat(entry, os.fstat(directory)):
-            raise ValueError('directory changed during open')
-    except (OSError, ValueError):
-        os.close(directory)
-        raise
-    return directory
-
-fd = open_directory(root)
+${OPEN_ENTRY}
+fd = open_entry(root)
 
 def open_parent(path, create=False):
     parts = path.split('/')
@@ -63,7 +60,7 @@ def open_parent(path, create=False):
                     os.mkdir(part, dir_fd=parent)
                 except FileExistsError:
                     pass
-            child = open_directory(part, parent)
+            child = open_entry(part, parent)
             os.close(parent)
             parent = child
     except (OSError, ValueError):
@@ -98,7 +95,7 @@ else:
             info=os.stat(name,dir_fd=directory,follow_symlinks=False)
             relative=prefix+name
             if stat.S_ISDIR(info.st_mode):
-                child = open_directory(name, directory)
+                child = open_entry(name, directory)
                 try:
                     walk(child, relative + '/')
                 finally:

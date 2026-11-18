@@ -175,10 +175,12 @@ No production persistence or sandbox adapter is implemented by this registry.
 ordered inboxes, asynchronous cascading cancellation and verified artifact handoffs (PRA-79).
 The four wire tools and durable state schemas live in `packages/protocol/src/subagents.ts`.
 `SandboxSubagentWorkspace` in `packages/sandbox-tools` binds a server-supplied TenantId, child and revision.
-It requires Linux bubblewrap (`bwrap`) and Python in the provisioned sandbox image; namespace or tool
-unavailability fails preparation closed. No packages are installed at runtime. Child commands receive
+It requires Linux bubblewrap with `--bind-fd` and `--ro-bind-fd` support and Python in the provisioned sandbox image.
+Preparation fails closed if the required mount or namespace setup fails. No packages are installed at runtime. Child commands receive
 only their writable root plus read-only system runtimes, private PID/network namespaces and a cleared
 environment. All child effects still require PRA-76 authorization; this adapter grants no outbound network.
+The trusted launcher opens dynamic mount sources component by component without following symlinks.
+Bubblewrap verifies each mounted object against its open descriptor before executing child code.
 File operations use directory descriptors and O_NOFOLLOW to reject symlinks without a check/open race.
 Their trusted script is installed outside child data and mounted read-only, runs from `/` with Python `-I`,
 and receives binary writes through staged read-only files, never argv; staging is removed even on failure.
