@@ -17,6 +17,7 @@ import {createProductionApp} from '../apps/api/src/production.js';
 import * as upstash from '../apps/api/src/adapters/upstash.js';
 import {fakeRedis} from '../apps/api/src/adapters/testing/fake-redis.js';
 import schema from '../convex/schema.js';
+import type {Id} from '../convex/_generated/dataModel.js';
 import {api, components, internal} from '../convex/_generated/api.js';
 
 const modules = import.meta.glob('../convex/**/*.ts');
@@ -62,7 +63,9 @@ async function signUp(t: CredentialTest) {
     browserSecret: start.browserSecret, emailCode: await emailCode(t),
   });
   if (complete.status !== 'complete') throw new Error('Verification failed');
-  return complete.tokens;
+  const userId = await t.run(async ctx => ctx.db.normalizeId('users', complete.tokens.userId));
+  if (!userId) throw new Error('Sign-up did not return a users ID');
+  return {...complete.tokens, userId};
 }
 
 function linkOAuth(t: CredentialTest, userId: string) {
@@ -89,7 +92,7 @@ function verifyPassword(t: CredentialTest, userId: string, password: string) {
   return t.run(ctx => ctx.runMutation(components.authPassword.public.verifyPassword, {userId, password}));
 }
 
-async function deleteAccount(t: CredentialTest, userId: string) {
+async function deleteAccount(t: CredentialTest, userId: Id<'users'>) {
   await t.mutation(api.account.begin, {serverToken: SERVER_TOKEN, userId});
   let result: PurgeResult = {done: false};
   for (let call = 0; !result.done && call < PURGE_CALLS_MAX; call++) {
@@ -151,7 +154,7 @@ describe('account deletion erases auth credentials', () => {
     expect(await owner.mutation(api.account.confirmDeletion, {})).toEqual(confirmed);
 
     await t.mutation(api.account.begin, begin);
-    const result = await t.mutation(api.account.purge, begin);
+    const result = await t.mutation(api.account.purge, {serverToken: SERVER_TOKEN, userId});
     expect(result).toEqual({done: true});
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     expect(await owner.query(api.account.deletionOwner, {})).toBeNull();

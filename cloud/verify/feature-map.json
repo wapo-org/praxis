@@ -44,7 +44,7 @@
     },
     {
       "id": "account.deletion",
-      "title": "Convex-authenticated account deletion, interrupted purge recovery and session revocation",
+      "title": "Convex Auth v2 account deletion, credential erasure, interrupted purge recovery and session revocation",
       "issue": "PRA-64",
       "surfaces": ["web", "api"],
       "covers": [{"command": "gate"}]

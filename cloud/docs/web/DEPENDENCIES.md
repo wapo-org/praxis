@@ -48,4 +48,4 @@ in the shared glass package (including the dropdown) and is not reworked by WP-B
 
 - `@convex-dev/auth@2.0.0`: React session provider and password, email-link, Google and Apple hooks.
 - `convex@1.50.0`: authenticated Convex client and reactive identity query.
-- Removed `@clerk/clerk-react` and the fake Clerk driver; no email-code or magic-link login is offered.
+- The web uses the Convex Auth v2 provider and verifies password signups by email.

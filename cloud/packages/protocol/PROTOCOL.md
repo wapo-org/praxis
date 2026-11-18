@@ -6,9 +6,9 @@ API prefix `/v1`. Errors: `{type:"error",code,message,requestId?,details?}`. Mis
 
 ## Sessions
 
-Production API authentication uses a server-verified session: web sends an HttpOnly Secure SameSite cookie (`credentials: include`); iOS sends `Authorization: Bearer <token>`. Neither client accesses Convex directly. `POST /v1/auth/sign-up` and `/v1/auth/sign-in` accept `auth.input` (email,password,name?). Return `session`, including bearerToken only in this direct session response. `GET /v1/auth/session` returns the session without its token. `POST /v1/auth/sign-out` revokes it. The chosen production auth integration is described in ARCHITECTURE.md.
+The web client signs in, refreshes and signs out through Convex Auth v2. For API requests it sends `Authorization: Bearer <accessToken>`; the API resolves the owner against Convex. `GET /v1/auth/session` returns the verified session without its token. Swift auth migration is tracked in PRA-37.
 
-Local only: `POST /v1/auth/dev` accepts `{type:"auth.dev",userId?:string}` and returns a session. Or set `Authorization: Bearer dev-local` (seed user `local-user`). This path and token are disabled outside local mode and production cannot select local adapters. Default local origin `http://localhost:8787`. PORT is overridable; no account or keys needed.
+Local only: `POST /v1/auth/dev` accepts `{type:"auth.dev",userId?:string}` and returns a session. `POST /v1/auth/sign-out` revokes the dev session. Or set `Authorization: Bearer dev-local` (seed user `local-user`). Default local origin `http://localhost:8787`. PORT is overridable; no account or keys needed.
 
 ## Bootstrap and local replicas
 

@@ -26,7 +26,6 @@ export interface PraxisDeps {
   fetcher?: typeof fetch;
   allowedOrigins?: string[];
   resolveSession?: (request: Request) => Promise<{user: User; expiresAt: string} | null>;
-  authHandler?: (request: Request) => Promise<Response>;
   accountDeletion?:{confirm(request:Request,password?:string):Promise<{userId:string;sessionId:string}|null>;purge(userId:string,sessionId:string):Promise<void>};
   rateLimit?: (key: string) => Promise<{ok: boolean; retryAfterSeconds?: number}>;
   scheduler?: ContinuationScheduler;
@@ -81,7 +80,6 @@ export function createPraxisApp(deps: PraxisDeps) {
     ...(deps.clock ? {clock: deps.clock} : {}),
     ...(deps.allowedOrigins ? {allowedOrigins: deps.allowedOrigins} : {}),
     ...(deps.resolveSession ? {resolveSession: deps.resolveSession} : {}),
-    ...(deps.authHandler ? {authHandler: deps.authHandler} : {}),
     ...(deps.accountDeletion ? {accountDeletion:deps.accountDeletion} : deps.local ? {accountDeletion:{purge:async(userId:string)=>{for(const module of modules)await module.deleteAccount?.(userId);await deps.adapters.purgeOwner?.(userId);}}} : {}),
     ...(deps.local ? {reopenDevUser: async (userId: string) => {for (const module of modules) await module.restoreAccount?.(userId); await deps.adapters.reopenOwner?.(userId);}} : {}),
     ...(deps.rateLimit ? {rateLimit: deps.rateLimit} : {}),

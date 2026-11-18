@@ -80,10 +80,7 @@ describe('production startup', () => {
           break;
         case 'account:purge': {
           const call = calls.filter(item => item === path).length;
-          expect(args).toEqual({
-            userId, serverToken: config.PRAXIS_CONVEX_SERVER_TOKEN,
-            ...(call <= 2 ? {keepSessionId: sessionId} : {}),
-          });
+          expect(args).toEqual({userId, serverToken: config.PRAXIS_CONVEX_SERVER_TOKEN});
           if (call === 2) return new Response('temporary failure', {status: 503});
           committedBatches++;
           erased = call >= 3;

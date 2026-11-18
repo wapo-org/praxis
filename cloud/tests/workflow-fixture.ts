@@ -3,6 +3,7 @@ import {registerCore, sessionIdentity} from '@convex-dev/auth/test';
 import workflowComponent from '@convex-dev/workflow/test';
 import schema from '../convex/schema.js';
 import {api, components} from '../convex/_generated/api.js';
+import type {Id} from '../convex/_generated/dataModel.js';
 
 export const chatId = 'workflow-chat';
 export const SERVER_TOKEN = 'workflow-test-server-token-longer-than-32-characters';
@@ -25,14 +26,14 @@ export function workflowTest() {
 type WorkflowTest = ReturnType<typeof workflowTest>;
 
 // Auth v2 tokens carry the session id as subject, so tests mint a real session for a real `users` row.
-export async function signedInUser(t: WorkflowTest) {
-  const userId = await t.run(ctx => ctx.db.insert('users', {}));
+export async function signedInUser(t: WorkflowTest, existingUserId?: Id<'users'>) {
+  const userId = existingUserId ?? await t.run(ctx => ctx.db.insert('users', {}));
   const tokens = await t.run(ctx => ctx.runMutation(components.auth.public._internal_dangerous_signIn, {
     claims: {method: 'test', profile: {}}, componentPath: 'auth', userId,
     accessTokenTtlSeconds: ACCESS_TTL_SECONDS, refreshInactivityTimeoutSeconds: SESSION_TTL_SECONDS,
     sessionMaxLifetimeSeconds: SESSION_TTL_SECONDS,
   }));
-  return {userId, client: t.withIdentity(sessionIdentity(tokens))};
+  return {userId, accessToken: tokens.accessToken, client: t.withIdentity(sessionIdentity(tokens))};
 }
 
 export async function startedRun() {

@@ -11,10 +11,9 @@ const modules = {
   '../../../../../convex/_generated/api.js': async () => ({}),
   '../../../../../convex/accountRecovery.ts': () => import('../../../../../convex/accountRecovery.js'),
   '../../../../../convex/account.ts': () => import('../../../../../convex/account.js'),
+  '../../../../../convex/auth.ts': () => import('../../../../../convex/auth.js'),
   '../../../../../convex/tools.ts': () => import('../../../../../convex/tools.js'),
   '../../../../../convex/store.ts': () => import('../../../../../convex/store.js'),
-  '../../../../../convex/authClerk.ts': () => import('../../../../../convex/authClerk.js'),
-  '../../../../../convex/legacyAuth.ts': () => import('../../../../../convex/legacyAuth.js'),
   '../../../../../convex/files.ts': () => import('../../../../../convex/files.js'),
   '../../../../../convex/search.ts': () => import('../../../../../convex/search.js'),
 };

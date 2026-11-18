@@ -11,6 +11,9 @@ const REVOKED_KEY = 'OPENROUTER_REVOKED_KEY';
 const ZERO_CREDIT_KEY = 'OPENROUTER_ZERO_CREDIT_KEY';
 const SMOKE_KEY = 'SMOKE_OPENROUTER_KEY';
 const WEB_URL = 'PRAXIS_LIVE_WEB_URL';
+const CONVEX_URL = 'CONVEX_URL';
+const SMOKE_EMAIL = 'SMOKE_ACCOUNT_EMAIL';
+const SMOKE_PASSWORD = 'SMOKE_ACCOUNT_PASSWORD';
 /** A Claude model with tools and reasoning in the curated list; change it here when the curated list moves. */
 const CLAUDE_MODEL = 'anthropic/claude-sonnet-5.5';
 const TOOL_PROMPT = 'You must call the JavaScript tool to compute 6 * 7; do not answer from memory. Then answer with the number only.';
@@ -172,14 +175,19 @@ export default defineSuite({
     {
       id: 'smoke-remote',
       kind: 'auto',
-      checklist: 'node cloud/scripts/smoke-remote.mjs --with-llm with SMOKE_OPENROUTER_KEY passes.',
-      needs: {secrets: [SMOKE_KEY], config: [HOSTED_API_URL, WEB_URL]},
+      checklist: 'Hosted smoke passes with a disposable verified Convex Auth account and an OpenRouter key.',
+      needs: {secrets: [SMOKE_KEY, SMOKE_EMAIL, SMOKE_PASSWORD], config: [HOSTED_API_URL, WEB_URL, CONVEX_URL]},
       async run(context) {
-        // smoke-remote reads the key from an env file; keep it outside the proof directory and delete it after.
+        // Keep smoke credentials outside the proof directory.
         const directory = mkdtempSync(join(tmpdir(), 'praxis-verify-'));
         const envFile = join(directory, '.env.smoke');
-        writeFileSync(envFile, `${SMOKE_KEY}=${context.secret(SMOKE_KEY).reveal()}\n`, {mode: 0o600});
         try {
+          const entries = [
+            [CONVEX_URL, context.config(CONVEX_URL)],
+            ...[SMOKE_KEY, SMOKE_EMAIL, SMOKE_PASSWORD].map(key => [key, context.secret(key).reveal()]),
+          ];
+          if (entries.some(([, value]) => /[\r\n]/.test(value!))) throw Error('Smoke settings must be single-line');
+          writeFileSync(envFile, entries.map(([key, value]) => `${key}="${value}"\n`).join(''), {mode: 0o600});
           const result = await runCommand('node', ['scripts/smoke-remote.mjs', context.config(HOSTED_API_URL), context.config(WEB_URL), '--with-llm', '--env', envFile], {cwd: CLOUD_DIR});
           context.attach('smoke-remote.log', result.output);
           return result.code === 0 ? {status: 'pass', summary: 'smoke-remote --with-llm passed'} : {status: 'fail', summary: `smoke-remote exited ${result.code}`};

@@ -88,7 +88,7 @@ Runtime dependency inventory (features add their package only when implemented):
 - @upstash/qstash: signed continuation delivery and verification.
 - @upstash/ratelimit: shared per-user rate limiting.
 - convex: server data/storage client and function schema.
-- better-auth: cookie and bearer session lifecycle.
+- @convex-dev/auth: deployment-signed access tokens, credential components and session rotation.
 - @modelcontextprotocol/sdk: official remote MCP transports, OAuth, tools/resources/prompts/elicitation.
 - quickjs-emscripten: bounded in-process QuickJS WASM execution; no Node eval.
 - typescript, @types/node: strict compiler and Node 24 API types (development).
@@ -135,8 +135,7 @@ Only `SITE_URL` is allowed as the OAuth return origin (including the future iOS 
 Email validation and recovery land on `/validate-email` and `/reset-password`.
 Verified emails shared across methods are rejected rather than automatically linked.
 OAuth-first email collisions reject password verification transactionally; pending signup rows are not authenticated identities.
-PRA-64 owns deletion of those pending rows, `oauthEmails`, component credentials and the legacy API adapter.
-Legacy Better Auth RPCs are isolated in `convex/legacyAuth.ts` until PRA-64; the web never calls them.
+Account deletion erases component credentials and the owner's `oauthEmails` reservation alongside the `users` row.
 The API derives the application owner from the verified Convex session.
 
 Dependencies:

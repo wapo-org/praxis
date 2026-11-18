@@ -25,13 +25,13 @@ across those clients. Unit tests construct `CloudTestBackend(scenario:)` and cal
 `makeSession()`. Teardown calls `session.invalidateAndCancel()` and
 `backend.shutdown()` to release connections and the registry entry.
 
-The session supplies a `Bearer dev-local` default, matching A's documented local
-token. Seed the injected client's token store with `CloudTestBackend.token` for
+The fixture session supplies a `Bearer dev-local` default. Seed the injected client's token store with `CloudTestBackend.token` for
 its configured origin before a stale simulator Keychain token can override it.
 `GET /v1/auth/session` works without a token in this test backend; sign-in,
 sign-up and auth/dev return `bearerToken: dev-local`. Session queries omit it.
-Sign-out revokes access, and a later sign-in restores access. This is a fixture,
-not a security implementation or a test of the production authentication server.
+Sign-out revokes access, and a later sign-in restores access. These simulated
+routes exercise the native client fixture. Production sign-in, signup and
+sign-out use Convex Auth v2, with the native migration tracked in PRA-37.
 
 The account test navigates History → History options → Settings → Account &
 server (`cloudAccountServer`). It uses the settings agent's identifiers

@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
+import { ConvexHttpClient } from 'convex/browser';
+import { makeFunctionReference } from 'convex/server';
 import vm from 'node:vm';
 import { pathToFileURL } from 'node:url';
 import { loadEnv, envArg } from './deploy-config.mjs';
+
+const signInWithEmailPassword = makeFunctionReference('auth:signInWithEmailPassword');
+const signOut = makeFunctionReference('auth:signOut');
+const refreshSession = makeFunctionReference('auth:refreshSession');
+const REFRESH_LEAD_MS = 10_000;
 export function assertWorkerBypassesApi(source, web) {
   const result = vm.runInNewContext(
     `
@@ -39,16 +46,12 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
   const dry = args.includes('--dry-run'),
     checks = [],
     skipped = [];
-  let token = '',
-    created = false,
-    local = false;
-  const email = `praxis-smoke-${randomUUID()}@example.com`,
-    password = randomBytes(24).toString('base64url');
+  let token = '', refreshToken = '', accessExpiresAt = 0, cleanupNeeded = false;
   const call = async (path, method = 'GET', body, auth = true) => {
     const res = await fetcher(api + path, {
       method,
       headers: {
-        ...(auth && token ? { authorization: `Bearer ${token}` } : {}),
+        ...(auth && token ? await authHeaders() : {}),
         ...(body ? { 'content-type': 'application/json' } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
@@ -69,27 +72,32 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
   assert.ok(sw.ok);
   assertWorkerBypassesApi(await sw.text(), web);
   checks.push('service worker bypasses /v1 and /health');
-  local =
+  const local =
     health.mode === 'local' && ['localhost', '127.0.0.1', '[::1]'].includes(new URL(api).hostname);
   if (dry && !local) {
     skipped.push('Hosted mutations/auth/LLM/SSE/upload: dry run never creates a hosted account');
     return { checks, skipped };
   }
   if (!local && new URL(api).protocol !== 'https:') throw Error('Hosted smoke requires HTTPS');
+  const env = local ? {} : await loadEnv(envArg(args));
+  const { CONVEX_URL, SMOKE_ACCOUNT_EMAIL: email, SMOKE_ACCOUNT_PASSWORD: password } = env;
+  let convex;
+  if (!local) {
+    if (!CONVEX_URL || !email || !password) {
+      throw Error('Hosted smoke needs CONVEX_URL, SMOKE_ACCOUNT_EMAIL and SMOKE_ACCOUNT_PASSWORD for a disposable verified account');
+    }
+    const url = new URL(CONVEX_URL);
+    if (url.protocol !== 'https:' || !url.hostname.endsWith('.convex.cloud') || url.href !== url.origin + '/') {
+      throw Error('Hosted smoke requires a Convex Cloud HTTPS origin');
+    }
+    convex = new ConvexHttpClient(url.origin, {
+      logger: false,
+      fetch: (input, init) => fetcher(input, { ...init, redirect: 'error', signal: AbortSignal.timeout(60000) }),
+    });
+  }
   let failure;
   try {
     if (local) {
-      for (const op of ['sign-up', 'sign-in']) {
-        const response = await fetcher(api + `/v1/auth/${op}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ type: 'auth.input', email, password, name: 'Smoke' }),
-        });
-        assert.equal(response.status, 503);
-      }
-      skipped.push(
-        'dev:local email sign-up/sign-in are unconfigured (503); tested disposable dev session instead',
-      );
       const session = await call(
         '/v1/auth/dev',
         'POST',
@@ -97,7 +105,7 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
         false,
       );
       token = session.bearerToken;
-      created = true;
+      cleanupNeeded = true;
       await call('/v1/auth/sign-out', 'POST', {});
       const expired = await fetcher(api + '/v1/bootstrap', {
         headers: { authorization: `Bearer ${token}` },
@@ -112,21 +120,14 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
       token = fresh.bearerToken;
       checks.push('local session/sign-out/revocation');
     } else {
-      // Mark created before sign-up so cleanup runs even on partial failure.
-      created = true;
-      const response = await fetcher(api + '/v1/auth/sign-up', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ type: 'auth.input', email, password, name: 'Deployment smoke' }),
-      });
-      assert.ok(response.ok, 'Sign-up failed');
-      token = (await response.json()).bearerToken;
-      await call('/v1/auth/sign-out', 'POST', {});
-      token = ''; // revoked; cleanup must not reuse it
-      token = (
-        await call('/v1/auth/sign-in', 'POST', { type: 'auth.input', email, password }, false)
-      ).bearerToken;
-      checks.push('sign-up/sign-out/sign-in');
+      cleanupNeeded = true;
+      await signIn();
+      await convex.mutation(signOut, { refreshToken });
+      convex.clearAuth();
+      const revoked = await convex.mutation(refreshSession, { refreshToken });
+      assert.equal(revoked.kind, 'noSession');
+      await signIn();
+      checks.push('Convex sign-in/sign-out/revocation');
     }
     const bootstrap = await call('/v1/bootstrap');
     assert.ok(bootstrap.user.id);
@@ -148,7 +149,7 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
       method: ticket.method ?? 'PUT',
       headers: {
         'content-type': input.mediaType,
-        ...(target.origin === api ? { authorization: `Bearer ${token}` } : {}),
+        ...(target.origin === api ? await authHeaders() : {}),
       },
       body: bytes,
       signal: AbortSignal.timeout(30000),
@@ -174,7 +175,6 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
         'Real LLM call skipped in local dry run; scripted local run verifies SSE transport only',
       );
     } else if (args.includes('--with-llm')) {
-      const env = await loadEnv(envArg(args));
       if (!env.SMOKE_OPENROUTER_KEY)
         throw Error('--with-llm needs SMOKE_OPENROUTER_KEY (and optionally SMOKE_OPENROUTER_MODEL) in deploy env');
       // Connects the smoke user's own OpenRouter key; the throwaway account is deleted in `finally`.
@@ -192,7 +192,7 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
         ...runInput,
       });
       const stream = await fetcher(api + `/v1/runs/${run.id}/events`, {
-        headers: { authorization: `Bearer ${token}` },
+        headers: await authHeaders(),
         signal: AbortSignal.timeout(60000),
       });
       assert.ok(stream.ok);
@@ -208,7 +208,7 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
       }
       await reader.cancel();
       const resume = await fetcher(api + `/v1/runs/${run.id}/events`, {
-        headers: { authorization: `Bearer ${token}`, 'Last-Event-ID': String(id) },
+        headers: { ...await authHeaders(), 'Last-Event-ID': String(id) },
         signal: AbortSignal.timeout(60000),
       });
       assert.ok(resume.ok);
@@ -222,27 +222,52 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
   } catch (e) {
     failure = e;
   }
-  if (created) {
+  if (cleanupNeeded) {
     try {
       await cleanup();
       checks.push('account/data cleanup and session revocation');
     } catch (e) {
       // Report the original failure; the cleanup error is attached, never substituted.
       if (failure)
-        failure.message += ` (cleanup also failed: ${e.message}; delete ${email} manually)`;
+        failure.message += ` (cleanup also failed: ${e.message}; check the disposable account)`;
       else failure = e;
     }
   }
   if (failure) throw failure;
   return { checks, skipped };
 
+  async function signIn() {
+    token = '';
+    convex.clearAuth();
+    let result;
+    try {
+      result = await convex.mutation(signInWithEmailPassword, { email, password });
+    } catch (error) {
+      throw Error('Convex smoke sign-in request failed', { cause: error });
+    }
+    if (result.status !== 'complete') throw Error('Convex smoke sign-in requires a verified password account');
+    adoptSession(result.tokens);
+  }
+
+  function adoptSession(tokens) {
+    token = tokens.accessToken;
+    refreshToken = tokens.refreshToken;
+    const { exp } = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+    accessExpiresAt = exp * 1000;
+    convex.setAuth(token);
+  }
+
+  async function authHeaders() {
+    if (convex && Date.now() + REFRESH_LEAD_MS >= accessExpiresAt) {
+      convex.clearAuth();
+      const result = await convex.mutation(refreshSession, { refreshToken });
+      if (result.kind !== 'rotated') throw Error('Convex smoke session expired');
+      adoptSession(result.tokens);
+    }
+    return { authorization: `Bearer ${token}` };
+  }
+
   async function cleanup() {
-    const signIn = async () => {
-      token = '';
-      token = (
-        await call('/v1/auth/sign-in', 'POST', { type: 'auth.input', email, password }, false)
-      ).bearerToken;
-    };
     if (!token && !local) await signIn();
     const remove = () =>
       call('/v1/account', 'DELETE', { type: 'account.delete', ...(local ? {} : { password }) });
@@ -258,6 +283,11 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
       signal: AbortSignal.timeout(30000),
     });
     assert.equal(dead.status, 401);
+    if (convex) {
+      convex.clearAuth();
+      const revoked = await convex.mutation(refreshSession, { refreshToken });
+      assert.equal(revoked.kind, 'noSession');
+    }
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
