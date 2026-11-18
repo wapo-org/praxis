@@ -12,6 +12,7 @@ export const DEBIAN_PACKAGES = {
   'build-essential': '12.9',
   tmux: '3.3a-3',
   'ca-certificates': '20230311',
+  bubblewrap: '0.8.0-2+deb12u1',
 } as const;
 export const IMAGE_BUILD_COMMAND_TIMEOUT_SECONDS = 150;
 const APT_NETWORK_TIMEOUT_SECONDS = 30;
@@ -27,6 +28,9 @@ const TOOLS_COMMANDS = [
   'mkdir -p /workspace/chats',
   `test "$(node --version)" = "v${NODE_VERSION}"`,
   `test "$(python3 --version)" = "Python ${PYTHON_VERSION}"`,
+  'bwrap_help="$(bwrap --help)"',
+  'printf "%s\\n" "$bwrap_help" | grep -qE "^[[:space:]]+--bind-fd[[:space:]]"',
+  'printf "%s\\n" "$bwrap_help" | grep -qE "^[[:space:]]+--ro-bind-fd[[:space:]]"',
 ].join(' && ');
 
 export function sandboxBaseImage(modal: ModalClient): Image {

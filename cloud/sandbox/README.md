@@ -2,7 +2,9 @@
 
 The JS SDK image definition is exported as `@praxis/sandbox-tools/image`:
 `sandboxBaseImage(client)` imports a digest-pinned Node 22.16.0 Bookworm slim image;
-`sandboxToolsImage(client)` adds Python 3.11.2, git, build-essential and tmux.
+`sandboxToolsImage(client)` adds Python 3.11.2, git, build-essential, tmux and Bubblewrap.
+Provision child workspaces with this tools image. The build checks that Debian's
+pinned Bubblewrap backport exposes both `--bind-fd` and `--ro-bind-fd`.
 The Debian snapshot freezes transitive package resolution. Top-level package versions,
 the registry digest and the snapshot timestamp live in `src/modal/image.ts`.
 Apt verifies Debian signatures; HTTP is used only to bootstrap CA certificates in the slim base.

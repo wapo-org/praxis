@@ -44,7 +44,12 @@ describe('sandbox image', () => {
     sandboxToolsImage(new ModalClient({tokenId: 'unused', tokenSecret: 'unused'}));
     const commands = layer.mock.calls[0]![0].join('\n');
     expect(commands).toContain(`/archive/debian/${DEBIAN_SNAPSHOT}/`);
+    expect(commands).toContain('bookworm main\\n');
     for (const [name, version] of Object.entries(DEBIAN_PACKAGES)) expect(commands).toContain(`${name}=${version}`);
+    expect(commands).toContain('bubblewrap=0.8.0-2+deb12u1');
+    expect(commands).toContain('bwrap --help');
+    expect(commands).toContain('--bind-fd[[:space:]]');
+    expect(commands).toContain('--ro-bind-fd[[:space:]]');
     expect(commands).toContain('timeout 150s');
     expect(commands).toContain('APT::Update::Error-Mode=any');
     expect(commands).not.toMatch(/trusted=yes|allow-unauthenticated|Verify-Peer=false/);

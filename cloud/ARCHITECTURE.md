@@ -57,7 +57,7 @@ with rewind (PRA-63). Tools run only through `executeSandboxTool`, which goes th
 is classified by `shellPolicy`. They speak to a `SandboxPort`: an in-memory fake for tests, a local temp-dir port,
 and `@praxis/sandbox-tools/modal`, which uses Modal's native exec and filesystem APIs (no in-sandbox server).
 `@praxis/sandbox-tools/image` composes a digest-pinned Node Bookworm slim base and a snapshot-pinned
-Python/git/build-tools/tmux layer; browser and per-harness layers extend it independently (see `sandbox/README.md`).
+Python/git/build-tools/tmux/Bubblewrap layer; browser and per-harness layers extend it independently (see `sandbox/README.md`).
 `packages/browser-cli` (`praxis-browser`) drives Chromium over CDP with accessibility-tree refs and no LLM;
 it shares snapshot and screenshot capture with `praxis-verify`. Neither package may be imported by `apps/api`
 directly while it is a Hono app (child_process lives in the local port and the browser session).
@@ -175,7 +175,8 @@ No production persistence or sandbox adapter is implemented by this registry.
 ordered inboxes, asynchronous cascading cancellation and verified artifact handoffs (PRA-79).
 The four wire tools and durable state schemas live in `packages/protocol/src/subagents.ts`.
 `SandboxSubagentWorkspace` in `packages/sandbox-tools` binds a server-supplied TenantId, child and revision.
-It requires Linux bubblewrap with `--bind-fd` and `--ro-bind-fd` support and Python in the provisioned sandbox image.
+Provision its Modal sandbox with `sandboxToolsImage()`, which includes Python and checks that the pinned
+Debian Bubblewrap package supports `--bind-fd` and `--ro-bind-fd` during the image build.
 Preparation fails closed if the required mount or namespace setup fails. No packages are installed at runtime. Child commands receive
 only their writable root plus read-only system runtimes, private PID/network namespaces and a cleared
 environment. All child effects still require PRA-76 authorization; this adapter grants no outbound network.
