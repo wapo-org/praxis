@@ -38,6 +38,7 @@ LOCAL_MODULES = (
     "runlog",
     "sandbox",
     "validation",
+    "vercel_preview",
 )
 
 web_image = (

@@ -14,6 +14,8 @@ Automated PR reviews run in a Modal Sandbox. The review model is `muse-ember-1.0
    - a Linear claim carries a `linear_quote` that appears in the issue text the server fetches itself;
    - it does not duplicate another finding (same file, same rule, within 3 lines).
 
+The operator-invoked [protected API Preview proof](./README.md#protected-api-preview-proof) runs in the reviewer function, outside every model session. Its result attests to protected API health for the approved commit.
+
 ## Review posture (collaborative, non-opinionated)
 
 - **Ask and offer rather than dictate.** Suggestions are phrased as questions or options (`"Could we…?"`, `"Would it help to…?"`), never orders.
