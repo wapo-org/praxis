@@ -199,6 +199,11 @@ describe('account deletion erases auth credentials', () => {
     await t.mutation(api.account.begin, {...server, keepSessionId: freshIdentity.subject});
     expect(await owner.mutation(api.auth.refreshSession, {refreshToken: tokens.refreshToken})).toEqual({kind: 'noSession'});
     expect(await t.mutation(api.account.purge, server)).toEqual({done: false});
+    const reservationOwners = await t.run(async ctx => {
+      const reservations = await ctx.db.query('oauthEmails').collect();
+      return reservations.map(reservation => reservation.userId);
+    });
+    expect(reservationOwners.sort()).toEqual([userId, siblingId].sort());
     expect(await t.run(ctx => ctx.db.query('sequences').collect())).toEqual([]);
     expect(await t.run(ctx => ctx.db.get(ownerStateId))).not.toBeNull();
     await expect(signIn()).rejects.toThrow('Account unavailable');
