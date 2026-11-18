@@ -99,7 +99,7 @@ Browser builds get only the API origin, never a secret.
 
 1. Create a project from this repo with Root Directory `cloud/apps/api`. Enable "Include files outside the root directory" (npm workspaces).
 2. Framework: Other. `vercel.json` sets install (`cd ../.. && npm ci`), build (`npm run build`), Fluid compute, `maxDuration` 300 s, 1024 MB memory, and routes every path to `api/index.ts`.
-3. Node.js version: 24.x. Add the variables above to Production (and Preview, with separate Convex and Upstash resources if possible).
+3. Node.js version: 24.x. Add the variables above to Production. Configure Preview separately before enabling Preview auth: its API must use a dedicated non-production `CONVEX_URL` and matching `PRAXIS_CONVEX_SERVER_TOKEN`; its web build must set `VITE_CONVEX_URL` to that same deployment. Set Preview-scoped Convex auth variables, including `SITE_URL`, for the Preview origins. Never point Preview at the production Convex deployment or reuse its server token. The `npm run deploy` script is production-only; do not use it to prepare a Preview deployment.
 4. Deploy. Check `GET /health` → `{"mode":"production"}`.
 5. Native dependencies: `sharp` (image crop) and `quickjs-emscripten` (JS sandbox) stay external and are installed by `npm ci` on Vercel.
 
