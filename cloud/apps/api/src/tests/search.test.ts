@@ -9,7 +9,15 @@ import { convexHarness } from '../adapters/testing/convex-harness.js';
 for (const mode of ['memory', 'convex'] as const) describe(`search: ${mode}`, () => {
   it('searches all message contents, truncates matched context and isolates owners/deletions', async () => {
     const adapters = createMemoryAdapters();
-    if (mode === 'convex') adapters.store = storeFromRPC(convexHarness().rpc);
+    if (mode === 'convex') {
+      const {t, rpc} = convexHarness();
+      await t.run(async ctx => {
+        for (const id of ['local-user', 'other']) {
+          await ctx.db.insert('authDocuments', {model: 'user', id, data: {}});
+        }
+      });
+      adapters.store = storeFromRPC(rpc);
+    }
     const service = new ApiService(adapters, true);
     const { app } = createApp({ service });
     const now = service.now();

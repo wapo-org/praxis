@@ -1,6 +1,8 @@
 import { ConvexError, v } from 'convex/values';
-import { mutation, query, type MutationCtx, type QueryCtx } from './functions.js';
+import { mutation, query, requireActiveOwner, type MutationCtx, type QueryCtx } from './functions.js';
 import { bounded, requireServer } from './access.js';
+import {deleteDomainRow, domainDocument, domainRow, isDomainKind, listDomainRows, saveDomainRow} from './domainRecords.js';
+import {activeOwner} from './accountOwner.js';
 
 /** Owner-scoped Store requiring serverToken and userId. */
 const scope = { serverToken: v.string(), userId: v.string() };
@@ -32,11 +34,20 @@ function publicRow(r: Row | null) {
   };
 }
 
-function current(ctx: QueryCtx, userId: string, kind: string, id: string) {
+function genericRecord(ctx: QueryCtx, userId: string, kind: string, id: string) {
   return ctx.db
     .query('records')
     .withIndex('owner_kind_id', (q) => q.eq('userId', userId).eq('kind', kind).eq('id', id))
     .unique();
+}
+
+async function current(ctx: QueryCtx, userId: string, kind: string, id: string): Promise<Row | null> {
+  if (!isDomainKind(kind)) return genericRecord(ctx, userId, kind, id);
+  const doc = await domainDocument(ctx, userId, kind, id);
+  if (doc) return domainRow(kind, doc);
+  const last = await ctx.db.query('changes').withIndex('owner_kind_id_revision', q =>
+    q.eq('userId', userId).eq('kind', kind).eq('id', id)).order('desc').first();
+  return last?.deleted ? last : null;
 }
 
 export const get = query({
@@ -44,6 +55,7 @@ export const get = query({
   handler: async (ctx, a) => {
     await requireServer(a.serverToken);
     bounded(a.userId);
+    if (isDomainKind(a.kind) && !await activeOwner(ctx, a.userId)) return null;
     return publicRow(await current(ctx, a.userId, a.kind, a.id));
   },
 });
@@ -54,7 +66,11 @@ export const list = query({
     await requireServer(a.serverToken);
     bounded(a.userId);
     bounded(a.kind);
-    const parentId = a.parentId;
+    const parentId = a.parentId === undefined ? undefined : bounded(a.parentId);
+    if (isDomainKind(a.kind)) {
+      if (!await activeOwner(ctx, a.userId)) return [];
+      return listDomainRows(ctx, a.userId, a.kind, parentId);
+    }
     const rows =
       parentId === undefined
         ? await ctx.db
@@ -64,7 +80,7 @@ export const list = query({
         : await ctx.db
             .query('records')
             .withIndex('owner_kind_parent', (q) =>
-              q.eq('userId', a.userId).eq('kind', a.kind).eq('parentId', bounded(parentId)),
+              q.eq('userId', a.userId).eq('kind', a.kind).eq('parentId', parentId),
             )
             .collect();
     return rows.filter((r) => !r.deleted).map(publicRow);
@@ -79,14 +95,16 @@ export const changes = query({
     if (!Number.isSafeInteger(a.after) || a.after < 0 || !Number.isInteger(a.limit) || a.limit < 1 || a.limit > 1000) {
       throw new ConvexError('Invalid pagination');
     }
+    const ownerIsActive = await activeOwner(ctx, a.userId);
     const rows = await ctx.db
       .query('changes')
       .withIndex('owner_revision', (q) => q.eq('userId', a.userId).gt('revision', a.after))
       .take(a.limit + 1);
-    const records = rows.slice(0, a.limit).map(publicRow);
+    const page = rows.slice(0, a.limit);
+    const records = page.filter(row => ownerIsActive || !isDomainKind(row.kind)).map(publicRow);
     return {
       records,
-      cursor: records.at(-1)?.revision ?? a.after,
+      cursor: page.at(-1)?.revision ?? a.after,
       hasMore: rows.length > a.limit,
     };
   },
@@ -125,13 +143,14 @@ interface WriteInput {
   deleted: boolean;
 }
 
-async function write(ctx: MutationCtx, a: WriteInput) {
+export async function writeRecord(ctx: MutationCtx, a: WriteInput) {
   [a.userId, a.kind, a.id].forEach(bounded);
   if (a.parentId !== undefined) bounded(a.parentId);
   if (a.value === null || typeof a.value !== 'object' || Array.isArray(a.value)) {
     throw new ConvexError('Expected JSON object');
   }
-  // The JSON roundtrip rejects Convex-only values at this server boundary.
+  if (isDomainKind(a.kind)) await requireActiveOwner(ctx, a.userId);
+  // Sync records carry JSON values across the API boundary.
   const json = JSON.stringify(a.value);
   if (json.length > 900_000) throw new ConvexError('Record too large');
 
@@ -145,20 +164,29 @@ async function write(ctx: MutationCtx, a: WriteInput) {
   else await ctx.db.insert('sequences', { userId: a.userId, value: revision });
 
   const old = await current(ctx, a.userId, a.kind, a.id);
-  // A put without parentId keeps the existing one; tombstones keep it too.
   const parentId = a.parentId ?? old?.parentId;
   const row = {
     userId: a.userId,
     kind: a.kind,
     id: a.id,
-    ...(parentId === undefined ? {} : { parentId }),
-    value: JSON.parse(json),
+    ...(parentId === undefined ? {} : {parentId}),
+    value: JSON.parse(json) as unknown,
     revision,
     updatedAt: new Date().toISOString(),
     deleted: a.deleted,
   };
-  if (old) await ctx.db.replace(old._id, row);
-  else await ctx.db.insert('records', row);
+  if (isDomainKind(a.kind)) {
+    if (a.deleted) {
+      const doc = await domainDocument(ctx, a.userId, a.kind, a.id);
+      if (doc) await deleteDomainRow(ctx, doc, row.updatedAt);
+    } else {
+      Object.assign(row, await saveDomainRow(ctx, a.kind, row));
+    }
+  } else {
+    const doc = await genericRecord(ctx, a.userId, a.kind, a.id);
+    if (doc) await ctx.db.replace(doc._id, row);
+    else await ctx.db.insert('records', row);
+  }
   await ctx.db.insert('changes', row);
   return publicRow(row)!;
 }
@@ -167,7 +195,7 @@ export const put = mutation({
   args: { ...address, value: v.any(), parentId: v.optional(v.string()) },
   handler: async (ctx, a) => {
     await requireServer(a.serverToken);
-    return write(ctx, { userId: a.userId, kind: a.kind, id: a.id, parentId: a.parentId, value: a.value, deleted: false });
+    return writeRecord(ctx, { userId: a.userId, kind: a.kind, id: a.id, parentId: a.parentId, value: a.value, deleted: false });
   },
 });
 
@@ -175,7 +203,7 @@ export const remove = mutation({
   args: address,
   handler: async (ctx, a) => {
     await requireServer(a.serverToken);
-    await write(ctx, { userId: a.userId, kind: a.kind, id: a.id, value: {}, deleted: true });
+    await writeRecord(ctx, { userId: a.userId, kind: a.kind, id: a.id, value: {}, deleted: true });
     return null;
   },
 });
@@ -186,8 +214,9 @@ export const putIfRevision = mutation({
   handler: async (ctx, a) => {
     await requireServer(a.serverToken);
     bounded(a.userId);
+    if (isDomainKind(a.kind)) await requireActiveOwner(ctx, a.userId);
     const old = await current(ctx, a.userId, a.kind, a.id);
     if ((old?.revision ?? 0) !== a.expectedRevision) return null;
-    return write(ctx, { userId: a.userId, kind: a.kind, id: a.id, parentId: a.parentId, value: a.value, deleted: false });
+    return writeRecord(ctx, { userId: a.userId, kind: a.kind, id: a.id, parentId: a.parentId, value: a.value, deleted: false });
   },
 });

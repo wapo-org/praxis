@@ -1,9 +1,11 @@
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import { z } from 'zod';
-import { JsonObjectSchema, type JsonObject } from '@praxis/protocol';
+import { JsonObjectSchema, MessageSchema, type JsonObject } from '@praxis/protocol';
 import type { ListOptions, Store, StoredRecord } from '../contracts.js';
 import { ChangePageSchema, Limit, RecordSchema, Revision, Scope } from './validation.js';
+
+const MESSAGE_COMMIT = 'messages:commit';
 
 export interface ConvexOptions {
   url: string;
@@ -24,7 +26,11 @@ export function createConvexRPC(options: ConvexOptions): ConvexRPC {
   const withToken = (args: Record<string, unknown>) => ({ ...args, serverToken: options.serverToken });
   return {
     query: (name, args) => client.query(makeFunctionReference<'query'>(name), withToken(args)),
-    mutation: (name, args) => client.mutation(makeFunctionReference<'mutation'>(name), withToken({...args,...(args.userId && !name.startsWith('account:') ? {requireOwner:true}: {})})),
+    mutation: (name, args) => {
+      const useLegacyOwnerFence = args.userId && !name.startsWith('account:') && name !== MESSAGE_COMMIT;
+      return client.mutation(makeFunctionReference<'mutation'>(name),
+        withToken(useLegacyOwnerFence ? {...args, requireOwner: true} : args));
+    },
     action: (name, args) => client.action(makeFunctionReference<'action'>(name), withToken(args)),
   };
 }
@@ -63,6 +69,13 @@ function toRecord(value: unknown): StoredRecord {
 
 export function storeFromRPC(rpc: ConvexRPC): ConvexStore {
   return {
+    async commitMessages(userId, chatId, messages) {
+      const payload = z.array(MessageSchema).parse(messages);
+      const result = await rpc.mutation(MESSAGE_COMMIT, {
+        userId: Scope.parse(userId), chatId, messagesJson: JSON.stringify(payload),
+      });
+      return z.array(MessageSchema).parse(result);
+    },
     async *owners() {
       let cursor: string | null = null;
       do {

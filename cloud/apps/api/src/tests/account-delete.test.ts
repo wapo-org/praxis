@@ -1,3 +1,4 @@
+import {ChatSchema} from '@praxis/protocol';
 import { blobOwnerTag } from '../../../../convex/blobOwner.js';
 import { accountEraser } from '../account-deletion.js';
 import { createApp } from '../app.js';
@@ -66,10 +67,17 @@ it('deletes every owned table, blob, Redis key and session; preserves another us
     })
   ).json();
   for (const u of [a.user.id, b.user.id]) {
+    const now = new Date().toISOString();
+    const chat = ChatSchema.parse({type: 'chat', id: 'chat', title: u, mode: 'build', createdAt: now, updatedAt: now});
+    await rpc.mutation('store:put', {userId: u, kind: 'chat', id: chat.id, value: chat});
+    const messages = await storeFromRPC(rpc).commitMessages!(u, chat.id, [{
+      type: 'message', id: 'message', chatId: chat.id, role: 'user', parts: [], createdAt: now, updatedAt: now,
+    }]);
+    expect(messages[0]?.sequence).toBe(1);
+    await rpc.mutation('store:put', {userId: u, kind: 'run', id: 'run', value: {
+      type: 'run', id: 'run', chatId: chat.id, status: 'completed', createdAt: now, updatedAt: now, lastEventId: 0,
+    }});
     for (const kind of [
-      'chat',
-      'message',
-      'run',
       'connector',
       'skill',
       'checkpoint',
@@ -139,6 +147,9 @@ it('deletes every owned table, blob, Redis key and session; preserves another us
     const rows = {};
     for (const table of [
       'records',
+      'chats',
+      'messages',
+      'runs',
       'changes',
       'sequences',
       'toolState',
@@ -175,6 +186,9 @@ it('deletes every owned table, blob, Redis key and session; preserves another us
   await t.run(async (ctx) => {
     for (const table of [
       'records',
+      'chats',
+      'messages',
+      'runs',
       'changes',
       'sequences',
       'toolState',

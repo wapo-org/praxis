@@ -19,8 +19,8 @@ describe('durable workflow skeleton', () => {
     const {t, runId} = await setup();
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     const run = await t.run(ctx => ctx.db.get(runId));
-    expect(run).toMatchObject({status: 'completed', nextTurnIndex: 3});
-    const steps = await t.run(ctx => workflow.listSteps(ctx, run!.workflowId as WorkflowId));
+    expect(run).toMatchObject({workflow: {status: 'completed', nextTurnIndex: 3}});
+    const steps = await t.run(ctx => workflow.listSteps(ctx, run!.workflow!.id as WorkflowId));
     const turns = steps.page.filter(step => step.name === 'turns:run');
     expect(turns).toHaveLength(3);
     for (const turn of turns) {
@@ -40,17 +40,17 @@ describe('durable workflow skeleton', () => {
     });
     const {t, runId} = await setup();
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
-    expect((await t.run(ctx => ctx.db.get(runId)))?.status).toBe('failed');
+    expect((await t.run(ctx => ctx.db.get(runId)))?.workflow?.status).toBe('failed');
   });
   it('redelivers committed turns concurrently without advancing twice', async () => {
     const {t, scope, runId} = await setup();
     const args = {...scope, expectedTurnIndex: 0};
     const results = await Promise.all([t.action(internal.turns.run, args), t.action(internal.turns.run, args)]);
     expect(results[0]).toEqual(results[1]);
-    expect((await t.run(ctx => ctx.db.get(runId)))?.nextTurnIndex).toBe(1);
+    expect((await t.run(ctx => ctx.db.get(runId)))?.workflow?.nextTurnIndex).toBe(1);
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     expect(await t.action(internal.turns.run, args)).toEqual(results[0]);
-    expect(await t.run(ctx => ctx.db.query('turnFlags').collect())).toHaveLength(3);
+    expect(await t.run(ctx => ctx.db.query('turns').collect())).toHaveLength(3);
   });
   it('cancels after a committed turn and fences a late action', async () => {
     const {t, owner, scope, runId} = await setup();
@@ -58,13 +58,13 @@ describe('durable workflow skeleton', () => {
     await owner.mutation(api.runs.cancel, {runId});
     expect(await t.action(internal.turns.run, {...scope, expectedTurnIndex: 1})).toMatchObject({done: true, status: 'stopped'});
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
-    expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({status: 'cancelled', nextTurnIndex: 1});
+    expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({workflow: {status: 'cancelled', nextTurnIndex: 1}});
   });
   it('finalizes invalid flags as failed rather than looping', async () => {
-    const {t, runId} = await setup();
-    await t.run(ctx => ctx.db.insert('turnFlags', {runId, generation: 0, turnIndex: 0, done: false, status: 'completed'}));
+    const {t, runId, userId} = await setup();
+    await t.run(ctx => ctx.db.insert('turns', {userId, runId, generation: 0, turnIndex: 0, done: false, status: 'completed'}));
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
-    expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({status: 'failed', nextTurnIndex: 0});
+    expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({workflow: {status: 'failed', nextTurnIndex: 0}});
   });
   it('rejects foreign users, missing auth, invalid indices and stale generations', async () => {
     const {t, owner, scope, runId} = await setup();
@@ -81,10 +81,10 @@ describe('durable workflow skeleton', () => {
   it('does not overwrite a successor when an old completion arrives', async () => {
     const {t, runId, scope} = await setup();
     const run = await t.run(ctx => ctx.db.get(runId));
-    await t.run(ctx => ctx.db.patch(runId, {generation: 1}));
-    await t.mutation(internal.runs.onComplete, {workflowId: run!.workflowId as WorkflowId,
+    await t.run(ctx => ctx.db.patch(runId, {workflow: {...run!.workflow!, generation: 1}}));
+    await t.mutation(internal.runs.onComplete, {workflowId: run!.workflow!.id as WorkflowId,
       context: scope, result: {kind: 'failed', error: 'old failure'}});
-    expect((await t.run(ctx => ctx.db.get(runId)))?.status).toBe('running');
+    expect((await t.run(ctx => ctx.db.get(runId)))?.workflow?.status).toBe('running');
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
   });
 });

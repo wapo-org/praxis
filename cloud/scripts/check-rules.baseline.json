@@ -92,7 +92,6 @@
       "apps/web/e2e/n2.pw.ts": 7,
       "apps/web/e2e/saved-values.pw.ts": 6,
       "convex/account.ts": 2,
-      "convex/functions.ts": 3,
       "packages/glass/src/dropdown/dropdown.pw.ts": 3,
       "scripts/deploy.test.ts": 9
     },

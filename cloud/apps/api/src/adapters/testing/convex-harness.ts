@@ -11,6 +11,7 @@ const modules = {
   '../../../../../convex/_generated/api.js': async () => ({}),
   '../../../../../convex/account.ts': () => import('../../../../../convex/account.js'),
   '../../../../../convex/tools.ts': () => import('../../../../../convex/tools.js'),
+  '../../../../../convex/messages.ts': () => import('../../../../../convex/messages.js'),
   '../../../../../convex/store.ts': () => import('../../../../../convex/store.js'),
   '../../../../../convex/authClerk.ts': () => import('../../../../../convex/authClerk.js'),
   '../../../../../convex/legacyAuth.ts': () => import('../../../../../convex/legacyAuth.js'),

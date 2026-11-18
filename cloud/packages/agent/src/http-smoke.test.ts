@@ -14,10 +14,13 @@ it('runs a complete model→tool→model turn through real HTTP on the chat comp
       res.write(frame({choices:[{index:0,delta:{content:''},finish_reason:turn===0?'tool_calls':'stop'}],usage:{prompt_tokens:20,completion_tokens:5,cost:0.001}}));res.end('data: [DONE]\n\n');
     }catch(error){res.destroy(error instanceof Error?error:undefined);}
   });
-  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(8788,'127.0.0.1',resolve);});
+  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
   try{
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('HTTP fixture did not bind a TCP port');
     // Redirects the pinned OpenRouter URL to the local test server.
-    const toLocal=((url,init)=>fetch(String(url).replace(new URL(OPENROUTER_API_BASE).origin,'http://127.0.0.1:8788'),init)) as typeof fetch;
+    const toLocal: typeof fetch = (url, init) =>
+      fetch(String(url).replace(new URL(OPENROUTER_API_BASE).origin, `http://127.0.0.1:${address.port}`), init);
     const provider=createOpenRouterProvider({apiKey:SealedSecret.of('local-only'),capabilities:CapabilitiesSchema.parse({tools:true})},toLocal);let last:AgentCheckpoint|undefined;let eventId=0;
     const runner=new AgentRunner({provider,tools:scriptedTools(),ports:{save:async(user,cp)=>{expect(user).toBe('http-user');last=structuredClone(cp);},emit:async()=>++eventId,isCancelled:async()=>false}});
     const time=new Date().toISOString();const cp=await runner.run({userId:'http-user',run:{type:'run',id:'r-http',chatId:'http-chat',status:'queued',createdAt:time,updatedAt:time,lastEventId:0,clientTurnId:'client-turn'},chat:{type:'chat',id:'http-chat',title:'HTTP',pinned:false,mode:'build',connectorIds:[],disabledConnectorIds:[],createdAt:time,updatedAt:time},modelId:'local-model',messages:[{type:'message',id:'user',chatId:'http-chat',role:'user',parts:[{type:'text',text:'Use the echo tool'}],createdAt:time,updatedAt:time}]});

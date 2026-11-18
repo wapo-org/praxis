@@ -1,3 +1,4 @@
+import {ChatSchema} from '@praxis/protocol';
 import { describe, it, expect, vi } from 'vitest';
 import { clerkAuth, type ClerkBackend } from './auth-clerk.js';
 import { storeFromRPC } from './convex.js';
@@ -11,12 +12,17 @@ function fixture() {
   };
   return { rpc, backend, auth: clerkAuth(backend, rpc), request: new Request('https://api.test/v1/auth/session', { headers: { authorization: 'Bearer fake' } }) };
 }
+function chat(id: string, title: string) {
+  const now = new Date().toISOString();
+  return ChatSchema.parse({type: 'chat', id, title, mode: 'build', createdAt: now, updatedAt: now});
+}
+
 describe('Clerk account binding', () => {
   it('retains legacy id and binds once for a verified same-email login', async () => {
     const f = fixture();
     await f.rpc.mutation('legacyAuth:execute', { operation: 'create', input: { model: 'user', data: { id: 'legacy', email: 'legacy@example.test', name: 'Legacy' } } });
     const store = storeFromRPC(f.rpc);
-    await store.put('legacy', 'chat', 'kept-chat', { title: 'Keep my history' });
+    await store.put('legacy', 'chat', 'kept-chat', chat('kept-chat', 'Keep my history'));
     expect((await f.auth.resolveSession(f.request))?.user.id).toBe('legacy');
     expect((await store.get('legacy', 'chat', 'kept-chat'))?.value.title).toBe('Keep my history');
     expect((await f.auth.resolveSession(f.request))?.user.id).toBe('legacy');
@@ -73,7 +79,7 @@ it('retains a retryable Clerk binding through provider deletion failure and purg
   const f = fixture();
   await f.auth.resolveSession(f.request);
   const store = storeFromRPC(f.rpc);
-  await store.put('clerk-1', 'chat', 'history', {title:'Erase me'});
+  await store.put('clerk-1', 'chat', 'history', chat('history', 'Erase me'));
   const redis = upstashFromRedis(fakeRedis().redis, {accountOwnership:true});
   await redis.ownership.activate('clerk-1', async()=>true);
   const erase = accountEraser(f.rpc, redis.ownership, f.auth.deleteExternal);

@@ -10,6 +10,9 @@ const ACCESS_TTL_SECONDS = 3600;
 const SESSION_TTL_SECONDS = 7200;
 const modules = {
   '../convex/_generated/api.js': () => import('../convex/_generated/api.js'),
+  '../convex/chats.ts': () => import('../convex/chats.js'),
+  '../convex/messages.ts': () => import('../convex/messages.js'),
+  '../convex/store.ts': () => import('../convex/store.js'),
   '../convex/account.ts': () => import('../convex/account.js'),
   '../convex/runs.ts': () => import('../convex/runs.js'),
   '../convex/turns.ts': () => import('../convex/turns.js'),
@@ -38,9 +41,7 @@ export async function signedInUser(t: WorkflowTest) {
 export async function startedRun() {
   const t = workflowTest();
   const {userId, client: owner} = await signedInUser(t);
-  await t.run(ctx => ctx.db.insert('records', {
-    userId, kind: 'chat', id: chatId, value: {}, revision: 1, updatedAt: new Date().toISOString(), deleted: false,
-  }));
+  await owner.mutation(api.chats.create, {input: {type: 'chat.input', id: chatId}});
   const runId = await owner.mutation(api.runs.start, {chatId});
   const scope = {userId, chatId, runId, generation: 0};
   return {t, owner, userId, runId, scope};
