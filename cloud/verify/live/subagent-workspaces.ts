@@ -8,7 +8,7 @@ export default defineSuite({
     {
       id: 'modal-confinement', kind: 'manual', needs: {}, evidence: 'file',
       checklist: 'Verify real Modal process, path, symlink, cross-child and network confinement.',
-      instruction: 'Use a provisioned Linux image with bwrap and Python; at most two boots total, terminate each in finally and confirm poll is terminal. Run prepareSubagent before launch; prove shell absolute paths, traversal, symlink races, parent/sibling access, inherited secrets and network access fail. Attach sandbox IDs, image digest, assertions and confirmed termination evidence. Namespace failure blocks launch and does not count as successful confinement.',
+      instruction: 'Build and boot sandboxToolsImage() for this revision; at most two boots total, terminate each in finally and confirm poll is terminal. Run prepareSubagent before launch; prove shell absolute paths, traversal, symlink races, parent/sibling access, inherited secrets and network access fail. Attach sandbox IDs, image digest, assertions and confirmed termination evidence. Namespace failure blocks launch and does not count as successful confinement.',
     },
     {
       id: 'snapshot-verification', kind: 'manual', needs: {}, evidence: 'file',
