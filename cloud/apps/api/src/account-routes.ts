@@ -51,7 +51,15 @@ export function registerAccountDeletion(
         'confirmation_required',
         'Confirm your current password or sign in again',
       );
-    await options.config.purge(userId, confirmed.sessionId);
+    try {
+      await options.config.purge(userId, confirmed.sessionId);
+    } catch {
+      throw new ApiError(
+        503,
+        'deletion_incomplete',
+        'Account deletion is still in progress; retry account deletion',
+      );
+    }
     for (const [token, user] of options.devTokens)
       if (user === userId) {
         options.devTokens.delete(token);
