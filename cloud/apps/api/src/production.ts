@@ -5,7 +5,6 @@ import {readTurnKeys} from './turn/auth.js';
 import {registerTurnRoute} from './turn/routes.js';
 import {GROQ_POOL, pool, redisCooldownStore, type CredentialLogEvent} from '@praxis/credentials';
 import {verifiedConvexOwner} from './adapters/convex-session.js';
-import {z} from 'zod';
 import {createConvexRPC} from './adapters/convex.js';
 import {parseOrigins} from './origins.js';
 import {createConvexStore} from './adapters/convex.js';
@@ -119,10 +118,8 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
       if (!await upstash.ownership.isActive(id)) {
         await upstash.ownership.activate(id, async () => await accountRPC.query('account:active', { userId: id }) === true);
       }
-      // Convex has verified this bearer; its expiry is display metadata and never authorizes a request.
-      const payload = request.headers.get('authorization')!.split('.')[1]!;
-      const { exp } = z.object({ exp: z.number().int() }).parse(JSON.parse(Buffer.from(payload, 'base64url').toString()));
-      return { user: { type: 'user', id, name: 'Praxis user' }, expiresAt: new Date(exp * 1000).toISOString() };
+      // Convex returns the owner without a cache lifetime, so clients must revalidate immediately.
+      return { user: { type: 'user', id, name: 'Praxis user' }, expiresAt: new Date().toISOString() };
     },
     authHandler: async () => Response.json({ type: 'error', code: 'convex_auth_required', message: 'Manage your session with Convex Auth' }, { status: 410 }),
     rateLimit: createRateLimiter(upstash.redis),
