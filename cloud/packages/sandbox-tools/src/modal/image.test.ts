@@ -1,4 +1,7 @@
-import {readFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {delimiter, join} from 'node:path';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {Image, ModalClient} from 'modal';
 import {BASE_IMAGE, DEBIAN_PACKAGES, DEBIAN_SNAPSHOT, sandboxBaseImage, sandboxToolsImage, sandboxNotebookImage} from './image.js';
@@ -47,13 +50,34 @@ describe('sandbox image', () => {
     expect(commands).toContain('bookworm main\\n');
     for (const [name, version] of Object.entries(DEBIAN_PACKAGES)) expect(commands).toContain(`${name}=${version}`);
     expect(commands).toContain('bubblewrap=0.8.0-2+deb12u1');
-    expect(commands).toContain('bwrap --help');
-    expect(commands).toContain('--bind-fd[[:space:]]');
-    expect(commands).toContain('--ro-bind-fd[[:space:]]');
     expect(commands).toContain('timeout 150s');
     expect(commands).toContain('APT::Update::Error-Mode=any');
     expect(commands).not.toMatch(/trusted=yes|allow-unauthenticated|Verify-Peer=false/);
     expect(commands).toContain('WORKDIR /workspace');
+  });
+
+  it.each([
+    {help: '    --bind-fd FD DEST\n    --ro-bind-fd FD DEST', missing: undefined},
+    {help: '    --bind-fd-extra FD DEST\n    --ro-bind-fd FD DEST', missing: '--bind-fd'},
+    {help: '    --bind-fd FD DEST\n    --ro-bind-fd-extra FD DEST', missing: '--ro-bind-fd'},
+  ])('checks Bubblewrap help in the generated shell command ($missing)', ({help, missing}) => {
+    const layer = vi.spyOn(Image.prototype, 'dockerfileCommands');
+    sandboxToolsImage(new ModalClient({tokenId: 'unused', tokenSecret: 'unused'}));
+    const probe = layer.mock.calls[0]![0].find(command => command.startsWith('RUN ') && command.includes('bwrap --help'));
+    expect(probe).toBeDefined();
+
+    const bin = mkdtempSync(join(tmpdir(), 'praxis-image-test-'));
+    try {
+      writeFileSync(join(bin, 'bwrap'), '#!/bin/sh\ntest "$1" = --help && printf "%s\\n" "$BWRAP_TEST_HELP"\n', {mode: 0o755});
+      const result = spawnSync('/bin/sh', ['-c', probe!.slice('RUN '.length)], {
+        encoding: 'utf8',
+        env: {...process.env, PATH: [bin, process.env.PATH].join(delimiter), BWRAP_TEST_HELP: help},
+      });
+      expect(result.status).toBe(missing ? 1 : 0);
+      expect(result.stderr).toBe(missing ? 'Bubblewrap is missing ' + missing + ' support\n' : '');
+    } finally {
+      rmSync(bin, {recursive: true, force: true});
+    }
   });
 });
 
