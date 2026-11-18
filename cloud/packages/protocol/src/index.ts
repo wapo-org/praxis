@@ -250,6 +250,12 @@ export const TranscribeRequestSchema = z.object({type:z.literal('transcribe.requ
 
 export const ACCOUNT_DELETE_PATH = '/v1/account';
 export const ACCOUNT_DELETE_FRESHNESS_MS = 5 * 60 * 1000;
+export const INTERNAL_CONTINUATION_PATH = '/internal/continue';
+export const ACCOUNT_DELETE_RECOVERY_SIGNATURE_HEADER = 'praxis-account-recovery-signature';
+export const AccountDeleteRecoverySchema = z.object({
+  type: z.literal('account.delete.resume'),
+  userId: z.string().min(1).max(500),
+}).strict();
 export const AccountDeleteSchema=z.object({type:z.literal('account.delete').optional(),password:z.string().min(1).max(1024).optional()});
 export const AccountDeletedSchema=z.object({type:z.literal('account.deleted')});
 export * from './tool-boundary.js';

@@ -1,5 +1,5 @@
 import type {Hono} from 'hono';
-import type {User} from '@praxis/protocol';
+import {ACCOUNT_DELETE_RECOVERY_SIGNATURE_HEADER, type User} from '@praxis/protocol';
 import {createApp} from './app.js';
 import type {AdapterBundle, FeatureContext} from './contracts.js';
 import {createExecutionDriver, type ContinuationScheduler, type ExecutionFeatures, type RunLease} from './execution.js';
@@ -35,8 +35,14 @@ export interface PraxisDeps {
   budgetMs?: number;
   /** Shared run lease (Redis in production) serializing run slices across instances. */
   lease?: RunLease;
-  /** Verifies signed continuation callbacks and returns the run to advance. */
-  continuation?: {path: string; verify: (request: Request) => Promise<{userId: string; runId: string}>};
+  continuation?: {
+    path: string;
+    verify: (request: Request) => Promise<{userId: string; runId: string}>;
+    accountRecovery?: {
+      verify: (request: Request) => Promise<{userId: string}>;
+      resume: (userId: string) => Promise<void>;
+    };
+  };
   clock?: () => number;
   /** Semantic search: an embedder and where its vectors live. Absent = lexical search only. */
   search?: {embedder: Embedder; vectors: VectorIndex; debounceMs?: number};
@@ -86,17 +92,23 @@ export function createPraxisApp(deps: PraxisDeps) {
     },
   });
   if (deps.continuation) {
-    const {path, verify} = deps.continuation;
-    // Unauthenticated outside /v1; slice runs inline so 5xx triggers QStash redelivery.
+    const {path, verify, accountRecovery} = deps.continuation;
+    // Signed callbacks run inline so a failed attempt returns 5xx.
     app.post(path, async c => {
-      let message: {userId: string; runId: string};
+      let advance: () => Promise<unknown>;
       try {
-        message = await verify(c.req.raw);
+        if (accountRecovery && c.req.header(ACCOUNT_DELETE_RECOVERY_SIGNATURE_HEADER) !== undefined) {
+          const {userId} = await accountRecovery.verify(c.req.raw);
+          advance = () => accountRecovery.resume(userId);
+        } else {
+          const {userId, runId} = await verify(c.req.raw);
+          advance = () => driver.continue(userId, runId);
+        }
       } catch (error) {
         if (error instanceof ContinuationAuthError) return c.json({type: 'error', code: 'unauthorized', message: 'Invalid continuation signature'}, 401);
         return c.json({type: 'error', code: 'invalid_continuation', message: 'Invalid continuation'}, 400);
       }
-      await driver.continue(message.userId, message.runId);
+      await advance();
       return c.json({type: 'ok'});
     });
   }

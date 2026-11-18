@@ -1,3 +1,6 @@
+import {INTERNAL_CONTINUATION_PATH} from '@praxis/protocol';
+import {SealedSecret} from '@praxis/types';
+import {verifyAccountRecovery} from './account-recovery.js';
 import {productionWebPorts} from './features/web/production.js';
 import {WEB_PROVIDERS} from './features/web/constants.js';
 import {Hono} from 'hono';
@@ -33,7 +36,7 @@ export const PRODUCTION_ENV = [
 
 export type ProductionEnv = Record<(typeof PRODUCTION_ENV)[number], string> & {PRAXIS_ENCRYPTION_KEYS?: string; PRAXIS_ENCRYPTION_KEY?: string; PRAXIS_RUN_BUDGET_MS?: string; PRAXIS_COOKIE_SAMESITE?: string; GROQ_API_KEY?: string};
 
-export const CONTINUATION_PATH = '/internal/continue';
+export const CONTINUATION_PATH = INTERNAL_CONTINUATION_PATH;
 
 /** Optional pooled platform keys using un-gapped _2, _3, ... suffixes. */
 export const PLATFORM_POOLS: readonly PoolSpec[] = [{service: GROQ_POOL.service, names: GROQ_POOL.name}, ...Object.values(WEB_PROVIDERS).map(p => ({service: p.service, names: p.name}))];
@@ -102,6 +105,7 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
   const store = createConvexStore({url: env.CONVEX_URL, serverToken: env.PRAXIS_CONVEX_SERVER_TOKEN});
   const storage = createConvexToolsStorage({url: env.CONVEX_URL, serverToken: env.PRAXIS_CONVEX_SERVER_TOKEN, baseUrl: origin});
   const accountRPC=createConvexRPC({url:env.CONVEX_URL,serverToken:env.PRAXIS_CONVEX_SERVER_TOKEN});
+  const eraseAccount = accountEraser(accountRPC, upstash.ownership);
   const egress = createSafeFetch();
   // Semantic search: off unless an embedder is configured (PRAXIS_EMBEDDER / PRAXIS_OPENAI_EMBEDDINGS_KEY).
   const embedder = productionEmbedder(rawEnv);
@@ -124,13 +128,22 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
     },
     accountDeletion: {
       confirm: (request, password) => confirmConvexDeletion(request, env.CONVEX_URL, password),
-      purge: accountEraser(accountRPC, upstash.ownership),
+      purge: eraseAccount,
     },
     authHandler: async () => Response.json({ type: 'error', code: 'convex_auth_required', message: 'Manage your session with Convex Auth' }, { status: 410 }),
     rateLimit: createRateLimiter(upstash.redis),
     scheduler: createQStashScheduler({token: env.QSTASH_TOKEN, callbackUrl}),
     lease: upstash.lease,
-    continuation: {path: CONTINUATION_PATH, verify: createQStashVerifier({currentSigningKey: env.QSTASH_CURRENT_SIGNING_KEY, nextSigningKey: env.QSTASH_NEXT_SIGNING_KEY, callbackUrl})},
+    continuation: {
+      path: CONTINUATION_PATH,
+      verify: createQStashVerifier({
+        currentSigningKey: env.QSTASH_CURRENT_SIGNING_KEY, nextSigningKey: env.QSTASH_NEXT_SIGNING_KEY, callbackUrl,
+      }),
+      accountRecovery: {
+        verify: verifyAccountRecovery(SealedSecret.of(env.PRAXIS_CONVEX_SERVER_TOKEN)),
+        resume: eraseAccount.resume,
+      },
+    },
     ...(env.PRAXIS_RUN_BUDGET_MS ? {budgetMs: Number(env.PRAXIS_RUN_BUDGET_MS)} : {}),
     ...(hooks.defer ? {defer: hooks.defer} : {}),
     ...(embedder ? {search: {embedder, vectors: convexVectorIndex(accountRPC)}} : {}),

@@ -28,6 +28,7 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated) return <EmailScreens />;
   if (user === null) return <AuthFrame>
     <p role="alert">{deletionError || (deletion?.pending ? 'Account deletion is pending.' : 'This account is unavailable.')}</p>
+    {deletion?.pending && <p>Deletion will continue if you sign out.</p>}
     {deletion?.pending && <button onClick={() => void deleteAccount('').catch(() => {})}>Retry account deletion</button>}
     <button onClick={() => void signOutSession()}>Sign out</button>
   </AuthFrame>;

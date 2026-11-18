@@ -84,8 +84,8 @@ function DeleteAccountConfirm({
         />
       </label>
       <p className={styles.footnote}>
-        You can leave the password empty if you signed in within the last five minutes.
-        If you use Google or Apple, sign in again and leave it empty.
+        Enter your current password. If you only use Google or Apple, sign in again and
+        leave the password empty.
       </p>
       <TaskError error={task.error} />
       <button

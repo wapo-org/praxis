@@ -11,6 +11,7 @@
 import type * as access from "../access.js";
 import type * as account from "../account.js";
 import type * as accountOwner from "../accountOwner.js";
+import type * as accountRecovery from "../accountRecovery.js";
 import type * as accountTables from "../accountTables.js";
 import type * as auth from "../auth.js";
 import type * as authClerk from "../authClerk.js";
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   access: typeof access;
   account: typeof account;
   accountOwner: typeof accountOwner;
+  accountRecovery: typeof accountRecovery;
   accountTables: typeof accountTables;
   auth: typeof auth;
   authClerk: typeof authClerk;

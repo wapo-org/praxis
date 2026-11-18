@@ -1,5 +1,6 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {randomBytes} from 'node:crypto';
+import {createHmac, randomBytes} from 'node:crypto';
+import {ACCOUNT_DELETE_RECOVERY_SIGNATURE_HEADER} from '@praxis/protocol';
 import type {Redis} from '@upstash/redis';
 import {CONTINUATION_PATH, PRODUCTION_ENV, createProductionApp, readProductionEnv} from '../production.js';
 import * as upstash from '../adapters/upstash.js';
@@ -8,7 +9,7 @@ import {createSmokeApp} from '../smoke.js';
 import {createLocalAdapters} from '../local-memory.js';
 import {createPraxisApp, jsonLog} from '../server.js';
 
-const env = (): Record<string, string> => ({
+const env = () => ({
   PRAXIS_TURN_CURRENT_SIGNING_KEY: 't'.repeat(32),
   PRAXIS_API_URL: 'https://api.praxis.test',
   PRAXIS_WEB_ORIGINS: 'https://app.praxis.test',
@@ -43,7 +44,7 @@ describe('production startup', () => {
     expect((await app.request(CONTINUATION_PATH, {method: 'POST', body: '{}'})).status).toBe(401);
   });
 
-  it('confirms a Convex session before purging and rejects its old bearer afterward', async () => {
+  it('purges the verified owner and resumes committed work in a fresh app without the initiating bearer', async () => {
     const config = env();
     const userId = 'verified-owner';
     const sessionId = 'session-for-test';
@@ -53,6 +54,7 @@ describe('production startup', () => {
     const calls: string[] = [];
     let deleting = false;
     let erased = false;
+    let committedBatches = 0;
     const convexFetch = vi.fn<typeof fetch>(async (_url, init) => {
       const {path, args: [args]} = JSON.parse(String(init?.body));
       const headers = new Headers(init?.headers);
@@ -72,13 +74,22 @@ describe('production startup', () => {
           deleting = true;
           value = null;
           break;
-        case 'account:purge':
-          if (calls.filter(call => call === path).length === 1) {
-            return new Response('temporary failure', {status: 503});
-          }
-          erased = true;
-          value = {done: true};
+        case 'account:pending':
+          expect(args).toEqual({userId, serverToken: config.PRAXIS_CONVEX_SERVER_TOKEN});
+          value = deleting && !erased;
           break;
+        case 'account:purge': {
+          const call = calls.filter(item => item === path).length;
+          expect(args).toEqual({
+            userId, serverToken: config.PRAXIS_CONVEX_SERVER_TOKEN,
+            ...(call <= 2 ? {keepSessionId: sessionId} : {}),
+          });
+          if (call === 2) return new Response('temporary failure', {status: 503});
+          committedBatches++;
+          erased = call >= 3;
+          value = {done: erased};
+          break;
+        }
         case 'auth:currentUser':
           value = deleting ? null : userId;
           break;
@@ -98,12 +109,23 @@ describe('production startup', () => {
       expect((await erase('incorrect-test-password')).status).toBe(403);
       expect(calls).toEqual(['account:deletionOwner', 'account:confirmDeletion']);
       expect((await erase('verified-test-password')).status).toBe(500);
+      expect(committedBatches).toBe(1);
       expect((await app.request('/v1/bootstrap', {headers})).status).toBe(401);
-      const result = await erase();
-      expect(result.status).toBe(200);
-      expect(await result.json()).toEqual({type: 'account.deleted'});
+
+      const freshApp = createProductionApp(config).app;
+      const body = JSON.stringify({type: 'account.delete.resume', userId});
+      const signature = createHmac('sha256', config.PRAXIS_CONVEX_SERVER_TOKEN).update(body).digest('hex');
+      const recover = (payload: string) => freshApp.request(CONTINUATION_PATH, {
+        method: 'POST', headers: {[ACCOUNT_DELETE_RECOVERY_SIGNATURE_HEADER]: signature}, body: payload,
+      });
+      expect((await recover(body.replace(userId, 'forged-owner'))).status).toBe(401);
+      expect(committedBatches).toBe(1);
+      expect((await recover(body)).status).toBe(200);
+      expect(committedBatches).toBe(2);
+      expect((await recover(body)).status).toBe(200);
+      expect(committedBatches).toBe(2);
       expect((await erase()).status).toBe(401);
-      expect((await app.request('/v1/bootstrap', {headers})).status).toBe(401);
+      expect((await freshApp.request('/v1/bootstrap', {headers})).status).toBe(401);
     } finally {
       redisFactory.mockRestore();
       vi.unstubAllGlobals();

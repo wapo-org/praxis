@@ -46,9 +46,6 @@ It never falls back to memory adapters or dev auth.
 | `PRAXIS_API_URL` | yes | Public https origin of the API, no path (e.g. `https://api.example.com`). Used for OAuth callbacks, upload URLs and the QStash callback. |
 | `PRAXIS_WEB_ORIGINS` | yes | Comma-separated https origins of the web app (CORS, CSRF and auth trusted origins). |
 | `PRAXIS_ENCRYPTION_KEYS` | yes | AES-256-GCM keyring for provider keys, MCP tokens and the voice key: comma-separated base64 32-byte keys, **current first**, then previous ones. Generate a key with `openssl rand -base64 32`. A single legacy `PRAXIS_ENCRYPTION_KEY` is still accepted. See Key rotation. |
-| `CLERK_PUBLISHABLE_KEY` | yes | Clerk instance publishable key. |
-| `CLERK_SECRET_KEY` | yes | Server-only Clerk key for identity lookup and account deletion. |
-| `CLERK_JWT_KEY` | yes | Clerk instance PEM public key for networkless JWT verification. |
 | `VITE_CONVEX_URL` | web build | Convex deployment client URL; web sign-in is Convex Auth v2, configured in the Convex deployment (see [Convex Auth v2 web](#convex-auth-v2-web-pra-34)). |
 | `CONVEX_URL` | yes | Convex dashboard → deployment → Settings → URL (`https://<name>.convex.cloud`). |
 | `PRAXIS_CONVEX_SERVER_TOKEN` | yes | API-to-Convex credential, ≥ 32 chars: `openssl rand -base64 48`. Set the **same value** in the Convex deployment env (below). |
@@ -81,13 +78,14 @@ Browser builds get only the API origin, never a secret.
 
 | Variable | Value |
 |---|---|
-| `PRAXIS_CONVEX_SERVER_TOKEN` | Same value as on Vercel. Every Convex function rejects calls without it. |
+| `PRAXIS_CONVEX_SERVER_TOKEN` | Same value as on Vercel. Authenticates server RPCs and signs account recovery callbacks. |
+| `PRAXIS_API_URL` | Same HTTPS API origin as on Vercel. Convex sends signed account recovery callbacks here. |
 
 ## 1. Convex
 
 1. Create a project at dashboard.convex.dev (production deployment).
 2. In `cloud/`, run `npx convex deploy`. It asks for login/`CONVEX_DEPLOY_KEY`, and pushes `cloud/convex/` (schema plus the store, auth, files and tools functions).
-3. Set `PRAXIS_CONVEX_SERVER_TOKEN` in the Convex env, and copy the deployment URL into `CONVEX_URL` on Vercel.
+3. Set `PRAXIS_CONVEX_SERVER_TOKEN` and `PRAXIS_API_URL` in the Convex env, and copy the deployment URL into `CONVEX_URL` on Vercel.
 4. Never ship `CONVEX_DEPLOY_KEY` to the API or clients. It is only for the deploy step.
 
 ## 2. Upstash
@@ -153,9 +151,9 @@ Live Convex and Upstash contract tests run when their env vars are set: `CONVEX_
 
 ## Account deletion protocol (additive)
 
-Hosted `DELETE /v1/account` requires a Convex Auth bearer and accepts `{ "type": "account.delete", "password": "…" }`. Supply the current password or leave it empty if the session was created less than five minutes ago. Google and Apple users can sign in again to obtain a fresh session. The normal origin and authenticated rate-limit checks apply. Missing confirmation returns 403. Success returns `{ "type": "account.deleted" }`. Revoked bearers return 401 and their refresh tokens cannot create a session. The rate-limit counters expire on their own.
+Hosted `DELETE /v1/account` requires a Convex Auth bearer and accepts `{ "type": "account.delete", "password": "…" }`. Password accounts must supply their current password. Google- or Apple-only accounts can leave the password empty after signing in within the last five minutes. The normal origin and authenticated rate-limit checks apply. Missing confirmation returns 403. Success returns `{ "type": "account.deleted" }`. Revoked bearers return 401 and their refresh tokens cannot create a session. The rate-limit counters expire on their own.
 
-The production eraser locks account activation, marks the account as deleting, freezes owner Redis writes, purges indexed Redis data (streams, caches, OAuth state and leases), then hard-deletes every owner-scoped Convex table and uploaded blobs in bounded batches. Other sessions are revoked when deletion starts. The initiating session can only retry deletion until the final batch revokes it and erases the credentials. Keep that session signed in to retry an interrupted deletion. Redis ownership indexes are registered atomically with writes as a sorted set scored by key expiry, pruned on every owner write so it stays bounded; the purge removes keys in chunks and drops them from the index as it goes, so a retry resumes. Activation verifies that the Convex account remains active. The global blob sweep stores its cursor on the user row, so a retried request continues it. Generic Convex writes are fenced once deletion begins. Blob ownership tags also permit deleting interrupted, unbound uploads. Every Convex table must declare a deletion policy in `convex/accountTables.ts` (a missing one fails typecheck); in-flight workflows are cancelled and their journals cleaned before their runs are deleted; new owner KV writes must carry `ownerId` (feature contexts do so automatically).
+The production eraser locks account activation, marks the account as deleting, freezes owner Redis writes, purges indexed Redis data (streams, caches, OAuth state and leases), then hard-deletes every owner-scoped Convex table and uploaded blobs in bounded batches. Other sessions are revoked when deletion starts, and sign-in is blocked until the credentials are erased. The initiating session can retry deletion while still signed in. Convex schedules signed recovery callbacks to `/internal/continue` every minute while the owner is marked for deletion, so sign-out or a worker failure cannot strand the purge. The final batch revokes the initiating session and erases the credentials. Redis ownership indexes are registered atomically with writes as a sorted set scored by key expiry, pruned on every owner write so it stays bounded; the purge removes keys in chunks and drops them from the index as it goes, so a retry resumes. Activation verifies that the Convex account remains active. The global blob sweep stores its cursor on the user row, so a retried request continues it. Generic Convex writes are fenced once deletion begins. Blob ownership tags also permit deleting interrupted, unbound uploads. Every Convex table must declare a deletion policy in `convex/accountTables.ts` (a missing one fails typecheck); in-flight workflows are cancelled and their journals cleaned before their runs are deleted; new owner KV writes must carry `ownerId` (feature contexts do so automatically).
 
 
 

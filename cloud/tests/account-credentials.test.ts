@@ -1,7 +1,13 @@
+import {createHmac} from 'node:crypto';
+import {createFunctionHandle} from 'convex/server';
 import {readFile} from 'node:fs/promises';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {convexTest} from 'convex-test';
-import {ACCOUNT_DELETE_FRESHNESS_MS} from '@praxis/protocol';
+import {
+  ACCOUNT_DELETE_FRESHNESS_MS,
+  ACCOUNT_DELETE_RECOVERY_SIGNATURE_HEADER,
+  INTERNAL_CONTINUATION_PATH,
+} from '@praxis/protocol';
 import {registerCore, sessionIdentity} from '@convex-dev/auth/test';
 import {registerEmail, registerResendStub, sentEmails} from '@convex-dev/auth/components/email/test';
 import {registerPassword} from '@convex-dev/auth/components/password/test';
@@ -9,13 +15,16 @@ import {registerGoogleOauth} from '@convex-dev/auth/components/google/test';
 import {registerAppleOauth} from '@convex-dev/auth/components/apple/test';
 import workflowComponent from '@convex-dev/workflow/test';
 import schema from '../convex/schema.js';
-import {api, components} from '../convex/_generated/api.js';
+import {api, components, internal} from '../convex/_generated/api.js';
 
 const modules = import.meta.glob('../convex/**/*.ts');
 const SERVER_TOKEN = 'credential-test-server-token-longer-than-32-characters';
 const PASSWORD = 'correct horse mango battery zebra';
 const WRONG_PASSWORD = 'incorrect horse mango battery zebra';
 const EMAIL = 'erase@example.test';
+const API_ORIGIN = 'https://api.example.test';
+const TEST_ACCESS_TTL_SECONDS = 600;
+const TEST_SESSION_TTL_SECONDS = 3600;
 const GOOGLE_SUB = 'google-subject-1';
 const APPLE_SUB = 'apple-subject-1';
 const PURGE_CALLS_MAX = 20;
@@ -99,10 +108,12 @@ describe('account deletion erases auth credentials', () => {
     vi.stubEnv('PRAXIS_CONVEX_SERVER_TOKEN', SERVER_TOKEN);
   });
   afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });
 
-  it('requires fresh authentication, fences both sessions, and lets only the confirming session resume deletion', async () => {
+  it('requires the current password even for a fresh session and revokes all sessions by the final batch', async () => {
     const t = setup();
     const tokens = await signUp(t);
     const userId = tokens.userId;
@@ -114,7 +125,7 @@ describe('account deletion erases auth credentials', () => {
 
     const confirmed = { userId, sessionId: identity.subject };
     expect(await t.query(api.account.deletionOwner, {})).toBeNull();
-    expect(await owner.mutation(api.account.confirmDeletion, {})).toEqual(confirmed);
+    expect(await owner.mutation(api.account.confirmDeletion, {})).toBeNull();
     const now = Date.now();
     const clock = vi.spyOn(Date, 'now').mockReturnValue(now + ACCOUNT_DELETE_FRESHNESS_MS + 1);
     try {
@@ -126,9 +137,13 @@ describe('account deletion erases auth credentials', () => {
     }
 
     const begin = {serverToken: SERVER_TOKEN, userId, keepSessionId: identity.subject};
+    vi.useFakeTimers();
     await t.mutation(api.account.begin, begin);
     expect(await owner.query(api.auth.currentUser, {})).toBeNull();
     expect(await otherSession.query(api.account.deletionOwner, {})).toBeNull();
+    expect(await otherSession.mutation(api.account.confirmDeletion, {password: PASSWORD})).toBeNull();
+    await expect(t.mutation(api.auth.signInWithEmailPassword, {email: EMAIL, password: PASSWORD}))
+      .rejects.toThrow('Account unavailable');
     expect(await otherSession.mutation(api.auth.refreshSession, {refreshToken: second.tokens.refreshToken})).toEqual({kind: 'noSession'});
     expect(await owner.query(api.account.deletionOwner, {})).toEqual({userId, pending: true});
     expect(await owner.mutation(api.account.confirmDeletion, {})).toEqual(confirmed);
@@ -136,9 +151,72 @@ describe('account deletion erases auth credentials', () => {
     await t.mutation(api.account.begin, begin);
     const result = await t.mutation(api.account.purge, begin);
     expect(result).toEqual({done: true});
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     expect(await owner.query(api.account.deletionOwner, {})).toBeNull();
     expect(await owner.mutation(api.auth.refreshSession, {refreshToken: tokens.refreshToken})).toEqual({kind: 'noSession'});
   }, PASSWORD_REAUTH_TEST_TIMEOUT_MS);
+
+  it('accepts a fresh Google-only session and resumes deletion after the initiator signs out', async () => {
+    const t = setup();
+    const profile = {id: GOOGLE_SUB, email: EMAIL, emailVerified: true};
+    const userId = await t.mutation(internal.users.createUserGoogle, {method: {name: 'google', profile}});
+    await t.run(ctx => ctx.runMutation(components.authGoogle.provider._internal_dangerous_createAccount, {
+      userId, providerAccountId: GOOGLE_SUB,
+    }));
+    const signIn = () => t.run(async ctx => ctx.runMutation(components.auth.public._internal_dangerous_signIn, {
+      claims: {method: 'google', profile},
+      userId, componentPath: 'authGoogle',
+      onSignInHandle: await createFunctionHandle(internal.users.onGoogleSignIn),
+      accessTokenTtlSeconds: TEST_ACCESS_TTL_SECONDS,
+      refreshInactivityTimeoutSeconds: TEST_SESSION_TTL_SECONDS,
+      sessionMaxLifetimeSeconds: TEST_SESSION_TTL_SECONDS,
+    }));
+    const tokens = await signIn();
+    const identity = sessionIdentity(tokens);
+    const owner = t.withIdentity(identity);
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now() + ACCOUNT_DELETE_FRESHNESS_MS);
+    expect(await owner.mutation(api.account.confirmDeletion, {})).toBeNull();
+    const fresh = await signIn();
+    const freshIdentity = sessionIdentity(fresh);
+    const confirmingClient = t.withIdentity(freshIdentity);
+    expect(await confirmingClient.mutation(api.account.confirmDeletion, {}))
+      .toEqual({userId, sessionId: freshIdentity.subject});
+
+    await t.run(ctx => ctx.db.insert('toolState', {userId, kind: 'tool', id: 'owned', value: {}}));
+    const server = {serverToken: SERVER_TOKEN, userId};
+    await t.mutation(api.account.begin, {...server, keepSessionId: freshIdentity.subject});
+    expect(await t.mutation(api.account.purge, server)).toEqual({done: false});
+    expect(await t.run(ctx => ctx.db.query('toolState').collect())).toEqual([]);
+    expect(await t.run(ctx => ctx.db.query('oauthEmails').collect())).toHaveLength(1);
+    await expect(signIn()).rejects.toThrow('Account unavailable');
+    await confirmingClient.mutation(api.auth.signOut, {refreshToken: fresh.refreshToken});
+    expect(await confirmingClient.query(api.account.deletionOwner, {})).toBeNull();
+    expect(await t.query(api.account.pending, server)).toBe(true);
+
+    vi.stubEnv('PRAXIS_API_URL', API_ORIGIN);
+    let deliveries = 0;
+    const fetchRecovery = vi.fn<typeof fetch>(async (url, init) => {
+      const body = String(init?.body);
+      expect(String(url)).toBe(API_ORIGIN + INTERNAL_CONTINUATION_PATH);
+      expect(JSON.parse(body)).toEqual({type: 'account.delete.resume', userId});
+      expect(new Headers(init?.headers).get(ACCOUNT_DELETE_RECOVERY_SIGNATURE_HEADER))
+        .toBe(createHmac('sha256', SERVER_TOKEN).update(body).digest('hex'));
+      deliveries++;
+      if (deliveries === 1) return new Response(null, {status: 503});
+      expect(await t.mutation(api.account.purge, server)).toEqual({done: true});
+      return new Response(null, {status: 200});
+    });
+    vi.stubGlobal('fetch', fetchRecovery);
+
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+    expect(deliveries).toBeGreaterThanOrEqual(2);
+    expect(await t.query(api.account.pending, server)).toBe(false);
+    expect(await credentials(t, userId)).toEqual({google: null, apple: null, emails: [], sessions: []});
+    expect(await t.run(ctx => ctx.db.query('oauthEmails').collect())).toEqual([]);
+    expect(await t.mutation(api.auth.refreshSession, {refreshToken: fresh.refreshToken}))
+      .toEqual({kind: 'noSession'});
+  });
 
   it('removes password, OAuth, email and session rows, then lets the same email sign up cleanly', async () => {
     const t = setup();
