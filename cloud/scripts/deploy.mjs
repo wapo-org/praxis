@@ -39,6 +39,15 @@ export function deploymentPlan(env) {
       fileInput: true,
       tool: 'convex',
     },
+    {
+      name: 'Convex account recovery origin',
+      cwd: root,
+      args: [...convex, 'env', 'set', 'PRAXIS_API_URL', '--from-file', '<private-input>'],
+      remote: true,
+      inputKey: 'PRAXIS_API_URL',
+      fileInput: true,
+      tool: 'convex',
+    },
     ...apiKeys
       .filter(
         (k) =>

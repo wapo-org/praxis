@@ -170,6 +170,11 @@ const SECRETS: Record<string, string> = {
 };
 it('never puts a secret in argv; each credential reaches only the tool that needs it; CLIs are pinned', () => {
   const plan = deploymentPlan(SECRETS);
+  expect(plan.find(step => step.name === 'Convex account recovery origin')).toMatchObject({
+    tool: 'convex',
+    inputKey: 'PRAXIS_API_URL',
+    fileInput: true,
+  });
   const argv = plan.map((s: any) => s.args.join(' ') + ' ' + maskCommand(s)).join('\n');
   for (const [key, value] of Object.entries(SECRETS))
     if (!key.endsWith('_ID')) expect(argv, key).not.toContain(value);

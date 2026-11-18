@@ -1,6 +1,6 @@
 import type { Hono, Context } from 'hono';
 import { getCookie, deleteCookie } from 'hono/cookie';
-import { AccountDeleteSchema } from '@praxis/protocol';
+import { ACCOUNT_DELETE_FRESHNESS_MS, ACCOUNT_DELETE_PATH, AccountDeleteSchema } from '@praxis/protocol';
 import { ApiError } from './service.js';
 export interface AccountDeletion {
   confirm?(
@@ -10,7 +10,7 @@ export interface AccountDeletion {
   purge(userId: string, sessionId: string): Promise<void>;
 }
 export function registerAccountDeletion(
-  app: Hono<any>,
+  app: Hono<{ Variables: { userId: string; requestId: string } }>,
   options: {
     config?: AccountDeletion;
     local: boolean;
@@ -22,7 +22,7 @@ export function registerAccountDeletion(
   },
 ) {
   const attempts = new Map<string, { count: number; until: number }>();
-  app.delete('/v1/account', async (c) => {
+  app.delete(ACCOUNT_DELETE_PATH, async (c) => {
     const userId = c.get('userId') as string;
     const input = await options.parse(c);
     if (options.hasLimiter) await options.limited(`account-delete:${userId}`);
@@ -43,7 +43,7 @@ export function registerAccountDeletion(
       const token =
           c.req.header('authorization')?.replace(/^Bearer /i, '') ?? getCookie(c, 'praxis_session'),
         age = Date.now() - (token ? (options.devCreated.get(token) ?? 0) : 0);
-      if (token && age >= 0 && age < 300000) confirmed = { userId, sessionId: token };
+      if (token && age >= 0 && age < ACCOUNT_DELETE_FRESHNESS_MS) confirmed = { userId, sessionId: token };
     } else confirmed = (await options.config.confirm?.(c.req.raw, input.password)) ?? null;
     if (!confirmed || confirmed.userId !== userId)
       throw new ApiError(

@@ -29,7 +29,6 @@
       "apps/web/src/components/chat/useSpeechInput.ts": 1,
       "apps/web/src/components/chat/useStreamAnchor.ts": 5,
       "apps/web/src/components/lab/StreamLabPage.tsx": 1,
-      "apps/web/src/components/screens/AccountGate.tsx": 2,
       "apps/web/src/components/screens/ConnectorRegistry.tsx": 2,
       "apps/web/src/components/screens/ConnectorsScreen.tsx": 1,
       "apps/web/src/components/screens/ConsentPopover.tsx": 3,
@@ -66,7 +65,6 @@
       "convex/tools.ts": 1
     },
     "R4.no-any": {
-      "apps/api/src/account-routes.ts": 1,
       "apps/api/src/adapters/account-redis.test.ts": 2,
       "apps/api/src/adapters/security.ts": 1,
       "apps/api/src/server.ts": 1,
