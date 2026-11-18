@@ -39,7 +39,7 @@ export function EmailScreens() {
       const result = mode === 'login' ? await login.signIn({ email, password })
         : mode === 'register' ? await register.signUp({ email, password })
         : await recovery.startPasswordRecovery({ email });
-      if ('userError' in result) setError(authError(result.userError));
+      if ('userError' in result) setError(authError(result.userError, AUTH_COPY.unavailable));
       else if (mode !== 'login') setMessage(AUTH_COPY.checkEmail);
     } catch {
       setError(AUTH_COPY.unavailable);

@@ -2,6 +2,8 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { ConvexError } from 'convex/values';
+import { AUTH_EMAIL_METHOD_CONFLICT } from '@praxis/protocol';
 import { EmailScreens, ResetPassword, ValidateEmail } from './EmailScreens';
 
 const hooks = vi.hoisted(() => ({
@@ -97,29 +99,50 @@ it('finishes the existing session before adopting a recovered session', async ()
   await act(async () => root.unmount());
 });
 
-it('reports a transport failure and allows the email form to retry', async () => {
-  hooks.login.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+it.each([
+  ['rejected fetch', () => hooks.login.mockRejectedValueOnce(new TypeError('Failed to fetch'))],
+  ['folded fetch failure', () => hooks.login.mockResolvedValueOnce({
+    status: 'error', userError: { error: 'OTHER_ERROR', cause: new TypeError('Failed to fetch') },
+  })],
+  ['folded HTTP failure', () => hooks.login.mockResolvedValueOnce({
+    status: 'error', userError: { error: 'OTHER_ERROR', cause: new Error('Service unavailable') },
+  })],
+])('reports a %s and allows the email form to retry', async (_scenario, failSignIn) => {
+  failSignIn();
   hooks.login.mockResolvedValueOnce({ status: 'error', userError: { error: 'INVALID_CREDENTIALS' } });
   const node = document.createElement('div');
   const root = createRoot(node);
   await act(async () => root.render(<EmailScreens />));
   const submit = () => node.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   await act(async () => { submit(); });
-  expect(node.querySelector('[role=alert]')?.textContent).toContain('temporarily unavailable');
+  expect(node.querySelector('[role=alert]')?.textContent).toBe('Sign in is temporarily unavailable. Please try again later.');
+  expect([...node.querySelectorAll('input, button')].every(control => !control.hasAttribute('disabled'))).toBe(true);
   await act(async () => { submit(); });
   expect(node.querySelector('[role=alert]')?.textContent).toContain('incorrect');
   await act(async () => root.unmount());
 });
 
-it('keeps the signed-out screen usable when Preview simulates an unavailable provider', async () => {
-  vi.stubEnv('PRAXIS_MOCK_OAUTH', 'apple');
+it('preserves the account method conflict message for a folded Convex error', async () => {
+  hooks.login.mockResolvedValueOnce({
+    status: 'error', userError: { error: 'OTHER_ERROR', cause: new ConvexError(AUTH_EMAIL_METHOD_CONFLICT) },
+  });
   const node = document.createElement('div');
   const root = createRoot(node);
   await act(async () => root.render(<EmailScreens />));
-  const button = [...node.querySelectorAll('button')].find(item => item.textContent === 'Continue with Apple')!;
+  await act(async () => node.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(node.querySelector('[role=alert]')?.textContent).toContain('Use its original sign-in method.');
+  await act(async () => root.unmount());
+});
+
+it.each(['Google', 'Apple'])('keeps the signed-out screen usable when Preview simulates %s', async provider => {
+  vi.stubEnv('PRAXIS_MOCK_OAUTH', 'google,apple');
+  const node = document.createElement('div');
+  const root = createRoot(node);
+  await act(async () => root.render(<EmailScreens />));
+  const button = [...node.querySelectorAll('button')].find(item => item.textContent === 'Continue with ' + provider)!;
   await act(async () => button.click());
   expect(hooks.oauth).not.toHaveBeenCalled();
-  expect(node.querySelector('[role=alert]')?.textContent).toContain('unavailable Apple sign-in');
+  expect(node.querySelector('[role=alert]')?.textContent).toBe(`This preview simulates an unavailable ${provider} sign-in. Use email to continue.`);
   expect(button.disabled).toBe(false);
   await act(async () => root.unmount());
 });
