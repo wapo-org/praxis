@@ -32,22 +32,45 @@ export function isolatedArgv(source: string, root: string, readOnly: boolean, ar
     ...mounts.flatMap(mount => ['--ro-bind', mount.source, mount.target]), '--chdir', cwd, '--', ...argv];
 }
 
-// O_NOFOLLOW on every component closes the path-check/open race, including symlinks pointing inside the root.
 export const FILE_OPERATION = `import os,sys,json,base64,stat
 root,op,path,input_path=sys.argv[1:]
-fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
-def open_parent(path,create=False):
-    parts=path.split('/')
-    if any(p in ('','.','..') for p in parts): raise ValueError('invalid path')
-    parent=os.dup(fd)
-    for part in parts[:-1]:
-        if create:
-            try: os.mkdir(part,dir_fd=parent)
-            except FileExistsError: pass
-        child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+
+def open_directory(name, parent=None):
+    # Verify the directory identity because some runtimes ignore O_NOFOLLOW with O_DIRECTORY.
+    entry = os.stat(name, dir_fd=parent, follow_symlinks=False)
+    if not stat.S_ISDIR(entry.st_mode):
+        raise ValueError('not a directory entry')
+    directory = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    try:
+        if not os.path.samestat(entry, os.fstat(directory)):
+            raise ValueError('directory changed during open')
+    except (OSError, ValueError):
+        os.close(directory)
+        raise
+    return directory
+
+fd = open_directory(root)
+
+def open_parent(path, create=False):
+    parts = path.split('/')
+    if any(part in ('', '.', '..') for part in parts):
+        raise ValueError('invalid path')
+    parent = os.dup(fd)
+    try:
+        for part in parts[:-1]:
+            if create:
+                try:
+                    os.mkdir(part, dir_fd=parent)
+                except FileExistsError:
+                    pass
+            child = open_directory(part, parent)
+            os.close(parent)
+            parent = child
+    except (OSError, ValueError):
         os.close(parent)
-        parent=child
-    return parent,parts[-1]
+        raise
+    return parent, parts[-1]
+
 if op in ('read','write'):
     parent,name=open_parent(path,op=='write')
     flags=os.O_NOFOLLOW|os.O_NONBLOCK|(os.O_RDONLY if op=='read' else os.O_WRONLY|os.O_CREAT|os.O_TRUNC)
@@ -75,9 +98,11 @@ else:
             info=os.stat(name,dir_fd=directory,follow_symlinks=False)
             relative=prefix+name
             if stat.S_ISDIR(info.st_mode):
-                child=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=directory)
-                try: walk(child,relative+'/')
-                finally: os.close(child)
+                child = open_directory(name, directory)
+                try:
+                    walk(child, relative + '/')
+                finally:
+                    os.close(child)
             elif stat.S_ISREG(info.st_mode):
                 f=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
                 mode=os.fstat(f).st_mode
