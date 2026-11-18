@@ -187,6 +187,29 @@ def test_unusable_cookie_stops_before_replay(header: str) -> None:
     assert len(preview.requests) == 4
 
 
+@pytest.mark.parametrize("path", ["/login", "/sso-api"])
+def test_vercel_auth_redirect_counts_as_anonymous_denial(path: str) -> None:
+    preview = HostedPreview()
+    preview.anonymous = httpx.Response(302, headers={"location": f"https://vercel.com{path}?state=synthetic#fragment"})
+    assert preview.check()["status"] == "verified"
+    assert [request.url.host for request in preview.requests[-3:]] == [HOST, HOST, HOST]
+
+
+@pytest.mark.parametrize("location", [
+    "https://elsewhere.invalid/sso-api",
+    "http://vercel.com/sso-api",
+    "https://vercel.com/sso-api/extra",
+    "/sso-api",
+])
+def test_unrecognized_redirect_stops_after_anonymous_request(location: str) -> None:
+    preview = HostedPreview()
+    preview.anonymous = httpx.Response(302, headers={"location": location})
+    assert preview.check() == {
+        "status": "blocked", "reason": "The anonymous health request did not show Vercel protection.",
+    }
+    assert len(preview.requests) == 3
+
+
 def test_public_health_cannot_be_counted_as_protected_proof() -> None:
     preview = HostedPreview()
     preview.anonymous = httpx.Response(200, json=HEALTH)
