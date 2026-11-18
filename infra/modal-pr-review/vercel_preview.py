@@ -25,6 +25,10 @@ SET_BYPASS_COOKIE_HEADER = "x-vercel-set-bypass-cookie"
 VERCEL_COOKIE = "_vercel_jwt"
 COOKIE_VALUE = re.compile(r"[A-Za-z0-9._~%+=/-]+")
 PROTECTION_DENIAL = {401, 403}
+PROTECTION_REDIRECTS = {
+    httpx.URL("https://vercel.com/login"),
+    httpx.URL("https://vercel.com/sso-api"),
+}
 HEALTH_MAX_BYTES = 4096
 
 
@@ -125,8 +129,8 @@ def _protection_denied(response: httpx.Response) -> bool:
         return True
     if not response.is_redirect:
         return False
-    login = httpx.URL(response.headers.get("location", ""))
-    return login.copy_with(query=None, fragment=None) == httpx.URL("https://vercel.com/login")
+    location = httpx.URL(response.headers.get("location", ""))
+    return location.copy_with(query=None, fragment=None) in PROTECTION_REDIRECTS
 
 
 def _exchange_cookie(client: httpx.Client, health_url: httpx.URL, config: PreviewConfig) -> str:
