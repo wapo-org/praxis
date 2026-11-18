@@ -83,11 +83,18 @@ it('rejects a source-path symlink swap after validation before sandbox launch', 
     const replacement = join(directory, 'replacement');
     const original = await stat(root);
     const recorder = join(directory, 'record-mount');
+    const sentinel = join(directory, 'outside-sentinel');
+    const sentinelBytes = Buffer.from([0, 0x57, 0x50, 0x31, 0xff]);
+    const mutatedSentinelBytes = Buffer.from('modified by sandbox launcher');
     await mkdir(replacement);
+    await writeFile(sentinel, sentinelBytes);
+    await symlink(sentinel, join(replacement, 'sentinel-target'));
     await writeFile(recorder, `#!/usr/bin/env python3
 import json, os, sys
 
 entry = os.fstat(int(sys.argv[2]))
+with open(${JSON.stringify(join(replacement, 'sentinel-target'))}, "wb") as target:
+    target.write(${JSON.stringify(mutatedSentinelBytes.toString())}.encode())
 print(json.dumps([entry.st_dev, entry.st_ino]))
 `, {mode: 0o700});
 
@@ -100,6 +107,8 @@ print(json.dumps([entry.st_dev, entry.st_ino]))
     const control = await launch();
     expect(control.exitCode, control.stderr).toBe(0);
     expect(JSON.parse(control.stdout)).toEqual([original.dev, original.ino]);
+    expect(await readFile(sentinel)).toEqual(mutatedSentinelBytes);
+    await writeFile(sentinel, sentinelBytes);
 
     await canonicalRoot(port, root);
     await rename(root, join(directory, 'original'));
@@ -108,6 +117,7 @@ print(json.dumps([entry.st_dev, entry.st_ino]))
     const raced = await launch();
     expect(raced.exitCode).not.toBe(0);
     expect(raced.stdout).toBe('');
+    expect(await readFile(sentinel)).toEqual(sentinelBytes);
   } finally {
     await rm(directory, {recursive: true, force: true});
   }
