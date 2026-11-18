@@ -95,6 +95,10 @@ it.each([
       expect(confirmBlock.querySelector('[role="alert"]')?.textContent).toBe(message);
       expect(document.querySelector('[data-testid="delete-account-confirm"]')).toBe(confirmBlock);
       expect(input.value).toBe(password);
+      if (status === 429) {
+        const [, request] = fetcher.mock.calls[0]!;
+        expect(request?.body).toBe(JSON.stringify({ type: 'account.delete', password }));
+      }
     } finally {
       vi.unstubAllGlobals();
     }
