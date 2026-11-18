@@ -80,6 +80,28 @@ uv run --project infra/modal-pr-review modal run infra/modal-pr-review/app.py::r
 
 `smoke_sandbox` prints tool versions (`node`, `npm`, `gh`, `muse`), the installed skills, the token kind, and whether Muse auth is present. It prints no secret values.
 
+### Protected API Preview proof
+
+Run this standalone check for an operator-reviewed, same-repository PR head in `ALLOWED_REPOS`. Connect the API Vercel project to GitHub and use isolated test infrastructure. Configure the dedicated Modal secret `praxis-pr-reviewer-vercel` with these values:
+
+| Key | Purpose |
+| --- | --- |
+| `VERCEL_API_PROJECT_ID` | ID of the Git-connected API project. |
+| `VERCEL_TOKEN` | Vercel API token with read access to that project and deployment Git metadata. |
+| `VERCEL_TEAM_ID` | Team scope when required. |
+| `VERCEL_API_AUTOMATION_BYPASS_SECRET` | Dedicated API project bypass secret reserved for the reviewer. Keep this credential out of deployment environment variables, including Vercel's selected system bypass variable. |
+| `VERCEL_TRUSTED_PREVIEW_SHA` | Full PR head SHA that an operator has reviewed for credentialed requests. A later push requires fresh approval. |
+
+Run after Vercel reports the API deployment ready:
+
+```bash
+uv run --project infra/modal-pr-review modal run infra/modal-pr-review/app.py::verify_api_preview --repo wapo-org/praxis --pr 29
+```
+
+The check reads the current GitHub PR head, resolves the exact deployment hostname from Vercel project and Git metadata, and confirms that anonymous `/health` access is denied. It exchanges the API bypass secret for a cookie and replays only that cookie to the same HTTPS URL. Success requires the production-mode Praxis health response. A missing prerequisite or failed request returns `blocked` and exits nonzero. The redacted success output contains the SHA and API origin. [Vercel's automation cookie exchange](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation)
+
+The proof runs in a Modal function without a sandbox or credential volume. Application servers can receive request cookies, and Playwright scripts can read browser cookie state even when page JavaScript cannot. Approval applies to the exact deployed commit, and the reviewer keeps the cookie in memory for the single HTTP check.
+
 ## 5. GitHub webhook
 
 **Settings → Webhooks → Add webhook:** payload URL = the `github_webhook` URL from `modal deploy`, content type `application/json`, secret = `GITHUB_WEBHOOK_SECRET`, events **Pull requests** and **Issue comments**.
