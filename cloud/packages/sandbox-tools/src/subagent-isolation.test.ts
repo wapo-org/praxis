@@ -1,11 +1,11 @@
-import {mkdtemp, mkdir, readFile, realpath, readdir, rm, stat, symlink, writeFile} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, realpath, readdir, rename, rm, stat, symlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {expect, it} from 'vitest';
 import type {ExecRequest} from './port.js';
 import {runDiagnostics} from './diagnostics.js';
 import {localExec, localSandboxPort} from './local.js';
-import {FILE_HELPER_PATH, fileOperation, isolatedArgv, ISOLATION_TIMEOUT_MS, SNAPSHOT_MAX_BYTES} from './subagent-isolation.js';
+import {canonicalRoot, FILE_HELPER_PATH, fileOperation, isolatedArgv, ISOLATION_TIMEOUT_MS, SNAPSHOT_MAX_BYTES} from './subagent-isolation.js';
 
 async function fixture() {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'praxis-confined-')));
@@ -72,6 +72,42 @@ print(json.dumps(mounts))
     const invalid = await launch(helper, true);
     expect(invalid.exitCode).toBe(1);
     expect(invalid.stdout).toBe('');
+  } finally {
+    await rm(directory, {recursive: true, force: true});
+  }
+});
+
+it('rejects a source-path symlink swap after validation before sandbox launch', async () => {
+  const {directory, root, port} = await fixture();
+  try {
+    const replacement = join(directory, 'replacement');
+    const original = await stat(root);
+    const recorder = join(directory, 'record-mount');
+    await mkdir(replacement);
+    await writeFile(recorder, `#!/usr/bin/env python3
+import json, os, sys
+
+entry = os.fstat(int(sys.argv[2]))
+print(json.dumps([entry.st_dev, entry.st_ino]))
+`, {mode: 0o700});
+
+    const launch = () => {
+      const argv = isolatedArgv(root, root, false, ['/usr/bin/true']);
+      argv[argv.indexOf('bwrap')] = recorder;
+      return localExec({argv, cwd: '/', timeoutMs: ISOLATION_TIMEOUT_MS});
+    };
+
+    const control = await launch();
+    expect(control.exitCode, control.stderr).toBe(0);
+    expect(JSON.parse(control.stdout)).toEqual([original.dev, original.ino]);
+
+    await canonicalRoot(port, root);
+    await rename(root, join(directory, 'original'));
+    await symlink(replacement, root);
+
+    const raced = await launch();
+    expect(raced.exitCode).not.toBe(0);
+    expect(raced.stdout).toBe('');
   } finally {
     await rm(directory, {recursive: true, force: true});
   }
