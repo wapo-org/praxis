@@ -1,7 +1,8 @@
 import {readFile} from 'node:fs/promises';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {convexTest} from 'convex-test';
-import {registerCore} from '@convex-dev/auth/test';
+import {ACCOUNT_DELETE_FRESHNESS_MS} from '@praxis/protocol';
+import {registerCore, sessionIdentity} from '@convex-dev/auth/test';
 import {registerEmail, registerResendStub, sentEmails} from '@convex-dev/auth/components/email/test';
 import {registerPassword} from '@convex-dev/auth/components/password/test';
 import {registerGoogleOauth} from '@convex-dev/auth/components/google/test';
@@ -21,6 +22,7 @@ const PURGE_CALLS_MAX = 20;
 const PINNED_AUTH_VERSION = '2.0.0';
 // Matches the component's verifyPassword token bucket capacity.
 const VERIFY_ATTEMPTS_MAX = 5;
+const PASSWORD_REAUTH_TEST_TIMEOUT_MS = 20_000;
 type PurgeResult = {done: boolean; blobCursor?: string; blobsDone?: boolean};
 
 function setup() {
@@ -99,6 +101,44 @@ describe('account deletion erases auth credentials', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
+
+  it('requires fresh authentication, fences both sessions, and lets only the confirming session resume deletion', async () => {
+    const t = setup();
+    const tokens = await signUp(t);
+    const userId = tokens.userId;
+    const identity = sessionIdentity(tokens);
+    const owner = t.withIdentity(identity);
+    const second = await t.mutation(api.auth.signInWithEmailPassword, {email: EMAIL, password: PASSWORD});
+    if (second.status !== 'complete') throw new Error('Second sign-in failed');
+    const otherSession = t.withIdentity(sessionIdentity(second.tokens));
+
+    const confirmed = { userId, sessionId: identity.subject };
+    expect(await t.query(api.account.deletionOwner, {})).toBeNull();
+    expect(await owner.mutation(api.account.confirmDeletion, {})).toEqual(confirmed);
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + ACCOUNT_DELETE_FRESHNESS_MS + 1);
+    try {
+      expect(await owner.mutation(api.account.confirmDeletion, {})).toBeNull();
+      expect(await owner.mutation(api.account.confirmDeletion, {password: WRONG_PASSWORD})).toBeNull();
+      expect(await owner.mutation(api.account.confirmDeletion, {password: PASSWORD})).toEqual(confirmed);
+    } finally {
+      clock.mockRestore();
+    }
+
+    const begin = {serverToken: SERVER_TOKEN, userId, keepSessionId: identity.subject};
+    await t.mutation(api.account.begin, begin);
+    expect(await owner.query(api.auth.currentUser, {})).toBeNull();
+    expect(await otherSession.query(api.account.deletionOwner, {})).toBeNull();
+    expect(await otherSession.mutation(api.auth.refreshSession, {refreshToken: second.tokens.refreshToken})).toEqual({kind: 'noSession'});
+    expect(await owner.query(api.account.deletionOwner, {})).toEqual({userId, pending: true});
+    expect(await owner.mutation(api.account.confirmDeletion, {})).toEqual(confirmed);
+
+    await t.mutation(api.account.begin, begin);
+    const result = await t.mutation(api.account.purge, begin);
+    expect(result).toEqual({done: true});
+    expect(await owner.query(api.account.deletionOwner, {})).toBeNull();
+    expect(await owner.mutation(api.auth.refreshSession, {refreshToken: tokens.refreshToken})).toEqual({kind: 'noSession'});
+  }, PASSWORD_REAUTH_TEST_TIMEOUT_MS);
 
   it('removes password, OAuth, email and session rows, then lets the same email sign up cleanly', async () => {
     const t = setup();

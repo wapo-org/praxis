@@ -4,10 +4,10 @@ import type { accountRedis } from './adapters/account-redis.js';
 export function accountEraser(rpc: ConvexRPC, ownership: ReturnType<typeof accountRedis>, deleteExternal?: (userId: string) => Promise<void>) {
   return (userId: string, sessionId: string) =>
     ownership.exclusive(userId, async () => {
-      await rpc.mutation('account:begin', { userId });
+      await rpc.mutation('account:begin', { userId, keepSessionId: sessionId });
       await ownership.freeze(userId);
       await ownership.purge(userId);
-      // Keep session and password credential until final batch so interrupted erasures can retry.
+      // Keep the initiating session until the final batch so an interrupted erasure can retry.
       let blobCursor: string | undefined,
         blobsDone = false, externalDone = !deleteExternal;
       for (;;) {
