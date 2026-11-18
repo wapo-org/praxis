@@ -12,6 +12,7 @@ import {
   setReplicaIdentity,
   type LocalReplicaSnapshot,
 } from './lib/idb';
+import { getUnpinnedModels } from './lib/models';
 import { parseRunEvent, subscribeRunEvents } from './lib/sse';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -119,14 +120,10 @@ it('does not expose user A in user B or another API origin and clears on sign-ou
   await clearReplica();
   expect(readReplicaSync()).toBeNull();
 });
-it('excludes pinned and favorite models from both All Models branches and their count', async () => {
-  const { getUnpinnedModels } = await import('./components/chat/PlusTray');
-  const models = [
-    { pinned: true },
-    { favorite: true },
-    ...Array.from({ length: 35 }, () => ({ pinned: false })),
-  ];
-  expect(getUnpinnedModels(models)).toHaveLength(35);
+it('filters pinned and favorite models out of the unpinned model list', () => {
+  const unpinned = Array.from({ length: 35 }, () => ({ pinned: false }));
+  const models = [{ pinned: true }, { favorite: true }, ...unpinned];
+  expect(getUnpinnedModels(models)).toEqual(unpinned);
 });
 it('failed uploads and transcription surface errors without a fabricated attachment or text', async () => {
   const { PraxisStoreProvider, usePraxisStore } = await import('./state/store');

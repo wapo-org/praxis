@@ -1,4 +1,4 @@
-import { modelDetail } from '../../lib/models';
+import { getUnpinnedModels, modelDetail } from '../../lib/models';
 import type { ModelListItem } from '@praxis/protocol';
 import { ScrollBlur } from '@praxis/glass';
 
@@ -16,10 +16,6 @@ export const MODEL_ROW_HEIGHT = 56; // --row-model
 const LABEL_ROW_HEIGHT = 32; // --space-8
 const MORE_ROW_HEIGHT = 44; // --control-lg
 const OVERSCAN = 6;
-
-export function getUnpinnedModels<T extends { pinned?: boolean; favorite?: boolean }>(models: T[]) {
-  return models.filter((m) => !m.pinned && !m.favorite);
-}
 
 export type ModelListRow =
   | { kind: 'label'; key: string; text: string; height: number; top: number }
@@ -41,8 +37,9 @@ export function buildModelRows(items: Model[], searching: boolean, hasMore: bool
   if (searching) addModels(items);
   else {
     const pinned = items.filter((m) => m.pinned || m.favorite);
-    const recommended = getUnpinnedModels(items).filter((m) => m.recommended);
-    const others = getUnpinnedModels(items).filter((m) => !m.recommended);
+    const unpinned = getUnpinnedModels(items);
+    const recommended = unpinned.filter((m) => m.recommended);
+    const others = unpinned.filter((m) => !m.recommended);
     if (pinned.length) {
       push({ kind: 'label', key: 'label-pinned', text: 'Pinned', height: LABEL_ROW_HEIGHT } as Omit<ModelListRow, 'top'>);
       addModels(pinned);

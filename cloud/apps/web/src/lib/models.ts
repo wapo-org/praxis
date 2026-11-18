@@ -7,6 +7,10 @@ export function formatContext(tokens: number): string {
   return String(tokens);
 }
 
+export function getUnpinnedModels<T extends { pinned?: boolean; favorite?: boolean }>(models: readonly T[]) {
+  return models.filter((model) => !model.pinned && !model.favorite);
+}
+
 const trim = (value: number) => (Math.round(value * 100) / 100).toString();
 
 /** OpenRouter prices are USD per token, as strings. Shown per million tokens; null when unknown or variable. */
