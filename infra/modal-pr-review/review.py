@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import string
 from typing import Any
 
 from diff_index import DiffIndex
@@ -129,6 +130,36 @@ def _live_check_lines(hands_on: dict[str, Any] | None) -> list[str]:
     return lines
 
 
+def _ui_review_lines(report: dict[str, Any] | None) -> list[str]:
+    if report is None:
+        return []
+
+    def plain(value: str) -> str:
+        return "".join(
+            f"&#{ord(char)};" if char in string.punctuation else char
+            for char in value.replace("\n", " ").replace("\r", " ")
+        )
+
+    lines = ["", "### Vercel UI review"]
+    if report["status"] != "reviewed":
+        lines.append(f"- {plain(report['reason'])}")
+        return lines
+
+    lines.append(f"- Preview: {report['preview']}")
+    if report.get("artifacts"):
+        lines.append(f"- Recordings and contact sheets: Modal volume `praxis-pr-review-runs/{report['artifacts']}/`")
+    for number, flow in enumerate(report["flows"], 1):
+        lines.append(f"- **{number}. {plain(flow['title'])}**")
+        for label, key in (("Browser", "browser"), ("Visual review", "visual")):
+            outcome = flow[key]
+            status = outcome["status"].replace("_", " ")
+            lines.append(f"  - {label}: **{status}**. {plain(outcome['observation'])}")
+        if flow["sheets"]:
+            names = ", ".join(f"`{sheet}`" for sheet in flow["sheets"])
+            lines.append(f"  - Contact sheets: {names}")
+    return lines
+
+
 def build_review(
     *,
     gates: list[dict[str, Any]],
@@ -138,6 +169,7 @@ def build_review(
     hands_on: dict[str, Any] | None,
     diff: DiffIndex,
     model: str,
+    ui_review: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     verdict = decide_verdict(gates, findings)
     comments: list[dict[str, Any]] = []
@@ -161,6 +193,7 @@ def build_review(
         body.extend(["", "`check:rules` findings outside the diff lines:", *unplaced])
     body.extend(["", *_session_lines(sessions, session_errors)])
     body.extend(_live_check_lines(hands_on))
+    body.extend(_ui_review_lines(ui_review))
 
     return {
         "verdict": verdict,

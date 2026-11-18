@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 from prompt_examples import SESSION_EXAMPLES
-from prompts import HANDS_ON_SESSION_PROFILE, REVIEW_SESSION_PROFILES
+from prompts import REVIEW_SESSION_PROFILES
 from rules import MODEL_RULE_IDS, MODEL_RULES, RULES, SCRIPT_RULE_IDS, SESSION_RULE_IDS
 
 REVIEWER_DIR = Path(__file__).resolve().parents[1]
@@ -41,7 +41,7 @@ def test_sessions_cite_only_model_rules_and_every_rule_has_an_owner() -> None:
 
 
 def test_prompt_checklists_and_examples_use_the_session_rule_ids() -> None:
-    for profile in (*REVIEW_SESSION_PROFILES, HANDS_ON_SESSION_PROFILE):
+    for profile in REVIEW_SESSION_PROFILES:
         assert {rule_id for rule_id, _ in profile.checklist} == set(SESSION_RULE_IDS[profile.key])
         examples = SESSION_EXAMPLES[profile.key]
         assert 2 <= len(examples) <= 3

@@ -1,49 +1,58 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import modal
 from fastapi import HTTPException, Request, status
 
 import sandbox
+from codex_runtime import MODEL, REASONING_EFFORT
+from codex_session import prepare_codex, run_codex_session, run_codex_sessions, smoke_task
 from github_api import (
     DEFAULT_ALLOWED_REPOS,
     fetch_review_thread_outcomes,
     github_headers,
     parse_webhook_event,
+    post_ui_video_comment,
     require_usable_token,
     verify_github_signature,
 )
-from images import sandbox_image, web_image
+from images import browser_image, codex_image, sandbox_image, web_image
 from orchestrate import Checkout, ReviewDeps, review_pull_request, session_tasks
 from pipeline import STATUS_REVIEWED, RunState, SessionRun, run_and_record
-from prompts import DEFAULT_MUSE_MODEL, DEFAULT_MUSE_REASONING_EFFORT, installed_skills
 from report import DEFAULT_REPORT_RUNS, format_report, summarize_runs
 from runlog import RUNS_MOUNT_PATH, RUNS_VOLUME_NAME, load_run_records, write_run_record
+from ui_prompts import EMBER, UI_WORKSPACE, visual_task
+from ui_review import run_hosted_ui_review
+from vercel_preview import PreviewConfig
 
 APP_NAME = "praxis-muse-pr-reviewer"
 SECRET_NAME = "praxis-pr-reviewer-secrets"
+CODEKEY_SECRET_NAME = "praxis-codekey-codex"
+VERCEL_SECRET_NAME = "praxis-pr-reviewer-vercel"
 MUSE_AUTH_VOLUME_NAME = "muse-auth-state"
 MUSE_AUTH_MOUNT_PATH = "/mnt/muse-auth"
 SANDBOX_CPU_CORES = 6.0
 SANDBOX_MEMORY_MIB = 12288
 # Worst case: install 600 s + gates 1020 s + sessions 900 s; typical runs finish far sooner.
 SANDBOX_TIMEOUT_SECONDS = 2700
-FUNCTION_TIMEOUT_SECONDS = 3000
+BROWSER_SANDBOX_TIMEOUT_SECONDS = 2100
+FUNCTION_TIMEOUT_SECONDS = 4800
 TRUTHY = {"1", "true", "yes"}
 
 app = modal.App(APP_NAME)
 muse_auth_vol = modal.Volume.from_name(MUSE_AUTH_VOLUME_NAME, create_if_missing=True, version=2)
 runs_vol = modal.Volume.from_name(RUNS_VOLUME_NAME, create_if_missing=True, version=2)
 reviewer_secret = modal.Secret.from_name(SECRET_NAME)
+codekey_secret = modal.Secret.from_name(CODEKEY_SECRET_NAME)
+vercel_secret = modal.Secret.from_name(VERCEL_SECRET_NAME)
 
 
 def _flag(name: str) -> bool:
@@ -60,64 +69,49 @@ def _read_volume_file(name: str) -> str | None:
     return path.read_text(encoding="utf-8") if path.exists() else None
 
 
-def _muse_settings() -> tuple[str, str, dict[str, str]]:
-    model = os.environ.get("MUSE_MODEL", "").strip() or DEFAULT_MUSE_MODEL
-    effort = os.environ.get("MUSE_REASONING_EFFORT", "").strip() or DEFAULT_MUSE_REASONING_EFFORT
-    secret_env = {
-        name: os.environ[name].strip()
-        for name in ("META_API_KEY", "LINEAR_API_KEY")
-        if os.environ.get(name, "").strip()
-    }
-    return model, effort, secret_env
+def _codex_credentials() -> dict[str, str]:
+    credentials = {"CODEKEY_API_KEY": os.environ["CODEKEY_API_KEY"]}
+    if os.environ.get("LINEAR_API_KEY", "").strip():
+        credentials["LINEAR_API_KEY"] = os.environ["LINEAR_API_KEY"]
+    return credentials
 
 
-def _run_in_sandbox(
-    sb: modal.Sandbox,
-    *,
-    diff_base: str,
-    tasks: list[sandbox.SessionTask],
-    model: str,
-    effort: str,
-    secret_env: dict[str, str],
-) -> tuple[list[dict[str, Any]], list[SessionRun]]:
-    """Order matters: PR-controlled code (install, gates) runs before any credential enters the sandbox."""
-    sandbox.install_dependencies(sb)
-    gates = sandbox.run_gates(sb, diff_base)
-
+def _configure_browser_muse(sb: modal.Sandbox, browser_env: dict[str, str]) -> str | None:
     muse_auth_vol.reload()
     auth_json = _read_volume_file("auth.json")
-    if not auth_json and "META_API_KEY" not in secret_env:
-        raise RuntimeError(
-            "Muse Code is not authenticated in Modal: run scripts/sync-muse-auth.sh "
-            "or set META_API_KEY in the reviewer secret."
-        )
+    if not auth_json and "META_API_KEY" not in browser_env:
+        raise RuntimeError("Muse Code browser authentication is missing.")
     sandbox.configure_muse(
-        sb,
-        model=model,
-        reasoning_effort=effort,
-        auth_json=auth_json,
+        sb, model=EMBER, reasoning_effort="medium", auth_json=auth_json,
         trust_json=_read_volume_file("trust.json"),
-        with_linear="LINEAR_API_KEY" in secret_env,
     )
-    runs = sandbox.run_sessions(sb, tasks, model=model, reasoning_effort=effort, secret_env=secret_env)
+    return auth_json
 
+
+def _persist_browser_auth(sb: modal.Sandbox, original: str | None) -> None:
     refreshed = sandbox.read_refreshed_auth(sb)
-    if refreshed and refreshed != auth_json:
+    if not refreshed or refreshed == original:
+        return
+    muse_auth_vol.reload()
+    if _read_volume_file("auth.json") == original:
         (Path(MUSE_AUTH_MOUNT_PATH) / "auth.json").write_text(refreshed, encoding="utf-8")
         muse_auth_vol.commit()
-    return gates, runs
 
 
-def _create_sandbox() -> modal.Sandbox:
+def _create_sandbox(
+    image: modal.Image = sandbox_image, timeout: int = SANDBOX_TIMEOUT_SECONDS, *,
+    runtime: Literal["vm", "gvisor"] | None = None,
+) -> modal.Sandbox:
     """No secrets in the sandbox environment and no credential volume: sessions get them per process."""
     return modal.Sandbox.create(
         "sleep",
         "infinity",
         app=app,
-        image=sandbox_image,
+        image=image,
         cpu=SANDBOX_CPU_CORES,
         memory=SANDBOX_MEMORY_MIB,
-        timeout=SANDBOX_TIMEOUT_SECONDS,
+        timeout=timeout,
+        runtime=runtime,
     )
 
 
@@ -129,7 +123,8 @@ def _persist(record: dict[str, Any]) -> None:
 @app.function(image=web_image)
 @modal.fastapi_endpoint(method="GET")
 def health() -> dict[str, str]:
-    return {"status": "ok", "app": APP_NAME}
+    return {"status": "ok", "app": "praxis-codex-pr-reviewer", "runtime": "codex",
+            "model": MODEL, "reasoning": REASONING_EFFORT}
 
 
 @app.function(image=web_image, secrets=[reviewer_secret])
@@ -174,7 +169,7 @@ async def github_webhook(request: Request) -> dict[str, Any]:
 
 @app.function(
     image=web_image,
-    secrets=[reviewer_secret],
+    secrets=[reviewer_secret, codekey_secret, vercel_secret],
     volumes={MUSE_AUTH_MOUNT_PATH: muse_auth_vol, RUNS_MOUNT_PATH: runs_vol},
     timeout=FUNCTION_TIMEOUT_SECONDS,
 )
@@ -185,46 +180,104 @@ def run_pr_review(
     custom_instructions: str = "",
 ) -> dict[str, Any]:
     github_token = os.environ["GITHUB_TOKEN"]
-    model, effort, secret_env = _muse_settings()
-    secrets = (github_token, os.environ.get("GITHUB_WEBHOOK_SECRET", ""), *secret_env.values())
+    credentials = _codex_credentials()
+    browser_env = {key: os.environ[key] for key in ("META_API_KEY",) if os.environ.get(key)}
+    preview_config = PreviewConfig.from_env()
+    secrets = (
+        github_token,
+        os.environ.get("GITHUB_WEBHOOK_SECRET", ""),
+        *credentials.values(),
+        *browser_env.values(),
+        preview_config.token,
+        preview_config.bypass_secret,
+    )
     started = time.monotonic()
     state = RunState(
         run_id=uuid.uuid4().hex[:12],
         repo=repo,
         pr_number=pr_number,
         trigger=trigger_source,
-        model=model,
-        reasoning_effort=effort,
+        model=MODEL,
+        reasoning_effort=REASONING_EFFORT,
         started_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     )
 
+    def populate(sb: modal.Sandbox, checkout: Checkout) -> None:
+        sandbox.clone_repo(
+            sb, repo=checkout.repo, refs=checkout.refs, checkout=checkout.commit, github_token=github_token,
+        )
+
     def run_in_sandbox(checkout: Checkout) -> tuple[list[dict[str, Any]], list[SessionRun]]:
-        sb = _create_sandbox()
+        gate_sandbox = _create_sandbox()
         try:
-            sandbox.clone_repo(
-                sb,
-                repo=checkout.repo,
-                refs=checkout.refs,
-                checkout=checkout.commit,
-                github_token=github_token,
-            )
-            return _run_in_sandbox(
-                sb,
-                diff_base=checkout.diff_base,
-                tasks=checkout.tasks,
-                model=model,
-                effort=effort,
-                secret_env=secret_env,
-            )
+            populate(gate_sandbox, checkout)
+            sandbox.install_dependencies(gate_sandbox)
+            gates = sandbox.run_gates(gate_sandbox, checkout.diff_base)
         finally:
-            sb.terminate()
+            gate_sandbox.terminate()
+
+        source_sandbox = _create_sandbox(codex_image, runtime="vm")
+        try:
+            populate(source_sandbox, checkout)
+            runs = run_codex_sessions(source_sandbox, checkout.tasks, credentials)
+        finally:
+            source_sandbox.terminate()
+        return gates, runs
+
+    def run_ui(current: RunState, plan: dict[str, Any] | None) -> tuple[dict[str, Any], list[SessionRun]]:
+        artifact_path = Path(RUNS_MOUNT_PATH) / "ui-evidence" / current.run_id
+
+        def configure_browser(sb: modal.Sandbox) -> str | None:
+            return _configure_browser_muse(sb, browser_env)
+
+        def create_browser() -> modal.Sandbox:
+            return _create_sandbox(browser_image, BROWSER_SANDBOX_TIMEOUT_SECONDS)
+
+        def review_images(manifest: list[dict[str, Any]], files: tuple[Path, ...]) -> SessionRun:
+            sb = _create_sandbox(codex_image, timeout=600, runtime="vm")
+            try:
+                prepare_codex(sb)
+                sandbox.exec_in(sb, "mkdir", "-p", UI_WORKSPACE)
+                images = tuple(f"{UI_WORKSPACE}/image-{index}.jpg" for index in range(1, len(files) + 1))
+                for source, target in zip(files, images, strict=True):
+                    sb.filesystem.copy_from_local(source, target)
+                return run_codex_session(
+                    sb, visual_task(manifest, images), workspace=UI_WORKSPACE,
+                    credentials={"CODEKEY_API_KEY": credentials["CODEKEY_API_KEY"]},
+                )
+            finally:
+                sb.terminate()
+
+        report, runs = run_hosted_ui_review(
+            payload=plan, head_sha=current.head_sha, config=preview_config,
+            create_sandbox=create_browser, configure_sandbox=configure_browser,
+            persist_auth=_persist_browser_auth,
+            review_images=review_images, secret_env=browser_env, destination=artifact_path,
+        )
+        if artifact_path.exists():
+            report["artifacts"] = f"ui-evidence/{current.run_id}"
+        return report, runs
+
+    def publish_videos(current: RunState) -> str:
+        root = Path(RUNS_MOUNT_PATH) / "ui-evidence" / current.run_id
+        flows = (current.ui_review or {}).get("flows", [])
+        videos = []
+        for number, flow in enumerate(flows, 1):
+            if not flow["video"]:
+                continue
+            directory = root / f"flow-{number}"
+            file = directory / "workflow.mp4"
+            videos.append((number, file if file.is_file() else directory / "workflow.webm"))
+        return post_ui_video_comment(github_token, current.repo, current.pr_number, current.head_sha, videos)
 
     deps = ReviewDeps(
         github_token=github_token,
-        model=model,
-        secret_env=secret_env,
+        model=MODEL,
+        secret_env=credentials,
         allow_forks=_flag("ALLOW_FORK_PRS"),
         run_in_sandbox=run_in_sandbox,
+        run_ui=run_ui,
+        publish_videos=publish_videos,
         secrets=secrets,
     )
 
@@ -237,16 +290,16 @@ def run_pr_review(
 
 @app.function(
     image=web_image,
-    secrets=[reviewer_secret],
+    secrets=[reviewer_secret, codekey_secret],
     volumes={MUSE_AUTH_MOUNT_PATH: muse_auth_vol},
     timeout=FUNCTION_TIMEOUT_SECONDS,
 )
 def run_eval_case(case: dict[str, Any], repo: str) -> dict[str, Any]:
     """Run the reviewer on one eval fixture (new files committed on top of the default branch). Posts nothing."""
     github_token = os.environ["GITHUB_TOKEN"]
-    model, effort, secret_env = _muse_settings()
+    credentials = _codex_credentials()
     files: dict[str, str] = case["files"]
-    sb = _create_sandbox()
+    sb = _create_sandbox(codex_image, runtime="vm")
     try:
         sandbox.clone_repo(sb, repo=repo, refs=[], checkout="HEAD", github_token=github_token)
         for path, content in files.items():
@@ -266,11 +319,11 @@ def run_eval_case(case: dict[str, Any], repo: str) -> dict[str, Any]:
             diff_base="HEAD~1",
             changed_files=sorted(files),
             custom_instructions="",
-            include_hands_on=False,
+            include_ui_plan=False,
         )
-        gates, runs = _run_in_sandbox(
-            sb, diff_base="HEAD~1", tasks=tasks, model=model, effort=effort, secret_env=secret_env
-        )
+        sandbox.install_dependencies(sb)
+        gates = sandbox.run_gates(sb, "HEAD~1")
+        runs = run_codex_sessions(sb, tasks, credentials)
     finally:
         sb.terminate()
 
@@ -296,32 +349,16 @@ def collect_slop_report(limit: int = DEFAULT_REPORT_RUNS, with_threads: bool = T
     return summarize_runs(records, outcomes)
 
 
-@app.function(image=web_image, secrets=[reviewer_secret], volumes={MUSE_AUTH_MOUNT_PATH: muse_auth_vol}, timeout=300)
+@app.function(image=web_image, secrets=[codekey_secret], timeout=300)
 def check_sandbox_environment() -> dict[str, Any]:
-    """Report tool versions and credential presence; never returns secret material."""
-    muse_auth_vol.reload()
-    auth_json = _read_volume_file("auth.json")
-    sb = modal.Sandbox.create("sleep", "infinity", app=app, image=sandbox_image, timeout=180)
+    sb = _create_sandbox(codex_image, timeout=250, runtime="vm")
     try:
-        def srun(command: str) -> str:
-            _, out, _ = sandbox.exec_in(sb, "bash", "-lc", command)
-            return out.strip()
-
-        return {
-            "node": srun("node --version"),
-            "npm": srun("npm --version"),
-            "git": srun("git --version"),
-            "gh": srun("gh --version | head -n1"),
-            "muse": srun("muse --version"),
-            "default_model": os.environ.get("MUSE_MODEL") or DEFAULT_MUSE_MODEL,
-            "installed_skills": srun("ls -1 /opt/muse-skills").splitlines(),
-            "expected_skills": list(installed_skills()),
-            "chromium_binary": srun("find /opt/ms-playwright -name chrome -o -name headless_shell | head -n5"),
-            "github_token_kind": require_usable_token(os.environ["GITHUB_TOKEN"]),
-            "linear_key_present": bool(os.environ.get("LINEAR_API_KEY", "").strip()),
-            "muse_auth_present": bool(auth_json),
-            "muse_auth_sha256_prefix": hashlib.sha256(auth_json.encode()).hexdigest()[:8] if auth_json else None,
-        }
+        sandbox.exec_in(sb, "mkdir", "-p", sandbox.WORKSPACE)
+        prepare_codex(sb)
+        run = run_codex_session(sb, smoke_task(), credentials={"CODEKEY_API_KEY": os.environ["CODEKEY_API_KEY"]})
+        if run.output.payload != {"ok": True}:
+            raise RuntimeError(run.output.error or "codex_smoke_failed")
+        return {"status": "validated", "model": MODEL, "reasoning": REASONING_EFFORT, "result": run.output.payload}
     finally:
         sb.terminate()
 

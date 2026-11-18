@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import re
+import subprocess
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Any
 
@@ -10,9 +13,10 @@ import httpx
 
 from review import VERDICT_COMMENT, VERDICT_REQUEST_CHANGES, body_with_inline_comments
 
-STATUS_COMMENT_MARKER = "<!-- muse-pr-review-status -->"
+STATUS_COMMENT_MARKER = "<!-- codex-pr-review-status -->"
+LEGACY_STATUS_COMMENT_MARKER = "<!-- muse-pr-review-status -->"
 COMMAND_PATTERN = re.compile(
-    r"(?:^|\s)(?:/muse|@muse-review)\b(?P<instructions>.*)$",
+    r"(?:^|\s)(?:/review|/codex|/muse|@muse-review)\b(?P<instructions>.*)$",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -239,7 +243,8 @@ def upsert_status_comment(
     raise_for_github(resp, "list pull request comments")
     existing_id: int | None = None
     for comment in resp.json():
-        if STATUS_COMMENT_MARKER in (comment.get("body") or ""):
+        comment_body = comment.get("body") or ""
+        if STATUS_COMMENT_MARKER in comment_body or LEGACY_STATUS_COMMENT_MARKER in comment_body:
             existing_id = int(comment["id"])
             break
 
@@ -252,6 +257,45 @@ def upsert_status_comment(
     else:
         post_resp = client.post(comments_url, json={"body": marked_body})
         raise_for_github(post_resp, "post the status comment")
+
+
+VIDEO_COMMENT_MAX_BYTES = 10_000_000
+
+
+def post_ui_video_comment(
+    token: str, repo: str, pr_number: int, head_sha: str, videos: list[tuple[int, Path]],
+) -> str:
+    if not videos:
+        return "no_recordings"
+
+    body = [f"### Recorded UI checks for `{head_sha[:7]}`"]
+    args = ["gh", "pr", "comment", str(pr_number), "--repo", f"github.com/{repo}", "--body-file", "-"]
+    attached = 0
+    for flow, file in videos:
+        try:
+            size = file.stat().st_size
+        except OSError:
+            continue
+        if not 0 < size <= VIDEO_COMMENT_MAX_BYTES:
+            continue
+        attached += 1
+        body.extend(["", f"Workflow {flow}", "", f"![]({file})"])
+        args.extend(("--attach", str(file)))
+
+    if not attached:
+        return "no_attachable_recordings"
+    try:
+        completed = subprocess.run(
+            args, input="\n".join(body), text=True, capture_output=True, timeout=120,
+            env={"PATH": os.environ.get("PATH", os.defpath),
+                 "HOME": str(Path.home()), "GH_TOKEN": token, "GH_PROMPT_DISABLED": "1"},
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "upload_failed"
+    if completed.returncode != 0:
+        return "upload_failed"
+    return "posted" if attached == len(videos) else "partially_posted"
 
 
 def is_fork_pr(pr: dict[str, Any]) -> bool:

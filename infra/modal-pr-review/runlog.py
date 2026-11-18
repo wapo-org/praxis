@@ -67,6 +67,7 @@ def build_run_record(
     sessions: list[dict[str, Any]],
     posted_findings: list[dict[str, Any]],
     secrets: Iterable[str] = (),
+    ui_review: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     record = {
         "version": RUN_RECORD_VERSION,
@@ -88,6 +89,8 @@ def build_run_record(
         "sessions": sessions,
         "posted_findings": posted_findings,
     }
+    if ui_review is not None:
+        record["ui_review"] = ui_review
     return redact_value(record, secrets)
 
 

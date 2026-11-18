@@ -109,24 +109,6 @@ REVIEW_SESSION_PROFILES: tuple[SessionProfile, ...] = (
     ),
 )
 
-HANDS_ON_SESSION_PROFILE = SessionProfile(
-    key="hands_on",
-    label="Live app check",
-    read_only=False,
-    skills=("principle-prove-it-works",),
-    job="Boot the app in this sandbox and try the flows this PR changes.",
-    checklist=(("CORRECTNESS", "Something you ran behaved wrongly, and you can tie it to a changed line."),),
-)
-
-HANDS_ON_STEPS: tuple[str, ...] = (
-    "Start the API: `PORT=8797 npm --prefix cloud run dev:local` and wait for `http://127.0.0.1:8797/health`.",
-    "Start the web app: `VITE_API_PROXY_TARGET=http://127.0.0.1:8797 npm --prefix cloud/apps/web run dev -- --port 5173 --host 127.0.0.1`.",
-    "Run `npm --prefix cloud run verify -- api --api http://127.0.0.1:8797`.",
-    "Run `npm --prefix cloud run verify -- web --base http://127.0.0.1:5173 --api http://127.0.0.1:8797`; screenshots and accessibility snapshots land in `cloud/artifacts/verify/`.",
-    "If the PR changes a web flow, write `/tmp/hands_on_test.mjs` (Playwright Chromium, `NODE_PATH=/workspace/repo/cloud/node_modules`) that exercises that one flow and prints console errors.",
-    "Stop every server you started.",
-)
-
 SCRIPT_OWNED_NOTICE = """## Not your job — never report these
 The server already runs `typecheck`, the test suite, `check:rules` and `comment-sweep` and posts their output itself.
 Do not report: type errors, failing tests, `any`, import/layer violations, banned modules, file length, `userId` arguments on Convex functions, numbered env keys, or comment wording.
@@ -176,24 +158,6 @@ def session_output_schema(session_key: str) -> dict[str, Any]:
     }
 
 
-def hands_on_output_schema() -> dict[str, Any]:
-    commands = {"type": "array", "items": {"type": "string"}}
-    return {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["session", "ran", "checks_passed", "checks_failed", "manual_observations", "findings"],
-        "properties": {
-            "session": {"type": "string"},
-            "ran": {"type": "boolean"},
-            "checks_passed": commands,
-            "checks_failed": commands,
-            "manual_observations": {"type": "string"},
-            "findings": findings_schema("hands_on"),
-        },
-    }
-
-
 def _pr_context(
     *,
     repo: str,
@@ -233,7 +197,7 @@ def _examples_block(session_key: str) -> str:
 def _output_rules(profile: SessionProfile) -> str:
     linear_rule = (
         "- A Linear claim needs `linear_issue` (`PRA-123`) and `linear_quote`: one sentence copied exactly "
-        "from `linear-read PRA-123`. The server re-fetches the issue and deletes the finding if the quote is not there.\n"
+        "from the read-only Linear MCP tool. The server re-fetches the issue and deletes the finding if the quote is not there.\n"
         if profile.uses_linear
         else "- Set `linear_issue` and `linear_quote` to null.\n"
     )
@@ -260,9 +224,9 @@ def build_session_prompt(
     custom_instructions: str = "",
 ) -> str:
     checklist = "\n".join(f"- `{rule_id}` — {text}" for rule_id, text in profile.checklist)
-    skills = "\n".join(f"   - `/root/.config/muse/skills/{skill}/SKILL.md`" for skill in profile.skills)
+    skills = "\n".join(f"   - `/opt/muse-skills/{skill}/SKILL.md`" for skill in profile.skills)
     linear_step = (
-        "4. If the PR text or branch names a `PRA-*` issue, read it with `linear-read PRA-123` (read-only).\n"
+        "4. If the PR text or branch names a `PRA-*` issue, read it with the read-only Linear MCP tool.\n"
         if profile.uses_linear
         else ""
     )
@@ -299,52 +263,7 @@ def build_session_prompt(
 """
 
 
-def build_hands_on_prompt(
-    *,
-    repo: str,
-    pr_number: int,
-    title: str,
-    body: str,
-    diff_base: str,
-    changed_files: list[str],
-    custom_instructions: str = "",
-) -> str:
-    profile = HANDS_ON_SESSION_PROFILE
-    steps = "\n".join(f"{index}. {step}" for index, step in enumerate(HANDS_ON_STEPS, start=1))
-    context = _pr_context(
-        repo=repo,
-        pr_number=pr_number,
-        title=title,
-        body=body,
-        changed_files=changed_files,
-        custom_instructions=custom_instructions,
-    )
-    return f"""You are the `hands_on` tester. Never edit files inside `/workspace/repo`; temporary scripts go in `/tmp`.
-
-## Your one job
-{profile.job} See what changed with `git diff --stat {diff_base}...HEAD`.
-
-## Steps
-{steps}
-
-{SCRIPT_OWNED_NOTICE}
-Do not run `typecheck`, `npm test`, `check:rules` or `comment-sweep`: the server has already run them.
-
-## Reporting
-- `checks_passed` / `checks_failed`: the exact commands you ran, nothing else. `ran` is false if you could not boot the app.
-- `manual_observations`: at most three sentences of what you saw (status codes, console errors). If `PraxisChat/` Swift files changed, say that the simulator cannot run on Linux.
-- Report only what you observed in a real run.
-
-{_output_rules(profile)}
-
-## Worked examples
-{_examples_block(profile.key)}
-
-{context}
-"""
-
-
 def installed_skills() -> tuple[str, ...]:
     """Skills cloned into the image: exactly the ones a prompt points at."""
-    profiles = (*REVIEW_SESSION_PROFILES, HANDS_ON_SESSION_PROFILE)
+    profiles = REVIEW_SESSION_PROFILES
     return tuple(sorted({skill for profile in profiles for skill in profile.skills}))

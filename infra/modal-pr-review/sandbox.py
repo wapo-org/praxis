@@ -6,12 +6,10 @@ import json
 import shlex
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
 from gates import GateSpec, gate_result, gate_specs
-from linear import LINEAR_READ_SCRIPT, LINEAR_READONLY_MCP_URL
 from muse_output import ERROR_TIMEOUT, MuseOutput, parse_muse_output
 from pipeline import SessionRun
 
@@ -34,6 +32,9 @@ class SessionTask:
     read_only: bool
     max_steps: str
     required_keys: tuple[str, ...] = ("findings",)
+    reasoning_effort: str | None = None
+    images: tuple[str, ...] = ()
+    timeout_seconds: int = SESSION_EXEC_TIMEOUT_SECONDS
 
 
 def exec_in(
@@ -142,7 +143,7 @@ def run_gate(sb: Any, spec: GateSpec) -> dict[str, Any]:
 
 
 def run_gates(sb: Any, diff_base: str) -> list[dict[str, Any]]:
-    """Sequential on purpose: the gates are CPU-heavy and must not race the live app the hands-on session boots."""
+    """Run CPU-heavy gates sequentially."""
     return [run_gate(sb, spec) for spec in gate_specs(diff_base)]
 
 
@@ -153,7 +154,6 @@ def configure_muse(
     reasoning_effort: str,
     auth_json: str | None,
     trust_json: str | None,
-    with_linear: bool,
 ) -> None:
     """Install credentials and tools; call only after PR-controlled install and gate commands have finished."""
     settings: dict[str, Any] = {
@@ -163,14 +163,7 @@ def configure_muse(
         "reasoning_effort": reasoning_effort,
         "mcpServers": {},
     }
-    if with_linear:
-        settings["mcpServers"]["linear"] = {
-            "type": "streamable-http",
-            "url": LINEAR_READONLY_MCP_URL,
-            "headers": {"Authorization": "Bearer ${LINEAR_API_KEY}"},
-        }
     write_file(sb, f"{MUSE_CONFIG_DIR}/settings.json", json.dumps(settings, indent=2))
-    write_file(sb, "/usr/local/bin/linear-read", LINEAR_READ_SCRIPT, mode=0o755)
     if auth_json:
         write_file(sb, f"{MUSE_CONFIG_DIR}/auth.json", auth_json, mode=0o600)
     if trust_json:
@@ -189,6 +182,7 @@ def run_muse_session(
     model: str,
     reasoning_effort: str,
     secret_env: dict[str, str],
+    workspace: str = WORKSPACE,
 ) -> SessionRun:
     """One Muse session with its own config dir (auth lock contention) and secrets passed only to this process."""
     prompt_path = f"/tmp/prompt_{task.session}.txt"
@@ -219,7 +213,7 @@ ln -sfn {MUSE_CONFIG_DIR}/skills {cfg_dir}/muse/skills
         "--prompt-file",
         prompt_path,
         "--workspace",
-        WORKSPACE,
+        workspace,
         "--session-id",
         str(uuid.uuid4()),
         "--yolo",
@@ -227,7 +221,7 @@ ln -sfn {MUSE_CONFIG_DIR}/skills {cfg_dir}/muse/skills
         "--model",
         model,
         "--reasoning-effort",
-        reasoning_effort,
+        task.reasoning_effort or reasoning_effort,
         "--max-model-steps",
         task.max_steps,
     ]
@@ -241,9 +235,9 @@ ln -sfn {MUSE_CONFIG_DIR}/skills {cfg_dir}/muse/skills
             sb,
             "bash",
             "-lc",
-            f"cd {WORKSPACE} && {command}",
+            f"cd {shlex.quote(workspace)} && {command}",
             env={**secret_env, "XDG_CONFIG_HOME": cfg_dir},
-            timeout=SESSION_EXEC_TIMEOUT_SECONDS,
+            timeout=task.timeout_seconds,
             check=False,
         )
     except Exception:
@@ -252,29 +246,6 @@ ln -sfn {MUSE_CONFIG_DIR}/skills {cfg_dir}/muse/skills
 
     output = parse_muse_output(stdout, task.required_keys)
     return SessionRun(task.session, output, stdout, rc, time.monotonic() - started)
-
-
-def run_sessions(
-    sb: Any,
-    tasks: list[SessionTask],
-    *,
-    model: str,
-    reasoning_effort: str,
-    secret_env: dict[str, str],
-) -> list[SessionRun]:
-    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_SESSIONS) as pool:
-        futures = [
-            pool.submit(
-                run_muse_session,
-                sb,
-                task,
-                model=model,
-                reasoning_effort=reasoning_effort,
-                secret_env=secret_env,
-            )
-            for task in tasks
-        ]
-        return [future.result() for future in futures]
 
 
 def read_refreshed_auth(sb: Any) -> str | None:

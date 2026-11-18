@@ -1,15 +1,15 @@
-# Modal Muse Code PR Reviewer
+# Modal PR Reviewer
 
-Reviews GitHub pull requests inside an isolated [Modal Sandbox](https://modal.com/docs/guide/sandboxes) with the [Meta Muse Code CLI](https://developer.meta.ai/ai/lp/muse-code) (`muse-ember-1.0`, a small model). Because the model is small, the reviewer is built so that **nothing it says is posted unless the server can verify it**. The rules are in [`REVIEW_GUIDELINES.md`](./REVIEW_GUIDELINES.md); the repo rules it enforces are in [`AGENTS.md`](../../AGENTS.md).
+Reviews GitHub pull requests in Modal. Codex CLI, using `gpt-6.2-sol` at low reasoning, handles source review, UI planning, and visual assessment. Muse Code runs the headed browser workflows using `muse-ember-1.0` at medium reasoning. Code findings are validated against the diff. Browser and visual observations are reported with recording evidence.
+
+The Codex process contract was recovered from deployment v4, revision `6771b05`. The existing Modal deployment name remains `praxis-muse-pr-reviewer` so the GitHub webhook URL stays stable.
 
 ## How a review runs
 
-1. **Checkout and install** in a sandbox that holds no credentials (no secrets in its environment, no credential volume).
-2. **Deterministic gates, run by the server** (`gates.py`): `typecheck`, the test suite, `check:rules` against the merge-base baseline, and `comment-sweep`. Their output is posted verbatim. No model judges them.
-3. **Credentials enter the sandbox only now**, and six Muse sessions run in parallel (`prompts.py`): five read-only sessions with one narrow job each (`abstractions`, `maintainability`, `conciseness`, `logic_bs`, `security`) and `hands_on`, which boots the API and web app. Each returns JSON findings: `rule_id`, `file`, `line`, `evidence`, `failure_scenario`, `confidence`, plus `linear_issue` / `linear_quote` for Linear claims. Maximum 5 per session.
-4. **Server-side validation** (`validation.py`) drops every finding whose rule id is not on the closed list, whose file/line is not in the diff, whose evidence quote is not found verbatim, whose Linear quote is not in the issue text the server fetched, whose confidence is low, or which duplicates another.
-5. **Verdict** (`review.py`): `REQUEST_CHANGES` only for a failed gate or a verified, high-confidence HARD-rule finding. Otherwise `COMMENT`. Never `APPROVE`.
-6. **Run log** (`runlog.py`): every run is written to the Modal Volume `praxis-pr-review-runs`, including raw model output and every dropped finding with its reason. A session that returns nothing or malformed JSON posts nothing; the review only says the session had no usable output.
+1. **Deterministic gates** run the PR's dependency install, typecheck, tests, rules and comment sweep in a disposable sandbox.
+2. **Source review and UI planning** use a fresh checkout. Five read-only sessions return code findings for server-side validation. A sixth session reads the diff and plans up to four end-to-end workflows for changed web behavior.
+3. **Hosted UI testing** waits up to three minutes for a ready Vercel web Preview matching the PR head SHA. Muse Ember at medium reasoning runs each workflow in headed Chromium and saves its video. A separate Codex session visually inspects contact sheets of up to 20 chronological frames each. UI outcomes and the evidence location appear in the review. The reviewer posts a separate PR comment with playable video attachments for that commit.
+4. **Verdict and run log.** A failed deterministic gate or a verified high-confidence HARD finding can request changes. Browser and visual outcomes are advisory. Run records and UI evidence go to the private Modal volume `praxis-pr-review-runs`.
 
 > Modal containers run Linux, so `PraxisChat/` Swift changes get a static review only.
 
@@ -21,13 +21,13 @@ uv sync
 uv run modal setup
 ```
 
-## 2. Authenticate Muse Code (OAuth volume)
+## 2. Authenticate the Muse browser worker (OAuth volume)
 
 ```bash
 ./infra/modal-pr-review/scripts/sync-muse-auth.sh
 ```
 
-This creates a file-backed OAuth session and uploads `auth.json` to the `muse-auth-state` Volume. The review function reads it and writes it into the sandbox with mode `600` only after the gates have run. Alternative: set `META_API_KEY` in the secret.
+This creates a file-backed OAuth session and uploads `auth.json` to the `muse-auth-state` Volume. The review function reads it and writes it into the dedicated model sandboxes with mode `600`. Alternative: set `META_API_KEY` in the secret.
 
 ## 3. The Modal secret `praxis-pr-reviewer-secrets`
 
@@ -36,11 +36,14 @@ This creates a file-backed OAuth session and uploads `auth.json` to the `muse-au
 | `GITHUB_TOKEN` | Read the PR, clone, post the review. **See below.** |
 | `GITHUB_WEBHOOK_SECRET` | HMAC key for the webhook. The webhook answers `503` if it is empty. |
 | `LINEAR_API_KEY` | Read-only Linear access for `linear-read`, and for the server's quote check. |
-| `MUSE_MODEL` | Default `muse-ember-1.0`. |
-| `MUSE_REASONING_EFFORT` | Default `max`. |
-| `MUSE_MAX_MODEL_STEPS` | No longer read: steps are fixed per session (40 read-only, 80 hands-on) in `prompts.py`. |
+| `VERCEL_WEB_PROJECT_ID` | ID of the Vercel **web** project. |
+| `VERCEL_TOKEN` | Vercel API token scoped to the account/team containing the web project. |
+| `VERCEL_TEAM_ID` | Team ID if Vercel requires a team scope. |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | Project automation secret for protected previews. |
 
 Optional: `META_API_KEY`, `REVIEW_DRAFT_PRS=1`, `ALLOW_FORK_PRS=1`, `ALLOWED_REPOS` (comma-separated, default `wapo-org/praxis`).
+
+The separate Modal secret `praxis-codekey-codex` supplies `CODEKEY_API_KEY` for Codex source and visual review.
 
 ### `GITHUB_TOKEN` must be a fine-grained PAT or a GitHub App token
 
@@ -68,7 +71,18 @@ uv run --project infra/modal-pr-review modal secret create praxis-pr-reviewer-se
 rm /path/to/keys.json
 ```
 
-The same PAT is stored in the macOS keychain item `praxis-github-pat` for `git push github`; update both. Then run `smoke_sandbox` (below): `github_token_kind` should read `fine_grained_pat`.
+The same PAT is stored in the macOS keychain item `praxis-github-pat` for `git push github`; update both. Run a review to confirm the new token can post to GitHub.
+
+### Vercel Preview setup
+
+1. Connect the **web** project to the Praxis GitHub repository and enable Preview deployments for PR branches. Use [the existing web deployment settings](../../cloud/DEPLOY.md#4-vercel-web) and point previews to test backend resources. Verify that Vercel publishes a ready deployment for the PR's head commit. Hobby supports Git previews for eligible repositories and [includes HTTPS](https://vercel.com/docs/plans).
+2. In the web project's **Settings → Deployment Protection → Protection Bypass for Automation**, generate a secret for the reviewer. Keep Vercel Authentication enabled. The Modal function exchanges the secret for a cookie on the resolved deployment origin; the browser sandbox receives the cookie rather than the account token or project secret. [Vercel automation access](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation)
+3. Add the four Vercel keys to the dedicated Modal secret `praxis-pr-reviewer-vercel`. A Vercel cookie grants deployment access. Flows that also need Praxis sign-in report a blocker unless they can complete sign-in with test fixtures. Use test accounts and synthetic data in recordings.
+4. Run one review against a UI PR with a ready preview. Check that the head SHA matches and the separate recordings comment shows playable videos. GitHub requires the reviewer identity to have push access for attachments. Recordings are visible to PR readers, so use synthetic data on test infrastructure. A failed upload leaves the GitHub review and Modal evidence available. Download the evidence using the run ID in the GitHub review:
+
+   ```bash
+   uv run --project infra/modal-pr-review modal volume get praxis-pr-review-runs ui-evidence/<run-id> ./ui-evidence
+   ```
 
 ## 4. Deploy and smoke-test
 
@@ -78,14 +92,14 @@ uv run --project infra/modal-pr-review modal run infra/modal-pr-review/app.py::s
 uv run --project infra/modal-pr-review modal run infra/modal-pr-review/app.py::review_pr --repo wapo-org/praxis --pr 123
 ```
 
-`smoke_sandbox` prints tool versions (`node`, `npm`, `gh`, `muse`), the installed skills, the token kind, and whether Muse auth is present. It prints no secret values.
+`smoke_sandbox` verifies a structured response from the Codex runner in a Modal VM and reports the active model and effort.
 
 ## 5. GitHub webhook
 
 **Settings → Webhooks → Add webhook:** payload URL = the `github_webhook` URL from `modal deploy`, content type `application/json`, secret = `GITHUB_WEBHOOK_SECRET`, events **Pull requests** and **Issue comments**.
 
 - Automatic on `opened`, `synchronize`, `reopened`, `ready_for_review` (drafts skipped by default).
-- On demand: a PR comment containing `/muse` or `@muse-review` from an owner, member or collaborator.
+- On demand: a PR comment containing `/review`, `/codex`, `/muse`, or `@muse-review` from an owner, member or collaborator.
 - Fork PRs are skipped on both paths unless `ALLOW_FORK_PRS=1`; repositories outside `ALLOWED_REPOS` are ignored.
 
 ## 6. Seeing slop
@@ -109,20 +123,20 @@ Fixed in code:
 
 - **Skills pinned** to `cursor/plugins@bf0c7cd` (was `HEAD`), and only the 5 skills a prompt uses are installed (was 21).
 - **npm pinned** to 11.19.0 (Node 22 ships npm 10; `cloud/` requires ≥ 11). `fastapi` and `httpx` pinned to the `uv.lock` versions.
-- **PR code runs before credentials exist in the sandbox.** `npm ci` and the gates execute PR-controlled code; the sandbox now has no secrets in its environment and no credential volume, and `auth.json` is written (mode `600`) only afterwards. `META_API_KEY` / `LINEAR_API_KEY` are passed to the Muse processes only.
+- **Gate and model sandboxes are separate.** `npm ci` and the gates run without credentials. Source review gets a clean checkout and per-process Codex credentials. Muse credentials stay in the browser sandbox.
 - **Fork PRs via `/muse` comments** were not checked (the comment payload has no head repo); the run now re-checks and skips.
 - **Empty webhook secret** would have accepted forged signatures; the webhook now returns `503`.
 - **Repository allow-list** (`ALLOWED_REPOS`).
 - **No raw model text on GitHub.** Session failures used to post up to 1500 characters of raw output; now only a fixed error class is posted. All outgoing text and the run log are scrubbed for known secret values and token shapes.
 - **Model-claimed check failures no longer block.** Only server-run gates do.
-- **Timeouts:** sandbox 2700 s, function 3000 s (install ≤ 600 s + gates ≤ 1020 s + sessions ≤ 900 s). Read-only sessions are capped at 40 model steps.
+- **Timeouts:** review function 4800 s, browser sandbox 2100 s. Browser execution is capped at 80 model steps and visual review at 30.
 
 Not fixed — needs a decision or a live check:
 
-- **Muse CLI is not pinned** (`curl https://dev.meta.ai/install.sh | bash`); the installer has no documented version flag. `smoke_sandbox` reports the installed version.
+- **Muse CLI is not pinned** (`curl https://dev.meta.ai/install.sh | bash`); the installer has no documented version flag.
 - **Node, `gh` and Playwright system packages** are pinned to a major or exact tool version, not to image digests.
-- **Sandbox network egress is open.** Muse, npm and git need the network; Modal's `block_network` / `cidr_allowlist` cannot express a domain allow-list. The `hands_on` session runs PR code with `--yolo` while Muse credentials are in the sandbox, so a malicious same-repo PR could exfiltrate the Muse token and the Linear key. Mitigation today: forks are off and only collaborators can trigger.
-- **Cost:** 6 sessions at `max` effort per push, and every `synchronize` event starts a new run without cancelling the previous one.
+- **Sandbox network egress is open.** Muse, npm and git need the network; Modal's `block_network` / `cidr_allowlist` cannot express a domain allow-list. Source review and browser testing run in separate sandboxes. The browser sees untrusted preview content and has no Linear or GitHub token.
+- **Cost:** Six source sessions run per push. A UI plan adds browser execution and visual review when its preview is ready. Every `synchronize` event starts a new run.
 - **`check:rules` runs the PR's own copy of the script** (with the merge-base baseline); a PR that edits the script shows that in its diff.
 - **Step and token counts** in the run log are best-effort: they are read from `usage` fields and `*step*` / `*tool*` event names in the Muse JSONL stream, which has not been checked against live output.
 

@@ -269,3 +269,32 @@ def test_review_threads_are_classified_for_the_wont_fix_share() -> None:
         assert fetch_review_thread_outcomes(client, "wapo-org/praxis", 5) == [
             {"rule_id": "R5.secret-leak", "outcome": "wont_fix"}
         ]
+
+
+def test_video_comment_embeds_recordings_and_keeps_token_out_of_arguments(tmp_path, monkeypatch) -> None:
+    from subprocess import CompletedProcess
+
+    from github_api import VIDEO_COMMENT_MAX_BYTES, post_ui_video_comment
+
+    recording = tmp_path / "workflow.mp4"
+    recording.write_bytes(b"test recording")
+    oversized = tmp_path / "oversized.webm"
+    with oversized.open("wb") as file:
+        file.truncate(VIDEO_COMMENT_MAX_BYTES + 1)
+
+    def run(args, **kwargs):
+        assert args == [
+            "gh", "pr", "comment", "7", "--repo", "github.com/wapo-org/praxis",
+            "--body-file", "-", "--attach", str(recording),
+        ]
+        assert "token" not in args
+        assert kwargs["env"]["GH_TOKEN"] == "token"
+        assert kwargs["input"].splitlines() == [
+            "### Recorded UI checks for `abcdef1`", "", "Workflow 1", "", f"![]({recording})",
+        ]
+        return CompletedProcess(args, 0)
+
+    monkeypatch.setattr("github_api.subprocess.run", run)
+    assert post_ui_video_comment(
+        "token", "wapo-org/praxis", 7, "abcdef1234", [(1, recording), (2, oversized)],
+    ) == "partially_posted"

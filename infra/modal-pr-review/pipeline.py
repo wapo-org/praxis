@@ -58,6 +58,7 @@ class RunState:
     session_runs: list[SessionRun] = field(default_factory=list)
     validations: list[SessionValidation] = field(default_factory=list)
     posted_findings: list[dict[str, Any]] = field(default_factory=list)
+    ui_review: dict[str, Any] | None = None
 
     def to_record(self, secrets: Iterable[str] = ()) -> dict[str, Any]:
         by_session = {validation.session: validation for validation in self.validations}
@@ -94,6 +95,7 @@ class RunState:
             sessions=sessions,
             posted_findings=self.posted_findings,
             secrets=secrets,
+            ui_review=self.ui_review,
         )
 
 
@@ -105,11 +107,14 @@ def assess(
     linear_texts: dict[str, str],
     model: str,
     secrets: Iterable[str] = (),
+    ui_review: dict[str, Any] | None = None,
 ) -> Assessment:
     """Validate what the sessions returned and build the review; a failed session contributes nothing but a note."""
     payloads = {run.session: run.output.payload for run in session_runs if run.output.payload is not None}
     session_errors = {run.session: run.output.error for run in session_runs if run.output.error}
-    validations, findings = validate_run(payloads, diff, linear_texts)
+    validations, findings = validate_run(
+        {key: value for key, value in payloads.items() if "findings" in value}, diff, linear_texts
+    )
     review = build_review(
         gates=gates,
         sessions=validations,
@@ -118,6 +123,7 @@ def assess(
         hands_on=payloads.get("hands_on"),
         diff=diff,
         model=model,
+        ui_review=ui_review,
     )
     return Assessment(
         review=redact_value(review, secrets),

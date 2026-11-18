@@ -6,7 +6,7 @@ Automated PR reviews run in a Modal Sandbox. The review model is `muse-ember-1.0
 
 1. **Deterministic gates — run by the server, never judged by a model.**
    `npm --prefix cloud run typecheck`, `npm --prefix cloud test`, `npm --prefix cloud run check:rules` (compared against the merge-base baseline, so a PR cannot pass by growing its own baseline) and `node cloud/scripts/comment-sweep.mjs check`. `check:rules` lines are posted verbatim.
-2. **Five read-only model sessions, one narrow job each**, plus one `hands_on` session that boots the app. A session may only cite the rule ids in its own checklist, returns at most 5 findings, and is told to say nothing when unsure.
+2. **Five read-only model sessions, one narrow job each**, plus a UI planner that identifies changed web workflows for recording on Vercel Preview. A session may only cite the rule ids in its own checklist, returns at most 5 findings, and is told to say nothing when unsure.
 3. **Server-side validation.** A finding is posted only if all of this holds; otherwise it is dropped and the reason is logged:
    - `rule_id` is on the closed list below, is a judgement rule, and belongs to that session;
    - `file` and `line` are in the PR diff, and `evidence` is found verbatim in that file's diff (whitespace-insensitive);

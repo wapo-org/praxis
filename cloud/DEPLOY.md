@@ -41,30 +41,63 @@ It never falls back to memory adapters or dev auth.
 
 ## Environment variables (Vercel project → Settings → Environment Variables)
 
-| Variable | Required | What it is / where to get it |
+Set these under **Settings → Environment Variables** on the named Vercel project. Add distinct Preview and Production values. Deployments get new values on the next build. [Vercel environment scopes](https://vercel.com/docs/environment-variables#environments)
+
+### Web project
+
+| Variable | Preview | Production |
 |---|---|---|
-| `PRAXIS_API_URL` | yes | Public https origin of the API, no path (e.g. `https://api.example.com`). Used for OAuth callbacks, upload URLs and the QStash callback. |
-| `PRAXIS_WEB_ORIGINS` | yes | Comma-separated https origins of the web app (CORS, CSRF and auth trusted origins). |
-| `PRAXIS_ENCRYPTION_KEYS` | yes | AES-256-GCM keyring for provider keys, MCP tokens and the voice key: comma-separated base64 32-byte keys, **current first**, then previous ones. Generate a key with `openssl rand -base64 32`. A single legacy `PRAXIS_ENCRYPTION_KEY` is still accepted. See Key rotation. |
-| `CLERK_PUBLISHABLE_KEY` | yes | Clerk instance publishable key. |
-| `CLERK_SECRET_KEY` | yes | Server-only Clerk key for identity lookup and account deletion. |
-| `CLERK_JWT_KEY` | yes | Clerk instance PEM public key for networkless JWT verification. |
-| `VITE_CONVEX_URL` | web build | Convex deployment client URL; web sign-in is Convex Auth v2, configured in the Convex deployment (see [Convex Auth v2 web](#convex-auth-v2-web-pra-34)). |
-| `CONVEX_URL` | yes | Convex dashboard → deployment → Settings → URL (`https://<name>.convex.cloud`). |
-| `PRAXIS_CONVEX_SERVER_TOKEN` | yes | API-to-Convex credential, ≥ 32 chars: `openssl rand -base64 48`. Set the **same value** in the Convex deployment env (below). |
-| `UPSTASH_REDIS_REST_URL` | yes | Upstash console → Redis database → REST API → URL. |
-| `UPSTASH_REDIS_REST_TOKEN` | yes | Same page → REST token (not the read-only one). |
-| `QSTASH_TOKEN` | yes | Upstash console → QStash → `QSTASH_TOKEN`. |
-| `QSTASH_CURRENT_SIGNING_KEY` | yes | QStash → Signing keys → current. |
-| `QSTASH_NEXT_SIGNING_KEY` | yes | QStash → Signing keys → next (needed for key rotation). |
-| `PRAXIS_RUN_BUDGET_MS` | no | Time budget per run slice, default `240000`. Keep it under `maxDuration` (300 s) minus about 30 s. |
-| `PRAXIS_SYNC_STRATEGY` | no | `cursor` (default) or `merkle`. |
-| `GROQ_API_KEY` | no | Server-side fallback for `/v1/transcribe` (console.groq.com → API Keys). Users can also save their own key; it is stored encrypted. More keys: `GROQ_API_KEY_2`, … (see "Numbered siblings" below). |
+| `VITE_CONVEX_URL` | URL of the test Convex deployment | URL of the production Convex deployment |
+| `VITE_API_BASE_URL` | HTTPS origin of the staging API | HTTPS origin of the production API |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Optional legacy Account Settings display flag | Optional legacy Account Settings display flag |
+
+The current web sign-in provider is Convex Auth v2. Vite embeds `VITE_*` values in browser bundles. Supply the first two variables at build time. The existing local prebuilt uploader passes `VITE_API_BASE_URL` but currently omits `VITE_CONVEX_URL`, so use the Vercel Git build for this setup or fix that uploader before using it for hosted sign-in.
+
+### API project
+
+| Variable | Preview | Production |
+|---|---|---|
+| `PRAXIS_API_URL` | Stable staging API HTTPS origin, without a path | Canonical production API HTTPS origin, without a path |
+| `PRAXIS_WEB_ORIGINS` | Comma-separated exact HTTPS origins of the permitted test web deployments | Comma-separated exact HTTPS origins of the permitted production web domains |
+| `PRAXIS_ENCRYPTION_KEYS` | Independent staging AES keyring | Production AES keyring. Each key is 32 random bytes, base64 encoded, current first |
+| `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_JWT_KEY` | Clerk test instance, including the PEM JWT public key | Clerk production instance. The API startup validator still requires all three |
+| `CONVEX_URL` | Test Convex deployment client URL | Production Convex deployment client URL |
+| `PRAXIS_CONVEX_SERVER_TOKEN` | Random 32+ character token matching test Convex | Separate random 32+ character token matching production Convex |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Test Redis database and read/write REST token | Production Redis database and read/write REST token |
+| `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` | Test QStash credentials and signing keys | Production QStash credentials and signing keys |
+| `PRAXIS_TURN_CURRENT_SIGNING_KEY` | Random 32+ character test HMAC key | Separate random 32+ character production HMAC key |
+| `PRAXIS_TURN_NEXT_SIGNING_KEY` | Optional during a turn-key rotation | Optional during a turn-key rotation |
+
+The preview web build should use test data end to end. The reviewer opens the exact deployment URL for the PR commit, so the preview API must allow **that origin** in `PRAXIS_WEB_ORIGINS` for browser API calls. Configure the appropriate `SITE_URL` and OAuth return URLs in test Convex for authenticated preview flows. Use a staging API origin reachable by the browser and QStash. The web preview's Vercel automation cookie is scoped to its own host, and QStash needs to reach the API's signature-checked continuation endpoint independently. [Vercel Preview URLs](https://vercel.com/docs/deployments/environments) · [Deployment Protection](https://vercel.com/docs/deployment-protection)
+
+Optional on the API project in either scope:
+
+- `GROQ_API_KEY` for platform transcription. Set `GROQ_API_KEY_2` and later slots if testing or using failover. [PRA-69](https://linear.app/praxis-a/issue/PRA-69/live-check-pra-61-credential-pool-on-real-groq-keys-and-upstash)
+- `EXA_API_KEY` and `FIRECRAWL_API_KEY` for built-in search and reading. They also support contiguous numbered slots. Each test user needs a Convex platform allowance record for paid calls. [PRA-60](https://linear.app/praxis-a/issue/PRA-60/exa-firecrawl-built-in-web-search-and-reading)
+- `PRAXIS_EMBEDDER=openai` and `PRAXIS_OPENAI_EMBEDDINGS_KEY` for the current OpenAI embeddings path. Leave both unset to keep hosted embeddings off.
+- `PRAXIS_RUN_BUDGET_MS` and `PRAXIS_SYNC_STRATEGY` for explicit overrides. The current defaults are `240000` and `cursor`.
+
+### Convex, Modal and deploy tooling
+
+- **Convex test and production:** set the matching `PRAXIS_CONVEX_SERVER_TOKEN`. For sign-in set `SITE_URL`, `RESEND_API_KEY`, `SENDER_EMAIL`, `SENDER_NAME`, `AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET`, `AUTH_APPLE_CLIENT_ID`, `AUTH_APPLE_TEAM_ID`, `AUTH_APPLE_KEY_ID`, and `AUTH_APPLE_PRIVATE_KEY`. Put the matching turn HMAC keys in Convex when the signed caller is enabled. [PRA-111](https://linear.app/praxis-a/issue/PRA-111/live-check-pra-34-web-sign-in-google-apple-and-resend) · [PRA-113](https://linear.app/praxis-a/issue/PRA-113/live-check-pra-38-convex-to-vercel-signed-turn-caller)
+- **Modal secret `praxis-pr-reviewer-vercel`:** `VERCEL_WEB_PROJECT_ID`, `VERCEL_TOKEN`, `VERCEL_TEAM_ID` when required, and `VERCEL_AUTOMATION_BYPASS_SECRET` for a protected preview. Generate that last value under the Vercel web project's Deployment Protection settings. The GitHub video attachment uses the existing Modal `GITHUB_TOKEN` with push access. [Reviewer setup](../infra/modal-pr-review/README.md#vercel-preview-setup)
+- **Local deploy tooling:** `VERCEL_ORG_ID`, `VERCEL_API_PROJECT_ID`, `VERCEL_WEB_PROJECT_ID`, `VERCEL_TOKEN`, and `CONVEX_DEPLOY_KEY` are CLI inputs. The local deploy template still asks for `BETTER_AUTH_SECRET`, which the current Vercel runtime does not require. The current runtime also requires Clerk and the turn HMAC key even though the older deploy preflight does not list them.
+
+### Upcoming Linear work
+
+| Work | What to prepare | Where and when |
+|---|---|---|
+| Stateless turn worker | Keep `PRAXIS_TURN_CURRENT_SIGNING_KEY` and reserve `PRAXIS_TURN_NEXT_SIGNING_KEY` for rotation | Match the corresponding Convex deployment when the real caller lands. The current worker validates signatures, and actual turn execution depends on PRA-39. [PRA-38](https://linear.app/praxis-a/issue/PRA-38/turn-worker-14-authenticated-apiturn-endpoint-and-contract) · [PRA-39](https://linear.app/praxis-a/issue/PRA-39/turn-worker-24-hydrate-run-one-turn-write-back) |
+| Workflow and API migration | Plan to remove `QSTASH_*` and retire web `VITE_API_BASE_URL` once their callers have migrated | Keep them in both scopes while the public Hono API and QStash continuation are in use. Redis stays for cache and credential cooldowns. Recheck the Clerk keys and other legacy API settings against the worker startup validator at cutover. [PRA-27](https://linear.app/praxis-a/issue/PRA-27/convex-core-45-crons-and-webhook-receiver) · [PRA-41](https://linear.app/praxis-a/issue/PRA-41/turn-worker-44-retire-the-public-hono-surface) · [PRA-18](https://linear.app/praxis-a/issue/PRA-18/upstash-redis-turn-and-session-cache) |
+| App sandboxes | Separate Modal token ID and token secret pairs for staging and production. Pool tests use `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` with paired suffixes | Put the credentials on the server boundary that creates the app sandboxes once wired. [PRA-19](https://linear.app/praxis-a/issue/PRA-19/modal-sandboxes-modalimage-modalvolume-encrypted-ports) · [PRA-52](https://linear.app/praxis-a/issue/PRA-52/modal-25-lifecycle-ownership-and-the-sandboxes-table) |
+| Tenant identities | One stable HMAC secret per environment. The ticket does not name the variable | Share between Vercel worker and Convex within one environment. Keep staging and production distinct. [PRA-36](https://linear.app/praxis-a/issue/PRA-36/auth-35-one-tenant-id-for-all-six-boundaries) |
+| Connectors, memory and telemetry | Composio server API credential, `SUPERMEMORY_API_KEY`, and a PostHog project credential | Add as each integration ships, on the owning server. PRA-47 calls for API environment validation and a signature-verified Convex webhook. The exact Composio and PostHog variable names and scopes are pending implementation. [PRA-47](https://linear.app/praxis-a/issue/PRA-47/composio-14-entities-connect-links-and-the-connections-table) · [PRA-17](https://linear.app/praxis-a/issue/PRA-17/supermemory-long-term-memory-user-profiles-and-hybrid-search) · [PRA-23](https://linear.app/praxis-a/issue/PRA-23/posthog-posthogai-posthog-node) |
+| Model access | User-managed OpenRouter credentials | Product settings store per-user keys. OpenRouter does not require a shared Vercel key for the planned BYOK path. [PRA-59](https://linear.app/praxis-a/issue/PRA-59/openrouter-bring-your-own-model-key) |
 
 ### Numbered siblings: several keys for one service
 
 A platform-paid key can have siblings from other accounts of the same service: `NAME` is slot 1, then `NAME_2`, `NAME_3`, … **with no gaps**.
-Today this applies to `GROQ_API_KEY` (`GROQ_API_KEY_2`, `GROQ_API_KEY_3`, …).
+Today this applies to `GROQ_API_KEY`, `EXA_API_KEY`, and `FIRECRAWL_API_KEY`.
 
 - **To add a key:** set `NAME_n` in the Vercel project, and in the Convex deployment env too if the service is called from Convex, then redeploy. No code change.
   `npm run deploy` forwards only the unsuffixed name from `.env.deploy`, so add the siblings in the dashboards (or with `vercel env add NAME_2 production`).
@@ -75,7 +108,7 @@ Today this applies to `GROQ_API_KEY` (`GROQ_API_KEY_2`, `GROQ_API_KEY_3`, …).
 - Logs and Redis hold slot numbers only, never key values. Users' own keys, `PRAXIS_ENCRYPTION_KEYS` and the QStash signing keys are not pooled and keep their own rotation rules.
 
 Never set these in production: `PRAXIS_LOCAL_SMOKE` (the bundle refuses to start if it is set), `NODE_ENV=development`.
-Browser builds get only the API origin, never a secret.
+Browser builds receive the public service URLs listed above.
 
 ### Convex deployment environment (Convex dashboard → Settings → Environment Variables)
 

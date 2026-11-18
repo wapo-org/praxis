@@ -5,16 +5,14 @@ from orchestrate import session_tasks
 from images import LOCAL_MODULES, SKILLS_REPO_COMMIT
 from pathlib import Path
 from prompts import (
-    HANDS_ON_SESSION_PROFILE,
     PR_BODY_MAX_CHARS,
     REVIEW_SESSION_PROFILES,
-    build_hands_on_prompt,
     build_session_prompt,
-    hands_on_output_schema,
     installed_skills,
     session_output_schema,
 )
 from rules import SCRIPT_RULE_IDS, SESSION_RULE_IDS
+from ui_prompts import browser_task, plan_task, visual_task
 
 SHARED = {
     "repo": "wapo-org/praxis",
@@ -51,10 +49,10 @@ def test_each_session_prompt_is_narrow_capped_and_example_driven() -> None:
 
 def test_only_the_linear_session_is_sent_to_linear() -> None:
     by_key = {profile.key: build_session_prompt(profile, **SHARED) for profile in REVIEW_SESSION_PROFILES}
-    assert "linear-read PRA-123" in by_key["maintainability"]
+    assert "read-only Linear MCP tool" in by_key["maintainability"]
     assert "The server re-fetches the issue" in by_key["maintainability"]
     for key in ("abstractions", "conciseness", "logic_bs", "security"):
-        assert "linear-read" not in by_key[key]
+        assert "read-only Linear MCP tool" not in by_key[key]
         assert "Set `linear_issue` and `linear_quote` to null." in by_key[key]
 
 
@@ -72,12 +70,15 @@ def test_pr_text_is_fenced_as_untrusted_and_truncated() -> None:
     assert prompt.rstrip().endswith("</pr_text>")
 
 
-def test_hands_on_prompt_does_not_rerun_the_gates() -> None:
-    prompt = build_hands_on_prompt(**SHARED)
-    assert "Do not run `typecheck`, `npm test`, `check:rules` or `comment-sweep`" in prompt
-    assert "verify -- api" in prompt and "verify -- web" in prompt
-    assert "npm --prefix cloud run typecheck" not in prompt
-    assert HANDS_ON_SESSION_PROFILE.max_steps == "80"
+def test_hosted_ui_prompts_define_the_handoff() -> None:
+    planner = plan_task(**SHARED, custom_instructions="")
+    assert "git diff origin/main...HEAD" in planner.prompt
+    assert planner.schema["required"] == ["flows"]
+    browser = browser_task("https://head.vercel.app", [{"title": "Share"}])
+    assert browser.reasoning_effort == "medium"
+    assert "head.vercel.app" in browser.prompt and "record.mjs" in browser.prompt
+    assert "Do not start an app server" in browser.prompt
+    assert visual_task([], ("/tmp/sheet.jpg",)).images == ("/tmp/sheet.jpg",)
     assert {profile.max_steps for profile in REVIEW_SESSION_PROFILES} == {"40"}
 
 
@@ -92,7 +93,6 @@ def test_output_schemas_close_the_rule_list_per_session() -> None:
         assert set(item["required"]) == set(item["properties"])
         assert schema["required"] == ["session", "findings"]
         assert "summary" not in schema["properties"] and "blocking_issues" not in schema["properties"]
-    assert hands_on_output_schema()["properties"]["findings"]["items"]["properties"]["rule_id"]["enum"] == ["CORRECTNESS"]
 
 
 def test_image_ships_every_local_module_and_pins_the_skills() -> None:
@@ -101,15 +101,15 @@ def test_image_ships_every_local_module_and_pins_the_skills() -> None:
     assert set(LOCAL_MODULES) == modules
     assert len(SKILLS_REPO_COMMIT) == 40
     assert set(installed_skills()) == {
-        skill for profile in (*REVIEW_SESSION_PROFILES, HANDS_ON_SESSION_PROFILE) for skill in profile.skills
+        skill for profile in REVIEW_SESSION_PROFILES for skill in profile.skills
     }
 
 
-def test_session_tasks_cover_five_read_only_sessions_plus_hands_on() -> None:
-    tasks = session_tasks(**SHARED, custom_instructions="", include_hands_on=True)
-    assert [task.session for task in tasks] == ["abstractions", "maintainability", "conciseness", "logic_bs", "security", "hands_on"]
-    assert [task.read_only for task in tasks] == [True] * 5 + [False]
-    assert len(session_tasks(**SHARED, custom_instructions="", include_hands_on=False)) == 5
+def test_session_tasks_cover_five_read_only_sessions_plus_ui_planner() -> None:
+    tasks = session_tasks(**SHARED, custom_instructions="", include_ui_plan=True)
+    assert [task.session for task in tasks] == ["abstractions", "maintainability", "conciseness", "logic_bs", "security", "ui_plan"]
+    assert [task.read_only for task in tasks] == [True] * 6
+    assert len(session_tasks(**SHARED, custom_instructions="", include_ui_plan=False)) == 5
     assert app.SANDBOX_TIMEOUT_SECONDS < app.FUNCTION_TIMEOUT_SECONDS
 
 
