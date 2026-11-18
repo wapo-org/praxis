@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AccountSettings } from './components/screens/AccountSettings';
 import { AccountContext, type AccountSession } from './lib/account';
+import { PraxisApiClient } from './lib/api';
 import { setReplicaIdentity, wipeReplicaStorage } from './lib/idb';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -60,15 +61,45 @@ it('confirms deletion inline: explains the loss and sends the typed password', a
   await act(async () => confirm.click());
   expect(deleteAccount).toHaveBeenCalledWith('hunter2-password');
 });
-it("shows the API's own message, including rate limiting, and keeps the confirm open", async () => {
-  const deleteAccount = vi.fn().mockRejectedValue(Error('Too many account deletion attempts'));
-  const { confirmBlock, confirm } = await open(deleteAccount);
-  await act(async () => confirm.click());
-  expect(confirmBlock.querySelector('[role="alert"]')?.textContent).toBe(
-    'Too many account deletion attempts',
+it('omits password from the wire body for a blank OAuth confirmation', async () => {
+  const fetcher = vi.fn<typeof fetch>(() =>
+    Promise.resolve(Response.json({ type: 'account.deleted' })),
   );
-  expect(document.querySelector('[data-testid="delete-account-confirm"]')).not.toBeNull();
+  vi.stubGlobal('fetch', fetcher);
+  try {
+    const client = new PraxisApiClient({ baseUrl: 'https://api.example' });
+    const { confirm } = await open((password) => client.deleteAccount(password));
+    await act(async () => confirm.click());
+    const [, request] = fetcher.mock.calls[0]!;
+    expect(request?.method).toBe('DELETE');
+    expect(JSON.parse(request?.body as string)).toEqual({ type: 'account.delete' });
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
+it.each([
+  [403, 'confirmation_required', 'Confirm your current password or sign in again', ''],
+  [429, 'rate_limited', 'Too many account deletion attempts', 'hunter2-password'],
+] as const)(
+  'shows the API message and preserves confirmation after %i',
+  async (status, code, message, password) => {
+    const fetcher = vi.fn<typeof fetch>(() =>
+      Promise.resolve(Response.json({ code, message }, { status })),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    try {
+      const client = new PraxisApiClient({ baseUrl: 'https://api.example' });
+      const { confirmBlock, input, confirm } = await open((value) => client.deleteAccount(value));
+      if (password) act(() => type(input, password));
+      await act(async () => confirm.click());
+      expect(confirmBlock.querySelector('[role="alert"]')?.textContent).toBe(message);
+      expect(document.querySelector('[data-testid="delete-account-confirm"]')).toBe(confirmBlock);
+      expect(input.value).toBe(password);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  },
+);
 it('wipes every local replica database and owner marker', async () => {
   const items = new Map<string, string>();
   vi.stubGlobal('localStorage', {
