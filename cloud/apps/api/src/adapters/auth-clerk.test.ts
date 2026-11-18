@@ -66,7 +66,7 @@ it('verifies JWT signatures and origins with the local public key and no JWKS ca
     expect(network).not.toHaveBeenCalled();
   } finally { network.mockRestore(); }
 });
-it('retains a retryable Clerk binding through provider deletion failure and purges it only after success', async () => {
+it('purges a legacy Clerk binding without retaining it for external deletion retries', async () => {
   const { accountEraser } = await import('../account-deletion.js');
   const { fakeRedis } = await import('./testing/fake-redis.js');
   const { upstashFromRedis } = await import('./upstash.js');
@@ -76,15 +76,10 @@ it('retains a retryable Clerk binding through provider deletion failure and purg
   await store.put('clerk-1', 'chat', 'history', {title:'Erase me'});
   const redis = upstashFromRedis(fakeRedis().redis, {accountOwnership:true});
   await redis.ownership.activate('clerk-1', async()=>true);
-  const erase = accountEraser(f.rpc, redis.ownership, f.auth.deleteExternal);
-  vi.mocked(f.backend.deleteUser).mockRejectedValueOnce(Error('Clerk unavailable'));
-  await expect(erase('clerk-1','session-1')).rejects.toThrow('Clerk unavailable');
-  expect(await store.list('clerk-1','chat')).toEqual([]);
-  expect(await f.auth.resolveSession(f.request)).toBeNull();
-  const retry = new Request('https://api.test/v1/account', {method:'DELETE',headers:f.request.headers});
-  expect(await f.auth.confirmDeletion(retry)).toMatchObject({userId:'clerk-1'});
+  const erase = accountEraser(f.rpc, redis.ownership);
   await erase('clerk-1','session-1');
-  expect(f.backend.deleteUser).toHaveBeenLastCalledWith('clerk-1');
+  expect(await store.list('clerk-1','chat')).toEqual([]);
+  expect(await f.rpc.query('legacyAuth:read',{operation:'findOne',input:{model:'account',where:[{field:'providerId',value:'clerk'},{field:'userId',value:'clerk-1'}]}})).toBeNull();
   const user = await f.rpc.query('legacyAuth:read',{operation:'findOne',input:{model:'user',where:[{field:'id',value:'clerk-1'}]}});
   expect(user).toBeNull();
 });
