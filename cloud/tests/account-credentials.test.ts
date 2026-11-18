@@ -132,6 +132,9 @@ describe('account deletion erases auth credentials', () => {
     expect(await otherSession.mutation(api.auth.refreshSession, {refreshToken: second.tokens.refreshToken})).toEqual({kind: 'noSession'});
     expect(await owner.query(api.account.deletionOwner, {})).toEqual({userId, pending: true});
     expect(await owner.mutation(api.account.confirmDeletion, {})).toEqual(confirmed);
+    expect((await t.mutation(api.auth.signInWithEmailPassword, {email: EMAIL, password: PASSWORD})).status).toBe('error');
+    expect(await t.run(ctx => ctx.db.query('users').collect())).toHaveLength(1);
+    expect(await t.run(ctx => ctx.runQuery(components.auth.public.listSessions, {userId}))).toEqual([]);
 
     await t.mutation(api.account.begin, begin);
     const result = await t.mutation(api.account.purge, begin);

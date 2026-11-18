@@ -32,11 +32,17 @@ export const {
 export const { startSignInWithGoogle, completeSignInWithGoogle } = setupGoogle(auth, {
   component: components.authGoogle,
   allowedRedirectOrigins: [siteUrl],
-}).attachUserCallbacks({ createUser: internal.users.createUserGoogle });
+}).attachUserCallbacks({
+  createUser: internal.users.createUserGoogle,
+  onSignIn: internal.users.onOAuthSignInGoogle,
+});
 export const { startSignInWithApple, completeSignInWithApple } = setupApple(auth, {
   component: components.authApple,
   allowedRedirectOrigins: [siteUrl],
-}).attachUserCallbacks({ createUser: internal.users.createUserApple });
+}).attachUserCallbacks({
+  createUser: internal.users.createUserApple,
+  onSignIn: internal.users.onOAuthSignInApple,
+});
 export const currentUser = query({
   args: {},
   handler: async ctx => {

@@ -54,7 +54,7 @@ function setup() {
   return t.withRequestMetadata({ ip: '127.0.0.1' });
 }
 
-async function signIn(t: ReturnType<typeof setup>, provider: (typeof providers)[number]) {
+async function redeemTicket(t: ReturnType<typeof setup>, provider: (typeof providers)[number]) {
   // Start at the callback's ticket boundary so redemption uses the real provider component and callbacks.
   const code = generateRandomToken();
   const state = generateRandomToken();
@@ -63,7 +63,11 @@ async function signIn(t: ReturnType<typeof setup>, provider: (typeof providers)[
     ticketCodeHash: await sha256Hex(code),
     encryptedPayload: await encryptTicketPayload(code, JSON.stringify({ claims: provider.claims })),
   });
-  const result = await t.mutation(provider.complete, { code, state });
+  return t.mutation(provider.complete, { code, state });
+}
+
+async function signIn(t: ReturnType<typeof setup>, provider: (typeof providers)[number]) {
+  const result = await redeemTicket(t, provider);
   expect(result.status).toBe('complete');
   if (result.status !== 'complete') throw new Error(`${provider.name} ticket did not redeem`);
   return result.tokens;
@@ -108,6 +112,13 @@ describe('OAuth account deletion', () => {
     await t.mutation(api.account.begin, deletion);
     expect(await t.mutation(api.auth.refreshSession, { refreshToken: first.refreshToken })).toEqual({ kind: 'noSession' });
     expect(await confirmingSession.query(api.account.deletionOwner, {})).toEqual({ userId, pending: true });
+
+    const rejectedSignIn = await redeemTicket(t, provider);
+    expect(rejectedSignIn.status).toBe('error');
+    expect(await t.run(ctx => ctx.runQuery(components.auth.public.listSessions, { userId }))).toEqual([]);
+    expect(await t.run(ctx => ctx.db.query('users').collect())).toHaveLength(1);
+    expect(await lookup()).toBe(userId);
+    expect(await oauthEmails()).toEqual([{ userId, email: provider.claims.email }]);
 
     let done = false;
     for (let call = 0; !done && call < PURGE_CALLS_MAX; call++) {
