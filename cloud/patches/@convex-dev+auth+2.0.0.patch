@@ -58,10 +58,13 @@ diff --git a/node_modules/@convex-dev/auth/dist/components/password/_generated/c
 index 8037864..9019491 100644
 --- a/node_modules/@convex-dev/auth/dist/components/password/_generated/component.d.ts
 +++ b/node_modules/@convex-dev/auth/dist/components/password/_generated/component.d.ts
-@@ -62,6 +62,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
+@@ -62,6 +62,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                  retryAfterMs: number;
              };
          }, Name>;
++        hasPassword: FunctionReference<"query", "internal", {
++            userId: string;
++        }, boolean, Name>;
 +        /** Praxis patch (PRA-64): erase this user's credential rows. */
 +        deleteUser: FunctionReference<"mutation", "internal", {
 +            userId: string;
@@ -74,10 +77,22 @@ diff --git a/node_modules/@convex-dev/auth/dist/components/password/public.js b/
 index 79a7cc5..1f7c621 100644
 --- a/node_modules/@convex-dev/auth/dist/components/password/public.js
 +++ b/node_modules/@convex-dev/auth/dist/components/password/public.js
-@@ -116,6 +116,29 @@ export const verifyPassword = mutation({
+@@ -1,4 +1,4 @@
+-import { mutation } from "./_generated/server.js";
++import { mutation, query } from "./_generated/server.js";
+ import { components } from "./_generated/api.js";
+ import { v } from "convex/values";
+ import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
+@@ -116,6 +116,35 @@ export const verifyPassword = mutation({
          return { success: true };
      },
  });
++export const hasPassword = query({
++    args: { userId: v.string() },
++    returns: v.boolean(),
++    handler: async (ctx, { userId }) => (await passwordByUserId(ctx, userId)) !== null,
++});
++
 +/**
 + * Delete the user's stored password hash and reset their verification
 + * throttle.
@@ -199,10 +214,22 @@ diff --git a/node_modules/@convex-dev/auth/src/components/password/public.ts b/n
 index 618c1bc..09ef7a0 100644
 --- a/node_modules/@convex-dev/auth/src/components/password/public.ts
 +++ b/node_modules/@convex-dev/auth/src/components/password/public.ts
-@@ -153,6 +153,30 @@ export const verifyPassword = mutation({
+@@ -1,4 +1,4 @@
+-import { mutation, QueryCtx } from "./_generated/server.ts";
++import { mutation, query, QueryCtx } from "./_generated/server.ts";
+ import { Doc } from "./_generated/dataModel.ts";
+ import { components } from "./_generated/api.ts";
+ import { Infer, v } from "convex/values";
+@@ -153,6 +153,36 @@ export const verifyPassword = mutation({
    },
  });
  
++export const hasPassword = query({
++  args: { userId: v.string() },
++  returns: v.boolean(),
++  handler: async (ctx, { userId }) => (await passwordByUserId(ctx, userId)) !== null,
++});
++
 +/**
 + * Delete the user's stored password hash and reset their verification
 + * throttle.

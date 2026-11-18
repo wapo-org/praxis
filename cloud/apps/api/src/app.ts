@@ -3,7 +3,7 @@ import {protectAnswer,secretMetadata,savedValues,querySavedValues,saveVariable,s
 import { searchChats } from './search.js';
 import {registerAccountDeletion} from './account-routes.js';
 import {platformVoice} from './features/tools/transcribe.js';
-import {AccountDeleteSchema} from '@praxis/protocol';
+import {ACCOUNT_DELETE_PATH, AccountDeleteSchema} from '@praxis/protocol';
 import {randomUUID} from 'node:crypto';
 import {Hono,type Context} from 'hono';
 import {cors} from 'hono/cors';
@@ -70,7 +70,7 @@ export function createApp(options:AppOptions){
  const publicPaths=['/v1/connectors/oauth/callback','/v1/oauth/client-metadata.json',...(options.publicPaths??[])];
  const requestOwners=new WeakMap<Request,string>();
  const limited=async(key:string)=>{if(!options.rateLimit)return;const r=await options.rateLimit(key);if(!r.ok)throw new ApiError(429,'rate_limited',`Too many requests; retry in ${r.retryAfterSeconds??1}s`);};
- app.use('/v1/*',async(c,next)=>{if(publicPaths.some(p=>c.req.path===p||(p.endsWith('/')&&c.req.path.startsWith(p))||c.req.path.startsWith(`${p}?`))){await limited(`ip:${c.req.header('x-forwarded-for')?.split(',')[0]?.trim()??'unknown'}`);await next();return;}const auth=await session(c.req.raw);if(!auth)throw new ApiError(401,'unauthorized','Sign in to continue');c.set('userId',auth.user.id);requestOwners.set(c.req.raw,auth.user.id);await limited(`user:${auth.user.id}`);if(!(c.req.method==='DELETE'&&c.req.path==='/v1/account'))await service.seed(auth.user.id);if(c.req.method!=='GET'&&c.req.method!=='HEAD'){const origin=c.req.header('origin');if(origin&&!originOk(origin))throw new ApiError(403,'origin_rejected','Origin is not allowed');}await next();});
+ app.use('/v1/*',async(c,next)=>{if(publicPaths.some(p=>c.req.path===p||(p.endsWith('/')&&c.req.path.startsWith(p))||c.req.path.startsWith(`${p}?`))){await limited(`ip:${c.req.header('x-forwarded-for')?.split(',')[0]?.trim()??'unknown'}`);await next();return;}const auth=await session(c.req.raw);if(!auth)throw new ApiError(401,'unauthorized','Sign in to continue');c.set('userId',auth.user.id);requestOwners.set(c.req.raw,auth.user.id);await limited(`user:${auth.user.id}`);if(!(c.req.method==='DELETE'&&c.req.path===ACCOUNT_DELETE_PATH))await service.seed(auth.user.id);if(c.req.method!=='GET'&&c.req.method!=='HEAD'){const origin=c.req.header('origin');if(origin&&!originOk(origin))throw new ApiError(403,'origin_rejected','Origin is not allowed');}await next();});
  registerAccountDeletion(app,{config:options.accountDeletion,local:service.local,devTokens,devCreated,limited,hasLimiter:!!options.rateLimit,parse:c=>body(c,AccountDeleteSchema,true)});
  app.get('/v1/auth/session',async c=>{const auth=await session(c.req.raw);return c.json({type:'session',...auth});});
  app.post('/v1/auth/sign-out',async c=>{if(options.authHandler&&!service.local)return options.authHandler(c.req.raw);const token=c.req.header('authorization')?.replace(/^Bearer /i,'')??getCookie(c,'praxis_session');if(token){devTokens.delete(token);devCreated.delete(token);}deleteCookie(c,'praxis_session',{path:'/'});return c.json({type:'ok'});});
