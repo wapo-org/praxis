@@ -6,7 +6,7 @@ API prefix `/v1`. Errors: `{type:"error",code,message,requestId?,details?}`. Mis
 
 ## Sessions
 
-Production API authentication uses a server-verified session: web sends an HttpOnly Secure SameSite cookie (`credentials: include`); iOS sends `Authorization: Bearer <token>`. Neither client accesses Convex directly. `POST /v1/auth/sign-up` and `/v1/auth/sign-in` accept `auth.input` (email,password,name?). Return `session`, including bearerToken only in this direct session response. `GET /v1/auth/session` returns the session without its token. `POST /v1/auth/sign-out` revokes it. The chosen production auth integration is described in ARCHITECTURE.md.
+Production sign-in uses Convex Auth v2. The web client authenticates with Convex and sends its bearer token to the API, which derives the application owner from the verified Convex identity. The API does not expose email sign-up, sign-in or sign-out routes. `GET /v1/auth/session` reports the API's verified session identity.
 
 Local only: `POST /v1/auth/dev` accepts `{type:"auth.dev",userId?:string}` and returns a session. Or set `Authorization: Bearer dev-local` (seed user `local-user`). This path and token are disabled outside local mode and production cannot select local adapters. Default local origin `http://localhost:8787`. PORT is overridable; no account or keys needed.
 

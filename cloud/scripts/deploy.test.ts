@@ -103,34 +103,17 @@ it('hosted dry smoke makes no mutating requests and never creates an account', a
   expect(calls).toEqual(['GET', 'GET', 'GET']);
   expect(result.skipped).toHaveLength(1);
 });
-it('cleans up a hosted test account even when upload smoke fails (in-memory HTTP fixtures only)', async () => {
-  let deleted = false;
+it('hosted smoke leaves authenticated checks to the Convex Auth browser flow', async () => {
   const requests: string[] = [];
   const fixture = async (input: any, init: any = {}) => {
-    const path = new URL(String(input)).pathname;
-    requests.push((init.method ?? 'GET') + ' ' + path);
-    if (path === '/health') return Response.json({ ok: true, mode: 'production' });
-    if (path === '/sw.js') return new Response("self.addEventListener('fetch',e=>{})");
-    if (path === '/') return new Response('<div id="root"></div>');
-    if (path === '/v1/auth/sign-up' || path === '/v1/auth/sign-in')
-      return Response.json({ bearerToken: 'test-only-session' });
-    if (path === '/v1/bootstrap')
-      return deleted
-        ? Response.json({}, { status: 401 })
-        : Response.json({ user: { id: 'fixture-user' } });
-    if (path === '/v1/chats') return Response.json({ id: 'fixture-chat' });
-    if (path === '/v1/uploads') return Response.json({}, { status: 500 });
-    if (path === '/v1/account') {
-      deleted = true;
-      return Response.json({ type: 'account.deleted' });
-    }
-    return Response.json({});
+    requests.push(`${init.method ?? 'GET'} ${new URL(String(input)).pathname}`);
+    if (String(input).endsWith('/health')) return Response.json({ ok: true, mode: 'production' });
+    if (String(input).endsWith('/sw.js')) return new Response("self.addEventListener('fetch',e=>{})");
+    return new Response('<div id="root"></div>');
   };
-  await expect(smoke(['https://api.test', 'https://web.test'], fixture)).rejects.toThrow(
-    'POST /v1/uploads: HTTP 500',
-  );
-  expect(requests).toContain('DELETE /v1/account');
-  expect(deleted).toBe(true);
+  const result = await smoke(['https://api.test', 'https://web.test'], fixture);
+  expect(requests).toEqual(['GET /health', 'GET /', 'GET /sw.js']);
+  expect(result.skipped).toContain('Hosted authenticated checks require a Convex Auth browser session; run the web verification flow');
 });
 
 it('stages deterministic Vercel static output without stale assets', async () => {
@@ -165,7 +148,6 @@ const SECRETS: Record<string, string> = {
   QSTASH_CURRENT_SIGNING_KEY: 'sig-current-0123456789',
   QSTASH_NEXT_SIGNING_KEY: 'sig-next-0123456789abc',
   PRAXIS_ENCRYPTION_KEYS: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
-  BETTER_AUTH_SECRET: 'auth-secret-0123456789abcdef0123456789',
   GROQ_API_KEY: 'gsk_groq-secret-0123456789',
 };
 it('never puts a secret in argv; each credential reaches only the tool that needs it; CLIs are pinned', () => {
@@ -185,7 +167,6 @@ it('never puts a secret in argv; each credential reaches only the tool that need
     expect(Boolean(env.CONVEX_DEPLOY_KEY), step.name).toBe(step.tool === 'convex');
     for (const key of [
       'PRAXIS_CONVEX_SERVER_TOKEN',
-      'BETTER_AUTH_SECRET',
       'UPSTASH_REDIS_REST_TOKEN',
     ])
       expect(env, step.name).not.toHaveProperty(key);
@@ -290,43 +271,4 @@ it('removes the private Convex token file on success, failure and SIGTERM', asyn
   child.kill('SIGTERM');
   expect(await exited).toBe('SIGTERM');
   expect(existsSync(path)).toBe(false);
-});
-function smokeFixture(options: { signInFailures?: number; deleteStatus?: number }) {
-  let deleted = false,
-    signIns = 0;
-  const deletes: string[] = [];
-  const fetcher = async (input: any, init: any = {}) => {
-    const path = new URL(String(input)).pathname;
-    if (path === '/health') return Response.json({ ok: true, mode: 'production' });
-    if (path === '/sw.js') return new Response("self.addEventListener('fetch',e=>{})");
-    if (path === '/') return new Response('<div id="root"></div>');
-    if (path === '/v1/auth/sign-up') return Response.json({ bearerToken: 'signup-token' });
-    if (path === '/v1/auth/sign-in')
-      return ++signIns <= (options.signInFailures ?? 0)
-        ? Response.json({}, { status: 500 })
-        : Response.json({ bearerToken: `fresh-${signIns}` });
-    if (path === '/v1/account') {
-      deletes.push(init.headers.authorization);
-      if (options.deleteStatus) return Response.json({}, { status: options.deleteStatus });
-      deleted = true;
-      return Response.json({ type: 'account.deleted' });
-    }
-    if (path === '/v1/bootstrap') return Response.json({}, { status: 401 });
-    return Response.json({});
-  };
-  return { fetcher, deletes, deleted: () => deleted };
-}
-it('smoke cleanup re-authenticates after a failed sign-in and reports the original failure', async () => {
-  const f = smokeFixture({ signInFailures: 1 });
-  await expect(smoke(['https://api.test', 'https://web.test'], f.fetcher)).rejects.toThrow(
-    /^POST \/v1\/auth\/sign-in: HTTP 500$/,
-  );
-  expect(f.deletes).toEqual(['Bearer fresh-2']);
-  expect(f.deleted()).toBe(true);
-});
-it('smoke keeps the original failure when cleanup also fails', async () => {
-  const f = smokeFixture({ signInFailures: 1, deleteStatus: 500 });
-  await expect(smoke(['https://api.test', 'https://web.test'], f.fetcher)).rejects.toThrow(
-    /^POST \/v1\/auth\/sign-in: HTTP 500 \(cleanup also failed: DELETE \/v1\/account: HTTP 500;/,
-  );
 });

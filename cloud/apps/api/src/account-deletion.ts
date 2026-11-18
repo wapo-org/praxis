@@ -5,27 +5,19 @@ import type { accountRedis } from './adapters/account-redis.js';
 export function accountEraser(
   rpc: ConvexRPC,
   ownership: ReturnType<typeof accountRedis>,
-  deleteExternal?: (userId: string) => Promise<void>,
 ) {
-  async function purge(userId: string, keepSessionId?: string) {
+  async function purge(userId: string) {
     await ownership.freeze(userId);
     await ownership.purge(userId);
     let blobCursor: string | undefined;
     let blobsDone = false;
-    let externalDone = !deleteExternal;
     for (;;) {
       const result = (await rpc.mutation('account:purge', {
         userId,
-        ...(keepSessionId ? {keepSessionId} : {}),
-        ...(externalDone ? {} : {retainClerk: true}),
         ...(blobCursor ? {blobCursor} : {}),
         ...(blobsDone ? {blobsDone} : {}),
-      })) as {done: boolean; ready?: boolean; blobCursor?: string; blobsDone?: boolean};
+      })) as {done: boolean; blobCursor?: string; blobsDone?: boolean};
       if (result.done) return;
-      if (result.ready && deleteExternal && !externalDone) {
-        await deleteExternal(userId);
-        externalDone = true;
-      }
       blobCursor = result.blobCursor ?? blobCursor;
       blobsDone = result.blobsDone ?? blobsDone;
     }
@@ -35,7 +27,7 @@ export function accountEraser(
     async (userId: string, sessionId: string) => {
       await ownership.exclusive(userId, async () => {
         await rpc.mutation('account:begin', {userId, keepSessionId: sessionId});
-        await purge(userId, sessionId);
+        await purge(userId);
       });
     },
     {

@@ -151,7 +151,7 @@ describe('account deletion erases auth credentials', () => {
     expect(await owner.mutation(api.account.confirmDeletion, {})).toEqual(confirmed);
 
     await t.mutation(api.account.begin, begin);
-    const result = await t.mutation(api.account.purge, begin);
+    const result = await t.mutation(api.account.purge, {serverToken: SERVER_TOKEN, userId});
     expect(result).toEqual({done: true});
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     expect(await owner.query(api.account.deletionOwner, {})).toBeNull();

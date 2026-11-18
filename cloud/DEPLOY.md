@@ -25,9 +25,9 @@ Deploy-only inputs: `VERCEL_TOKEN`, `VERCEL_ORG_ID` (`team_…`/`user_…`), `VE
 
 The Vercel CLI is pinned (`npx --yes vercel@65.9.0`, see `VERCEL_CLI` in `scripts/deploy.mjs`); the Convex CLI is the locked local dependency (`npx --no-install convex`). Install dependencies first (`npm ci`).
 
-Smoke uses a throwaway user and `DELETE /v1/account` in a `finally` block, including on failure. It exercises email auth on hosted APIs, upload/download, app shell and the actual service-worker bypass control flow. A real paid LLM request requires explicit `--with-llm` plus `SMOKE_LLM_KEY`, `SMOKE_LLM_BASE_URL`, `SMOKE_LLM_MODEL` and optionally `SMOKE_LLM_FLAVOR` in the private env file. Otherwise production run/SSE are explicitly skipped; no scripted production fallback exists. Optional `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` may be validated by preflight but are never sent to the browser or automatically turned into a provider.
+Hosted smoke checks health, the app shell and service-worker bypass. Authenticated hosted checks run through the Convex Auth browser verification flow, not API email endpoints. Local smoke uses a disposable `dev:local` session and cleans it up in a `finally` block. Optional `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` may be validated by preflight but are never sent to the browser or automatically turned into a provider.
 
-Local rehearsal: run `PORT=8822 npm run dev:local -w @praxis/api`, build web with `VITE_API_BASE_URL=http://127.0.0.1:8822 npm run build -w @praxis/web`, then `node node_modules/vite/bin/vite.js preview apps/web --host 127.0.0.1 --port 5196 --strictPort`. Run `node scripts/smoke-remote.mjs http://127.0.0.1:8822 http://127.0.0.1:5196 --dry-run`. Local email auth is genuinely unconfigured (503), so smoke reports that skip, tests disposable dev sessions/sign-out instead, and runs a deterministic local SSE transport check. Hosted `--dry-run` performs reads only, with no auth/account mutation. An empty preflight intentionally exits 1.
+Local rehearsal: run `PORT=8822 npm run dev:local -w @praxis/api`, build web with `VITE_API_BASE_URL=http://127.0.0.1:8822 npm run build -w @praxis/web`, then `node node_modules/vite/bin/vite.js preview apps/web --host 127.0.0.1 --port 5196 --strictPort`. Run `node scripts/smoke-remote.mjs http://127.0.0.1:8822 http://127.0.0.1:5196`. It exercises a disposable local dev session, data cleanup and deterministic SSE transport. Hosted `--dry-run` performs reads only. An empty preflight intentionally exits 1.
 
 CLI references: [Vercel env force/stdin](https://vercel.com/docs/cli/env), [Convex deploy](https://docs.convex.dev/cli/reference/deploy).
 
@@ -44,7 +44,7 @@ It never falls back to memory adapters or dev auth.
 | Variable | Required | What it is / where to get it |
 |---|---|---|
 | `PRAXIS_API_URL` | yes | Public https origin of the API, no path (e.g. `https://api.example.com`). Used for OAuth callbacks, upload URLs and the QStash callback. |
-| `PRAXIS_WEB_ORIGINS` | yes | Comma-separated https origins of the web app (CORS, CSRF and auth trusted origins). |
+| `PRAXIS_WEB_ORIGINS` | yes | Comma-separated https origins of the web app (CORS and mutation origin checks). |
 | `PRAXIS_ENCRYPTION_KEYS` | yes | AES-256-GCM keyring for provider keys, MCP tokens and the voice key: comma-separated base64 32-byte keys, **current first**, then previous ones. Generate a key with `openssl rand -base64 32`. A single legacy `PRAXIS_ENCRYPTION_KEY` is still accepted. See Key rotation. |
 | `VITE_CONVEX_URL` | web build | Convex deployment client URL; web sign-in is Convex Auth v2, configured in the Convex deployment (see [Convex Auth v2 web](#convex-auth-v2-web-pra-34)). |
 | `CONVEX_URL` | yes | Convex dashboard → deployment → Settings → URL (`https://<name>.convex.cloud`). |

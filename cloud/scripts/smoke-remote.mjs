@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import vm from 'node:vm';
 import { pathToFileURL } from 'node:url';
-import { loadEnv, envArg } from './deploy-config.mjs';
 export function assertWorkerBypassesApi(source, web) {
   const result = vm.runInNewContext(
     `
@@ -42,8 +41,6 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
   let token = '',
     created = false,
     local = false;
-  const email = `praxis-smoke-${randomUUID()}@example.com`,
-    password = randomBytes(24).toString('base64url');
   const call = async (path, method = 'GET', body, auth = true) => {
     const res = await fetcher(api + path, {
       method,
@@ -76,58 +73,33 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
     return { checks, skipped };
   }
   if (!local && new URL(api).protocol !== 'https:') throw Error('Hosted smoke requires HTTPS');
+  if (!local) {
+    skipped.push('Hosted authenticated checks require a Convex Auth browser session; run the web verification flow');
+    return { checks, skipped };
+  }
   let failure;
   try {
-    if (local) {
-      for (const op of ['sign-up', 'sign-in']) {
-        const response = await fetcher(api + `/v1/auth/${op}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ type: 'auth.input', email, password, name: 'Smoke' }),
-        });
-        assert.equal(response.status, 503);
-      }
-      skipped.push(
-        'dev:local email sign-up/sign-in are unconfigured (503); tested disposable dev session instead',
-      );
-      const session = await call(
-        '/v1/auth/dev',
-        'POST',
-        { type: 'auth.dev', userId: `smoke-${randomUUID()}` },
-        false,
-      );
-      token = session.bearerToken;
-      created = true;
-      await call('/v1/auth/sign-out', 'POST', {});
-      const expired = await fetcher(api + '/v1/bootstrap', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      assert.equal(expired.status, 401);
-      const fresh = await call(
-        '/v1/auth/dev',
-        'POST',
-        { type: 'auth.dev', userId: session.user.id },
-        false,
-      );
-      token = fresh.bearerToken;
-      checks.push('local session/sign-out/revocation');
-    } else {
-      // Mark created before sign-up so cleanup runs even on partial failure.
-      created = true;
-      const response = await fetcher(api + '/v1/auth/sign-up', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ type: 'auth.input', email, password, name: 'Deployment smoke' }),
-      });
-      assert.ok(response.ok, 'Sign-up failed');
-      token = (await response.json()).bearerToken;
-      await call('/v1/auth/sign-out', 'POST', {});
-      token = ''; // revoked; cleanup must not reuse it
-      token = (
-        await call('/v1/auth/sign-in', 'POST', { type: 'auth.input', email, password }, false)
-      ).bearerToken;
-      checks.push('sign-up/sign-out/sign-in');
-    }
+    const session = await call(
+      '/v1/auth/dev',
+      'POST',
+      { type: 'auth.dev', userId: `smoke-${randomUUID()}` },
+      false,
+    );
+    token = session.bearerToken;
+    created = true;
+    await call('/v1/auth/sign-out', 'POST', {});
+    const expired = await fetcher(api + '/v1/bootstrap', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(expired.status, 401);
+    const fresh = await call(
+      '/v1/auth/dev',
+      'POST',
+      { type: 'auth.dev', userId: session.user.id },
+      false,
+    );
+    token = fresh.bearerToken;
+    checks.push('local session/sign-out/revocation');
     const bootstrap = await call('/v1/bootstrap');
     assert.ok(bootstrap.user.id);
     checks.push('authenticated bootstrap');
@@ -173,13 +145,6 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
       skipped.push(
         'Real LLM call skipped in local dry run; scripted local run verifies SSE transport only',
       );
-    } else if (args.includes('--with-llm')) {
-      const env = await loadEnv(envArg(args));
-      if (!env.SMOKE_OPENROUTER_KEY)
-        throw Error('--with-llm needs SMOKE_OPENROUTER_KEY (and optionally SMOKE_OPENROUTER_MODEL) in deploy env');
-      // Connects the smoke user's own OpenRouter key; the throwaway account is deleted in `finally`.
-      await call('/v1/model-key', 'POST', { method: 'paste', apiKey: env.SMOKE_OPENROUTER_KEY });
-      runInput = env.SMOKE_OPENROUTER_MODEL ? { modelId: env.SMOKE_OPENROUTER_MODEL } : {};
     } else
       skipped.push(
         'LLM and SSE checks skipped: no explicit --with-llm configuration; production has no scripted fallback',
@@ -229,7 +194,7 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
     } catch (e) {
       // Report the original failure; the cleanup error is attached, never substituted.
       if (failure)
-        failure.message += ` (cleanup also failed: ${e.message}; delete ${email} manually)`;
+        failure.message += ` (cleanup also failed: ${e.message}; delete the disposable local account manually)`;
       else failure = e;
     }
   }
@@ -237,22 +202,7 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
   return { checks, skipped };
 
   async function cleanup() {
-    const signIn = async () => {
-      token = '';
-      token = (
-        await call('/v1/auth/sign-in', 'POST', { type: 'auth.input', email, password }, false)
-      ).bearerToken;
-    };
-    if (!token && !local) await signIn();
-    const remove = () =>
-      call('/v1/account', 'DELETE', { type: 'account.delete', ...(local ? {} : { password }) });
-    try {
-      await remove();
-    } catch (e) {
-      if (local || !e.message.endsWith('HTTP 401')) throw e;
-      await signIn();
-      await remove();
-    }
+    await call('/v1/account', 'DELETE', { type: 'account.delete' });
     const dead = await fetcher(api + '/v1/bootstrap', {
       headers: { authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(30000),
