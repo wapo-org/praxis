@@ -153,8 +153,10 @@ describe('account deletion erases auth credentials', () => {
     await expect(t.mutation(api.auth.signInWithEmailPassword, {email: EMAIL, password: PASSWORD}))
       .rejects.toThrow('Account unavailable');
     expect(await t.run(ctx => ctx.db.query('users').collect())).toHaveLength(1);
-    const pendingSessions = await t.run(ctx => ctx.runQuery(components.auth.public.listSessions, {userId}));
-    expect(pendingSessions.map(({sessionId}) => sessionId)).toEqual([confirmed.sessionId]);
+    expect(await credentials(t, userId)).toMatchObject({
+      emails: [{email: EMAIL}],
+      sessions: [{sessionId: confirmed.sessionId}],
+    });
 
     await t.mutation(api.account.begin, begin);
     const result = await t.mutation(api.account.purge, begin);
