@@ -18,6 +18,7 @@ export default defineSchema({
   // `deleting` fences every owner write once account deletion begins.
   users: defineTable({
     deleting: v.optional(v.boolean()),
+    deletionSessionId: v.optional(v.string()),
     deletion: v.optional(v.union(v.object({ blobCursor: v.string() }), v.object({ blobsDone: v.literal(true) }))),
   }),
   oauthEmails: defineTable({ userId: v.id('users'), email: v.string() })

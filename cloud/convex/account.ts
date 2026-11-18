@@ -1,17 +1,19 @@
+import { getAuthUserId } from '@convex-dev/auth/server';
+import { ACCOUNT_DELETE_FRESHNESS_MS, AccountDeleteSchema } from '@praxis/protocol';
 import { blobOwnerTag } from './blobOwner.js';
-import { v } from 'convex/values';
+import { ConvexError, v } from 'convex/values';
 import { components } from './_generated/api.js';
-import { serverMutation, serverQuery } from './functions.js';
-import type { MutationCtx } from './functions.js';
+import { mutation, query, serverMutation, serverQuery } from './functions.js';
+import type { MutationCtx, QueryCtx } from './functions.js';
 import type { Id } from './_generated/dataModel.js';
 import {activeOwner, beginOwnerDeletion, deleteOwnerUser} from './accountOwner.js';
 import {ACCOUNT_OWNER_ROWS, ACCOUNT_PURGE_BATCH_MAX} from './accountTables.js';
 import {purgeOwnedRun} from './workflows/purge.js';
 
-async function revokeOwnerSessions(ctx: MutationCtx, userId: Id<'users'>): Promise<void> {
+async function revokeOwnerSessions(ctx: MutationCtx, userId: Id<'users'>, keepSessionId?: string): Promise<void> {
   const sessions = await ctx.runQuery(components.auth.public.listSessions, { userId });
   await ctx.runMutation(components.auth.public.revokeSessions, {
-    sessionIds: sessions.map(session => session.sessionId),
+    sessionIds: sessions.filter(session => session.sessionId !== keepSessionId).map(session => session.sessionId),
   });
 }
 
@@ -24,6 +26,49 @@ async function eraseAuthCredentials(ctx: MutationCtx, userId: Id<'users'>): Prom
   await ctx.runMutation(components.authEmail.verifiedEmails.deleteUser, { userId });
 }
 
+async function deletionIdentity(ctx: QueryCtx) {
+  const userId = await getAuthUserId(ctx);
+  const identity = await ctx.auth.getUserIdentity();
+  if (!userId || !identity) return null;
+  const user = await ctx.db.get(userId);
+  if (!user || (user.deleting && user.deletionSessionId !== identity.subject)) return null;
+  return { userId, sessionId: identity.subject, pending: user.deleting === true };
+}
+
+// Only the session that began deletion may retry after the account is fenced.
+export const deletionOwner = query({
+  args: {},
+  handler: async ctx => {
+    const identity = await deletionIdentity(ctx);
+    return identity ? { userId: identity.userId, pending: identity.pending } : null;
+  },
+});
+
+export const confirmDeletion = mutation({
+  args: { password: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const input = AccountDeleteSchema.safeParse(args);
+    if (!input.success) return null;
+    const identity = await deletionIdentity(ctx);
+    if (!identity) return null;
+    const { userId, sessionId, pending } = identity;
+    if (pending) return { userId, sessionId };
+    if (input.data.password !== undefined) {
+      const emails = await ctx.runQuery(components.authEmail.verifiedEmails.getEmails, { userId });
+      if (!emails.length) return null;
+      const result = await ctx.runMutation(components.authPassword.public.verifyPassword, {
+        userId, password: input.data.password,
+      });
+      return result.success ? { userId, sessionId } : null;
+    }
+    const sessions = await ctx.runQuery(components.auth.public.listSessions, { userId });
+    const session = sessions.find(item => item.sessionId === sessionId);
+    if (!session) return null;
+    const age = Date.now() - session.creationTime;
+    return age >= 0 && age < ACCOUNT_DELETE_FRESHNESS_MS ? { userId, sessionId } : null;
+  },
+});
+
 export const active = serverQuery({
   args: { serverToken: v.string(), userId: v.string() },
   handler: async (ctx, a) => {
@@ -31,11 +76,23 @@ export const active = serverQuery({
   },
 });
 export const begin = serverMutation({
-  args: { serverToken: v.string(), userId: v.string() },
+  args: { serverToken: v.string(), userId: v.string(), keepSessionId: v.optional(v.string()) },
   handler: async (ctx, a) => {
-    await beginOwnerDeletion(ctx, a.userId);
     const ownerId = ctx.db.normalizeId('users', a.userId);
-    if (ownerId) await revokeOwnerSessions(ctx, ownerId);
+    if (!ownerId) {
+      await beginOwnerDeletion(ctx, a.userId);
+      return null;
+    }
+    const owner = await ctx.db.get(ownerId);
+    if (!owner) throw new ConvexError('Account unavailable');
+    if (a.keepSessionId !== undefined) {
+      const session = await ctx.runQuery(components.auth.public.getSession, { sessionId: a.keepSessionId });
+      if (session?.userId !== ownerId || (owner.deleting && owner.deletionSessionId !== a.keepSessionId)) {
+        throw new ConvexError('Account deletion session unavailable');
+      }
+    }
+    await ctx.db.patch(ownerId, { deleting: true, deletionSessionId: a.keepSessionId });
+    await revokeOwnerSessions(ctx, ownerId, a.keepSessionId);
     return null;
   },
 });

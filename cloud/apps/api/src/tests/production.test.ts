@@ -1,6 +1,9 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {randomBytes} from 'node:crypto';
+import type {Redis} from '@upstash/redis';
 import {CONTINUATION_PATH, PRODUCTION_ENV, createProductionApp, readProductionEnv} from '../production.js';
+import * as upstash from '../adapters/upstash.js';
+import {fakeRedis} from '../adapters/testing/fake-redis.js';
 import {createSmokeApp} from '../smoke.js';
 import {createLocalAdapters} from '../local-memory.js';
 import {createPraxisApp, jsonLog} from '../server.js';
@@ -38,6 +41,73 @@ describe('production startup', () => {
     expect((await app.request('/api/turn', {method: 'POST', body: '{}', headers: {cookie: 'praxis_session=fake'}})).status).toBe(401);
     expect((await app.request('/api/turn', {method: 'OPTIONS'})).status).toBe(405);
     expect((await app.request(CONTINUATION_PATH, {method: 'POST', body: '{}'})).status).toBe(401);
+  });
+
+  it('confirms a Convex session before purging and rejects its old bearer afterward', async () => {
+    const config = env();
+    const userId = 'verified-owner';
+    const sessionId = 'session-for-test';
+    const memory = fakeRedis();
+    const redis = upstash.upstashFromRedis(memory.redis, {accountOwnership: true});
+    const redisFactory = vi.spyOn(upstash, 'createUpstashAdapters').mockReturnValue({redis: memory.redis as Redis, ...redis});
+    const calls: string[] = [];
+    let deleting = false;
+    let erased = false;
+    const convexFetch = vi.fn<typeof fetch>(async (_url, init) => {
+      const {path, args: [args]} = JSON.parse(String(init?.body));
+      const headers = new Headers(init?.headers);
+      calls.push(path);
+      let value: unknown;
+      switch (path) {
+        case 'account:deletionOwner':
+          expect(headers.get('authorization')).toBe(`Bearer ${sessionId}`);
+          value = erased ? null : {userId, pending: deleting};
+          break;
+        case 'account:confirmDeletion':
+          expect(headers.get('authorization')).toBe(`Bearer ${sessionId}`);
+          value = args.password === 'verified-test-password' || deleting ? {userId, sessionId} : null;
+          break;
+        case 'account:begin':
+          expect(args).toEqual({userId, keepSessionId: sessionId, serverToken: config.PRAXIS_CONVEX_SERVER_TOKEN});
+          deleting = true;
+          value = null;
+          break;
+        case 'account:purge':
+          if (calls.filter(call => call === path).length === 1) {
+            return new Response('temporary failure', {status: 503});
+          }
+          erased = true;
+          value = {done: true};
+          break;
+        case 'auth:currentUser':
+          value = deleting ? null : userId;
+          break;
+        default:
+          throw new Error(`Unexpected Convex function: ${path}`);
+      }
+      return Response.json({status: 'success', value});
+    });
+    vi.stubGlobal('fetch', convexFetch);
+    try {
+      const {app} = createProductionApp(config);
+      const headers = {authorization: `Bearer ${sessionId}`, 'content-type': 'application/json'};
+      const erase = (password?: string) => app.request('/v1/account', {
+        method: 'DELETE', headers, body: JSON.stringify({password}),
+      });
+      expect((await app.request('/v1/account', {method: 'DELETE'})).status).toBe(401);
+      expect((await erase('incorrect-test-password')).status).toBe(403);
+      expect(calls).toEqual(['account:deletionOwner', 'account:confirmDeletion']);
+      expect((await erase('verified-test-password')).status).toBe(500);
+      expect((await app.request('/v1/bootstrap', {headers})).status).toBe(401);
+      const result = await erase();
+      expect(result.status).toBe(200);
+      expect(await result.json()).toEqual({type: 'account.deleted'});
+      expect((await erase()).status).toBe(401);
+      expect((await app.request('/v1/bootstrap', {headers})).status).toBe(401);
+    } finally {
+      redisFactory.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 
   it('refuses the smoke flag and the smoke app in production', () => {

@@ -4,8 +4,9 @@ import {Hono} from 'hono';
 import {readTurnKeys} from './turn/auth.js';
 import {registerTurnRoute} from './turn/routes.js';
 import {GROQ_POOL, pool, redisCooldownStore, type CredentialLogEvent} from '@praxis/credentials';
-import {verifiedConvexOwner} from './adapters/convex-session.js';
+import {confirmConvexDeletion, isAccountDeletion, verifiedConvexOwner} from './adapters/convex-session.js';
 import {createConvexRPC} from './adapters/convex.js';
+import {accountEraser} from './account-deletion.js';
 import {parseOrigins} from './origins.js';
 import {createConvexStore} from './adapters/convex.js';
 import {createQStashScheduler, createQStashVerifier} from './adapters/qstash.js';
@@ -115,11 +116,15 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
     resolveSession: async request => {
       const id = await verifiedConvexOwner(request, env.CONVEX_URL);
       if (!id) return null;
-      if (!await upstash.ownership.isActive(id)) {
+      if (!isAccountDeletion(request) && !await upstash.ownership.isActive(id)) {
         await upstash.ownership.activate(id, async () => await accountRPC.query('account:active', { userId: id }) === true);
       }
       // Convex returns the owner without a cache lifetime, so clients must revalidate immediately.
       return { user: { type: 'user', id, name: 'Praxis user' }, expiresAt: new Date().toISOString() };
+    },
+    accountDeletion: {
+      confirm: (request, password) => confirmConvexDeletion(request, env.CONVEX_URL, password),
+      purge: accountEraser(accountRPC, upstash.ownership),
     },
     authHandler: async () => Response.json({ type: 'error', code: 'convex_auth_required', message: 'Manage your session with Convex Auth' }, { status: 410 }),
     rateLimit: createRateLimiter(upstash.redis),

@@ -6,7 +6,6 @@ export const AUTH_COPY = {
   unavailable: 'Sign in is temporarily unavailable. Please try again later.',
   checkEmail: 'Check your email. Open the link in this browser to continue.',
   restart: 'Back to sign in',
-  deleteUnavailable: 'Account deletion is temporarily unavailable.',
   unknown: 'Sign in failed. Please try again.',
 };
 const METHOD_CONFLICT_MESSAGE = 'This email already has an account. Use its original sign-in method.';
