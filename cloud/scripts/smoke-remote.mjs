@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import vm from 'node:vm';
 import { pathToFileURL } from 'node:url';
-import { loadEnv, envArg } from './deploy-config.mjs';
+import { fixtureBindings, fixtureSession } from './smoke-fixture.mjs';
+/** Email auth moved to Convex Auth; these API routes must stay gone. */
+export const REMOVED_AUTH_ROUTES = ['/v1/auth/sign-up', '/v1/auth/sign-in'];
 export function assertWorkerBypassesApi(source, web) {
   const result = vm.runInNewContext(
     `
@@ -42,8 +44,6 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
   let token = '',
     created = false,
     local = false;
-  const email = `praxis-smoke-${randomUUID()}@example.com`,
-    password = randomBytes(24).toString('base64url');
   const call = async (path, method = 'GET', body, auth = true) => {
     const res = await fetcher(api + path, {
       method,
@@ -57,6 +57,9 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
     if (!res.ok) throw Error(`${method} ${path}: HTTP ${res.status}`);
     return res.json();
   };
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(api).hostname);
+  // Validated before the first request, so a mistaken or malformed target is never contacted.
+  let env = !dry && !loopback ? await fixtureBindings(args, api) : undefined;
   const health = await call('/health');
   assert.equal(health.ok, true);
   checks.push('health');
@@ -69,26 +72,20 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
   assert.ok(sw.ok);
   assertWorkerBypassesApi(await sw.text(), web);
   checks.push('service worker bypasses /v1 and /health');
-  local =
-    health.mode === 'local' && ['localhost', '127.0.0.1', '[::1]'].includes(new URL(api).hostname);
+  local = health.mode === 'local' && loopback;
   if (dry && !local) {
     skipped.push('Hosted mutations/auth/LLM/SSE/upload: dry run never creates a hosted account');
     return { checks, skipped };
   }
   if (!local && new URL(api).protocol !== 'https:') throw Error('Hosted smoke requires HTTPS');
+  if (!local) env ??= await fixtureBindings(args, api);
+  const fixture = local ? undefined : fixtureSession(env, fetcher);
+  const owned = { chatId: undefined, attachmentId: undefined };
   let failure;
   try {
     if (local) {
-      for (const op of ['sign-up', 'sign-in']) {
-        const response = await fetcher(api + `/v1/auth/${op}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ type: 'auth.input', email, password, name: 'Smoke' }),
-        });
-        assert.equal(response.status, 503);
-      }
       skipped.push(
-        'dev:local email sign-up/sign-in are unconfigured (503); tested disposable dev session instead',
+        'Local password sign-in skipped: dev:local has no Convex Auth deployment; tested disposable dev session instead',
       );
       const session = await call(
         '/v1/auth/dev',
@@ -111,25 +108,28 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
       );
       token = fresh.bearerToken;
       checks.push('local session/sign-out/revocation');
+      // Authenticated so the 404 proves no handler remains, not just that auth middleware refused.
+      for (const path of REMOVED_AUTH_ROUTES) {
+        const response = await fetcher(api + path, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: '{}',
+          signal: AbortSignal.timeout(30000),
+        });
+        assert.equal(response.status, 404, `${path} must stay removed`);
+      }
+      checks.push('legacy API email auth routes removed');
     } else {
-      // Mark created before sign-up so cleanup runs even on partial failure.
-      created = true;
-      const response = await fetcher(api + '/v1/auth/sign-up', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ type: 'auth.input', email, password, name: 'Deployment smoke' }),
-      });
-      assert.ok(response.ok, 'Sign-up failed');
-      token = (await response.json()).bearerToken;
-      await call('/v1/auth/sign-out', 'POST', {});
-      token = ''; // revoked; cleanup must not reuse it
-      token = (
-        await call('/v1/auth/sign-in', 'POST', { type: 'auth.input', email, password }, false)
-      ).bearerToken;
-      checks.push('sign-up/sign-out/sign-in');
+      token = await fixture.signIn();
+      checks.push('Convex Auth fixture sign-in');
+      skipped.push(
+        'Hosted account deletion not exercised: the consenting fixture persists; deletion is covered by local tests and Live Check',
+      );
     }
     const bootstrap = await call('/v1/bootstrap');
     assert.ok(bootstrap.user.id);
+    if (!local)
+      assert.equal(bootstrap.user.id, env.SMOKE_FIXTURE_USER_ID, 'API resolved the fixture to another owner');
     checks.push('authenticated bootstrap');
     const chat = await call('/v1/chats', 'POST', {
       type: 'chat.input',
@@ -138,6 +138,7 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
       pinned: false,
       disabledConnectorIds: [],
     });
+    owned.chatId = chat.id;
     checks.push('chat');
     const bytes = Buffer.from('Praxis smoke upload\n'),
       input = { name: 'smoke.txt', mediaType: 'text/plain', size: bytes.length, chatId: chat.id };
@@ -160,6 +161,7 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
       ...input,
       storageId: receipt.storageId,
     });
+    owned.attachmentId = attachment.id;
     const download = await fetcher(
       api + `/v1/uploads/${encodeURIComponent(attachment.id)}/download`,
       { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(30000) },
@@ -174,11 +176,9 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
         'Real LLM call skipped in local dry run; scripted local run verifies SSE transport only',
       );
     } else if (args.includes('--with-llm')) {
-      const env = await loadEnv(envArg(args));
-      if (!env.SMOKE_OPENROUTER_KEY)
-        throw Error('--with-llm needs SMOKE_OPENROUTER_KEY (and optionally SMOKE_OPENROUTER_MODEL) in deploy env');
-      // Connects the smoke user's own OpenRouter key; the throwaway account is deleted in `finally`.
-      await call('/v1/model-key', 'POST', { method: 'paste', apiKey: env.SMOKE_OPENROUTER_KEY });
+      // Smoke never writes credentials: the fixture's own model key is connected once at provisioning.
+      if (!bootstrap.modelKey)
+        throw Error('--with-llm needs a model key already connected on the fixture account');
       runInput = env.SMOKE_OPENROUTER_MODEL ? { modelId: env.SMOKE_OPENROUTER_MODEL } : {};
     } else
       skipped.push(
@@ -222,42 +222,62 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
   } catch (e) {
     failure = e;
   }
-  if (created) {
+  if (local ? created : fixture.signedIn()) {
     try {
-      await cleanup();
-      checks.push('account/data cleanup and session revocation');
+      await (local ? cleanupLocal() : cleanupFixture());
+      checks.push(local ? 'account/data cleanup and session revocation' : 'fixture data cleanup and session revocation');
     } catch (e) {
       // Report the original failure; the cleanup error is attached, never substituted.
-      if (failure)
-        failure.message += ` (cleanup also failed: ${e.message}; delete ${email} manually)`;
+      const manual = local
+        ? 'delete the local dev user manually'
+        : `remove smoke chat ${owned.chatId ?? '(none)'} from the fixture and revoke its sessions manually`;
+      if (failure) failure.message += ` (cleanup also failed: ${e.message}; ${manual})`;
       else failure = e;
     }
   }
   if (failure) throw failure;
   return { checks, skipped };
 
-  async function cleanup() {
-    const signIn = async () => {
-      token = '';
-      token = (
-        await call('/v1/auth/sign-in', 'POST', { type: 'auth.input', email, password }, false)
-      ).bearerToken;
-    };
-    if (!token && !local) await signIn();
-    const remove = () =>
-      call('/v1/account', 'DELETE', { type: 'account.delete', ...(local ? {} : { password }) });
-    try {
-      await remove();
-    } catch (e) {
-      if (local || !e.message.endsWith('HTTP 401')) throw e;
-      await signIn();
-      await remove();
-    }
+  async function cleanupLocal() {
+    await call('/v1/account', 'DELETE', { type: 'account.delete' });
     const dead = await fetcher(api + '/v1/bootstrap', {
       headers: { authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(30000),
     });
     assert.equal(dead.status, 401);
+  }
+
+  async function cleanupFixture() {
+    // Ids clear once removed so a retry after token expiry never re-deletes.
+    const removeOwned = async () => {
+      if (owned.attachmentId) {
+        await call(`/v1/uploads/${encodeURIComponent(owned.attachmentId)}`, 'DELETE');
+        owned.attachmentId = undefined;
+      }
+      if (owned.chatId) {
+        await call(`/v1/chats/${encodeURIComponent(owned.chatId)}`, 'DELETE');
+        owned.chatId = undefined;
+      }
+    };
+    const errors = [];
+    try {
+      try {
+        await removeOwned();
+      } catch (e) {
+        if (!e.message.endsWith('HTTP 401')) throw e;
+        token = await fixture.signIn();
+        await removeOwned();
+      }
+    } catch (e) {
+      errors.push(e.message);
+    }
+    // Every session is revoked even when data removal failed, and both outcomes are reported.
+    try {
+      await fixture.signOut();
+    } catch (e) {
+      errors.push(e.message);
+    }
+    if (errors.length) throw Error(errors.join('; '));
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)

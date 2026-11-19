@@ -1,12 +1,16 @@
+import {INTERNAL_CONTINUATION_PATH} from '@praxis/protocol';
+import {SealedSecret} from '@praxis/types';
+import {verifyAccountRecovery} from './account-recovery.js';
 import {productionWebPorts} from './features/web/production.js';
 import {WEB_PROVIDERS} from './features/web/constants.js';
 import {Hono} from 'hono';
 import {readTurnKeys} from './turn/auth.js';
 import {registerTurnRoute} from './turn/routes.js';
 import {GROQ_POOL, pool, redisCooldownStore, type CredentialLogEvent} from '@praxis/credentials';
-import {accountEraser} from './account-deletion.js';
+import {confirmConvexDeletion, isAccountDeletion, verifiedConvexOwner} from './adapters/convex-session.js';
 import {createConvexRPC} from './adapters/convex.js';
-import {createAuth, parseOrigins} from './adapters/auth.js';
+import {accountEraser} from './account-deletion.js';
+import {parseOrigins} from './origins.js';
 import {createConvexStore} from './adapters/convex.js';
 import {createQStashScheduler, createQStashVerifier} from './adapters/qstash.js';
 import {createSafeFetch} from './adapters/security.js';
@@ -21,9 +25,6 @@ import {convexVectorIndex} from './search-index.js';
 export const PRODUCTION_ENV = [
   'PRAXIS_API_URL',
   'PRAXIS_WEB_ORIGINS',
-  'CLERK_PUBLISHABLE_KEY',
-  'CLERK_SECRET_KEY',
-  'CLERK_JWT_KEY',
   'CONVEX_URL',
   'PRAXIS_CONVEX_SERVER_TOKEN',
   'UPSTASH_REDIS_REST_URL',
@@ -35,7 +36,7 @@ export const PRODUCTION_ENV = [
 
 export type ProductionEnv = Record<(typeof PRODUCTION_ENV)[number], string> & {PRAXIS_ENCRYPTION_KEYS?: string; PRAXIS_ENCRYPTION_KEY?: string; PRAXIS_RUN_BUDGET_MS?: string; PRAXIS_COOKIE_SAMESITE?: string; GROQ_API_KEY?: string};
 
-export const CONTINUATION_PATH = '/internal/continue';
+export const CONTINUATION_PATH = INTERNAL_CONTINUATION_PATH;
 
 /** Optional pooled platform keys using un-gapped _2, _3, ... suffixes. */
 export const PLATFORM_POOLS: readonly PoolSpec[] = [{service: GROQ_POOL.service, names: GROQ_POOL.name}, ...Object.values(WEB_PROVIDERS).map(p => ({service: p.service, names: p.name}))];
@@ -104,7 +105,7 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
   const store = createConvexStore({url: env.CONVEX_URL, serverToken: env.PRAXIS_CONVEX_SERVER_TOKEN});
   const storage = createConvexToolsStorage({url: env.CONVEX_URL, serverToken: env.PRAXIS_CONVEX_SERVER_TOKEN, baseUrl: origin});
   const accountRPC=createConvexRPC({url:env.CONVEX_URL,serverToken:env.PRAXIS_CONVEX_SERVER_TOKEN});
-  const auth = createAuth(rawEnv, upstash.kv,{isActive:upstash.ownership.isActive,activate:userId=>upstash.ownership.activate(userId,async()=>!!await accountRPC.query('account:active',{userId}))});
+  const eraseAccount = accountEraser(accountRPC, upstash.ownership);
   const egress = createSafeFetch();
   // Semantic search: off unless an embedder is configured (PRAXIS_EMBEDDER / PRAXIS_OPENAI_EMBEDDINGS_KEY).
   const embedder = productionEmbedder(rawEnv);
@@ -116,13 +117,32 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
     // Provider base URLs are user-supplied, so model calls use the same SSRF guard as tools and MCP.
     fetcher: egress,
     allowedOrigins: webOrigins,
-    resolveSession: request => auth.resolveSession(request),
-    authHandler: request => auth.handler(request),
-    accountDeletion:{confirm:auth.confirmDeletion,purge:accountEraser(accountRPC,upstash.ownership,auth.deleteExternal)},
+    resolveSession: async request => {
+      const id = await verifiedConvexOwner(request, env.CONVEX_URL);
+      if (!id) return null;
+      if (!isAccountDeletion(request) && !await upstash.ownership.isActive(id)) {
+        await upstash.ownership.activate(id, async () => await accountRPC.query('account:active', { userId: id }) === true);
+      }
+      // Convex returns the owner without a cache lifetime, so clients must revalidate immediately.
+      return { user: { type: 'user', id, name: 'Praxis user' }, expiresAt: new Date().toISOString() };
+    },
+    accountDeletion: {
+      confirm: (request, password) => confirmConvexDeletion(request, env.CONVEX_URL, password),
+      purge: eraseAccount,
+    },
     rateLimit: createRateLimiter(upstash.redis),
     scheduler: createQStashScheduler({token: env.QSTASH_TOKEN, callbackUrl}),
     lease: upstash.lease,
-    continuation: {path: CONTINUATION_PATH, verify: createQStashVerifier({currentSigningKey: env.QSTASH_CURRENT_SIGNING_KEY, nextSigningKey: env.QSTASH_NEXT_SIGNING_KEY, callbackUrl})},
+    continuation: {
+      path: CONTINUATION_PATH,
+      verify: createQStashVerifier({
+        currentSigningKey: env.QSTASH_CURRENT_SIGNING_KEY, nextSigningKey: env.QSTASH_NEXT_SIGNING_KEY, callbackUrl,
+      }),
+      accountRecovery: {
+        verify: verifyAccountRecovery(SealedSecret.of(env.PRAXIS_CONVEX_SERVER_TOKEN)),
+        resume: eraseAccount.resume,
+      },
+    },
     ...(env.PRAXIS_RUN_BUDGET_MS ? {budgetMs: Number(env.PRAXIS_RUN_BUDGET_MS)} : {}),
     ...(hooks.defer ? {defer: hooks.defer} : {}),
     ...(embedder ? {search: {embedder, vectors: convexVectorIndex(accountRPC)}} : {}),

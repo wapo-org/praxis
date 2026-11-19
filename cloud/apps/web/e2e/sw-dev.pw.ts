@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { stackTest as test } from './sign-in';
 
 test.use({ serviceWorkers: 'allow' });
 

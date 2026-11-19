@@ -39,12 +39,20 @@ export function deploymentPlan(env) {
       fileInput: true,
       tool: 'convex',
     },
+    {
+      name: 'Convex account recovery origin',
+      cwd: root,
+      args: [...convex, 'env', 'set', 'PRAXIS_API_URL', '--from-file', '<private-input>'],
+      remote: true,
+      inputKey: 'PRAXIS_API_URL',
+      fileInput: true,
+      tool: 'convex',
+    },
     ...apiKeys
       .filter(
         (k) =>
           env[k] ||
           ![
-            'PRAXIS_COOKIE_SAMESITE',
             'PRAXIS_RUN_BUDGET_MS',
             'PRAXIS_SYNC_STRATEGY',
             'GROQ_API_KEY',
@@ -105,15 +113,15 @@ export function stepEnv(step, env, api) {
     };
   return base;
 }
+/** Values no staged file may contain; PASSWORD covers the smoke fixture binding kept in the same private file. */
+export function secretValues(env) {
+  return Object.entries(env)
+    .filter(([k]) => /TOKEN|KEY|SECRET|PASSWORD/.test(k))
+    .map(([, v]) => v);
+}
 async function checkUpload(label, stage, env) {
   const files = await listFiles(stage);
-  await assertSafeUpload(
-    stage,
-    files,
-    Object.entries(env)
-      .filter(([k]) => /TOKEN|KEY|SECRET/.test(k))
-      .map(([, v]) => v),
-  );
+  await assertSafeUpload(stage, files, secretValues(env));
   const list = await writeUploadList(stage, files);
   const groups = {};
   for (const f of files) {
@@ -213,7 +221,9 @@ export async function deploy(args = process.argv.slice(2), runner = execute, pat
     }
     if (dry && step.remote) continue;
     if (!step.remote) {
-      await runner(step, safeBuildEnv(api));
+      const buildEnv = safeBuildEnv(api);
+      if (step.web) buildEnv.VITE_CONVEX_URL = origin(env.CONVEX_URL, 'https://preview.example.invalid');
+      await runner(step, buildEnv);
       continue;
     }
     const childEnv = stepEnv(step, env, api);

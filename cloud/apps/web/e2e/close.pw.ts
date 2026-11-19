@@ -1,5 +1,5 @@
-import { signIn as convexSignIn } from './sign-in';
-import { expect, test, type Page } from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import { expect, type Page } from '@playwright/test';
 
 // WP-G4 A: what leaves leaves at once, the corner never swaps at rest, and the rows land before the shape.
 test.use({ serviceWorkers: 'block' });
@@ -27,7 +27,7 @@ async function watchClose(page: Page) {
 
 for (const how of ['Escape', 'an outside click', 'choosing a result'] as const) {
   test(`search closes by ${how}, disabling hit targets before removal`, async ({page}) => {
-    await convexSignIn(page);
+    await openSignedInPage(page);
     await page.keyboard.press('ControlOrMeta+k');
     const palette = page.getByTestId('search-palette');
     const input = palette.getByRole('combobox');
@@ -55,7 +55,7 @@ for (const how of ['Escape', 'an outside click', 'choosing a result'] as const) 
 
 test.describe('menus', () => {
   test.beforeEach(async ({ page }) => {
-    await convexSignIn(page);
+    await openSignedInPage(page);
     await page.goto('/lab/glass?morph');
     await page.getByTestId('morph-lab').waitFor();
     await page.waitForTimeout(400);

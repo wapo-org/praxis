@@ -28,9 +28,11 @@ from pipeline import STATUS_REVIEWED, RunState, SessionRun, run_and_record
 from prompts import DEFAULT_MUSE_MODEL, DEFAULT_MUSE_REASONING_EFFORT, installed_skills
 from report import DEFAULT_REPORT_RUNS, format_report, summarize_runs
 from runlog import RUNS_MOUNT_PATH, RUNS_VOLUME_NAME, load_run_records, write_run_record
+from vercel_preview import PreviewConfig, check_api_preview
 
 APP_NAME = "praxis-muse-pr-reviewer"
 SECRET_NAME = "praxis-pr-reviewer-secrets"
+VERCEL_SECRET_NAME = "praxis-pr-reviewer-vercel"
 MUSE_AUTH_VOLUME_NAME = "muse-auth-state"
 MUSE_AUTH_MOUNT_PATH = "/mnt/muse-auth"
 SANDBOX_CPU_CORES = 6.0
@@ -324,6 +326,30 @@ def check_sandbox_environment() -> dict[str, Any]:
         }
     finally:
         sb.terminate()
+
+
+@app.function(image=web_image, secrets=[reviewer_secret, modal.Secret.from_name(VERCEL_SECRET_NAME)])
+def check_hosted_api_preview(repo: str, pr: int) -> dict[str, str]:
+    github_token = os.environ.get("GITHUB_TOKEN", "")
+    if not github_token:
+        return {"status": "blocked", "reason": "A GitHub token is required to verify the PR head."}
+    with (
+        httpx.Client(headers=github_headers(github_token), timeout=10.0, trust_env=False) as gh,
+        httpx.Client(timeout=10.0, trust_env=False) as vercel,
+    ):
+        return check_api_preview(
+            gh=gh, vercel=vercel, repo=repo, pr_number=pr,
+            allowed_repos=_allowed_repos(), config=PreviewConfig.from_env(),
+        )
+
+
+@app.local_entrypoint()
+def verify_api_preview(repo: str, pr: int) -> None:
+    """Print a redacted proof that the approved PR's protected API is healthy."""
+    result = check_hosted_api_preview.remote(repo, pr)
+    print(json.dumps(result, indent=2))
+    if result["status"] != "verified":
+        raise SystemExit(1)
 
 
 @app.local_entrypoint()

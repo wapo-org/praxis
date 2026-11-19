@@ -1,10 +1,10 @@
-import { apiRequest, signIn as convexSignIn } from './sign-in';
-import { test, expect } from '@playwright/test';
+import { apiRequest, openSignedInPage, signedInTest as test } from './sign-in';
+import { expect } from '@playwright/test';
 
 test.use({ serviceWorkers: 'block' });
 
 test.beforeEach(async ({ page }) => {
-  await convexSignIn(page);
+  await openSignedInPage(page);
   await page.getByTestId('chat-screen').waitFor();
 });
 test('narrow History never focuses an input; explicit Search keeps focus after History exits', async ({ page }) => {

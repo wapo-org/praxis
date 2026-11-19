@@ -1,9 +1,9 @@
-import { signIn as convexSignIn } from './sign-in';
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 // The menu morph, in a real browser, on the lab scene: both button classes in two corners, over text.
 test.beforeEach(async ({ page }) => {
-  await convexSignIn(page);
+  await openSignedInPage(page);
   await page.goto('/lab/glass?morph');
   await page.getByTestId('morph-lab').waitFor();
   await page.evaluate(() => document.fonts.ready);
@@ -221,7 +221,7 @@ test.describe('every frame is one piece of glass', () => {
 test.describe('the tray', () => {
   test('its near edge never comes back late: no stick to the bottom at the end', async ({ page }) => {
     await page.goto('/');
-    await convexSignIn(page);
+    await openSignedInPage(page);
     await page.waitForTimeout(400);
     await page.evaluate(() => {
       const w = window as unknown as { __bottoms: Array<[number, number]>; __on: boolean };
@@ -589,7 +589,7 @@ test.describe('no move at the end', () => {
 
   test('the + tray and its model list: the same, in the app', async ({ page }) => {
     await page.goto('/');
-    await convexSignIn(page);
+    await openSignedInPage(page);
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(400);
     await track(page, '[data-testid="plus-tray"]', '[data-testid="plus-tray"] [role="group"]', () => page.getByTestId('composer-plus-button').click());

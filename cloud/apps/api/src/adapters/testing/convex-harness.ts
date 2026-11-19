@@ -9,11 +9,10 @@ export const TEST_SERVER_TOKEN = 'test-server-token-with-more-than-32-characters
 const modules = {
   '../../../../../convex/webTools.ts': () => import('../../../../../convex/webTools.js'),
   '../../../../../convex/_generated/api.js': async () => ({}),
+  '../../../../../convex/accountRecovery.ts': () => import('../../../../../convex/accountRecovery.js'),
   '../../../../../convex/account.ts': () => import('../../../../../convex/account.js'),
   '../../../../../convex/tools.ts': () => import('../../../../../convex/tools.js'),
   '../../../../../convex/store.ts': () => import('../../../../../convex/store.js'),
-  '../../../../../convex/authClerk.ts': () => import('../../../../../convex/authClerk.js'),
-  '../../../../../convex/legacyAuth.ts': () => import('../../../../../convex/legacyAuth.js'),
   '../../../../../convex/files.ts': () => import('../../../../../convex/files.js'),
   '../../../../../convex/search.ts': () => import('../../../../../convex/search.js'),
 };

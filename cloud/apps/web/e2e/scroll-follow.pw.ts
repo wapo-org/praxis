@@ -1,5 +1,5 @@
-import { signIn } from './sign-in';
-import {test,expect,type Page} from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import {expect,type Page} from '@playwright/test';
 const paragraph='A careful release keeps the reader in control. Check the evidence and keep the next action clear.';
 
 async function seed(page:Page,script:'text'|'long'='text'){
@@ -12,7 +12,7 @@ async function seed(page:Page,script:'text'|'long'='text'){
   await page.goto(`/c/${id}`);await page.getByTestId('chat-top-bar').waitFor();return id;
 }
 const metrics=(page:Page)=>page.getByTestId('chat-scroll-viewport').evaluate(el=>({overflow:el.scrollHeight-el.clientHeight,distance:el.scrollHeight-el.clientHeight-el.scrollTop,top:el.scrollTop}));
-test.beforeEach(async({page})=>signIn(page));
+test.beforeEach(async({page})=>openSignedInPage(page));
 test('a short chat never shows Jump to latest, including after a resize',async({page})=>{
   const input=page.getByTestId('composer-input');await input.fill('A short answer');await input.press('Enter');
   await page.getByTestId('turn-copy-button').last().waitFor();

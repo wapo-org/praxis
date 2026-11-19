@@ -16,7 +16,11 @@ const row = {
 
 export default defineSchema({
   // `deleting` fences every owner write once account deletion begins.
-  users: defineTable({ deleting: v.optional(v.boolean()) }),
+  users: defineTable({
+    deleting: v.optional(v.boolean()),
+    deletionSessionId: v.optional(v.string()),
+    deletion: v.optional(v.union(v.object({ blobCursor: v.string() }), v.object({ blobsDone: v.literal(true) }))),
+  }),
   oauthEmails: defineTable({ userId: v.id('users'), email: v.string() })
     .index('email', ['email'])
     .index('user', ['userId']),
@@ -39,14 +43,6 @@ export default defineSchema({
   // Immutable revision log keyed by per-owner sequence, never wall-clock.
   changes: defineTable(row).index('owner_revision', ['userId', 'revision']),
   sequences: defineTable({ userId: v.string(), value: v.number() }).index('owner', ['userId']),
-  authDocuments: defineTable({ model: v.string(), id: v.string(), data: v.any() })
-    .index('model', ['model'])
-    .index('model_id', ['model', 'id'])
-    .index('model_email', ['model', 'data.email'])
-    .index('model_token', ['model', 'data.token'])
-    .index('model_user', ['model', 'data.userId'])
-    .index('model_identifier', ['model', 'data.identifier'])
-    .index('model_value', ['model','data.value']),
   // Semantic search: one vector per chat title or message chunk (convex/search.ts). `scope` = owner + embedder.
   embeddings: defineTable({
     userId: v.string(),

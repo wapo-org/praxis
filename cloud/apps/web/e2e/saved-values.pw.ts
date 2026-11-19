@@ -1,12 +1,32 @@
-import { apiRequest, signIn as convexSignIn } from './sign-in';
-import {expect,test} from '@playwright/test';
+import { apiRequest, openSignedInPage, sessionHeaders, signedInTest as test } from './sign-in';
+import {expect} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
+import {z} from 'zod';
 const capture=process.env.K1_CAPTURE_DIR;
 test.beforeEach(async({page})=>{
- await convexSignIn(page);
- await page.goto('/');
+ await openSignedInPage(page);
  await page.getByTestId('composer-input').waitFor();
+});
+
+const savedValuePage = z.object({
+  items: z.array(z.object({ id: z.string() })),
+  nextCursor: z.string().nullable(),
+});
+
+test.afterEach(async ({ page }, info) => {
+  if (info.status !== 'passed') return;
+  const headers = await sessionHeaders(page);
+  let hasMore: boolean;
+  do {
+    const response = await page.request.get('/v1/saved-values', { headers });
+    expect(response.ok()).toBe(true);
+    const { items, nextCursor } = savedValuePage.parse(await response.json());
+    const removed = await Promise.all(items.map(({ id }) =>
+      page.request.delete(`/v1/saved-values/${encodeURIComponent(id)}`, { headers })));
+    for (const response of removed) expect(response.ok()).toBe(true);
+    hasMore = nextCursor !== null;
+  } while (hasMore);
 });
 test('a compact question saves ordinary answers and keeps the title outside its surface',async({page},info)=>{
  await page.getByTestId('composer-input').fill('Start an elicitation');

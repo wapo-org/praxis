@@ -22,13 +22,15 @@ Events use one Redis Stream per run. A monotonically increasing numeric sequence
 
 Convex tables are scoped by userId, with indexes beginning with userId (or a server-only composite owner key): users, sessions, accounts, verifications for auth; chats; messages; runs/checkpoints; the user's sealed OpenRouter key (`modelKey`) and model pins; model preferences; connectors and OAuth state; skills/registries; consent; attachments; tool outputs; sync revisions/tombstones and event outbox. Clients cannot call unauthenticated generic mutations. API-to-Convex requests authenticate with an internal service credential; every adapter operation also supplies an authenticated owner. Public IDs are distinct from Convex document IDs. Large tool output spills and attachments go through Convex file storage; only bounded previews go into live events and model context. Deleting a chat records tombstones and cancels active runs.
 
-**Production auth: Clerk JWT bearer sessions.** The API verifies JWT signatures and allowed origins with the configured instance public key and resolves identities server-side. Account deletion requires recent first-factor authentication and deletes the Clerk identity after data purge. Local development and conformance fixtures retain the isolated Better Auth adapter; production never accepts its development bearer token.
+**Production authentication uses Convex Auth v2.** The API forwards each bearer to the configured Convex deployment. Ordinary requests use `auth:currentUser` to verify the session and check the active owner. Account deletion uses `account:deletionOwner` and `account:confirmDeletion` to restrict client retries to the confirming session. Convex schedules signed retries for fenced owners independently of their session.
+
+For a Vercel Preview without Apple or Google credentials, set `PRAXIS_PREVIEW_MOCK_OAUTH` on the web build to a comma-separated list such as `apple,google`. Selecting a listed provider shows its simulated unavailable response. Email sign-in still uses the configured Convex deployment. Production builds always use the real provider hooks.
 
 The user's OpenRouter key, connector header tokens and OAuth tokens are encrypted at rest using AES-256-GCM with a random 96-bit IV, a 256-bit PRAXIS_ENCRYPTION_KEY, and owner/resource binding as authenticated data. Encryption errors never fall back to cleartext. API reads expose only masks. Model/tool caches never contain keys. OAuth uses server-side PKCE with expiring, single-use state bound to the user and an allowlisted return URL; DCR and hosted CIMD are supported through the official MCP SDK. Remote connector URLs and the pinned OpenRouter endpoint use the production egress policy: deny private/link-local/metadata destinations in production and revalidate redirects, while local mode may allow test servers. Connecting OpenRouter grants model data consent; per-host consent still gates MCP requests.
 
 ## Cache and sync
 
-Redis key namespace is `praxis:v1:<owner>:...`: bootstrap snapshot; the shared OpenRouter catalogue (`openrouter:catalog`, not per owner) and connector/tool caches; session digest; run cancel flag; execution lease; run event stream/sequence; user change stream; rate limit buckets; JS conversation KV. Secrets and PII do not appear in keys (production owner keys are opaque). Bootstrap snapshots have a short TTL and are invalidated on every affected mutation. Model search and pagination run server-side, and the catalogue is fetched separately from bootstrap. Cached values are owner-scoped. Rate limits apply by verified user with a separate unauthenticated/IP bucket. Request logs include request ID, route, status and duration, excluding bodies, query credentials, authorization, cookies and provider responses.
+Redis key namespace is `praxis:v1:<owner>:...`: bootstrap snapshot; the shared OpenRouter catalogue (`openrouter:catalog`, not per owner) and connector/tool caches; run cancel flag; execution lease; run event stream/sequence; user change stream; rate limit buckets; JS conversation KV. Secrets and PII do not appear in keys (production owner keys are opaque). Bootstrap snapshots have a short TTL and are invalidated on every affected mutation. Model search and pagination run server-side, and the catalogue is fetched separately from bootstrap. Cached values are owner-scoped. Rate limits apply by verified user with a separate unauthenticated/IP bucket. Request logs include request ID, route, status and duration, excluding bodies, query credentials, authorization, cookies and provider responses.
 
 The sync experiment partitions entity hashes into a deterministic tree over stable entity keys. Canonical JSON has sorted object keys, UTF-8 encoding, explicit tombstones and SHA-256; Swift can reproduce it. Cursor sync uses a monotonic revision cursor (not wall-clock equality) so simultaneous updates are not skipped. `/v1/sync/*` supplies snapshots, changed entities and tree nodes; clients apply updates transactionally to IndexedDB or iOS persistence. The benchmark compares cursor and Merkle at 1k chats/50k messages, with 0,1,50 changed rows, reporting bytes, round trips and elapsed time. The winner stays default and the other remains feature-flagged; details in `docs/SYNC_EXPERIMENT.md`.
 
@@ -86,7 +88,6 @@ Runtime dependency inventory (features add their package only when implemented):
 - @upstash/qstash: signed continuation delivery and verification.
 - @upstash/ratelimit: shared per-user rate limiting.
 - convex: server data/storage client and function schema.
-- better-auth: cookie and bearer session lifecycle.
 - @modelcontextprotocol/sdk: official remote MCP transports, OAuth, tools/resources/prompts/elicitation.
 - quickjs-emscripten: bounded in-process QuickJS WASM execution; no Node eval.
 - typescript, @types/node: strict compiler and Node 24 API types (development).
@@ -133,9 +134,8 @@ Only `SITE_URL` is allowed as the OAuth return origin (including the future iOS 
 Email validation and recovery land on `/validate-email` and `/reset-password`.
 Verified emails shared across methods are rejected rather than automatically linked.
 OAuth-first email collisions reject password verification transactionally; pending signup rows are not authenticated identities.
-PRA-64 owns deletion of those pending rows, `oauthEmails`, component credentials and the legacy API adapter.
-Legacy Better Auth RPCs are isolated in `convex/legacyAuth.ts` until PRA-64; the web never calls them.
-PRA-35 must connect the new session identity to application data boundaries; account deletion remains unavailable until PRA-64.
+Account deletion fences the owner before purging data and blobs. The final batch erases the owner's `oauthEmails`, Convex Auth component credentials and user row in one transaction.
+The API derives the application owner from the verified Convex session.
 
 Dependencies:
 - `@convex-dev/auth@2.0.0`: component authentication and browser session lifecycle (latest dist-tag confirmed v2).
@@ -173,10 +173,12 @@ No production persistence or sandbox adapter is implemented by this registry.
 ordered inboxes, asynchronous cascading cancellation and verified artifact handoffs (PRA-79).
 The four wire tools and durable state schemas live in `packages/protocol/src/subagents.ts`.
 `SandboxSubagentWorkspace` in `packages/sandbox-tools` binds a server-supplied TenantId, child and revision.
-It requires Linux bubblewrap (`bwrap`) and Python in the provisioned sandbox image; namespace or tool
-unavailability fails preparation closed. No packages are installed at runtime. Child commands receive
+It requires Linux bubblewrap with `--bind-fd` and `--ro-bind-fd` support and Python in the provisioned sandbox image.
+Preparation fails closed if the required mount or namespace setup fails. No packages are installed at runtime. Child commands receive
 only their writable root plus read-only system runtimes, private PID/network namespaces and a cleared
 environment. All child effects still require PRA-76 authorization; this adapter grants no outbound network.
+The trusted launcher opens dynamic mount sources component by component without following symlinks.
+Bubblewrap verifies each mounted object against its open descriptor before executing child code.
 File operations use directory descriptors and O_NOFOLLOW to reject symlinks without a check/open race.
 Their trusted script is installed outside child data and mounted read-only, runs from `/` with Python `-I`,
 and receives binary writes through staged read-only files, never argv; staging is removed even on failure.
@@ -202,7 +204,7 @@ PRA-75's five named subagent invariants run as fast-check properties against the
 
 The `browser` sandbox tool uses argv-only SandboxPort execution and chat-confined sessions. Its action-specific classification uses the existing approval/taint boundary; screenshots are bounded exports with verified SHA-256 proof. Browser provisioning must apply `browserSandboxOptions()` for public-only IPv4 egress and explicitly attest that restriction in the trusted tool context. `verify -- live browser` is opt-in and records installed image-directory apparent bytes and cold start with unconditional termination.
 
-PRA-29 adds `@convex-dev/workflow` **0.4.10** for the durable flags-only loop; its workpool is capped at four jobs. `runs.start` atomically creates a run and workflow; the internal stub commits three turns with index-keyed flags. `onComplete` settles success, cancellation and failure; this skeleton acquires no external resources. PRA-30 replaces `turns.commitStub` with the authenticated worker, PRA-31 adds handoffs, and PRA-32 adds suspension/children. Unsupported flags fail closed until those handlers exist. `runs.start` resolves the owner with `getAuthUserId` (the Auth v2 token subject is a session). Account deletion fences the owner (`users.deleting` or the legacy auth document), so starts and stub commits fail closed; the purge cancels each owned workflow, cleans its journal, and deletes its flags and run.
+PRA-29 adds `@convex-dev/workflow` **0.4.10** for the durable flags-only loop; its workpool is capped at four jobs. `runs.start` atomically creates a run and workflow; the internal stub commits three turns with index-keyed flags. `onComplete` settles success, cancellation and failure; this skeleton acquires no external resources. PRA-30 replaces `turns.commitStub` with the authenticated worker, PRA-31 adds handoffs, and PRA-32 adds suspension/children. Unsupported flags fail closed until those handlers exist. `runs.start` resolves the owner with `getAuthUserId` (the Auth v2 token subject is a session). Account deletion fences the owner (`users.deleting`), so starts and stub commits fail closed; the purge cancels each owned workflow, cleans its journal, and deletes its flags and run.
 
 ## Built-in web tools (PRA-60)
 

@@ -4,6 +4,7 @@ import {posix} from 'node:path';
 import {ArtifactPathSchema} from '@praxis/protocol';
 import type {ExecRequest, ExecResult, SandboxPort} from './port.js';
 import {fail} from './support.js';
+import {MOUNT_LAUNCHER, OPEN_ENTRY} from './subagent-mount.js';
 
 export const ISOLATION_TIMEOUT_MS = 30_000;
 // Capture bounds keep verification memory independent of arbitrary workspace growth.
@@ -23,31 +24,50 @@ const PREPARE_ARGV = ['mkdir', '-p', '--'];
 const PROBE_ARGV = ['/usr/bin/true'];
 
 // Namespace mounts exclude parent/sibling workspaces, host credentials, sockets and the host network.
-export function isolatedArgv(source: string, root: string, readOnly: boolean, argv: readonly string[], cwd = root, mounts: readonly ReadOnlyMount[] = []): string[] {
-  return ['bwrap', '--die-with-parent', '--unshare-all', '--new-session', '--clearenv',
+export function isolatedArgv(
+  source: string,
+  root: string,
+  readOnly: boolean,
+  argv: readonly string[],
+  cwd = root,
+  mounts: readonly ReadOnlyMount[] = [],
+): string[] {
+  const workspaceBind = readOnly ? '--ro-bind-fd' : '--bind-fd';
+  return [PYTHON, '-I', '-c', MOUNT_LAUNCHER, String(1 + mounts.length),
+    'bwrap', workspaceBind, source, root,
+    ...mounts.flatMap(mount => ['--ro-bind-fd', mount.source, mount.target]),
+    '--die-with-parent', '--unshare-all', '--new-session', '--clearenv',
     '--setenv', 'PATH', '/usr/local/bin:/usr/bin:/bin',
     ...SYSTEM_DIRECTORIES.flatMap(path => ['--ro-bind', path, path]),
-    '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp',
-    readOnly ? '--ro-bind' : '--bind', source, root,
-    ...mounts.flatMap(mount => ['--ro-bind', mount.source, mount.target]), '--chdir', cwd, '--', ...argv];
+    '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', '--chdir', cwd, '--', ...argv];
 }
 
-// O_NOFOLLOW on every component closes the path-check/open race, including symlinks pointing inside the root.
 export const FILE_OPERATION = `import os,sys,json,base64,stat
 root,op,path,input_path=sys.argv[1:]
-fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
-def open_parent(path,create=False):
-    parts=path.split('/')
-    if any(p in ('','.','..') for p in parts): raise ValueError('invalid path')
-    parent=os.dup(fd)
-    for part in parts[:-1]:
-        if create:
-            try: os.mkdir(part,dir_fd=parent)
-            except FileExistsError: pass
-        child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+
+${OPEN_ENTRY}
+fd = open_entry(root)
+
+def open_parent(path, create=False):
+    parts = path.split('/')
+    if any(part in ('', '.', '..') for part in parts):
+        raise ValueError('invalid path')
+    parent = os.dup(fd)
+    try:
+        for part in parts[:-1]:
+            if create:
+                try:
+                    os.mkdir(part, dir_fd=parent)
+                except FileExistsError:
+                    pass
+            child = open_entry(part, parent)
+            os.close(parent)
+            parent = child
+    except (OSError, ValueError):
         os.close(parent)
-        parent=child
-    return parent,parts[-1]
+        raise
+    return parent, parts[-1]
+
 if op in ('read','write'):
     parent,name=open_parent(path,op=='write')
     flags=os.O_NOFOLLOW|os.O_NONBLOCK|(os.O_RDONLY if op=='read' else os.O_WRONLY|os.O_CREAT|os.O_TRUNC)
@@ -75,9 +95,11 @@ else:
             info=os.stat(name,dir_fd=directory,follow_symlinks=False)
             relative=prefix+name
             if stat.S_ISDIR(info.st_mode):
-                child=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=directory)
-                try: walk(child,relative+'/')
-                finally: os.close(child)
+                child = open_entry(name, directory)
+                try:
+                    walk(child, relative + '/')
+                finally:
+                    os.close(child)
             elif stat.S_ISREG(info.st_mode):
                 f=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
                 mode=os.fstat(f).st_mode

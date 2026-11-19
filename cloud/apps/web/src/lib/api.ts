@@ -10,7 +10,7 @@ import type {
   Run,
   RunSnapshot,
 } from '@praxis/protocol';
-import { SyncResponseSchema } from '@praxis/protocol';
+import { ACCOUNT_DELETE_PATH, AccountDeletedSchema, SyncResponseSchema } from '@praxis/protocol';
 import { UploadApiClient } from './api-uploads';
 import {
   PraxisApiError,
@@ -39,6 +39,14 @@ export class PraxisApiClient extends UploadApiClient {
   renameSavedSecret(id:string,name:string){return this.request('/v1/saved-secrets/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({name})});}
   deleteSavedSecret(id:string){return this.request('/v1/saved-secrets/'+encodeURIComponent(id),{method:'DELETE'});}
   // Bootstrap & Auth
+  async deleteAccount(password: string): Promise<void> {
+    const result = await this.request<unknown>(ACCOUNT_DELETE_PATH, {
+      method: 'DELETE',
+      body: JSON.stringify({ type: 'account.delete', ...(password ? { password } : {}) }),
+    });
+    AccountDeletedSchema.parse(result);
+  }
+
   async bootstrap(): Promise<Bootstrap> {
     return this.request<Bootstrap>('/v1/bootstrap');
   }

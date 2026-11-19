@@ -11,6 +11,8 @@
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "patch-package --error-on-fail --error-on-warn",
+    "preverify": "patch-package --error-on-fail --error-on-warn",
     "typecheck": "npm run -ws --if-present typecheck && tsc --noEmit -p convex",
     "test": "vitest run --passWithNoTests",
     "check:rules": "node scripts/check-rules.mjs",
@@ -33,6 +35,7 @@
     "@convex-dev/auth": "2.0.0",
     "@convex-dev/resend": "0.2.10",
     "@convex-dev/workflow": "0.4.10",
-    "convex": "1.50.0"
+    "convex": "1.50.0",
+    "patch-package": "8.0.1"
   }
 }

@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import {signIn} from './sign-in';
+import { expect } from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -11,7 +11,7 @@ test('empty-state send clears EmptyState on frame 1, avoids 404s, and renders a 
     }
   });
 
-  await signIn(page);
+  await openSignedInPage(page);
   await expect(page.getByTestId('chat-empty-state')).toBeVisible();
 
   await page.evaluate(() => {
@@ -61,7 +61,7 @@ test('empty-state send clears EmptyState on frame 1, avoids 404s, and renders a 
 });
 
 test('Working · 0s, Stop generating, and RunBackdrop appear immediately even when server start is delayed, and Stop works while queued', async ({ page }) => {
-  await signIn(page);
+  await openSignedInPage(page);
 
   let releaseRunPost!: () => void;
   const runPostHeld = new Promise<void>((r) => {
@@ -96,7 +96,7 @@ test('Working · 0s, Stop generating, and RunBackdrop appear immediately even wh
 });
 
 test('existing-chat send flies smoothly without losing or duplicating the bubble', async ({ page }) => {
-  await signIn(page);
+  await openSignedInPage(page);
 
   const input = page.getByTestId('composer-input');
   await input.fill('First turn in chat');
@@ -148,7 +148,7 @@ test('existing-chat send flies smoothly without losing or duplicating the bubble
 
 test('defect 3: text-only turns show no work group or usage flash and keep reply y invariant across live-to-saved swap', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await signIn(page);
+  await openSignedInPage(page);
 
   // 1) Instant scripted text-only turn: no work group and no usage line at any frame.
   await page.evaluate(() => {
@@ -259,7 +259,7 @@ test('defect 3: text-only turns show no work group or usage flash and keep reply
 });
 
 test('chat-switch entrance staggers visible rows once and never replays on same-chat click, reload, or reduced motion', async ({ page }) => {
-  await signIn(page);
+  await openSignedInPage(page);
 
   // Create two distinct chats with messages via sidebar New chat.
   const makeChat = async (label: string) => {

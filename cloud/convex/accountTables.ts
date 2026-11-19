@@ -12,10 +12,9 @@ export const ACCOUNT_PURGE_POLICY = {
   toolSkillFiles: 'ownerRows',
   files: 'ownerRows',
   embeddings: 'ownerRows',
-  oauthEmails: 'ownerRows',
+  oauthEmails: 'identity',
   runs: 'workflowRun',
   turnFlags: 'runChild',
-  authDocuments: 'identity',
   users: 'identity',
 } as const satisfies Record<TableNames, 'ownerRows' | 'workflowRun' | 'runChild' | 'identity'>;
 
@@ -39,10 +38,6 @@ export const ACCOUNT_OWNER_ROWS: Record<TablesWith<'ownerRows'>, RowsBy<string>>
     .withIndex('owner_status', q => q.eq('userId', userId)).take(limit),
   embeddings: (ctx, userId, limit) => ctx.db.query('embeddings')
     .withIndex('owner', q => q.eq('userId', userId)).take(limit),
-  oauthEmails: async (ctx, userId, limit) => {
-    const id = ctx.db.normalizeId('users', userId);
-    return id ? ctx.db.query('oauthEmails').withIndex('user', q => q.eq('userId', id)).take(limit) : [];
-  },
 };
 
 export const ACCOUNT_RUN_CHILD_ROWS: Record<TablesWith<'runChild'>, RowsBy<Id<'runs'>>> = {

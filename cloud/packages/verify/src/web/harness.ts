@@ -3,6 +3,9 @@ import {join} from 'node:path';
 import {chromium, request as playwrightRequest, type Browser, type Page} from '@playwright/test';
 import {CAPTURE_VIEWPORT, FLOW_ACTION_TIMEOUT_MS, FLOW_TIMEOUT_MS} from '../constants.js';
 import type {WebFlow} from './flow-types.js';
+import {createTestAccount, LocalVerificationOrigin, type TestAccount} from './auth-account.js';
+import {createAuthChallengeBudget} from './auth-budget.js';
+import {openSignedInPage, readSessionState, signIn, type SessionState} from './session.js';
 import {accessibilitySnapshot, screenshotEvidence} from './evidence.js';
 import {describeIssue, unexpectedIssues, type BrowserIssue} from './judge.js';
 
@@ -28,15 +31,15 @@ export interface HarnessOptions {
   directory: string;
 }
 
-function watch(page: Page, issues: BrowserIssue[]): void {
+function watch(page: Page, issues: BrowserIssue[], redact: (text: string) => string): void {
   page.on('console', message => {
-    if (message.type() === 'error') issues.push({kind: 'console', text: message.text()});
+    if (message.type() === 'error') issues.push({kind: 'console', text: redact(message.text())});
   });
-  page.on('pageerror', error => issues.push({kind: 'pageerror', text: error.message}));
+  page.on('pageerror', error => issues.push({kind: 'pageerror', text: redact(error.message)}));
   page.on('response', response => {
-    if (response.status() >= 400) issues.push({kind: 'response', method: response.request().method(), url: response.url(), status: response.status()});
+    if (response.status() >= 400) issues.push({kind: 'response', method: response.request().method(), url: redact(response.url()), status: response.status()});
   });
-  page.on('requestfailed', failed => issues.push({kind: 'requestfailed', method: failed.method(), url: failed.url(), text: failed.failure()?.errorText ?? 'failed'}));
+  page.on('requestfailed', failed => issues.push({kind: 'requestfailed', method: failed.method(), url: redact(failed.url()), text: redact(failed.failure()?.errorText ?? 'failed')}));
 }
 
 async function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
@@ -68,24 +71,57 @@ async function capture(page: Page, directory: string, id: string): Promise<{scre
   return files;
 }
 
-async function runFlow(browser: Browser, flow: WebFlow, options: HarnessOptions): Promise<FlowResult> {
+interface RunSession {
+  budgetDirectory: string;
+  state?: SessionState;
+}
+
+async function runFlow(browser: Browser, flow: WebFlow, options: HarnessOptions, session: RunSession): Promise<FlowResult> {
   const started = Date.now();
-  const context = await browser.newContext({viewport: CAPTURE_VIEWPORT});
+  const storageState = flow.session === 'shared' ? session.state : undefined;
+  const context = await browser.newContext({baseURL: options.base, viewport: CAPTURE_VIEWPORT, storageState});
   const request = await playwrightRequest.newContext();
   const page = await context.newPage();
   page.setDefaultTimeout(FLOW_ACTION_TIMEOUT_MS);
   const issues: BrowserIssue[] = [];
   const notes: string[] = [];
-  watch(page, issues);
+  let account: TestAccount | undefined;
+  const redact = (text: string) => {
+    if (!account) return text;
+    return text.replaceAll(account.email, '[redacted]')
+      .replaceAll(encodeURIComponent(account.email), '[redacted]')
+      .replaceAll(account.password, '[redacted]');
+  };
+  watch(page, issues, redact);
   let error: string | undefined;
+  let signedIn = false;
   try {
-    await withTimeout(flow.run({page, base: options.base, api: options.api, convexUrl: options.convexUrl, request, seed: options.seed, note: line => notes.push(line)}), FLOW_TIMEOUT_MS, flow.id);
+    const run = async () => {
+      if (storageState) {
+        await openSignedInPage(page, '/', options.base);
+      } else if (flow.session) {
+        account = await createTestAccount(options.convexUrl, session.budgetDirectory);
+        await signIn(page, options.base, account);
+      }
+      signedIn = flow.session !== undefined;
+      await flow.run({page, api: options.api, request, convexUrl: options.convexUrl, seed: options.seed, note: line => notes.push(line)});
+    };
+    await withTimeout(run(), FLOW_TIMEOUT_MS, flow.id);
   } catch (caught) {
-    error = caught instanceof Error ? caught.message.split('\n')[0] : String(caught);
+    error = redact(caught instanceof Error ? (caught.message.split('\n', 1)[0] ?? '') : String(caught));
   }
-  const files = await capture(page, options.directory, flow.id);
-  await request.dispose();
-  await context.close();
+  // A failed login can leave its credentials visible in the form.
+  const files = account && !signedIn ? {} : await capture(page, options.directory, flow.id);
+  try {
+    if (flow.session === 'shared' && signedIn) {
+      session.state = await readSessionState(context, options.base);
+    }
+  } catch (caught) {
+    error ??= redact(caught instanceof Error ? caught.message : String(caught));
+  } finally {
+    await request.dispose();
+    await context.close();
+  }
   const unexpected = unexpectedIssues(issues, flow.allow).map(describeIssue);
   const allowed = issues.filter(issue => issue.kind === 'response' && !unexpected.includes(describeIssue(issue))).map(describeIssue);
   const issuesFile = join(options.directory, `${flow.id}.issues.json`);
@@ -104,11 +140,13 @@ async function runFlow(browser: Browser, flow: WebFlow, options: HarnessOptions)
 }
 
 export async function runFlows(flows: readonly WebFlow[], options: HarnessOptions, onResult: (result: FlowResult) => void): Promise<FlowResult[]> {
+  LocalVerificationOrigin.parse(options.base);
+  const session = {budgetDirectory: await createAuthChallengeBudget(options.directory)};
   const browser = await chromium.launch({headless: !options.headed});
   const results: FlowResult[] = [];
   try {
     for (const flow of flows) {
-      const result = await runFlow(browser, flow, options);
+      const result = await runFlow(browser, flow, options, session);
       results.push(result);
       onResult(result);
     }

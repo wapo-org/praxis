@@ -1,10 +1,10 @@
-import { apiRequest, signIn as convexSignIn } from './sign-in';
-import { expect, test } from '@playwright/test';
+import { apiRequest, openSignedInPage, signedInTest as test } from './sign-in';
+import { expect } from '@playwright/test';
 
 test('search jump centers deep matches smoothly after entrance, expands collapsed work groups, skips scroll on title-only, and snaps on mount', async ({
   page,
 }) => {
-  await convexSignIn(page);
+  await openSignedInPage(page);
   await page.goto('/');
   await page.getByTestId('composer-input').waitFor();
 

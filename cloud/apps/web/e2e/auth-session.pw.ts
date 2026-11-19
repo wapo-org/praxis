@@ -1,8 +1,8 @@
-import { expect, test } from '@playwright/test';
-import { signIn } from './sign-in';
+import { expect } from '@playwright/test';
+import { createTestAccount, signIn, stackConvexUrl, stackTest as test } from './sign-in';
 
 test('a snapshot held across logout is cancelled before the revoked session reaches the API', async ({ page }) => {
-  await signIn(page);
+  await signIn(page, await createTestAccount(stackConvexUrl()));
   const snapshotPath = '/v1/runs/logout-race-probe/snapshot';
   const unauthorizedSnapshots: string[] = [];
   page.on('response', response => {
