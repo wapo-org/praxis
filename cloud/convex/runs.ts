@@ -12,12 +12,20 @@ import {STUB_TURNS_MAX, WORKFLOW_ERRORS} from './workflows/constants.js';
 import type {Id} from './_generated/dataModel.js';
 
 const indexSchema = z.number().int().nonnegative().max(TURN_INDEX_MAX - STUB_TURNS_MAX);
-export async function scopedRun(ctx: QueryCtx, args: {userId: string; chatId: string; runId: Id<'runs'>; generation: number}) {
+type RunScope = {userId: string; chatId: string; runId: Id<'runs'>; generation: number};
+
+async function scopedRun(ctx: QueryCtx, args: RunScope) {
   if (!await activeOwner(ctx, args.userId)) return null;
   const run = await ownedRun(ctx, args.userId, args.runId);
   if (!run?.workflow || run.chatId !== args.chatId || run.workflow.generation !== args.generation) return null;
+  return {...run, workflow: run.workflow};
+}
+
+export async function liveScopedRun(ctx: QueryCtx, args: RunScope) {
+  const run = await scopedRun(ctx, args);
+  if (!run) return null;
   const chat = await ownedChat(ctx, args.userId, args.chatId);
-  return chat && !chat.value.deletedAt ? {...run, workflow: run.workflow} : null;
+  return chat && !chat.value.deletedAt ? run : null;
 }
 
 export const get = query({
@@ -65,7 +73,7 @@ export const cancel = authedMutation({
 
 export const status = internalQuery({
   args: runScope,
-  handler: async (ctx, args) => (await scopedRun(ctx, args))?.workflow.status ?? null,
+  handler: async (ctx, args) => (await liveScopedRun(ctx, args))?.workflow.status ?? null,
 });
 
 export const onComplete = internalMutation({
@@ -73,7 +81,9 @@ export const onComplete = internalMutation({
   handler: async (ctx, {workflowId, result, context}) => {
     const run = await scopedRun(ctx, context);
     if (!run || run.workflow.id !== workflowId || !['running', 'cancelling'].includes(run.workflow.status)) return;
-    const status = run.workflow.status === 'cancelling' || result.kind === 'canceled' ? 'cancelled'
+    const chat = await ownedChat(ctx, context.userId, context.chatId);
+    const cancelled = !chat || !!chat.value.deletedAt || run.workflow.status === 'cancelling' || result.kind === 'canceled';
+    const status = cancelled ? 'cancelled'
       : result.kind === 'success' ? completionStatus(result.returnValue) : 'failed';
     const updatedAt = new Date().toISOString();
     await ctx.db.patch(run._id, {updatedAt, value: {...run.value, status, updatedAt},

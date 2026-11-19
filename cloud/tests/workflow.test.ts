@@ -60,6 +60,13 @@ describe('durable workflow skeleton', () => {
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({workflow: {status: 'cancelled', nextTurnIndex: 1}});
   });
+  it('settles the workflow when its chat is deleted', async () => {
+    const {t, owner, scope, runId} = await setup();
+    await owner.mutation(api.chats.remove, {chatId});
+    await expect(t.mutation(internal.turns.commitStub, {...scope, expectedTurnIndex: 0})).rejects.toThrow('unavailable');
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+    expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({workflow: {status: 'cancelled', nextTurnIndex: 0}});
+  });
   it('finalizes invalid flags as failed rather than looping', async () => {
     const {t, runId, userId} = await setup();
     await t.run(ctx => ctx.db.insert('turns', {userId, runId, generation: 0, turnIndex: 0, done: false, status: 'completed'}));

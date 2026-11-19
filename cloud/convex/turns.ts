@@ -3,7 +3,7 @@ import {ConvexError, v} from 'convex/values';
 import {TurnRequestSchema, TurnResultSchema, type TurnResult} from '@praxis/protocol';
 import {internal} from './_generated/api.js';
 import {internalMutation} from './functions.js';
-import {scopedRun} from './runs.js';
+import {liveScopedRun} from './runs.js';
 import {runScope} from './workflows/validators.js';
 import {STUB_TURNS_MAX, WORKFLOW_ERRORS} from './workflows/constants.js';
 
@@ -20,7 +20,7 @@ export const run = internalActionGeneric({
 export const commitStub = internalMutation({
   args,
   handler: async (ctx, input): Promise<TurnResult> => {
-    const run = await scopedRun(ctx, input);
+    const run = await liveScopedRun(ctx, input);
     if (!run) throw new ConvexError(WORKFLOW_ERRORS.unavailable);
     const saved = await ctx.db.query('turns').withIndex('by_user_run_turn', q =>
       q.eq('userId', input.userId).eq('runId', input.runId).eq('generation', input.generation).eq('turnIndex', input.expectedTurnIndex)).unique();
