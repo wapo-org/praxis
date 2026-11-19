@@ -93,9 +93,10 @@ def test_output_schemas_close_the_rule_list_per_session() -> None:
         assert item["properties"]["rule_id"]["enum"] == list(SESSION_RULE_IDS[profile.key])
         assert not set(item["properties"]["rule_id"]["enum"]) & SCRIPT_RULE_IDS
         assert set(item["required"]) == set(item["properties"])
-        assert schema["required"] == ["session", "findings", "ui_check"]
+        assert schema["required"] == ["session", "findings", "ui_check", "summary"]
         assert schema["properties"]["ui_check"]["type"] == ["string", "null"]
-        assert "summary" not in schema["properties"] and "blocking_issues" not in schema["properties"]
+        assert schema["properties"]["summary"]["type"] == "string"
+        assert "blocking_issues" not in schema["properties"]
     hands_on_schema = hands_on_output_schema()
     assert hands_on_schema["properties"]["findings"]["items"]["properties"]["rule_id"]["enum"] == ["CORRECTNESS"]
     assert "access_blocker" in hands_on_schema["required"]

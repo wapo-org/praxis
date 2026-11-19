@@ -144,10 +144,48 @@ def test_review_posts_verified_findings_and_gate_lines_verbatim() -> None:
 
     body = review["body"]
     assert len(body) < 100 and "logic_bs" not in body
-    assert "`R3.file-length` at `cloud/convex/a.ts:500`" in review["notes"][0]
-    assert "500 lines (max 400)" in review["notes"][0]
+    assert review["notes"][0].startswith("**Review `HEAD`**")
+    assert "`R3.file-length` at `cloud/convex/a.ts:500`" in review["notes"][1]
+    assert "500 lines (max 400)" in review["notes"][1]
     assert "the token is logged somewhere" not in str(review)
     assert result.session_errors == {"logic_bs": ERROR_NOT_JSON}
+
+
+def test_clean_run_posts_file_count_and_five_reviewer_summaries() -> None:
+    runs = [
+        session_run(name, {"session": name, "findings": [], "ui_check": None, "summary": f"{name} looks okay"})
+        for name in ("abstractions", "maintainability", "conciseness", "logic_bs", "security")
+    ]
+    result = assess(
+        session_runs=runs,
+        gates=[gate("typecheck", 0)],
+        diff=DIFF,
+        linear_texts={},
+        model="gpt-6.2-sol",
+        head_sha="3c58dca7050587ea8c3901a4db95ca5788193ab5",
+        reviewed_file_count=4,
+    )
+    assert result.review["verdict"] == VERDICT_COMMENT
+    assert result.review["comments"] == []
+    assert len(result.review["notes"]) == 1
+    note = result.review["notes"][0]
+    assert "**Review `3c58dca`** · Reviewed 4 files" in note
+    for name in ("abstractions", "maintainability", "conciseness", "logic_bs", "security"):
+        assert f"- `{name}`: {name} looks okay" in note
+
+
+def test_failed_gate_note_includes_cleaned_output_snippet() -> None:
+    result = assess(
+        session_runs=[],
+        gates=[gate("test", 1, "\x1b[31mFAIL\x1b[39m packages/spend/src/ledger.property.test.ts\nError: Test timed out in 5000ms.")],
+        diff=DIFF,
+        linear_texts={},
+        model="gpt-6.2-sol",
+    )
+    gate_note = result.review["notes"][-1]
+    assert "`test` exited with code 1." in gate_note
+    assert "FAIL packages/spend/src/ledger.property.test.ts" in gate_note
+    assert "\x1b[" not in gate_note
 
 
 def test_advisory_findings_are_phrased_as_offers() -> None:

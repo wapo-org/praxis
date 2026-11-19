@@ -51,11 +51,35 @@ class _Stream:
 
 
 class _Process:
-    def __init__(self, rc: int, stdout: str = ""):
-        self.rc, self.stdin, self.stdout, self.stderr = rc, _Stream(), _Stream(stdout), _Stream()
+    def __init__(self, rc: int, stdout: str = "", stderr: str = ""):
+        self.rc, self.stdin, self.stdout, self.stderr = rc, _Stream(), _Stream(stdout), _Stream(stderr)
 
     def wait(self) -> int:
         return self.rc
+
+
+class _RecordingMuseSandbox:
+    def __init__(self) -> None:
+        self.muse_calls: list[tuple[tuple[str, ...], dict[str, str] | None]] = []
+
+    def exec(self, *args, env=None, timeout=None, user=None):
+        if any("muse exec" in str(a) for a in args):
+            self.muse_calls.append((args, env))
+            return _Process(1, stdout="", stderr="muse stderr failure")
+        return _Process(0)
+
+
+def test_run_muse_session_keeps_xdg_inside_container_and_retains_stderr() -> None:
+    from sandbox import SessionTask, run_muse_session
+
+    sb = _RecordingMuseSandbox()
+    task = SessionTask(session="hands_on", prompt="p", schema={}, read_only=False, max_steps="80")
+    result = run_muse_session(sb, task, model="muse-ember-1.0", reasoning_effort="medium", secret_env={"META_API_KEY": "k"})
+    assert len(sb.muse_calls) == 1
+    args, env = sb.muse_calls[0]
+    assert env == {"META_API_KEY": "k"}
+    assert "XDG_CONFIG_HOME=/root/review/muse-cfg-hands_on" in " ".join(args)
+    assert result.raw_output == "muse stderr failure"
 
 
 class _CrashingCodex:

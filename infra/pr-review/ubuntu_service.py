@@ -57,7 +57,21 @@ def _preview_secrets(config):
     return tuple(config[key] for key in keys if config.get(key))
 
 
-def run_review(repo, pr, trigger, instructions, config):
+def _last_reviewed_head(repo, pr_number):
+    pr_dir = RUNS / repo.replace('/', '_') / f'pr-{pr_number}'
+    if not pr_dir.is_dir():
+        return None
+    for path in sorted(pr_dir.glob('*.json'), reverse=True):
+        try:
+            rec = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        if rec.get('status') == 'reviewed' and rec.get('head_sha'):
+            return str(rec['head_sha'])
+    return None
+
+
+def run_review(repo, pr, trigger, instructions, config, before_sha=''):
     token = config['GITHUB_TOKEN']
     env = {key: config[key] for key in ('LINEAR_API_KEY', 'META_API_KEY') if config.get(key)}
     sol_model = config.get('SOL_MODEL', DEFAULT_SOL_MODEL)
@@ -75,10 +89,13 @@ def run_review(repo, pr, trigger, instructions, config):
     def checkout_repo(container, checkout):
         workspace = sandbox.WORKSPACE
         origin = f'https://github.com/{checkout.repo}.git'
-        base_ref = checkout.diff_base.removeprefix('origin/')
+        gate_base = checkout.gate_diff_base or checkout.diff_base
+        base_ref = gate_base.removeprefix('origin/')
+        fetch_refs = [f'refs/heads/{base_ref}:refs/remotes/origin/{base_ref}', checkout.commit]
+        if checkout.diff_base and not checkout.diff_base.startswith('origin/') and checkout.diff_base != checkout.commit:
+            fetch_refs.append(checkout.diff_base)
         sandbox.exec_in(container, 'git', 'clone', '--depth=50', origin, workspace)
-        sandbox.exec_in(container, 'git', '-C', workspace, 'fetch', '--depth=50', 'origin',
-                        f'refs/heads/{base_ref}:refs/remotes/origin/{base_ref}', checkout.commit)
+        sandbox.exec_in(container, 'git', '-C', workspace, 'fetch', '--depth=50', 'origin', *fetch_refs)
         sandbox.exec_in(container, 'git', '-C', workspace, 'checkout', '--detach', checkout.commit)
 
     def preview_stage(container, checkout, requests):
@@ -117,7 +134,7 @@ def run_review(repo, pr, trigger, instructions, config):
         with Sandbox() as gates_container:
             checkout_repo(gates_container, checkout)
             sandbox.install_dependencies(gates_container)
-            gates = sandbox.run_gates(gates_container, checkout.diff_base)
+            gates = sandbox.run_gates(gates_container, checkout.gate_diff_base or checkout.diff_base)
         with Sandbox() as model_container:
             checkout_repo(model_container, checkout)
             sandbox.exec_in(model_container, 'bash', '-lc',
@@ -137,9 +154,11 @@ def run_review(repo, pr, trigger, instructions, config):
     deps = ReviewDeps(github_token=token, model=sol_model, secret_env=env, allow_forks=False,
                       run_in_sandbox=run_sandboxes, secrets=known)
 
+    effective_before = before_sha or (_last_reviewed_head(repo, pr) if trigger == 'pull_request:synchronize' else None)
+
     def review(current):
         with httpx.Client(headers=github_headers(token), timeout=GITHUB_TIMEOUT_SECONDS) as gh:
-            return review_pull_request(current, gh, deps, instructions)
+            return review_pull_request(current, gh, deps, instructions, before_sha=effective_before)
 
     return run_and_record(state, review, lambda record: write_run_record(RUNS, record),
                           elapsed=lambda: time.monotonic() - started, secrets=known)
@@ -149,16 +168,16 @@ def consume(stop, config):
     while not stop.is_set():
         with open_database() as db, db:
             job = db.execute(
-                "SELECT id,repo,pr,trigger,instructions FROM delivery WHERE status='queued' ORDER BY rowid LIMIT 1"
+                "SELECT id,repo,pr,trigger,instructions,before_sha FROM delivery WHERE status='queued' ORDER BY rowid LIMIT 1"
             ).fetchone()
             if job:
                 db.execute("UPDATE delivery SET status='running' WHERE id=?", (job[0],))
         if not job:
             stop.wait(QUEUE_INTERVAL_SECONDS)
             continue
-        delivery, *args = job
+        delivery, repo, pr_num, trig, instr, before_sha = job
         try:
-            result = run_review(*args, config)
+            result = run_review(repo, pr_num, trig, instr, config, before_sha=before_sha or '')
             status = result['status']
         except Exception as error:
             LOG.error('Review failed for delivery %s (%s). See private run record.', delivery, type(error).__name__)
@@ -178,7 +197,11 @@ async def lifetime(app):
         db.execute('PRAGMA journal_mode=WAL')
         db.execute('''CREATE TABLE IF NOT EXISTS delivery (
             id TEXT PRIMARY KEY, repo TEXT NOT NULL, pr INTEGER NOT NULL,
-            trigger TEXT NOT NULL, instructions TEXT NOT NULL, status TEXT NOT NULL)''')
+            trigger TEXT NOT NULL, instructions TEXT NOT NULL, status TEXT NOT NULL,
+            before_sha TEXT NOT NULL DEFAULT '')''')
+        cols = {row[1] for row in db.execute('PRAGMA table_info(delivery)').fetchall()}
+        if 'before_sha' not in cols:
+            db.execute("ALTER TABLE delivery ADD COLUMN before_sha TEXT NOT NULL DEFAULT ''")
         db.execute("UPDATE delivery SET status='interrupted' WHERE status='running'")
     stop = threading.Event()
     worker = threading.Thread(target=consume, args=(stop, config), daemon=True, name='review-worker')
@@ -225,8 +248,8 @@ async def github(request: Request):
         return {'status': 'ignored', 'reason': reason}
     with open_database() as db, db:
         inserted = db.execute(
-            'INSERT OR IGNORE INTO delivery VALUES (?, ?, ?, ?, ?, ?)',
+            'INSERT OR IGNORE INTO delivery (id, repo, pr, trigger, instructions, status, before_sha) VALUES (?, ?, ?, ?, ?, ?, ?)',
             (delivery, trigger.repo_full_name, trigger.pr_number, trigger.trigger_source,
-             trigger.custom_instructions, 'queued'),
+             trigger.custom_instructions, 'queued', trigger.before_sha or ''),
         ).rowcount
     return {'status': 'queued' if inserted else 'duplicate', 'delivery': delivery}

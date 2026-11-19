@@ -90,6 +90,7 @@ class ReviewTrigger:
     pr_body: str | None = None
     is_fork: bool | None = None
     custom_instructions: str = ""
+    before_sha: str | None = None
 
 
 def verify_github_signature(
@@ -149,6 +150,7 @@ def parse_webhook_event(
                 pr_title=pr.get("title") or "",
                 pr_body=pr.get("body") or "",
                 is_fork=is_fork,
+                before_sha=payload.get("before") if action == "synchronize" else None,
             ),
             "accepted",
         )
@@ -224,6 +226,26 @@ def fetch_pr_files(
             break
         page += 1
     return files
+
+
+def fetch_compare_files(
+    client: httpx.Client,
+    repo: str,
+    base_sha: str,
+    head_sha: str,
+) -> list[dict[str, Any]] | None:
+    """Return files changed between `base_sha` and `head_sha` when `base_sha` is an ancestor, else None."""
+    if not base_sha or not head_sha or base_sha == head_sha:
+        return None
+    resp = client.get(f"https://api.github.com/repos/{repo}/compare/{base_sha}...{head_sha}")
+    if resp.status_code in (404, 422):
+        return None
+    raise_for_github(resp, "compare pull request commits")
+    data = resp.json()
+    if data.get("status") != "ahead":
+        return None
+    files = data.get("files") or []
+    return list(files) if files else None
 
 
 def is_fork_pr(pr: dict[str, Any]) -> bool:

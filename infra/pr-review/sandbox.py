@@ -246,12 +246,13 @@ ln -sfn {MUSE_CONFIG_DIR}/skills {cfg_dir}/muse/skills
 
     started = time.monotonic()
     try:
-        rc, stdout, _ = exec_in(
+        # Set XDG_CONFIG_HOME inside the container only: Sandbox.exec also exports env to the host podman CLI.
+        rc, stdout, stderr = exec_in(
             sb,
             "bash",
             "-lc",
-            f"cd {WORKSPACE} && {command}",
-            env={**secret_env, "XDG_CONFIG_HOME": cfg_dir},
+            f"cd {WORKSPACE} && XDG_CONFIG_HOME={shlex.quote(cfg_dir)} {command}",
+            env=secret_env,
             timeout=SESSION_EXEC_TIMEOUT_SECONDS,
             check=False,
         )
@@ -260,7 +261,8 @@ ln -sfn {MUSE_CONFIG_DIR}/skills {cfg_dir}/muse/skills
         return SessionRun(task.session, crashed, "", None, time.monotonic() - started)
 
     output = parse_muse_output(stdout, task.required_keys)
-    return SessionRun(task.session, output, stdout, rc, time.monotonic() - started)
+    raw = stdout if stdout.strip() else stderr
+    return SessionRun(task.session, output, raw, rc, time.monotonic() - started)
 
 
 def run_sessions(

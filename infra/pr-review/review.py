@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from diff_index import DiffIndex
@@ -12,6 +13,39 @@ from visual_review import VISUAL_SCORE_MAX, VisualAssessment, access_request, ar
 VERDICT_COMMENT = "COMMENT"
 VERDICT_REQUEST_CHANGES = "REQUEST_CHANGES"
 FINDING_MARKER_PREFIX = "<!-- muse-finding:"
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+GATE_SNIPPET_MAX_CHARS = 700
+GATE_SNIPPET_MAX_LINES = 14
+CODE_REVIEW_SESSIONS = ("abstractions", "maintainability", "conciseness", "logic_bs", "security")
+
+
+def _clean_gate_snippet(output_tail: str) -> str:
+    cleaned = ANSI_ESCAPE.sub("", output_tail or "").strip()
+    lines = [line.rstrip() for line in cleaned.splitlines() if line.strip()]
+    snippet = "\n".join(lines[-GATE_SNIPPET_MAX_LINES:])
+    return snippet[-GATE_SNIPPET_MAX_CHARS:].strip()
+
+
+def _format_run_summary(
+    *,
+    head_sha: str,
+    reviewed_file_count: int | None,
+    session_summaries: dict[str, str],
+) -> str | None:
+    if reviewed_file_count is None and not session_summaries:
+        return None
+    short_sha = head_sha[:7] if head_sha else "HEAD"
+    count_label = ""
+    if reviewed_file_count is not None:
+        noun = "file" if reviewed_file_count == 1 else "files"
+        count_label = f" · Reviewed {reviewed_file_count} {noun}"
+    lines = [f"**Review `{short_sha}`**{count_label}"]
+    if session_summaries:
+        lines.append("")
+        for key in CODE_REVIEW_SESSIONS:
+            if key in session_summaries:
+                lines.append(f"- `{key}`: {session_summaries[key]}")
+    return "\n".join(lines)
 
 
 def finding_marker(rule_id: str) -> str:
@@ -63,6 +97,9 @@ def build_review(
     diff: DiffIndex,
     visual: VisualAssessment | None = None,
     run_id: str | None = None,
+    head_sha: str = "",
+    reviewed_file_count: int | None = None,
+    session_summaries: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     verdict = decide_verdict(gates, findings)
     comments: list[dict[str, Any]] = []
@@ -75,7 +112,9 @@ def build_review(
             else:
                 notes.append(message)
         if gate.get("status") == STATUS_FAILED and not gate["findings"]:
-            notes.append(f"**Required check failed**\n\n`{gate['key']}` exited with code {gate['exit_code']}.")
+            snippet = _clean_gate_snippet(str(gate.get("output_tail") or ""))
+            detail = f"\n\n```text\n{snippet}\n```" if snippet else ""
+            notes.append(f"**Required check failed**\n\n`{gate['key']}` exited with code {gate['exit_code']}.{detail}")
     for finding in findings:
         comments.append(_inline(finding["file"], finding["line"], format_finding(finding)))
 
@@ -85,6 +124,14 @@ def build_review(
         notes.extend(artifact_notes(visual, run_id=run_id))
     if request := access_request(hands_on):
         notes.append(request)
+
+    summary_note = _format_run_summary(
+        head_sha=head_sha,
+        reviewed_file_count=reviewed_file_count,
+        session_summaries=session_summaries or {},
+    )
+    if summary_note:
+        notes.insert(0, summary_note)
 
     body = ""
     if verdict == VERDICT_REQUEST_CHANGES:

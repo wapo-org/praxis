@@ -120,7 +120,10 @@ def test_review_posts_only_verified_findings_and_records_the_run(tmp_path: Path)
     assert posted["event"] == "REQUEST_CHANGES" and posted["commit_id"] == "abcdef1234567"
     assert [(comment["path"], comment["line"]) for comment in posted["comments"]] == [(PATH, 1)]
     assert "I think this is fine" not in json.dumps(posted)
-    assert github.status_comments == []
+    assert len(github.status_comments) == 1
+    assert "**Review `abcdef1`** · Reviewed 1 file" in github.status_comments[0]
+    assert "- `security`: 1 finding posted" in github.status_comments[0]
+    assert "- `logic_bs`: session error (malformed_json)" in github.status_comments[0]
 
     [record] = load_run_records(tmp_path, limit=5)
     assert record["status"] == "reviewed" and record["review_id"] == 4242
@@ -152,3 +155,52 @@ def test_github_refusing_the_review_fails_the_run_loudly(status_code: int, tmp_p
     assert record["review_id"] is None
     assert len(record["sessions"]) == 2 and record["posted_findings"] != []
     assert TOKEN not in json.dumps(record)
+
+
+def test_incremental_commit_review_scopes_diff_and_preserves_gate_base(tmp_path: Path) -> None:
+    prev_sha = "1111111222222"
+    commit_file = "cloud/apps/web/src/new.ts"
+    commit_patch = "@@ -1,0 +1,1 @@\n+export const ok = true;\n"
+    calls: list[Checkout] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/pulls/5"):
+            return httpx.Response(
+                200,
+                json={
+                    "title": "Incremental push",
+                    "body": "",
+                    "head": {"sha": "abcdef1234567", "ref": "feat", "repo": {"full_name": REPO}},
+                    "base": {"ref": "develop", "repo": {"full_name": REPO, "id": 1}},
+                },
+            )
+        if path.endswith(f"/compare/{prev_sha}...abcdef1234567"):
+            return httpx.Response(200, json={"status": "ahead", "files": [{"filename": commit_file, "patch": commit_patch}]})
+        if path.endswith("/issues/5/comments"):
+            return httpx.Response(200, json=[])
+        return httpx.Response(404)
+
+    def run_in_sandbox(checkout: Checkout) -> tuple[list[dict[str, Any]], list[SessionRun]]:
+        calls.append(checkout)
+        return [], [
+            SessionRun(
+                task.session,
+                MuseOutput(payload={"session": task.session, "findings": [], "ui_check": None, "summary": "Looks great"}, error=None, final_text="{}"),
+                "",
+                0,
+                1.0,
+            )
+            for task in checkout.tasks
+        ]
+
+    deps = ReviewDeps(github_token=TOKEN, model="gpt-6.2-sol", secret_env={}, allow_forks=False, run_in_sandbox=run_in_sandbox)
+    state = RunState("run2", REPO, 5, "pull_request:synchronize", "gpt-6.2-sol", "low", "2026-11-19T16:00:00Z")
+    with httpx.Client(transport=httpx.MockTransport(handler), base_url="https://api.github.com") as gh:
+        result = review_pull_request(state, gh, deps, before_sha=prev_sha)
+
+    assert result["status"] == "reviewed" and result["verdict"] == "COMMENT"
+    [checkout] = calls
+    assert checkout.diff_base == prev_sha
+    assert checkout.gate_diff_base == "origin/develop"
+    assert checkout.pr_context["changed_files"] == [commit_file]

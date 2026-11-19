@@ -171,16 +171,20 @@ def findings_schema(session_key: str) -> dict[str, Any]:
     }
 
 
+SUMMARY_MAX_CHARS = 80
+
+
 def session_output_schema(session_key: str) -> dict[str, Any]:
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "additionalProperties": False,
-        "required": ["session", "findings", "ui_check"],
+        "required": ["session", "findings", "ui_check", "summary"],
         "properties": {
             "session": {"type": "string"},
             "findings": findings_schema(session_key),
             "ui_check": {"type": ["string", "null"], "maxLength": UI_CHECK_MAX_CHARS},
+            "summary": {"type": "string", "minLength": 2, "maxLength": SUMMARY_MAX_CHARS},
         },
     }
 
@@ -255,7 +259,7 @@ def _output_rules(profile: SessionProfile) -> str:
 - `failure_scenario`: one or two sentences — the concrete input or situation, and what goes wrong.
 - `suggestion`: one sentence, phrased as a question or an option ("Could we…?", "Would it help to…?"), never an order. Use null if you have none.
 - `confidence`: `high` only if you read the surrounding code and traced the failure; `medium` if it is likely; `low` otherwise (low is discarded).
-{linear_rule}- Set `session` to `"{profile.key}"`. Output only the JSON object."""
+{linear_rule}{('- `summary`: 3 to 5 words on your review (when `findings` is empty, why you issued nothing, e.g. "Looks okay", "Looks great, clean helpers", "No security issues found").\n' if profile.key != "hands_on" else "")}- Set `session` to `"{profile.key}"`. Output only the JSON object."""
 
 
 def build_session_prompt(

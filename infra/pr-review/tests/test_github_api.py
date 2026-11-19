@@ -13,6 +13,7 @@ from github_api import (
     GitHubAuthError,
     classify_github_token,
     classify_review_threads,
+    fetch_compare_files,
     fetch_pr_details,
     fetch_review_thread_outcomes,
     is_fork_pr,
@@ -65,6 +66,12 @@ def test_parse_webhook_pull_request_triggers_and_skips() -> None:
     assert trigger.repo_full_name == "wapo-org/praxis"
     assert trigger.pr_number == 42
     assert trigger.head_sha == "abc1234"
+    assert trigger.before_sha is None
+
+    sync_payload = {**opened_payload, "action": "synchronize", "before": "000prev"}
+    sync_trigger, sync_reason = parse_webhook_event("pull_request", sync_payload)
+    assert sync_trigger is not None and sync_reason == "accepted"
+    assert sync_trigger.before_sha == "000prev"
 
     draft_payload = {
         **opened_payload,
@@ -84,6 +91,22 @@ def test_parse_webhook_pull_request_triggers_and_skips() -> None:
     trigger, reason = parse_webhook_event("pull_request", fork_payload)
     assert trigger is None
     assert "fork" in reason
+
+
+def test_fetch_compare_files_returns_files_only_when_ahead() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/compare/aaa...bbb"):
+            return httpx.Response(200, json={"status": "ahead", "files": [{"filename": "a.ts", "patch": "@@ -1 +1 @@\n+x"}]})
+        if request.url.path.endswith("/compare/aaa...ccc"):
+            return httpx.Response(200, json={"status": "diverged", "files": [{"filename": "a.ts"}]})
+        return httpx.Response(404)
+
+    with client_for(handler) as gh:
+        files = fetch_compare_files(gh, "wapo-org/praxis", "aaa", "bbb")
+        assert files == [{"filename": "a.ts", "patch": "@@ -1 +1 @@\n+x"}]
+        assert fetch_compare_files(gh, "wapo-org/praxis", "aaa", "ccc") is None
+        assert fetch_compare_files(gh, "wapo-org/praxis", "aaa", "missing") is None
+        assert fetch_compare_files(gh, "wapo-org/praxis", "aaa", "aaa") is None
 
 
 def test_parse_webhook_issue_comment_command() -> None:
