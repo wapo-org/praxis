@@ -49,7 +49,7 @@
     },
     "R3.file-length": {
       "apps/web/e2e/morph.pw.ts": 610,
-      "apps/web/e2e/stretch.pw.ts": 430,
+      "apps/web/e2e/stretch.pw.ts": 414,
       "apps/web/src/components/chat/ElicitationCards.tsx": 440,
       "apps/web/src/components/chat/chatMotion.ts": 464,
       "apps/web/src/components/chat/tray.test.tsx": 412,
