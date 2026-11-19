@@ -36,6 +36,13 @@
       "covers": [{"command": "gate"}, {"command": "live", "suite": "convex-typed-rows"}]
     },
     {
+      "id": "convex.workflow-skeleton",
+      "title": "Hosted durable workflow lifecycle, redelivery and account purge",
+      "issue": "PRA-29",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}, {"command": "live", "suite": "workflow-skeleton"}]
+    },
+    {
       "id": "repo.gate",
       "title": "Typecheck, tests, boundary rules, lint, comment hygiene and both builds",
       "issue": "PRA-72",
