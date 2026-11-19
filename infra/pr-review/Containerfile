@@ -1,0 +1,21 @@
+FROM docker.io/library/node:22-bookworm-slim
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 TBH_CREDENTIAL_BACKEND=file XDG_CONFIG_HOME=/root/.config
+RUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates curl git gh jq lsof procps python3 ripgrep xz-utils && rm -rf /var/lib/apt/lists/*
+RUN npm install -g --ignore-scripts npm@11.19.0
+# The installer verifies the launcher's SHA-256 itself; pinning the installer's hash makes an upstream change fail the build.
+ARG MUSE_INSTALLER_SHA256=5196d820127a241211c96cf38f0b2e30cff8506a82e9da9508cd5f826632a0ca
+RUN curl -fsSL --proto '=https' --proto-redir '=https' -o /root/muse-install.sh https://dev.meta.ai/install.sh && echo "$MUSE_INSTALLER_SHA256  /root/muse-install.sh" | sha256sum -c - && bash /root/muse-install.sh && rm /root/muse-install.sh && ln -s /root/.local/bin/muse /usr/local/bin/muse && muse --version
+ARG SKILLS_COMMIT=bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7
+RUN git init -q /root/cursor-plugins && cd /root/cursor-plugins && git remote add origin https://github.com/cursor/plugins.git && git sparse-checkout set pstack/skills && git fetch -q --depth=1 --filter=blob:none origin "$SKILLS_COMMIT" && git checkout -q FETCH_HEAD && mv pstack/skills /opt/muse-skills && cd / && rm -rf /root/cursor-plugins
+
+# Private working folders keep prompts, browser state and recordings out of the shared /tmp.
+RUN mkdir -p /workspace && install -d -m 700 /root/review && install -d -o node -g node -m 700 /home/node/review
+
+RUN npm install -g --ignore-scripts @openai/codex@0.170.0
+# ffmpeg turns the hands-on recording into the contact sheet the Sol visual reviewer scores.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+# The preview tools pin Playwright to the installed browsers, independent of the PR's own lockfile.
+RUN mkdir -p /opt/review-tools && cd /opt/review-tools && npm init -y >/dev/null && npm install --ignore-scripts --no-audit --no-fund playwright@1.64.1 \
+  && npx --no-install playwright install chromium --with-deps && rm -rf /var/lib/apt/lists/*
+# The long-lived container process runs unprivileged; review steps opt into root per exec.
+USER node

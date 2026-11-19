@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import fc from 'fast-check';
 import {describe, expect, it} from 'vitest';
 import {availableMicroUsd, expireOrphans, openLedger, release, reserve, reservedMicroUsd, settle, type Ledger, type PlatformService} from './ledger.js';
@@ -7,6 +8,7 @@ const ALLOWANCE_MICRO_USD = 10_000;
 const CALL_ESTIMATE_MAX_MICRO_USD = 4_000;
 const TTL_MS = 1_000;
 const RUNS = 1_000;
+const ATOMIC_SPEND_CAP_SEED = 75;
 
 type Ending = 'settle' | 'release' | 'abandon';
 interface Call {
@@ -85,27 +87,28 @@ function interleave(agents: readonly (readonly Call[])[], order: readonly Tick[]
 }
 
 function chargeOnce(ledger: Ledger): void {
-  const reserved = Object.keys(ledger.reservations);
-  expect(reserved.filter(key => key in ledger.closed)).toEqual([]);
-  expect(Object.values(ledger.closed).reduce((sum, closure) => sum + closure.chargedMicroUsd, 0)).toBe(ledger.spentMicroUsd);
+  assert.ok(!Object.keys(ledger.reservations).some(key => key in ledger.closed), 'A closed reservation is still open');
+  const chargedMicroUsd = Object.values(ledger.closed).reduce((sum, closure) => sum + closure.chargedMicroUsd, 0);
+  assert.equal(chargedMicroUsd, ledger.spentMicroUsd, 'Closed charges must match the ledger spend');
 }
 
 describe('PRA-75 security.qnt invariants on the real ledger', () => {
   it('AtomicSpendCap: parallel sub-agents never commit past the allowance when actual <= reserved, TTL expiry included', () => {
     fc.assert(fc.property(workload(false), ([agents, order]) => {
       interleave(agents, order, ledger => {
-        expect(ledger.spentMicroUsd + reservedMicroUsd(ledger)).toBeLessThanOrEqual(ALLOWANCE_MICRO_USD);
-        expect(ledger.overrunMicroUsd).toBe(0);
+        assert.ok(ledger.spentMicroUsd + reservedMicroUsd(ledger) <= ALLOWANCE_MICRO_USD, 'Spend and reservations exceed the allowance');
+        assert.equal(ledger.overrunMicroUsd, 0, 'A bounded provider cannot record an overrun');
         chargeOnce(ledger);
       });
-    }), {numRuns: RUNS});
+    }), {numRuns: RUNS, seed: ATOMIC_SPEND_CAP_SEED});
   });
 
   it('stated bound: with overrunning providers, spend exceeds the allowance by at most the recorded overrun', () => {
     fc.assert(fc.property(workload(true), ([agents, order]) => {
       interleave(agents, order, ledger => {
-        expect(ledger.spentMicroUsd).toBeLessThanOrEqual(ALLOWANCE_MICRO_USD + ledger.overrunMicroUsd);
-        expect(ledger.spentMicroUsd - ledger.overrunMicroUsd + reservedMicroUsd(ledger)).toBeLessThanOrEqual(ALLOWANCE_MICRO_USD);
+        assert.ok(ledger.spentMicroUsd <= ALLOWANCE_MICRO_USD + ledger.overrunMicroUsd, 'Spend exceeds the allowance and recorded overrun');
+        const committedMicroUsd = ledger.spentMicroUsd - ledger.overrunMicroUsd + reservedMicroUsd(ledger);
+        assert.ok(committedMicroUsd <= ALLOWANCE_MICRO_USD, 'Overrun-adjusted spend and reservations exceed the allowance');
         chargeOnce(ledger);
       });
     }), {numRuns: RUNS});

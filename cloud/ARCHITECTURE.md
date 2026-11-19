@@ -116,6 +116,16 @@ Sandbox dependency: `modal` **0.11.1**, pinned, the official Modal JavaScript SD
 
 Tool-boundary dependencies: `shell-quote` **1.12.0**, pinned, dependency-free pure JS token scanner for the restricted shell AST; `@types/shell-quote` **1.7.5** for compile-time declarations. `fast-check` **4.10.2**, pinned dev dependency, checks shell obfuscation and monotone taint properties; `npm test` runs the boundary suite; `npm run specs` runs the PRA-75 formal models.
 
+### Composio environment
+
+Set these variables on the Convex deployment that handles connections.
+
+- `COMPOSIO_API_KEY` authenticates Connect Link creation and account revocation.
+- `COMPOSIO_AUTH_CONFIG_<TOOLKIT_UPPER>` holds the Composio auth config ID for a toolkit, for example `COMPOSIO_AUTH_CONFIG_GMAIL`.
+- `PRAXIS_TENANT_ID_SECRET` holds at least 32 bytes of stable HMAC key material. Changing it changes every Composio tenant ID.
+- `COMPOSIO_WEBHOOK_SECRET` verifies signatures on deliveries to `<CONVEX_SITE_URL>/composio/webhook`.
+- `PRAXIS_WEB_ORIGINS` lists the permitted HTTPS return origins, separated by commas. The native return is `praxis-app://oauth/callback`.
+
 ## Formal protocol checks
 
 `specs/` models the v2 Linear designs before their implementations exist; see
