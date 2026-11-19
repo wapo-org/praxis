@@ -9,7 +9,9 @@ import {CLOUD_DIR, HOSTED_API_URL, chatMessages, defineSuite, expectOk, hosted, 
 const LIVE_KEY = 'OPENROUTER_LIVE_KEY';
 const REVOKED_KEY = 'OPENROUTER_REVOKED_KEY';
 const ZERO_CREDIT_KEY = 'OPENROUTER_ZERO_CREDIT_KEY';
-const SMOKE_KEY = 'SMOKE_OPENROUTER_KEY';
+/** The consenting smoke fixture signs in through Convex Auth; email and password stay redacted. */
+const SMOKE_FIXTURE_SECRETS = ['SMOKE_FIXTURE_EMAIL', 'SMOKE_FIXTURE_PASSWORD'] as const;
+const SMOKE_FIXTURE_CONFIG = ['SMOKE_CONVEX_URL', 'SMOKE_FIXTURE_USER_ID'] as const;
 const WEB_URL = 'PRAXIS_LIVE_WEB_URL';
 /** A Claude model with tools and reasoning in the curated list; change it here when the curated list moves. */
 const CLAUDE_MODEL = 'anthropic/claude-sonnet-5.5';
@@ -172,13 +174,18 @@ export default defineSuite({
     {
       id: 'smoke-remote',
       kind: 'auto',
-      checklist: 'node cloud/scripts/smoke-remote.mjs --with-llm with SMOKE_OPENROUTER_KEY passes.',
-      needs: {secrets: [SMOKE_KEY], config: [HOSTED_API_URL, WEB_URL]},
+      checklist: 'node cloud/scripts/smoke-remote.mjs --with-llm passes as the smoke fixture, whose own model key is pre-connected.',
+      needs: {secrets: [...SMOKE_FIXTURE_SECRETS], config: [HOSTED_API_URL, WEB_URL, ...SMOKE_FIXTURE_CONFIG]},
       async run(context) {
-        // smoke-remote reads the key from an env file; keep it outside the proof directory and delete it after.
+        // smoke-remote reads fixture bindings from an env file; keep it outside the proof directory and delete it after.
         const directory = mkdtempSync(join(tmpdir(), 'praxis-verify-'));
         const envFile = join(directory, '.env.smoke');
-        writeFileSync(envFile, `${SMOKE_KEY}=${context.secret(SMOKE_KEY).reveal()}\n`, {mode: 0o600});
+        const bindings = [
+          `SMOKE_API_ORIGIN=${new URL(context.config(HOSTED_API_URL)).origin}`,
+          ...SMOKE_FIXTURE_CONFIG.map(name => `${name}=${context.config(name)}`),
+          ...SMOKE_FIXTURE_SECRETS.map(name => `${name}=${context.secret(name).reveal()}`),
+        ];
+        writeFileSync(envFile, `${bindings.join('\n')}\n`, {mode: 0o600});
         try {
           const result = await runCommand('node', ['scripts/smoke-remote.mjs', context.config(HOSTED_API_URL), context.config(WEB_URL), '--with-llm', '--env', envFile], {cwd: CLOUD_DIR});
           context.attach('smoke-remote.log', result.output);
