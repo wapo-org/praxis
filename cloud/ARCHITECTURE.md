@@ -20,7 +20,18 @@ Events use one Redis Stream per run. A monotonically increasing numeric sequence
 
 ## Storage, auth and secret handling
 
-Chats, committed messages, runs, workflow turns, sandboxes and offloaded output chunks use typed Convex tables with owner-first indexes. Convex Auth resolves the owner for client chat, message and run functions. Server calls verify a dedicated service credential, and typed writes verify that the owner is active. Message commits allocate sequence numbers from the chat's high-water mark in the same transaction as message rows and sync revisions. The Store uses the typed rows for chats, messages, API runs and output chunks, with the generic record table retained for other kinds. Account purge removes typed rows, workflow journals and owner-bound files in bounded batches.
+Chats, committed messages, runs, workflow turns, sandboxes and offloaded output chunks live in typed Convex tables (`convex/domainSchema.ts`) whose indexes all lead with `userId`:
+
+| Table | Indexes |
+| --- | --- |
+| `chats` | `by_user_id` (userId, id), `by_user_updated` (userId, value.updatedAt) |
+| `messages` | `by_user_id` (userId, id), `by_chat_sequence` (userId, chatId, sequence) |
+| `runs` | `by_user_id` (userId, id), `by_user_chat` (userId, chatId) |
+| `turns` | `by_user_run_turn` (userId, runId, generation, turnIndex) |
+| `sandboxes` | `by_user_chat` (userId, chatId) |
+| `outputs` | `by_user_id` (userId, id), `by_user_output` (userId, parentId) |
+
+Client functions (`chats.*`, `messages.page`, `runs.get/start/cancel`) take no owner argument: `convex/functions.ts` resolves the owner with `getAuthUserId` and rejects a missing session or a fenced account. Server writes such as `messages.commit` use `serverMutation`, which verifies the service token, and check that the supplied `userId` is active in the same transaction. Every typed read and write queries through an owner-first index, so a cross-owner ID resolves to nothing. A message commit allocates its sequence from the chat's `lastSequence` in the same transaction as the message row and its sync revision, so concurrent commits stay contiguous. The Store maps the `chat`, `message`, `run` and `outputChunk` kinds onto these tables; the generic `records` table holds only the remaining sync kinds. Generic values and sync revision snapshots are stored as JSON strings and decoded at the Convex Store boundary. `ACCOUNT_PURGE_POLICY` (`convex/accountTables.ts`) assigns every table a deletion policy, so a new table without one fails typecheck. `account:purge` drains the typed owner tables, cancels each owned workflow and deletes its `turns` and run, then removes generic records, the change log, embeddings and owner-bound files, all in bounded batches.
 
 **Production authentication uses Convex Auth v2.** The API forwards each bearer to the configured Convex deployment. Ordinary requests use `auth:currentUser` to verify the session and check the active owner. Account deletion uses `account:deletionOwner` and `account:confirmDeletion` to restrict client retries to the confirming session. Convex schedules signed retries for fenced owners independently of their session.
 
@@ -204,7 +215,7 @@ PRA-75's five named subagent invariants run as fast-check properties against the
 
 The `browser` sandbox tool uses argv-only SandboxPort execution and chat-confined sessions. Its action-specific classification uses the existing approval/taint boundary; screenshots are bounded exports with verified SHA-256 proof. Browser provisioning must apply `browserSandboxOptions()` for public-only IPv4 egress and explicitly attest that restriction in the trusted tool context. `verify -- live browser` is opt-in and records installed image-directory apparent bytes and cold start with unconditional termination.
 
-PRA-29 adds `@convex-dev/workflow` **0.4.10** for the durable flags-only loop; its workpool is capped at four jobs. `runs.start` atomically creates a run and workflow; the internal stub commits three turns with index-keyed flags. `onComplete` settles success, cancellation and failure; this skeleton acquires no external resources. PRA-30 replaces `turns.commitStub` with the authenticated worker, PRA-31 adds handoffs, and PRA-32 adds suspension/children. Unsupported flags fail closed until those handlers exist. `runs.start` resolves the owner with `getAuthUserId` (the Auth v2 token subject is a session). Account deletion fences the owner (`users.deleting`), so starts and stub commits fail closed; the purge cancels each owned workflow, cleans its journal, and deletes its flags and run.
+PRA-29 adds `@convex-dev/workflow` **0.4.10** for the durable flags-only loop; its workpool is capped at four jobs. `runs.start` atomically creates a run and workflow; the internal stub commits three turns with index-keyed flags. `onComplete` settles success, cancellation and failure; this skeleton acquires no external resources. PRA-30 replaces `turns.commitStub` with the authenticated worker, PRA-31 adds handoffs, and PRA-32 adds suspension/children. Unsupported flags fail closed until those handlers exist. `runs.start` resolves the owner with `getAuthUserId` (the Auth v2 token subject is a session). Account deletion fences the owner (`users.deleting`), so starts and stub commits fail closed; the purge cancels each owned workflow, cleans its journal, and deletes its turns and run.
 
 ## Built-in web tools (PRA-60)
 
