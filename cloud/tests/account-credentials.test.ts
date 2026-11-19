@@ -144,6 +144,8 @@ describe('account deletion erases auth credentials', () => {
     expect(await owner.query(api.auth.currentUser, {})).toBeNull();
     expect(await otherSession.query(api.account.deletionOwner, {})).toBeNull();
     expect(await otherSession.mutation(api.account.confirmDeletion, {password: PASSWORD})).toBeNull();
+    await expect(t.mutation(api.account.begin, {...begin, keepSessionId: sessionIdentity(second.tokens).subject}))
+      .rejects.toThrow('Account deletion session unavailable');
     await expect(t.mutation(api.auth.signInWithEmailPassword, {email: EMAIL, password: PASSWORD}))
       .rejects.toThrow('Account unavailable');
     expect(await otherSession.mutation(api.auth.refreshSession, {refreshToken: second.tokens.refreshToken})).toEqual({kind: 'noSession'});
@@ -151,7 +153,7 @@ describe('account deletion erases auth credentials', () => {
     expect(await owner.mutation(api.account.confirmDeletion, {})).toEqual(confirmed);
 
     await t.mutation(api.account.begin, begin);
-    const result = await t.mutation(api.account.purge, begin);
+    const result = await t.mutation(api.account.purge, {serverToken: SERVER_TOKEN, userId});
     expect(result).toEqual({done: true});
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     expect(await owner.query(api.account.deletionOwner, {})).toBeNull();
@@ -196,6 +198,13 @@ describe('account deletion erases auth credentials', () => {
       return {ownerStateId, siblingState: await ctx.db.get(siblingStateId)};
     });
     const server = {serverToken: SERVER_TOKEN, userId};
+    await expect(t.mutation(api.account.begin, {...server, userId: siblingId, keepSessionId: freshIdentity.subject}))
+      .rejects.toThrow('Account deletion session unavailable');
+    await expect(t.mutation(api.account.purge, {...server, userId: siblingId}))
+      .rejects.toThrow('Account deletion has not begun');
+    expect(await t.query(api.account.pending, {...server, userId: siblingId})).toBe(false);
+    expect(await t.run(ctx => ctx.db.query('toolState').collect())).toHaveLength(2);
+
     await t.mutation(api.account.begin, {...server, keepSessionId: freshIdentity.subject});
     expect(await owner.mutation(api.auth.refreshSession, {refreshToken: tokens.refreshToken})).toEqual({kind: 'noSession'});
     expect(await t.mutation(api.account.purge, server)).toEqual({done: false});
@@ -226,15 +235,19 @@ describe('account deletion erases auth credentials', () => {
       redis: memory.redis as Redis,
       ...upstash.upstashFromRedis(memory.redis, {accountOwnership: true}),
     }));
-    let deliveries = 0;
+    let interrupted: {
+      result: PurgeResult;
+      rowRemoved: boolean;
+      pending: boolean;
+      active: boolean;
+      googleOwner: string | null;
+    } | undefined;
     const deliveryStatuses: number[] = [];
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
       const url = new URL(String(input));
       if (url.href === API_ORIGIN + INTERNAL_CONTINUATION_PATH) {
         const request = new Request(url, init);
         expect(request.headers.has('authorization')).toBe(false);
-        deliveries++;
-        if (deliveries === 1) return new Response(null, {status: 503});
         const response = await createProductionApp(config).app.fetch(request);
         deliveryStatuses.push(response.status);
         return response;
@@ -245,7 +258,19 @@ describe('account deletion erases auth credentials', () => {
         return Response.json({status: 'success', value: await t.query(api.account.pending, args)});
       }
       if (url.pathname === '/api/mutation' && path === 'account:purge') {
-        return Response.json({status: 'success', value: await t.mutation(api.account.purge, args)});
+        expect(args).toEqual(server);
+        const value = await t.mutation(api.account.purge, args);
+        if (!interrupted) {
+          interrupted = {
+            result: value,
+            rowRemoved: (await t.run(ctx => ctx.db.get(ownerStateId))) === null,
+            pending: await t.query(api.account.pending, server),
+            active: await t.query(api.account.active, server),
+            googleOwner: (await credentials(t, userId)).google,
+          };
+          return new Response(null, {status: 503});
+        }
+        return Response.json({status: 'success', value});
       }
       throw new Error(`Unexpected Convex request: ${url.pathname} ${path}`);
     }));
@@ -255,7 +280,11 @@ describe('account deletion erases auth credentials', () => {
     } finally {
       redisFactory.mockRestore();
     }
-    expect(deliveryStatuses).toContain(200);
+    expect(interrupted).toEqual({
+      result: {done: false}, rowRemoved: true, pending: true, active: false, googleOwner: userId,
+    });
+    expect(deliveryStatuses[0]).toBe(500);
+    expect(deliveryStatuses.at(-1)).toBe(200);
     expect(siblingState).not.toBeNull();
     expect(await t.run(ctx => ctx.db.query('toolState').collect())).toEqual([siblingState]);
     expect(await t.query(api.account.pending, server)).toBe(false);

@@ -123,7 +123,7 @@ describe('voice.configured', () => {
 describe('production env pools', () => {
   const base = (): Record<string, string> => ({
     PRAXIS_TURN_CURRENT_SIGNING_KEY: 't'.repeat(32), PRAXIS_API_URL: 'https://api.praxis.test', PRAXIS_WEB_ORIGINS: 'https://app.praxis.test', PRAXIS_ENCRYPTION_KEYS: randomBytes(32).toString('base64'),
-    CLERK_PUBLISHABLE_KEY:'pk_test_x',CLERK_SECRET_KEY:'sk_test_x',CLERK_JWT_KEY:'test-public-key', CONVEX_URL: 'https://example-123.convex.cloud', PRAXIS_CONVEX_SERVER_TOKEN: 's'.repeat(40),
+    CONVEX_URL: 'https://example-123.convex.cloud', PRAXIS_CONVEX_SERVER_TOKEN: 's'.repeat(40),
     UPSTASH_REDIS_REST_URL: 'https://example.upstash.io', UPSTASH_REDIS_REST_TOKEN: 'redis-token', QSTASH_TOKEN: 'qstash-token', QSTASH_CURRENT_SIGNING_KEY: 'sig_current', QSTASH_NEXT_SIGNING_KEY: 'sig_next',
   });
 
@@ -151,7 +151,7 @@ describe('production env pools', () => {
 
   it('refuses to start on a half-defined multi-part slot, listed with the other problems', () => {
     const pools = [...PLATFORM_POOLS, {service: 'modal', names: ['MODAL_TOKEN_ID', 'MODAL_TOKEN_SECRET']}];
-    const env = {CLERK_PUBLISHABLE_KEY:'pk_test_x',CLERK_SECRET_KEY:'sk_test_x',CLERK_JWT_KEY:'test-public-key',...base(), MODAL_TOKEN_ID: 'ak-1', MODAL_TOKEN_SECRET: 'as-1', MODAL_TOKEN_ID_2: 'ak-two-secret'};
+    const env = {...base(), MODAL_TOKEN_ID: 'ak-1', MODAL_TOKEN_SECRET: 'as-1', MODAL_TOKEN_ID_2: 'ak-two-secret'};
     let message = '';
     try { readProductionEnv({...env, QSTASH_TOKEN: ''}, {pools}); } catch (e) { message = (e as Error).message; }
     expect(message).toMatch(/QSTASH_TOKEN is missing[\s\S]*slot 2 of modal is half-defined: MODAL_TOKEN_SECRET_2 is missing/);

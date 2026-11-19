@@ -15,7 +15,6 @@ export const ACCOUNT_PURGE_POLICY = {
   oauthEmails: 'identity',
   runs: 'workflowRun',
   turnFlags: 'runChild',
-  authDocuments: 'identity',
   users: 'identity',
 } as const satisfies Record<TableNames, 'ownerRows' | 'workflowRun' | 'runChild' | 'identity'>;
 
