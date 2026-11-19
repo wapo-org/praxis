@@ -86,12 +86,17 @@ export const pending = serverQuery({
   },
 });
 
+// Server callers pass auth-v2 `users` ids only; anything else is not an account.
+async function ownerRow(ctx: MutationCtx, userId: string) {
+  const ownerId = ctx.db.normalizeId('users', userId);
+  if (!ownerId) throw new ConvexError('Account unavailable');
+  return { ownerId, owner: await ctx.db.get(ownerId) };
+}
+
 export const begin = serverMutation({
   args: { serverToken: v.string(), userId: v.string(), keepSessionId: v.optional(v.string()) },
   handler: async (ctx, a) => {
-    const ownerId = ctx.db.normalizeId('users', a.userId);
-    if (!ownerId) throw new ConvexError('Account unavailable');
-    const owner = await ctx.db.get(ownerId);
+    const { ownerId, owner } = await ownerRow(ctx, a.userId);
     if (!owner) throw new ConvexError('Account unavailable');
     if (a.keepSessionId !== undefined) {
       const session = await ctx.runQuery(components.auth.public.getSession, { sessionId: a.keepSessionId });
@@ -116,9 +121,7 @@ export const purge = serverMutation({
     blobsDone: v.optional(v.boolean()),
   },
   handler: async (ctx, a) => {
-    const ownerId = ctx.db.normalizeId('users', a.userId);
-    if (!ownerId) throw new ConvexError('Account unavailable');
-    const owner = await ctx.db.get(ownerId);
+    const { ownerId, owner } = await ownerRow(ctx, a.userId);
     if (!owner) return {done: true};
     if (!owner.deleting) throw new ConvexError('Account deletion has not begun');
 
