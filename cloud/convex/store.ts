@@ -1,5 +1,6 @@
 import { ConvexError, v } from 'convex/values';
-import { mutation, query, requireActiveOwner, type MutationCtx, type QueryCtx } from './functions.js';
+import { mutation, query, type MutationCtx, type QueryCtx } from './functions.js';
+import {requireActiveOwner} from './ownerFunctions.js';
 import { bounded, requireServer } from './access.js';
 import {deleteDomainRow, domainDocument, domainRow, isDomainKind, listDomainRows, saveDomainRow} from './domainRecords.js';
 import {activeOwner} from './accountOwner.js';

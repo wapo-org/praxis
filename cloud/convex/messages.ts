@@ -3,7 +3,7 @@ import {ConvexError, v} from 'convex/values';
 import {z} from 'zod';
 import {ownedChat} from './domainRecords.js';
 import {decodeMessage} from './domainValues.js';
-import {authedQuery, serverMutation} from './functions.js';
+import {authedQuery, serverMutation} from './ownerFunctions.js';
 import {writeRecord} from './store.js';
 
 const PAGE_SIZE_MAX = 100;

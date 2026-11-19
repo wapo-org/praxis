@@ -25,6 +25,7 @@ import type * as functions from "../functions.js";
 import type * as http from "../http.js";
 import type * as legacyAuth from "../legacyAuth.js";
 import type * as messages from "../messages.js";
+import type * as ownerFunctions from "../ownerFunctions.js";
 import type * as runs from "../runs.js";
 import type * as search from "../search.js";
 import type * as store from "../store.js";
@@ -63,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   legacyAuth: typeof legacyAuth;
   messages: typeof messages;
+  ownerFunctions: typeof ownerFunctions;
   runs: typeof runs;
   search: typeof search;
   store: typeof store;

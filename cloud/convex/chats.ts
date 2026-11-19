@@ -2,7 +2,7 @@ import {ChatInputSchema, ChatPatchSchema, ChatSchema, IdSchema} from '@praxis/pr
 import {ConvexError, v} from 'convex/values';
 import {ownedChat} from './domainRecords.js';
 import {decodeChat} from './domainValues.js';
-import {authedMutation, authedQuery} from './functions.js';
+import {authedMutation, authedQuery} from './ownerFunctions.js';
 import {writeRecord} from './store.js';
 import {convexValidator} from './zodValidator.js';
 
