@@ -24,8 +24,11 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: cloud/package-lock.json
-      - run: npm install --global npm@11
-      - run: npm --prefix cloud ci
+      - run: npm install --global --ignore-scripts npm@11.19.0
+      # Install without lifecycle scripts, then apply only the repo's own patches, which the deployed auth component needs.
+      - run: npm --prefix cloud ci --ignore-scripts
+      - run: npx --no-install patch-package --error-on-fail --error-on-warn
+        working-directory: cloud
       - name: Deploy Convex functions
         working-directory: cloud
         env:

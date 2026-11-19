@@ -25,4 +25,4 @@ jobs:
           enable-cache: true
           cache-dependency-glob: infra/pr-review/uv.lock
           python-version: '3.12'
-      - run: uv run --project infra/pr-review --locked pytest infra/pr-review/tests -q
+      - run: uv run --project infra/pr-review --locked --no-build pytest infra/pr-review/tests -q

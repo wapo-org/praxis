@@ -294,7 +294,7 @@ query($owner: String!, $name: String!, $number: Int!) {
 }
 """
 WONT_FIX_PATTERN = re.compile(
-    r"won[\'’]?t\s*fix|wontfix|false\s+positive|not\s+an?\s+(?:issue|problem|bug)",
+    r"won[\'’]?t\s*fix|false\s+positive|not\s+an?\s+(?:issue|problem|bug)",
     re.IGNORECASE,
 )
 FINDING_MARKER_PATTERN = re.compile(r"<!-- muse-finding:(?P<rule>[A-Za-z0-9.-]+) -->")
