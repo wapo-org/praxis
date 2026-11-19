@@ -25,7 +25,7 @@ function browserAccountState(page: Page) {
 export const unavailableAccountFlow: WebFlow = {
   id: 'unavailable-account',
   title: 'A signed-in browser with a missing owner hides private UI and can sign out',
-  default: false,
+  default: true,
   session: 'isolated',
   allow: [],
   async run({page, convexUrl, note}) {
