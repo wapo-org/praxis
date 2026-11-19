@@ -43,14 +43,6 @@ export default defineSchema({
   // Immutable revision log keyed by per-owner sequence, never wall-clock.
   changes: defineTable(row).index('owner_revision', ['userId', 'revision']),
   sequences: defineTable({ userId: v.string(), value: v.number() }).index('owner', ['userId']),
-  authDocuments: defineTable({ model: v.string(), id: v.string(), data: v.any() })
-    .index('model', ['model'])
-    .index('model_id', ['model', 'id'])
-    .index('model_email', ['model', 'data.email'])
-    .index('model_token', ['model', 'data.token'])
-    .index('model_user', ['model', 'data.userId'])
-    .index('model_identifier', ['model', 'data.identifier'])
-    .index('model_value', ['model','data.value']),
   // Semantic search: one vector per chat title or message chunk (convex/search.ts). `scope` = owner + embedder.
   embeddings: defineTable({
     userId: v.string(),

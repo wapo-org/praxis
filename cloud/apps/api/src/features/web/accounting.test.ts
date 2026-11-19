@@ -1,27 +1,29 @@
 import {expect, it, vi, afterEach} from 'vitest';
 import {convexHarness} from '../../adapters/testing/convex-harness.js';
 import {WEB_TOOL_LIMITS as LIMITS} from '@praxis/protocol';
+import type {GenericId as Id} from 'convex/values';
 
 const NOW = Date.UTC(2026, 10, 17);
 async function fixture(allowanceMicroUsd = 1_000_000) {
   vi.useFakeTimers({toFake: ['Date']});
   vi.setSystemTime(NOW);
   const {t, rpc} = convexHarness();
-  await t.run(ctx => ctx.db.insert('authDocuments', {model: 'user', id: 'user', data: {id: 'user'}}));
-  await t.run(ctx => ctx.db.insert('toolState', {userId: 'user', kind: 'platformAllowance', id: '2026-11', value: {allowanceMicroUsd}}));
+  const userId = (await t.run(ctx => ctx.db.insert('users', {}))) as Id<'users'>;
+  await t.run(ctx => ctx.db.insert('toolState', {userId, kind: 'platformAllowance', id: '2026-11', value: {allowanceMicroUsd}}));
   let id = 0;
-  const input = (service: 'exa' | 'firecrawl' = 'exa', userId = 'user') => ({userId, runId: 'run', callId: String(id++), service,
+  const input = (service: 'exa' | 'firecrawl' = 'exa', ownerId: Id<'users'> = userId) => ({userId: ownerId, runId: 'run', callId: String(id++), service,
     estimateMicroUsd: service === 'exa' ? 7000 : 5000, period: '2026-11'});
   const reserve = (args = input()) => rpc.action('webTools:reserve', {request: args});
   const finish = (args: ReturnType<typeof input>, actualMicroUsd?: number) => actualMicroUsd === undefined
     ? rpc.action('webTools:release', {request: args}) : rpc.action('webTools:settle', {request: {...args, actualMicroUsd, slot: 1}});
   const attempt = (args: ReturnType<typeof input>) => rpc.action('webTools:attempt', {request: args});
-  return {t, rpc, input, reserve, finish, attempt};
+  return {t, rpc, userId, input, reserve, finish, attempt};
 }
 afterEach(() => vi.useRealTimers());
 it('fails closed without a provisioned allowance and atomically prevents parallel spend overshoot', async () => {
   const f = await fixture(7000);
-  expect(await f.reserve(f.input('exa', 'other'))).toBe('denied');
+  const otherUserId = (await f.t.run(ctx => ctx.db.insert('users', {}))) as Id<'users'>;
+  expect(await f.reserve(f.input('exa', otherUserId))).toBe('denied');
   const results = await Promise.all([f.reserve(), f.reserve()]);
   expect(results.sort()).toEqual(['denied', 'reserved']);
 });
@@ -87,8 +89,7 @@ it('counts every Firecrawl failover attempt against the global minute cap', asyn
 it('denies new reservations after account deletion starts', async () => {
   const f = await fixture();
   await f.t.run(async ctx => {
-    const user = await ctx.db.query('authDocuments').first();
-    await ctx.db.patch(user!._id, {data: {id: 'user', deleting: true}});
+    await ctx.db.patch(f.userId, {deleting: true});
   });
   expect(await f.reserve()).toBe('denied');
 });
@@ -102,7 +103,7 @@ it('preserves sliding hourly limits when a new monthly allowance starts', async 
     await f.finish(input, 7000);
   }
   vi.setSystemTime(Date.UTC(2026, 11, 1));
-  await f.t.run(ctx => ctx.db.insert('toolState', {userId: 'user', kind: 'platformAllowance', id: '2026-12', value: {allowanceMicroUsd: 1_000_000}}));
+  await f.t.run(ctx => ctx.db.insert('toolState', {userId: f.userId, kind: 'platformAllowance', id: '2026-12', value: {allowanceMicroUsd: 1_000_000}}));
   expect(await f.reserve({...f.input(), period: '2026-12'})).toBe('denied');
 });
 it('rejects settlements that break the shared protocol contract', async () => {

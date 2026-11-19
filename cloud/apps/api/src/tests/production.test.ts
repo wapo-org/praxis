@@ -55,6 +55,8 @@ describe('production startup', () => {
     let deleting = false;
     let erased = false;
     let committedBatches = 0;
+    await redis.ownership.activate(userId);
+    await redis.kv.set('owner-cache', {cached: true}, 60, userId);
     const convexFetch = vi.fn<typeof fetch>(async (_url, init) => {
       const {path, args: [args]} = JSON.parse(String(init?.body));
       const headers = new Headers(init?.headers);
@@ -80,10 +82,7 @@ describe('production startup', () => {
           break;
         case 'account:purge': {
           const call = calls.filter(item => item === path).length;
-          expect(args).toEqual({
-            userId, serverToken: config.PRAXIS_CONVEX_SERVER_TOKEN,
-            ...(call <= 2 ? {keepSessionId: sessionId} : {}),
-          });
+          expect(args).toEqual({userId, serverToken: config.PRAXIS_CONVEX_SERVER_TOKEN});
           if (call === 2) return new Response('temporary failure', {status: 503});
           committedBatches++;
           erased = call >= 3;
@@ -110,6 +109,9 @@ describe('production startup', () => {
       expect(calls).toEqual(['account:deletionOwner', 'account:confirmDeletion']);
       expect((await erase('verified-test-password')).status).toBe(503);
       expect(committedBatches).toBe(1);
+      expect(await redis.ownership.isActive(userId)).toBe(false);
+      expect(await redis.kv.get('owner-cache')).toBeNull();
+      await expect(redis.kv.set('stale-write', {}, 60, userId)).rejects.toThrow('Account unavailable');
       expect((await app.request('/v1/bootstrap', {headers})).status).toBe(401);
 
       const freshApp = createProductionApp(config).app;

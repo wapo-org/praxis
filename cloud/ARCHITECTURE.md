@@ -30,7 +30,7 @@ The user's OpenRouter key, connector header tokens and OAuth tokens are encrypte
 
 ## Cache and sync
 
-Redis key namespace is `praxis:v1:<owner>:...`: bootstrap snapshot; the shared OpenRouter catalogue (`openrouter:catalog`, not per owner) and connector/tool caches; session digest; run cancel flag; execution lease; run event stream/sequence; user change stream; rate limit buckets; JS conversation KV. Secrets and PII do not appear in keys (production owner keys are opaque). Bootstrap snapshots have a short TTL and are invalidated on every affected mutation. Model search and pagination run server-side, and the catalogue is fetched separately from bootstrap. Cached values are owner-scoped. Rate limits apply by verified user with a separate unauthenticated/IP bucket. Request logs include request ID, route, status and duration, excluding bodies, query credentials, authorization, cookies and provider responses.
+Redis key namespace is `praxis:v1:<owner>:...`: bootstrap snapshot; the shared OpenRouter catalogue (`openrouter:catalog`, not per owner) and connector/tool caches; run cancel flag; execution lease; run event stream/sequence; user change stream; rate limit buckets; JS conversation KV. Secrets and PII do not appear in keys (production owner keys are opaque). Bootstrap snapshots have a short TTL and are invalidated on every affected mutation. Model search and pagination run server-side, and the catalogue is fetched separately from bootstrap. Cached values are owner-scoped. Rate limits apply by verified user with a separate unauthenticated/IP bucket. Request logs include request ID, route, status and duration, excluding bodies, query credentials, authorization, cookies and provider responses.
 
 The sync experiment partitions entity hashes into a deterministic tree over stable entity keys. Canonical JSON has sorted object keys, UTF-8 encoding, explicit tombstones and SHA-256; Swift can reproduce it. Cursor sync uses a monotonic revision cursor (not wall-clock equality) so simultaneous updates are not skipped. `/v1/sync/*` supplies snapshots, changed entities and tree nodes; clients apply updates transactionally to IndexedDB or iOS persistence. The benchmark compares cursor and Merkle at 1k chats/50k messages, with 0,1,50 changed rows, reporting bytes, round trips and elapsed time. The winner stays default and the other remains feature-flagged; details in `docs/SYNC_EXPERIMENT.md`.
 
@@ -88,7 +88,6 @@ Runtime dependency inventory (features add their package only when implemented):
 - @upstash/qstash: signed continuation delivery and verification.
 - @upstash/ratelimit: shared per-user rate limiting.
 - convex: server data/storage client and function schema.
-- better-auth: cookie and bearer session lifecycle.
 - @modelcontextprotocol/sdk: official remote MCP transports, OAuth, tools/resources/prompts/elicitation.
 - quickjs-emscripten: bounded in-process QuickJS WASM execution; no Node eval.
 - typescript, @types/node: strict compiler and Node 24 API types (development).
@@ -135,8 +134,7 @@ Only `SITE_URL` is allowed as the OAuth return origin (including the future iOS 
 Email validation and recovery land on `/validate-email` and `/reset-password`.
 Verified emails shared across methods are rejected rather than automatically linked.
 OAuth-first email collisions reject password verification transactionally; pending signup rows are not authenticated identities.
-PRA-64 owns deletion of those pending rows, `oauthEmails`, component credentials and the legacy API adapter.
-Legacy Better Auth RPCs are isolated in `convex/legacyAuth.ts` until PRA-64; the web never calls them.
+Account deletion fences the owner before purging data and blobs. The final batch erases the owner's `oauthEmails`, Convex Auth component credentials and user row in one transaction.
 The API derives the application owner from the verified Convex session.
 
 Dependencies:
@@ -206,7 +204,7 @@ PRA-75's five named subagent invariants run as fast-check properties against the
 
 The `browser` sandbox tool uses argv-only SandboxPort execution and chat-confined sessions. Its action-specific classification uses the existing approval/taint boundary; screenshots are bounded exports with verified SHA-256 proof. Browser provisioning must apply `browserSandboxOptions()` for public-only IPv4 egress and explicitly attest that restriction in the trusted tool context. `verify -- live browser` is opt-in and records installed image-directory apparent bytes and cold start with unconditional termination.
 
-PRA-29 adds `@convex-dev/workflow` **0.4.10** for the durable flags-only loop; its workpool is capped at four jobs. `runs.start` atomically creates a run and workflow; the internal stub commits three turns with index-keyed flags. `onComplete` settles success, cancellation and failure; this skeleton acquires no external resources. PRA-30 replaces `turns.commitStub` with the authenticated worker, PRA-31 adds handoffs, and PRA-32 adds suspension/children. Unsupported flags fail closed until those handlers exist. `runs.start` resolves the owner with `getAuthUserId` (the Auth v2 token subject is a session). Account deletion fences the owner (`users.deleting` or the legacy auth document), so starts and stub commits fail closed; the purge cancels each owned workflow, cleans its journal, and deletes its flags and run.
+PRA-29 adds `@convex-dev/workflow` **0.4.10** for the durable flags-only loop; its workpool is capped at four jobs. `runs.start` atomically creates a run and workflow; the internal stub commits three turns with index-keyed flags. `onComplete` settles success, cancellation and failure; this skeleton acquires no external resources. PRA-30 replaces `turns.commitStub` with the authenticated worker, PRA-31 adds handoffs, and PRA-32 adds suspension/children. Unsupported flags fail closed until those handlers exist. `runs.start` resolves the owner with `getAuthUserId` (the Auth v2 token subject is a session). Account deletion fences the owner (`users.deleting`), so starts and stub commits fail closed; the purge cancels each owned workflow, cleans its journal, and deletes its flags and run.
 
 ## Built-in web tools (PRA-60)
 
