@@ -88,7 +88,6 @@ export const query: QueryBuilder<DataModel, 'public'> = queryGeneric;
 export const mutation: MutationBuilder<DataModel, 'public'> = mutationGeneric;
 export const action: ActionBuilder<DataModel, 'public'> = actionGeneric;
 
-export const authedQuery = ((definition: unknown) => queryGeneric(authDefinition(definition, true) as never)) as unknown as QueryBuilder<DataModel, 'public'>;
 export const authedMutation = ((definition: unknown) => mutationGeneric(authDefinition(definition, true) as never)) as unknown as MutationBuilder<DataModel, 'public'>;
 export const authedAction = ((definition: unknown) => actionGeneric(authDefinition(definition, true) as never)) as unknown as ActionBuilder<DataModel, 'public'>;
 
