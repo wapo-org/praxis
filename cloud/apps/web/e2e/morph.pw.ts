@@ -1,8 +1,10 @@
 import { openSignedInPage, signedInTest as test } from './sign-in';
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { installMorphClock, landed, type MorphClockWindow } from './morph-clock';
 
 // The menu morph, in a real browser, on the lab scene: both button classes in two corners, over text.
 test.beforeEach(async ({ page }) => {
+  await installMorphClock(page);
   await openSignedInPage(page);
   await page.goto('/lab/glass?morph');
   await page.getByTestId('morph-lab').waitFor();
@@ -20,30 +22,30 @@ interface Sample {
   transform: string;
 }
 
-/** Every animation frame: the menu's box and the source's state. */
+/** Every animation frame: the menu's box (null while hidden and unpositioned: the morph has not begun) and the source's state. */
 async function startSampling(page: Page, triggerId: string) {
   await page.evaluate((id) => {
-    const w = window as unknown as { __samples: Sample[]; __sampling: boolean };
+    const w = window as unknown as MorphClockWindow & { __samples: Sample[]; __sampling: boolean };
     w.__samples = [];
     w.__sampling = true;
     const trigger = document.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
     const surface = trigger.closest<HTMLElement>('[data-glass-surface]');
-    const start = performance.now();
-    const tick = () => {
+    const start = w.__morphTime(performance.now());
+    const tick = (now: number) => {
       if (!w.__sampling) return;
       const menu = document.querySelector<HTMLElement>('[role="menu"]');
-      const box = menu?.getBoundingClientRect();
+      const box = menu && menu.style.visibility !== 'hidden' ? menu.getBoundingClientRect() : undefined;
       const glass = menu?.querySelector<HTMLElement>('[data-glass-surface]');
       const t = trigger.getBoundingClientRect();
       const s = surface?.getBoundingClientRect();
       const style = surface ? getComputedStyle(surface) : null;
       w.__samples.push({
-        t: performance.now() - start,
+        t: w.__morphTime(now) - start,
         menu: box ? { x: box.x, y: box.y, w: box.width, h: box.height, right: box.right, bottom: box.bottom } : null,
         sourceFade: surface ? Number(style!.getPropertyValue('--glass-fade') || 1) : 1,
         sourceBox: { x: t.x, y: t.y, w: t.width, h: t.height },
         capsule: s && style ? { x: s.x, w: s.width, opacity: style.opacity, fade: style.getPropertyValue('--glass-fade'), scale: style.scale, transform: style.transform } : null,
-        radius: glass ? parseFloat(getComputedStyle(glass).borderTopLeftRadius) * (box!.width / menu!.offsetWidth) : 0,
+        radius: glass && box ? parseFloat(getComputedStyle(glass).borderTopLeftRadius) * (box.width / menu!.offsetWidth) : 0,
         transform: menu?.style.transform ?? '',
       });
       requestAnimationFrame(tick);
@@ -57,7 +59,6 @@ const stopSampling = (page: Page) =>
     w.__sampling = false;
     return w.__samples;
   });
-const landed = (menu: Locator) => expect.poll(() => menu.evaluate((el: HTMLElement) => el.style.transform), { timeout: 10000 }).toBe('');
 const biggestStep = (values: number[]) => values.slice(1).reduce((max, v, i) => Math.max(max, Math.abs(v - values[i]!)), 0);
 
 test.describe('a separate button: its glass becomes the menu', () => {
@@ -174,7 +175,7 @@ test.describe('every frame is one piece of glass', () => {
         if (!w.__on) return;
         const menu = document.querySelector<HTMLElement>('[role="menu"]');
         const rim = menu?.querySelector<HTMLElement>('[data-glass-rim]');
-        if (menu && rim) {
+        if (menu && rim && menu.style.visibility !== 'hidden') {
           const style = getComputedStyle(rim);
           const local = parseFloat(style.getPropertyValue('--morph-rim'));
           const box = menu.getBoundingClientRect();
@@ -220,20 +221,19 @@ test.describe('every frame is one piece of glass', () => {
 
 test.describe('the tray', () => {
   test('its near edge never comes back late: no stick to the bottom at the end', async ({ page }) => {
-    await page.goto('/');
     await openSignedInPage(page);
     await page.waitForTimeout(400);
     await page.evaluate(() => {
-      const w = window as unknown as { __bottoms: Array<[number, number]>; __on: boolean };
+      const w = window as unknown as MorphClockWindow & { __bottoms: Array<[number, number]>; __on: boolean };
       w.__bottoms = [];
       w.__on = true;
       // Measure from the actual press, excluding automation/actionability latency.
-      let start = performance.now();
-      document.querySelector('[data-testid="composer-plus-button"]')!.addEventListener('pointerdown', () => { start = performance.now(); }, { once: true });
-      const tick = () => {
+      let start = w.__morphTime(performance.now());
+      document.querySelector('[data-testid="composer-plus-button"]')!.addEventListener('pointerdown', () => { start = w.__morphTime(performance.now()); }, { once: true });
+      const tick = (now: number) => {
         if (!w.__on) return;
         const box = document.querySelector('[data-testid="plus-tray"]')?.getBoundingClientRect();
-        if (box) w.__bottoms.push([performance.now() - start, box.bottom]);
+        if (box) w.__bottoms.push([w.__morphTime(now) - start, box.bottom]);
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);

@@ -43,8 +43,15 @@ const loaded = new Set<Language>(['ansi']);
 const loading = new Map<Language, Promise<void>>();
 
 function getCore() {
-  core ??= createHighlighterCore({ themes: [praxisLight, praxisDark], langs: [], engine: createJavaScriptRegexEngine({ forgiving: true }) })
-    .then((h) => { ready = h; return h; });
+  core ??= createHighlighterCore({
+    themes: [praxisLight, praxisDark],
+    langs: [],
+    // Pin the regex target so TypeScript token boundaries stay consistent across runtimes.
+    engine: createJavaScriptRegexEngine({ forgiving: true, target: 'ES2024' }),
+  }).then((highlighter) => {
+    ready = highlighter;
+    return highlighter;
+  });
   return core;
 }
 

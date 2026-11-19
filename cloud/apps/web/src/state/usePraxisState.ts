@@ -27,6 +27,14 @@ import { pathForSheet } from '../lib/navigation';
 import { mergeFetchedMessages } from './reconcileMessages';
 
 import type { ActiveSheet, LiveRunState, PendingConsentPrompt } from './types';
+
+/** The width at which the sidebar docks beside the content instead of covering it. */
+export const DESKTOP_SIDEBAR_QUERY = '(min-width: 1024px)';
+
+function desktopSidebarFits(): boolean {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(DESKTOP_SIDEBAR_QUERY).matches;
+}
+
 export function usePraxisState(onNavigate?: (path: string) => void) {
   const replicaKey = React.useRef(getReplicaIdentity());
   const initialCache = React.useMemo(() => readReplicaSync(), []);
@@ -75,7 +83,8 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
 
   // Sheets & Layout
   const [activeSheet, setActiveSheetState] = React.useState<ActiveSheet>(null);
-  const [desktopSidebarOpen, setDesktopSidebarOpen] = React.useState<boolean>(false);
+  // Docked from the first paint: opened in an effect, the column and composer glided 122 px on every desktop load.
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = React.useState<boolean>(desktopSidebarFits);
   const [plusTrayOpen, setPlusTrayOpen] = React.useState<boolean>(false);
   const [inlineModelSearchActive, setInlineModelSearchActive] = React.useState<boolean>(false);
 

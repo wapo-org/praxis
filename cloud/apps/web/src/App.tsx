@@ -16,6 +16,7 @@ const Sidebar = React.lazy(() =>
 );
 import { parseRoute } from './lib/navigation';
 import { usePraxisStore } from './state/store';
+import { DESKTOP_SIDEBAR_QUERY } from './state/usePraxisState';
 const GlassLabPage = import.meta.env.DEV
   ? React.lazy(() =>
       import('./components/lab/GlassLabPage').then((m) => ({
@@ -35,7 +36,7 @@ export function App() {
     restore.current(route.chatId ?? null, route.sheet);
   }, [pathname]);
   React.useEffect(() => {
-    const media = window.matchMedia('(min-width: 1024px)');
+    const media = window.matchMedia(DESKTOP_SIDEBAR_QUERY);
     const apply = () => store.setDesktopSidebarOpen(media.matches);
     apply();
     media.addEventListener('change', apply);

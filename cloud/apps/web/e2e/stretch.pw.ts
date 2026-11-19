@@ -1,34 +1,10 @@
-import { openSignedInPage, signedInTest as test } from './sign-in';
+import { apiRequest, openSignedInPage, signedInTest as test } from './sign-in';
 import { expect, type Locator, type Page } from '@playwright/test';
+import { landed } from './morph-clock';
+import { startSampling, stopSampling } from './stretch-sampling';
 
 const surfaceOf = (locator: Locator) => locator.locator('xpath=ancestor-or-self::*[@data-glass-surface][1]');
 const sidebar = (page: Page) => page.locator('[data-testid="app-sidebar"] [data-glass-surface]').first();
-
-type Edges = { t: number; l: number; r: number; top: number; b: number };
-const startSampling = (surface: Locator) =>
-  surface.evaluate((el) => {
-    const w = window as unknown as { __s: Edges[]; __on: boolean };
-    w.__s = [];
-    w.__on = true;
-    const tick = () => {
-      if (!w.__on) return;
-      const r = el.getBoundingClientRect();
-      w.__s.push({ t: performance.now(), l: r.left, r: r.right, top: r.top, b: r.bottom });
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  });
-const stopSampling = (page: Page) =>
-  page.evaluate(() => {
-    const w = window as unknown as { __s: Edges[]; __on: boolean };
-    w.__on = false;
-    return w.__s;
-  });
-
-/** Geometry is only meaningful once the glass has landed: the morph leaves nothing inline at rest. */
-async function landed(shell: Locator) {
-  await expect.poll(() => shell.evaluate((el: HTMLElement) => el.style.transform)).toBe('');
-}
 
 async function pull(page: Page, from: { x: number; y: number }, dx: number, dy: number, steps = 12) {
   await page.mouse.move(from.x, from.y);
@@ -144,7 +120,11 @@ test.describe('the stretch', () => {
   });
 
   test('a pull from a chat row stretches without selecting; a click selects', async ({ page }) => {
-    const row = page.locator('[data-sidebar-row-select]').nth(1); // the seeded list may run past the window
+    const title = 'Stretch chat row';
+    const response = await apiRequest(page, 'post', '/v1/chats', { data: { type: 'chat.input', title } });
+    await expect(response).toBeOK();
+    await openSignedInPage(page);
+    const row = page.getByRole('button', { name: title, exact: true });
     const url = page.url();
     expect(await realClickAfterPull(page, row, sidebar(page))).toBeGreaterThan(8);
     expect(page.url()).toBe(url);
