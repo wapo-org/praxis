@@ -61,7 +61,7 @@ export const unavailableAccountFlow: WebFlow = {
 
 export const previewProviderFlow: WebFlow = {
   id: 'preview-provider-guidance',
-  title: 'Preview simulations explain both provider failures and keep email sign-in available',
+  title: 'The preview Google simulation explains the failure and keeps email sign-in available',
   default: false,
   allow: [],
   async run({page, note}) {
@@ -69,16 +69,14 @@ export const previewProviderFlow: WebFlow = {
       return route.request().isNavigationRequest() ? route.abort() : route.continue();
     });
     await page.goto('/');
-    for (const provider of ['Google', 'Apple']) {
-      const button = page.getByRole('button', {name: `Continue with ${provider}`, exact: true});
-      await button.click();
-      await expect(page.getByRole('alert')).toHaveText(
-        `This preview simulates an unavailable ${provider} sign-in. Use email to continue.`,
-      );
-      await expect(button).toBeEnabled();
-      await expect(page.getByRole('button', {name: 'Sign in', exact: true})).toBeEnabled();
-      await expect(page.getByLabel('Email', {exact: true})).toBeEditable();
-      note(`${provider} showed its own fallback and left the email form enabled.`);
-    }
+    const button = page.getByRole('button', {name: 'Continue with Google', exact: true});
+    await button.click();
+    await expect(page.getByRole('alert')).toHaveText(
+      'This preview simulates an unavailable Google sign-in. Use email to continue.',
+    );
+    await expect(button).toBeEnabled();
+    await expect(page.getByRole('button', {name: 'Sign in', exact: true})).toBeEnabled();
+    await expect(page.getByLabel('Email', {exact: true})).toBeEditable();
+    note('Google showed its fallback and left the email form enabled.');
   },
 };

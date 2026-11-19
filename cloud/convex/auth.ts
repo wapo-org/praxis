@@ -1,7 +1,6 @@
 import { setupConvexAuth, getAuthUserId } from '@convex-dev/auth/server';
 import { setupEmailPassword } from '@convex-dev/auth/methods/email-password/server';
 import { setupGoogle } from '@convex-dev/auth/methods/google/server';
-import { setupApple } from '@convex-dev/auth/methods/apple/server';
 import { components, internal } from './_generated/api.js';
 import { env, query } from './_generated/server.js';
 import { activeOwner } from './accountOwner.js';
@@ -33,10 +32,6 @@ export const { startSignInWithGoogle, completeSignInWithGoogle } = setupGoogle(a
   component: components.authGoogle,
   allowedRedirectOrigins: [siteUrl],
 }).attachUserCallbacks({ createUser: internal.users.createUserGoogle, onSignIn: internal.users.onGoogleSignIn });
-export const { startSignInWithApple, completeSignInWithApple } = setupApple(auth, {
-  component: components.authApple,
-  allowedRedirectOrigins: [siteUrl],
-}).attachUserCallbacks({ createUser: internal.users.createUserApple, onSignIn: internal.users.onAppleSignIn });
 export const currentUser = query({
   args: {},
   handler: async ctx => {

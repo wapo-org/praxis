@@ -24,7 +24,7 @@ Convex tables are scoped by userId, with indexes beginning with userId (or a ser
 
 **Production authentication uses Convex Auth v2.** The API forwards each bearer to the configured Convex deployment. Ordinary requests use `auth:currentUser` to verify the session and check the active owner. Account deletion uses `account:deletionOwner` and `account:confirmDeletion` to restrict client retries to the confirming session. Convex schedules signed retries for fenced owners independently of their session.
 
-For a Vercel Preview without Apple or Google credentials, set `PRAXIS_PREVIEW_MOCK_OAUTH` on the web build to a comma-separated list such as `apple,google`. Selecting a listed provider shows its simulated unavailable response. Email sign-in still uses the configured Convex deployment. Production builds always use the real provider hooks.
+For a Vercel Preview without working Google sign-in, set `PRAXIS_PREVIEW_MOCK_OAUTH=google` on the web build. Selecting Google then shows a simulated unavailable response. Email sign-in still uses the configured Convex deployment. Production builds always use the real provider hooks.
 
 The user's OpenRouter key, connector header tokens and OAuth tokens are encrypted at rest using AES-256-GCM with a random 96-bit IV, a 256-bit PRAXIS_ENCRYPTION_KEY, and owner/resource binding as authenticated data. Encryption errors never fall back to cleartext. API reads expose only masks. Model/tool caches never contain keys. OAuth uses server-side PKCE with expiring, single-use state bound to the user and an allowlisted return URL; DCR and hosted CIMD are supported through the official MCP SDK. Remote connector URLs and the pinned OpenRouter endpoint use the production egress policy: deny private/link-local/metadata destinations in production and revalidate redirects, while local mode may allow test servers. Connecting OpenRouter grants model data consent; per-host consent still gates MCP requests.
 
@@ -127,7 +127,7 @@ Workspace setup verifies the canonical cwd and a successful execute reply before
 
 ## Convex Auth v2 (PRA-34)
 
-Web sign-in uses the core, password, email, Google, Apple and Resend components.
+Web sign-in uses the core, password, email, Google and Resend components. Apple sign-in was removed; re-adding it needs its component and four deployment variables.
 The deployment owns credentials, JWT signing and session rotation; the React provider owns browser secrets and refresh.
 Required deployment variables are declared in `convex/convex.config.ts`; missing values prevent deployment.
 Only `SITE_URL` is allowed as the OAuth return origin (including the future iOS HTTPS handoff page).

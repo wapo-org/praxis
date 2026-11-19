@@ -1,7 +1,6 @@
 import { AUTH_EMAIL_METHOD_CONFLICT } from '@praxis/protocol';
 import { v, ConvexError } from 'convex/values';
 import { vGoogleProfile } from '@convex-dev/auth/methods/google/server';
-import { vAppleProfile } from '@convex-dev/auth/methods/apple/server';
 import { internalMutation } from './_generated/server.js';
 import { components } from './_generated/api.js';
 import type { Id } from './_generated/dataModel.js';
@@ -34,11 +33,6 @@ export const createUserGoogle = internalMutation({
   returns: v.id('users'),
   handler: (ctx, { method }) => createOAuthUser(ctx, method.profile.emailVerified ? method.profile.email : undefined),
 });
-export const createUserApple = internalMutation({
-  args: { method: v.object({ name: v.literal('apple'), profile: vAppleProfile }) },
-  returns: v.id('users'),
-  handler: (ctx, { method }) => createOAuthUser(ctx, method.profile.emailVerified ? method.profile.email : undefined),
-});
 
 async function requireSignInOwner(ctx: MutationCtx, userId: Id<'users'>): Promise<void> {
   const user = await ctx.db.get(userId);
@@ -47,15 +41,6 @@ async function requireSignInOwner(ctx: MutationCtx, userId: Id<'users'>): Promis
 
 export const onGoogleSignIn = internalMutation({
   args: { method: v.object({ name: v.literal('google'), profile: vGoogleProfile }), userId: v.id('users') },
-  returns: v.null(),
-  handler: async (ctx, { userId }) => {
-    await requireSignInOwner(ctx, userId);
-    return null;
-  },
-});
-
-export const onAppleSignIn = internalMutation({
-  args: { method: v.object({ name: v.literal('apple'), profile: vAppleProfile }), userId: v.id('users') },
   returns: v.null(),
   handler: async (ctx, { userId }) => {
     await requireSignInOwner(ctx, userId);

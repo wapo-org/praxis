@@ -29,7 +29,7 @@ Browser checks sign in through the real email/password form. Each managed stack 
 
 The CLI and Playwright fixtures carry forward only the Convex Auth session tokens between fresh browser contexts. Playwright uses one session per worker, and checks that sign out or change passwords use separate accounts. A run can reserve up to 19 signup or recovery challenges against the per-IP budget.
 
-`cd cloud/apps/web && npx playwright test` starts and stops the same stack automatically. To use existing servers, set `PW_BASE_URL` and `PW_CONVEX_URL`; they must expose the isolated local auth fixture and its test mailbox. Paired-device tests explicitly share an account and use separate sessions. The email mailbox endpoint exists only in the isolated test deployment. These tests do not verify Google/Apple credentials or real Resend delivery.
+`cd cloud/apps/web && npx playwright test` starts and stops the same stack automatically. To use existing servers, set `PW_BASE_URL` and `PW_CONVEX_URL`; they must expose the isolated local auth fixture and its test mailbox. Paired-device tests explicitly share an account and use separate sessions. The email mailbox endpoint exists only in the isolated test deployment. These tests do not verify Google credentials or real Resend delivery.
 
 
 ## Live suites and `proof.json`

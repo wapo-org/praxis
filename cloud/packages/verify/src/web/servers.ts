@@ -13,7 +13,7 @@ export interface LocalStack {
 
 const BIN = join(CLOUD_DIR, 'node_modules', '.bin');
 /** Build inputs `apps/web/vite.config.ts` reads to compile the preview OAuth simulator in. */
-const LOCAL_PREVIEW_BUILD_ENV = {VERCEL_ENV: 'preview', PRAXIS_PREVIEW_MOCK_OAUTH: 'google,apple'} as const;
+const LOCAL_PREVIEW_BUILD_ENV = {VERCEL_ENV: 'preview', PRAXIS_PREVIEW_MOCK_OAUTH: 'google'} as const;
 
 /** In-memory store and the hash embedder: no state on disk and no model download, so runs repeat exactly. */
 function apiEnv(apiPort: number): NodeJS.ProcessEnv {
@@ -50,7 +50,7 @@ export async function startLocalStack(ports: {web: number; api: number}, logDire
   const {api, server: apiServer} = startedApi;
   const web = startServer('web', join(BIN, 'vite'), ['--port', String(ports.web), '--host', LOOPBACK_HOST, '--strictPort'], {
     cwd: join(CLOUD_DIR, 'apps', 'web'),
-    // The preview OAuth simulation keeps local flows off real Google and Apple consent pages.
+    // The preview OAuth simulation keeps local flows off the real Google consent page.
     env: {...process.env, VITE_API_BASE_URL: '', VITE_API_PROXY_TARGET: api, VITE_CONVEX_URL: auth.url, ...LOCAL_PREVIEW_BUILD_ENV},
     logFile: join(logDirectory, 'web.log'),
   });

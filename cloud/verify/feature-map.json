@@ -51,7 +51,7 @@
     },
     {
       "id": "web.preview-provider-guidance",
-      "title": "Preview Google and Apple simulation guidance keeps email sign-in available",
+      "title": "Preview Google simulation guidance keeps email sign-in available",
       "issue": "PRA-64",
       "surfaces": ["web"],
       "covers": [{"command": "web", "flows": ["preview-provider-guidance"]}]

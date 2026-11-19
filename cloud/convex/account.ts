@@ -22,7 +22,6 @@ async function eraseAuthCredentials(ctx: MutationCtx, userId: Id<'users'>): Prom
   await revokeOwnerSessions(ctx, userId);
   await ctx.runMutation(components.authPassword.public.deleteUser, { userId });
   await ctx.runMutation(components.authGoogle.provider.deleteUser, { userId });
-  await ctx.runMutation(components.authApple.provider.deleteUser, { userId });
   await ctx.runMutation(components.authEmail.verifiedEmails.deleteUser, { userId });
   // Keep the OAuth email reserved until the associated credentials are erased.
   const emails = await ctx.db.query('oauthEmails').withIndex('user', q => q.eq('userId', userId)).collect();

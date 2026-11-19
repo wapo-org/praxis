@@ -2,14 +2,13 @@ import { registerCore } from '@convex-dev/auth/test';
 import {registerEmail} from '@convex-dev/auth/components/email/test';
 import {registerPassword} from '@convex-dev/auth/components/password/test';
 import {registerGoogleOauth} from '@convex-dev/auth/components/google/test';
-import {registerAppleOauth} from '@convex-dev/auth/components/apple/test';
 import { expect, it } from 'vitest';
 import { blobOwnerTag } from '../convex/blobOwner.js';
 import { convexHarness } from '../apps/api/src/adapters/testing/convex-harness.js';
 
 it('resumes the Convex Auth owner blob sweep across retried requests', async () => {
   const { t, rpc } = convexHarness();
-  for (const register of [registerCore, registerEmail, registerPassword, registerGoogleOauth, registerAppleOauth]) register(t);
+  for (const register of [registerCore, registerEmail, registerPassword, registerGoogleOauth]) register(t);
   const userId = await t.run(ctx => ctx.db.insert('users', {}));
   const tag = await blobOwnerTag(userId);
   await t.run(async (ctx) => {
