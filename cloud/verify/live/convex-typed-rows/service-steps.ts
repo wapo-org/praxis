@@ -5,7 +5,7 @@ import {makeFunctionReference} from 'convex/server';
 import {z} from 'zod';
 import {
   assertOwnerPurged, assertOwnerUnchanged, beginFencesOwner, commitConcurrently, purgeUntilDone,
-  recommitKeepsSequence, rejectsBadCredential, snapshotOwner, TYPED_TABLES, type StepResult,
+  recommitKeepsSequence, rejectsBadCredential, seedOutput, snapshotJournal, snapshotOwner, TYPED_TABLES, type StepResult,
 } from './commit-purge.js';
 import {hostedFixture} from './fixture.js';
 import type {LiveOwner} from './owners.js';
@@ -53,6 +53,7 @@ export async function verifyPurge(context: StepContext): Promise<StepOutcome> {
   if (own.result.status === 'fail' || keep.result.status === 'fail') {
     return outcome(context, [own.result, keep.result]);
   }
+  await Promise.all([seedOutput(live, owner, own.chatId), seedOutput(live, other, keep.chatId)]);
   await settledWorkflow(owner, own.chatId);
   const [before, neighbor] = await Promise.all([
     snapshotOwner(reader, owner.userId),
@@ -60,7 +61,9 @@ export async function verifyPurge(context: StepContext): Promise<StepOutcome> {
   ]);
   context.log(`before purge: ${TYPED_TABLES.map(table => `${table}=${before.counts[table]}`).join(' ')}`);
   context.log('No standalone seed path for turns or sandboxes. The workflow creates turns and the purge check asserts zero rows in both tables.');
-  if (before.workflowIds.size === 0 || before.counts.turns === 0) {
+  const journal = await snapshotJournal(reader, before.workflowIds);
+  context.log(`before purge: journal steps=${journal.steps} workflows=${journal.workflows}`);
+  if (journal.steps === 0 || journal.workflows === 0 || before.counts.turns === 0) {
     throw new Error('Fixture workflow did not create a typed turn and journal');
   }
   const fenced = await beginFencesOwner(live, owner, own.chatId);

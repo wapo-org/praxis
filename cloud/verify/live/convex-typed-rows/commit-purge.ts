@@ -158,9 +158,10 @@ async function commit(live: Live, token: string, owner: LiveOwner, chatId: strin
   return Committed.parse(reply);
 }
 
-async function put(live: Live, owner: LiveOwner, kind: string, id: string, value: object) {
+async function put(live: Live, owner: LiveOwner, kind: string, id: string, value: object, parentId?: string) {
   await serverClient(live).mutation(StorePut, {
     serverToken: live.serverToken.reveal(), userId: owner.userId, kind, id, valueJson: JSON.stringify(value), requireOwner: true,
+    ...(parentId === undefined ? {} : {parentId}),
   });
 }
 
@@ -176,6 +177,10 @@ export async function seedOwnerChat(live: Live, owner: LiveOwner): Promise<strin
   const runId = `live-run-${randomUUID()}`;
   await put(live, owner, 'run', runId, RunSchema.parse({type: 'run', id: runId, chatId, status: 'completed', createdAt: at, updatedAt: at, lastEventId: 0}));
   return chatId;
+}
+
+export async function seedOutput(live: Live, owner: LiveOwner, chatId: string): Promise<void> {
+  await put(live, owner, 'outputChunk', randomUUID(), {chatId, text: 'PRA-127 disposable output'}, randomUUID());
 }
 
 // ---- checklist 5: messages.commit ----
@@ -255,6 +260,14 @@ export async function snapshotOwner(reader: TableReader, userId: string) {
   return {counts, workflowIds};
 }
 
+export async function snapshotJournal(reader: TableReader, workflowIds: ReadonlySet<string>) {
+  const [steps, workflows] = await Promise.all([
+    reader('steps', WORKFLOW_COMPONENT),
+    reader('workflows', WORKFLOW_COMPONENT),
+  ]);
+  return journalRowsFor(steps, workflows, workflowIds);
+}
+
 /** Begins deletion for `owner`; every client read, client write and server typed write must then be refused. */
 export async function beginFencesOwner(live: Live, owner: LiveOwner, chatId: string): Promise<StepResult> {
   await serverClient(live).mutation(Begin, {serverToken: live.serverToken.reveal(), userId: owner.userId});
@@ -294,7 +307,8 @@ export async function assertOwnerPurged(live: Live, reader: TableReader, owner: 
   const log = ['develop has no server-credential read of an inactive owner\'s typed rows; counts come from `npx convex data`'];
   const {counts} = await snapshotOwner(reader, owner.userId);
   const problems = nonEmptyTables(counts).map(entry => `rows left: ${entry}`);
-  const journal = journalRowsFor(await reader('steps', WORKFLOW_COMPONENT), await reader('workflows', WORKFLOW_COMPONENT), workflowIds);
+  const journal = await snapshotJournal(reader, workflowIds);
+  log.push(`after purge: ${TYPED_TABLES.map(table => `${table}=${counts[table]}`).join(' ')}`);
   log.push(`workflow ids before purge: ${workflowIds.size}; journal steps left ${journal.steps}, workflows left ${journal.workflows}`);
   if (journal.steps || journal.workflows) problems.push('workflow journal rows left');
   const server = serverClient(live);
