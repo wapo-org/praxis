@@ -1,6 +1,6 @@
 # Praxis PR Review Guidelines
 
-Automated PR reviews run in a Modal Sandbox. The review model is `muse-ember-1.0`, a small model, so the design assumes it will sometimes be wrong: **scripts decide everything that can be decided mechanically, and the server deletes every model finding it cannot verify.**
+Automated PR reviews run in disposable podman containers on the reviewer host (`praxis-review.service`). Five code sessions run on `gpt-6.2-sol` (low effort) and the optional UI check on `muse-ember-1.0` (medium), so the design assumes a model will sometimes be wrong: **scripts decide everything that can be decided mechanically, and the server deletes every model finding it cannot verify.**
 
 ## Who decides what
 
@@ -14,14 +14,19 @@ Automated PR reviews run in a Modal Sandbox. The review model is `muse-ember-1.0
    - a Linear claim carries a `linear_quote` that appears in the issue text the server fetches itself;
    - it does not duplicate another finding (same file, same rule, within 3 lines).
 
-The operator-invoked [protected API Preview proof](./README.md#protected-api-preview-proof) runs in the reviewer function, outside every model session. Its result attests to protected API health for the approved commit.
-
 ## Review posture (collaborative, non-opinionated)
 
 - **Ask and offer rather than dictate.** Suggestions are phrased as questions or options (`"Could we…?"`, `"Would it help to…?"`), never orders.
 - **Ground every finding in evidence:** an exact quote of the changed line and a concrete failure scenario (input → wrong outcome). No "might", no general advice.
 - **Blocking (`REQUEST_CHANGES`) happens only when** a deterministic gate fails, or a **HARD** rule finding with verified evidence has `high` confidence. Everything else is a `COMMENT`. The reviewer never approves.
-- A session that returns nothing, or malformed JSON, contributes nothing: the review states that the session had no usable output, and its raw text goes to the run log only.
+- A session with missing or malformed output contributes no public finding. Session diagnostics stay in the private run log.
+
+## Oracle review output and development media
+
+- Code findings are attached to changed lines when GitHub accepts the anchor. Unplaced findings and verified gate failures are posted as individual comments. Clean runs are recorded privately.
+- A code session sets `ui_check` only when a change needs manual UI verification that tests cannot guarantee. Then the server signs in to the PR's Vercel preview as the test account (unrecorded), Muse drives the requested check through `review-check` (recorded), ffmpeg turns the recording into a contact sheet, and a Sol session reports only a 0–10 UI/UX score and concrete visual inconsistencies.
+- A preview or test-account access request names the access needed. Supply credentials through the private reviewer configuration.
+- Videos and contact sheets are kept in the reviewer’s private Oracle storage. To retrieve one over SSH, run `sudo -n -u praxis-review python3 /opt/praxis-review/scripts/read-review-artifact.py RUN_ID development.webm` on Oracle and redirect stdout to a file on the client. The other supported asset is `contact-sheet.png`.
 
 ## Rule ids (closed list)
 
@@ -57,6 +62,5 @@ Script-owned ids are the `[R…]` tags in [`AGENTS.md`](../../AGENTS.md) plus `G
 
 ## Seeing slop
 
-- Every run is written to the Modal Volume `praxis-pr-review-runs` (never to GitHub): per session the raw model output, parsed findings, kept findings, dropped findings with the reason, timings and step/token counts; plus gate results and the final verdict.
-- `modal run app.py::slop_report` summarises the last N runs: drop rate by reason and session, findings per PR, rule frequency, sessions with no usable output, and the share of posted findings a human answered with "won't fix" (read from GitHub review threads).
-- `evals/` holds fixture diffs with seeded issues and clean diffs. `python evals/harness.py` scores recorded outputs offline; `modal run app.py::run_evals` scores the live model (costs model calls).
+- Every run is written to `/var/lib/praxis-review/runs` on the reviewer host (never to GitHub): per session the raw model output, parsed findings, kept findings, dropped findings with the reason, timings and step/token counts; plus gate results and the final verdict.
+- `evals/` holds fixture diffs with seeded issues and clean diffs. `python evals/harness.py` scores recorded outputs offline.

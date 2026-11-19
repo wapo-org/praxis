@@ -1,4 +1,4 @@
-"""Everything that runs inside the Modal Sandbox: checkout, deterministic gates and Muse sessions."""
+"""Everything that runs inside the review container: checkout, deterministic gates and Muse sessions."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from muse_output import ERROR_TIMEOUT, MuseOutput, parse_muse_output
 from pipeline import SessionRun
 
 WORKSPACE = "/workspace/repo"
+# Root-only working folder made by the image; never a world-writable /tmp path.
+REVIEW_DIR = "/root/review"
 MUSE_CONFIG_DIR = "/root/.config/muse"
 SESSION_EXEC_TIMEOUT_SECONDS = 900
 DEPENDENCY_INSTALL_TIMEOUT_SECONDS = 600
@@ -34,6 +36,7 @@ class SessionTask:
     read_only: bool
     max_steps: str
     required_keys: tuple[str, ...] = ("findings",)
+    images: tuple[str, ...] = ()
 
 
 def exec_in(
@@ -42,8 +45,9 @@ def exec_in(
     env: dict[str, str] | None = None,
     timeout: int | None = None,
     check: bool = True,
+    user: str | None = None,
 ) -> tuple[int, str, str]:
-    proc = sb.exec(*args, env=env, timeout=timeout)
+    proc = sb.exec(*args, env=env, timeout=timeout, **({"user": user} if user else {}))
     stdout = proc.stdout.read()
     stderr = proc.stderr.read()
     rc = proc.wait()
@@ -56,7 +60,7 @@ def exec_in(
     return rc, stdout, stderr
 
 
-def write_file(sb: Any, path: str, content: str, mode: int | None = None) -> None:
+def write_file(sb: Any, path: str, content: str, mode: int | None = None, user: str | None = None) -> None:
     proc = sb.exec(
         "python3",
         "-c",
@@ -67,6 +71,7 @@ def write_file(sb: Any, path: str, content: str, mode: int | None = None) -> Non
         "(os.chmod(p, m) if m is not None else None)",
         path,
         f"{mode:o}" if mode is not None else "",
+        **({"user": user} if user else {}),
     )
     proc.stdin.write(content.encode("utf-8"))
     proc.stdin.write_eof()
@@ -81,7 +86,7 @@ def clone_repo(sb: Any, *, repo: str, refs: list[str], checkout: str, github_tok
     script = f"""
 set -euo pipefail
 mkdir -p /workspace
-ASKPASS=/tmp/git-askpass.sh
+ASKPASS={REVIEW_DIR}/git-askpass.sh
 cat > "$ASKPASS" <<'EOF'
 #!/bin/sh
 case "$1" in
@@ -179,7 +184,7 @@ def configure_muse(
 
 
 def _session_config_dir(session: str) -> str:
-    return f"/tmp/muse-cfg-{session}"
+    return f"{REVIEW_DIR}/muse-cfg-{session}"
 
 
 def run_muse_session(
@@ -191,8 +196,8 @@ def run_muse_session(
     secret_env: dict[str, str],
 ) -> SessionRun:
     """One Muse session with its own config dir (auth lock contention) and secrets passed only to this process."""
-    prompt_path = f"/tmp/prompt_{task.session}.txt"
-    schema_path = f"/tmp/schema_{task.session}.json"
+    prompt_path = f"{REVIEW_DIR}/prompt_{task.session}.txt"
+    schema_path = f"{REVIEW_DIR}/schema_{task.session}.json"
     cfg_dir = _session_config_dir(task.session)
     write_file(sb, prompt_path, task.prompt)
     write_file(sb, schema_path, json.dumps(task.schema, indent=2))
@@ -220,9 +225,6 @@ ln -sfn {MUSE_CONFIG_DIR}/skills {cfg_dir}/muse/skills
         prompt_path,
         "--workspace",
         WORKSPACE,
-        "--session-id",
-        str(uuid.uuid4()),
-        "--yolo",
         "--disable-request-user-input",
         "--model",
         model,
@@ -231,18 +233,26 @@ ln -sfn {MUSE_CONFIG_DIR}/skills {cfg_dir}/muse/skills
         "--max-model-steps",
         task.max_steps,
     ]
+    if not task.images:
+        parts.extend(["--session-id", str(uuid.uuid4()), "--yolo"])
     if task.read_only:
         parts.append("--disable-write")
+    if task.images:
+        parts.extend(["--preset", "empty", "--disable-shell", "--disable-web-tools", "--disable-reminders",
+                      "--no-foreign-personal-context", "--no-session-log"])
+        for image in task.images:
+            parts.extend(["--image", image])
     command = " ".join(shlex.quote(part) for part in parts)
 
     started = time.monotonic()
     try:
-        rc, stdout, _ = exec_in(
+        # Set XDG_CONFIG_HOME inside the container only: Sandbox.exec also exports env to the host podman CLI.
+        rc, stdout, stderr = exec_in(
             sb,
             "bash",
             "-lc",
-            f"cd {WORKSPACE} && {command}",
-            env={**secret_env, "XDG_CONFIG_HOME": cfg_dir},
+            f"cd {WORKSPACE} && XDG_CONFIG_HOME={shlex.quote(cfg_dir)} {command}",
+            env=secret_env,
             timeout=SESSION_EXEC_TIMEOUT_SECONDS,
             check=False,
         )
@@ -251,7 +261,8 @@ ln -sfn {MUSE_CONFIG_DIR}/skills {cfg_dir}/muse/skills
         return SessionRun(task.session, crashed, "", None, time.monotonic() - started)
 
     output = parse_muse_output(stdout, task.required_keys)
-    return SessionRun(task.session, output, stdout, rc, time.monotonic() - started)
+    raw = stdout if stdout.strip() else stderr
+    return SessionRun(task.session, output, raw, rc, time.monotonic() - started)
 
 
 def run_sessions(
@@ -283,7 +294,7 @@ def read_refreshed_auth(sb: Any) -> str | None:
         sb,
         "bash",
         "-lc",
-        "newest=$(ls -t /tmp/muse-cfg-*/muse/auth.json 2>/dev/null | head -n1 || true); "
+        f"newest=$(ls -t {REVIEW_DIR}/muse-cfg-*/muse/auth.json 2>/dev/null | head -n1 || true); "
         'if [ -n "$newest" ]; then cat "$newest"; fi',
         check=False,
     )

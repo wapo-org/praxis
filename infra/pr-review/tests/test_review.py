@@ -115,7 +115,7 @@ def test_model_claims_cannot_block_on_their_own() -> None:
     )
     assert result.review["verdict"] == VERDICT_COMMENT
     assert result.review["comments"] == []
-    assert "model-reported, not verified by the server" in result.review["body"]
+    assert not result.review["body"] and not result.review["notes"]
 
 
 def test_review_posts_verified_findings_and_gate_lines_verbatim() -> None:
@@ -138,16 +138,54 @@ def test_review_posts_verified_findings_and_gate_lines_verbatim() -> None:
     assert review["verdict"] == VERDICT_REQUEST_CHANGES
     assert review["blocking_reasons"] == ["gate `check-rules` failed", f"`R5.owner-from-auth` at `{PATH}:12`"]
     assert [(comment["path"], comment["line"]) for comment in review["comments"]] == [(PATH, 12), (PATH, 12)]
-    assert f"`{PATH}:12 R4.no-any raw `any`: use a real type`" in review["comments"][0]["body"]
+    assert f"`R4.no-any` at `{PATH}:12`" in review["comments"][0]["body"]
     assert finding_marker("R5.owner-from-auth") in review["comments"][1]["body"]
-    assert "Hard-boundary flag" in review["comments"][1]["body"]
+    assert "Hard boundary" in review["comments"][1]["body"]
 
     body = review["body"]
-    assert "cloud/convex/a.ts:500 R3.file-length 500 lines (max 400)" in body
-    assert "1 finding(s) verified against the diff and posted; 1 dropped" in body
-    assert "`logic_bs` returned no usable output (`malformed_json`)" in body
+    assert len(body) < 100 and "logic_bs" not in body
+    assert review["notes"][0].startswith("**Review `HEAD`**")
+    assert "`R3.file-length` at `cloud/convex/a.ts:500`" in review["notes"][1]
+    assert "500 lines (max 400)" in review["notes"][1]
     assert "the token is logged somewhere" not in str(review)
     assert result.session_errors == {"logic_bs": ERROR_NOT_JSON}
+
+
+def test_clean_run_posts_file_count_and_five_reviewer_summaries() -> None:
+    runs = [
+        session_run(name, {"session": name, "findings": [], "ui_check": None, "summary": f"{name} looks okay"})
+        for name in ("abstractions", "maintainability", "conciseness", "logic_bs", "security")
+    ]
+    result = assess(
+        session_runs=runs,
+        gates=[gate("typecheck", 0)],
+        diff=DIFF,
+        linear_texts={},
+        model="gpt-6.2-sol",
+        head_sha="3c58dca7050587ea8c3901a4db95ca5788193ab5",
+        reviewed_file_count=4,
+    )
+    assert result.review["verdict"] == VERDICT_COMMENT
+    assert result.review["comments"] == []
+    assert len(result.review["notes"]) == 1
+    note = result.review["notes"][0]
+    assert "**Review `3c58dca`** · Reviewed 4 files" in note
+    for name in ("abstractions", "maintainability", "conciseness", "logic_bs", "security"):
+        assert f"- `{name}`: {name} looks okay" in note
+
+
+def test_failed_gate_note_includes_cleaned_output_snippet() -> None:
+    result = assess(
+        session_runs=[],
+        gates=[gate("test", 1, "\x1b[31mFAIL\x1b[39m packages/spend/src/ledger.property.test.ts\nError: Test timed out in 5000ms.")],
+        diff=DIFF,
+        linear_texts={},
+        model="gpt-6.2-sol",
+    )
+    gate_note = result.review["notes"][-1]
+    assert "`test` exited with code 1." in gate_note
+    assert "FAIL packages/spend/src/ledger.property.test.ts" in gate_note
+    assert "\x1b[" not in gate_note
 
 
 def test_advisory_findings_are_phrased_as_offers() -> None:
@@ -155,7 +193,7 @@ def test_advisory_findings_are_phrased_as_offers() -> None:
     result = assess(session_runs=[session_run("logic_bs", payload)], gates=[], diff=DIFF, linear_texts={}, model="m")
     comment = result.review["comments"][0]["body"]
     assert comment.startswith("**Question / offer · `R3.root-cause`**")
-    assert "Would it help to consider: Could this be derived from the session?" in comment
+    assert "Could this be derived from the session?" in comment
 
 
 def test_no_slop_fallback_when_every_session_fails() -> None:
@@ -165,7 +203,8 @@ def test_no_slop_fallback_when_every_session_fails() -> None:
     assert result.review["verdict"] == VERDICT_COMMENT
     assert result.review["comments"] == []
     assert "refactoring everything" not in result.review["body"]
-    assert result.review["body"].count("returned no usable output (`empty_output`)") == 2
+    assert result.review["body"] == ""
+    assert result.session_errors == {"security": ERROR_EMPTY, "logic_bs": ERROR_EMPTY}
 
 
 def test_secrets_are_redacted_from_the_review() -> None:
