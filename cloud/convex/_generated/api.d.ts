@@ -23,7 +23,6 @@ import type * as composio_connections from "../composio/connections.js";
 import type * as composio_constants from "../composio/constants.js";
 import type * as composio_expire from "../composio/expire.js";
 import type * as composio_returnTarget from "../composio/returnTarget.js";
-import type * as composio_schema from "../composio/schema.js";
 import type * as composio_webhook from "../composio/webhook.js";
 import type * as composio_webhookRoute from "../composio/webhookRoute.js";
 import type * as crons from "../crons.js";
@@ -66,7 +65,6 @@ declare const fullApi: ApiFromModules<{
   "composio/constants": typeof composio_constants;
   "composio/expire": typeof composio_expire;
   "composio/returnTarget": typeof composio_returnTarget;
-  "composio/schema": typeof composio_schema;
   "composio/webhook": typeof composio_webhook;
   "composio/webhookRoute": typeof composio_webhookRoute;
   crons: typeof crons;
