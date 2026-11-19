@@ -29,6 +29,13 @@
       "covers": [{"command": "gate"}, {"command": "live", "suite": "subagent-workspaces"}]
     },
     {
+      "id": "web.worker-auth-session",
+      "title": "Playwright replacement workers reuse the latest Convex Auth session",
+      "issue": "PRA-118",
+      "surfaces": ["web"],
+      "covers": [{"command": "gate"}]
+    },
+    {
       "id": "repo.gate",
       "title": "Typecheck, tests, boundary rules, lint, comment hygiene and both builds",
       "issue": "PRA-72",
