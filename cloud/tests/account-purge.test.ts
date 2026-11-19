@@ -6,7 +6,6 @@ import {ACCOUNT_OWNER_ROWS, ACCOUNT_PURGE_POLICY, ACCOUNT_RUN_CHILD_ROWS} from '
 import {chatId, SERVER_TOKEN, startedRun} from './workflow-fixture.js';
 
 const PURGE_CALLS_MAX = 20;
-const PURGE_TEST_TIMEOUT_MS = 15_000;
 type PurgeResult = {done: boolean; blobCursor?: string; blobsDone?: boolean};
 
 describe('account deletion of workflow state', () => {
@@ -28,7 +27,7 @@ describe('account deletion of workflow state', () => {
     expect(Object.keys(ACCOUNT_RUN_CHILD_ROWS).sort()).toEqual(tablesWith('runChild'));
   });
 
-  it('fences an in-flight run once deletion begins, then purges run, flags, journal and user', {timeout: PURGE_TEST_TIMEOUT_MS}, async () => {
+  it('fences an in-flight run once deletion begins, then purges run, flags, journal and user', async () => {
     const {t, owner, userId, scope} = await startedRun();
     await t.action(internal.turns.run, {...scope, expectedTurnIndex: 0});
     const sessions = () => t.run(ctx => ctx.runQuery(components.auth.public.listSessions, {userId}));

@@ -5,9 +5,7 @@ import {api, internal} from '../convex/_generated/api.js';
 import {workflow} from '../convex/workflows/agentRun.js';
 import {chatId, signedInUser, startedRun as setup} from './workflow-fixture.js';
 
-const WORKFLOW_TEST_TIMEOUT_MS = 15_000;
-
-describe('durable workflow skeleton', {timeout: WORKFLOW_TEST_TIMEOUT_MS}, () => {
+describe('durable workflow skeleton', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubEnv('CONVEX_CLOUD_URL', 'https://test.convex.cloud');
