@@ -62,8 +62,12 @@ export async function purgeUntilDone(t: DomainTest, userId: string) {
 }
 
 export function typedRows(t: DomainTest) {
-  return t.run(async ctx => {
-    const entries = await Promise.all(TYPED_TABLES.map(async table => [table, await ctx.db.query(table).collect()] as const));
-    return Object.fromEntries(entries) as {[T in (typeof TYPED_TABLES)[number]]: Array<{userId: string}>};
-  });
+  return t.run(async ctx => ({
+    chats: await ctx.db.query('chats').collect(),
+    messages: await ctx.db.query('messages').collect(),
+    runs: await ctx.db.query('runs').collect(),
+    turns: await ctx.db.query('turns').collect(),
+    sandboxes: await ctx.db.query('sandboxes').collect(),
+    outputs: await ctx.db.query('outputs').collect(),
+  }) satisfies Record<(typeof TYPED_TABLES)[number], Array<{userId: string}>>);
 }
