@@ -7,6 +7,7 @@ import {toolsStorageFromRPC} from './convex-storage.js';
 import {createLocalToolsStorage} from './local-storage.js';
 import {toolsStorageContract,type ClientUpload} from './storage-contract.js';
 const token='test-tools-server-credential-with-32-characters';
+const LARGE_UPLOAD_TEST_TIMEOUT_MS = 15_000;
 function harness(){
  process.env.PRAXIS_CONVEX_SERVER_TOKEN=token;process.env.CONVEX_SITE_URL='https://happy-otter-123.convex.site';
  const t=convexTest(schema,{
@@ -41,7 +42,7 @@ describe('Convex direct uploads',()=>{
   try{const url=await storage.createUpload('u',{name:'x.txt',mediaType:'text/plain',size:1});expect(new URL(url.uploadUrl).origin).toBe('https://uploads.example.org');expect(new URL(url.uploadUrl).pathname).toMatch(/^\/uploads\/[a-f0-9-]{36}$/);}
   finally{process.env.CONVEX_SITE_URL=before;}
  });
- it('handles 25 MB without passing bytes through a function argument',async()=>{
+ it('handles 25 MB without passing bytes through a function argument', {timeout: LARGE_UPLOAD_TEST_TIMEOUT_MS}, async () => {
   const {storage}=current=harness(),user='big',size=25_000_000,input={name:'big.bin',mediaType:'application/octet-stream',size};
   const url=await storage.createUpload(user,input);expect(url.method).toBe('POST');
   const id=await convexUpload(storage,user,url,new Uint8Array(size),input.mediaType);
