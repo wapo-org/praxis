@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import { z } from 'zod';
-import { reserveAuthChallenge } from './auth-budget.js';
+import { reserveAuthChallenge, signupBudgetExceeded } from './auth-budget.js';
 
 export interface TestAccount {
   email: string;
@@ -15,8 +15,17 @@ const IsAuthenticated = makeFunctionReference<'query', Record<string, never>, bo
 const LatestEmail = makeFunctionReference<'query'>('fixture:latestEmail');
 const SignedUp = z.discriminatedUnion('success', [
   z.object({ success: z.literal(true), browserSecret: z.string() }),
-  z.object({ success: z.literal(false), userError: z.object({ error: z.string() }) }),
+  z.object({ success: z.literal(false), userError: z.object({ error: z.string() }).optional() }),
 ]);
+
+export function parseSignupReply(reply: unknown): string {
+  const started = SignedUp.parse(reply);
+  if (started.success) return started.browserSecret;
+  if (started.userError == null || started.userError.error === 'RATE_LIMITED') {
+    throw signupBudgetExceeded();
+  }
+  throw new Error(`Convex Auth rejected the verification signup: ${started.userError.error}`);
+}
 const Completed = z.object({ status: z.literal('complete') });
 export const LocalVerificationOrigin = z.url().refine(value => {
   const url = new URL(value);
@@ -35,18 +44,12 @@ export async function createTestAccount(url: string, budgetDirectory?: string): 
   const client = new ConvexHttpClient(LocalVerificationOrigin.parse(url), { logger: false });
   const account = { email: `browser-${randomUUID()}@example.test`, password: randomUUID() };
   await reserveAuthChallenge(budgetDirectory);
-  const started = SignedUp.parse(await client.mutation(Signup, account).catch(() => {
-    throw new Error('Could not submit the local Convex Auth verification signup');
+  const browserSecret = parseSignupReply(await client.mutation(Signup, account).catch((error: unknown) => {
+    throw new Error('Could not submit the local Convex Auth verification signup', { cause: error });
   }));
-  if (!started.success) {
-    if (started.userError.error === 'RATE_LIMITED') {
-      throw new Error('Convex Auth rate-limited verification signup. Start a fresh isolated verification stack.');
-    }
-    throw new Error('Convex Auth rejected the verification signup');
-  }
   try {
     const emailCode = new URL(await latestEmailLink(url, account.email)).searchParams.get('code');
-    Completed.parse(await client.mutation(Complete, { browserSecret: started.browserSecret, emailCode }));
+    Completed.parse(await client.mutation(Complete, { browserSecret, emailCode }));
   } catch {
     throw new Error('Could not complete the local Convex Auth email challenge');
   }
