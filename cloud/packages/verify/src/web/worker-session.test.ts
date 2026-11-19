@@ -53,3 +53,14 @@ test('an interrupted initial sign-in retries with the same provisioned account',
   expect(createAccount).toHaveBeenCalledTimes(1);
   expect(signIn.mock.calls).toEqual([[account], [account]]);
 });
+
+test('repeated initial sign-in failures leave the password retry budget intact', async () => {
+  const createAccount = vi.fn(async () => ({ email: 'worker@example.test', password: 'test-password' }));
+  const signIn = vi.fn(async () => { throw new Error('Browser closed'); });
+  const path = workerSessionPath(directory, 'chromium', 0);
+  await expect(restoreWorkerSession(path, createAccount, signIn)).rejects.toThrow('Browser closed');
+  await expect(restoreWorkerSession(path, createAccount, signIn)).rejects.toThrow('Browser closed');
+  await expect(restoreWorkerSession(path, createAccount, signIn)).rejects.toThrow('after two attempts');
+  expect(createAccount).toHaveBeenCalledTimes(1);
+  expect(signIn).toHaveBeenCalledTimes(2);
+});

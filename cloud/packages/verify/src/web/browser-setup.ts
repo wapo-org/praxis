@@ -19,7 +19,9 @@ export async function signInToStack(page: Page, account: TestAccount): Promise<v
 }
 
 export default async function setup() {
-  if (process.env.PW_BASE_URL) stackConvexUrl();
+  if (process.env.PW_BASE_URL && !process.env[PW_CONVEX_URL_ENV]) {
+    throw new Error(`Existing browser stacks require ${PW_CONVEX_URL_ENV} and the isolated verification auth deployment`);
+  }
   const directory = await mkdtemp(join(tmpdir(), 'praxis-browser-'));
   process.env[PW_AUTH_CHALLENGE_BUDGET_ENV] = await createAuthChallengeBudget(directory);
   const stack = process.env.PW_BASE_URL

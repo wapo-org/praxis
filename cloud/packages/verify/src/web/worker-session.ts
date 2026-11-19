@@ -5,7 +5,11 @@ import type { TestAccount } from './auth-account.js';
 import type { SessionState } from './session.js';
 
 const Checkpoint = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('account'), account: z.object({ email: z.email(), password: z.string() }) }),
+  z.object({
+    kind: z.literal('account'),
+    account: z.object({ email: z.email(), password: z.string() }),
+    attempt: z.union([z.literal(1), z.literal(2)]),
+  }),
   z.object({
     kind: z.literal('session'),
     state: z.object({
@@ -39,7 +43,7 @@ async function readCheckpoint(path: string): Promise<z.infer<typeof Checkpoint> 
 
 async function writeCheckpoint(
   path: string,
-  checkpoint: { kind: 'account'; account: TestAccount } | { kind: 'session'; state: SessionState },
+  checkpoint: { kind: 'account'; account: TestAccount; attempt: 1 | 2 } | { kind: 'session'; state: SessionState },
 ): Promise<void> {
   const pending = `${path}.pending`;
   await writeFile(pending, JSON.stringify(checkpoint), { mode: 0o600 });
@@ -57,8 +61,10 @@ export async function restoreWorkerSession(
 ): Promise<SessionState> {
   const saved = await readCheckpoint(path);
   if (saved?.kind === 'session') return saved.state;
+  if (saved?.attempt === 2) throw new Error('The verification worker could not establish its Convex Auth session after two attempts');
   const account = saved?.account ?? await createAccount();
-  if (!saved) await writeCheckpoint(path, { kind: 'account', account });
+  // A broken initial sign-in must never consume Convex Auth's five password attempts.
+  await writeCheckpoint(path, { kind: 'account', account, attempt: saved ? 2 : 1 });
   const state = await signIn(account);
   await saveWorkerSession(path, state);
   return state;
