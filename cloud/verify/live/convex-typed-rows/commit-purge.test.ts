@@ -1,7 +1,38 @@
-import {describe, expect, it} from 'vitest';
-import {changedTables, journalRowsFor, nonEmptyTables, ownerRowCount, sequenceProblems, type RowCounts} from './commit-purge.js';
+import {SealedSecret} from '@praxis/types';
+import {afterEach, describe, expect, it, vi} from 'vitest';
+import {beginFencesOwner, changedTables, journalRowsFor, nonEmptyTables, ownerRowCount, sequenceProblems, type RowCounts} from './commit-purge.js';
+import {liveOwnerSession} from './owners.js';
 
 const ZERO: RowCounts = {chats: 0, messages: 0, runs: 0, turns: 0, sandboxes: 0, outputs: 0};
+
+afterEach(() => vi.unstubAllGlobals());
+
+it('renews the fixture and checks the distinct client and server deletion errors', async () => {
+  const calls: string[] = [];
+  vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+    const {path} = JSON.parse(String(init.body));
+    calls.push(path);
+    if (path === 'auth:refreshSession') {
+      const tokens = {userId: 'fixture', accessToken: 'renewed', refreshToken: 'rotated'};
+      return Response.json({status: 'success', value: {kind: 'rotated', tokens}});
+    }
+    if (path === 'account:begin') return Response.json({status: 'success', value: null});
+    const client = new Headers(init.headers).get('Authorization') === 'Bearer renewed';
+    const errorData = client ? 'Authentication required' : 'Account unavailable';
+    return Response.json({status: 'error', errorData, errorMessage: errorData});
+  });
+  const convexUrl = 'https://fixture.convex.cloud';
+  const owner = liveOwnerSession(convexUrl, 'fixture@example.test', {
+    userId: 'fixture', accessToken: 'original', refreshToken: 'refresh',
+  });
+  const live = {convexUrl, serverToken: SealedSecret.of('fixture-server-token')};
+  const result = await beginFencesOwner(live, owner, 'fixture-chat');
+  expect(result.status).toBe('pass');
+  expect(calls).toEqual([
+    'auth:refreshSession', 'account:begin', 'chats:list', 'messages:page',
+    'chats:create', 'messages:commit', 'store:put',
+  ]);
+});
 
 describe('sequenceProblems', () => {
   it('accepts a contiguous permutation', () => {

@@ -21,6 +21,7 @@ const PURGE_CALLS_MAX = 500;
 const PAGE_LIMIT_MAX = 100;
 const SERVER_AUTH_ERROR = 'Server authentication required';
 const ACCOUNT_UNAVAILABLE = 'Account unavailable';
+const AUTHENTICATION_REQUIRED = 'Authentication required';
 export interface Live {
   convexUrl: string;
   serverToken: SealedSecret;
@@ -41,7 +42,6 @@ const StoreHead = makeFunctionReference<'query'>('store:head');
 const ChatsList = makeFunctionReference<'query'>('chats:list');
 const ChatsCreate = makeFunctionReference<'mutation'>('chats:create');
 const Begin = makeFunctionReference<'mutation'>('account:begin');
-const DeletionOwner = makeFunctionReference<'query'>('account:deletionOwner');
 const Purge = makeFunctionReference<'mutation'>('account:purge');
 const Active = makeFunctionReference<'query'>('account:active');
 
@@ -52,7 +52,6 @@ const OwnedRow = z.object({userId: z.string()});
 const RunRow = OwnedRow.extend({workflow: z.object({id: z.string().optional()}).optional()});
 const JournalRow = z.object({workflowId: z.string()});
 const WorkflowRow = z.object({_id: z.string()});
-const DeletionSession = z.object({userId: z.string(), sessionId: z.string(), pending: z.boolean()});
 
 // ---- pure checks (unit-tested offline) ----
 
@@ -268,26 +267,22 @@ export async function snapshotJournal(reader: TableReader, workflowIds: Readonly
 /** Begins deletion for `owner`; every client read, client write and server typed write must then be refused. */
 export async function beginFencesOwner(live: Live, owner: LiveOwner, chatId: string): Promise<StepResult> {
   await owner.refresh();
-  const session = DeletionSession.parse(await owner.client.query(DeletionOwner, {}));
-  if (session.userId !== owner.userId || session.pending) throw new Error('Unexpected fixture deletion identity');
-  await serverClient(live).mutation(Begin, {
-    serverToken: live.serverToken.reveal(), userId: owner.userId, keepSessionId: session.sessionId,
-  });
+  await serverClient(live).mutation(Begin, {serverToken: live.serverToken.reveal(), userId: owner.userId});
   const at = now();
   const chat = ChatSchema.parse({type: 'chat', id: chatId, title: 'after begin', mode: 'build', createdAt: at, updatedAt: at});
-  const attempts: [string, () => Promise<unknown>][] = [
-    ['client chats:list', () => owner.client.query(ChatsList, {})],
-    ['client messages:page', () => owner.client.query(Page, {chatId, limit: 1})],
-    ['client chats:create', () => owner.client.mutation(ChatsCreate, {input: {type: 'chat.input'}})],
-    ['server messages:commit', () => commit(live, live.serverToken.reveal(), owner, chatId, [newMessage(chatId, 'after begin')])],
-    ['server store:put chat', () => put(live, owner, 'chat', chatId, chat)],
+  const attempts: [string, string, () => Promise<unknown>][] = [
+    ['client chats:list', AUTHENTICATION_REQUIRED, () => owner.client.query(ChatsList, {})],
+    ['client messages:page', AUTHENTICATION_REQUIRED, () => owner.client.query(Page, {chatId, limit: 1})],
+    ['client chats:create', AUTHENTICATION_REQUIRED, () => owner.client.mutation(ChatsCreate, {input: {type: 'chat.input'}})],
+    ['server messages:commit', ACCOUNT_UNAVAILABLE, () => commit(live, live.serverToken.reveal(), owner, chatId, [newMessage(chatId, 'after begin')])],
+    ['server store:put chat', ACCOUNT_UNAVAILABLE, () => put(live, owner, 'chat', chatId, chat)],
   ];
   const log: string[] = [];
   const problems: string[] = [];
-  for (const [label, call] of attempts) {
+  for (const [label, expected, call] of attempts) {
     const text = await rejection(call);
     log.push(`${label}: ${text ?? 'accepted'}`);
-    if (text !== ACCOUNT_UNAVAILABLE) problems.push(`${label} did not return the deletion fence`);
+    if (text !== expected) problems.push(`${label} did not return the deletion fence`);
   }
   return verdict(problems, 'owner reads and typed writes are fenced after account:begin', log);
 }
