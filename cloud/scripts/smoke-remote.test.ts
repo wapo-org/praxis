@@ -7,35 +7,7 @@ import { REMOVED_AUTH_ROUTES, smoke } from './smoke-remote.mjs';
 // @ts-ignore JavaScript CLI module
 import { SMOKE_FIXTURE_KEYS } from './smoke-fixture.mjs';
 import { createSmokeApp } from '../apps/api/src/smoke.js';
-
-const API = 'https://api.test';
-const WEB = 'https://web.test';
-const CONVEX = 'https://fixture-smoke.convex.cloud';
-const STORAGE = 'https://storage.test';
-const FIXTURE_USER = 'fixture-user';
-const EMAIL = 'smoke-fixture@example.test';
-const PASSWORD = 'fixture-password-never-printed';
-const SIGN_IN = 'auth:signInWithEmailPassword';
-const SIGN_OUT = 'auth:signOut';
-const IS_AUTHENTICATED = 'auth:isAuthenticated';
-const BINDINGS: Record<string, string> = {
-  SMOKE_API_ORIGIN: API,
-  SMOKE_CONVEX_URL: CONVEX,
-  SMOKE_FIXTURE_EMAIL: EMAIL,
-  SMOKE_FIXTURE_PASSWORD: PASSWORD,
-  SMOKE_FIXTURE_USER_ID: FIXTURE_USER,
-};
-
-type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
-type ConvexCall = { path: string; args: Record<string, unknown>; auth: string | null };
-type SignInReply = { status: 'complete'; userId?: string } | { status: 'error'; error: string };
-type HostedOptions = {
-  signIn?: SignInReply;
-  uploadStatus?: number;
-  chatDeleteStatus?: number;
-  expireFirstDelete?: boolean;
-  modelKey?: boolean;
-};
+import { API, BINDINGS, CONVEX, EMAIL, type Fetcher, LEAK, PASSWORD, REFRESH, SIGN_IN, SIGN_OUT, STORAGE, WEB, hostedFixture, shell } from './smoke-hosted-mock.js';
 
 let dir = '';
 beforeEach(async () => {
@@ -52,90 +24,6 @@ async function envFile(bindings: Record<string, string>) {
   return file;
 }
 
-function shell(path: string) {
-  if (path === '/sw.js') return new Response("self.addEventListener('fetch',e=>{})");
-  return new Response('<div id="root"></div>');
-}
-
-/** In-memory API plus the official Convex HTTP function contract; nothing leaves the process. */
-function hostedFixture(options: HostedOptions = {}) {
-  const requests: string[] = [];
-  const convexCalls: ConvexCall[] = [];
-  const active = new Set<string>();
-  let signIns = 0;
-  let deletes = 0;
-
-  function convex(url: URL, init?: RequestInit) {
-    const body = JSON.parse(String(init?.body)) as { path: string; args: [Record<string, unknown>] };
-    const auth = new Headers(init?.headers).get('authorization');
-    convexCalls.push({ path: body.path, args: body.args[0], auth });
-    const reply = (value: unknown) => Response.json({ status: 'success', value, logLines: [] });
-    if (url.pathname === '/api/mutation' && body.path === SIGN_IN) {
-      const signIn = options.signIn ?? { status: 'complete' };
-      if (signIn.status === 'error') return reply({ status: 'error', userError: { error: signIn.error } });
-      signIns++;
-      const tokens = {
-        accessToken: `fixture-access-${signIns}`,
-        refreshToken: `fixture-refresh-${signIns}`,
-        refreshTokenExpiresAt: 1,
-        userId: signIn.userId ?? FIXTURE_USER,
-      };
-      active.add(tokens.accessToken);
-      return reply({ status: 'complete', tokens });
-    }
-    if (url.pathname === '/api/mutation' && body.path === SIGN_OUT) {
-      active.delete(String(auth).replace('Bearer ', ''));
-      return reply(null);
-    }
-    if (url.pathname === '/api/query' && body.path === IS_AUTHENTICATED) {
-      return reply(active.has(String(auth).replace('Bearer ', '')));
-    }
-    return Response.json({ status: 'error', errorMessage: 'unexpected function' }, { status: 560 });
-  }
-
-  function api(url: URL, method: string, init?: RequestInit) {
-    const token = new Headers(init?.headers).get('authorization')?.replace('Bearer ', '') ?? '';
-    const route = `${method} ${url.pathname}`;
-    if (route === 'GET /health') return Response.json({ ok: true, mode: 'production' });
-    if (!active.has(token)) return Response.json({}, { status: 401 });
-    if (route === 'GET /v1/bootstrap') {
-      return Response.json({ user: { id: FIXTURE_USER }, ...(options.modelKey ? { modelKey: { maskedKey: '••••' } } : {}) });
-    }
-    if (route === 'POST /v1/chats') return Response.json({ id: 'smoke-chat' });
-    if (route === 'POST /v1/uploads') {
-      return Response.json({ uploadUrl: `${STORAGE}/put`, method: 'PUT' }, { status: options.uploadStatus ?? 200 });
-    }
-    if (route === 'POST /v1/uploads/complete') return Response.json({ id: 'smoke-attachment' });
-    if (route === 'GET /v1/uploads/smoke-attachment/download') return new Response('Praxis smoke upload\n');
-    if (method === 'DELETE' && options.expireFirstDelete && deletes++ === 0) {
-      active.delete(token);
-      return Response.json({}, { status: 401 });
-    }
-    if (route === 'DELETE /v1/uploads/smoke-attachment') return Response.json({ type: 'ok' });
-    if (route === 'DELETE /v1/chats/smoke-chat') {
-      return Response.json({ type: 'ok' }, { status: options.chatDeleteStatus ?? 200 });
-    }
-    if (route === 'POST /v1/runs') return Response.json({ id: 'smoke-run' });
-    if (route === 'GET /v1/runs/smoke-run/events') {
-      const resumed = new Headers(init?.headers).get('last-event-id') === '1';
-      return new Response(resumed ? 'id: 2\ndata: {}\n\n' : 'id: 1\ndata: {}\n\n');
-    }
-    if (route === 'GET /v1/runs/smoke-run/snapshot') return Response.json({ run: { status: 'completed' } });
-    return Response.json({}, { status: 404 });
-  }
-
-  const fetcher: Fetcher = async (input, init) => {
-    const url = new URL(String(input));
-    const method = init?.method ?? 'GET';
-    if (url.origin === CONVEX) return convex(url, init);
-    requests.push(`${method} ${url.origin === API ? url.pathname : url.href}`);
-    if (url.origin === WEB) return shell(url.pathname);
-    if (url.origin === STORAGE) return Response.json({ storageId: 'smoke-storage' });
-    return api(url, method, init);
-  };
-  const calls = () => convexCalls.map((call) => call.path);
-  return { fetcher, requests, convexCalls, calls, active };
-}
 
 const writes = (requests: string[]) => requests.filter((request) => !request.startsWith('GET '));
 
@@ -159,8 +47,9 @@ describe('hosted smoke with a consenting Convex Auth fixture', () => {
     const result = await smoke([API, WEB, '--env', await envFile(BINDINGS)], f.fetcher);
     expect(f.convexCalls).toEqual([
       { path: SIGN_IN, args: { email: EMAIL, password: PASSWORD }, auth: null },
-      { path: SIGN_OUT, args: { refreshToken: 'fixture-refresh-1' }, auth: 'Bearer fixture-access-1' },
-      { path: IS_AUTHENTICATED, args: {}, auth: 'Bearer fixture-access-1' },
+      // Revocation and its check carry only the refresh token, never an access credential.
+      { path: SIGN_OUT, args: { refreshToken: 'fixture-refresh-1' }, auth: null },
+      { path: REFRESH, args: { refreshToken: 'fixture-refresh-1' }, auth: null },
     ]);
     expect(writes(f.requests)).toEqual([
       'POST /v1/chats',
@@ -171,7 +60,7 @@ describe('hosted smoke with a consenting Convex Auth fixture', () => {
       'DELETE /v1/chats/smoke-chat',
     ]);
     expectNoLegacyOrAccountWrites(f.requests);
-    expect(f.active.size).toBe(0);
+    expect(f.liveSessions()).toEqual([]);
     expect(result.checks).toEqual(expect.arrayContaining([
       'Convex Auth fixture sign-in',
       'authenticated bootstrap',
@@ -193,7 +82,7 @@ describe('hosted smoke with a consenting Convex Auth fixture', () => {
     await failure.catch((error: Error) => {
       for (const value of Object.values(BINDINGS)) expect(error.message).not.toContain(value);
     });
-    expect(writes(f.requests)).toEqual([]);
+    expect(f.requests).toEqual([]);
     expect(f.convexCalls).toEqual([]);
   });
 
@@ -210,7 +99,38 @@ describe('hosted smoke with a consenting Convex Auth fixture', () => {
     await expect(smoke([API, WEB, '--env', await envFile(bindings)], f.fetcher))
       .rejects.toThrow('SMOKE_API_ORIGIN does not name this API');
     expect(f.convexCalls).toEqual([]);
-    expect(writes(f.requests)).toEqual([]);
+    expect(f.requests).toEqual([]);
+  });
+
+  it.each([
+    'http://api.test',
+    'https://smoke-userinfo-secret@api.test',
+    'https://user:smoke-userinfo-secret@api.test',
+    'https://api.test/path',
+    'https://api.test/?query=smoke-query-secret',
+    'https://api.test?',
+    'https://api.test/#smoke-fragment',
+    'https://api.test#',
+    'not a url smoke-raw-secret',
+  ])('rejects bound origin %s before any request, without echoing it', async (malformed) => {
+    for (const key of ['SMOKE_API_ORIGIN', 'SMOKE_CONVEX_URL']) {
+      const f = hostedFixture();
+      const failure = smoke([API, WEB, '--env', await envFile({ ...BINDINGS, [key]: malformed })], f.fetcher);
+      await expect(failure).rejects.toThrow(new RegExp(`^${key} must be a bare HTTPS origin$`));
+      await failure.catch((error: Error) => {
+        expect(error.cause).toBeUndefined();
+        expect(error.message).not.toMatch(/smoke-|user:|\?|#/);
+      });
+      expect(f.requests).toEqual([]);
+      expect(f.convexCalls).toEqual([]);
+    }
+  });
+
+  it('accepts a trailing slash on bound origins and calls Convex at the bare origin', async () => {
+    const f = hostedFixture();
+    const bindings = { ...BINDINGS, SMOKE_API_ORIGIN: `${API}/`, SMOKE_CONVEX_URL: `${CONVEX}/` };
+    await smoke([API, WEB, '--env', await envFile(bindings)], f.fetcher);
+    expect(f.calls()).toEqual([SIGN_IN, SIGN_OUT, REFRESH]);
   });
 
   it.each(['INVALID_CREDENTIALS', 'RATE_LIMITED', 'USER_NOT_FOUND'])(
@@ -229,8 +149,8 @@ describe('hosted smoke with a consenting Convex Auth fixture', () => {
     const f = hostedFixture({ signIn: { status: 'complete', userId: 'someone-else' } });
     await expect(smoke([API, WEB, '--env', await envFile(BINDINGS)], f.fetcher))
       .rejects.toThrow('Fixture sign-in resolved to an unexpected user; signed out before writing data');
-    expect(f.calls()).toEqual([SIGN_IN, SIGN_OUT, IS_AUTHENTICATED]);
-    expect(f.active.size).toBe(0);
+    expect(f.calls()).toEqual([SIGN_IN, SIGN_OUT, REFRESH]);
+    expect(f.liveSessions()).toEqual([]);
     expect(writes(f.requests)).toEqual([]);
   });
 
@@ -239,7 +159,7 @@ describe('hosted smoke with a consenting Convex Auth fixture', () => {
     await expect(smoke([API, WEB, '--env', await envFile(BINDINGS)], f.fetcher))
       .rejects.toThrow(/^POST \/v1\/uploads: HTTP 500$/);
     expect(writes(f.requests)).toEqual(['POST /v1/chats', 'POST /v1/uploads', 'DELETE /v1/chats/smoke-chat']);
-    expect(f.active.size).toBe(0);
+    expect(f.liveSessions()).toEqual([]);
   });
 
   it('keeps the original failure and still revokes the session when cleanup also fails', async () => {
@@ -247,8 +167,8 @@ describe('hosted smoke with a consenting Convex Auth fixture', () => {
     await expect(smoke([API, WEB, '--env', await envFile(BINDINGS)], f.fetcher)).rejects.toThrow(
       /^POST \/v1\/uploads: HTTP 500 \(cleanup also failed: DELETE \/v1\/chats\/smoke-chat: HTTP 500; remove smoke chat smoke-chat/,
     );
-    expect(f.calls()).toEqual([SIGN_IN, SIGN_OUT, IS_AUTHENTICATED]);
-    expect(f.active.size).toBe(0);
+    expect(f.calls()).toEqual([SIGN_IN, SIGN_OUT, REFRESH]);
+    expect(f.liveSessions()).toEqual([]);
   });
 
   it('re-signs in once when the access token expires during cleanup, without re-deleting', async () => {
@@ -259,8 +179,45 @@ describe('hosted smoke with a consenting Convex Auth fixture', () => {
       'DELETE /v1/uploads/smoke-attachment',
       'DELETE /v1/chats/smoke-chat',
     ]);
-    expect(f.calls()).toEqual([SIGN_IN, SIGN_IN, SIGN_OUT, IS_AUTHENTICATED, SIGN_OUT, IS_AUTHENTICATED]);
-    expect(f.active.size).toBe(0);
+    expect(f.calls()).toEqual([SIGN_IN, SIGN_IN, SIGN_OUT, REFRESH, SIGN_OUT, REFRESH]);
+    expect(f.liveSessions()).toEqual([]);
+  });
+
+  it.each([
+    ['signOutFail', 'revocation request failed', ['fixture-refresh-1']],
+    ['checkFail', 'revocation check failed', []],
+    ['signOutIgnored', 'session still live after sign-out', ['fixture-refresh-1-rotated']],
+  ] as const)('a %s on the first of two sessions still revokes the second', async (failure, problem, stillLive) => {
+    const f = hostedFixture({ expireFirstDelete: true, [failure]: [1] });
+    const run = smoke([API, WEB, '--env', await envFile(BINDINGS)], f.fetcher);
+    await expect(run).rejects.toThrow(
+      `Fixture sign-out incomplete (session 1: ${problem}); revoke those sessions manually`,
+    );
+    await run.catch((error: Error) => {
+      for (const secret of [LEAK, PASSWORD, 'fixture-access', 'fixture-refresh']) expect(error.message).not.toContain(secret);
+    });
+    const revocations = f.convexCalls.filter((call) => call.path === SIGN_OUT);
+    expect(revocations.map((call) => call.args.refreshToken)).toEqual(['fixture-refresh-1', 'fixture-refresh-2']);
+    expect(revocations.every((call) => call.auth === null)).toBe(true);
+    expect(f.liveSessions()).toEqual(stillLive);
+  });
+
+  it('reports data-removal and revocation failures together after the original error', async () => {
+    const f = hostedFixture({ uploadStatus: 500, chatDeleteStatus: 500, signOutFail: [1] });
+    await expect(smoke([API, WEB, '--env', await envFile(BINDINGS)], f.fetcher)).rejects.toThrow(
+      'POST /v1/uploads: HTTP 500 (cleanup also failed: DELETE /v1/chats/smoke-chat: HTTP 500; ' +
+        'Fixture sign-out incomplete (session 1: revocation request failed); revoke those sessions manually; ' +
+        'remove smoke chat smoke-chat from the fixture and revoke its sessions manually)',
+    );
+  });
+
+  it('reports a failed sign-in request by stage, never the server text', async () => {
+    const f = hostedFixture();
+    const fetcher: Fetcher = async (input, init) =>
+      new URL(String(input)).origin === CONVEX ? new Response(LEAK, { status: 500 }) : f.fetcher(input, init);
+    const run = smoke([API, WEB, '--env', await envFile(BINDINGS)], fetcher);
+    await expect(run).rejects.toThrow(/^Fixture sign-in request failed$/);
+    expect(writes(f.requests)).toEqual([]);
   });
 
   it('--with-llm fails explicitly without a pre-connected fixture key and never writes credentials', async () => {
@@ -269,7 +226,7 @@ describe('hosted smoke with a consenting Convex Auth fixture', () => {
       .rejects.toThrow('--with-llm needs a model key already connected on the fixture account');
     expectNoLegacyOrAccountWrites(f.requests);
     expect(writes(f.requests)).toContain('DELETE /v1/chats/smoke-chat');
-    expect(f.active.size).toBe(0);
+    expect(f.liveSessions()).toEqual([]);
   });
 
   it('--with-llm runs a real-model turn on the fixture key and checks SSE resume', async () => {
@@ -279,7 +236,7 @@ describe('hosted smoke with a consenting Convex Auth fixture', () => {
     expect(result.checks).toContain('SSE disconnect/resume and finished snapshot');
     expect(writes(f.requests)).toContain('POST /v1/runs');
     expectNoLegacyOrAccountWrites(f.requests);
-    expect(f.active.size).toBe(0);
+    expect(f.liveSessions()).toEqual([]);
   });
 });
 

@@ -13,7 +13,7 @@ export const SMOKE_FIXTURE_KEYS = [
 
 const SIGN_IN = makeFunctionReference('auth:signInWithEmailPassword');
 const SIGN_OUT = makeFunctionReference('auth:signOut');
-const IS_AUTHENTICATED = makeFunctionReference('auth:isAuthenticated');
+const REFRESH = makeFunctionReference('auth:refreshSession');
 
 export async function fixtureBindings(args, api) {
   const env = await loadEnv(envArg(args));
@@ -21,38 +21,40 @@ export async function fixtureBindings(args, api) {
   if (missing.length) {
     throw Error(`Hosted smoke needs a consenting fixture account; missing private bindings: ${missing.join(', ')}`);
   }
+  const apiOrigin = bareHttpsOrigin(env.SMOKE_API_ORIGIN, 'SMOKE_API_ORIGIN');
+  const convexOrigin = bareHttpsOrigin(env.SMOKE_CONVEX_URL, 'SMOKE_CONVEX_URL');
   // Bindings name one isolated target so a fixture password is never replayed against another deployment.
-  if (originOf(env.SMOKE_API_ORIGIN, 'SMOKE_API_ORIGIN') !== api) {
+  if (apiOrigin !== api) {
     throw Error('SMOKE_API_ORIGIN does not name this API; refusing to use the fixture elsewhere');
   }
-  if (new URL(originOf(env.SMOKE_CONVEX_URL, 'SMOKE_CONVEX_URL')).protocol !== 'https:') {
-    throw Error('SMOKE_CONVEX_URL must be an HTTPS origin');
-  }
-  return env;
+  return { ...env, SMOKE_API_ORIGIN: apiOrigin, SMOKE_CONVEX_URL: convexOrigin };
 }
 
-function originOf(value, key) {
-  try {
-    return new URL(value).origin;
-  } catch (error) {
-    throw Error(`${key} must be a bare origin`, { cause: error });
+/** Exact match rejects userinfo, paths, queries and fragments (even an empty `?` or `#`); the raw value is never echoed. */
+export function bareHttpsOrigin(value, key) {
+  const url = URL.canParse(value) ? new URL(value) : undefined;
+  if (url?.protocol !== 'https:' || value.replace(/\/$/, '') !== url.origin) {
+    throw Error(`${key} must be a bare HTTPS origin`);
   }
+  return url.origin;
 }
 
 /** Signs the fixture in through the deployment's Convex Auth functions, never through API auth routes. */
 export function fixtureSession(env, fetcher) {
   const sessions = [];
-  const client = (accessToken) => {
-    const convex = new ConvexHttpClient(env.SMOKE_CONVEX_URL, { logger: false, fetch: fetcher });
-    if (accessToken) convex.setAuth(accessToken);
-    return convex;
-  };
+  const client = () => new ConvexHttpClient(env.SMOKE_CONVEX_URL, { logger: false, fetch: fetcher });
 
   async function signIn() {
-    const result = await client().mutation(SIGN_IN, {
-      email: env.SMOKE_FIXTURE_EMAIL,
-      password: env.SMOKE_FIXTURE_PASSWORD,
-    });
+    let result;
+    try {
+      result = await client().mutation(SIGN_IN, {
+        email: env.SMOKE_FIXTURE_EMAIL,
+        password: env.SMOKE_FIXTURE_PASSWORD,
+      });
+    } catch {
+      // Server error text is not ours to print; the stage alone is reported.
+      throw Error('Fixture sign-in request failed');
+    }
     if (result?.status !== 'complete') {
       throw Error(`Fixture sign-in denied: ${result?.userError?.error ?? 'unexpected response'}`);
     }
@@ -60,20 +62,47 @@ export function fixtureSession(env, fetcher) {
     if (result.tokens.userId !== env.SMOKE_FIXTURE_USER_ID) {
       const message = 'Fixture sign-in resolved to an unexpected user';
       await signOut().catch((error) => {
-        throw Error(`${message}; sign-out also failed, revoke that session manually`, { cause: error });
+        throw Error(`${message}; ${error.message}`);
       });
       throw Error(`${message}; signed out before writing data`);
     }
     return result.tokens.accessToken;
   }
 
+  /** Tries every session; only confirmed revocations are retired, so a retry still holds the rest. */
   async function signOut() {
-    for (const tokens of sessions.splice(0)) {
-      await client(tokens.accessToken).mutation(SIGN_OUT, { refreshToken: tokens.refreshToken });
-      if ((await client(tokens.accessToken).query(IS_AUTHENTICATED, {})) !== false) {
-        throw Error('Fixture session still authenticated after sign-out');
+    const failures = [];
+    const remaining = [];
+    for (const [index, tokens] of sessions.entries()) {
+      const problem = await revoke(tokens);
+      if (problem) {
+        failures.push(`session ${index + 1}: ${problem}`);
+        remaining.push(tokens);
       }
     }
+    sessions.splice(0, sessions.length, ...remaining);
+    if (failures.length) {
+      throw Error(`Fixture sign-out incomplete (${failures.join('; ')}); revoke those sessions manually`);
+    }
+  }
+
+  // auth:signOut consumes only the refresh token, so a possibly expired access token is never attached.
+  async function revoke(tokens) {
+    try {
+      await client().mutation(SIGN_OUT, { refreshToken: tokens.refreshToken });
+    } catch {
+      return 'revocation request failed';
+    }
+    let check;
+    try {
+      check = await client().mutation(REFRESH, { refreshToken: tokens.refreshToken });
+    } catch {
+      return 'revocation check failed';
+    }
+    if (check?.kind === 'noSession') return undefined;
+    // A rotation proves the session is live; keep its successor so a later sign-out can still revoke it.
+    if (check?.kind === 'rotated') Object.assign(tokens, check.tokens);
+    return 'session still live after sign-out';
   }
 
   return { signIn, signOut, signedIn: () => sessions.length > 0 };
