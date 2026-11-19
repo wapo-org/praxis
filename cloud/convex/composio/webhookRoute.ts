@@ -37,7 +37,7 @@ export const composioWebhook = httpAction(async (ctx, request) => {
   }
   const { event } = verification;
   if (event.kind === 'ignored') return json(200, { ok: true, applied: false });
-  // Unknown or already-settled accounts still get 200: retrying cannot change the outcome.
+  // Acknowledging duplicate and unknown events prevents retries that cannot change state.
   const applied: boolean = await ctx.runMutation(internal.composio.connections.markFromWebhook, {
     connectedAccountId: event.connectedAccountId,
     status: event.status,

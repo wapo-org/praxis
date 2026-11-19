@@ -11,7 +11,9 @@ export const markFromWebhook = internalMutation({
     const row = await ctx.db.query('connections')
       .withIndex('by_connected_account', q => q.eq('connectedAccountId', connectedAccountId))
       .unique();
-    if (row?.status !== 'pending' || !await activeOwner(ctx, row.userId)) return false;
+    if (!row || row.status === status || row.status === 'failed' || !await activeOwner(ctx, row.userId)) {
+      return false;
+    }
     await ctx.db.patch(row._id, { status, updatedAt: Date.now() });
     return true;
   },

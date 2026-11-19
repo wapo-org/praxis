@@ -71,6 +71,24 @@ describe('Composio webhook route', () => {
     expect(await statusOf(t, 'ca_valid')).toBe('connected');
   });
 
+  it('marks a connected account failed on a signed expiration and ignores retries', async () => {
+    const t = setup();
+    const accountId = 'ca_expired';
+    await insertConnection(t, accountId, { status: 'connected' });
+    const body = connectionEvent('composio.connected_account.expired', accountId, 'EXPIRED');
+    const headers = await signedHeaders(body, { nowMs: Date.now() });
+
+    const response = await post(t, body, headers);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, applied: true });
+    expect(await statusOf(t, accountId)).toBe('failed');
+
+    const repeat = await post(t, body, headers);
+    expect(repeat.status).toBe(200);
+    expect(await repeat.json()).toEqual({ ok: true, applied: false });
+    expect(await statusOf(t, accountId)).toBe('failed');
+  });
+
   it('leaves the row unchanged for a forged webhook', async () => {
     const t = setup();
     await insertConnection(t, 'ca_forged');
