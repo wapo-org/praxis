@@ -113,7 +113,7 @@ describe('local fixture uploads',()=>{
 });
 describe('tools Convex authentication',()=>{
  it.each(['get','put','remove'])('rejects unauthorized %s',async name=>{
-  const {t}=harness(),a={serverToken:'wrong',userId:'a',kind:'skill',id:'x',...(name==='put'?{value:{}}:{})};
+  const {t}=harness(),a={serverToken:'wrong',userId:'a',kind:'skill',id:'x',...(name==='put'?{valueJson:'{}'}:{})};
   if(name==='get')await expect(t.query(makeFunctionReference<'query'>(`tools:${name}`),a)).rejects.toThrow('Server authentication');
   else await expect(t.mutation(makeFunctionReference<'mutation'>(`tools:${name}`),a)).rejects.toThrow('Server authentication');
  });
