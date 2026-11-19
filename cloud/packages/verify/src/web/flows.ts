@@ -77,6 +77,10 @@ const scriptedChat: WebFlow = {
   allow: [],
   async run({page, note}) {
     const text = `Verify ${Date.now().toString(36)}`;
+    await page.getByRole('button', {name: 'Open attachments and controls'}).click();
+    await page.getByTestId('tray-model-picker-trigger').click();
+    await page.getByRole('option', {name: /^Praxis Scripted/}).click();
+    await page.keyboard.press('Escape');
     await composer(page).fill(text);
     await page.getByTestId('composer-send-button').click();
     const screen = page.getByTestId('chat-screen');
