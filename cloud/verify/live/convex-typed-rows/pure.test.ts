@@ -2,7 +2,7 @@ import {ConvexError} from 'convex/values';
 import {describe, expect, it} from 'vitest';
 import {textMessage} from './api.js';
 import {contiguous, errorText, foreignReadCheck, rejectedCheck, settle, stepResult, AUTH_REQUIRED} from './checks.js';
-import {emailCodeFrom, isRecipient} from './mailbox.js';
+import {deployKeyMatches, emailCodeFrom, isRecipient} from './mailbox.js';
 import {liveOwnerEmail, newRunId} from './owners.js';
 
 describe('owner addresses', () => {
@@ -30,6 +30,13 @@ describe('sign-up email parsing', () => {
 
   it('returns null when no link carries a code', () => {
     expect(emailCodeFrom('https://praxis.example/help and no code')).toBeNull();
+  });
+
+  it('reads only the mailbox of the deployment the deploy key names', () => {
+    const url = 'https://colorless-chinchilla-899.convex.cloud';
+    expect(deployKeyMatches('dev:colorless-chinchilla-899|fixture', url)).toBe(true);
+    expect(deployKeyMatches('prod:other-deployment-123|fixture', url)).toBe(false);
+    expect(deployKeyMatches('', url)).toBe(false);
   });
 
   it('matches recipients case-insensitively in either field shape', () => {
