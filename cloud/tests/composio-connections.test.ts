@@ -92,17 +92,23 @@ describe('Composio connections', () => {
 
   it('keeps a single pending account across overlapping requests and revokes the extra account', async () => {
     const {client} = await setup();
-    const first = Promise.withResolvers<ReturnType<typeof link>>();
-    const entered = Promise.withResolvers<void>();
+    let finishFirst!: (value: ReturnType<typeof link>) => void;
+    const first = new Promise<ReturnType<typeof link>>(resolve => {
+      finishFirst = resolve;
+    });
+    let signalFirst!: () => void;
+    const entered = new Promise<void>(resolve => {
+      signalFirst = resolve;
+    });
     fake.createConnectLink.mockImplementationOnce(() => {
-      entered.resolve();
-      return first.promise;
+      signalFirst();
+      return first;
     }).mockResolvedValueOnce(link('ca_second'));
 
     const pending = client.action(connections.connect, target);
-    await entered.promise;
+    await entered;
     const winner = await client.action(connections.connect, target);
-    first.resolve(link('ca_first'));
+    finishFirst(link('ca_first'));
 
     expect(await pending).toBe(winner);
     expect(await client.query(connections.list, {})).toEqual([
