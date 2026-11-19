@@ -37,6 +37,8 @@ interface StepBase {
 
 export interface AutoStep extends StepBase {
   kind: 'auto';
+  /** Releases resources allocated by earlier steps, even on partial runs. */
+  cleanup?: true;
   run(context: StepContext): Promise<StepOutcome>;
 }
 

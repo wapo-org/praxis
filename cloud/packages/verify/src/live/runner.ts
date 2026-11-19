@@ -154,10 +154,20 @@ export async function runSuite(suite: LiveSuite, options: LiveRunOptions): Promi
   const redactor = suiteRedactor(suite, options.env);
   const state = new Map<string, string>();
   const steps: ProofStep[] = [];
-  for (const step of suite.steps) {
-    // Unselected steps stay in the proof as skipped, so a partial run can never read as complete.
-    if (options.only?.length && !options.only.includes(step.id)) steps.push(notSelected(step, options));
-    else steps.push(await runStep(step, options, redactor, state));
+  const cleanup = suite.steps.filter(step => step.kind === 'auto' && step.cleanup);
+  try {
+    for (const step of suite.steps) {
+      if (step.kind === 'auto' && step.cleanup) continue;
+      if (options.only?.length && !options.only.includes(step.id)) {
+        steps.push(notSelected(step, options));
+      } else {
+        steps.push(await runStep(step, options, redactor, state));
+      }
+    }
+  } finally {
+    for (const step of cleanup) {
+      steps.push(await runStep(step, options, redactor, state));
+    }
   }
   const proof = ProofSchema.parse({
     $schema: PROOF_SCHEMA,
