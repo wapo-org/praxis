@@ -66,8 +66,8 @@ describe('PRA-24 typed table CRUD through domain functions', () => {
     expect(cancelled).toMatchObject({userId: alice.userId, chatId: CHAT_ID, workflow: {status: 'cancelling'}});
     const owner = {...token, userId: alice.userId, kind: 'run', id: 'store-run'};
     const value = {type: 'run', id: 'store-run', chatId: CHAT_ID, status: 'running', createdAt: NOW, updatedAt: NOW, lastEventId: 0};
-    await t.mutation(api.store.put, {...owner, value});
-    await t.mutation(api.store.put, {...owner, value: {...value, status: 'completed', lastEventId: 4}});
+    await t.mutation(api.store.put, {...owner, valueJson: JSON.stringify(value)});
+    await t.mutation(api.store.put, {...owner, valueJson: JSON.stringify({...value, status: 'completed', lastEventId: 4})});
     expect(await alice.client.query(api.runs.get, {runId: 'store-run'})).toMatchObject({status: 'completed', lastEventId: 4});
     expect(await t.query(api.store.list, {...token, userId: alice.userId, kind: 'run', parentId: CHAT_ID}))
       .toMatchObject([{id: 'store-run'}]);
@@ -111,16 +111,16 @@ describe('PRA-24 typed table CRUD through domain functions', () => {
     await createChat(alice);
     const owner = {...token, userId: alice.userId};
     const chunk = {kind: 'outputChunk', id: 'chunk-1'};
-    await t.mutation(api.store.put, {...owner, ...chunk, parentId: 'manifest', value: {chatId: CHAT_ID, text: 'one'}});
+    await t.mutation(api.store.put, {...owner, ...chunk, parentId: 'manifest', valueJson: JSON.stringify({chatId: CHAT_ID, text: 'one'})});
     expect(await t.query(api.store.get, {...owner, ...chunk}))
       .toMatchObject({id: 'chunk-1', parentId: 'manifest', value: {chatId: CHAT_ID, text: 'one'}, deleted: false});
-    await t.mutation(api.store.put, {...owner, ...chunk, parentId: 'manifest', value: {chatId: CHAT_ID, text: 'two'}});
+    await t.mutation(api.store.put, {...owner, ...chunk, parentId: 'manifest', valueJson: JSON.stringify({chatId: CHAT_ID, text: 'two'})});
     expect(await t.query(api.store.list, {...owner, kind: 'outputChunk', parentId: 'manifest'}))
       .toMatchObject([{id: 'chunk-1', value: {text: 'two'}}]);
-    await expect(t.mutation(api.store.put, {...owner, ...chunk, parentId: 'other', value: {chatId: CHAT_ID, text: 'x'}}))
+    await expect(t.mutation(api.store.put, {...owner, ...chunk, parentId: 'other', valueJson: JSON.stringify({chatId: CHAT_ID, text: 'x'})}))
       .rejects.toThrow('Output chunk address cannot change');
     await expect(t.mutation(api.store.put, {...owner, kind: 'outputChunk', id: 'orphan', parentId: 'manifest',
-      value: {chatId: 'missing-chat', text: 'x'}})).rejects.toThrow('Chat unavailable');
+      valueJson: JSON.stringify({chatId: 'missing-chat', text: 'x'})})).rejects.toThrow('Chat unavailable');
     await t.mutation(api.store.remove, {...owner, ...chunk});
     expect(await t.query(api.store.list, {...owner, kind: 'outputChunk'})).toEqual([]);
     expect(await t.run(ctx => ctx.db.query('outputs').collect())).toEqual([]);

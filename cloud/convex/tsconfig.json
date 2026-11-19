@@ -21,6 +21,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["./**/*", "../tests/workflow*.ts", "../tests/account-purge.test.ts", "../tests/account-credentials.test.ts", "../tests/convex-owner-isolation.test.ts"],
+  "include": ["./**/*", "../tests/workflow*.ts", "../tests/account-purge.test.ts", "../tests/account-credentials.test.ts", "../tests/convex-*.ts"],
   "exclude": ["./_generated"]
 }

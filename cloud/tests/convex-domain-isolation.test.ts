@@ -18,7 +18,7 @@ async function seedAllTables(t: DomainTest, viewer: Viewer) {
   await t.mutation(internal.turns.commitStub, {userId, chatId: CHAT_ID, runId, generation: 0, expectedTurnIndex: 0});
   await commit(t, userId, [textMessage('same-message', CHAT_ID, `secret of ${userId}`)]);
   await t.mutation(api.store.put, {...token, userId, kind: 'outputChunk', id: 'same-chunk', parentId: 'manifest',
-    value: {chatId: CHAT_ID, text: `output of ${userId}`}});
+    valueJson: JSON.stringify({chatId: CHAT_ID, text: `output of ${userId}`})});
   await t.run(ctx => ctx.db.insert('sandboxes', {userId, chatId: CHAT_ID, sandboxId: 'sbx', volumeName: 'vol',
     status: 'running', lastUsedAt: NOW}));
   return runId;
@@ -71,7 +71,7 @@ describe('PRA-24 owner isolation', () => {
     await createChat(alice);
     await expect(commit(t, bob.userId, [textMessage('intrusion')])).rejects.toThrow('Chat unavailable');
     await expect(t.mutation(api.store.put, {...token, userId: bob.userId, kind: 'outputChunk', id: 'intrusion',
-      parentId: 'manifest', value: {chatId: CHAT_ID, text: 'x'}})).rejects.toThrow('Chat unavailable');
+      parentId: 'manifest', valueJson: JSON.stringify({chatId: CHAT_ID, text: 'x'})})).rejects.toThrow('Chat unavailable');
     const rows = await typedRows(t);
     expect(rows.messages).toEqual([]);
     expect(rows.outputs).toEqual([]);
@@ -104,7 +104,7 @@ describe('PRA-24 owner isolation', () => {
     const messagesJson = JSON.stringify([textMessage('m')]);
     const attempt = (serverToken: string) => [
       () => t.mutation(api.messages.commit, {serverToken, userId: alice.userId, chatId: CHAT_ID, messagesJson}),
-      () => t.mutation(api.store.put, {serverToken, userId: alice.userId, kind: 'message', id: 'm', value: textMessage('m')}),
+      () => t.mutation(api.store.put, {serverToken, userId: alice.userId, kind: 'message', id: 'm', valueJson: JSON.stringify(textMessage('m'))}),
       () => t.mutation(api.store.remove, {serverToken, userId: alice.userId, kind: 'chat', id: CHAT_ID}),
       () => t.query(api.store.get, {serverToken, userId: alice.userId, kind: 'chat', id: CHAT_ID}),
       () => t.mutation(api.account.begin, {serverToken, userId: alice.userId}),
