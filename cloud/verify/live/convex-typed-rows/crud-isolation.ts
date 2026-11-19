@@ -60,17 +60,22 @@ async function waitForRun(api: TypedApi, runId: string): Promise<Run | null> {
   }
 }
 
-async function guarded(id: string, checklist: string, body: (checks: Check[]) => Promise<void>): Promise<StepResult> {
-  const checks: Check[] = [];
-  try {
-    await body(checks);
-  } catch (error) {
-    checks.push(check('step completed', false, `threw: ${errorText(error)}`));
-  }
-  return stepResult(id, checklist, checks);
+export type CrudStep = {id: string; checklist: string; run(): Promise<StepResult>};
+
+/** A throw becomes a failed check, so one broken call never hides the rest of the step's evidence. */
+function step(id: string, checklist: string, body: (checks: Check[]) => Promise<void>): CrudStep {
+  return {id, checklist, run: async () => {
+    const checks: Check[] = [];
+    try {
+      await body(checks);
+    } catch (error) {
+      checks.push(check('step completed', false, `threw: ${errorText(error)}`));
+    }
+    return stepResult(id, checklist, checks);
+  }};
 }
 
-export function crudIsolationSteps(fixture: CrudFixture) {
+export function crudIsolationSteps(fixture: CrudFixture): CrudStep[] {
   const shared: Shared = {
     chatId: `live-pra127-${fixture.runId}-shared`,
     titles: {a: `PRA-127 A ${fixture.runId}`, b: `PRA-127 B ${fixture.runId}`},
@@ -79,7 +84,7 @@ export function crudIsolationSteps(fixture: CrudFixture) {
   const a = typedApi(fixture.a.client);
   const b = typedApi(fixture.b.client);
 
-  const chatLifecycle = () => guarded('owner-chat-lifecycle', CHECKLIST.crud, async checks => {
+  const chatLifecycle = step('owner-chat-lifecycle', CHECKLIST.crud, async checks => {
     const created = await a.createChat(shared.chatId, 'draft');
     checks.push(check('create keeps the client-chosen id', created.id === shared.chatId, created.id === shared.chatId ? 'same id' : 'different id'));
     const renamed = await a.renameChat(shared.chatId, shared.titles.a);
@@ -95,7 +100,7 @@ export function crudIsolationSteps(fixture: CrudFixture) {
     fixture.log(`owner A chat ${shared.chatId} created and renamed`);
   });
 
-  const messagePaging = () => guarded('owner-message-paging', CHECKLIST.crud, async checks => {
+  const messagePaging = step('owner-message-paging', CHECKLIST.crud, async checks => {
     const messages = Array.from({length: MESSAGE_COUNT}, (_, index) =>
       textMessage(shared.chatId, `live-pra127-${fixture.runId}-m${index + 1}`, index % 2 ? 'assistant' : 'user', `message ${index + 1}`));
     const committed = await commitMessages(fixture.a.client, fixture.serverToken, fixture.a.userId, shared.chatId, messages);
@@ -110,7 +115,7 @@ export function crudIsolationSteps(fixture: CrudFixture) {
     fixture.log(`owner A committed ${committed.length} messages`);
   });
 
-  const runRead = () => guarded('owner-run-read', CHECKLIST.crud, async checks => {
+  const runRead = step('owner-run-read', CHECKLIST.crud, async checks => {
     const runId = await a.startRun(shared.chatId);
     shared.runId = runId;
     const run = await waitForRun(reloaded(fixture, fixture.a), runId);
@@ -119,7 +124,7 @@ export function crudIsolationSteps(fixture: CrudFixture) {
     fixture.log(`owner A run ${runId} ${run?.status ?? 'missing'}`);
   });
 
-  const foreignReads = () => guarded('foreign-owner-reads', CHECKLIST.isolation, async checks => {
+  const foreignReads = step('foreign-owner-reads', CHECKLIST.isolation, async checks => {
     if (!shared.runId || shared.messageIds.length === 0) throw new Error('needs owner A\'s chat, messages and run');
     checks.push(foreignReadCheck('B chats.get(A chat)', await settle(b.getChat(shared.chatId))));
     checks.push(foreignReadCheck('B messages.page(A chat)', await settle(b.page(shared.chatId, PAGE_LIMIT))));
@@ -131,7 +136,7 @@ export function crudIsolationSteps(fixture: CrudFixture) {
     checks.push(check('A\'s chat is untouched', read?.title === shared.titles.a && !read.deletedAt, `title ${JSON.stringify(read?.title)}`));
   });
 
-  const sameChatId = () => guarded('same-client-chat-id', CHECKLIST.isolation, async checks => {
+  const sameChatId = step('same-client-chat-id', CHECKLIST.isolation, async checks => {
     const created = await b.createChat(shared.chatId, shared.titles.b);
     checks.push(check('B can create a chat with A\'s chat id', created.id === shared.chatId && created.title === shared.titles.b, 'created'));
     const readB = await reloaded(fixture, fixture.b).getChat(shared.chatId);
@@ -144,7 +149,7 @@ export function crudIsolationSteps(fixture: CrudFixture) {
     checks.push(check('A keeps all its messages', messages.length === MESSAGE_COUNT, `${messages.length} messages`));
   });
 
-  const unauthenticated = () => guarded('unauthenticated-calls', CHECKLIST.isolation, async checks => {
+  const unauthenticated = step('unauthenticated-calls', CHECKLIST.isolation, async checks => {
     const anonymous = typedApi(new ConvexHttpClient(fixture.convexUrl, {logger: false}));
     checks.push(rejectedCheck('anonymous chats.get', await settle(anonymous.getChat(shared.chatId)), AUTH_REQUIRED));
     checks.push(rejectedCheck('anonymous chats.list', await settle(anonymous.listChats()), AUTH_REQUIRED));
@@ -153,7 +158,7 @@ export function crudIsolationSteps(fixture: CrudFixture) {
     checks.push(rejectedCheck('anonymous chats.create', await settle(anonymous.createChat(`${shared.chatId}-anon`, 'anon')), AUTH_REQUIRED));
   });
 
-  const chatDeletion = () => guarded('owner-chat-delete', CHECKLIST.crud, async checks => {
+  const chatDeletion = step('owner-chat-delete', CHECKLIST.crud, async checks => {
     checks.push(check('A removes its chat', await a.removeChat(shared.chatId), 'removed'));
     const api = reloaded(fixture, fixture.a);
     checks.push(check('reload no longer reads the chat', await api.getChat(shared.chatId) === null, 'null'));
@@ -165,15 +170,7 @@ export function crudIsolationSteps(fixture: CrudFixture) {
     checks.push(check('B removes its own chat', await b.removeChat(shared.chatId), 'removed'));
   });
 
-  return [
-    {id: 'owner-chat-lifecycle', checklist: CHECKLIST.crud, run: chatLifecycle},
-    {id: 'owner-message-paging', checklist: CHECKLIST.crud, run: messagePaging},
-    {id: 'owner-run-read', checklist: CHECKLIST.crud, run: runRead},
-    {id: 'foreign-owner-reads', checklist: CHECKLIST.isolation, run: foreignReads},
-    {id: 'same-client-chat-id', checklist: CHECKLIST.isolation, run: sameChatId},
-    {id: 'unauthenticated-calls', checklist: CHECKLIST.isolation, run: unauthenticated},
-    {id: 'owner-chat-delete', checklist: CHECKLIST.crud, run: chatDeletion},
-  ] as const;
+  return [chatLifecycle, messagePaging, runRead, foreignReads, sameChatId, unauthenticated, chatDeletion];
 }
 
 /** Runs every step in order; later steps still run after a failure so the proof shows each line's own result. */
