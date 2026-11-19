@@ -4,7 +4,7 @@ import { deriveTenantId, SealedSecret } from '@praxis/types';
 import { internalAction } from '../_generated/server.js';
 import { internal } from '../_generated/api.js';
 import { ConvexError, v } from 'convex/values';
-import { composioFor } from './client.js';
+import { composioFor, normalizeToolkit } from './client.js';
 import { COMPOSIO_ERRORS, TENANT_ID_SECRET_ENV } from './constants.js';
 import { returnTarget } from './returnTarget.js';
 
@@ -13,12 +13,13 @@ const scope = { userId: v.string(), toolkit: v.string() };
 
 export const connect = internalAction({
   args: { ...scope, returnTo: v.string() },
-  handler: async (ctx, {userId, toolkit, returnTo}): Promise<string> => {
+  handler: async (ctx, {userId, toolkit: requestedToolkit, returnTo}): Promise<string> => {
     const callbackUrl = returnTarget(returnTo, process.env);
     const secret = process.env[TENANT_ID_SECRET_ENV];
     if (!secret) throw new ConvexError(COMPOSIO_ERRORS.tenantSecretMissing);
     const tenantId = await deriveTenantId(userId, SealedSecret.of(secret));
     const client = composioFor(process.env);
+    const toolkit = normalizeToolkit(requestedToolkit);
     const target = {userId, toolkit};
     const attempt = await ctx.runMutation(store.beginConnect, target);
     if (attempt.status === 'unavailable') throw new ConvexError(COMPOSIO_ERRORS.accountUnavailable);
@@ -40,7 +41,8 @@ export const connect = internalAction({
 
 export const disconnect = internalAction({
   args: scope,
-  handler: async (ctx, target): Promise<null> => {
+  handler: async (ctx, {userId, toolkit}): Promise<null> => {
+    const target = {userId, toolkit: normalizeToolkit(toolkit)};
     const client = composioFor(process.env);
     const connection = await ctx.runQuery(store.get, target);
     if (!connection.active) throw new ConvexError(COMPOSIO_ERRORS.accountUnavailable);

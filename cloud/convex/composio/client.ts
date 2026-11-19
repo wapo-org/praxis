@@ -41,7 +41,7 @@ export interface ComposioClient {
 }
 
 const ConnectLinkResponseSchema = z.object({
-  redirect_url: z.url(),
+  redirect_url: z.url({protocol: /^https$/}),
   connected_account_id: z.string().min(1),
   expires_at: z.iso.datetime({offset: true}),
 });
@@ -50,21 +50,26 @@ function notConfigured(envName: string): ComposioError {
   return new ComposioError(COMPOSIO_ERROR_CODES.notConfigured, `${envName} is not set`);
 }
 
-function authConfigEnvName(toolkit: string): string {
+export function normalizeToolkit(toolkit: string): string {
   if (!TOOLKIT_SLUG_PATTERN.test(toolkit)) {
     throw new ComposioError(COMPOSIO_ERROR_CODES.invalidToolkit, 'Toolkit slug must be letters, digits or _');
   }
-  return `${COMPOSIO_AUTH_CONFIG_ENV_PREFIX}${toolkit.toUpperCase()}`;
+  return toolkit.toLowerCase();
 }
 
 async function request(apiKey: SealedSecret, path: string, init: RequestInit): Promise<Response> {
-  return fetch(`${COMPOSIO_API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      'content-type': 'application/json',
-      [COMPOSIO_API_KEY_HEADER]: apiKey.reveal(),
-    },
-  });
+  try {
+    return await fetch(`${COMPOSIO_API_BASE_URL}${path}`, {
+      ...init,
+      redirect: 'manual',
+      headers: {
+        'content-type': 'application/json',
+        [COMPOSIO_API_KEY_HEADER]: apiKey.reveal(),
+      },
+    });
+  } catch {
+    throw new ComposioError(COMPOSIO_ERROR_CODES.http, 'Composio request failed');
+  }
 }
 
 function httpError(operation: string, status: number): ComposioError {
@@ -79,7 +84,7 @@ export function composioFor(env: Record<string, string | undefined>): ComposioCl
 
   return {
     async createConnectLink({tenantId, toolkit, callbackUrl}) {
-      const envName = authConfigEnvName(toolkit);
+      const envName = `${COMPOSIO_AUTH_CONFIG_ENV_PREFIX}${normalizeToolkit(toolkit).toUpperCase()}`;
       const authConfigId = env[envName];
       if (!authConfigId) throw notConfigured(envName);
 
@@ -90,7 +95,7 @@ export function composioFor(env: Record<string, string | undefined>): ComposioCl
       });
       if (!response.ok) throw httpError('connect link', response.status);
 
-      const parsed = ConnectLinkResponseSchema.safeParse(await response.json());
+      const parsed = ConnectLinkResponseSchema.safeParse(await response.json().catch(() => undefined));
       if (!parsed.success) {
         throw new ComposioError(COMPOSIO_ERROR_CODES.invalidResponse, 'Composio connect link response is malformed');
       }

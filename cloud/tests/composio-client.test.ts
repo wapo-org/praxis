@@ -52,6 +52,7 @@ describe('composioFor', () => {
     const [url, init] = fake.mock.calls[0]!;
     expect(url).toBe(`${COMPOSIO_API_BASE_URL}/connected_accounts/link`);
     expect(init.method).toBe('POST');
+    expect(init.redirect).toBe('manual');
     expect(init.headers).toMatchObject({'x-api-key': API_KEY});
     expect(JSON.parse(String(init.body))).toEqual({
       auth_config_id: 'ac_github',
@@ -83,6 +84,14 @@ describe('composioFor', () => {
 
   it('rejects a malformed success body', async () => {
     stubFetch(201, {redirect_url: 'not a url'});
+    const error = await caught(
+      composioFor(ENV).createConnectLink({tenantId: TENANT_ID, toolkit: 'github', callbackUrl: 'https://a.example'}),
+    );
+    expect(error.code).toBe(COMPOSIO_ERROR_CODES.invalidResponse);
+  });
+
+  it('rejects an insecure redirect from the provider', async () => {
+    stubFetch(201, {...LINK_RESPONSE, redirect_url: 'javascript:alert(1)'});
     const error = await caught(
       composioFor(ENV).createConnectLink({tenantId: TENANT_ID, toolkit: 'github', callbackUrl: 'https://a.example'}),
     );

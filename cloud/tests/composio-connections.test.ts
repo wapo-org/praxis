@@ -6,9 +6,9 @@ import { registerPassword } from '@convex-dev/auth/components/password/test';
 import { registerCore } from '@convex-dev/auth/test';
 import { deriveTenantId, SealedSecret } from '@praxis/types';
 import { api, internal } from '../convex/_generated/api.js';
-import type { ComposioClient } from '../convex/composio/client.js';
+import { COMPOSIO_API_KEY_ENV, type ComposioClient } from '../convex/composio/client.js';
 import {
-  ALLOWED_ORIGINS_ENV, COMPOSIO_API_KEY_ENV, COMPOSIO_ERRORS, NATIVE_RETURN_URL, TENANT_ID_SECRET_ENV,
+  ALLOWED_ORIGINS_ENV, COMPOSIO_ERRORS, NATIVE_RETURN_URL, TENANT_ID_SECRET_ENV,
 } from '../convex/composio/constants.js';
 import schema from '../convex/schema.js';
 import { SERVER_TOKEN, signedInUser } from './workflow-fixture.js';
@@ -79,7 +79,7 @@ describe('Composio connections', () => {
   it('sends a tenant ID, stores the pending link and reuses the link on a second click', async () => {
     const {client, userId} = await setup();
     const redirect = await client.action(connections.connect, target);
-    expect(await client.action(connections.connect, target)).toBe(redirect);
+    expect(await client.action(connections.connect, {...target, toolkit: 'GMAIL'})).toBe(redirect);
     expect(await client.query(connections.list, {})).toEqual([
       expect.objectContaining({status: 'pending', connectedAccountId: 'ca_first', redirectUrl: redirect}),
     ]);
@@ -168,7 +168,7 @@ describe('Composio connections', () => {
     });
     fake.revokeConnection.mockRejectedValueOnce(new Error('Revocation failed'));
 
-    const args = {toolkit: target.toolkit};
+    const args = {toolkit: 'GMAIL'};
     await expect(client.action(connections.disconnect, args)).rejects.toThrow('Revocation failed');
     expect(await client.query(connections.list, {})).toEqual([expect.objectContaining({status: 'connected'})]);
     await expect(client.action(connections.disconnect, args)).resolves.toBeNull();
@@ -195,7 +195,7 @@ describe('Composio connections', () => {
 
   it.each([
     [TENANT_ID_SECRET_ENV, COMPOSIO_ERRORS.tenantSecretMissing],
-    [COMPOSIO_API_KEY_ENV, COMPOSIO_ERRORS.apiKeyMissing],
+    [COMPOSIO_API_KEY_ENV, `${COMPOSIO_API_KEY_ENV} is not set`],
   ])('fails closed without %s', async (name, error) => {
     const {client} = await setup();
     vi.stubEnv(name, undefined);
