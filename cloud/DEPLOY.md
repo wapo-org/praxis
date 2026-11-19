@@ -117,7 +117,6 @@ Create a second project with Root Directory `cloud/apps/web` (see `cloud/docs/we
 | Web return after connector OAuth | an origin listed in `PRAXIS_WEB_ORIGINS` |
 | QStash continuation (no registration; it must be publicly reachable) | `PRAXIS_API_URL/internal/continue` |
 | Google sign-in redirect (Convex Auth v2) | `<CONVEX_SITE_URL>/oauth/google/callback` |
-| Apple sign-in return URL (Convex Auth v2, public HTTPS) | `<CONVEX_SITE_URL>/oauth/apple/callback` |
 
 ## Security notes
 
@@ -151,7 +150,7 @@ Live Convex and Upstash contract tests run when their env vars are set: `CONVEX_
 
 ## Account deletion protocol (additive)
 
-Hosted `DELETE /v1/account` requires a Convex Auth bearer and accepts `{ "type": "account.delete", "password": "…" }`. Password accounts must supply their current password. Google- or Apple-only accounts can leave the password empty after signing in within the last five minutes. The normal origin and authenticated rate-limit checks apply. Missing confirmation returns 403. Success returns `{ "type": "account.deleted" }`. Revoked bearers return 401 and their refresh tokens cannot create a session. The rate-limit counters expire on their own.
+Hosted `DELETE /v1/account` requires a Convex Auth bearer and accepts `{ "type": "account.delete", "password": "…" }`. Password accounts must supply their current password. Google-only accounts can leave the password empty after signing in within the last five minutes. The normal origin and authenticated rate-limit checks apply. Missing confirmation returns 403. Success returns `{ "type": "account.deleted" }`. Revoked bearers return 401 and their refresh tokens cannot create a session. The rate-limit counters expire on their own.
 
 The production eraser locks account activation, marks the account as deleting, freezes owner Redis writes, purges indexed Redis data (streams, caches, OAuth state and leases), then hard-deletes every owner-scoped Convex table and uploaded blobs in bounded batches. Other sessions are revoked when deletion starts, and sign-in is blocked until the credentials are erased. The initiating session can retry deletion while still signed in. Convex schedules signed recovery callbacks to `/internal/continue` every minute while the owner is marked for deletion, so sign-out or a worker failure cannot strand the purge. The final batch revokes the initiating session and erases the credentials. Redis ownership indexes are registered atomically with writes as a sorted set scored by key expiry, pruned on every owner write so it stays bounded; the purge removes keys in chunks and drops them from the index as it goes, so a retry resumes. Activation verifies that the Convex account remains active. The global blob sweep stores its cursor on the user row, so a retried request continues it. Generic Convex writes are fenced once deletion begins. Blob ownership tags also permit deleting interrupted, unbound uploads. Every Convex table must declare a deletion policy in `convex/accountTables.ts` (a missing one fails typecheck); in-flight workflows are cancelled and their journals cleaned before their runs are deleted; new owner KV writes must carry `ownerId` (feature contexts do so automatically).
 
@@ -207,15 +206,14 @@ gate is green. There is no merge or deployment step in CI.
 Install with `cd cloud && npm install`, then run `CONVEX_AGENT_MODE=anonymous npx convex dev` for local development.
 Set deployment variables with `npx convex env set NAME` (enter secret values interactively):
 `RESEND_API_KEY`, `SENDER_EMAIL`, `SENDER_NAME`, `SITE_URL`,
-`AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET`,
-`AUTH_APPLE_CLIENT_ID`, `AUTH_APPLE_TEAM_ID`, `AUTH_APPLE_KEY_ID`, `AUTH_APPLE_PRIVATE_KEY`.
+`AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET`.
 All are required; use a Resend-verified sender and the actual web origin for SITE_URL.
 Set web `VITE_CONVEX_URL` to the deployment's client URL; no provider credentials belong in Vite.
 For the local API, set `PRAXIS_LOCAL_CONVEX_URL` to the same loopback HTTP deployment:
 `PRAXIS_LOCAL_CONVEX_URL=http://127.0.0.1:3210 npm run dev:local`.
 Without this API variable, the legacy local API accepts dev tokens rather than Convex sessions.
 The managed browser verification stack sets both URLs automatically; the local API variable is not a production setting.
-Register the Google redirect URI and Apple Services ID return URL listed under [OAuth and callback URLs](#oauth-and-callback-urls-to-register).
+Register the Google redirect URI listed under [OAuth and callback URLs](#oauth-and-callback-urls-to-register).
 The HTTPS page for the future iOS handoff must share the SITE_URL origin.
 No cloud deployment is part of PRA-34 verification.
 Component tests use the upstream fake Resend component, retaining the real password WASM and auth code.

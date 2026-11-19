@@ -22,9 +22,6 @@ vi.mock('@convex-dev/auth/methods/email-password/react', () => ({
 vi.mock('@convex-dev/auth/methods/google/react', () => ({
   useSignInWithGoogle: () => ({ signIn: hooks.oauth }), useOauth: () => ({ flowError: null }),
 }));
-vi.mock('@convex-dev/auth/methods/apple/react', () => ({
-  useSignInWithApple: () => ({ signIn: hooks.oauth }),
-}));
 afterEach(() => vi.unstubAllEnvs());
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -67,12 +64,12 @@ it('explains wrong-browser validation and submits recovery through its ready sta
   await act(async () => root.unmount());
 });
 
-it.each(['Google', 'Apple'])('re-enables sign-in and shows a resolved %s initiation error', async provider => {
+it('re-enables sign-in and shows a resolved Google initiation error', async () => {
   hooks.oauth.mockResolvedValue({ status: 'error', userError: { error: 'EXPIRED' } });
   const node = document.createElement('div');
   const root = createRoot(node);
   await act(async () => root.render(<EmailScreens />));
-  const button = [...node.querySelectorAll('button')].find(b => b.textContent === 'Continue with ' + provider)!;
+  const button = [...node.querySelectorAll('button')].find(b => b.textContent === 'Continue with Google')!;
   await act(async () => button.click());
   expect(node.querySelector('[role=alert]')?.textContent).toContain('expired');
   expect([...node.querySelectorAll('button')].every(b => !b.disabled)).toBe(true);
@@ -134,15 +131,15 @@ it('preserves the account method conflict message for a folded Convex error', as
   await act(async () => root.unmount());
 });
 
-it.each(['Google', 'Apple'])('keeps the signed-out screen usable when Preview simulates %s', async provider => {
-  vi.stubEnv('PRAXIS_MOCK_OAUTH', 'google,apple');
+it('keeps the signed-out screen usable when Preview simulates Google', async () => {
+  vi.stubEnv('PRAXIS_MOCK_OAUTH', 'google');
   const node = document.createElement('div');
   const root = createRoot(node);
   await act(async () => root.render(<EmailScreens />));
-  const button = [...node.querySelectorAll('button')].find(item => item.textContent === 'Continue with ' + provider)!;
+  const button = [...node.querySelectorAll('button')].find(item => item.textContent === 'Continue with Google')!;
   await act(async () => button.click());
   expect(hooks.oauth).not.toHaveBeenCalled();
-  expect(node.querySelector('[role=alert]')?.textContent).toBe(`This preview simulates an unavailable ${provider} sign-in. Use email to continue.`);
+  expect(node.querySelector('[role=alert]')?.textContent).toBe('This preview simulates an unavailable Google sign-in. Use email to continue.');
   expect(button.disabled).toBe(false);
   await act(async () => root.unmount());
 });

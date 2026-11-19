@@ -11,7 +11,6 @@ import {registerCore, sessionIdentity} from '@convex-dev/auth/test';
 import {registerEmail, registerResendStub, sentEmails} from '@convex-dev/auth/components/email/test';
 import {registerPassword} from '@convex-dev/auth/components/password/test';
 import {registerGoogleOauth} from '@convex-dev/auth/components/google/test';
-import {registerAppleOauth} from '@convex-dev/auth/components/apple/test';
 import workflowComponent from '@convex-dev/workflow/test';
 import {createProductionApp} from '../apps/api/src/production.js';
 import * as upstash from '../apps/api/src/adapters/upstash.js';
@@ -28,7 +27,6 @@ const API_ORIGIN = 'https://api.example.test';
 const TEST_ACCESS_TTL_SECONDS = 600;
 const TEST_SESSION_TTL_SECONDS = 3600;
 const GOOGLE_SUB = 'google-subject-1';
-const APPLE_SUB = 'apple-subject-1';
 const PURGE_CALLS_MAX = 20;
 const PINNED_AUTH_VERSION = '2.0.0';
 // Matches the component's verifyPassword token bucket capacity.
@@ -43,7 +41,6 @@ function setup() {
   registerPassword(t);
   registerResendStub(t);
   registerGoogleOauth(t);
-  registerAppleOauth(t);
   workflowComponent.register(t);
   return Object.assign(t.withRequestMetadata({ip: '127.0.0.1'}), {registerComponent: t.registerComponent.bind(t)});
 }
@@ -70,16 +67,12 @@ function linkOAuth(t: CredentialTest, userId: string) {
     await ctx.runMutation(components.authGoogle.provider._internal_dangerous_createAccount, {
       providerAccountId: GOOGLE_SUB, userId,
     });
-    await ctx.runMutation(components.authApple.provider._internal_dangerous_createAccount, {
-      providerAccountId: APPLE_SUB, userId,
-    });
   });
 }
 
 function credentials(t: CredentialTest, userId: string) {
   return t.run(async ctx => ({
     google: await ctx.runQuery(components.authGoogle.provider.getUserIdByAccount, {providerAccountId: GOOGLE_SUB}),
-    apple: await ctx.runQuery(components.authApple.provider.getUserIdByAccount, {providerAccountId: APPLE_SUB}),
     emails: await ctx.runQuery(components.authEmail.verifiedEmails.getEmails, {userId}),
     sessions: await ctx.runQuery(components.auth.public.listSessions, {userId}),
   }));
@@ -288,7 +281,7 @@ describe('account deletion erases auth credentials', () => {
     expect(siblingState).not.toBeNull();
     expect(await t.run(ctx => ctx.db.query('toolState').collect())).toEqual([siblingState]);
     expect(await t.query(api.account.pending, server)).toBe(false);
-    expect(await credentials(t, userId)).toEqual({google: null, apple: null, emails: [], sessions: []});
+    expect(await credentials(t, userId)).toEqual({google: null, emails: [], sessions: []});
     expect(await t.run(async ctx => (await ctx.db.query('users').collect()).map(user => user._id))).toEqual([siblingId]);
     expect(await t.run(async ctx => (await ctx.db.query('oauthEmails').collect()).map(email => email.userId))).toEqual([siblingId]);
     expect(await t.mutation(api.auth.refreshSession, {refreshToken: fresh.refreshToken}))
@@ -301,12 +294,12 @@ describe('account deletion erases auth credentials', () => {
     const userId = tokens.userId;
     await linkOAuth(t, userId);
     expect(await verifyPassword(t, userId, PASSWORD)).toEqual({success: true});
-    expect(await credentials(t, userId)).toMatchObject({google: userId, apple: userId, emails: [{email: EMAIL}]});
+    expect(await credentials(t, userId)).toMatchObject({google: userId, emails: [{email: EMAIL}]});
 
     await deleteAccount(t, userId);
 
     expect(await t.run(ctx => ctx.db.query('users').collect())).toEqual([]);
-    expect(await credentials(t, userId)).toEqual({google: null, apple: null, emails: [], sessions: []});
+    expect(await credentials(t, userId)).toEqual({google: null, emails: [], sessions: []});
     await expect(verifyPassword(t, userId, PASSWORD)).rejects.toThrow('No password stored');
     expect(await t.mutation(api.auth.refreshSession, {refreshToken: tokens.refreshToken})).toEqual({kind: 'noSession'});
     const oldSignIn = await t.mutation(api.auth.signInWithEmailPassword, {email: EMAIL, password: PASSWORD});
@@ -315,7 +308,7 @@ describe('account deletion erases auth credentials', () => {
     const fresh = await signUp(t);
     expect(fresh.userId).not.toBe(userId);
     await linkOAuth(t, fresh.userId);
-    expect(await credentials(t, fresh.userId)).toMatchObject({google: fresh.userId, apple: fresh.userId});
+    expect(await credentials(t, fresh.userId)).toMatchObject({google: fresh.userId});
   });
 });
 
@@ -348,10 +341,9 @@ describe('patched @convex-dev/auth component deletes', () => {
     await t.run(async ctx => {
       for (let call = 0; call < 2; call++) {
         await ctx.runMutation(components.authGoogle.provider.deleteUser, {userId: 'user-a'});
-        await ctx.runMutation(components.authApple.provider.deleteUser, {userId: 'user-a'});
       }
     });
-    expect(await credentials(t, 'user-a')).toMatchObject({google: null, apple: null});
+    expect(await credentials(t, 'user-a')).toMatchObject({google: null});
     const other = await t.run(ctx => ctx.runQuery(components.authGoogle.provider.getUserIdByAccount, {
       providerAccountId: 'google-subject-2',
     }));

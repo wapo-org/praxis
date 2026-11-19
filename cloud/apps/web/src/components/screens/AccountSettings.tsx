@@ -84,7 +84,7 @@ function DeleteAccountConfirm({
         />
       </label>
       <p className={styles.footnote}>
-        Enter your current password. If you only use Google or Apple, sign in again and
+        Enter your current password. If you only use Google, sign in again and
         leave the password empty.
       </p>
       <TaskError error={task.error} />
