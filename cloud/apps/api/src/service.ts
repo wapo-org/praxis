@@ -130,7 +130,7 @@ export class ApiService{
     timedStep('titleFor',()=>this.titleFor(userId,chat,input.text,attachments,previousMessages)),
    ]);
    title=resolvedTitle;
-   const message:Message={type:'message',id:randomUUID(),chatId:chat.id,runId:run.id,clientTurnId:run.clientTurnId,sequence:previousMessages.length+1,role:'user',parts:[...(notes??[]).map(text=>({type:'note' as const,text})),...attachmentParts(attachments,input.text)],createdAt:now,updatedAt:now};
+   const message:Message={type:'message',id:randomUUID(),chatId:chat.id,runId:run.id,clientTurnId:run.clientTurnId,role:'user',parts:[...(notes??[]).map(text=>({type:'note' as const,text})),...attachmentParts(attachments,input.text)],createdAt:now,updatedAt:now};
    messages=[...previousMessages,message];
    const rawSuggested=input.suggestedTitle?.trim();
    const suggested=rawSuggested?validateTitle(rawSuggested,input.text)??undefined:undefined;
@@ -205,20 +205,8 @@ export class ApiService{
    if(event.type==='approval.requested')run.status='awaitingApproval';
    if(event.type==='elicitation.requested')run.status='awaitingElicitation';
    if(event.type==='run.finished'){run.status=event.outcome==='failed'?'failed':event.outcome==='cancelled'?'cancelled':'completed';run.outcome=event.outcome;}
-   if(event.type==='messages.committed'){
-    const needCount=event.messages.some(m=>m.sequence===undefined);
-    const [existingList,beforeRows]=await Promise.all([
-     needCount?this.list<Message>(userId,'message',run.chatId):Promise.resolve([]),
-     Promise.all(event.messages.map(m=>this.adapters.store.get(userId,'message',m.id))),
-    ]);
-    let count=existingList.length;
-    for(let i=0;i<event.messages.length;i++){
-     const m=event.messages[i]!,before=beforeRows[i];
-     m.sequence=(before?.value.sequence as number|undefined)??m.sequence??++count;
-     m.clientTurnId??=run.clientTurnId;
-     m.promptStartedAt??=run.promptStartedAt;
-     await this.write(userId,'message',m.id,m);
-    }
+   if (event.type === 'messages.committed') {
+    await this.commitMessages(userId, run, event.messages);
    }
    const eventKey=event.type==='messages.committed'?`messages:${JSON.stringify(event.messages.map(m=>m.id))}`:undefined;
    const record=await this.adapters.events.append(userId,`run:${runId}`,{event,createdAt:this.now(),chatId:run.chatId},eventKey);run.lastEventId=Math.max(run.lastEventId,record.id);
@@ -229,6 +217,34 @@ export class ApiService{
    if(this.terminal(run)){await this.updateChat(userId,run.chatId,chat=>{if(chat.activeRunId===run.id)delete chat.activeRunId;chat.updatedAt=this.now();return chat;});await this.changed(userId,'run',runId,'upsert',run);}
    return record.id;
   });
+ }
+ private async commitMessages(userId: string, run: Run, messages: Message[]) {
+  if (!messages.length) return;
+  for (const message of messages) {
+   message.clientTurnId ??= run.clientTurnId;
+   message.promptStartedAt ??= run.promptStartedAt;
+  }
+  const store = this.adapters.store;
+  if (store.commitMessages) {
+   const committed = await store.commitMessages(userId, run.chatId, messages);
+   await this.adapters.kv.del(`bootstrap:${userId}`);
+   this.indexed(userId, 'message', '', run.chatId);
+   for (const [index, message] of committed.entries()) {
+    Object.assign(messages[index]!, message);
+    await this.changed(userId, 'message', message.id, 'upsert', message);
+   }
+   return;
+  }
+  const [existing, prior] = await Promise.all([
+   this.list<Message>(userId, 'message', run.chatId),
+   Promise.all(messages.map(message => store.get(userId, 'message', message.id))),
+  ]);
+  let sequence = existing.reduce((last, message) => Math.max(last, message.sequence ?? 0), 0);
+  for (const [index, message] of messages.entries()) {
+   const before = prior[index]?.value.sequence;
+   message.sequence = typeof before === 'number' ? before : ++sequence;
+   await this.write(userId, 'message', message.id, message);
+  }
  }
  async decision(userId:string,runId:string,decision:RunDecision):Promise<Run>{return this.exclusive(`decision:${userId}:${runId}`,async()=>{
   const run=await this.require<Run>(userId,'run',runId);

@@ -186,8 +186,8 @@ describe('account deletion erases auth credentials', () => {
     const {ownerStateId, siblingState} = await t.run(async ctx => {
       await ctx.db.insert('sequences', {userId, value: 1});
       const state = {kind: 'tool', id: 'shared-id'};
-      const ownerStateId = await ctx.db.insert('toolState', {...state, userId, value: {name: 'owner'}});
-      const siblingStateId = await ctx.db.insert('toolState', {...state, userId: siblingId, value: {name: 'sibling'}});
+      const ownerStateId = await ctx.db.insert('toolState', {...state, userId, value: {encoded: JSON.stringify({name: 'owner'})}});
+      const siblingStateId = await ctx.db.insert('toolState', {...state, userId: siblingId, value: {encoded: JSON.stringify({name: 'sibling'})}});
       return {ownerStateId, siblingState: await ctx.db.get(siblingStateId)};
     });
     const server = {serverToken: SERVER_TOKEN, userId};

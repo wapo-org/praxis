@@ -1,8 +1,9 @@
-import type { JsonObject, JsonValue, TurnRequest, TurnResult } from '@praxis/protocol';
+import type { JsonObject, JsonValue, Message, TurnRequest, TurnResult } from '@praxis/protocol';
 export interface StoredRecord { userId:string; kind:string; id:string; value:JsonObject; revision:number; updatedAt:string; deleted:boolean; parentId?:string }
 /** Secondary index (e.g. chatId) so list queries never scan a whole kind. */
 export interface ListOptions { parentId?:string }
 export interface Store {
+ commitMessages?(userId: string, chatId: string, messages: Message[]): Promise<Message[]>;
  get(userId:string,kind:string,id:string):Promise<StoredRecord|null>;
  list(userId:string,kind:string,options?:ListOptions):Promise<StoredRecord[]>;
  put(userId:string,kind:string,id:string,value:JsonObject,options?:ListOptions):Promise<StoredRecord>;

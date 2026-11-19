@@ -12,6 +12,7 @@ const modules = {
   '../../../../../convex/accountRecovery.ts': () => import('../../../../../convex/accountRecovery.js'),
   '../../../../../convex/account.ts': () => import('../../../../../convex/account.js'),
   '../../../../../convex/tools.ts': () => import('../../../../../convex/tools.js'),
+  '../../../../../convex/messages.ts': () => import('../../../../../convex/messages.js'),
   '../../../../../convex/store.ts': () => import('../../../../../convex/store.js'),
   '../../../../../convex/files.ts': () => import('../../../../../convex/files.js'),
   '../../../../../convex/search.ts': () => import('../../../../../convex/search.js'),

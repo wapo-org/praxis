@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import {runStatus} from './workflows/validators.js';
+import { connections } from './composio/schema.js';
+import {domainTables} from './domainSchema.js';
 
 /** Generic owner-scoped row with optional parentId index. */
 const row = {
@@ -8,13 +9,14 @@ const row = {
   kind: v.string(),
   id: v.string(),
   parentId: v.optional(v.string()),
-  value: v.any(),
+  valueJson: v.string(),
   revision: v.number(),
   updatedAt: v.string(),
   deleted: v.boolean(),
 };
 
 export default defineSchema({
+  connections,
   // `deleting` fences every owner write once account deletion begins.
   users: defineTable({
     deleting: v.optional(v.boolean()),
@@ -24,24 +26,28 @@ export default defineSchema({
   oauthEmails: defineTable({ userId: v.id('users'), email: v.string() })
     .index('email', ['email'])
     .index('user', ['userId']),
-  runs: defineTable({
-    userId: v.string(), chatId: v.string(), status: runStatus,
-    startTurnIndex: v.number(), nextTurnIndex: v.number(), generation: v.number(),
-    workflowId: v.optional(v.string()),
-  }).index('owner_chat', ['userId', 'chatId']),
-  turnFlags: defineTable({
-    runId: v.id('runs'), generation: v.number(), turnIndex: v.number(),
-    done: v.boolean(), status: v.union(v.literal('ready'), v.literal('completed'), v.literal('stopped')),
-  }).index('run_generation_turn', ['runId', 'generation', 'turnIndex']),
+  ...domainTables,
   toolSkillFiles: defineTable({userId:v.string(),skillId:v.string(),path:v.string(),content:v.string()})
     .index('owner_skill', ['userId','skillId']),
-  toolState: defineTable({userId:v.string(),kind:v.string(),id:v.string(),value:v.any()})
+  toolState: defineTable({
+    userId: v.string(),
+    kind: v.string(),
+    id: v.string(),
+    value: v.union(
+      v.object({encoded: v.string()}),
+      v.object({allowanceMicroUsd: v.number()}),
+      v.object({period: v.string(), state: v.union(v.literal('reserved'), v.literal('closed'))}),
+      v.object({payer: v.literal('platform'), service: v.string(), slot: v.number(), actualMicroUsd: v.number(), period: v.string()}),
+    ),
+  })
     .index('owner_kind_id', ['userId','kind','id']),
   records: defineTable(row)
     .index('owner_kind_id', ['userId', 'kind', 'id'])
     .index('owner_kind_parent', ['userId', 'kind', 'parentId']),
   // Immutable revision log keyed by per-owner sequence, never wall-clock.
-  changes: defineTable(row).index('owner_revision', ['userId', 'revision']),
+  changes: defineTable(row)
+    .index('owner_revision', ['userId', 'revision'])
+    .index('owner_kind_id_revision', ['userId', 'kind', 'id', 'revision']),
   sequences: defineTable({ userId: v.string(), value: v.number() }).index('owner', ['userId']),
   // Semantic search: one vector per chat title or message chunk (convex/search.ts). `scope` = owner + embedder.
   embeddings: defineTable({

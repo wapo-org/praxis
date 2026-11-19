@@ -1,9 +1,11 @@
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import { z } from 'zod';
-import { JsonObjectSchema, type JsonObject } from '@praxis/protocol';
+import { JsonObjectSchema, MessageSchema, type JsonObject } from '@praxis/protocol';
 import type { ListOptions, Store, StoredRecord } from '../contracts.js';
 import { ChangePageSchema, Limit, RecordSchema, Revision, Scope } from './validation.js';
+
+const MESSAGE_COMMIT = 'messages:commit';
 
 export interface ConvexOptions {
   url: string;
@@ -63,6 +65,13 @@ function toRecord(value: unknown): StoredRecord {
 
 export function storeFromRPC(rpc: ConvexRPC): ConvexStore {
   return {
+    async commitMessages(userId, chatId, messages) {
+      const payload = z.array(MessageSchema).parse(messages);
+      const result = await rpc.mutation(MESSAGE_COMMIT, {
+        userId: Scope.parse(userId), chatId, messagesJson: JSON.stringify(payload),
+      });
+      return z.array(MessageSchema).parse(result);
+    },
     async *owners() {
       let cursor: string | null = null;
       do {
@@ -80,7 +89,7 @@ export function storeFromRPC(rpc: ConvexRPC): ConvexStore {
       return rows.map(toRecord);
     },
     async put(userId, kind, id, value, options) {
-      const args = { ...address(userId, kind, id), ...parent(options), value: JsonObjectSchema.parse(value) };
+      const args = { ...address(userId, kind, id), ...parent(options), valueJson: JSON.stringify(JsonObjectSchema.parse(value)) };
       return toRecord(await rpc.mutation('store:put', args));
     },
     async delete(userId, kind, id) {
@@ -98,7 +107,7 @@ export function storeFromRPC(rpc: ConvexRPC): ConvexStore {
       const args = {
         ...address(userId, kind, id),
         ...parent(options),
-        value: JsonObjectSchema.parse(value),
+        valueJson: JSON.stringify(JsonObjectSchema.parse(value)),
         expectedRevision: Revision.parse(expectedRevision),
       };
       const row = await rpc.mutation('store:putIfRevision', args);

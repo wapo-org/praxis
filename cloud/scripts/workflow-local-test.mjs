@@ -51,27 +51,24 @@ try {
     componentPath: 'auth', userId, ...SESSION_TTL}, undefined, 'auth');
   // Auth v2 access tokens name the session as subject; getAuthUserId resolves it to the user.
   const identity = {subject: JSON.parse(Buffer.from(tokens.accessToken.split('.')[1], 'base64url').toString()).sub};
-  const path = join(directory, 'records.json');
-  await writeFile(path, JSON.stringify([{userId, kind: 'chat', id: chatId, value: {}, revision: 1,
-    updatedAt: new Date().toISOString(), deleted: false}]));
-  await cli('import', '--table', 'records', '--append', path);
+  await run('chats:create', {input: {type: 'chat.input', id: chatId}}, identity);
   const runId = await run('runs:start', {chatId}, identity);
   const deadline = Date.now() + WAIT_MAX_MS;
   let completed;
   while (Date.now() < deadline) {
     completed = (await data('runs')).find(row => row._id === runId);
-    if (completed?.status === 'completed') break;
-    assert.equal(completed?.status, 'running');
+    if (completed?.workflow.status === 'completed') break;
+    assert.equal(completed?.workflow.status, 'running');
     await delay(POLL_MS);
   }
-  assert.equal(completed?.status, 'completed');
-  assert.equal(completed.nextTurnIndex, 3);
+  assert.equal(completed?.workflow.status, 'completed');
+  assert.equal(completed.workflow.nextTurnIndex, 3);
   const scope = {userId, chatId, runId, generation: 0, expectedTurnIndex: 0};
   const redeliveries = await Promise.all([run('turns:run', scope), run('turns:run', scope)]);
   assert.deepEqual(redeliveries[0], redeliveries[1]);
   assert.equal(redeliveries[0].turnIndex, 0);
-  assert.equal((await data('turnFlags')).filter(row => row.runId === runId).length, 3);
-  const steps = (await data('steps', 'workflow')).filter(row => row.workflowId === completed.workflowId);
+  assert.equal((await data('turns')).filter(row => row.runId === runId).length, 3);
+  const steps = (await data('steps', 'workflow')).filter(row => row.workflowId === completed.workflow.id);
   assert.equal(steps.filter(row => row.step.functionType === 'action').length, 3);
   await run('account:begin', {serverToken, userId});
   await assert.rejects(run('turns:run', {...scope, expectedTurnIndex: 3}));
@@ -81,10 +78,10 @@ try {
   }
   assert.equal(purge.done, true);
   assert.equal((await data('runs')).filter(row => row.userId === userId).length, 0);
-  assert.equal((await data('turnFlags')).filter(row => row.runId === runId).length, 0);
+  assert.equal((await data('turns')).filter(row => row.runId === runId).length, 0);
   assert.equal((await data('users')).filter(row => row._id === userId).length, 0);
-  assert.equal((await data('workflows', 'workflow')).filter(row => row._id === completed.workflowId).length, 0);
-  assert.equal((await data('steps', 'workflow')).filter(row => row.workflowId === completed.workflowId).length, 0);
+  assert.equal((await data('workflows', 'workflow')).filter(row => row._id === completed.workflow.id).length, 0);
+  assert.equal((await data('steps', 'workflow')).filter(row => row.workflowId === completed.workflow.id).length, 0);
   console.log('Local Convex: three actions, completed, two concurrent redeliveries, three ledger rows, '
     + 'deletion fenced and purged run, flags, journal and user; PASS');
 } finally {

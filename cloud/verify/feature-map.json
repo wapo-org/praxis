@@ -36,6 +36,13 @@
       "covers": [{"command": "gate"}]
     },
     {
+      "id": "convex.owner-isolation",
+      "title": "Typed Convex rows, authenticated ownership, atomic message sequencing and account purge",
+      "issue": "PRA-24",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
       "id": "repo.gate",
       "title": "Typecheck, tests, boundary rules, lint, comment hygiene and both builds",
       "issue": "PRA-72",
@@ -48,6 +55,20 @@
           "command": "gate"
         }
       ]
+    },
+    {
+      "id": "composio.connections",
+      "title": "Owner-scoped Connect Links, pending link reuse, revocation and account purge",
+      "issue": "PRA-47",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
+      "id": "composio.webhook",
+      "title": "Signature-verified Composio webhook, fail-closed secret and bounded pending-link expiry",
+      "issue": "PRA-47",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
     },
     {
       "id": "account.deletion",

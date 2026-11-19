@@ -8,6 +8,13 @@ export function convexValidator(schema: z.ZodType): ProtocolValidator {
   return transport(schema) as ProtocolValidator;
 }
 function transport(schema: z.ZodType): GenericValidator {
+  if (schema instanceof z.ZodDefault) return v.optional(transport(schema.removeDefault() as z.ZodType));
+  if (schema instanceof z.ZodArray) return v.array(transport(schema.element as z.ZodType));
+  if (schema instanceof z.ZodLiteral) {
+    const value = schema.value;
+    if (typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number') return v.literal(value);
+    throw new Error('Unsupported protocol literal');
+  }
   if (schema instanceof z.ZodOptional) return v.optional(transport(schema.unwrap() as z.ZodType));
   if (schema instanceof z.ZodString) return v.string();
   if (schema instanceof z.ZodNumber) return v.number();
