@@ -30,7 +30,7 @@ describe('Convex server boundary', () => {
         userId: 'a',
         kind: 'chat',
         id: 'x',
-        value: {},
+        valueJson: '{}',
         serverToken: 'x'.repeat(48),
       }),
     ).rejects.toThrow('Server authentication');
@@ -42,6 +42,19 @@ describe('Convex server boundary', () => {
     const { rpc } = convexHarness();
     process.env.PRAXIS_CONVEX_SERVER_TOKEN = 'short';
     await expect(storeFromRPC(rpc).get('a', 'chat', 'x')).rejects.toThrow('Server authentication');
+  });
+
+  it('fences legacy Store mutations that require an active owner', async () => {
+    const { t, rpc } = convexHarness();
+    const userId = await t.run(ctx => ctx.db.insert('users', {}));
+    const address = { userId, kind: 'checkpoint', id: 'r' };
+    const args = { ...address, requireOwner: true, valueJson: JSON.stringify({version: 1}) };
+
+    await expect(rpc.mutation('store:put', { ...args, userId: 'missing' })).rejects.toThrow('Account unavailable');
+    await expect(rpc.mutation('store:put', args)).resolves.toMatchObject({ value: { version: 1 } });
+    await t.run(ctx => ctx.db.patch(userId, { deleting: true }));
+    await expect(rpc.mutation('store:put', { ...args, valueJson: JSON.stringify({version: 2}) })).rejects.toThrow('Account unavailable');
+    expect(await rpc.query('store:get', address)).toMatchObject({ value: { version: 1 } });
   });
 
   it('validates pagination and JSON at the API adapter boundary', async () => {

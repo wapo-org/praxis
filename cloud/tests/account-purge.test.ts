@@ -1,7 +1,4 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {registerEmail} from '@convex-dev/auth/components/email/test';
-import {registerPassword} from '@convex-dev/auth/components/password/test';
-import {registerGoogleOauth} from '@convex-dev/auth/components/google/test';
 import schema from '../convex/schema.js';
 import {api, components, internal} from '../convex/_generated/api.js';
 import {workflow} from '../convex/workflows/agentRun.js';
@@ -32,8 +29,6 @@ describe('account deletion of workflow state', () => {
 
   it('fences an in-flight run once deletion begins, then purges run, flags, journal and user', async () => {
     const {t, owner, userId, scope} = await startedRun();
-    // The final purge batch erases credentials in these components.
-    for (const register of [registerEmail, registerPassword, registerGoogleOauth]) register(t);
     await t.action(internal.turns.run, {...scope, expectedTurnIndex: 0});
     const sessions = () => t.run(ctx => ctx.runQuery(components.auth.public.listSessions, {userId}));
     expect(await sessions()).toHaveLength(1);
@@ -55,12 +50,12 @@ describe('account deletion of workflow state', () => {
 
     const rows = await t.run(async ctx => ({
       users: await ctx.db.query('users').collect(),
-      records: await ctx.db.query('records').collect(),
+      chats: await ctx.db.query('chats').collect(),
       runs: await ctx.db.query('runs').collect(),
-      turnFlags: await ctx.db.query('turnFlags').collect(),
+      turns: await ctx.db.query('turns').collect(),
       workflows: (await workflow.list(ctx)).page,
     }));
-    expect(rows).toEqual({users: [], records: [], runs: [], turnFlags: [], workflows: []});
+    expect(rows).toEqual({users: [], chats: [], runs: [], turns: [], workflows: []});
     await expect(t.mutation(internal.turns.commitStub, {...scope, expectedTurnIndex: 1})).rejects.toThrow('unavailable');
   });
 });

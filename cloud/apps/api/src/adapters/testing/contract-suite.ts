@@ -13,19 +13,19 @@ export function storeContract(name: string, factory: () => Store | Promise<Store
 
     it('isolates identical kind/id addresses by owner', async () => {
       const [alice, bob] = [owner('alice'), owner('bob')];
-      await store.put(alice, 'chat', 'same', { text: 'a' });
-      await store.put(bob, 'chat', 'same', { text: 'b' });
-      expect((await store.get(alice, 'chat', 'same'))?.value).toEqual({ text: 'a' });
-      expect(await store.get(owner('mallory'), 'chat', 'same')).toBeNull();
-      expect(await store.list(bob, 'chat')).toHaveLength(1);
+      await store.put(alice, 'fixture-chat', 'same', { text: 'a' });
+      await store.put(bob, 'fixture-chat', 'same', { text: 'b' });
+      expect((await store.get(alice, 'fixture-chat', 'same'))?.value).toEqual({ text: 'a' });
+      expect(await store.get(owner('mallory'), 'fixture-chat', 'same')).toBeNull();
+      expect(await store.list(bob, 'fixture-chat')).toHaveLength(1);
     });
 
     it('keeps every immutable revision, even for repeated writes in the same millisecond', async () => {
       const [alice, bob] = [owner('alice'), owner('bob')];
-      await store.put(alice, 'chat', 'x', { n: 1 });
-      await store.put(bob, 'chat', 'hidden', {});
-      await store.put(alice, 'chat', 'x', { n: 2 });
-      await store.delete(alice, 'chat', 'x');
+      await store.put(alice, 'fixture-chat', 'x', { n: 1 });
+      await store.put(bob, 'fixture-chat', 'hidden', {});
+      await store.put(alice, 'fixture-chat', 'x', { n: 2 });
+      await store.delete(alice, 'fixture-chat', 'x');
       const a = await store.changes(alice, 0, 2);
       expect(a.records.map((r) => r.value)).toEqual([{ n: 1 }, { n: 2 }]);
       expect(a.records.every((r) => r.userId === alice)).toBe(true);
@@ -36,20 +36,20 @@ export function storeContract(name: string, factory: () => Store | Promise<Store
       expect(b.cursor).toBeGreaterThan(a.cursor);
       expect(b.hasMore).toBe(false);
       expect((await store.changes(alice, b.cursor, 2)).records).toEqual([]);
-      expect(await store.list(alice, 'chat')).toEqual([]);
+      expect(await store.list(alice, 'fixture-chat')).toEqual([]);
     });
 
     it('reports the owner head revision, 0 when empty, unaffected by other owners', async () => {
       const [alice, bob] = [owner('alice'), owner('bob')];
       expect(await store.head(alice)).toBe(0);
-      await store.put(alice, 'chat', 'x', { n: 1 });
-      await store.put(bob, 'chat', 'y', { n: 1 });
-      await store.delete(alice, 'chat', 'x');
+      await store.put(alice, 'fixture-chat', 'x', { n: 1 });
+      await store.put(bob, 'fixture-chat', 'y', { n: 1 });
+      await store.delete(alice, 'fixture-chat', 'x');
       const head = await store.head(alice);
       const log = await store.changes(alice, 0, 1000);
       expect(head).toBe(log.records.at(-1)?.revision);
       expect(head).toBe(log.cursor);
-      await store.put(bob, 'chat', 'z', { n: 2 });
+      await store.put(bob, 'fixture-chat', 'z', { n: 2 });
       expect(await store.head(alice)).toBe(head);
       expect((await store.changes(alice, head, 10)).records).toEqual([]);
     });
@@ -57,52 +57,52 @@ export function storeContract(name: string, factory: () => Store | Promise<Store
     it('returns owned data without leaking mutable references', async () => {
       const alice = owner('alice');
       const value = { nested: { n: 1 } };
-      const row = await store.put(alice, 'chat', 'x', value);
+      const row = await store.put(alice, 'fixture-chat', 'x', value);
       value.nested.n = 2;
       (row.value as { nested: unknown }).nested = { n: 3 };
-      expect((await store.get(alice, 'chat', 'x'))?.value).toEqual({ nested: { n: 1 } });
+      expect((await store.get(alice, 'fixture-chat', 'x'))?.value).toEqual({ nested: { n: 1 } });
     });
 
     it('creates durable tombstones for deletes and can resurrect a row', async () => {
       const alice = owner('alice');
-      await store.delete(alice, 'chat', 'absent');
-      expect((await store.get(alice, 'chat', 'absent'))?.deleted).toBe(true);
-      await store.put(alice, 'chat', 'absent', { hello: true });
-      expect((await store.list(alice, 'chat'))[0]?.deleted).toBe(false);
+      await store.delete(alice, 'fixture-chat', 'absent');
+      expect((await store.get(alice, 'fixture-chat', 'absent'))?.deleted).toBe(true);
+      await store.put(alice, 'fixture-chat', 'absent', { hello: true });
+      expect((await store.list(alice, 'fixture-chat'))[0]?.deleted).toBe(false);
     });
 
     it('indexes rows by parentId, keeps it on puts without one, and scopes it by owner and kind', async () => {
       const [alice, bob] = [owner('alice'), owner('bob')];
-      await store.put(alice, 'message', 'm1', { n: 1 }, { parentId: 'chat-a' });
-      await store.put(alice, 'message', 'm2', { n: 2 }, { parentId: 'chat-b' });
-      await store.put(alice, 'message', 'm3', { n: 3 }, { parentId: 'chat-a' });
-      await store.put(alice, 'run', 'r1', { n: 4 }, { parentId: 'chat-a' });
-      await store.put(bob, 'message', 'm1', { n: 5 }, { parentId: 'chat-a' });
-      await store.put(alice, 'message', 'loose', { n: 6 });
+      await store.put(alice, 'fixture-message', 'm1', { n: 1 }, { parentId: 'chat-a' });
+      await store.put(alice, 'fixture-message', 'm2', { n: 2 }, { parentId: 'chat-b' });
+      await store.put(alice, 'fixture-message', 'm3', { n: 3 }, { parentId: 'chat-a' });
+      await store.put(alice, 'fixture-run', 'r1', { n: 4 }, { parentId: 'chat-a' });
+      await store.put(bob, 'fixture-message', 'm1', { n: 5 }, { parentId: 'chat-a' });
+      await store.put(alice, 'fixture-message', 'loose', { n: 6 });
 
       const ids = async (kind: string, parentId?: string) =>
         (await store.list(alice, kind, parentId === undefined ? undefined : { parentId })).map((r) => r.id).sort();
-      expect(await ids('message', 'chat-a')).toEqual(['m1', 'm3']);
-      expect(await ids('message', 'chat-b')).toEqual(['m2']);
-      expect(await ids('run', 'chat-a')).toEqual(['r1']);
-      expect(await ids('message')).toEqual(['loose', 'm1', 'm2', 'm3']);
-      expect((await store.list(bob, 'message', { parentId: 'chat-a' })).map((r) => r.value)).toEqual([{ n: 5 }]);
+      expect(await ids('fixture-message', 'chat-a')).toEqual(['m1', 'm3']);
+      expect(await ids('fixture-message', 'chat-b')).toEqual(['m2']);
+      expect(await ids('fixture-run', 'chat-a')).toEqual(['r1']);
+      expect(await ids('fixture-message')).toEqual(['loose', 'm1', 'm2', 'm3']);
+      expect((await store.list(bob, 'fixture-message', { parentId: 'chat-a' })).map((r) => r.value)).toEqual([{ n: 5 }]);
 
       // A put without parentId keeps the existing one; an explicit one moves the row.
-      const kept = await store.put(alice, 'message', 'm1', { n: 7 });
+      const kept = await store.put(alice, 'fixture-message', 'm1', { n: 7 });
       expect(kept.parentId).toBe('chat-a');
-      expect((await store.get(alice, 'message', 'm1'))?.parentId).toBe('chat-a');
-      await store.put(alice, 'message', 'm3', { n: 8 }, { parentId: 'chat-b' });
-      expect(await ids('message', 'chat-a')).toEqual(['m1']);
-      expect(await ids('message', 'chat-b')).toEqual(['m2', 'm3']);
+      expect((await store.get(alice, 'fixture-message', 'm1'))?.parentId).toBe('chat-a');
+      await store.put(alice, 'fixture-message', 'm3', { n: 8 }, { parentId: 'chat-b' });
+      expect(await ids('fixture-message', 'chat-a')).toEqual(['m1']);
+      expect(await ids('fixture-message', 'chat-b')).toEqual(['m2', 'm3']);
 
       // Tombstones keep their parent (sync needs it) but disappear from lists.
-      await store.delete(alice, 'message', 'm1');
-      expect((await store.get(alice, 'message', 'm1'))?.parentId).toBe('chat-a');
-      expect(await ids('message', 'chat-a')).toEqual([]);
+      await store.delete(alice, 'fixture-message', 'm1');
+      expect((await store.get(alice, 'fixture-message', 'm1'))?.parentId).toBe('chat-a');
+      expect(await ids('fixture-message', 'chat-a')).toEqual([]);
       const log = await store.changes(alice, 0, 1000);
       expect(log.records.at(-1)).toMatchObject({ id: 'm1', deleted: true, parentId: 'chat-a' });
-      expect((await store.get(alice, 'message', 'loose'))?.parentId).toBeUndefined();
+      expect((await store.get(alice, 'fixture-message', 'loose'))?.parentId).toBeUndefined();
     });
   });
 }

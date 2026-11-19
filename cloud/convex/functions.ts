@@ -1,5 +1,5 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
-import { v, ConvexError } from 'convex/values';
+import { v, ConvexError, type ObjectType, type PropertyValidators } from 'convex/values';
 import { internal } from './_generated/api.js';
 import { bounded, requireServer } from './access.js';
 import { activeOwner } from './accountOwner.js';
@@ -54,18 +54,17 @@ export async function authenticatedUserId(ctx: QueryCtx | MutationCtx | ActionCt
   return userId;
 }
 
-async function assertActiveOwner(ctx: QueryCtx | MutationCtx | ActionCtx, userId: string): Promise<void> {
+export async function assertActiveOwner(ctx: QueryCtx | MutationCtx | ActionCtx, userId: string): Promise<void> {
   const active = 'db' in ctx
     ? await activeOwner(ctx, userId)
     : await ctx.runQuery(internal.functions.ownerActive, {userId});
   if (!active) throw new ConvexError('Account unavailable');
 }
 
-function authDefinition(definition: unknown, checkOwner: boolean) {
+function authDefinition(definition: unknown) {
   const original = definitionOf(definition);
   return withDefinition(original, async (ctx, args) => {
-    const userId = await authenticatedUserId(ctx as QueryCtx | MutationCtx | ActionCtx);
-    if (checkOwner) await assertActiveOwner(ctx as QueryCtx | MutationCtx | ActionCtx, userId);
+    const userId = await authenticatedOwner(ctx as ActionCtx);
     return original.handler(ctx, {...args, userId});
   });
 }
@@ -88,8 +87,27 @@ export const query: QueryBuilder<DataModel, 'public'> = queryGeneric;
 export const mutation: MutationBuilder<DataModel, 'public'> = mutationGeneric;
 export const action: ActionBuilder<DataModel, 'public'> = actionGeneric;
 
-export const authedMutation = ((definition: unknown) => mutationGeneric(authDefinition(definition, true) as never)) as unknown as MutationBuilder<DataModel, 'public'>;
-export const authedAction = ((definition: unknown) => actionGeneric(authDefinition(definition, true) as never)) as unknown as ActionBuilder<DataModel, 'public'>;
+type OwnedDefinition<Ctx, Args extends PropertyValidators, Result> = {
+  args: Args & {userId?: never; ownerId?: never; serverToken?: never};
+  handler: (ctx: Ctx, userId: string, args: ObjectType<Args>) => Result;
+};
+
+export async function authenticatedOwner(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<string> {
+  const userId = await authenticatedUserId(ctx);
+  await assertActiveOwner(ctx, userId);
+  return userId;
+}
+
+export function authedMutation<Args extends PropertyValidators, Result>(
+  definition: OwnedDefinition<MutationCtx, Args, Result>,
+) {
+  return mutation({
+    args: definition.args,
+    handler: async (ctx, args) => definition.handler(ctx, await authenticatedOwner(ctx), args as ObjectType<Args>),
+  });
+}
+
+export const authedAction = ((definition: unknown) => actionGeneric(authDefinition(definition) as never)) as unknown as ActionBuilder<DataModel, 'public'>;
 
 export const serverQuery = ((definition: unknown) => queryGeneric(serverDefinition(definition, false) as never)) as unknown as QueryBuilder<DataModel, 'public'>;
 export const serverMutation = ((definition: unknown) => mutationGeneric(serverDefinition(definition, true) as never)) as unknown as MutationBuilder<DataModel, 'public'>;

@@ -15,7 +15,11 @@ export const ACCOUNT_PURGE_POLICY = {
   connections: 'ownerRows',
   oauthEmails: 'identity',
   runs: 'workflowRun',
-  turnFlags: 'runChild',
+  turns: 'runChild',
+  chats: 'ownerRows',
+  messages: 'ownerRows',
+  sandboxes: 'ownerRows',
+  outputs: 'ownerRows',
   users: 'identity',
 } as const satisfies Record<TableNames, 'ownerRows' | 'workflowRun' | 'runChild' | 'identity'>;
 
@@ -25,6 +29,14 @@ type PurgedRow = {_id: Id<TableNames>; storageId?: Id<'_storage'>};
 type RowsBy<K> = (ctx: QueryCtx, key: K, limit: number) => Promise<PurgedRow[]>;
 
 export const ACCOUNT_OWNER_ROWS: Record<TablesWith<'ownerRows'>, RowsBy<string>> = {
+  chats: (ctx, userId, limit) => ctx.db.query('chats')
+    .withIndex('by_user_id', q => q.eq('userId', userId)).take(limit),
+  messages: (ctx, userId, limit) => ctx.db.query('messages')
+    .withIndex('by_chat_sequence', q => q.eq('userId', userId)).take(limit),
+  sandboxes: (ctx, userId, limit) => ctx.db.query('sandboxes')
+    .withIndex('by_user_chat', q => q.eq('userId', userId)).take(limit),
+  outputs: (ctx, userId, limit) => ctx.db.query('outputs')
+    .withIndex('by_user_id', q => q.eq('userId', userId)).take(limit),
   records: (ctx, userId, limit) => ctx.db.query('records')
     .withIndex('owner_kind_id', q => q.eq('userId', userId)).take(limit),
   changes: (ctx, userId, limit) => ctx.db.query('changes')
@@ -43,7 +55,7 @@ export const ACCOUNT_OWNER_ROWS: Record<TablesWith<'ownerRows'>, RowsBy<string>>
     .withIndex('owner', q => q.eq('userId', userId)).take(limit),
 };
 
-export const ACCOUNT_RUN_CHILD_ROWS: Record<TablesWith<'runChild'>, RowsBy<Id<'runs'>>> = {
-  turnFlags: (ctx, runId, limit) => ctx.db.query('turnFlags')
-    .withIndex('run_generation_turn', q => q.eq('runId', runId)).take(limit),
+export const ACCOUNT_RUN_CHILD_ROWS: Record<TablesWith<'runChild'>, RowsBy<{userId: string; runId: Id<'runs'>}>> = {
+  turns: (ctx, {userId, runId}, limit) => ctx.db.query('turns')
+    .withIndex('by_user_run_turn', q => q.eq('userId', userId).eq('runId', runId)).take(limit),
 };

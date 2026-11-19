@@ -1,5 +1,8 @@
 import {convexTest} from 'convex-test';
 import {registerCore, sessionIdentity} from '@convex-dev/auth/test';
+import {registerEmail} from '@convex-dev/auth/components/email/test';
+import {registerPassword} from '@convex-dev/auth/components/password/test';
+import {registerGoogleOauth} from '@convex-dev/auth/components/google/test';
 import workflowComponent from '@convex-dev/workflow/test';
 import schema from '../convex/schema.js';
 import {api, components} from '../convex/_generated/api.js';
@@ -10,6 +13,10 @@ const ACCESS_TTL_SECONDS = 3600;
 const SESSION_TTL_SECONDS = 7200;
 const modules = {
   '../convex/_generated/api.js': () => import('../convex/_generated/api.js'),
+  '../convex/chats.ts': () => import('../convex/chats.js'),
+  '../convex/messages.ts': () => import('../convex/messages.js'),
+  '../convex/store.ts': () => import('../convex/store.js'),
+  '../convex/accountRecovery.ts': () => import('../convex/accountRecovery.js'),
   '../convex/account.ts': () => import('../convex/account.js'),
   '../convex/runs.ts': () => import('../convex/runs.js'),
   '../convex/turns.ts': () => import('../convex/turns.js'),
@@ -18,7 +25,7 @@ const modules = {
 
 export function workflowTest() {
   const t = convexTest(schema, modules);
-  registerCore(t);
+  for (const register of [registerCore, registerEmail, registerPassword, registerGoogleOauth]) register(t);
   workflowComponent.register(t);
   return t;
 }
@@ -32,15 +39,14 @@ export async function signedInUser(t: WorkflowTest) {
     accessTokenTtlSeconds: ACCESS_TTL_SECONDS, refreshInactivityTimeoutSeconds: SESSION_TTL_SECONDS,
     sessionMaxLifetimeSeconds: SESSION_TTL_SECONDS,
   }));
-  return {userId, client: t.withIdentity(sessionIdentity(tokens))};
+  const identity = sessionIdentity(tokens);
+  return {userId, sessionId: identity.subject, client: t.withIdentity(identity)};
 }
 
 export async function startedRun() {
   const t = workflowTest();
   const {userId, client: owner} = await signedInUser(t);
-  await t.run(ctx => ctx.db.insert('records', {
-    userId, kind: 'chat', id: chatId, value: {}, revision: 1, updatedAt: new Date().toISOString(), deleted: false,
-  }));
+  await owner.mutation(api.chats.create, {input: {type: 'chat.input', id: chatId}});
   const runId = await owner.mutation(api.runs.start, {chatId});
   const scope = {userId, chatId, runId, generation: 0};
   return {t, owner, userId, runId, scope};
