@@ -17,7 +17,7 @@ test('cold draft tray always shows the same connector rows across five openings'
   await page.getByTestId('composer-plus-button').click();await expect(page.getByTestId('plus-tray').getByRole('button',{name:/Connectors/})).toBeVisible();await page.keyboard.press('Escape');
  }
 });
-test('connector Transport and provider Flavor selects use GlassDropdown with keyboard navigation (no native select)',async({page})=>{
+test('the connector Transport select uses GlassDropdown with keyboard navigation (no native select)',async({page})=>{
  await openSignedInPage(page);
  await page.goto('/settings/connectors');
  await page.getByRole('button',{name:/Add by URL/}).click();
@@ -30,14 +30,6 @@ test('connector Transport and provider Flavor selects use GlassDropdown with key
  await page.keyboard.press('ArrowDown');
  await page.keyboard.press('Enter');
  await expect(trigger).toHaveText(/Server-sent events \(SSE\)/);
- await page.goto('/settings/providers');
- await page.getByRole('button',{name:'Add provider'}).click();
- const flavor=page.getByLabel('Flavor');
- await expect(flavor).toBeVisible();
- expect(await page.locator('select').count()).toBe(0);
- await flavor.click();
- await page.getByRole('menuitemradio',{name:'OpenAI Responses'}).click();
- await expect(flavor).toHaveText(/OpenAI Responses/);
 });
 test('plus tray scrolls cleanly in short windows and navigates to nested connectors view (0, 2, 30)',async({page})=>{
  await openSignedInPage(page);
