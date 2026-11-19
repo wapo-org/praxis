@@ -109,8 +109,8 @@ async function signUp(convexUrl: string, email: string, access: OwnerAccess): Pr
   return owner;
 }
 
-/** Signs up one or two owners through the deployment's own password provider, one after the other. */
-export async function createLiveOwners(convexUrl: string, count: 1 | 2, access: OwnerAccess): Promise<LiveOwner[]> {
+/** Signs up exactly two owners through the deployment's own password provider, one after the other. */
+export async function createLiveOwners(convexUrl: string, count: 2, access: OwnerAccess): Promise<LiveOwner[]> {
   const owners: LiveOwner[] = [];
   for (const label of OWNER_LABELS.slice(0, count)) {
     owners.push(await signUp(convexUrl, liveOwnerEmail(access.runId, label), access));
