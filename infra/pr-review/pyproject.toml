@@ -1,0 +1,14 @@
+[project]
+name = "praxis-pr-review"
+version = "0.1.0"
+description = "Praxis PR reviewer: Sol code sessions and a Muse preview UI check in podman containers"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi[standard]>=0.115.0",
+    "httpx>=0.28.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+]

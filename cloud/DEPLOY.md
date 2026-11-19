@@ -161,8 +161,10 @@ The production eraser locks account activation, marks the account as deleting, f
 GitHub Actions runs Node 22 / npm 11 typecheck, unit tests, web/API builds,
 comment sweep, and the production high-severity npm audit as parallel checks
 on `blacksmith-4vcpu-ubuntu-2404`. The comment job also runs `check:rules`
-when `cloud/scripts/check-rules.mjs` exists. Modal reviewer pytest uses the
-same runner and the locked Python 3.12 environment without calling Modal.
+when `cloud/scripts/check-rules.mjs` exists. PR reviewer pytest runs the
+locked Python 3.12 environment of `infra/pr-review`. Each push to `develop`
+that touches the backend deploys it to the shared preview Convex deployment
+(`convex-preview.yml`, repository secret `CONVEX_PREVIEW_DEPLOY_KEY`).
 Apple changes run the iOS Simulator build, `PraxisChatTests`, and every Swift
 package's tests on GitHub-hosted `macos-26`; UI tests are outside this check.
 The iOS job ad-hoc signs the simulator app so real Keychain tests retain their

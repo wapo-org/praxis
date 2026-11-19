@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { connections } from './composio/schema.js';
 import {domainTables} from './domainSchema.js';
 
 /** Generic owner-scoped row with optional parentId index. */
@@ -15,6 +16,7 @@ const row = {
 };
 
 export default defineSchema({
+  connections,
   // `deleting` fences every owner write once account deletion begins.
   users: defineTable({
     deleting: v.optional(v.boolean()),
