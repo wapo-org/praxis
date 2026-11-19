@@ -17,3 +17,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -r
 # The preview tools pin Playwright to the installed browsers, independent of the PR's own lockfile.
 RUN mkdir -p /opt/review-tools && cd /opt/review-tools && npm init -y >/dev/null && npm install --ignore-scripts --no-audit --no-fund playwright@1.64.1 \
   && npx --no-install playwright install chromium --with-deps && rm -rf /var/lib/apt/lists/*
+# The long-lived container process runs unprivileged; review steps opt into root per exec.
+USER node

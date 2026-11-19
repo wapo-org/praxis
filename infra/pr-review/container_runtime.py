@@ -6,7 +6,7 @@ import subprocess
 import uuid
 from contextlib import AbstractContextManager
 
-IMAGE = 'localhost/praxis-review-sandbox:sol-ui-3'
+IMAGE = 'localhost/praxis-review-sandbox:sol-ui-4'
 CONTAINER_TTL_SECONDS = 2700
 DEFAULT_EXEC_TIMEOUT_SECONDS = 180
 CPU_LIMIT = '2'
@@ -73,8 +73,8 @@ class Sandbox(AbstractContextManager):
     def exec(self, *args, env=None, timeout=None, user=None):
         timeout = timeout or DEFAULT_EXEC_TIMEOUT_SECONDS
         command = ['podman', 'exec', '--interactive']
-        if user:
-            command.extend(['--user', user])
+        # The image defaults to `node`; root is requested explicitly by the steps that need it.
+        command.extend(['--user', user or 'root'])
         child_env = dict(os.environ)
         for name, value in (env or {}).items():
             child_env[name] = value
