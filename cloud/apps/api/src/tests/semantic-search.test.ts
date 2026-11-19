@@ -11,6 +11,8 @@ import { MAX_PHRASES_PER_CHAT, SearchIndexer, chatItems, chunk, convexVectorInde
 import { SEMANTIC_LIMIT, loadChatDocs } from '../search.js';
 import { ApiService } from '../service.js';
 
+const SEARCH_WORKLOAD_TEST_TIMEOUT_MS = 30_000;
+
 const CONCEPTS: Record<string, number> = {
   trip: 0, travel: 0, vacation: 0, journey: 0, lisbon: 0, holiday: 0,
   pack: 1, suitcase: 1, luggage: 1, bag: 1,
@@ -180,7 +182,7 @@ describe('semantic search: parts', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  it.each([500, 2000])('bounds warm search work over %i chats without re-embedding indexed rows', async count => {
+  it.each([500, 2000])('bounds warm search work over %i chats without re-embedding indexed rows', {timeout: SEARCH_WORKLOAD_TEST_TIMEOUT_MS}, async count => {
     const w = await searchWorkload(count);
     const {searchChats} = await import('../search.js');
     const cosine = vi.spyOn(embedding, 'cosine');

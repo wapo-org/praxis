@@ -12,7 +12,10 @@ export function toolsStorageFromRPC(rpc:ConvexRPC,baseUrl:string,fetcher:typeof 
  return {
   state:{
    async get(userId,kind,id){const value=await rpc.query('tools:get',scope(userId,kind,id));return value===null?null:JsonObjectSchema.parse(value);},
-   async put(userId,kind,id,value){await rpc.mutation('tools:put',{...scope(userId,kind,id),value:JsonObjectSchema.parse(value)});},
+   async put(userId, kind, id, value) {
+    const valueJson = JSON.stringify(JsonObjectSchema.parse(value));
+    await rpc.mutation('tools:put', {...scope(userId, kind, id), valueJson});
+   },
    async delete(userId,kind,id){await rpc.mutation('tools:remove',scope(userId,kind,id));},
   },
   async createUpload(userId,input){

@@ -51,7 +51,7 @@ describe('re-encryption for rotation', () => {
   });
   it('enumerates every owner from Convex for the rotation script', async () => {
     const store = storeFromRPC(convexHarness().rpc);
-    await store.put('alice', 'chat', 'c', {x: 1});
+    await store.put('alice', 'preferences', 'current', {x: 1});
     await store.put('bob', 'modelKey', 'current', {sealed: seal('k', 'bob', 'modelKey', A)});
     const owners: string[] = [];
     for await (const o of store.owners()) owners.push(o);

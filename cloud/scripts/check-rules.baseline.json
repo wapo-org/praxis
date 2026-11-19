@@ -59,11 +59,6 @@
       "packages/glass/src/morph/engine.ts": 564,
       "scripts/comment-sweep.mjs": 710
     },
-    "R4.convex-v-any": {
-      "convex/schema.ts": 2,
-      "convex/store.ts": 2,
-      "convex/tools.ts": 1
-    },
     "R4.no-any": {
       "apps/api/src/adapters/account-redis.test.ts": 2,
       "apps/api/src/adapters/security.ts": 1,
