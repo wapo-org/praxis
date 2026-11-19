@@ -77,6 +77,7 @@ def test_hands_on_prompt_does_not_rerun_the_gates() -> None:
     assert "Do not run `typecheck`, `npm test`, `check:rules` or `comment-sweep`" in prompt
     assert "verify -- api" in prompt and "verify -- web" in prompt
     assert "npm --prefix cloud run typecheck" not in prompt
+    assert "verify -- web --base" not in prompt, "an existing stack has no Convex Auth backend for signed-in flows"
     assert HANDS_ON_SESSION_PROFILE.max_steps == "80"
     assert {profile.max_steps for profile in REVIEW_SESSION_PROFILES} == {"40"}
 

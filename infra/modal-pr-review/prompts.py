@@ -122,7 +122,8 @@ HANDS_ON_STEPS: tuple[str, ...] = (
     "Start the API: `PORT=8797 npm --prefix cloud run dev:local` and wait for `http://127.0.0.1:8797/health`.",
     "Start the web app: `VITE_API_PROXY_TARGET=http://127.0.0.1:8797 npm --prefix cloud/apps/web run dev -- --port 5173 --host 127.0.0.1`.",
     "Run `npm --prefix cloud run verify -- api --api http://127.0.0.1:8797`.",
-    "Run `npm --prefix cloud run verify -- web --base http://127.0.0.1:5173 --api http://127.0.0.1:8797`; screenshots and accessibility snapshots land in `cloud/artifacts/verify/`.",
+    # Pointing --base at the servers above skips the local Convex Auth backend, so no signed-in flow could run.
+    "Run `npm --prefix cloud run verify -- web` with no `--base`/`--api`: it boots its own stack with a local Convex Auth backend and creates throwaway test accounts, so no credentials or sign-up are needed. Screenshots and accessibility snapshots land in `cloud/artifacts/verify/`.",
     "If the PR changes a web flow, write `/tmp/hands_on_test.mjs` (Playwright Chromium, `NODE_PATH=/workspace/repo/cloud/node_modules`) that exercises that one flow and prints console errors.",
     "Stop every server you started.",
 )
