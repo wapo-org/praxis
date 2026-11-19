@@ -34,7 +34,6 @@ export interface MorphOptions {
   onRest?: () => void;
 }
 
-const MAX_FRAME = 0.04;
 const MAX_FIRST_FRAME = 0.1;
 
 /** The timeline runs from the press, not from when the menu finished mounting: a slow mount must not read as lag. */
@@ -408,7 +407,7 @@ export function createMorph(options: MorphOptions) {
   function tick({ delta }: { delta: number }) {
     if (!running) return;
     // The scheduler's first delta after idle is a nominal frame; what passed is the time since this started.
-    const dt = firstTick ? Math.min(MAX_FIRST_FRAME, (performance.now() - startedAt) / 1000) : Math.min(MAX_FRAME, delta / 1000);
+    const dt = firstTick ? Math.min(MAX_FIRST_FRAME, (performance.now() - startedAt) / 1000) : Math.min(MORPH.maxFrameSeconds, delta / 1000);
     firstTick = false;
     if (options.reduced()) return tickFade(dt);
     if (phase === 'resizing') {

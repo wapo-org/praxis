@@ -1,5 +1,6 @@
 import { openSignedInPage, signedInTest as test } from './sign-in';
 import { expect, type Page } from '@playwright/test';
+import { installMorphClock, landed, type MorphClockWindow } from './morph-clock';
 
 // WP-G4 A: what leaves leaves at once, the corner never swaps at rest, and the rows land before the shape.
 test.use({ serviceWorkers: 'block' });
@@ -55,6 +56,7 @@ for (const how of ['Escape', 'an outside click', 'choosing a result'] as const) 
 
 test.describe('menus', () => {
   test.beforeEach(async ({ page }) => {
+    await installMorphClock(page);
     await openSignedInPage(page);
     await page.goto('/lab/glass?morph');
     await page.getByTestId('morph-lab').waitFor();
@@ -77,30 +79,31 @@ test.describe('menus', () => {
         await page.getByTestId('morph-lab').waitFor();
       }
       await page.evaluate(() => {
-        const w = window as unknown as { __corner: Array<{ r: number; morphing: boolean; round: boolean }> };
+        const w = window as unknown as MorphClockWindow & { __corner: Array<{ t: number; r: number; morphing: boolean; round: boolean }> };
         w.__corner = [];
-        const tick = () => {
-          const surface = document.querySelector<HTMLElement>('[role="menu"] [data-glass-surface]');
+        const tick = (now: number) => {
+          // Hidden and unpositioned, the shell is at its rest corner before the morph has begun.
+          const surface = document.querySelector<HTMLElement>('[role="menu"]:not([style*="visibility: hidden"]) [data-glass-surface]');
           // The corner on screen: the morph writes it against the glass's scale (radius / sx), so read it back at that scale.
           const scale = surface ? surface.getBoundingClientRect().width / surface.offsetWidth : 1;
-          if (surface) w.__corner.push({ r: parseFloat(getComputedStyle(surface).borderTopLeftRadius) * scale, morphing: surface.dataset.morphing === 'true', round: surface.dataset.morphRound === 'true' });
+          if (surface) w.__corner.push({ t: w.__morphTime(now), r: parseFloat(getComputedStyle(surface).borderTopLeftRadius) * scale, morphing: surface.dataset.morphing === 'true', round: surface.dataset.morphRound === 'true' });
           if (w.__corner.length < 400) requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
       });
       await page.getByTestId('attached-top').click();
       const menu = page.getByRole('menu');
-      await expect.poll(() => menu.evaluate((el: HTMLElement) => el.style.transform), { timeout: 10000 }).toBe('');
+      await landed(menu);
       await page.waitForTimeout(300);
-      const track = await page.evaluate(() => (window as unknown as { __corner: Array<{ r: number; morphing: boolean; round: boolean }> }).__corner);
+      const track = await page.evaluate(() => (window as unknown as { __corner: Array<{ t: number; r: number; morphing: boolean; round: boolean }> }).__corner);
       const rest = track[track.length - 1]!.r;
       // Once the corner has squared it is the rest corner, through the settle and when the inline styles clear.
       const squared = track.findIndex((f, i) => i > 3 && !f.round);
       expect(squared).toBeGreaterThan(0);
       for (const f of track.slice(squared)) expect(Math.abs(f.r - rest), JSON.stringify(f)).toBeLessThan(0.75);
-      // And the squared phase starts well before the morph ends (it is not swapped at rest).
+      // And the squared phase starts well before the morph ends (it is not swapped at rest): over five 60 Hz frames of morph time.
       const cleared = track.findIndex((f) => !f.morphing && f !== track[0]);
-      expect(cleared - squared).toBeGreaterThan(5);
+      expect(track[cleared]!.t - track[squared]!.t).toBeGreaterThan(5000 / 60);
     });
   }
 
@@ -112,7 +115,7 @@ test.describe('menus', () => {
       window.addEventListener('pointerdown', () => { t0 = performance.now(); }, { capture: true, once: true });
       const tick = (now: number) => {
         const menu = document.querySelector<HTMLElement>('[role="menu"]');
-        if (menu && t0) {
+        if (menu && t0 && menu.style.visibility !== 'hidden') {
           const box = menu.getBoundingClientRect();
           const body = menu.querySelector<HTMLElement>('[data-morph-body]')!;
           const blurred = menu.querySelector<HTMLElement>('[data-glass-surface] > [class*="blurred"]');
@@ -124,7 +127,7 @@ test.describe('menus', () => {
       requestAnimationFrame(tick);
     });
     await page.getByTestId('attached-top').click();
-    await page.waitForTimeout(800);
+    await landed(page.getByRole('menu'));
     const track = await page.evaluate(() => (window as unknown as { __rows: Array<{ t: number; w: number; h: number; rows: number; sharp: number; blur: number }> }).__rows);
     const shape95 = track.find((f) => f.w >= 0.95 && f.h >= 0.95)!.t;
     const rowsDone = track.find((f) => f.sharp > 0.995 && f.blur < 0.005 && Math.abs(f.rows - 1) < 0.005)!.t;

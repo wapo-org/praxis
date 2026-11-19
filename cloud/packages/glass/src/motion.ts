@@ -48,6 +48,8 @@ export const MORPH = {
     lift: { stiffness: 6400, damping: 160 },
   },
   resize: { stiffness: 900, damping: 60 },
+  /** Most time one frame may advance the springs, in seconds: a long frame slows the morph instead of skipping it. */
+  maxFrameSeconds: 0.04,
   /** In-place submenus: the outgoing rows are mostly gone before the incoming ones show, so text never stacks. */
   panelFadeDelay: 0.05,
   /** Under prefers-reduced-motion: a plain short fade, no shape change. */

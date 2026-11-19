@@ -1,5 +1,6 @@
 import { openSignedInPage, signedInTest as test } from './sign-in';
 import { expect, type Locator, type Page } from '@playwright/test';
+import { landed } from './morph-clock';
 
 const surfaceOf = (locator: Locator) => locator.locator('xpath=ancestor-or-self::*[@data-glass-surface][1]');
 const sidebar = (page: Page) => page.locator('[data-testid="app-sidebar"] [data-glass-surface]').first();
@@ -24,11 +25,6 @@ const stopSampling = (page: Page) =>
     w.__on = false;
     return w.__s;
   });
-
-/** Geometry is only meaningful once the glass has landed: the morph leaves nothing inline at rest. */
-async function landed(shell: Locator) {
-  await expect.poll(() => shell.evaluate((el: HTMLElement) => el.style.transform)).toBe('');
-}
 
 async function pull(page: Page, from: { x: number; y: number }, dx: number, dy: number, steps = 12) {
   await page.mouse.move(from.x, from.y);
