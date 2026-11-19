@@ -48,7 +48,7 @@ function withDefinition(definition: WrappedDefinition, handler: WrappedDefinitio
   return {...definition, handler};
 }
 
-async function authenticatedUserId(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<string> {
+export async function authenticatedUserId(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<string> {
   const userId = await getAuthUserId(ctx as unknown as QueryCtx);
   if (!userId) throw new ConvexError('Authentication required');
   return userId;
