@@ -11,6 +11,8 @@ export interface TestAccount {
 }
 const Signup = makeFunctionReference<'mutation'>('auth:signUpWithEmailPassword');
 const Complete = makeFunctionReference<'mutation'>('auth:completeSignUpWithEmailPassword');
+const RemoveTestOwner = makeFunctionReference<'mutation', Record<string, never>, null>('fixture:removeTestOwner');
+const IsAuthenticated = makeFunctionReference<'query', Record<string, never>, boolean>('auth:isAuthenticated');
 const LatestEmail = makeFunctionReference<'query'>('fixture:latestEmail');
 const SignedUp = z.discriminatedUnion('success', [
   z.object({ success: z.literal(true), browserSecret: z.string() }),
@@ -20,7 +22,7 @@ const Completed = z.object({ status: z.literal('complete') });
 const LocalUrl = z.url().refine(value => {
   const url = new URL(value);
   return url.protocol === 'http:' && url.hostname === '127.0.0.1' && !url.username && !url.password && url.pathname === '/';
-}, 'The verification mailbox requires a loopback HTTP origin');
+}, 'Verification auth fixtures require a loopback HTTP origin');
 
 export async function latestEmailLink(url: string, email: string): Promise<string> {
   const client = new ConvexHttpClient(LocalUrl.parse(url), { logger: false });
@@ -44,4 +46,10 @@ export async function createTestAccount(url: string, budgetDirectory?: string): 
   const emailCode = new URL(await latestEmailLink(url, account.email)).searchParams.get('code');
   Completed.parse(await client.mutation(Complete, { browserSecret: started.browserSecret, emailCode }));
   return account;
+}
+
+export async function seedUnavailableAccount(url: string, token: string): Promise<() => Promise<boolean>> {
+  const client = new ConvexHttpClient(LocalUrl.parse(url), { logger: false, auth: token });
+  await client.mutation(RemoveTestOwner, {});
+  return () => client.query(IsAuthenticated, {});
 }

@@ -6,6 +6,7 @@ export interface FlowContext {
   /** API origin for direct requests, bypassing the web proxy. */
   api: string;
   request: APIRequestContext;
+  convexUrl: string;
   /** Seed for flows that make random choices; the same seed replays the same actions. */
   seed: number;
   note(line: string): void;

@@ -31,11 +31,15 @@ export async function readSessionState(context: BrowserContext, base: string): P
   return { cookies: [], origins: [{ origin: origin.origin, localStorage }] };
 }
 
-export async function sessionHeaders(page: Page): Promise<{ Authorization: string }> {
+export async function sessionToken(page: Page): Promise<string> {
   const token = await page.evaluate(async path => {
     const module: { apiClient: { freshToken(): Promise<string> } } = await import(path);
     return module.apiClient.freshToken();
   }, API_CLIENT_MODULE);
   if (!token) throw new Error('The browser has no Convex Auth session');
-  return { Authorization: `Bearer ${token}` };
+  return token;
+}
+
+export async function sessionHeaders(page: Page): Promise<{ Authorization: string }> {
+  return { Authorization: `Bearer ${await sessionToken(page)}` };
 }
