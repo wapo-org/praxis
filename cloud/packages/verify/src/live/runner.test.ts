@@ -154,6 +154,33 @@ describe('evidence redaction and partial runs', () => {
     expect(proof.steps.map(step => [step.id, step.status, step.reason])).toEqual([['a', 'attached', undefined], ['b', 'skipped', 'not selected (--only)']]);
     expect(proof.status).toBe('incomplete');
   });
+
+  it('runs fixture cleanup after a failed check in a partial run', async () => {
+    const suite = defineSuite({
+      id: 's', issue: 'PRA-4', title: 'T',
+      steps: [
+        manual('evidence'),
+        {
+          id: 'check', kind: 'auto', checklist: 'Verify the fixture.', needs: {},
+          async run({state}) {
+            state.set('fixture', 'allocated');
+            throw new Error('check failed');
+          },
+        },
+        {
+          id: 'cleanup', kind: 'auto', cleanup: true, checklist: 'Release the fixture.', needs: {},
+          async run({state}) {
+            expect(state.delete('fixture')).toBe(true);
+            return {status: 'pass', summary: 'released'};
+          },
+        },
+      ],
+    });
+    const {proof} = await runSuite(suite, {env: {}, evidence: new Map(), only: ['check'], directory: scratch()});
+    expect(proof.steps.map(({id, status}) => [id, status])).toEqual([
+      ['evidence', 'skipped'], ['check', 'fail'], ['cleanup', 'pass'],
+    ]);
+  });
 });
 
 describe('redactor', () => {
