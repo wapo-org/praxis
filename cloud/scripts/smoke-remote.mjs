@@ -57,6 +57,9 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
     if (!res.ok) throw Error(`${method} ${path}: HTTP ${res.status}`);
     return res.json();
   };
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(api).hostname);
+  // Validated before the first request, so a mistaken or malformed target is never contacted.
+  let env = !dry && !loopback ? await fixtureBindings(args, api) : undefined;
   const health = await call('/health');
   assert.equal(health.ok, true);
   checks.push('health');
@@ -69,15 +72,13 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
   assert.ok(sw.ok);
   assertWorkerBypassesApi(await sw.text(), web);
   checks.push('service worker bypasses /v1 and /health');
-  local =
-    health.mode === 'local' && ['localhost', '127.0.0.1', '[::1]'].includes(new URL(api).hostname);
+  local = health.mode === 'local' && loopback;
   if (dry && !local) {
     skipped.push('Hosted mutations/auth/LLM/SSE/upload: dry run never creates a hosted account');
     return { checks, skipped };
   }
   if (!local && new URL(api).protocol !== 'https:') throw Error('Hosted smoke requires HTTPS');
-  // Missing or mismatched bindings fail here, before any hosted request that could write.
-  const env = local ? {} : await fixtureBindings(args, api);
+  if (!local) env ??= await fixtureBindings(args, api);
   const fixture = local ? undefined : fixtureSession(env, fetcher);
   const owned = { chatId: undefined, attachmentId: undefined };
   let failure;
@@ -258,6 +259,7 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
         owned.chatId = undefined;
       }
     };
+    const errors = [];
     try {
       try {
         await removeOwned();
@@ -266,9 +268,16 @@ export async function smoke(args = process.argv.slice(2), fetcher = fetch) {
         token = await fixture.signIn();
         await removeOwned();
       }
-    } finally {
-      await fixture.signOut();
+    } catch (e) {
+      errors.push(e.message);
     }
+    // Every session is revoked even when data removal failed, and both outcomes are reported.
+    try {
+      await fixture.signOut();
+    } catch (e) {
+      errors.push(e.message);
+    }
+    if (errors.length) throw Error(errors.join('; '));
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)

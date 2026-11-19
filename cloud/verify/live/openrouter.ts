@@ -11,12 +11,19 @@ const REVOKED_KEY = 'OPENROUTER_REVOKED_KEY';
 const ZERO_CREDIT_KEY = 'OPENROUTER_ZERO_CREDIT_KEY';
 /** The consenting smoke fixture signs in through Convex Auth; email and password stay redacted. */
 const SMOKE_FIXTURE_SECRETS = ['SMOKE_FIXTURE_EMAIL', 'SMOKE_FIXTURE_PASSWORD'] as const;
-const SMOKE_FIXTURE_CONFIG = ['SMOKE_CONVEX_URL', 'SMOKE_FIXTURE_USER_ID'] as const;
+/** SMOKE_API_ORIGIN is configured with the fixture, independently of PRAXIS_LIVE_API_URL, so a wrong target is caught. */
+const SMOKE_FIXTURE_CONFIG = ['SMOKE_API_ORIGIN', 'SMOKE_CONVEX_URL', 'SMOKE_FIXTURE_USER_ID'] as const;
 const WEB_URL = 'PRAXIS_LIVE_WEB_URL';
 /** A Claude model with tools and reasoning in the curated list; change it here when the curated list moves. */
 const CLAUDE_MODEL = 'anthropic/claude-sonnet-5.5';
 const TOOL_PROMPT = 'You must call the JavaScript tool to compute 6 * 7; do not answer from memory. Then answer with the number only.';
 const MODEL_KEY_PATH = '/v1/model-key';
+
+/** Single-quoted env values are read literally, so a `#` in a password is never cut off as a comment. */
+function envLine(name: string, value: string) {
+  if (/[\r\n]/.test(value)) throw new Error(`${name} must be a single line`);
+  return `${name}='${value}'`;
+}
 
 async function connect(context: StepContext, secretName: string) {
   return hosted(context, MODEL_KEY_PATH, ModelKeySchema, {method: 'paste', apiKey: context.secret(secretName).reveal()});
@@ -177,16 +184,15 @@ export default defineSuite({
       checklist: 'node cloud/scripts/smoke-remote.mjs --with-llm passes as the smoke fixture, whose own model key is pre-connected.',
       needs: {secrets: [...SMOKE_FIXTURE_SECRETS], config: [HOSTED_API_URL, WEB_URL, ...SMOKE_FIXTURE_CONFIG]},
       async run(context) {
+        const bindings = [
+          ...SMOKE_FIXTURE_CONFIG.map(name => envLine(name, context.config(name))),
+          ...SMOKE_FIXTURE_SECRETS.map(name => envLine(name, context.secret(name).reveal())),
+        ];
         // smoke-remote reads fixture bindings from an env file; keep it outside the proof directory and delete it after.
         const directory = mkdtempSync(join(tmpdir(), 'praxis-verify-'));
         const envFile = join(directory, '.env.smoke');
-        const bindings = [
-          `SMOKE_API_ORIGIN=${new URL(context.config(HOSTED_API_URL)).origin}`,
-          ...SMOKE_FIXTURE_CONFIG.map(name => `${name}=${context.config(name)}`),
-          ...SMOKE_FIXTURE_SECRETS.map(name => `${name}=${context.secret(name).reveal()}`),
-        ];
-        writeFileSync(envFile, `${bindings.join('\n')}\n`, {mode: 0o600});
         try {
+          writeFileSync(envFile, `${bindings.join('\n')}\n`, {mode: 0o600});
           const result = await runCommand('node', ['scripts/smoke-remote.mjs', context.config(HOSTED_API_URL), context.config(WEB_URL), '--with-llm', '--env', envFile], {cwd: CLOUD_DIR});
           context.attach('smoke-remote.log', result.output);
           return result.code === 0 ? {status: 'pass', summary: 'smoke-remote --with-llm passed'} : {status: 'fail', summary: `smoke-remote exited ${result.code}`};
