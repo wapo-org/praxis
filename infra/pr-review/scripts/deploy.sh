@@ -24,12 +24,13 @@ REBUILD=no
 sudo cmp -s \"\$INCOMING/Containerfile\" \"\$APP/Containerfile\" || REBUILD=yes
 sudo rsync -a --delete --exclude=.venv --chown=root:root --chmod=D755,F644 \"\$INCOMING/\" \"\$APP/\"
 rm -rf \"\$INCOMING\"
+cd /tmp
 RUNTIME=/run/user/\$(id -u praxis-review)
 if [ \"\$REBUILD\" = yes ] || ! sudo -u praxis-review XDG_RUNTIME_DIR=\$RUNTIME podman image exists localhost/praxis-review-sandbox:$IMAGE_TAG; then
   BUILD=/var/lib/praxis-review/image-build
   sudo install -d -o praxis-review -g praxis-review -m 700 \$BUILD
   sudo install -o praxis-review -g praxis-review -m 600 \"\$APP/Containerfile\" \$BUILD/Containerfile
-  cd /tmp && sudo -u praxis-review XDG_RUNTIME_DIR=\$RUNTIME podman build --cgroup-manager=cgroupfs -t localhost/praxis-review-sandbox:$IMAGE_TAG \$BUILD
+  sudo -u praxis-review XDG_RUNTIME_DIR=\$RUNTIME podman build --cgroup-manager=cgroupfs -t localhost/praxis-review-sandbox:$IMAGE_TAG \$BUILD
 fi
 cd \"\$APP\" && sudo -u praxis-review env HOME=/var/lib/praxis-review .venv/bin/python -c 'import ubuntu_service'
 sudo systemctl restart praxis-review

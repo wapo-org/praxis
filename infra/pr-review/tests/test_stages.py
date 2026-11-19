@@ -1,3 +1,6 @@
+from unittest.mock import Mock
+
+import stages
 from muse_output import MuseOutput
 from pipeline import SessionRun
 from preview import PreviewUnavailable, preview_target
@@ -98,3 +101,21 @@ def test_a_failed_codex_run_never_reuses_an_answer_file() -> None:
     task = SessionTask(session="logic_bs", prompt="p", schema={}, read_only=True, max_steps="40")
     run = run_codex_session(_CrashingCodex(), task, model="m", reasoning_effort="low", secret_env={})
     assert run.output.payload is None and run.output.error is not None
+
+
+def test_visual_assessment_writes_the_validated_sheet_as_node(monkeypatch) -> None:
+    sheet = b"\x89PNG\r\n\x1a\n"
+    sb = Mock()
+    sb.exec.return_value.wait.return_value = 0
+    score = run("visual_review", {"score": 8, "inconsistencies": []})
+    model = Mock(return_value=score)
+    monkeypatch.setattr(stages, "run_codex_session", model)
+
+    assessment = stages.assess_with_sol(sb, [], sheet=sheet, model="sol", effort="low", recording_retained=True)
+
+    assert assessment is not None and assessment.score == 8
+    args, kwargs = sb.exec.call_args
+    assert args[0] == "python3" and args[-2:] == (stages.VISION_COPY, "600")
+    assert kwargs == {"user": "node"}
+    sb.exec.return_value.stdin.write.assert_called_once_with(sheet)
+    assert model.call_args.args[1].images == (stages.VISION_COPY,)
