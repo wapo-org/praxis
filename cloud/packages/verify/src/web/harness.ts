@@ -79,7 +79,7 @@ interface RunSession {
 async function runFlow(browser: Browser, flow: WebFlow, options: HarnessOptions, session: RunSession): Promise<FlowResult> {
   const started = Date.now();
   const storageState = flow.session === 'shared' ? session.state : undefined;
-  const context = await browser.newContext({viewport: CAPTURE_VIEWPORT, storageState});
+  const context = await browser.newContext({baseURL: options.base, viewport: CAPTURE_VIEWPORT, storageState});
   const request = await playwrightRequest.newContext();
   const page = await context.newPage();
   page.setDefaultTimeout(FLOW_ACTION_TIMEOUT_MS);
@@ -97,7 +97,7 @@ async function runFlow(browser: Browser, flow: WebFlow, options: HarnessOptions,
         await signIn(page, options.base, account);
       }
       signedIn = flow.session !== undefined;
-      await flow.run({page, api: options.api, request, seed: options.seed, note: line => notes.push(line)});
+      await flow.run({page, api: options.api, request, convexUrl: options.convexUrl, seed: options.seed, note: line => notes.push(line)});
     };
     await withTimeout(run(), FLOW_TIMEOUT_MS, flow.id);
   } catch (caught) {
