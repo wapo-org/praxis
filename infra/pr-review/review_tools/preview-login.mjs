@@ -5,7 +5,7 @@ import { chmodSync, writeFileSync } from 'node:fs';
 const require = createRequire('/opt/review-tools/package.json');
 const { chromium } = require('playwright');
 
-const STATE_PATH = '/tmp/preview-state.json';
+const STATE_PATH = '/root/review/preview-state.json';
 const SIGN_IN_TIMEOUT_MS = 60_000;
 const BYPASS_HEADER = 'x-vercel-protection-bypass';
 const SET_COOKIE_HEADER = 'x-vercel-set-bypass-cookie';

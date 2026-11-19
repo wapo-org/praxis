@@ -31,3 +31,46 @@ def test_missing_test_account_becomes_a_private_access_request() -> None:
     assert payload["ran"] is False and payload["access_blocker"] == "test_account"
     assert "PREVIEW_TEST_PASSWORD" in payload["manual_observations"]
     assert access_request(payload) is not None
+
+
+class _Stream:
+    def __init__(self, text: str = ""):
+        self.text = text
+
+    def read(self) -> str:
+        return self.text
+
+    def write(self, _data: bytes) -> None:
+        return None
+
+    def write_eof(self) -> None:
+        return None
+
+    def drain(self) -> None:
+        return None
+
+
+class _Process:
+    def __init__(self, rc: int, stdout: str = ""):
+        self.rc, self.stdin, self.stdout, self.stderr = rc, _Stream(), _Stream(stdout), _Stream()
+
+    def wait(self) -> int:
+        return self.rc
+
+
+class _CrashingCodex:
+    """Codex exits 1, while an answer file from an earlier attempt is still readable."""
+
+    def exec(self, *args, env=None, timeout=None, user=None):
+        if args[0] == "cat":
+            return _Process(0, '{"session": "logic_bs", "findings": [], "ui_check": "stale"}')
+        return _Process(1 if "codex" in " ".join(args) else 0)
+
+
+def test_a_failed_codex_run_never_reuses_an_answer_file() -> None:
+    from codex_session import run_codex_session
+    from sandbox import SessionTask
+
+    task = SessionTask(session="logic_bs", prompt="p", schema={}, read_only=True, max_steps="40")
+    run = run_codex_session(_CrashingCodex(), task, model="m", reasoning_effort="low", secret_env={})
+    assert run.output.payload is None and run.output.error is not None

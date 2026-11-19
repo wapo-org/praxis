@@ -6,7 +6,7 @@ import subprocess
 import uuid
 from contextlib import AbstractContextManager
 
-IMAGE = 'localhost/praxis-review-sandbox:sol-ui-1'
+IMAGE = 'localhost/praxis-review-sandbox:sol-ui-2'
 CONTAINER_TTL_SECONDS = 2700
 DEFAULT_EXEC_TIMEOUT_SECONDS = 180
 CPU_LIMIT = '2'

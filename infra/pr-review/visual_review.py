@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-ARTIFACT_DIR = "/tmp/praxis-review-artifacts"
+ARTIFACT_DIR = "/root/review/artifacts"
 CONTACT_SHEET = "contact-sheet.png"
 DEVELOPMENT_VIDEO = "development.webm"
 VISUAL_SESSION = "visual_review"

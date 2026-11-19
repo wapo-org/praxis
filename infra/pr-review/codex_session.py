@@ -15,6 +15,8 @@ from sandbox import SESSION_EXEC_TIMEOUT_SECONDS, WORKSPACE, SessionTask, exec_i
 
 CODEX_USER = "node"
 CODEX_HOME_ROOT = "/home/node"
+# Owned by `node` and made by the image, so prompts and outputs never sit in a shared /tmp.
+CODEX_WORK_DIR = f"{CODEX_HOME_ROOT}/review"
 DEFAULT_SOL_MODEL = "gpt-6.2-sol"
 DEFAULT_SOL_REASONING_EFFORT = "low"
 # Codex reads only these two files; sessions, logs and MCP servers from the operator's home never enter the sandbox.
@@ -61,9 +63,9 @@ def run_codex_session(
     reasoning_effort: str,
     secret_env: dict[str, str],
 ) -> SessionRun:
-    prompt_path = f"/tmp/codex_prompt_{task.session}.txt"
-    schema_path = f"/tmp/codex_schema_{task.session}.json"
-    output_path = f"/tmp/codex_output_{task.session}.json"
+    prompt_path = f"{CODEX_WORK_DIR}/prompt_{task.session}.txt"
+    schema_path = f"{CODEX_WORK_DIR}/schema_{task.session}.json"
+    output_path = f"{CODEX_WORK_DIR}/output_{task.session}.json"
     write_file(sb, prompt_path, task.prompt, user=CODEX_USER)
     write_file(sb, schema_path, json.dumps(task.schema), user=CODEX_USER)
     images = [arg for image in task.images for arg in ("-i", image)]
@@ -77,7 +79,8 @@ def run_codex_session(
     started = time.monotonic()
     try:
         rc, stdout, stderr = exec_in(
-            sb, *CODEX_USER_ENV, "bash", "-lc", f"cd {WORKSPACE} && {command} < {prompt_path}",
+            sb, *CODEX_USER_ENV, "bash", "-lc",
+            f"rm -f {output_path} && cd {WORKSPACE} && {command} < {prompt_path}",
             env={**secret_env, "CODEX_HOME": _home(task.session)},
             timeout=SESSION_EXEC_TIMEOUT_SECONDS, check=False, user=CODEX_USER,
         )
@@ -85,8 +88,10 @@ def run_codex_session(
     except Exception:
         crashed = MuseOutput(payload=None, error=ERROR_TIMEOUT, final_text="")
         return SessionRun(task.session, crashed, "", None, time.monotonic() - started)
-    # The last message is the schema-bound answer; the parser treats a bare JSON object as the final text.
-    output = parse_muse_output(final, task.required_keys)
+    # A failed run must not reuse an answer file; the parser treats a bare JSON object as the final text.
+    output = parse_muse_output(final if rc == 0 else "", task.required_keys)
+    if rc != 0:
+        output.error = ERROR_TIMEOUT
     # Codex logs its commands on stderr; the tail shows which files and diffs the reviewer actually read.
     return SessionRun(task.session, output, (stderr + stdout)[-TRANSCRIPT_TAIL_CHARS:], rc, time.monotonic() - started)
 

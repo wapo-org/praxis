@@ -16,6 +16,8 @@ from muse_output import ERROR_TIMEOUT, MuseOutput, parse_muse_output
 from pipeline import SessionRun
 
 WORKSPACE = "/workspace/repo"
+# Root-only working folder made by the image; never a world-writable /tmp path.
+REVIEW_DIR = "/root/review"
 MUSE_CONFIG_DIR = "/root/.config/muse"
 SESSION_EXEC_TIMEOUT_SECONDS = 900
 DEPENDENCY_INSTALL_TIMEOUT_SECONDS = 600
@@ -84,7 +86,7 @@ def clone_repo(sb: Any, *, repo: str, refs: list[str], checkout: str, github_tok
     script = f"""
 set -euo pipefail
 mkdir -p /workspace
-ASKPASS=/tmp/git-askpass.sh
+ASKPASS={REVIEW_DIR}/git-askpass.sh
 cat > "$ASKPASS" <<'EOF'
 #!/bin/sh
 case "$1" in
@@ -182,7 +184,7 @@ def configure_muse(
 
 
 def _session_config_dir(session: str) -> str:
-    return f"/tmp/muse-cfg-{session}"
+    return f"{REVIEW_DIR}/muse-cfg-{session}"
 
 
 def run_muse_session(
@@ -194,8 +196,8 @@ def run_muse_session(
     secret_env: dict[str, str],
 ) -> SessionRun:
     """One Muse session with its own config dir (auth lock contention) and secrets passed only to this process."""
-    prompt_path = f"/tmp/prompt_{task.session}.txt"
-    schema_path = f"/tmp/schema_{task.session}.json"
+    prompt_path = f"{REVIEW_DIR}/prompt_{task.session}.txt"
+    schema_path = f"{REVIEW_DIR}/schema_{task.session}.json"
     cfg_dir = _session_config_dir(task.session)
     write_file(sb, prompt_path, task.prompt)
     write_file(sb, schema_path, json.dumps(task.schema, indent=2))
@@ -290,7 +292,7 @@ def read_refreshed_auth(sb: Any) -> str | None:
         sb,
         "bash",
         "-lc",
-        "newest=$(ls -t /tmp/muse-cfg-*/muse/auth.json 2>/dev/null | head -n1 || true); "
+        f"newest=$(ls -t {REVIEW_DIR}/muse-cfg-*/muse/auth.json 2>/dev/null | head -n1 || true); "
         'if [ -n "$newest" ]; then cat "$newest"; fi',
         check=False,
     )

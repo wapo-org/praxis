@@ -123,8 +123,8 @@ HANDS_ON_SESSION_PROFILE = SessionProfile(
 
 HANDS_ON_STEPS: tuple[str, ...] = (
     "The server has already signed in to the preview as the test account; you never see or need its credentials.",
-    "Write `/tmp/check.mjs`: `export default async function check({page, step}) { ... }`. The page starts on the signed-in preview home. Call `await step('label')` after each meaningful state; it saves a labeled screenshot.",
-    "Run `review-check /tmp/check.mjs`. It records only your check to video, then prints JSON with `ok`, `error`, `steps`, `console_errors`, `page_errors` and `failed_requests`. Re-run after fixing your script; each run replaces the recording.",
+    "Write `/root/review/check.mjs`: `export default async function check({page, step}) { ... }`. The page starts on the signed-in preview home. Call `await step('label')` after each meaningful state; it saves a labeled screenshot.",
+    "Run `review-check /root/review/check.mjs`. It records only your check to video, then prints JSON with `ok`, `error`, `steps`, `console_errors`, `page_errors` and `failed_requests`. Re-run after fixing your script; each run replaces the recording.",
     "Check only what the requests below ask for. Do not change account settings, delete data, or send messages unrelated to the check.",
 )
 
@@ -340,7 +340,7 @@ def build_hands_on_prompt(
         changed_files=changed_files,
         custom_instructions=custom_instructions,
     )
-    return f"""You are the `hands_on` tester. Never edit files inside `/workspace/repo`; temporary scripts go in `/tmp`.
+    return f"""You are the `hands_on` tester. Never edit files inside `/workspace/repo`; temporary scripts go in `/root/review`.
 
 ## Your one job
 {profile.job} The preview for this exact PR head is `{preview_origin}`; it runs with real services and models.

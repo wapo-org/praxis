@@ -78,7 +78,7 @@ def test_hands_on_prompt_does_not_rerun_the_gates() -> None:
     )
     assert "Do not run `typecheck`, `npm test`, `check:rules`, `comment-sweep` or `verify`" in prompt
     assert "https://praxis-web-abc.vercel.app" in prompt and "- From `logic_bs`: Open settings" in prompt
-    assert "review-check /tmp/check.mjs" in prompt
+    assert "review-check /root/review/check.mjs" in prompt
     assert "password" not in prompt.lower()
     assert HANDS_ON_SESSION_PROFILE.max_steps == "80"
     assert {profile.max_steps for profile in REVIEW_SESSION_PROFILES} == {"40"}

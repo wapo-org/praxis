@@ -16,8 +16,11 @@ parser.add_argument('artifact', choices=ARTIFACTS)
 args = parser.parse_args()
 if not RUN_ID.fullmatch(args.run_id):
     parser.error('Invalid review run ID')
+path = (ROOT / args.run_id / args.artifact).resolve()
+if not path.is_relative_to(ROOT.resolve()):
+    parser.error('Invalid review artifact path')
 try:
-    with (ROOT / args.run_id / args.artifact).open('rb') as source:
+    with path.open('rb') as source:
         shutil.copyfileobj(source, sys.stdout.buffer)
 except FileNotFoundError:
     parser.exit(1, 'Artifact unavailable for that review run.\n')

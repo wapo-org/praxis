@@ -33,7 +33,7 @@ CONTACT_SHEET_TIMEOUT_SECONDS = 120
 SHEET_COLUMNS = 4
 SHEET_ROWS = 3
 SHEET_FRAME_WIDTH = 480
-VISION_COPY = "/tmp/vision/contact-sheet.png"
+VISION_COPY = "/home/node/review/contact-sheet.png"
 VISION_PROMPT = """Review this contact sheet: frames in reading order from a recorded browser check of a pull request's preview.
 The check verified:
 {requests}
@@ -66,7 +66,7 @@ def _install_tools(container: Any, target: PreviewTarget) -> None:
         sandbox.write_file(container, f"/opt/review-tools/{name}", (TOOLS_DIR / name).read_text(encoding="utf-8"))
     sandbox.exec_in(container, "ln", "-sf", "/opt/review-tools/review-check.mjs", "/usr/local/bin/review-check")
     sandbox.exec_in(container, "chmod", "755", "/opt/review-tools/review-check.mjs")
-    sandbox.write_file(container, "/tmp/preview-origin", target.web_origin)
+    sandbox.write_file(container, f"{sandbox.REVIEW_DIR}/preview-origin", target.web_origin)
 
 
 def _sign_in(container: Any, target: PreviewTarget) -> tuple[str, str] | None:

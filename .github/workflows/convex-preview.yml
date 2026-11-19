@@ -30,6 +30,10 @@ jobs:
         working-directory: cloud
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           test -n "$CONVEX_DEPLOY_KEY" || { echo "CONVEX_PREVIEW_DEPLOY_KEY is not set" >&2; exit 1; }
+          # A queued run for an older commit must not overwrite a newer backend.
+          head=$(gh api "repos/${{ github.repository }}/commits/develop" --jq .sha)
+          if [ "$head" != "$GITHUB_SHA" ]; then echo "develop moved to $head; skipping $GITHUB_SHA"; exit 0; fi
           npx --no-install convex deploy --yes

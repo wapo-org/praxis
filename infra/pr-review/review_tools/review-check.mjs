@@ -8,10 +8,11 @@ import { pathToFileURL } from 'node:url';
 const require = createRequire('/opt/review-tools/package.json');
 const { chromium } = require('playwright');
 
-const STATE_PATH = '/tmp/preview-state.json';
-const ARTIFACT_DIR = '/tmp/praxis-review-artifacts';
+const WORK_DIR = '/root/review';
+const STATE_PATH = `${WORK_DIR}/preview-state.json`;
+const ARTIFACT_DIR = `${WORK_DIR}/artifacts`;
 const STEP_DIR = `${ARTIFACT_DIR}/steps`;
-const VIDEO_DIR = '/tmp/review-video';
+const VIDEO_DIR = `${WORK_DIR}/video`;
 const VIDEO_PATH = `${ARTIFACT_DIR}/development.webm`;
 const CHECK_TIMEOUT_MS = 180_000;
 const LIST_MAX = 20;
@@ -19,9 +20,9 @@ const TEXT_MAX_CHARS = 300;
 const VIEWPORT = { width: 1280, height: 800 };
 
 const scriptPath = process.argv[2];
-const webOrigin = readFileSync('/tmp/preview-origin', 'utf8').trim();
+const webOrigin = readFileSync(`${WORK_DIR}/preview-origin`, 'utf8').trim();
 if (!scriptPath || !existsSync(scriptPath)) {
-  console.log(JSON.stringify({ ok: false, error: 'usage: review-check /tmp/check.mjs' }));
+  console.log(JSON.stringify({ ok: false, error: 'usage: review-check /root/review/check.mjs' }));
   process.exit(2);
 }
 
