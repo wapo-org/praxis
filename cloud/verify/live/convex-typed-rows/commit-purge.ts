@@ -7,6 +7,7 @@ import {ConvexHttpClient} from 'convex/browser';
 import {makeFunctionReference} from 'convex/server';
 import {ConvexError} from 'convex/values';
 import {z} from 'zod';
+import type {LiveOwner} from './owners.js';
 
 /** Name of the deployment env var `serverMutation` checks (`cloud/convex/access.ts`). */
 export const SERVER_TOKEN_ENV = 'PRAXIS_CONVEX_SERVER_TOKEN';
@@ -19,13 +20,7 @@ const CLI_OUTPUT_BYTES_MAX = 256 * 1024 * 1024;
 const PURGE_CALLS_MAX = 500;
 const PAGE_LIMIT_MAX = 100;
 const SERVER_AUTH_ERROR = 'Server authentication required';
-
-/** Shape of slot A's `createLiveOwners` entries. */
-export interface LiveOwner {
-  email: string;
-  userId: string;
-  client: ConvexHttpClient;
-}
+const ACCOUNT_UNAVAILABLE = 'Account unavailable';
 export interface Live {
   convexUrl: string;
   serverToken: SealedSecret;
@@ -46,6 +41,7 @@ const StoreHead = makeFunctionReference<'query'>('store:head');
 const ChatsList = makeFunctionReference<'query'>('chats:list');
 const ChatsCreate = makeFunctionReference<'mutation'>('chats:create');
 const Begin = makeFunctionReference<'mutation'>('account:begin');
+const DeletionOwner = makeFunctionReference<'query'>('account:deletionOwner');
 const Purge = makeFunctionReference<'mutation'>('account:purge');
 const Active = makeFunctionReference<'query'>('account:active');
 
@@ -56,6 +52,7 @@ const OwnedRow = z.object({userId: z.string()});
 const RunRow = OwnedRow.extend({workflow: z.object({id: z.string().optional()}).optional()});
 const JournalRow = z.object({workflowId: z.string()});
 const WorkflowRow = z.object({_id: z.string()});
+const DeletionSession = z.object({userId: z.string(), sessionId: z.string(), pending: z.boolean()});
 
 // ---- pure checks (unit-tested offline) ----
 
@@ -270,7 +267,12 @@ export async function snapshotJournal(reader: TableReader, workflowIds: Readonly
 
 /** Begins deletion for `owner`; every client read, client write and server typed write must then be refused. */
 export async function beginFencesOwner(live: Live, owner: LiveOwner, chatId: string): Promise<StepResult> {
-  await serverClient(live).mutation(Begin, {serverToken: live.serverToken.reveal(), userId: owner.userId});
+  await owner.refresh();
+  const session = DeletionSession.parse(await owner.client.query(DeletionOwner, {}));
+  if (session.userId !== owner.userId || session.pending) throw new Error('Unexpected fixture deletion identity');
+  await serverClient(live).mutation(Begin, {
+    serverToken: live.serverToken.reveal(), userId: owner.userId, keepSessionId: session.sessionId,
+  });
   const at = now();
   const chat = ChatSchema.parse({type: 'chat', id: chatId, title: 'after begin', mode: 'build', createdAt: at, updatedAt: at});
   const attempts: [string, () => Promise<unknown>][] = [
@@ -285,7 +287,7 @@ export async function beginFencesOwner(live: Live, owner: LiveOwner, chatId: str
   for (const [label, call] of attempts) {
     const text = await rejection(call);
     log.push(`${label}: ${text ?? 'accepted'}`);
-    if (text === null) problems.push(`${label} was accepted after begin`);
+    if (text !== ACCOUNT_UNAVAILABLE) problems.push(`${label} did not return the deletion fence`);
   }
   return verdict(problems, 'owner reads and typed writes are fenced after account:begin', log);
 }
@@ -331,6 +333,7 @@ export async function assertOwnerUnchanged(
 ): Promise<StepResult> {
   const {counts} = await snapshotOwner(reader, owner.userId);
   const problems = changedTables(before, counts).map(entry => `row count changed: ${entry}`);
+  await owner.refresh();
   const key = (messages: readonly Message[]) => messages.map(message => `${message.id}@${message.sequence}`).join(',');
   const page = await readPage(owner, chatId);
   if (key(page.messages) !== key(beforeMessages)) problems.push('message ids or sequences changed');

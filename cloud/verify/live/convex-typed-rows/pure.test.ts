@@ -1,11 +1,40 @@
 import {createHash} from 'node:crypto';
 import {SealedSecret} from '@praxis/types';
 import {ConvexError} from 'convex/values';
-import {describe, expect, it} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
 import {textMessage} from './api.js';
 import {contiguous, errorText, foreignReadCheck, rejectedCheck, settle, stepResult, AUTH_REQUIRED} from './checks.js';
 import {emailCodeFrom, isRecipient, signUpOwnerId} from './mailbox.js';
-import {liveOwnerEmail, newRunId} from './owners.js';
+import {CurrentUser, liveOwnerEmail, liveOwnerSession, newRunId} from './owners.js';
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('disposable owner session', () => {
+  it('rotates the refresh credential and updates the client access token', async () => {
+    const calls: string[] = [];
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      if (url.endsWith('/api/mutation')) {
+        calls.push(JSON.parse(String(init.body)).args[0].refreshToken);
+        return Response.json({
+          status: 'success', value: {kind: 'rotated', tokens: {
+            accessToken: `access-${calls.length}`, refreshToken: `refresh-${calls.length}`, userId: 'owner',
+          }},
+        });
+      }
+      expect(new Headers(init.headers).get('Authorization')).toBe('Bearer access-2');
+      return Response.json({status: 'success', value: 'owner'});
+    });
+    vi.stubGlobal('fetch', fetch);
+    const owner = liveOwnerSession('https://fixture.convex.cloud', 'fixture@example.test', {
+      accessToken: 'access-0', refreshToken: 'refresh-0', userId: 'owner',
+    });
+    await owner.refresh();
+    await owner.refresh();
+    expect(calls).toEqual(['refresh-0', 'refresh-1']);
+    expect(owner.token.reveal()).toBe('access-2');
+    await expect(owner.client.query(CurrentUser, {})).resolves.toBe('owner');
+  });
+});
 
 describe('owner addresses', () => {
   it('builds a unique Resend test-inbox address per run and label', () => {

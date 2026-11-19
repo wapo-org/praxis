@@ -13,15 +13,21 @@ const PASSWORD_BYTES = 24;
 
 const SignUp = makeFunctionReference<'mutation', {email: string; password: string}, unknown>('auth:signUpWithEmailPassword');
 const CompleteSignUp = makeFunctionReference<'mutation', {browserSecret: string; emailCode: string}, unknown>('auth:completeSignUpWithEmailPassword');
+const RefreshSession = makeFunctionReference<'mutation', {refreshToken: string}, unknown>('auth:refreshSession');
 export const CurrentUser = makeFunctionReference<'query', Record<string, never>, unknown>('auth:currentUser');
 
 const SignUpReply = z.discriminatedUnion('success', [
   z.object({success: z.literal(true), browserSecret: z.string().min(1)}),
   z.object({success: z.literal(false), userError: z.object({error: z.string()})}),
 ]);
+const SessionTokens = z.object({accessToken: z.string().min(1), refreshToken: z.string().min(1), userId: z.string().min(1)});
 const CompleteReply = z.discriminatedUnion('status', [
-  z.object({status: z.literal('complete'), tokens: z.object({accessToken: z.string().min(1), userId: z.string().min(1)})}),
+  z.object({status: z.literal('complete'), tokens: SessionTokens}),
   z.object({status: z.literal('error'), userError: z.object({error: z.string()})}),
+]);
+const RefreshReply = z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('rotated'), tokens: SessionTokens}),
+  z.object({kind: z.literal('noSession')}),
 ]);
 const Viewer = z.string().min(1).nullable();
 
@@ -32,6 +38,7 @@ export type LiveOwner = {
   client: ConvexHttpClient;
   /** Lets a step open a second client, the HTTP equivalent of reloading the page. */
   token: SealedSecret;
+  refresh(): Promise<void>;
 };
 
 export type OwnerAccess = {
@@ -58,6 +65,25 @@ export function authedClient(convexUrl: string, token: SealedSecret): ConvexHttp
   return new ConvexHttpClient(convexUrl, {logger: false, auth: token.reveal()});
 }
 
+export function liveOwnerSession(convexUrl: string, email: string, tokens: z.infer<typeof SessionTokens>): LiveOwner {
+  let refreshToken = SealedSecret.of(tokens.refreshToken);
+  const token = SealedSecret.of(tokens.accessToken);
+  const client = authedClient(convexUrl, token);
+  const anonymous = new ConvexHttpClient(convexUrl, {logger: false});
+  return {
+    email, userId: tokens.userId, client, token,
+    async refresh() {
+      const reply = RefreshReply.parse(await anonymous.mutation(RefreshSession, {refreshToken: refreshToken.reveal()}));
+      if (reply.kind !== 'rotated' || reply.tokens.userId !== this.userId) {
+        throw new Error('Convex Auth could not renew the disposable owner session');
+      }
+      refreshToken = SealedSecret.of(reply.tokens.refreshToken);
+      this.token = SealedSecret.of(reply.tokens.accessToken);
+      client.setAuth(this.token.reveal());
+    },
+  };
+}
+
 async function signUp(convexUrl: string, email: string, access: OwnerAccess): Promise<LiveOwner> {
   const anonymous = new ConvexHttpClient(convexUrl, {logger: false});
   const password = SealedSecret.of(randomBytes(PASSWORD_BYTES).toString('base64url'));
@@ -75,13 +101,12 @@ async function signUp(convexUrl: string, email: string, access: OwnerAccess): Pr
   }));
   if (completed.status === 'error') throw new Error(`Convex Auth rejected the sign-up code: ${completed.userError.error}`);
   if (completed.tokens.userId !== pendingOwnerId) throw new Error('Sign-up returned a different owner');
-  const token = SealedSecret.of(completed.tokens.accessToken);
-  const client = authedClient(convexUrl, token);
-  const userId = Viewer.parse(await client.query(CurrentUser, {}));
+  const owner = liveOwnerSession(convexUrl, email, completed.tokens);
+  const userId = Viewer.parse(await owner.client.query(CurrentUser, {}));
   if (!userId) throw new Error('auth:currentUser returned no owner for a fresh session');
   if (userId !== completed.tokens.userId) throw new Error('auth:currentUser disagrees with the session user');
   access.log?.(`signed in ${email} as an active owner`);
-  return {email, userId, client, token};
+  return owner;
 }
 
 /** Signs up exactly two owners through the deployment's own password provider, one after the other. */
