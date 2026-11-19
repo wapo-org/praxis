@@ -89,7 +89,7 @@
       "apps/web/e2e/n2.pw.ts": 7,
       "apps/web/e2e/saved-values.pw.ts": 6,
       "packages/glass/src/dropdown/dropdown.pw.ts": 3,
-      "scripts/deploy.test.ts": 9
+      "scripts/deploy.test.ts": 3
     },
     "R5.banned-primitives": {
       "apps/api/src/tests/local-persistence.test.ts": 1

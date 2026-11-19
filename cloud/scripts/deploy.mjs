@@ -113,15 +113,15 @@ export function stepEnv(step, env, api) {
     };
   return base;
 }
+/** Values no staged file may contain; PASSWORD covers the smoke fixture binding kept in the same private file. */
+export function secretValues(env) {
+  return Object.entries(env)
+    .filter(([k]) => /TOKEN|KEY|SECRET|PASSWORD/.test(k))
+    .map(([, v]) => v);
+}
 async function checkUpload(label, stage, env) {
   const files = await listFiles(stage);
-  await assertSafeUpload(
-    stage,
-    files,
-    Object.entries(env)
-      .filter(([k]) => /TOKEN|KEY|SECRET/.test(k))
-      .map(([, v]) => v),
-  );
+  await assertSafeUpload(stage, files, secretValues(env));
   const list = await writeUploadList(stage, files);
   const groups = {};
   for (const f of files) {
