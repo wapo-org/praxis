@@ -8,7 +8,6 @@ import {
   useSignInWithEmailPassword, useSignUpWithEmailPassword, useStartPasswordRecovery,
 } from '@convex-dev/auth/methods/email-password/react';
 import { useSignInWithGoogle, useOauth } from '@convex-dev/auth/methods/google/react';
-import { useSignInWithApple } from '@convex-dev/auth/methods/apple/react';
 import { api } from '../../../../convex/_generated/api';
 import { AUTH_COPY, AUTH_ROUTES, authError } from './constants';
 import authStyles from './AuthScreens.module.css';
@@ -29,23 +28,31 @@ export function EmailScreens() {
   const register = useSignUpWithEmailPassword(api.auth);
   const recovery = useStartPasswordRecovery(api.auth);
   const google = useSignInWithGoogle(api.auth);
-  const apple = useSignInWithApple(api.auth);
   const { flowError } = useOauth();
   const busy = login.pending || register.pending || recovery.pending || oauthPending;
   async function submit() {
     setError('');
     setMessage('');
-    const result = mode === 'login' ? await login.signIn({ email, password })
-      : mode === 'register' ? await register.signUp({ email, password })
-      : await recovery.startPasswordRecovery({ email });
-    if ('userError' in result) setError(authError(result.userError));
-    else if (mode !== 'login') setMessage(AUTH_COPY.checkEmail);
+    try {
+      const result = mode === 'login' ? await login.signIn({ email, password })
+        : mode === 'register' ? await register.signUp({ email, password })
+        : await recovery.startPasswordRecovery({ email });
+      if ('userError' in result) setError(authError(result.userError, AUTH_COPY.unavailable));
+      else if (mode !== 'login') setMessage(AUTH_COPY.checkEmail);
+    } catch {
+      setError(AUTH_COPY.unavailable);
+    }
   }
-  async function oauth(provider: 'google' | 'apple') {
+  async function signInWithGoogle() {
+    if (import.meta.env.PRAXIS_MOCK_OAUTH?.includes('google')) {
+      setMessage('');
+      setError('This preview simulates an unavailable Google sign-in. Use email to continue.');
+      return;
+    }
     setOauthPending(true);
     setError('');
     try {
-      const result = await (provider === 'google' ? google : apple).signIn({ redirectTo: window.location.origin + AUTH_ROUTES.home });
+      const result = await google.signIn({ redirectTo: window.location.origin + AUTH_ROUTES.home });
       if (result.status === 'error') {
         setError(authError(result.userError));
         setOauthPending(false);
@@ -64,8 +71,11 @@ export function EmailScreens() {
     </form>
     {message && <p role="status">{message}</p>}
     {(error || flowError) && <p role="alert">{error || (flowError && authError(flowError))}</p>}
-    {mode !== 'reset' && <div className={styles.oauthGroup}>{(['google', 'apple'] as const).map(provider =>
-      <GlassChip className={`${styles.action} ${authStyles.button}`} key={provider} disabled={busy} onClick={() => void oauth(provider)}>Continue with {provider === 'google' ? 'Google' : 'Apple'}</GlassChip>)}</div>}
+    {mode !== 'reset' && <div className={styles.oauthGroup}>
+      <GlassChip className={`${styles.action} ${authStyles.button}`} disabled={busy} onClick={() => void signInWithGoogle()}>
+        Continue with Google
+      </GlassChip>
+    </div>}
     <nav className={authStyles.actions}>{(['login', 'register', 'reset'] as const).filter(next => next !== mode).map(next =>
       <button key={next} disabled={busy} onClick={() => { setMode(next); setMessage(''); setError(''); setPassword(''); }}>{next === 'login' ? 'Sign in' : next === 'register' ? 'Create account / resend verification' : 'Forgot password?'}</button>)}</nav>
   </AuthFrame>;

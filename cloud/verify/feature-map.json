@@ -50,6 +50,20 @@
       ]
     },
     {
+      "id": "account.deletion",
+      "title": "Convex-authenticated account deletion, interrupted purge recovery and session revocation",
+      "issue": "PRA-64",
+      "surfaces": ["web", "api"],
+      "covers": [{"command": "gate"}, {"command": "web", "flows": ["unavailable-account"]}]
+    },
+    {
+      "id": "web.preview-provider-guidance",
+      "title": "Preview Google simulation guidance keeps email sign-in available",
+      "issue": "PRA-64",
+      "surfaces": ["web"],
+      "covers": [{"command": "web", "flows": ["preview-provider-guidance"]}]
+    },
+    {
       "id": "web.shell",
       "title": "Signed-out shell, Convex Auth sign-in and an empty chat with a usable composer",
       "issue": "PRA-28",

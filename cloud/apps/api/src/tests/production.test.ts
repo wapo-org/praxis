@@ -1,18 +1,19 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {randomBytes} from 'node:crypto';
+import {createHmac, randomBytes} from 'node:crypto';
+import {ACCOUNT_DELETE_RECOVERY_SIGNATURE_HEADER} from '@praxis/protocol';
+import type {Redis} from '@upstash/redis';
 import {CONTINUATION_PATH, PRODUCTION_ENV, createProductionApp, readProductionEnv} from '../production.js';
+import * as upstash from '../adapters/upstash.js';
+import {fakeRedis} from '../adapters/testing/fake-redis.js';
 import {createSmokeApp} from '../smoke.js';
 import {createLocalAdapters} from '../local-memory.js';
 import {createPraxisApp, jsonLog} from '../server.js';
 
-const env = (): Record<string, string> => ({
+const env = () => ({
   PRAXIS_TURN_CURRENT_SIGNING_KEY: 't'.repeat(32),
   PRAXIS_API_URL: 'https://api.praxis.test',
   PRAXIS_WEB_ORIGINS: 'https://app.praxis.test',
   PRAXIS_ENCRYPTION_KEYS: `${randomBytes(32).toString('base64')},${randomBytes(32).toString('base64')}`,
-  CLERK_PUBLISHABLE_KEY: 'pk_test_ZmFrZS5jbGVyay5hY2NvdW50cy5kZXYk',
-  CLERK_SECRET_KEY: 'sk_test_fake_not_a_key',
-  CLERK_JWT_KEY: 'fake-public-key',
   CONVEX_URL: 'https://example-123.convex.cloud',
   PRAXIS_CONVEX_SERVER_TOKEN: 's'.repeat(40),
   UPSTASH_REDIS_REST_URL: 'https://example.upstash.io',
@@ -33,7 +34,7 @@ describe('production startup', () => {
     expect(() => readProductionEnv(bad)).toThrow(/PRAXIS_API_URL must be an https URL[\s\S]*PRAXIS_ENCRYPTION_KEYS must list base64 keys of exactly 32 random bytes each[\s\S]*PRAXIS_CONVEX_SERVER_TOKEN must be at least 32 characters/);
   });
 
-  it('composes with Convex/Upstash/QStash/Clerk without touching the network, and serves health + the signed continuation route', async () => {
+  it('composes with Convex Auth, Upstash and QStash without touching the network, and serves health + the signed continuation route', async () => {
     const {app, service} = createProductionApp(env());
     expect(service.local).toBe(false);
     expect(await (await app.request('/health')).json()).toMatchObject({mode: 'production'});
@@ -41,6 +42,96 @@ describe('production startup', () => {
     expect((await app.request('/api/turn', {method: 'POST', body: '{}', headers: {cookie: 'praxis_session=fake'}})).status).toBe(401);
     expect((await app.request('/api/turn', {method: 'OPTIONS'})).status).toBe(405);
     expect((await app.request(CONTINUATION_PATH, {method: 'POST', body: '{}'})).status).toBe(401);
+  });
+
+  it('purges the verified owner and resumes committed work in a fresh app without the initiating bearer', async () => {
+    const config = env();
+    const userId = 'verified-owner';
+    const sessionId = 'session-for-test';
+    const memory = fakeRedis();
+    const redis = upstash.upstashFromRedis(memory.redis, {accountOwnership: true});
+    const redisFactory = vi.spyOn(upstash, 'createUpstashAdapters').mockReturnValue({redis: memory.redis as Redis, ...redis});
+    const calls: string[] = [];
+    let deleting = false;
+    let erased = false;
+    let committedBatches = 0;
+    await redis.ownership.activate(userId);
+    await redis.kv.set('owner-cache', {cached: true}, 60, userId);
+    const convexFetch = vi.fn<typeof fetch>(async (_url, init) => {
+      const {path, args: [args]} = JSON.parse(String(init?.body));
+      const headers = new Headers(init?.headers);
+      calls.push(path);
+      let value: unknown;
+      switch (path) {
+        case 'account:deletionOwner':
+          expect(headers.get('authorization')).toBe(`Bearer ${sessionId}`);
+          value = erased ? null : {userId, pending: deleting};
+          break;
+        case 'account:confirmDeletion':
+          expect(headers.get('authorization')).toBe(`Bearer ${sessionId}`);
+          value = args.password === 'verified-test-password' || deleting ? {userId, sessionId} : null;
+          break;
+        case 'account:begin':
+          expect(args).toEqual({userId, keepSessionId: sessionId, serverToken: config.PRAXIS_CONVEX_SERVER_TOKEN});
+          deleting = true;
+          value = null;
+          break;
+        case 'account:pending':
+          expect(args).toEqual({userId, serverToken: config.PRAXIS_CONVEX_SERVER_TOKEN});
+          value = deleting && !erased;
+          break;
+        case 'account:purge': {
+          const call = calls.filter(item => item === path).length;
+          expect(args).toEqual({userId, serverToken: config.PRAXIS_CONVEX_SERVER_TOKEN});
+          if (call === 2) return new Response('temporary failure', {status: 503});
+          committedBatches++;
+          erased = call >= 3;
+          value = {done: erased};
+          break;
+        }
+        case 'auth:currentUser':
+          value = deleting ? null : userId;
+          break;
+        default:
+          throw new Error(`Unexpected Convex function: ${path}`);
+      }
+      return Response.json({status: 'success', value});
+    });
+    vi.stubGlobal('fetch', convexFetch);
+    try {
+      const {app} = createProductionApp(config);
+      const headers = {authorization: `Bearer ${sessionId}`, 'content-type': 'application/json'};
+      const erase = (password?: string) => app.request('/v1/account', {
+        method: 'DELETE', headers, body: JSON.stringify({password, userId: 'attacker-controlled-owner'}),
+      });
+      expect((await app.request('/v1/account', {method: 'DELETE'})).status).toBe(401);
+      expect((await erase('incorrect-test-password')).status).toBe(403);
+      expect(calls).toEqual(['account:deletionOwner', 'account:confirmDeletion']);
+      expect((await erase('verified-test-password')).status).toBe(503);
+      expect(committedBatches).toBe(1);
+      expect(await redis.ownership.isActive(userId)).toBe(false);
+      expect(await redis.kv.get('owner-cache')).toBeNull();
+      await expect(redis.kv.set('stale-write', {}, 60, userId)).rejects.toThrow('Account unavailable');
+      expect((await app.request('/v1/bootstrap', {headers})).status).toBe(401);
+
+      const freshApp = createProductionApp(config).app;
+      const body = JSON.stringify({type: 'account.delete.resume', userId});
+      const signature = createHmac('sha256', config.PRAXIS_CONVEX_SERVER_TOKEN).update(body).digest('hex');
+      const recover = (payload: string) => freshApp.request(CONTINUATION_PATH, {
+        method: 'POST', headers: {[ACCOUNT_DELETE_RECOVERY_SIGNATURE_HEADER]: signature}, body: payload,
+      });
+      expect((await recover(body.replace(userId, 'forged-owner'))).status).toBe(401);
+      expect(committedBatches).toBe(1);
+      expect((await recover(body)).status).toBe(200);
+      expect(committedBatches).toBe(2);
+      expect((await recover(body)).status).toBe(200);
+      expect(committedBatches).toBe(2);
+      expect((await erase()).status).toBe(401);
+      expect((await freshApp.request('/v1/bootstrap', {headers})).status).toBe(401);
+    } finally {
+      redisFactory.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 
   it('refuses the smoke flag and the smoke app in production', () => {

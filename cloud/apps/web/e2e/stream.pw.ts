@@ -1,8 +1,8 @@
-import { signIn as convexSignIn } from './sign-in';
-import {test,expect} from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import {expect} from '@playwright/test';
 const expected='Hello **world** 👩🏽‍💻 é 中文 שלום.';
 test.beforeEach(async({page})=>{
-  await convexSignIn(page, '/lab/stream');
+  await openSignedInPage(page, '/lab/stream');
   await page.getByRole('heading',{name:'Stream simulator'}).waitFor();
 });
 for(const chunk of ['char','token','word','sentence','2kb','whole']) for(const speed of ['2tps','40tps','1500tps','burstStall','jitter','instant']) {

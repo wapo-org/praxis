@@ -1,8 +1,8 @@
-import { signIn, createTestAccount, stackConvexUrl } from './sign-in';
+import { signIn, createTestAccount, stackConvexUrl, reserveAuthChallenge, stackTest as test } from './sign-in';
 import { latestEmailLink } from './test-mail';
-import { test, expect, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 const open = async (page: Page, account: Awaited<ReturnType<typeof createTestAccount>>) => {
-  await signIn(page, '/', account);
+  await signIn(page, account);
   await page.evaluate(async () => {
     // @ts-expect-error Vite source module.
     (window as any).__api = (await import('/src/lib/api.ts')).apiClient;
@@ -92,6 +92,7 @@ test('email signup and recovery links return to the chat screen', async ({ page 
   await page.getByRole('button', { name: 'Create account / resend verification', exact: true }).click();
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password', { exact: true }).fill(password);
+  await reserveAuthChallenge();
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Open the link in this browser');
   await page.goto(await latestEmailLink(email));
@@ -101,6 +102,7 @@ test('email signup and recovery links return to the chat screen', async ({ page 
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await page.getByRole('button', { name: 'Forgot password?', exact: true }).click();
   await page.getByLabel('Email', { exact: true }).fill(email);
+  await reserveAuthChallenge();
   await page.getByRole('button', { name: 'Send recovery link', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Open the link in this browser');
   await page.goto(await latestEmailLink(email));
@@ -111,11 +113,11 @@ test('email signup and recovery links return to the chat screen', async ({ page 
   await expect(page.getByText('Page not found', { exact: true })).toHaveCount(0);
 });
 
-test('sign-in offers password, Google, Apple and email recovery', async ({ page }) => {
+test('sign-in offers password, Google and email recovery', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Continue with Google', exact: true })).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Continue with Apple', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Continue with Apple', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Forgot password?', exact: true }).click();
   await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Send recovery link', exact: true })).toBeVisible();
@@ -137,10 +139,11 @@ test('a signed-in session cannot bypass an uncompleted recovery link', async ({ 
   await page.goto('/');
   await page.getByRole('button', { name: 'Forgot password?', exact: true }).click();
   await page.getByLabel('Email', { exact: true }).fill(account.email);
+  await reserveAuthChallenge();
   await page.getByRole('button', { name: 'Send recovery link', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Open the link in this browser');
   const link = await latestEmailLink(account.email);
-  await signIn(page, '/', account);
+  await signIn(page, account);
   await page.goto(link);
   await expect(page.getByLabel('New password', { exact: true })).toBeVisible();
   await page.getByLabel('New password', { exact: true }).fill(account.password + 'new');

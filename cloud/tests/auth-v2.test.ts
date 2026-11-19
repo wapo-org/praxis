@@ -55,13 +55,18 @@ describe('Convex Auth v2', () => {
     if (!recovery.success) throw new Error('Recovery failed');
     const resetProof = { browserSecret: recovery.browserSecret, emailCode: await emailCode(t) };
     expect(await t.query(api.auth.checkPasswordRecovery, resetProof)).toEqual({ success: true });
+    const otherBrowser = { ...resetProof, browserSecret: 'other-browser' };
+    expect((await t.query(api.auth.checkPasswordRecovery, otherBrowser)).success).toBe(false);
     const reset = await t.mutation(api.auth.completePasswordRecovery, { ...resetProof, newPassword: PASSWORD + 'new' });
     if (reset.status !== 'complete') throw new Error('Reset failed');
     expect((await t.mutation(api.auth.signInWithEmailPassword, { email: EMAIL, password: PASSWORD })).status).toBe('error');
+    expect((await t.mutation(api.auth.signInWithEmailPassword, { email: EMAIL, password: PASSWORD + 'new' })).status).toBe('complete');
+    expect((await t.query(api.auth.checkPasswordRecovery, resetProof)).success).toBe(false);
     const refreshed = await t.mutation(api.auth.refreshSession, { refreshToken: reset.tokens.refreshToken });
     expect(refreshed.kind).toBe('rotated');
-    await t.mutation(api.auth.signOut, { refreshToken: reset.tokens.refreshToken });
-    expect(await t.mutation(api.auth.refreshSession, { refreshToken: reset.tokens.refreshToken })).toEqual({ kind: 'noSession' });
+    if (refreshed.kind !== 'rotated') throw new Error('Refresh failed');
+    await t.mutation(api.auth.signOut, { refreshToken: refreshed.tokens.refreshToken });
+    expect(await t.mutation(api.auth.refreshSession, { refreshToken: refreshed.tokens.refreshToken })).toEqual({ kind: 'noSession' });
   });
   it('rejects invalid proofs and package-invalid passwords', async () => {
     const t = setup();

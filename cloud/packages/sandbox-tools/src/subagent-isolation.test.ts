@@ -1,11 +1,11 @@
-import {mkdtemp, mkdir, readFile, realpath, readdir, rm, symlink, writeFile} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, realpath, readdir, rm, stat, symlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {expect, it} from 'vitest';
 import type {ExecRequest} from './port.js';
 import {runDiagnostics} from './diagnostics.js';
 import {localExec, localSandboxPort} from './local.js';
-import {FILE_HELPER_PATH, fileOperation, SNAPSHOT_MAX_BYTES} from './subagent-isolation.js';
+import {FILE_HELPER_PATH, fileOperation, isolatedArgv, ISOLATION_TIMEOUT_MS, SNAPSHOT_MAX_BYTES} from './subagent-isolation.js';
 
 async function fixture() {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'praxis-confined-')));
@@ -17,11 +17,12 @@ async function fixture() {
   // Only mounts are translated: staged files, helper argv and Python execute through the real local process port.
   port.exec = async request => {
     calls.push(request);
-    if (request.argv[0] !== 'bwrap') return localExec(request);
+    const launcher = request.argv.indexOf('bwrap');
+    if (launcher === -1) return localExec(request);
     const end = request.argv.indexOf('--');
     const mounts = new Map<string, string>();
-    for (let index = 0; index < end; index++) {
-      if (request.argv[index] === '--ro-bind' || request.argv[index] === '--bind') {
+    for (let index = launcher + 1; index < end; index++) {
+      if (['--ro-bind-fd', '--bind-fd'].includes(request.argv[index]!)) {
         mounts.set(request.argv[index + 2]!, request.argv[index + 1]!);
         index += 2;
       }
@@ -32,6 +33,49 @@ async function fixture() {
   const run = (op: 'read' | 'write' | 'capture', path = '', bytes: Uint8Array = new Uint8Array()) => fileOperation(port, root, root, op, path, bytes, control);
   return {directory, root, control, port, calls, run};
 }
+
+it('passes opened directory and file identities to the sandbox launcher', async () => {
+  const {directory, root} = await fixture();
+  try {
+    const helper = join(directory, 'helper.py');
+    const recorder = join(directory, 'record-mounts');
+    await writeFile(helper, 'fixture');
+    await writeFile(recorder, `#!/usr/bin/env python3
+import json, os, sys
+
+mounts = []
+for index in (1, 4):
+    flag, fd, target = sys.argv[index:index + 3]
+    entry = os.fstat(int(fd))
+    mounts.append([flag, entry.st_dev, entry.st_ino, target])
+print(json.dumps(mounts))
+`, {mode: 0o700});
+    const launch = (source: string, readOnly: boolean) => {
+      const argv = isolatedArgv(source, root, readOnly, ['/usr/bin/true'], root, [
+        {source: helper, target: FILE_HELPER_PATH},
+      ]);
+      argv[argv.indexOf('bwrap')] = recorder;
+      return localExec({argv, cwd: '/', timeoutMs: ISOLATION_TIMEOUT_MS});
+    };
+
+    const workspace = await stat(root);
+    const staged = await stat(helper);
+    for (const readOnly of [false, true]) {
+      const result = await launch(root, readOnly);
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual([
+        [readOnly ? '--ro-bind-fd' : '--bind-fd', workspace.dev, workspace.ino, root],
+        ['--ro-bind-fd', staged.dev, staged.ino, FILE_HELPER_PATH],
+      ]);
+    }
+
+    const invalid = await launch(helper, true);
+    expect(invalid.exitCode).toBe(1);
+    expect(invalid.stdout).toBe('');
+  } finally {
+    await rm(directory, {recursive: true, force: true});
+  }
+});
 
 it('the real file helper rejects symlinks and records immutable executable bytes', async () => {
   const {directory, root, run} = await fixture();
@@ -65,7 +109,7 @@ it('child-planted json.py/base64.py and PYTHON environment cannot forge reads or
     const invocation = calls.find(call => call.argv.includes(FILE_HELPER_PATH))!;
     expect(invocation.argv.slice(invocation.argv.indexOf('--') + 1, invocation.argv.indexOf('--') + 4)).toEqual(['python3', '-I', FILE_HELPER_PATH]);
     expect(invocation.argv[invocation.argv.indexOf('--chdir') + 1]).toBe('/');
-    expect(invocation.argv).not.toContain('-c');
+    expect(invocation.argv.slice(invocation.argv.indexOf('--') + 1)).not.toContain('-c');
   } finally {
     await rm(directory, {recursive: true, force: true});
   }

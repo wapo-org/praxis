@@ -65,10 +65,10 @@ describe('Convex typed owner storage', () => {
       .rejects.toThrow('Server authentication required');
     await expect(t.mutation(api.messages.commit, {...scope, userId: bob.userId, messagesJson}))
       .rejects.toThrow('Chat unavailable');
-    await expect(t.mutation(api.store.put, {...token, userId: bob.userId, kind: 'message', id: 'private', value: message('private')}))
+    await expect(t.mutation(api.store.put, {...token, userId: bob.userId, kind: 'message', id: 'private', valueJson: JSON.stringify(message('private'))}))
       .rejects.toThrow('Chat unavailable');
     await t.mutation(api.messages.commit, {...scope, messagesJson});
-    await t.mutation(api.account.begin, {...token, userId: alice.userId});
+    await t.mutation(api.account.begin, {...token, userId: alice.userId, keepSessionId: alice.sessionId});
     await expect(alice.client.query(api.messages.page, {chatId, limit: 10})).rejects.toThrow('Account unavailable');
     await expect(alice.client.query(api.runs.get, {runId: 'r'})).rejects.toThrow('Account unavailable');
     await expect(alice.client.mutation(api.chats.remove, {chatId})).rejects.toThrow('Account unavailable');
@@ -106,16 +106,16 @@ describe('Convex typed owner storage', () => {
     const {t, alice, bob} = await fixture();
     const owner = {...token, userId: alice.userId};
     const record = {kind: 'run', id: 'r'};
-    await t.mutation(api.store.put, {...owner, ...record, value: run('r')});
+    await t.mutation(api.store.put, {...owner, ...record, valueJson: JSON.stringify(run('r'))});
     expect(await alice.client.query(api.runs.get, {runId: 'r'})).toMatchObject(run('r'));
     expect(await bob.client.query(api.runs.get, {runId: 'r'})).toBeNull();
-    await expect(t.mutation(api.store.put, {...token, userId: bob.userId, ...record, value: run('r')}))
+    await expect(t.mutation(api.store.put, {...token, userId: bob.userId, ...record, valueJson: JSON.stringify(run('r'))}))
       .rejects.toThrow('Chat unavailable');
-    await t.mutation(api.store.put, {...owner, ...record, value: {...run('r'), note: 'updated'}});
+    await t.mutation(api.store.put, {...owner, ...record, valueJson: JSON.stringify({...run('r'), note: 'updated'})});
     expect(await alice.client.query(api.runs.get, {runId: 'r'})).toMatchObject({note: 'updated'});
     const output = {kind: 'outputChunk', id: 'chunk', parentId: 'manifest'};
-    await t.mutation(api.store.put, {...owner, ...output, value: {chatId, text: 'first'}});
-    await t.mutation(api.store.put, {...owner, kind: output.kind, id: output.id, value: {chatId, text: 'second'}});
+    await t.mutation(api.store.put, {...owner, ...output, valueJson: JSON.stringify({chatId, text: 'first'})});
+    await t.mutation(api.store.put, {...owner, kind: output.kind, id: output.id, valueJson: JSON.stringify({chatId, text: 'second'})});
     expect(await t.query(api.store.list, {...owner, kind: output.kind, parentId: output.parentId}))
       .toMatchObject([{id: output.id, value: {chatId, text: 'second'}}]);
     expect(await t.query(api.store.get, {...token, userId: bob.userId, kind: output.kind, id: output.id})).toBeNull();
@@ -133,7 +133,7 @@ describe('Convex typed owner storage', () => {
       const runId = await client.mutation(api.runs.start, {chatId});
       await t.mutation(internal.turns.commitStub, {userId, chatId, runId, generation: 0, expectedTurnIndex: 0});
       await t.mutation(api.messages.commit, {...owner, chatId, messagesJson: JSON.stringify([message('same')])});
-      await t.mutation(api.store.put, {...owner, kind: 'outputChunk', id: 'chunk', parentId: 'manifest', value: {chatId, text: 'secret'}});
+      await t.mutation(api.store.put, {...owner, kind: 'outputChunk', id: 'chunk', parentId: 'manifest', valueJson: JSON.stringify({chatId, text: 'secret'})});
       await t.run(async ctx => {
         const id = await ctx.db.insert('sandboxes', {userId, chatId, sandboxId: 'instance', volumeName: 'volume',
           status: 'starting', lastUsedAt: now});

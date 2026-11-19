@@ -29,7 +29,6 @@
       "apps/web/src/components/chat/useSpeechInput.ts": 1,
       "apps/web/src/components/chat/useStreamAnchor.ts": 5,
       "apps/web/src/components/lab/StreamLabPage.tsx": 1,
-      "apps/web/src/components/screens/AccountGate.tsx": 2,
       "apps/web/src/components/screens/ConnectorRegistry.tsx": 2,
       "apps/web/src/components/screens/ConnectorsScreen.tsx": 1,
       "apps/web/src/components/screens/ConsentPopover.tsx": 3,
@@ -61,18 +60,16 @@
       "scripts/comment-sweep.mjs": 710
     },
     "R4.convex-v-any": {
-      "convex/schema.ts": 3,
+      "convex/schema.ts": 2,
       "convex/store.ts": 2,
       "convex/tools.ts": 1
     },
     "R4.no-any": {
-      "apps/api/src/account-routes.ts": 1,
       "apps/api/src/adapters/account-redis.test.ts": 2,
       "apps/api/src/adapters/security.ts": 1,
       "apps/api/src/server.ts": 1,
       "apps/api/src/service.ts": 6,
       "apps/api/src/sync-routes.ts": 1,
-      "apps/api/src/tests/account-delete.test.ts": 5,
       "apps/api/src/tests/app.test.ts": 1,
       "apps/api/src/tests/execution.test.ts": 2,
       "apps/api/src/tests/harness.ts": 1,
@@ -91,19 +88,11 @@
       "apps/web/e2e/l2.pw.ts": 1,
       "apps/web/e2e/n2.pw.ts": 7,
       "apps/web/e2e/saved-values.pw.ts": 6,
-      "convex/account.ts": 2,
       "packages/glass/src/dropdown/dropdown.pw.ts": 3,
-      "scripts/deploy.test.ts": 9
+      "scripts/deploy.test.ts": 3
     },
     "R5.banned-primitives": {
       "apps/api/src/tests/local-persistence.test.ts": 1
-    },
-    "R5.client-owner-arg": {
-      "convex/account.ts": 3,
-      "convex/files.ts": 6,
-      "convex/search.ts": 4,
-      "convex/store.ts": 7,
-      "convex/tools.ts": 3
     }
   }
 }

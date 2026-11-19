@@ -1,22 +1,33 @@
-import { test as base, type BrowserContextOptions } from '@playwright/test';
-import { signInToStack } from './browser-setup.js';
+import { test as base } from '@playwright/test';
+import { createTestAccount } from './auth-account.js';
+import { stackConvexUrl } from './browser-setup.js';
+import { readSessionState, signIn, type SessionState } from './session.js';
 
-type StorageState = Exclude<BrowserContextOptions['storageState'], string | undefined>;
-interface StackSession { state: StorageState }
+interface StackSession { baseURL: string; state: SessionState }
 
-// Auth v2 rate-limits sign-ups per IP and password checks per account, so tests share one real session per worker.
-export const signedInTest = base.extend<{ persistStackSession: void }, { stackSession: StackSession }>({
+// Signed-out specs register the same lazy worker fixture so they can run between signed-in specs.
+export const stackTest = base.extend<Record<never, never>, { stackSession: StackSession }>({
   stackSession: [async ({ browser }, use, workerInfo) => {
-    const context = await browser.newContext({ baseURL: workerInfo.project.use.baseURL });
-    await signInToStack(await context.newPage());
-    const session = { state: await context.storageState() };
-    await context.close();
-    await use(session);
+    const baseURL = workerInfo.project.use.baseURL;
+    if (!baseURL) throw new Error('The verification browser project requires a baseURL');
+    const context = await browser.newContext();
+    let state: SessionState;
+    try {
+      const account = await createTestAccount(stackConvexUrl());
+      await signIn(await context.newPage(), baseURL, account);
+      state = await readSessionState(context, baseURL);
+    } finally {
+      await context.close();
+    }
+    await use({ baseURL, state });
   }, { scope: 'worker' }],
+});
+
+export const signedInTest = stackTest.extend<{ persistStackSession: void }>({
   storageState: async ({ stackSession }, use) => use(stackSession.state),
-  // Refresh tokens rotate on use; the next test must start from the rotated pair, or reuse detection revokes the session.
+  // A fresh context must start with the last rotated token pair and clean app storage.
   persistStackSession: [async ({ context, stackSession }, use) => {
     await use();
-    stackSession.state = await context.storageState();
+    stackSession.state = await readSessionState(context, stackSession.baseURL);
   }, { auto: true }],
 });

@@ -1,9 +1,9 @@
-import { signIn as convexSignIn } from './sign-in';
-import { expect, test, type Page } from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import { expect, type Page } from '@playwright/test';
 // WP-L2: the consent sheet (L-ref/14) and one button and field language (L-ref/10, 14).
 
 async function openConsent(page: Page) {
-  await convexSignIn(page, '/lab/glass');
+  await openSignedInPage(page, '/lab/glass');
   await page.getByTestId('glass-lab-consent-demo').click();
   const pop = page.getByTestId('consent-popover');
   await pop.waitFor();

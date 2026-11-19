@@ -11,9 +11,9 @@
 import type * as access from "../access.js";
 import type * as account from "../account.js";
 import type * as accountOwner from "../accountOwner.js";
+import type * as accountRecovery from "../accountRecovery.js";
 import type * as accountTables from "../accountTables.js";
 import type * as auth from "../auth.js";
-import type * as authClerk from "../authClerk.js";
 import type * as authConstants from "../authConstants.js";
 import type * as blobOwner from "../blobOwner.js";
 import type * as chats from "../chats.js";
@@ -23,9 +23,7 @@ import type * as domainValues from "../domainValues.js";
 import type * as files from "../files.js";
 import type * as functions from "../functions.js";
 import type * as http from "../http.js";
-import type * as legacyAuth from "../legacyAuth.js";
 import type * as messages from "../messages.js";
-import type * as ownerFunctions from "../ownerFunctions.js";
 import type * as runs from "../runs.js";
 import type * as search from "../search.js";
 import type * as store from "../store.js";
@@ -50,9 +48,9 @@ declare const fullApi: ApiFromModules<{
   access: typeof access;
   account: typeof account;
   accountOwner: typeof accountOwner;
+  accountRecovery: typeof accountRecovery;
   accountTables: typeof accountTables;
   auth: typeof auth;
-  authClerk: typeof authClerk;
   authConstants: typeof authConstants;
   blobOwner: typeof blobOwner;
   chats: typeof chats;
@@ -62,9 +60,7 @@ declare const fullApi: ApiFromModules<{
   files: typeof files;
   functions: typeof functions;
   http: typeof http;
-  legacyAuth: typeof legacyAuth;
   messages: typeof messages;
-  ownerFunctions: typeof ownerFunctions;
   runs: typeof runs;
   search: typeof search;
   store: typeof store;
@@ -112,6 +108,5 @@ export declare const components: {
   authEmail: import("@convex-dev/auth/components/email/_generated/component.js").ComponentApi<"authEmail">;
   resend: import("@convex-dev/resend/_generated/component.js").ComponentApi<"resend">;
   authGoogle: import("@convex-dev/auth/components/google/_generated/component.js").ComponentApi<"authGoogle">;
-  authApple: import("@convex-dev/auth/components/apple/_generated/component.js").ComponentApi<"authApple">;
   workflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"workflow">;
 };

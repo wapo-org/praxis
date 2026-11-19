@@ -248,6 +248,14 @@ export const ChatTruncateResultSchema = z.object({type:z.literal('chat.truncated
 export const AttachmentPatchSchema = z.object({type:z.literal('attachment.patch'),hiddenFromCode:z.boolean()});
 export const TranscribeRequestSchema = z.object({type:z.literal('transcribe.request'),audioBase64:z.string().min(1).max(35000000),mediaType:z.string(),fileName:z.string().optional(),model:z.string().optional(),language:z.string().optional(),prompt:z.string().max(10000).optional()});
 
+export const ACCOUNT_DELETE_PATH = '/v1/account';
+export const ACCOUNT_DELETE_FRESHNESS_MS = 5 * 60 * 1000;
+export const INTERNAL_CONTINUATION_PATH = '/internal/continue';
+export const ACCOUNT_DELETE_RECOVERY_SIGNATURE_HEADER = 'praxis-account-recovery-signature';
+export const AccountDeleteRecoverySchema = z.object({
+  type: z.literal('account.delete.resume'),
+  userId: z.string().min(1).max(500),
+}).strict();
 export const AccountDeleteSchema=z.object({type:z.literal('account.delete').optional(),password:z.string().min(1).max(1024).optional()});
 export const AccountDeletedSchema=z.object({type:z.literal('account.deleted')});
 export * from './tool-boundary.js';

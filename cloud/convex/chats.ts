@@ -2,22 +2,24 @@ import {ChatInputSchema, ChatPatchSchema, ChatSchema, IdSchema} from '@praxis/pr
 import {ConvexError, v} from 'convex/values';
 import {ownedChat} from './domainRecords.js';
 import {decodeChat} from './domainValues.js';
-import {authedMutation, authedQuery} from './ownerFunctions.js';
+import {authedMutation, authenticatedOwner, query} from './functions.js';
 import {writeRecord} from './store.js';
 import {convexValidator} from './zodValidator.js';
 
-export const list = authedQuery({
+export const list = query({
   args: {},
-  handler: async (ctx, userId) => {
+  handler: async ctx => {
+    const userId = await authenticatedOwner(ctx);
     const rows = await ctx.db.query('chats')
       .withIndex('by_user_updated', q => q.eq('userId', userId)).order('desc').collect();
     return rows.filter(row => !row.value.deletedAt).map(row => decodeChat(row.value));
   },
 });
 
-export const get = authedQuery({
+export const get = query({
   args: {chatId: v.string()},
-  handler: async (ctx, userId, {chatId}) => {
+  handler: async (ctx, {chatId}) => {
+    const userId = await authenticatedOwner(ctx);
     const chat = await ownedChat(ctx, userId, IdSchema.parse(chatId));
     return chat && !chat.value.deletedAt ? decodeChat(chat.value) : null;
   },

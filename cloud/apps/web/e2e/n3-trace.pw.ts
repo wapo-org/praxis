@@ -1,5 +1,5 @@
-import { signIn as convexSignIn } from './sign-in';
-import { expect, test, type Page } from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import { expect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 
 test.use({ serviceWorkers: 'block' });
@@ -30,7 +30,7 @@ test('Trace renders 3 levels, past-tense labels, deduplicated sources, keyboard 
 }, testInfo) => {
   const captures = `${process.env.HOME}/.praxis-agent-state/cloud/design/N/N3/${testInfo.project.name}`;
   mkdirSync(captures, { recursive: true });
-  await convexSignIn(page);
+  await openSignedInPage(page);
 
   await runHelloReplay(page);
 
@@ -100,7 +100,7 @@ test('Trace renders 3 levels, past-tense labels, deduplicated sources, keyboard 
 
   // Reduced motion disables shimmer on running trace line
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await convexSignIn(page, '/lab/activity');
+  await openSignedInPage(page, '/lab/activity');
   await page.getByTestId('work-log-comparison').waitFor();
   await page.getByTestId('agent-activity-toggle').click();
   // Also verify failed + denied row styling in Activity Lab
@@ -118,7 +118,7 @@ test('tool output scrolls internally with dynamic fades and never traps page whe
 }, testInfo) => {
   const captures = `${process.env.HOME}/.praxis-agent-state/cloud/design/N/N3/${testInfo.project.name}`;
   mkdirSync(captures, { recursive: true });
-  await convexSignIn(page);
+  await openSignedInPage(page);
   await runHelloReplay(page);
 
   // Open tool 1 (middle group) so there is plenty of scrollable page content both above & below

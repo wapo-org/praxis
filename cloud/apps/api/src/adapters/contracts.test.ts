@@ -19,7 +19,6 @@ describe('Convex server boundary', () => {
       ['store:list', { userId: 'a', kind: 'chat' }],
       ['store:changes', { userId: 'a', after: 0, limit: 10 }],
       ['store:head', { userId: 'a' }],
-      ['legacyAuth:read', { operation: 'findOne', input: { model: 'user' } }],
     ];
     for (const [name, args] of reads) {
       await expect(t.query(makeFunctionReference<'query'>(name), { ...args, serverToken: 'wrong' })).rejects.toThrow(
@@ -31,7 +30,7 @@ describe('Convex server boundary', () => {
         userId: 'a',
         kind: 'chat',
         id: 'x',
-        value: {},
+        valueJson: '{}',
         serverToken: 'x'.repeat(48),
       }),
     ).rejects.toThrow('Server authentication');
@@ -49,12 +48,12 @@ describe('Convex server boundary', () => {
     const { t, rpc } = convexHarness();
     const userId = await t.run(ctx => ctx.db.insert('users', {}));
     const address = { userId, kind: 'checkpoint', id: 'r' };
-    const args = { ...address, requireOwner: true, value: { version: 1 } };
+    const args = { ...address, requireOwner: true, valueJson: JSON.stringify({version: 1}) };
 
     await expect(rpc.mutation('store:put', { ...args, userId: 'missing' })).rejects.toThrow('Account unavailable');
     await expect(rpc.mutation('store:put', args)).resolves.toMatchObject({ value: { version: 1 } });
     await t.run(ctx => ctx.db.patch(userId, { deleting: true }));
-    await expect(rpc.mutation('store:put', { ...args, value: { version: 2 } })).rejects.toThrow('Account unavailable');
+    await expect(rpc.mutation('store:put', { ...args, valueJson: JSON.stringify({version: 2}) })).rejects.toThrow('Account unavailable');
     expect(await rpc.query('store:get', address)).toMatchObject({ value: { version: 1 } });
   });
 

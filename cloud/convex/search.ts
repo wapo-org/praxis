@@ -1,18 +1,17 @@
 import { makeFunctionReference } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import type { GenericId as Id } from 'convex/values';
-import { action, internalQuery, mutation, query } from './functions.js';
-import { bounded, requireServer } from './access.js';
+import { internalQuery, serverAction, serverMutation, serverQuery } from './functions.js';
+import { bounded } from './access.js';
 
 export const DIMENSIONS = 384;
 const scopeOf = (userId: string, embedder: string) => `${bounded(userId)}\u0000${bounded(embedder)}`;
 const owner = { serverToken: v.string(), userId: v.string(), embedder: v.string() };
 
 /** Item ids for the owner, a page at a time. */
-export const ids = query({
+export const ids = serverQuery({
   args: { ...owner, cursor: v.union(v.string(), v.null()) },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     const page = await ctx.db
       .query('embeddings')
       .withIndex('scope_item', (q) => q.eq('scope', scopeOf(a.userId, a.embedder)))
@@ -21,13 +20,12 @@ export const ids = query({
   },
 });
 
-export const upsert = mutation({
+export const upsert = serverMutation({
   args: {
     ...owner,
     items: v.array(v.object({ itemId: v.string(), chatId: v.string(), text: v.string(), vector: v.array(v.float64()) })),
   },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     if (a.items.length > 64) throw new ConvexError('Too many items');
     const scope = scopeOf(a.userId, a.embedder);
     for (const item of a.items) {
@@ -43,10 +41,9 @@ export const upsert = mutation({
   },
 });
 
-export const remove = mutation({
+export const remove = serverMutation({
   args: { ...owner, itemIds: v.array(v.string()) },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     if (a.itemIds.length > 200) throw new ConvexError('Too many items');
     const scope = scopeOf(a.userId, a.embedder);
     for (const itemId of a.itemIds) {
@@ -65,10 +62,9 @@ export const rows = internalQuery({
   handler: async (ctx, a) => Promise.all(a.ids.map((id) => ctx.db.get(id))),
 });
 
-export const search = action({
+export const search = serverAction({
   args: { ...owner, vector: v.array(v.float64()), limit: v.number() },
   handler: async (ctx, a) => {
-    await requireServer(a.serverToken);
     if (a.vector.length !== DIMENSIONS) throw new ConvexError('Wrong vector size');
     const scope = scopeOf(a.userId, a.embedder);
     const found = await ctx.vectorSearch('embeddings', 'by_vector', {

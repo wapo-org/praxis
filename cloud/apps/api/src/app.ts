@@ -3,7 +3,7 @@ import {protectAnswer,secretMetadata,savedValues,querySavedValues,saveVariable,s
 import { searchChats } from './search.js';
 import {registerAccountDeletion} from './account-routes.js';
 import {platformVoice} from './features/tools/transcribe.js';
-import {AccountDeleteSchema} from '@praxis/protocol';
+import {ACCOUNT_DELETE_PATH, AccountDeleteSchema} from '@praxis/protocol';
 import {randomUUID} from 'node:crypto';
 import {Hono,type Context} from 'hono';
 import {cors} from 'hono/cors';
@@ -33,7 +33,6 @@ export interface AppOptions {
  /** Test hook for the catalogue's one-hour cache. */
  clock?:()=>number;
  resolveSession?:(request:Request)=>Promise<{user:User;expiresAt:string}|null>;
- authHandler?:(request:Request)=>Promise<Response>;
  allowedOrigins?:string[];
  log?:(record:{requestId:string;method:string;path:string;status:number;durationMs:number})=>void;
  /** Per-key limiter using user:<id> after auth and ip:<addr> before it. */
@@ -65,15 +64,23 @@ export function createApp(options:AppOptions){
   if(!service.local)throw new ApiError(404,'not_found','Endpoint not found');
   const input=await body(c,z.object({type:z.literal('auth.dev'),userId:z.string().min(1).max(100).optional()}));const userId=input.userId??'local-user';const token=userId==='local-user'?'dev-local':randomUUID();await options.reopenDevUser?.(userId);await service.seed(userId);devTokens.set(token,userId);devCreated.set(token,Date.now());setCookie(c,'praxis_session',token,{httpOnly:true,sameSite:'Lax',path:'/',maxAge:86400});return c.json({type:'session',user:{type:'user',id:userId,name:'Local developer'},bearerToken:token,expiresAt:new Date(Date.now()+86400000).toISOString()});
  });
- app.post('/v1/auth/sign-up',c=>auth(c));app.post('/v1/auth/sign-in',c=>auth(c));
- async function auth(c:Context){if(!options.authHandler)throw new ApiError(503,'auth_unconfigured','Email authentication is not configured');return options.authHandler(c.req.raw);}
  const publicPaths=['/v1/connectors/oauth/callback','/v1/oauth/client-metadata.json',...(options.publicPaths??[])];
  const requestOwners=new WeakMap<Request,string>();
  const limited=async(key:string)=>{if(!options.rateLimit)return;const r=await options.rateLimit(key);if(!r.ok)throw new ApiError(429,'rate_limited',`Too many requests; retry in ${r.retryAfterSeconds??1}s`);};
- app.use('/v1/*',async(c,next)=>{if(publicPaths.some(p=>c.req.path===p||(p.endsWith('/')&&c.req.path.startsWith(p))||c.req.path.startsWith(`${p}?`))){await limited(`ip:${c.req.header('x-forwarded-for')?.split(',')[0]?.trim()??'unknown'}`);await next();return;}const auth=await session(c.req.raw);if(!auth)throw new ApiError(401,'unauthorized','Sign in to continue');c.set('userId',auth.user.id);requestOwners.set(c.req.raw,auth.user.id);await limited(`user:${auth.user.id}`);if(!(c.req.method==='DELETE'&&c.req.path==='/v1/account'))await service.seed(auth.user.id);if(c.req.method!=='GET'&&c.req.method!=='HEAD'){const origin=c.req.header('origin');if(origin&&!originOk(origin))throw new ApiError(403,'origin_rejected','Origin is not allowed');}await next();});
+ app.use('/v1/*',async(c,next)=>{if(publicPaths.some(p=>c.req.path===p||(p.endsWith('/')&&c.req.path.startsWith(p))||c.req.path.startsWith(`${p}?`))){await limited(`ip:${c.req.header('x-forwarded-for')?.split(',')[0]?.trim()??'unknown'}`);await next();return;}const auth=await session(c.req.raw);if(!auth)throw new ApiError(401,'unauthorized','Sign in to continue');c.set('userId',auth.user.id);requestOwners.set(c.req.raw,auth.user.id);await limited(`user:${auth.user.id}`);if(!(c.req.method==='DELETE'&&c.req.path===ACCOUNT_DELETE_PATH))await service.seed(auth.user.id);if(c.req.method!=='GET'&&c.req.method!=='HEAD'){const origin=c.req.header('origin');if(origin&&!originOk(origin))throw new ApiError(403,'origin_rejected','Origin is not allowed');}await next();});
  registerAccountDeletion(app,{config:options.accountDeletion,local:service.local,devTokens,devCreated,limited,hasLimiter:!!options.rateLimit,parse:c=>body(c,AccountDeleteSchema,true)});
  app.get('/v1/auth/session',async c=>{const auth=await session(c.req.raw);return c.json({type:'session',...auth});});
- app.post('/v1/auth/sign-out',async c=>{if(options.authHandler&&!service.local)return options.authHandler(c.req.raw);const token=c.req.header('authorization')?.replace(/^Bearer /i,'')??getCookie(c,'praxis_session');if(token){devTokens.delete(token);devCreated.delete(token);}deleteCookie(c,'praxis_session',{path:'/'});return c.json({type:'ok'});});
+ if (service.local) {
+  app.post('/v1/auth/sign-out', c => {
+   const token = c.req.header('authorization')?.replace(/^Bearer /i, '') ?? getCookie(c, 'praxis_session');
+   if (token) {
+    devTokens.delete(token);
+    devCreated.delete(token);
+   }
+   deleteCookie(c, 'praxis_session', {path: '/'});
+   return c.json({type: 'ok'});
+  });
+ }
  app.get('/v1/bootstrap',async c=>{c.header('Cache-Control','private, no-store');return c.json(await service.bootstrap(c.get('userId')));});
  app.get('/v1/chats',async c=>{const query=PageQuerySchema.parse(c.req.query());let rows=await service.list<Chat>(c.get('userId'),'chat');if(query.q)rows=rows.filter(x=>x.title.toLowerCase().includes(query.q!.toLowerCase()));rows.sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.updatedAt.localeCompare(a.updatedAt)||a.id.localeCompare(b.id));return c.json(page(rows,query,`chats:${query.q??''}`));});
  app.post('/v1/chats',async c=>{const input=await body(c,ChatInputSchema);const now=service.now();const id=input.id??randomUUID();if(await service.adapters.store.get(c.get('userId'),'chat',id))throw new ApiError(409,'exists','Chat ID already exists');const chat=ChatSchema.parse({...input,type:'chat',id,createdAt:now,updatedAt:now});await service.write(c.get('userId'),'chat',id,chat);return c.json(chat,201);});

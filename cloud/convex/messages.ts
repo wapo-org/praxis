@@ -3,7 +3,7 @@ import {ConvexError, v} from 'convex/values';
 import {z} from 'zod';
 import {ownedChat} from './domainRecords.js';
 import {decodeMessage} from './domainValues.js';
-import {authedQuery, serverMutation} from './ownerFunctions.js';
+import {assertActiveOwner, authenticatedOwner, query, serverMutation} from './functions.js';
 import {writeRecord} from './store.js';
 
 const PAGE_SIZE_MAX = 100;
@@ -12,9 +12,10 @@ const sequenceCursor = z.number().int().nonnegative();
 const pageSize = z.number().int().min(1).max(PAGE_SIZE_MAX);
 const commitMessages = z.array(MessageSchema).min(1).max(COMMIT_MESSAGE_COUNT_MAX);
 
-export const page = authedQuery({
+export const page = query({
   args: {chatId: v.string(), after: v.optional(v.number()), limit: v.number()},
-  handler: async (ctx, userId, args) => {
+  handler: async (ctx, args) => {
+    const userId = await authenticatedOwner(ctx);
     const chatId = IdSchema.parse(args.chatId);
     const after = sequenceCursor.parse(args.after ?? 0);
     const limit = pageSize.parse(args.limit);
@@ -28,8 +29,9 @@ export const page = authedQuery({
 });
 
 export const commit = serverMutation({
-  args: {chatId: v.string(), messagesJson: v.string()},
-  handler: async (ctx, userId, {chatId, messagesJson}) => {
+  args: {serverToken: v.string(), userId: v.string(), chatId: v.string(), messagesJson: v.string()},
+  handler: async (ctx, {userId, chatId, messagesJson}) => {
+    await assertActiveOwner(ctx, userId);
     const id = IdSchema.parse(chatId);
     const messages = commitMessages.parse(JSON.parse(messagesJson));
     const committed = [];

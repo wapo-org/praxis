@@ -1,6 +1,6 @@
-import { signIn as convexSignIn } from './sign-in';
-import {test,expect} from '@playwright/test';
-test.beforeEach(async({page})=>{await convexSignIn(page, '/lab/activity');await page.getByTestId('work-log-comparison').waitFor();});
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import {expect} from '@playwright/test';
+test.beforeEach(async({page})=>{await openSignedInPage(page, '/lab/activity');await page.getByTestId('work-log-comparison').waitFor();});
 test('T3 group disclosure keeps its label before its chevron and uses relaxed 14px type',async({page})=>{
  const button=page.getByTestId('agent-activity-toggle');await expect(button).toHaveText('Worked for 4.2s');await expect(button).toHaveAttribute('aria-expanded','false');
  await expect(button).toHaveCSS('font-size','14px');await expect(button).toHaveCSS('line-height','22.75px');

@@ -25,9 +25,11 @@ Default flows: `browser-cli`, `load-app`, `settings-models`, `model-search`, `sc
 
 Add a flow in `src/web/flows.ts`, then a feature entry that covers it; `map --check` fails until both exist.
 
-Browser checks sign in through the real email/password form. Each managed stack creates an isolated anonymous local Convex deployment, copies the current production auth source and replaces only Resend with the test mailbox in `cloud/verify/auth`. It creates a separate real-auth account for each browser context through signup and email verification; no dev-token route or production provider credential is used. The local API accepts only identities verified by that deployment when `PRAXIS_LOCAL_CONVEX_URL` is configured.
+Browser checks sign in through the real email/password form. Each managed stack creates an isolated anonymous local Convex deployment, copies the current production auth source and replaces only Resend with the test mailbox in `cloud/verify/auth`. The local API accepts only identities verified by that deployment when `PRAXIS_LOCAL_CONVEX_URL` is configured.
 
-`cd cloud/apps/web && npx playwright test` starts and stops the same stack automatically. To use existing servers, set `PW_BASE_URL` and `PW_CONVEX_URL`; they must expose the isolated local auth fixture and its test mailbox. Paired-device tests explicitly share an account and use separate sessions. The email mailbox endpoint exists only in the isolated test deployment. These tests do not verify Google/Apple credentials or real Resend delivery.
+The CLI and Playwright fixtures carry forward only the Convex Auth session tokens between fresh browser contexts. Playwright uses one session per worker, and checks that sign out or change passwords use separate accounts. A run can reserve up to 19 signup or recovery challenges against the per-IP budget.
+
+`cd cloud/apps/web && npx playwright test` starts and stops the same stack automatically. To use existing servers, set `PW_BASE_URL` and `PW_CONVEX_URL`; they must expose the isolated local auth fixture and its test mailbox. Paired-device tests explicitly share an account and use separate sessions. The email mailbox endpoint exists only in the isolated test deployment. These tests do not verify Google credentials or real Resend delivery.
 
 
 ## Live suites and `proof.json`

@@ -8,7 +8,7 @@ const row = {
   kind: v.string(),
   id: v.string(),
   parentId: v.optional(v.string()),
-  value: v.any(),
+  valueJson: v.string(),
   revision: v.number(),
   updatedAt: v.string(),
   deleted: v.boolean(),
@@ -16,14 +16,28 @@ const row = {
 
 export default defineSchema({
   // `deleting` fences every owner write once account deletion begins.
-  users: defineTable({ deleting: v.optional(v.boolean()) }),
+  users: defineTable({
+    deleting: v.optional(v.boolean()),
+    deletionSessionId: v.optional(v.string()),
+    deletion: v.optional(v.union(v.object({ blobCursor: v.string() }), v.object({ blobsDone: v.literal(true) }))),
+  }),
   oauthEmails: defineTable({ userId: v.id('users'), email: v.string() })
     .index('email', ['email'])
     .index('user', ['userId']),
   ...domainTables,
   toolSkillFiles: defineTable({userId:v.string(),skillId:v.string(),path:v.string(),content:v.string()})
     .index('owner_skill', ['userId','skillId']),
-  toolState: defineTable({userId:v.string(),kind:v.string(),id:v.string(),value:v.any()})
+  toolState: defineTable({
+    userId: v.string(),
+    kind: v.string(),
+    id: v.string(),
+    value: v.union(
+      v.object({encoded: v.string()}),
+      v.object({allowanceMicroUsd: v.number()}),
+      v.object({period: v.string(), state: v.union(v.literal('reserved'), v.literal('closed'))}),
+      v.object({payer: v.literal('platform'), service: v.string(), slot: v.number(), actualMicroUsd: v.number(), period: v.string()}),
+    ),
+  })
     .index('owner_kind_id', ['userId','kind','id']),
   records: defineTable(row)
     .index('owner_kind_id', ['userId', 'kind', 'id'])
@@ -33,14 +47,6 @@ export default defineSchema({
     .index('owner_revision', ['userId', 'revision'])
     .index('owner_kind_id_revision', ['userId', 'kind', 'id', 'revision']),
   sequences: defineTable({ userId: v.string(), value: v.number() }).index('owner', ['userId']),
-  authDocuments: defineTable({ model: v.string(), id: v.string(), data: v.any() })
-    .index('model', ['model'])
-    .index('model_id', ['model', 'id'])
-    .index('model_email', ['model', 'data.email'])
-    .index('model_token', ['model', 'data.token'])
-    .index('model_user', ['model', 'data.userId'])
-    .index('model_identifier', ['model', 'data.identifier'])
-    .index('model_value', ['model','data.value']),
   // Semantic search: one vector per chat title or message chunk (convex/search.ts). `scope` = owner + embedder.
   embeddings: defineTable({
     userId: v.string(),

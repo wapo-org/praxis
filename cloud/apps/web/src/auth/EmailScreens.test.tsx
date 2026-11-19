@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { ConvexError } from 'convex/values';
+import { AUTH_EMAIL_METHOD_CONFLICT } from '@praxis/protocol';
 import { EmailScreens, ResetPassword, ValidateEmail } from './EmailScreens';
 
 const hooks = vi.hoisted(() => ({
@@ -20,9 +22,7 @@ vi.mock('@convex-dev/auth/methods/email-password/react', () => ({
 vi.mock('@convex-dev/auth/methods/google/react', () => ({
   useSignInWithGoogle: () => ({ signIn: hooks.oauth }), useOauth: () => ({ flowError: null }),
 }));
-vi.mock('@convex-dev/auth/methods/apple/react', () => ({
-  useSignInWithApple: () => ({ signIn: hooks.oauth }),
-}));
+afterEach(() => vi.unstubAllEnvs());
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.clearAllMocks();
@@ -64,12 +64,12 @@ it('explains wrong-browser validation and submits recovery through its ready sta
   await act(async () => root.unmount());
 });
 
-it.each(['Google', 'Apple'])('re-enables sign-in and shows a resolved %s initiation error', async provider => {
+it('re-enables sign-in and shows a resolved Google initiation error', async () => {
   hooks.oauth.mockResolvedValue({ status: 'error', userError: { error: 'EXPIRED' } });
   const node = document.createElement('div');
   const root = createRoot(node);
   await act(async () => root.render(<EmailScreens />));
-  const button = [...node.querySelectorAll('button')].find(b => b.textContent === 'Continue with ' + provider)!;
+  const button = [...node.querySelectorAll('button')].find(b => b.textContent === 'Continue with Google')!;
   await act(async () => button.click());
   expect(node.querySelector('[role=alert]')?.textContent).toContain('expired');
   expect([...node.querySelectorAll('button')].every(b => !b.disabled)).toBe(true);
@@ -93,5 +93,53 @@ it('finishes the existing session before adopting a recovered session', async ()
   await act(async () => { signedOut(); });
   expect(hooks.reset).toHaveBeenCalledOnce();
   expect(node.querySelector('[role=alert]')?.textContent).toContain('10 characters');
+  await act(async () => root.unmount());
+});
+
+it.each([
+  ['rejected fetch', () => hooks.login.mockRejectedValueOnce(new TypeError('Failed to fetch'))],
+  ['folded fetch failure', () => hooks.login.mockResolvedValueOnce({
+    status: 'error', userError: { error: 'OTHER_ERROR', cause: new TypeError('Failed to fetch') },
+  })],
+  ['folded HTTP failure', () => hooks.login.mockResolvedValueOnce({
+    status: 'error', userError: { error: 'OTHER_ERROR', cause: new Error('Service unavailable') },
+  })],
+])('reports a %s and allows the email form to retry', async (_scenario, failSignIn) => {
+  failSignIn();
+  hooks.login.mockResolvedValueOnce({ status: 'error', userError: { error: 'INVALID_CREDENTIALS' } });
+  const node = document.createElement('div');
+  const root = createRoot(node);
+  await act(async () => root.render(<EmailScreens />));
+  const submit = () => node.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await act(async () => { submit(); });
+  expect(node.querySelector('[role=alert]')?.textContent).toBe('Sign in is temporarily unavailable. Please try again later.');
+  expect([...node.querySelectorAll('input, button')].every(control => !control.hasAttribute('disabled'))).toBe(true);
+  await act(async () => { submit(); });
+  expect(node.querySelector('[role=alert]')?.textContent).toContain('incorrect');
+  await act(async () => root.unmount());
+});
+
+it('preserves the account method conflict message for a folded Convex error', async () => {
+  hooks.login.mockResolvedValueOnce({
+    status: 'error', userError: { error: 'OTHER_ERROR', cause: new ConvexError(AUTH_EMAIL_METHOD_CONFLICT) },
+  });
+  const node = document.createElement('div');
+  const root = createRoot(node);
+  await act(async () => root.render(<EmailScreens />));
+  await act(async () => node.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(node.querySelector('[role=alert]')?.textContent).toContain('Use its original sign-in method.');
+  await act(async () => root.unmount());
+});
+
+it('keeps the signed-out screen usable when Preview simulates Google', async () => {
+  vi.stubEnv('PRAXIS_MOCK_OAUTH', 'google');
+  const node = document.createElement('div');
+  const root = createRoot(node);
+  await act(async () => root.render(<EmailScreens />));
+  const button = [...node.querySelectorAll('button')].find(item => item.textContent === 'Continue with Google')!;
+  await act(async () => button.click());
+  expect(hooks.oauth).not.toHaveBeenCalled();
+  expect(node.querySelector('[role=alert]')?.textContent).toBe('This preview simulates an unavailable Google sign-in. Use email to continue.');
+  expect(button.disabled).toBe(false);
   await act(async () => root.unmount());
 });

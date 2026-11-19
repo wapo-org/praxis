@@ -1,5 +1,5 @@
-import { signIn as convexSignIn } from './sign-in';
-import {expect,test} from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import {expect} from '@playwright/test';
 test.beforeEach(async({page})=>{
  // Installed WebKit does not intercept these cross-origin fetches with route(); inject the same HTTP failure at fetch.
  await page.addInitScript(()=>{
@@ -10,7 +10,7 @@ test.beforeEach(async({page})=>{
    return original(input,init);
   };
  });
- await convexSignIn(page);
+ await openSignedInPage(page);
  await page.goto('/');
  await page.getByTestId('composer-input').waitFor();
 });

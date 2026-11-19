@@ -3,8 +3,7 @@ import {vResultValidator, vWorkflowId} from '@convex-dev/workflow';
 import {z} from 'zod';
 import {IdSchema, TURN_INDEX_MAX} from '@praxis/protocol';
 import {internal} from './_generated/api.js';
-import {internalMutation, internalQuery, type QueryCtx} from './functions.js';
-import {authedMutation, authedQuery} from './ownerFunctions.js';
+import {authedMutation, authenticatedOwner, internalMutation, internalQuery, query, type QueryCtx} from './functions.js';
 import {workflow} from './workflows/agentRun.js';
 import {ownedChat, ownedRun} from './domainRecords.js';
 import {activeOwner} from './accountOwner.js';
@@ -21,9 +20,10 @@ export async function scopedRun(ctx: QueryCtx, args: {userId: string; chatId: st
   return chat && !chat.value.deletedAt ? {...run, workflow: run.workflow} : null;
 }
 
-export const get = authedQuery({
+export const get = query({
   args: {runId: v.string()},
-  handler: async (ctx, userId, {runId}) => {
+  handler: async (ctx, {runId}) => {
+    const userId = await authenticatedOwner(ctx);
     const run = await ownedRun(ctx, userId, IdSchema.parse(runId));
     if (!run) return null;
     const chat = await ownedChat(ctx, userId, run.chatId);

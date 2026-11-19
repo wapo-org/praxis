@@ -26,11 +26,7 @@ export function createConvexRPC(options: ConvexOptions): ConvexRPC {
   const withToken = (args: Record<string, unknown>) => ({ ...args, serverToken: options.serverToken });
   return {
     query: (name, args) => client.query(makeFunctionReference<'query'>(name), withToken(args)),
-    mutation: (name, args) => {
-      const useLegacyOwnerFence = args.userId && !name.startsWith('account:') && name !== MESSAGE_COMMIT;
-      return client.mutation(makeFunctionReference<'mutation'>(name),
-        withToken(useLegacyOwnerFence ? {...args, requireOwner: true} : args));
-    },
+    mutation: (name, args) => client.mutation(makeFunctionReference<'mutation'>(name), withToken({...args,...(args.userId && !name.startsWith('account:') ? {requireOwner:true}: {})})),
     action: (name, args) => client.action(makeFunctionReference<'action'>(name), withToken(args)),
   };
 }
@@ -93,7 +89,7 @@ export function storeFromRPC(rpc: ConvexRPC): ConvexStore {
       return rows.map(toRecord);
     },
     async put(userId, kind, id, value, options) {
-      const args = { ...address(userId, kind, id), ...parent(options), value: JsonObjectSchema.parse(value) };
+      const args = { ...address(userId, kind, id), ...parent(options), valueJson: JSON.stringify(JsonObjectSchema.parse(value)) };
       return toRecord(await rpc.mutation('store:put', args));
     },
     async delete(userId, kind, id) {
@@ -111,7 +107,7 @@ export function storeFromRPC(rpc: ConvexRPC): ConvexStore {
       const args = {
         ...address(userId, kind, id),
         ...parent(options),
-        value: JsonObjectSchema.parse(value),
+        valueJson: JSON.stringify(JsonObjectSchema.parse(value)),
         expectedRevision: Revision.parse(expectedRevision),
       };
       const row = await rpc.mutation('store:putIfRevision', args);

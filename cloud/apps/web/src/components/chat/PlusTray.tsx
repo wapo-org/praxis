@@ -10,7 +10,6 @@ import { ModelList } from './ModelList';
 import { ACTIONS, actionOptions, applyOption, ATTACHMENTS } from '../../actions/registry';
 import styles from './PlusTray.module.css';
 
-export { getUnpinnedModels } from './ModelList';
 export interface PlusTrayProps {
   onPickFiles: (accept?: string, capture?: boolean) => void;
 }

@@ -1,5 +1,5 @@
-import { signIn as convexSignIn } from './sign-in';
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 /** Per-frame read of `read(el)` while `act` runs. */
 async function sample(locator: Locator, act: () => Promise<unknown>, read = 'left'): Promise<number[]> {
@@ -23,7 +23,7 @@ async function sample(locator: Locator, act: () => Promise<unknown>, read = 'lef
 }
 const inBetween = (values: number[], a: number, b: number) => values.filter((v) => v > Math.min(a, b) + 0.5 && v < Math.max(a, b) - 0.5).length;
 
-test.beforeEach(async ({ page }) => convexSignIn(page));
+test.beforeEach(async ({ page }) => openSignedInPage(page));
 
 test('the sidebar is simply there on load: it does not fly in', async ({ page }) => {
   await page.addInitScript(() => {
@@ -100,7 +100,7 @@ test('hover is instant and pill-shaped: nothing glides between rows', async ({ p
 });
 
 test('the segmented thumb springs and can reverse from where it is', async ({ page }) => {
-  await convexSignIn(page, '/settings/general');
+  await openSignedInPage(page, '/settings/general');
   const thumb = page.getByRole('group', { name: 'Appearance' }).locator('span').first();
   await page.getByRole('button', { name: 'Light' }).click();
   await page.waitForTimeout(500);

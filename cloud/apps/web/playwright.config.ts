@@ -5,6 +5,7 @@ export default defineConfig({
   globalSetup: '../../packages/verify/src/web/browser-setup.ts',
   testMatch: '*.pw.ts',
   outputDir: process.env.PW_OUTPUT_DIR ?? '/tmp/praxis-pw-web',
+  // Both projects share one Convex deployment and its per-IP challenge budget.
   workers: 1,
   timeout: 45000,
   use: {

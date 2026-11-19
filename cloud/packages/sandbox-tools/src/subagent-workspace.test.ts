@@ -18,12 +18,12 @@ function fixture() {
   const port = new FakeSandboxPort().writeText(`${root}/result.txt`, 'verified');
   port.on(request => {
     if (['mkdir', 'chmod', 'rm'].includes(request.argv[0]!)) return {exitCode: 0};
-    if (request.argv[0] !== 'bwrap') return undefined;
+    const launcher = request.argv.indexOf('bwrap');
+    if (launcher === -1) return undefined;
     const script = request.argv.indexOf(FILE_HELPER_PATH, request.argv.indexOf('--') + 1);
     if (script !== -1) {
       const [, op, path] = request.argv.slice(script + 1);
-      const mount = request.argv.indexOf('--ro-bind', request.argv.indexOf('--tmpfs'));
-      const source = mount === -1 ? root : request.argv[mount + 1]!;
+      const source = request.argv[launcher + 2]!;
       if (op === 'capture') {
         const prefix = `${source}/`;
         const files = [...port.files.entries()].filter(([path]) => path.startsWith(prefix))

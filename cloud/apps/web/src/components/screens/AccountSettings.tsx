@@ -73,7 +73,7 @@ function DeleteAccountConfirm({
         attachments, skills, connectors and their sign-ins, provider keys, settings and
         consents. Every device is signed out. This can't be undone.
       </p>
-      { !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY && <label className={styles.field}>
+      <label className={styles.field}>
         Password
         <input
           type="password"
@@ -82,9 +82,10 @@ function DeleteAccountConfirm({
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
-      </label>}
+      </label>
       <p className={styles.footnote}>
-        {import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ? 'Sign out and sign in again before deleting if your last authentication was more than five minutes ago.' : 'Signed in less than five minutes ago? You can leave the password empty.'}
+        Enter your current password. If you only use Google, sign in again and
+        leave the password empty.
       </p>
       <TaskError error={task.error} />
       <button
