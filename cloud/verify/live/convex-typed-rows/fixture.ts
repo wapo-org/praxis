@@ -10,6 +10,7 @@ const DEPLOYMENT = 'dev:colorless-chinchilla-899';
 const CONVEX_ORIGIN = 'https://colorless-chinchilla-899.eu-west-1.convex.cloud';
 const DEPLOY_KEY = 'CONVEX_DEPLOY_KEY';
 const CONVEX_URL = 'CONVEX_URL';
+const RECENT_SIGNUP_ROWS_MAX = 50;
 const CLOUD_DIR = fileURLToPath(new URL('../../../', import.meta.url));
 const AccountActive = makeFunctionReference<'query'>('account:active');
 const Begin = makeFunctionReference<'mutation'>('account:begin');
@@ -40,7 +41,8 @@ async function setUp(context: StepContext, fixture: FixtureRun): Promise<HostedF
   fixture.live = live;
   const runId = newRunId();
   const owners = await createLiveOwners(live.convexUrl, 2, {
-    deployKey: key, log: message => context.log(message), runId,
+    deployKey: key, reader: convexCliReader(key, CLOUD_DIR, RECENT_SIGNUP_ROWS_MAX),
+    log: message => context.log(message), runId,
     onOwner: userId => fixture.cleanup.add(userId),
   });
   const [a, b] = owners;

@@ -1,8 +1,10 @@
+import {createHash} from 'node:crypto';
+import {SealedSecret} from '@praxis/types';
 import {ConvexError} from 'convex/values';
 import {describe, expect, it} from 'vitest';
 import {textMessage} from './api.js';
 import {contiguous, errorText, foreignReadCheck, rejectedCheck, settle, stepResult, AUTH_REQUIRED} from './checks.js';
-import {emailCodeFrom, isRecipient} from './mailbox.js';
+import {emailCodeFrom, isRecipient, signUpOwnerId} from './mailbox.js';
 import {liveOwnerEmail, newRunId} from './owners.js';
 
 describe('owner addresses', () => {
@@ -36,6 +38,16 @@ describe('sign-up email parsing', () => {
     expect(isRecipient('Name <Delivered+X@resend.dev>', 'delivered+x@resend.dev')).toBe(true);
     expect(isRecipient(['other@resend.dev'], 'delivered+x@resend.dev')).toBe(false);
     expect(isRecipient('delivered+x@resend.dev.example', 'delivered+x@resend.dev')).toBe(false);
+  });
+
+  it('identifies the fixture owner only from its own sign-up challenge', async () => {
+    const email = 'delivered+x@resend.dev';
+    const secret = SealedSecret.of('fixture-browser-secret');
+    const browserSecretHash = createHash('sha256').update(secret.reveal()).digest('hex');
+    const matching = {email, browserSecretHash, purpose: {kind: 'signUp', userId: 'fixture'}};
+    const other = {...matching, browserSecretHash: 'different', purpose: {kind: 'signUp', userId: 'other'}};
+    await expect(signUpOwnerId(async () => [other, matching], email, secret)).resolves.toBe('fixture');
+    await expect(signUpOwnerId(async () => [other], email, secret)).rejects.toThrow('disposable owner');
   });
 });
 

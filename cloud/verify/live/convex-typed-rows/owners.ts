@@ -3,7 +3,8 @@ import {ConvexHttpClient} from 'convex/browser';
 import {makeFunctionReference} from 'convex/server';
 import {SealedSecret} from '@praxis/types';
 import {z} from 'zod';
-import {readSignUpCode} from './mailbox.js';
+import type {TableReader} from './commit-purge.js';
+import {readSignUpCode, signUpOwnerId} from './mailbox.js';
 
 /** Resend's test inbox accepts any `delivered+label` address, so real sends neither bounce nor reach a person. */
 const TEST_INBOX_DOMAIN = 'resend.dev';
@@ -36,9 +37,10 @@ export type LiveOwner = {
 export type OwnerAccess = {
   /** Deployment admin key, used only to read the sign-up email the deployment itself sent. */
   deployKey: SealedSecret;
+  reader: TableReader;
   runId: string;
   log?: (line: string) => void;
-  onOwner?: (userId: string) => void;
+  onOwner: (userId: string) => void;
 };
 
 /** Lowercase and short, so the address passes Convex Auth's format check and stays unique per run. */
@@ -64,12 +66,15 @@ async function signUp(convexUrl: string, email: string, access: OwnerAccess): Pr
   }));
   if (!started.success) throw new Error(`Convex Auth rejected the sign-up: ${started.userError.error}`);
   access.log?.(`sign-up started for ${email}`);
-  const code = await readSignUpCode(convexUrl, access.deployKey, email);
+  const browserSecret = SealedSecret.of(started.browserSecret);
+  const pendingOwnerId = await signUpOwnerId(access.reader, email, browserSecret);
+  access.onOwner(pendingOwnerId);
+  const code = await readSignUpCode(convexUrl, access.deployKey, access.reader, email);
   const completed = CompleteReply.parse(await anonymous.mutation(CompleteSignUp, {
-    browserSecret: started.browserSecret, emailCode: code.reveal(),
+    browserSecret: browserSecret.reveal(), emailCode: code.reveal(),
   }));
   if (completed.status === 'error') throw new Error(`Convex Auth rejected the sign-up code: ${completed.userError.error}`);
-  access.onOwner?.(completed.tokens.userId);
+  if (completed.tokens.userId !== pendingOwnerId) throw new Error('Sign-up returned a different owner');
   const token = SealedSecret.of(completed.tokens.accessToken);
   const client = authedClient(convexUrl, token);
   const userId = Viewer.parse(await client.query(CurrentUser, {}));

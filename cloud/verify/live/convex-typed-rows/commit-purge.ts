@@ -102,7 +102,7 @@ function cliEnv(deployKey: SealedSecret): NodeJS.ProcessEnv {
 
 /** Reads the server token with the deploy key; output never leaves the returned wrapper. */
 export async function serverTokenFromDeployment(deployKey: SealedSecret, cwd: string): Promise<SealedSecret> {
-  const {stdout} = await run('npx', ['convex', 'env', 'get', SERVER_TOKEN_ENV], {cwd, env: cliEnv(deployKey)})
+  const {stdout} = await run('npx', ['--no-install', 'convex', 'env', 'get', SERVER_TOKEN_ENV], {cwd, env: cliEnv(deployKey)})
     .catch(() => {
       throw new Error(`npx convex env get ${SERVER_TOKEN_ENV} failed`);
     });
@@ -112,14 +112,16 @@ export async function serverTokenFromDeployment(deployKey: SealedSecret, cwd: st
 }
 
 /** Admin read through `npx convex data`: the only develop read that sees rows of an inactive owner. */
-export function convexCliReader(deployKey: SealedSecret, cwd: string): TableReader {
+export function convexCliReader(deployKey: SealedSecret, cwd: string, tail?: number): TableReader {
   return async (table, component) => {
-    const args = ['convex', 'data', table, '--format', 'jsonLines', '--limit', String(TABLE_READ_ROWS_MAX)];
+    const args = ['--no-install', 'convex', 'data', table, '--format', 'jsonLines', '--limit', String(tail ?? TABLE_READ_ROWS_MAX)];
     if (component) args.push('--component', component);
-    const {stdout} = await run('npx', args, {cwd, env: cliEnv(deployKey), maxBuffer: CLI_OUTPUT_BYTES_MAX});
-    const rows = stdout.split('\n').filter(line => line.trim().startsWith('{')).map(line => z.unknown().parse(JSON.parse(line)));
+    const {stdout} = await run('npx', args, {cwd, env: cliEnv(deployKey), maxBuffer: CLI_OUTPUT_BYTES_MAX}).catch(() => {
+      throw new Error(`Convex CLI could not read ${table}`);
+    });
+    const rows = stdout.trim().split('\n').filter(Boolean).map(line => z.unknown().parse(JSON.parse(line)));
     // A full page means rows were cut off, so a zero count would be unproven.
-    if (rows.length >= TABLE_READ_ROWS_MAX) throw new Error(`${table} exceeds ${TABLE_READ_ROWS_MAX} rows`);
+    if (tail === undefined && rows.length >= TABLE_READ_ROWS_MAX) throw new Error(`${table} exceeds ${TABLE_READ_ROWS_MAX} rows`);
     return rows;
   };
 }

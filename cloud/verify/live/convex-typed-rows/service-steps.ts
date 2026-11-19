@@ -59,6 +59,7 @@ export async function verifyPurge(context: StepContext): Promise<StepOutcome> {
     snapshotOwner(reader, other.userId),
   ]);
   context.log(`before purge: ${TYPED_TABLES.map(table => `${table}=${before.counts[table]}`).join(' ')}`);
+  context.log('No standalone seed path for turns or sandboxes. The workflow creates turns and the purge check asserts zero rows in both tables.');
   if (before.workflowIds.size === 0 || before.counts.turns === 0) {
     throw new Error('Fixture workflow did not create a typed turn and journal');
   }
