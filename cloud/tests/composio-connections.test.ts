@@ -1,148 +1,207 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { internal } from '../convex/_generated/api.js';
+import { registerEmail } from '@convex-dev/auth/components/email/test';
+import { registerGoogleOauth } from '@convex-dev/auth/components/google/test';
+import { registerPassword } from '@convex-dev/auth/components/password/test';
+import { registerCore } from '@convex-dev/auth/test';
+import { deriveTenantId, SealedSecret } from '@praxis/types';
+import { api, internal } from '../convex/_generated/api.js';
+import type { ComposioClient } from '../convex/composio/client.js';
 import {
-  COMPOSIO_WEBHOOK_PATH,
-  COMPOSIO_WEBHOOK_SECRET_ENV,
-  PENDING_EXPIRY_BATCH_MAX,
+  ALLOWED_ORIGINS_ENV, COMPOSIO_API_KEY_ENV, COMPOSIO_ERRORS, NATIVE_RETURN_URL, TENANT_ID_SECRET_ENV,
 } from '../convex/composio/constants.js';
 import schema from '../convex/schema.js';
-import { TEST_WEBHOOK_SECRET, connectionEvent, signedHeaders } from './composio-webhook.fixture.js';
+import { SERVER_TOKEN, signedInUser } from './workflow-fixture.js';
 
-const modules = import.meta.glob('../convex/**/*.ts');
-const ACTIVATED = 'composio.connected_account.activated';
-const HOUR_MS = 60 * 60 * 1000;
-type ConnectionStatus = 'pending' | 'connected' | 'failed';
+const fake = vi.hoisted(() => ({
+  createConnectLink: vi.fn<ComposioClient['createConnectLink']>(),
+  revokeConnection: vi.fn<ComposioClient['revokeConnection']>(),
+}));
 
-function setup() {
-  return convexTest(schema, modules);
-}
-type ConnectionTest = ReturnType<typeof setup>;
-
-async function insertConnection(
-  t: ConnectionTest,
-  connectedAccountId: string,
-  options: { status?: ConnectionStatus; expiresAt?: number; userId?: string } = {},
-) {
-  return t.run(async ctx => {
-    const userId = options.userId ?? await ctx.db.insert('users', {});
-    const now = Date.now();
-    return ctx.db.insert('connections', {
-      userId,
-      toolkit: 'github',
-      status: options.status ?? 'pending',
-      connectedAccountId,
-      redirectUrl: 'https://connect.composio.dev/link/test',
-      expiresAt: options.expiresAt ?? now + HOUR_MS,
-      createdAt: now,
-      updatedAt: now,
-    });
-  });
-}
-
-async function statusOf(t: ConnectionTest, connectedAccountId: string) {
-  return t.run(async ctx => {
-    const row = await ctx.db.query('connections')
-      .withIndex('by_connected_account', q => q.eq('connectedAccountId', connectedAccountId))
-      .unique();
-    return row?.status ?? null;
-  });
-}
-
-async function post(t: ConnectionTest, body: string, headers: Headers) {
-  return t.fetch(COMPOSIO_WEBHOOK_PATH, { method: 'POST', headers, body });
-}
-
-describe('Composio webhook route', () => {
-  beforeEach(() => {
-    process.env[COMPOSIO_WEBHOOK_SECRET_ENV] = TEST_WEBHOOK_SECRET;
-  });
-  afterEach(() => {
-    delete process.env[COMPOSIO_WEBHOOK_SECRET_ENV];
-  });
-
-  it('marks a pending row connected for a valid signed activation', async () => {
-    const t = setup();
-    await insertConnection(t, 'ca_valid');
-    const body = connectionEvent(ACTIVATED, 'ca_valid', 'ACTIVE');
-    const response = await post(t, body, await signedHeaders(body, { nowMs: Date.now() }));
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, applied: true });
-    expect(await statusOf(t, 'ca_valid')).toBe('connected');
-  });
-
-  it('leaves the row unchanged for a forged webhook', async () => {
-    const t = setup();
-    await insertConnection(t, 'ca_forged');
-    const body = connectionEvent(ACTIVATED, 'ca_forged', 'ACTIVE');
-    const response = await post(t, body, await signedHeaders(body, { nowMs: Date.now(), secret: 'attacker-secret' }));
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: 'bad_signature' });
-    expect(await statusOf(t, 'ca_forged')).toBe('pending');
-  });
-
-  it('rejects unsigned requests with 401', async () => {
-    const t = setup();
-    await insertConnection(t, 'ca_unsigned');
-    const body = connectionEvent(ACTIVATED, 'ca_unsigned', 'ACTIVE');
-    const response = await post(t, body, new Headers({ 'content-type': 'application/json' }));
-    expect(response.status).toBe(401);
-    expect(await statusOf(t, 'ca_unsigned')).toBe('pending');
-  });
-
-  it('fails closed with 503 when the secret is not configured', async () => {
-    delete process.env[COMPOSIO_WEBHOOK_SECRET_ENV];
-    const t = setup();
-    await insertConnection(t, 'ca_unconfigured');
-    const body = connectionEvent(ACTIVATED, 'ca_unconfigured', 'ACTIVE');
-    const response = await post(t, body, await signedHeaders(body, { nowMs: Date.now() }));
-    expect(response.status).toBe(503);
-    expect(await statusOf(t, 'ca_unconfigured')).toBe('pending');
-  });
-
-  it('acknowledges unknown event types without touching rows', async () => {
-    const t = setup();
-    await insertConnection(t, 'ca_other');
-    const body = JSON.stringify({ id: 'msg_trigger', type: 'composio.trigger.message', data: { id: 'ca_other' } });
-    const response = await post(t, body, await signedHeaders(body, { nowMs: Date.now() }));
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, applied: false });
-    expect(await statusOf(t, 'ca_other')).toBe('pending');
-  });
-
-  it('acknowledges an activation for an unknown account without applying it', async () => {
-    const t = setup();
-    const body = connectionEvent(ACTIVATED, 'ca_unknown', 'ACTIVE');
-    const response = await post(t, body, await signedHeaders(body, { nowMs: Date.now() }));
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, applied: false });
-  });
+vi.mock(import('../convex/composio/client.js'), async importOriginal => {
+  const real = await importOriginal();
+  return {
+    ...real,
+    composioFor: env => env[COMPOSIO_API_KEY_ENV] ? fake : real.composioFor(env),
+  };
 });
 
-describe('expirePending', () => {
-  it('deletes only pending rows past expiresAt', async () => {
-    const t = setup();
-    const past = Date.now() - HOUR_MS;
-    await insertConnection(t, 'ca_expired_pending', { expiresAt: past });
-    await insertConnection(t, 'ca_fresh_pending');
-    await insertConnection(t, 'ca_expired_connected', { status: 'connected', expiresAt: past });
-    await insertConnection(t, 'ca_expired_failed', { status: 'failed', expiresAt: past });
-    expect(await t.mutation(internal.composio.expire.expirePending, {})).toEqual({ deleted: 1 });
-    expect(await statusOf(t, 'ca_expired_pending')).toBeNull();
-    expect(await statusOf(t, 'ca_fresh_pending')).toBe('pending');
-    expect(await statusOf(t, 'ca_expired_connected')).toBe('connected');
-    expect(await statusOf(t, 'ca_expired_failed')).toBe('failed');
+const origin = 'https://app.praxis.test';
+const target = {toolkit: 'gmail', returnTo: `${origin}/apps`};
+const TEST_LINK_LIFETIME_MS = 60_000;
+const tenantSecret = 'test-tenant-secret-at-least-32-bytes';
+const connections = api.composio.connections;
+
+async function setup() {
+  const t = convexTest(schema, {
+    '../convex/_generated/api.js': () => import('../convex/_generated/api.js'),
+    '../convex/account.ts': () => import('../convex/account.js'),
+    '../convex/composio/actions.ts': () => import('../convex/composio/actions.js'),
+    '../convex/composio/connections.ts': () => import('../convex/composio/connections.js'),
+    '../convex/composio/connectionStore.ts': () => import('../convex/composio/connectionStore.js'),
+  });
+  registerCore(t);
+  return {t, ...await signedInUser(t)};
+}
+
+function link(id: string) {
+  return {
+    connectedAccountId: id,
+    redirectUrl: `https://connect.praxis.test/${id}`,
+    expiresAt: Date.now() + TEST_LINK_LIFETIME_MS,
+  };
+}
+
+describe('Composio connections', () => {
+  beforeEach(() => {
+    vi.stubEnv('CONVEX_CLOUD_URL', 'https://test.convex.cloud');
+    vi.stubEnv(ALLOWED_ORIGINS_ENV, origin);
+    vi.stubEnv(TENANT_ID_SECRET_ENV, tenantSecret);
+    vi.stubEnv(COMPOSIO_API_KEY_ENV, 'test-composio-key');
+    fake.createConnectLink.mockReset().mockResolvedValue(link('ca_first'));
+    fake.revokeConnection.mockReset().mockResolvedValue(undefined);
   });
 
-  it('deletes at most PENDING_EXPIRY_BATCH_MAX rows per run', async () => {
-    const t = setup();
-    const userId = await t.run(ctx => ctx.db.insert('users', {}));
-    const past = Date.now() - HOUR_MS;
-    const extra = 3;
-    for (let index = 0; index < PENDING_EXPIRY_BATCH_MAX + extra; index += 1) {
-      await insertConnection(t, `ca_batch_${index}`, { expiresAt: past, userId });
-    }
-    expect(await t.mutation(internal.composio.expire.expirePending, {})).toEqual({ deleted: PENDING_EXPIRY_BATCH_MAX });
-    expect(await t.mutation(internal.composio.expire.expirePending, {})).toEqual({ deleted: extra });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('scopes lists to the signed-in user and rejects signed-out callers', async () => {
+    const {t, client, userId} = await setup();
+    const other = await signedInUser(t);
+    await client.action(connections.connect, target);
+
+    expect(await client.query(connections.list, {})).toEqual([expect.objectContaining({userId, toolkit: 'gmail'})]);
+    expect(await other.client.query(connections.list, {})).toEqual([]);
+    await expect(t.query(connections.list, {})).rejects.toThrow('Authentication required');
+  });
+
+  it('sends a tenant ID, stores the pending link and reuses the link on a second click', async () => {
+    const {client, userId} = await setup();
+    const redirect = await client.action(connections.connect, target);
+    expect(await client.action(connections.connect, target)).toBe(redirect);
+    expect(await client.query(connections.list, {})).toEqual([
+      expect.objectContaining({status: 'pending', connectedAccountId: 'ca_first', redirectUrl: redirect}),
+    ]);
+    expect(fake.createConnectLink).toHaveBeenCalledExactlyOnceWith({
+      tenantId: await deriveTenantId(userId, SealedSecret.of(tenantSecret)),
+      toolkit: target.toolkit,
+      callbackUrl: target.returnTo,
+    });
+  });
+
+  it('keeps a single pending account across overlapping requests and revokes the extra account', async () => {
+    const {client} = await setup();
+    let finishFirst!: (value: ReturnType<typeof link>) => void;
+    const first = new Promise<ReturnType<typeof link>>(resolve => {
+      finishFirst = resolve;
+    });
+    let signalFirst!: () => void;
+    const entered = new Promise<void>(resolve => {
+      signalFirst = resolve;
+    });
+    fake.createConnectLink.mockImplementationOnce(() => {
+      signalFirst();
+      return first;
+    }).mockResolvedValueOnce(link('ca_second'));
+
+    const pending = client.action(connections.connect, target);
+    await entered;
+    const winner = await client.action(connections.connect, target);
+    finishFirst(link('ca_first'));
+
+    expect(await pending).toBe(winner);
+    expect(await client.query(connections.list, {})).toEqual([
+      expect.objectContaining({connectedAccountId: 'ca_second', redirectUrl: winner}),
+    ]);
+    expect(fake.revokeConnection).toHaveBeenCalledExactlyOnceWith('ca_first');
+  });
+
+  it('replaces expired links and ignores late webhooks for the expired account', async () => {
+    const {t, client} = await setup();
+    await client.action(connections.connect, target);
+    await t.run(async ctx => {
+      const row = await ctx.db.query('connections').unique();
+      if (!row) throw new Error('Expected a connection');
+      await ctx.db.patch(row._id, {expiresAt: Date.now() - 1});
+    });
+
+    fake.revokeConnection.mockImplementationOnce(async connectedAccountId => {
+      await expect(t.mutation(internal.composio.connections.markFromWebhook, {
+        connectedAccountId, status: 'connected',
+      })).resolves.toBe(false);
+    });
+    const next = link('ca_next');
+    fake.createConnectLink.mockResolvedValueOnce(next);
+
+    await expect(client.action(connections.connect, target)).resolves.toBe(next.redirectUrl);
+    expect(fake.revokeConnection).toHaveBeenCalledExactlyOnceWith('ca_first');
+    expect(await client.query(connections.list, {})).toEqual([expect.objectContaining(next)]);
+  });
+
+  it.each([
+    'https://app.praxis.test.evil.test/apps',
+    'https://app.praxis.test:444/apps',
+    'https://someone@app.praxis.test/apps',
+    `${origin}/apps#`,
+    `${origin}/apps?state=forged`,
+    'javascript:alert(1)',
+    'praxis-app://oauth/other',
+    `${NATIVE_RETURN_URL}?state=forged`,
+  ])('rejects a tampered callback %s', async returnTo => {
+    const {client} = await setup();
+    await expect(client.action(connections.connect, {...target, returnTo})).rejects.toThrow(COMPOSIO_ERRORS.invalidReturnUrl);
+    expect(fake.createConnectLink).not.toHaveBeenCalled();
+  });
+
+  it('accepts the exact native callback', async () => {
+    const {client} = await setup();
+    await client.action(connections.connect, {...target, returnTo: NATIVE_RETURN_URL});
+    expect(fake.createConnectLink).toHaveBeenCalledWith(expect.objectContaining({callbackUrl: NATIVE_RETURN_URL}));
+  });
+
+  it('preserves the row on a failed revoke, then deletes it after a successful revoke', async () => {
+    const {t, client} = await setup();
+    await client.action(connections.connect, target);
+    await t.mutation(internal.composio.connections.markFromWebhook, {
+      connectedAccountId: 'ca_first', status: 'connected',
+    });
+    fake.revokeConnection.mockRejectedValueOnce(new Error('Revocation failed'));
+
+    const args = {toolkit: target.toolkit};
+    await expect(client.action(connections.disconnect, args)).rejects.toThrow('Revocation failed');
+    expect(await client.query(connections.list, {})).toEqual([expect.objectContaining({status: 'connected'})]);
+    await expect(client.action(connections.disconnect, args)).resolves.toBeNull();
+    expect(fake.revokeConnection).toHaveBeenLastCalledWith('ca_first');
+    expect(await client.query(connections.list, {})).toEqual([]);
+  });
+
+  it('purges the deleting owner’s connection and retains other owners’ rows', async () => {
+    const {t, client, userId} = await setup();
+    for (const register of [registerEmail, registerPassword, registerGoogleOauth]) register(t);
+    vi.stubEnv('PRAXIS_CONVEX_SERVER_TOKEN', SERVER_TOKEN);
+    const other = await signedInUser(t);
+    await client.action(connections.connect, target);
+    fake.createConnectLink.mockResolvedValueOnce(link('ca_other'));
+    await other.client.action(connections.connect, target);
+    await t.run(ctx => ctx.db.patch(userId, {deleting: true}));
+
+    const scope = {serverToken: SERVER_TOKEN, userId};
+    await expect(t.mutation(api.account.purge, scope)).resolves.toEqual({done: false});
+    await expect(t.mutation(api.account.purge, scope)).resolves.toEqual({done: true});
+    const rows = await t.run(ctx => ctx.db.query('connections').collect());
+    expect(rows).toEqual([expect.objectContaining({userId: other.userId, connectedAccountId: 'ca_other'})]);
+  });
+
+  it.each([
+    [TENANT_ID_SECRET_ENV, COMPOSIO_ERRORS.tenantSecretMissing],
+    [COMPOSIO_API_KEY_ENV, COMPOSIO_ERRORS.apiKeyMissing],
+  ])('fails closed without %s', async (name, error) => {
+    const {client} = await setup();
+    vi.stubEnv(name, undefined);
+
+    await expect(client.action(connections.connect, target)).rejects.toThrow(error);
+    expect(fake.createConnectLink).not.toHaveBeenCalled();
+    expect(await client.query(connections.list, {})).toEqual([]);
   });
 });
