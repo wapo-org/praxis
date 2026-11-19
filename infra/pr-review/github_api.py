@@ -8,9 +8,8 @@ from typing import Any
 
 import httpx
 
-from review import VERDICT_COMMENT, VERDICT_REQUEST_CHANGES, body_with_inline_comments
+from review import VERDICT_COMMENT, VERDICT_REQUEST_CHANGES, unanchored_comment
 
-STATUS_COMMENT_MARKER = "<!-- muse-pr-review-status -->"
 COMMAND_PATTERN = re.compile(
     r"(?:^|\s)(?:/muse|@muse-review)\b(?P<instructions>.*)$",
     re.IGNORECASE | re.DOTALL,
@@ -39,7 +38,7 @@ TOKEN_HELP = (
     "GITHUB_TOKEN must be a fine-grained PAT or a GitHub App token for the repository "
     "(Contents and Pull requests read/write): the organization restricts OAuth App access, "
     "so `gho_` tokens get 403 on writes. Check that the token has not expired, then rotate it "
-    "as described in infra/modal-pr-review/README.md."
+    "as described in infra/pr-review/README.md."
 )
 
 
@@ -227,38 +226,17 @@ def fetch_pr_files(
     return files
 
 
-def upsert_status_comment(
-    client: httpx.Client,
-    repo: str,
-    pr_number: int,
-    body: str,
-) -> None:
-    marked_body = f"{STATUS_COMMENT_MARKER}\n{body}"
-    comments_url = f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
-    resp = client.get(comments_url, params={"per_page": GITHUB_PER_PAGE})
-    raise_for_github(resp, "list pull request comments")
-    existing_id: int | None = None
-    for comment in resp.json():
-        if STATUS_COMMENT_MARKER in (comment.get("body") or ""):
-            existing_id = int(comment["id"])
-            break
-
-    if existing_id is not None:
-        patch_resp = client.patch(
-            f"https://api.github.com/repos/{repo}/issues/comments/{existing_id}",
-            json={"body": marked_body},
-        )
-        raise_for_github(patch_resp, "update the status comment")
-    else:
-        post_resp = client.post(comments_url, json={"body": marked_body})
-        raise_for_github(post_resp, "post the status comment")
-
-
 def is_fork_pr(pr: dict[str, Any]) -> bool:
     """True when the head branch lives in another repository (or its repository was deleted)."""
     head_repo = ((pr.get("head") or {}).get("repo") or {}).get("full_name")
     base_repo = ((pr.get("base") or {}).get("repo") or {}).get("full_name")
     return not head_repo or head_repo != base_repo
+
+
+def _own_pr_rejection(response: httpx.Response) -> bool:
+    if response.status_code != 422:
+        return False
+    return "own pull request" in response.text.casefold()
 
 
 def submit_pr_review(
@@ -276,20 +254,32 @@ def submit_pr_review(
         "event": review["verdict"],
         "comments": review["comments"],
     }
-
-    resp = client.post(reviews_url, json=payload)
-    if resp.status_code == 422 and payload["event"] == VERDICT_REQUEST_CHANGES:
-        # GitHub rejects REQUEST_CHANGES when the token belongs to the PR author.
-        payload["event"] = VERDICT_COMMENT
+    notes = list(review.get("notes", ()))
+    submitted: dict[str, Any] = {}
+    if payload["event"] == VERDICT_REQUEST_CHANGES or payload["comments"]:
         resp = client.post(reviews_url, json=payload)
-
-    if resp.status_code == 422 and payload["comments"]:
-        payload["comments"] = []
-        payload["body"] = body_with_inline_comments(review)
-        resp = client.post(reviews_url, json=payload)
-
-    raise_for_github(resp, "post the review")
-    return resp.json()
+        if _own_pr_rejection(resp) and payload["event"] == VERDICT_REQUEST_CHANGES:
+            payload["event"] = VERDICT_COMMENT
+            resp = client.post(reviews_url, json=payload)
+        if resp.status_code == 422 and payload["comments"]:
+            notes.extend(unanchored_comment(comment) for comment in payload["comments"])
+            payload["comments"] = []
+            payload["body"] = "See the specific issues in the separate comments."
+            if payload["event"] == VERDICT_REQUEST_CHANGES:
+                resp = client.post(reviews_url, json=payload)
+                if _own_pr_rejection(resp):
+                    payload["event"] = VERDICT_COMMENT
+                    resp = client.post(reviews_url, json=payload)
+            else:
+                resp = None
+        if resp is not None:
+            raise_for_github(resp, "post the review")
+            submitted = resp.json()
+    comments_url = f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
+    for note in notes:
+        response = client.post(comments_url, json={"body": note})
+        raise_for_github(response, "post a specific review observation")
+    return submitted
 
 
 REVIEW_THREADS_QUERY = """

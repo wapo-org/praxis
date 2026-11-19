@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -15,16 +15,12 @@ from github_api import (
     is_fork_pr,
     require_usable_token,
     submit_pr_review,
-    upsert_status_comment,
 )
 from linear import fetch_issue_texts
 from pipeline import STATUS_REVIEWED, STATUS_SKIPPED, RunState, SessionRun, assess
 from prompts import (
-    HANDS_ON_SESSION_PROFILE,
     REVIEW_SESSION_PROFILES,
-    build_hands_on_prompt,
     build_session_prompt,
-    hands_on_output_schema,
     session_output_schema,
 )
 from sandbox import SessionTask
@@ -40,6 +36,9 @@ class Checkout:
     commit: str
     diff_base: str
     tasks: list[SessionTask]
+    # PR context the optional hands-on stage needs once the code reviewers ask for a UI check.
+    pr_context: dict[str, Any] = field(default_factory=dict)
+    repo_id: int = 0
 
 
 SandboxRunner = Callable[[Checkout], tuple[list[dict[str, Any]], list[SessionRun]]]
@@ -64,7 +63,6 @@ def session_tasks(
     diff_base: str,
     changed_files: list[str],
     custom_instructions: str,
-    include_hands_on: bool,
 ) -> list[SessionTask]:
     shared = {
         "repo": repo,
@@ -85,16 +83,6 @@ def session_tasks(
         )
         for profile in REVIEW_SESSION_PROFILES
     ]
-    if include_hands_on:
-        tasks.append(
-            SessionTask(
-                session=HANDS_ON_SESSION_PROFILE.key,
-                prompt=build_hands_on_prompt(**shared),
-                schema=hands_on_output_schema(),
-                read_only=False,
-                max_steps=HANDS_ON_SESSION_PROFILE.max_steps,
-            )
-        )
     return tasks
 
 
@@ -119,25 +107,18 @@ def review_pull_request(
     diff = DiffIndex.from_pr_files(pr_files)
     base_ref = pr["base"]["ref"]
     diff_base = f"origin/{base_ref}"
-    upsert_status_comment(
-        gh,
-        repo,
-        pr_number,
-        f"Review of `{state.head_sha[:7]}` is running: deterministic gates, then "
-        f"{len(REVIEW_SESSION_PROFILES)} review sessions and a live app check (`{deps.model}`).",
-    )
-
-    tasks = session_tasks(
-        repo=repo,
-        pr_number=pr_number,
-        title=pr.get("title") or "",
-        body=pr.get("body") or "",
-        diff_base=diff_base,
-        changed_files=[item["filename"] for item in pr_files if item.get("filename")],
-        custom_instructions=custom_instructions,
-        include_hands_on=True,
-    )
-    checkout = Checkout(repo, [base_ref, state.head_sha], state.head_sha, diff_base, tasks)
+    pr_context = {
+        "repo": repo,
+        "pr_number": pr_number,
+        "title": pr.get("title") or "",
+        "body": pr.get("body") or "",
+        "diff_base": diff_base,
+        "changed_files": [item["filename"] for item in pr_files if item.get("filename")],
+        "custom_instructions": custom_instructions,
+    }
+    tasks = session_tasks(**pr_context)
+    checkout = Checkout(repo, [base_ref, state.head_sha], state.head_sha, diff_base, tasks,
+                        pr_context=pr_context, repo_id=int(pr["base"]["repo"]["id"]))
     state.gates, state.session_runs = deps.run_in_sandbox(checkout)
 
     payloads = {run.session: run.output.payload for run in state.session_runs}
@@ -154,6 +135,7 @@ def review_pull_request(
         linear_texts=linear_texts,
         model=deps.model,
         secrets=deps.secrets,
+        run_id=state.run_id,
     )
     state.validations = result.validations
     state.posted_findings = result.findings
@@ -162,13 +144,6 @@ def review_pull_request(
     submitted = submit_pr_review(gh, repo, pr_number, state.head_sha, result.review)
     state.review_id = submitted.get("id")
     state.status = STATUS_REVIEWED
-    upsert_status_comment(
-        gh,
-        repo,
-        pr_number,
-        f"Review of `{state.head_sha[:7]}` posted: `{state.verdict}`, "
-        f"{len(result.findings)} verified finding(s), run `{state.run_id}`.",
-    )
     return {
         "status": STATUS_REVIEWED,
         "run_id": state.run_id,

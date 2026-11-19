@@ -1,19 +1,19 @@
-name: Modal reviewer
+name: PR reviewer
 on:
   push:
     branches: [main, develop]
-    paths: ['infra/**', '.github/workflows/modal-reviewer.yml']
+    paths: ['infra/**', '.github/workflows/pr-reviewer.yml']
   pull_request:
-    paths: ['infra/**', '.github/workflows/modal-reviewer.yml']
+    paths: ['infra/**', '.github/workflows/pr-reviewer.yml']
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: modal-reviewer-${{ github.ref }}
+  group: pr-reviewer-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   pytest:
-    name: Modal reviewer / pytest
+    name: PR reviewer / pytest
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -23,6 +23,6 @@ jobs:
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
         with:
           enable-cache: true
-          cache-dependency-glob: infra/modal-pr-review/uv.lock
+          cache-dependency-glob: infra/pr-review/uv.lock
           python-version: '3.12'
-      - run: uv run --project infra/modal-pr-review --locked pytest infra/modal-pr-review/tests -q
+      - run: uv run --project infra/pr-review --locked pytest infra/pr-review/tests -q

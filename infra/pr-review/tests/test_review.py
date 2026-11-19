@@ -115,7 +115,7 @@ def test_model_claims_cannot_block_on_their_own() -> None:
     )
     assert result.review["verdict"] == VERDICT_COMMENT
     assert result.review["comments"] == []
-    assert "model-reported, not verified by the server" in result.review["body"]
+    assert not result.review["body"] and not result.review["notes"]
 
 
 def test_review_posts_verified_findings_and_gate_lines_verbatim() -> None:
@@ -138,14 +138,14 @@ def test_review_posts_verified_findings_and_gate_lines_verbatim() -> None:
     assert review["verdict"] == VERDICT_REQUEST_CHANGES
     assert review["blocking_reasons"] == ["gate `check-rules` failed", f"`R5.owner-from-auth` at `{PATH}:12`"]
     assert [(comment["path"], comment["line"]) for comment in review["comments"]] == [(PATH, 12), (PATH, 12)]
-    assert f"`{PATH}:12 R4.no-any raw `any`: use a real type`" in review["comments"][0]["body"]
+    assert f"`R4.no-any` at `{PATH}:12`" in review["comments"][0]["body"]
     assert finding_marker("R5.owner-from-auth") in review["comments"][1]["body"]
-    assert "Hard-boundary flag" in review["comments"][1]["body"]
+    assert "Hard boundary" in review["comments"][1]["body"]
 
     body = review["body"]
-    assert "cloud/convex/a.ts:500 R3.file-length 500 lines (max 400)" in body
-    assert "1 finding(s) verified against the diff and posted; 1 dropped" in body
-    assert "`logic_bs` returned no usable output (`malformed_json`)" in body
+    assert len(body) < 100 and "logic_bs" not in body
+    assert "`R3.file-length` at `cloud/convex/a.ts:500`" in review["notes"][0]
+    assert "500 lines (max 400)" in review["notes"][0]
     assert "the token is logged somewhere" not in str(review)
     assert result.session_errors == {"logic_bs": ERROR_NOT_JSON}
 
@@ -155,7 +155,7 @@ def test_advisory_findings_are_phrased_as_offers() -> None:
     result = assess(session_runs=[session_run("logic_bs", payload)], gates=[], diff=DIFF, linear_texts={}, model="m")
     comment = result.review["comments"][0]["body"]
     assert comment.startswith("**Question / offer · `R3.root-cause`**")
-    assert "Would it help to consider: Could this be derived from the session?" in comment
+    assert "Could this be derived from the session?" in comment
 
 
 def test_no_slop_fallback_when_every_session_fails() -> None:
@@ -165,7 +165,8 @@ def test_no_slop_fallback_when_every_session_fails() -> None:
     assert result.review["verdict"] == VERDICT_COMMENT
     assert result.review["comments"] == []
     assert "refactoring everything" not in result.review["body"]
-    assert result.review["body"].count("returned no usable output (`empty_output`)") == 2
+    assert result.review["body"] == ""
+    assert result.session_errors == {"security": ERROR_EMPTY, "logic_bs": ERROR_EMPTY}
 
 
 def test_secrets_are_redacted_from_the_review() -> None:

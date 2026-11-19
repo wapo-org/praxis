@@ -1,4 +1,4 @@
-"""Everything that runs inside the Modal Sandbox: checkout, deterministic gates and Muse sessions."""
+"""Everything that runs inside the review container: checkout, deterministic gates and Muse sessions."""
 
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ class SessionTask:
     read_only: bool
     max_steps: str
     required_keys: tuple[str, ...] = ("findings",)
+    images: tuple[str, ...] = ()
 
 
 def exec_in(
@@ -42,8 +43,9 @@ def exec_in(
     env: dict[str, str] | None = None,
     timeout: int | None = None,
     check: bool = True,
+    user: str | None = None,
 ) -> tuple[int, str, str]:
-    proc = sb.exec(*args, env=env, timeout=timeout)
+    proc = sb.exec(*args, env=env, timeout=timeout, **({"user": user} if user else {}))
     stdout = proc.stdout.read()
     stderr = proc.stderr.read()
     rc = proc.wait()
@@ -56,7 +58,7 @@ def exec_in(
     return rc, stdout, stderr
 
 
-def write_file(sb: Any, path: str, content: str, mode: int | None = None) -> None:
+def write_file(sb: Any, path: str, content: str, mode: int | None = None, user: str | None = None) -> None:
     proc = sb.exec(
         "python3",
         "-c",
@@ -67,6 +69,7 @@ def write_file(sb: Any, path: str, content: str, mode: int | None = None) -> Non
         "(os.chmod(p, m) if m is not None else None)",
         path,
         f"{mode:o}" if mode is not None else "",
+        **({"user": user} if user else {}),
     )
     proc.stdin.write(content.encode("utf-8"))
     proc.stdin.write_eof()
@@ -220,9 +223,6 @@ ln -sfn {MUSE_CONFIG_DIR}/skills {cfg_dir}/muse/skills
         prompt_path,
         "--workspace",
         WORKSPACE,
-        "--session-id",
-        str(uuid.uuid4()),
-        "--yolo",
         "--disable-request-user-input",
         "--model",
         model,
@@ -231,8 +231,15 @@ ln -sfn {MUSE_CONFIG_DIR}/skills {cfg_dir}/muse/skills
         "--max-model-steps",
         task.max_steps,
     ]
+    if not task.images:
+        parts.extend(["--session-id", str(uuid.uuid4()), "--yolo"])
     if task.read_only:
         parts.append("--disable-write")
+    if task.images:
+        parts.extend(["--preset", "empty", "--disable-shell", "--disable-web-tools", "--disable-reminders",
+                      "--no-foreign-personal-context", "--no-session-log"])
+        for image in task.images:
+            parts.extend(["--image", image])
     command = " ".join(shlex.quote(part) for part in parts)
 
     started = time.monotonic()

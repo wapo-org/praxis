@@ -19,7 +19,6 @@ from github_api import (
     parse_webhook_event,
     require_usable_token,
     submit_pr_review,
-    upsert_status_comment,
     verify_github_signature,
 )
 from pipeline import STATUS_ERROR, RunState, run_and_record
@@ -161,20 +160,38 @@ def test_submit_falls_back_to_comment_when_reviewing_own_pr() -> None:
     assert events == ["REQUEST_CHANGES", "COMMENT"]
 
 
-def test_submit_moves_inline_comments_into_the_body_when_anchors_are_rejected() -> None:
-    bodies: list[dict[str, Any]] = []
+def test_submit_posts_rejected_anchors_as_separate_comments() -> None:
+    requests: list[tuple[str, dict[str, Any]]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
-        bodies.append(payload)
-        if payload["comments"]:
+        requests.append((request.url.path, payload))
+        if request.url.path.endswith("/reviews"):
             return httpx.Response(422, json={"message": "line must be part of the diff"})
         return httpx.Response(200, json={"id": 8})
 
     with client_for(handler) as client:
         submit_pr_review(client, "wapo-org/praxis", 5, "abc", {**REVIEW, "verdict": "COMMENT"})
-    assert bodies[-1]["comments"] == []
-    assert "`a.ts:3`" in bodies[-1]["body"] and "finding text" in bodies[-1]["body"]
+    assert len(requests) == 2
+    path, note = requests[-1]
+    assert path.endswith("/issues/5/comments")
+    assert "`a.ts:3`" in note["body"] and "finding text" in note["body"]
+
+
+def test_clean_review_and_unplaced_observations_use_only_needed_requests() -> None:
+    bodies = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/issues/5/comments")
+        bodies.append(json.loads(request.content)["body"])
+        return httpx.Response(201, json={"id": 4})
+
+    clean = {"verdict": "COMMENT", "body": "", "comments": [], "notes": []}
+    with client_for(handler) as client:
+        assert submit_pr_review(client, "wapo-org/praxis", 5, "abc", clean) == {}
+        assert bodies == []
+        assert submit_pr_review(client, "wapo-org/praxis", 5, "abc", {**clean, "notes": ["UI score", "Visual issue"]}) == {}
+    assert bodies == ["UI score", "Visual issue"]
 
 
 @pytest.mark.parametrize("status_code", [401, 403])
@@ -187,8 +204,8 @@ def test_every_github_call_raises_an_explicit_auth_error(status_code: int) -> No
             fetch_pr_details(client, "wapo-org/praxis", 5)
         with pytest.raises(GitHubAuthError, match="post the review"):
             submit_pr_review(client, "wapo-org/praxis", 5, "abc", REVIEW)
-        with pytest.raises(GitHubAuthError, match="list pull request comments"):
-            upsert_status_comment(client, "wapo-org/praxis", 5, "status")
+        with pytest.raises(GitHubAuthError, match="post a specific review observation"):
+            submit_pr_review(client, "wapo-org/praxis", 5, "abc", {"verdict": "COMMENT", "body": "", "comments": [], "notes": ["UI score"]})
         with pytest.raises(GitHubAuthError, match="read review threads"):
             fetch_review_thread_outcomes(client, "wapo-org/praxis", 5)
 

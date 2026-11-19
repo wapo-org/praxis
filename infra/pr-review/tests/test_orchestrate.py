@@ -46,7 +46,7 @@ class FakeGitHub:
                     "title": "Add route",
                     "body": "",
                     "head": {"sha": "abcdef1234567", "ref": "feat", "repo": {"full_name": self.head_repo}},
-                    "base": {"ref": "main", "repo": {"full_name": REPO}},
+                    "base": {"ref": "main", "repo": {"full_name": REPO, "id": 1}},
                 },
             )
         if path.endswith("/pulls/5/files"):
@@ -113,13 +113,14 @@ def test_review_posts_only_verified_findings_and_records_the_run(tmp_path: Path)
     }
     [checkout] = calls
     assert (checkout.commit, checkout.diff_base, checkout.refs) == ("abcdef1234567", "origin/main", ["main", "abcdef1234567"])
-    assert len(checkout.tasks) == 6
+    assert len(checkout.tasks) == 5
+    assert checkout.repo_id == 1 and checkout.pr_context["repo"] == REPO
 
     [posted] = github.posted
     assert posted["event"] == "REQUEST_CHANGES" and posted["commit_id"] == "abcdef1234567"
     assert [(comment["path"], comment["line"]) for comment in posted["comments"]] == [(PATH, 1)]
     assert "I think this is fine" not in json.dumps(posted)
-    assert len(github.status_comments) == 2
+    assert github.status_comments == []
 
     [record] = load_run_records(tmp_path, limit=5)
     assert record["status"] == "reviewed" and record["review_id"] == 4242

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from diff_index import DiffIndex
@@ -12,6 +12,7 @@ from redact import redact_text, redact_value
 from review import build_review
 from runlog import build_run_record, session_record
 from validation import SessionValidation, validate_run
+from visual_review import VisualAssessment
 
 STATUS_REVIEWED = "reviewed"
 STATUS_SKIPPED = "skipped"
@@ -26,6 +27,7 @@ class SessionRun:
     raw_output: str
     exit_code: int | None
     duration_seconds: float
+    visual: VisualAssessment | None = None
 
 
 @dataclass
@@ -75,6 +77,10 @@ class RunState:
             )
             for run in self.session_runs
         ]
+        for run, record in zip(self.session_runs, sessions):
+            if run.visual is not None:
+                record["visual"] = asdict(run.visual)
+                record["visual"]["inconsistencies"] = [list(item) for item in run.visual.inconsistencies]
         return build_run_record(
             run_id=self.run_id,
             repo=self.repo,
@@ -105,6 +111,7 @@ def assess(
     linear_texts: dict[str, str],
     model: str,
     secrets: Iterable[str] = (),
+    run_id: str | None = None,
 ) -> Assessment:
     """Validate what the sessions returned and build the review; a failed session contributes nothing but a note."""
     payloads = {run.session: run.output.payload for run in session_runs if run.output.payload is not None}
@@ -112,12 +119,11 @@ def assess(
     validations, findings = validate_run(payloads, diff, linear_texts)
     review = build_review(
         gates=gates,
-        sessions=validations,
         findings=findings,
-        session_errors=session_errors,
         hands_on=payloads.get("hands_on"),
         diff=diff,
-        model=model,
+        visual=next((run.visual for run in session_runs if run.visual is not None), None),
+        run_id=run_id,
     )
     return Assessment(
         review=redact_value(review, secrets),

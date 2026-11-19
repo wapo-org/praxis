@@ -1,10 +1,9 @@
 [project]
-name = "praxis-modal-pr-review"
+name = "praxis-pr-review"
 version = "0.1.0"
-description = "Modal environment hosting Meta Muse Code CLI to review GitHub PRs and test Praxis Cloud by hand"
+description = "Praxis PR reviewer: Sol code sessions and a Muse preview UI check in podman containers"
 requires-python = ">=3.11"
 dependencies = [
-    "modal>=1.0.0",
     "fastapi[standard]>=0.115.0",
     "httpx>=0.28.0",
 ]

@@ -1,0 +1,35 @@
+name: Convex preview
+# Every Vercel preview shares one Convex deployment; keep it on develop's backend so previews and the reviewer test current code.
+on:
+  push:
+    branches: [develop]
+    paths: ['cloud/convex/**', 'cloud/packages/protocol/**', 'cloud/package-lock.json', 'cloud/patches/**', '.github/workflows/convex-preview.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: convex-preview
+  cancel-in-progress: false
+jobs:
+  deploy:
+    name: Convex preview / deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+      - run: npm install --global npm@11
+      - run: npm --prefix cloud ci
+      - name: Deploy Convex functions
+        working-directory: cloud
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
+        run: |
+          test -n "$CONVEX_DEPLOY_KEY" || { echo "CONVEX_PREVIEW_DEPLOY_KEY is not set" >&2; exit 1; }
+          npx --no-install convex deploy --yes

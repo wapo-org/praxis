@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import app
+import re
 from orchestrate import session_tasks
-from images import LOCAL_MODULES, SKILLS_REPO_COMMIT
 from pathlib import Path
 from prompts import (
     HANDS_ON_SESSION_PROFILE,
@@ -73,10 +72,14 @@ def test_pr_text_is_fenced_as_untrusted_and_truncated() -> None:
 
 
 def test_hands_on_prompt_does_not_rerun_the_gates() -> None:
-    prompt = build_hands_on_prompt(**SHARED)
-    assert "Do not run `typecheck`, `npm test`, `check:rules` or `comment-sweep`" in prompt
-    assert "verify -- api" in prompt and "verify -- web" in prompt
-    assert "npm --prefix cloud run typecheck" not in prompt
+    prompt = build_hands_on_prompt(
+        **SHARED, ui_requests=[("logic_bs", "Open settings and save a model.")],
+        preview_origin="https://praxis-web-abc.vercel.app",
+    )
+    assert "Do not run `typecheck`, `npm test`, `check:rules`, `comment-sweep` or `verify`" in prompt
+    assert "https://praxis-web-abc.vercel.app" in prompt and "- From `logic_bs`: Open settings" in prompt
+    assert "review-check /tmp/check.mjs" in prompt
+    assert "password" not in prompt.lower()
     assert HANDS_ON_SESSION_PROFILE.max_steps == "80"
     assert {profile.max_steps for profile in REVIEW_SESSION_PROFILES} == {"40"}
 
@@ -90,45 +93,36 @@ def test_output_schemas_close_the_rule_list_per_session() -> None:
         assert item["properties"]["rule_id"]["enum"] == list(SESSION_RULE_IDS[profile.key])
         assert not set(item["properties"]["rule_id"]["enum"]) & SCRIPT_RULE_IDS
         assert set(item["required"]) == set(item["properties"])
-        assert schema["required"] == ["session", "findings"]
+        assert schema["required"] == ["session", "findings", "ui_check"]
+        assert schema["properties"]["ui_check"]["type"] == ["string", "null"]
         assert "summary" not in schema["properties"] and "blocking_issues" not in schema["properties"]
-    assert hands_on_output_schema()["properties"]["findings"]["items"]["properties"]["rule_id"]["enum"] == ["CORRECTNESS"]
+    hands_on_schema = hands_on_output_schema()
+    assert hands_on_schema["properties"]["findings"]["items"]["properties"]["rule_id"]["enum"] == ["CORRECTNESS"]
+    assert "access_blocker" in hands_on_schema["required"]
 
 
-def test_image_ships_every_local_module_and_pins_the_skills() -> None:
-    reviewer_dir = Path(app.__file__).resolve().parent
-    modules = {path.stem for path in reviewer_dir.glob("*.py")} - {"app"}
-    assert set(LOCAL_MODULES) == modules
-    assert len(SKILLS_REPO_COMMIT) == 40
+def test_container_pins_the_skills_and_the_review_tools() -> None:
+    containerfile = (Path(__file__).resolve().parents[1] / "Containerfile").read_text(encoding="utf-8")
+    assert re.search(r"^ARG SKILLS_COMMIT=[0-9a-f]{40}$", containerfile, re.MULTILINE)
+    assert "@openai/codex@" in containerfile and "playwright@" in containerfile and "ffmpeg" in containerfile
     assert set(installed_skills()) == {
         skill for profile in (*REVIEW_SESSION_PROFILES, HANDS_ON_SESSION_PROFILE) for skill in profile.skills
     }
 
 
-def test_session_tasks_cover_five_read_only_sessions_plus_hands_on() -> None:
-    tasks = session_tasks(**SHARED, custom_instructions="", include_hands_on=True)
-    assert [task.session for task in tasks] == ["abstractions", "maintainability", "conciseness", "logic_bs", "security", "hands_on"]
-    assert [task.read_only for task in tasks] == [True] * 5 + [False]
-    assert len(session_tasks(**SHARED, custom_instructions="", include_hands_on=False)) == 5
-    assert app.SANDBOX_TIMEOUT_SECONDS < app.FUNCTION_TIMEOUT_SECONDS
+def test_session_tasks_are_the_five_read_only_code_sessions() -> None:
+    tasks = session_tasks(**SHARED, custom_instructions="")
+    assert [task.session for task in tasks] == ["abstractions", "maintainability", "conciseness", "logic_bs", "security"]
+    assert all(task.read_only for task in tasks)
+    assert all("/opt/muse-skills/" in task.prompt and "`ui_check`" in task.prompt for task in tasks)
 
 
-def test_rotation_merges_one_key_and_keeps_the_others() -> None:
-    import importlib.util
-
-    path = Path(app.__file__).resolve().parent / "scripts" / "rotate_secret.py"
-    spec = importlib.util.spec_from_file_location("rotate_secret", path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    current = {"GITHUB_TOKEN": "old", "LINEAR_API_KEY": "lin", "MUSE_MODEL": "muse-ember-1.0"}
-    merged = module.merge_key(current, "GITHUB_TOKEN", " new-token\n")
-    assert merged == {"GITHUB_TOKEN": "new-token", "LINEAR_API_KEY": "lin", "MUSE_MODEL": "muse-ember-1.0"}
-    assert current["GITHUB_TOKEN"] == "old"
-    try:
-        module.merge_key(current, "GITHUB_TOKEN", "   ")
-    except ValueError as error:
-        assert "empty" in str(error)
-    else:
-        raise AssertionError("empty value must be refused")
+def test_hands_on_prompt_flags_backend_changes_the_shared_preview_does_not_run() -> None:
+    request = [("logic_bs", "Open settings and save a model.")]
+    origin = "https://praxis-web-abc.vercel.app"
+    frontend = build_hands_on_prompt(**SHARED, ui_requests=request, preview_origin=origin)
+    backend = build_hands_on_prompt(
+        **{**SHARED, "changed_files": ["cloud/convex/users.ts"]}, ui_requests=request, preview_origin=origin,
+    )
+    assert "shares one Convex backend" not in frontend
+    assert "shares one Convex backend deployed from `develop`" in backend
