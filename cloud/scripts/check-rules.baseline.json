@@ -49,14 +49,14 @@
     },
     "R3.file-length": {
       "apps/web/e2e/morph.pw.ts": 610,
-      "apps/web/e2e/stretch.pw.ts": 434,
+      "apps/web/e2e/stretch.pw.ts": 430,
       "apps/web/src/components/chat/ElicitationCards.tsx": 440,
       "apps/web/src/components/chat/chatMotion.ts": 464,
       "apps/web/src/components/chat/tray.test.tsx": 412,
       "apps/web/src/components/chat/useSearchJump.ts": 465,
       "packages/agent/src/runner.ts": 450,
       "packages/glass/src/dropdown/dropdown.pw.ts": 439,
-      "packages/glass/src/morph/engine.ts": 564,
+      "packages/glass/src/morph/engine.ts": 563,
       "scripts/comment-sweep.mjs": 710
     },
     "R4.convex-v-any": {
