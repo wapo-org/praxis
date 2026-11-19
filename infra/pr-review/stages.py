@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import sandbox
-from codex_session import CODEX_USER, run_codex_session
+from codex_session import CODEX_USER, CODEX_WORK_DIR, run_codex_session
 from muse_output import MuseOutput
 from orchestrate import Checkout
 from pipeline import SessionRun
@@ -33,7 +33,7 @@ CONTACT_SHEET_TIMEOUT_SECONDS = 120
 SHEET_COLUMNS = 4
 SHEET_ROWS = 3
 SHEET_FRAME_WIDTH = 480
-VISION_COPY = "/home/node/review/contact-sheet.png"
+VISION_COPY = f"{CODEX_WORK_DIR}/{CONTACT_SHEET}"
 VISION_PROMPT = """Review this contact sheet: frames in reading order from a recorded browser check of a pull request's preview.
 The check verified:
 {requests}
@@ -100,10 +100,9 @@ ffmpeg -v error -y -i "$video" -vf "fps={frames}/$duration,scale={SHEET_FRAME_WI
     return rc == 0
 
 
-def assess_with_sol(container: Any, requests: list[tuple[str, str]], *, model: str, effort: str,
+def assess_with_sol(container: Any, requests: list[tuple[str, str]], *, sheet: bytes, model: str, effort: str,
                     recording_retained: bool) -> VisualAssessment | None:
-    sandbox.exec_in(container, "install", "-D", "-o", CODEX_USER, "-m", "644",
-                    f"{ARTIFACT_DIR}/{CONTACT_SHEET}", VISION_COPY)
+    sandbox.write_file(container, VISION_COPY, sheet, mode=0o600, user=CODEX_USER)
     listed = "\n".join(f"- {text}" for _, text in requests)
     task = sandbox.SessionTask(
         session=VISUAL_SESSION, prompt=VISION_PROMPT.format(requests=listed), schema=visual_schema(),

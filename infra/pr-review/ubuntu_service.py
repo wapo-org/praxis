@@ -124,7 +124,7 @@ def run_review(repo, pr, trigger, instructions, config, before_sha=''):
             retain_capture(destination, CONTACT_SHEET, sheet)
             if recording is not None:
                 retain_capture(destination, DEVELOPMENT_VIDEO, recording)
-            hands_on.visual = assess_with_sol(container, requests, model=sol_model, effort=sol_effort,
+            hands_on.visual = assess_with_sol(container, requests, sheet=sheet, model=sol_model, effort=sol_effort,
                                               recording_retained=recording is not None)
         except Exception as error:
             LOG.warning('Visual assessment unavailable for run %s (%s).', state.run_id, type(error).__name__)

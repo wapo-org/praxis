@@ -60,7 +60,7 @@ def exec_in(
     return rc, stdout, stderr
 
 
-def write_file(sb: Any, path: str, content: str, mode: int | None = None, user: str | None = None) -> None:
+def write_file(sb: Any, path: str, content: str | bytes, mode: int | None = None, user: str | None = None) -> None:
     proc = sb.exec(
         "python3",
         "-c",
@@ -73,7 +73,7 @@ def write_file(sb: Any, path: str, content: str, mode: int | None = None, user: 
         f"{mode:o}" if mode is not None else "",
         **({"user": user} if user else {}),
     )
-    proc.stdin.write(content.encode("utf-8"))
+    proc.stdin.write(content.encode("utf-8") if isinstance(content, str) else content)
     proc.stdin.write_eof()
     proc.stdin.drain()
     if proc.wait() != 0:
