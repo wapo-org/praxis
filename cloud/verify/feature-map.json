@@ -33,7 +33,7 @@
       "title": "Typed Convex rows, authenticated ownership, atomic message sequencing and account purge",
       "issue": "PRA-24",
       "surfaces": ["api"],
-      "covers": [{"command": "gate"}]
+      "covers": [{"command": "gate"}, {"command": "live", "suite": "convex-typed-rows"}]
     },
     {
       "id": "repo.gate",
