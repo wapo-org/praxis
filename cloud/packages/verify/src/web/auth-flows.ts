@@ -1,5 +1,6 @@
 import { JWT_STORAGE_KEY, REFRESH_TOKEN_STORAGE_KEY } from '@convex-dev/auth/browser';
 import { expect, type Page } from '@playwright/test';
+import { LOOPBACK_HOST } from '../constants.js';
 import type { WebFlow } from './flow-types.js';
 import { seedUnavailableAccount } from './auth-account.js';
 import { sessionToken } from './session.js';
@@ -64,6 +65,9 @@ export const previewProviderFlow: WebFlow = {
   default: false,
   allow: [],
   async run({page, note}) {
+    await page.route(url => url.hostname !== LOOPBACK_HOST, route => {
+      return route.request().isNavigationRequest() ? route.abort() : route.continue();
+    });
     await page.goto('/');
     for (const provider of ['Google', 'Apple']) {
       const button = page.getByRole('button', {name: `Continue with ${provider}`, exact: true});
