@@ -1,3 +1,4 @@
+import { SealedSecret } from '@praxis/types';
 import { describe, expect, it } from 'vitest';
 import {
   WEBHOOK_BODY_BYTES_MAX,
@@ -19,7 +20,7 @@ const ACTIVATED = 'composio.connected_account.activated';
 const EXPIRED = 'composio.connected_account.expired';
 
 async function verify(body: string, headers: Headers, nowMs = TEST_NOW_MS, secret = TEST_WEBHOOK_SECRET) {
-  return verifyComposioWebhook({ headers, rawBody: body, secret, nowMs });
+  return verifyComposioWebhook({ headers, rawBody: body, secret: secret ? SealedSecret.of(secret) : undefined, nowMs });
 }
 
 describe('verifyComposioWebhook', () => {

@@ -1,3 +1,4 @@
+import { SealedSecret } from '@praxis/types';
 import { internal } from '../_generated/api.js';
 import { httpAction } from '../functions.js';
 import { COMPOSIO_WEBHOOK_SECRET_ENV, WEBHOOK_BODY_BYTES_MAX } from './constants.js';
@@ -20,15 +21,15 @@ function json(status: number, body: Record<string, string | boolean>): Response 
 }
 
 export const composioWebhook = httpAction(async (ctx, request) => {
-  const secret = process.env[COMPOSIO_WEBHOOK_SECRET_ENV];
-  if (!secret) return json(503, { error: 'webhook_unconfigured' });
+  const rawSecret = process.env[COMPOSIO_WEBHOOK_SECRET_ENV];
+  if (!rawSecret) return json(503, { error: 'webhook_unconfigured' });
   if (Number(request.headers.get('content-length') ?? 0) > WEBHOOK_BODY_BYTES_MAX) {
     return json(413, { error: 'too_large' });
   }
   const verification = await verifyComposioWebhook({
     headers: request.headers,
     rawBody: await request.text(),
-    secret,
+    secret: SealedSecret.of(rawSecret),
     nowMs: Date.now(),
   });
   if (!verification.ok) {

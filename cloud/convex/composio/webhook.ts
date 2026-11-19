@@ -1,3 +1,4 @@
+import type { SealedSecret } from '@praxis/types';
 import type { Infer } from 'convex/values';
 import { z } from 'zod';
 import {
@@ -27,7 +28,7 @@ export type WebhookVerification =
 export type WebhookInput = {
   headers: Pick<Headers, 'get'>;
   rawBody: string;
-  secret: string;
+  secret?: SealedSecret;
   nowMs: number;
 };
 
@@ -87,11 +88,11 @@ function fresh(timestamp: string, nowMs: number): boolean {
   return skewMs <= WEBHOOK_TOLERANCE_SECONDS * 1000;
 }
 
-async function anySignatureMatches(secret: string, signed: Uint8Array<ArrayBuffer>, header: string): Promise<boolean> {
+async function anySignatureMatches(secret: SealedSecret, signed: Uint8Array<ArrayBuffer>, header: string): Promise<boolean> {
   // Composio keys the HMAC with the secret's UTF-8 bytes, not a base64-decoded Standard Webhooks `whsec_` key.
   const key = await crypto.subtle.importKey(
     'raw',
-    new TextEncoder().encode(secret),
+    new TextEncoder().encode(secret.reveal()),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['verify'],

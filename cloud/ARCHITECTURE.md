@@ -97,6 +97,14 @@ Runtime dependency inventory (features add their package only when implemented):
 
 No accounts/projects are created or deployed by agents. Required credentials, external setup, callback URLs and rollout limits are listed in DEPLOY.md. Real adapter suites run only when their environment is supplied. Local tests and scripted smoke runs need none. Production feature claims must distinguish implemented contracts from credential-gated verification and known gaps.
 
+- sharp: server-side orientation-aware image cropping and scaling for the vision reader on Vercel.
+
+- fflate: small in-memory streaming ZIP decoder for skill imports; declared and actual sizes, entry types, paths and counts are bounded before persistence. Tar parsing and bounded gzip use Node built-ins.
+
+Sandbox dependency: `modal` **0.11.1**, pinned, the official Modal JavaScript SDK (sandboxes, exec, filesystem, volumes, tunnels), used only by `@praxis/sandbox-tools/modal` and its opt-in scripts.
+
+Tool-boundary dependencies: `shell-quote` **1.12.0**, pinned, dependency-free pure JS token scanner for the restricted shell AST; `@types/shell-quote` **1.7.5** for compile-time declarations. `fast-check` **4.10.2**, pinned dev dependency, checks shell obfuscation and monotone taint properties; `npm test` runs the boundary suite; `npm run specs` runs the PRA-75 formal models.
+
 ### Composio environment
 
 Set these variables on the Convex deployment that handles connections.
@@ -106,15 +114,6 @@ Set these variables on the Convex deployment that handles connections.
 - `PRAXIS_TENANT_ID_SECRET` holds at least 32 bytes of stable HMAC key material. Changing it changes every Composio tenant ID.
 - `COMPOSIO_WEBHOOK_SECRET` verifies signatures on deliveries to `<CONVEX_SITE_URL>/composio/webhook`.
 - `PRAXIS_WEB_ORIGINS` lists the permitted HTTPS return origins, separated by commas. The native return is `praxis-app://oauth/callback`.
-
-
-- sharp: server-side orientation-aware image cropping and scaling for the vision reader on Vercel.
-
-- fflate: small in-memory streaming ZIP decoder for skill imports; declared and actual sizes, entry types, paths and counts are bounded before persistence. Tar parsing and bounded gzip use Node built-ins.
-
-Sandbox dependency: `modal` **0.11.1**, pinned, the official Modal JavaScript SDK (sandboxes, exec, filesystem, volumes, tunnels), used only by `@praxis/sandbox-tools/modal` and its opt-in scripts.
-
-Tool-boundary dependencies: `shell-quote` **1.12.0**, pinned, dependency-free pure JS token scanner for the restricted shell AST; `@types/shell-quote` **1.7.5** for compile-time declarations. `fast-check` **4.10.2**, pinned dev dependency, checks shell obfuscation and monotone taint properties; `npm test` runs the boundary suite; `npm run specs` runs the PRA-75 formal models.
 
 ## Formal protocol checks
 
