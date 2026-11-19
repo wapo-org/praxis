@@ -1,5 +1,4 @@
 export const VERIFY_AUTH = {
-  password: 'browser mango zebra telescope orchard',
   resendKey: 'local-test-only',
   senderEmail: 'auth@example.test',
   senderName: 'Praxis verification',

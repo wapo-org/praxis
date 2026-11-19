@@ -51,7 +51,7 @@ export async function startLocalStack(ports: {web: number; api: number}, logDire
   const web = startServer('web', join(BIN, 'vite'), ['--port', String(ports.web), '--host', LOOPBACK_HOST, '--strictPort'], {
     cwd: join(CLOUD_DIR, 'apps', 'web'),
     // The preview OAuth simulation keeps local flows off real Google and Apple consent pages.
-    env: {...process.env, VITE_API_PROXY_TARGET: api, VITE_CONVEX_URL: auth.url, ...LOCAL_PREVIEW_BUILD_ENV},
+    env: {...process.env, VITE_API_BASE_URL: '', VITE_API_PROXY_TARGET: api, VITE_CONVEX_URL: auth.url, ...LOCAL_PREVIEW_BUILD_ENV},
     logFile: join(logDirectory, 'web.log'),
   });
   const stop = async () => {
