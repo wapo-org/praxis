@@ -10,13 +10,7 @@ import {
 } from './constants.js';
 import type { webhookStatus } from './schema.js';
 
-/*
- * Signing scheme (Standard Webhooks style), per https://docs.composio.dev/docs/setting-up-triggers/subscribing-to-events
- * and https://docs.composio.dev/reference/sdk-reference/typescript/triggers (verifyWebhook):
- * base64(HMAC-SHA256(secret, `${webhook-id}.${webhook-timestamp}.${rawBody}`)) sent as `v1,<sig>` in `webhook-signature`.
- * Composio keys the HMAC with the secret's UTF-8 bytes, unlike Standard Webhooks' base64 `whsec_` keys.
- * Events: https://docs.composio.dev/reference/api-reference/webhook-events
- */
+// Signing scheme source: https://docs.composio.dev/docs/setting-up-triggers/subscribing-to-events
 
 export type WebhookStatus = Infer<typeof webhookStatus>;
 
@@ -94,6 +88,7 @@ function fresh(timestamp: string, nowMs: number): boolean {
 }
 
 async function anySignatureMatches(secret: string, signed: Uint8Array<ArrayBuffer>, header: string): Promise<boolean> {
+  // Composio keys the HMAC with the secret's UTF-8 bytes, not a base64-decoded Standard Webhooks `whsec_` key.
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),
