@@ -121,6 +121,7 @@ export async function saveDomainRow(ctx: MutationCtx, kind: DomainKind, input: D
       const chat = await requireChat(ctx, userId, chatId);
       const prior = await ownedMessage(ctx, userId, id);
       if (prior && prior.chatId !== chatId) throw new ConvexError('Message chat cannot change');
+      // Edits advance the sync revision while preserving the message's position in the chat.
       const sequence = prior?.sequence ?? chat.lastSequence + 1;
       if (!Number.isSafeInteger(sequence)) throw new ConvexError('Message sequence exhausted');
       const value = {...message, sequence};

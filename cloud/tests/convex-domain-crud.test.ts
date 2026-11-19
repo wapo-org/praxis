@@ -56,6 +56,29 @@ describe('PRA-24 typed table CRUD through domain functions', () => {
     expect((await alice.client.query(api.messages.page, {chatId: 'other-chat', limit: 10})).messages).toEqual([]);
   });
 
+  it('keeps Store message edits in chat order and delivers them through the revision cursor', async () => {
+    const {t, alice} = await twoOwners();
+    await createChat(alice);
+    const scope = {...token, userId: alice.userId};
+    const put = (id: string, text: string) => t.mutation(api.store.put, {
+      ...scope, kind: 'message', id, valueJson: JSON.stringify(textMessage(id, CHAT_ID, text)),
+    });
+    await put('b', 'first');
+    const second = await put('a', 'second');
+    const edit = await put('b', 'edited');
+
+    const first = await alice.client.query(api.messages.page, {chatId: CHAT_ID, limit: 1});
+    expect(first.messages).toMatchObject([{id: 'b', sequence: 1, parts: [{text: 'edited'}]}]);
+    const next = await alice.client.query(api.messages.page, {chatId: CHAT_ID, after: first.cursor, limit: 1});
+    expect(next.messages).toMatchObject([{id: 'a', sequence: 2}]);
+    expect(edit.revision).toBeGreaterThan(second.revision);
+    const changes = await t.query(api.store.changes, {...scope, after: second.revision, limit: 10});
+    expect(changes.records).toMatchObject([
+      {id: 'b', revision: edit.revision, value: {sequence: 1, parts: [{text: 'edited'}]}},
+    ]);
+    expect(changes.cursor).toBe(edit.revision);
+  });
+
   it('runs: start creates an owned workflow run, get reads it, cancel updates it; Store runs round-trip', async () => {
     const {t, alice} = await twoOwners();
     await createChat(alice);
