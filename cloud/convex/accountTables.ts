@@ -12,6 +12,7 @@ export const ACCOUNT_PURGE_POLICY = {
   toolSkillFiles: 'ownerRows',
   files: 'ownerRows',
   embeddings: 'ownerRows',
+  connections: 'ownerRows',
   oauthEmails: 'identity',
   runs: 'workflowRun',
   turns: 'runChild',
@@ -48,6 +49,8 @@ export const ACCOUNT_OWNER_ROWS: Record<TablesWith<'ownerRows'>, RowsBy<string>>
     .withIndex('owner_skill', q => q.eq('userId', userId)).take(limit),
   files: (ctx, userId, limit) => ctx.db.query('files')
     .withIndex('owner_status', q => q.eq('userId', userId)).take(limit),
+  connections: (ctx, userId, limit) => ctx.db.query('connections')
+    .withIndex('by_user_toolkit', q => q.eq('userId', userId)).take(limit),
   embeddings: (ctx, userId, limit) => ctx.db.query('embeddings')
     .withIndex('owner', q => q.eq('userId', userId)).take(limit),
 };
