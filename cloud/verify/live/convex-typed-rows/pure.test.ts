@@ -35,6 +35,7 @@ describe('sign-up email parsing', () => {
   it('matches recipients case-insensitively in either field shape', () => {
     expect(isRecipient('Name <Delivered+X@resend.dev>', 'delivered+x@resend.dev')).toBe(true);
     expect(isRecipient(['other@resend.dev'], 'delivered+x@resend.dev')).toBe(false);
+    expect(isRecipient('delivered+x@resend.dev.example', 'delivered+x@resend.dev')).toBe(false);
   });
 });
 

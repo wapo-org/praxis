@@ -38,6 +38,7 @@ export type OwnerAccess = {
   deployKey: SealedSecret;
   runId: string;
   log?: (line: string) => void;
+  onOwner?: (userId: string) => void;
 };
 
 /** Lowercase and short, so the address passes Convex Auth's format check and stays unique per run. */
@@ -68,6 +69,7 @@ async function signUp(convexUrl: string, email: string, access: OwnerAccess): Pr
     browserSecret: started.browserSecret, emailCode: code.reveal(),
   }));
   if (completed.status === 'error') throw new Error(`Convex Auth rejected the sign-up code: ${completed.userError.error}`);
+  access.onOwner?.(completed.tokens.userId);
   const token = SealedSecret.of(completed.tokens.accessToken);
   const client = authedClient(convexUrl, token);
   const userId = Viewer.parse(await client.query(CurrentUser, {}));

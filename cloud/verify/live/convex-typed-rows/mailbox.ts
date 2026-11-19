@@ -36,14 +36,19 @@ export function emailCodeFrom(body: string): string | null {
 export function isRecipient(to: string | readonly string[], email: string): boolean {
   const wanted = email.toLowerCase();
   const list = typeof to === 'string' ? [to] : to;
-  return list.some(address => address.toLowerCase().includes(wanted));
+  return list.some(address => {
+    const mailbox = /<([^<>]+)>$/.exec(address.trim())?.[1] ?? address;
+    return mailbox.trim().toLowerCase() === wanted;
+  });
 }
 
 async function adminQuery(convexUrl: string, deployKey: SealedSecret, path: string, args: Record<string, unknown>): Promise<unknown> {
-  const response = await fetch(new URL('/api/query', convexUrl), {
+  const endpoint = path.startsWith('_system/') ? '/api/query' : '/api/function';
+  const response = await fetch(new URL(endpoint, convexUrl), {
     method: 'POST',
     headers: {authorization: `Convex ${deployKey.reveal()}`, 'content-type': 'application/json'},
     body: JSON.stringify({componentPath: RESEND_COMPONENT, path, format: 'convex_encoded_json', args}),
+    redirect: 'error',
     signal: AbortSignal.timeout(ADMIN_REQUEST_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(`Convex admin query ${path} answered HTTP ${response.status}`);

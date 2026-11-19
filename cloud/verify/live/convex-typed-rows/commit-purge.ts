@@ -275,7 +275,7 @@ export async function beginFencesOwner(live: Live, owner: LiveOwner, chatId: str
   return verdict(problems, 'owner reads and typed writes are fenced after account:begin', log);
 }
 
-export async function purgeUntilDone(live: Live, owner: LiveOwner): Promise<StepResult> {
+export async function purgeUntilDone(live: Live, owner: Pick<LiveOwner, 'userId'>): Promise<StepResult> {
   let blobCursor: string | undefined;
   for (let call = 1; call <= PURGE_CALLS_MAX; call++) {
     const reply = PurgeReply.parse(await serverClient(live).mutation(Purge, {
