@@ -3,13 +3,14 @@ import {ConvexError, v} from 'convex/values';
 import {TurnCommitSchema, type TurnCommitResult, type TurnResult} from '@praxis/protocol';
 import {internal} from './_generated/api.js';
 import {internalQuery, serverMutation, serverQuery, type ActionCtx} from './functions.js';
-import {runScope} from './workflows/validators.js';
+import {ownerRunScope, runScope} from './workflows/validators.js';
 import {WORKFLOW_ERRORS} from './workflows/constants.js';
 import {turnState, type TurnScope, type TurnState} from './workflows/turnState.js';
 import {commitTurn} from './workflows/turnCommit.js';
 import {dispatchTurn} from './workflows/turnDispatch.js';
 
-const args = {...runScope, expectedTurnIndex: v.number()};
+const turnIndex = {expectedTurnIndex: v.number()};
+const args = {...runScope, ...turnIndex};
 
 export const preflight = internalQuery({
   args,
@@ -18,16 +19,16 @@ export const preflight = internalQuery({
 
 /** Worker pre-check: saved flags, or the run taint that seeds the turn snapshot. */
 export const state = serverQuery({
-  args: {serverToken: v.string(), ...args},
-  handler: async (ctx, {serverToken: _serverToken, ...input}): Promise<TurnState> => turnState(ctx, input),
+  args: {...ownerRunScope, ...turnIndex},
+  handler: async (ctx, input): Promise<TurnState> => turnState(ctx, input),
 });
 
 /** The worker's only write path: messages, usage, taint, receipt and cursor in one fenced transaction. */
 export const commit = serverMutation({
-  args: {serverToken: v.string(), userId: v.string(), commitJson: v.string()},
-  handler: async (ctx, input): Promise<TurnCommitResult> => {
-    const turn = TurnCommitSchema.parse(JSON.parse(input.commitJson));
-    if (turn.userId !== input.userId) throw new ConvexError(WORKFLOW_ERRORS.unavailable);
+  args: {commitJson: v.string()},
+  handler: async (ctx, {userId, commitJson}): Promise<TurnCommitResult> => {
+    const turn = TurnCommitSchema.parse(JSON.parse(commitJson));
+    if (turn.userId !== userId) throw new ConvexError(WORKFLOW_ERRORS.unavailable);
     return commitTurn(ctx, turn);
   },
 });

@@ -1,7 +1,7 @@
 import {Hono} from 'hono';
 import {vi} from 'vitest';
 import {
-  TURN_CURRENT_KEY_ENV, TURN_KEY_MIN_CHARACTERS, TurnCommitResultSchema,
+  TURN_CURRENT_KEY_ENV, TURN_KEY_MIN_CHARACTERS, TURN_TIMESTAMP_HEADER, TurnCommitResultSchema,
   type Message, type TurnCommit, type TurnRequest,
 } from '@praxis/protocol';
 import {api} from '../convex/_generated/api.js';
@@ -60,11 +60,14 @@ export function fakeTurnWorker(t: WorkflowTest, plan: (request: TurnScope) => Tu
       return result.flags;
     },
   };
+  // convex-test pumps fake timers mid-action, which can jump past the skew window; skew is tested in routes.test.ts.
+  let signedAtMs = 0;
   const app = new Hono();
-  registerTurnRoute(app, adapters, readTurnKeys({[TURN_CURRENT_KEY_ENV]: SIGNING_KEY}));
+  registerTurnRoute(app, adapters, readTurnKeys({[TURN_CURRENT_KEY_ENV]: SIGNING_KEY}), () => signedAtMs);
   const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const request = new Request(input, init);
     if (new URL(request.url).origin !== WORKER_ORIGIN) throw new Error(`Unexpected fetch to ${request.url}`);
+    signedAtMs = Number(request.headers.get(TURN_TIMESTAMP_HEADER));
     return reply.override?.() ?? app.fetch(request);
   });
   vi.stubGlobal('fetch', fetch);

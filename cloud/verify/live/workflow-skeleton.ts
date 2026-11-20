@@ -43,7 +43,7 @@ export default defineSuite({
     {
       id: 'deletion',
       kind: 'auto',
-      checklist: 'Account deletion mid-run (`account:begin`, then `account:purge` to `done`): `runs.start` is rejected and a worker `turns.commit` returns a conflict; no `runs`, `turnFlags`, workflow `workflows`/`steps` or `users` rows remain for the owner.',
+      checklist: 'Account deletion mid-run (`account:begin`, then `account:purge` to `done`): `runs.start` and a worker `turns.commit` are rejected; no `runs`, `turnFlags`, workflow `workflows`/`steps` or `users` rows remain for the owner.',
       needs: HOSTED_NEEDS,
       run: verifyDeletion,
     },

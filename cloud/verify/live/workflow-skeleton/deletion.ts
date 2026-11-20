@@ -2,7 +2,7 @@ import {ConvexHttpClient} from 'convex/browser';
 import {makeFunctionReference} from 'convex/server';
 import type {StepContext} from '@praxis/verify';
 import {z} from 'zod';
-import {TurnCommitResultSchema} from '@praxis/protocol';
+import {OWNER_ERRORS} from '@praxis/protocol';
 import {typedApi} from '../convex-typed-rows/api.js';
 import {AUTH_REQUIRED, errorText, settle} from '../convex-typed-rows/checks.js';
 import {purgeUntilDone, snapshotJournal} from '../convex-typed-rows/commit-purge.js';
@@ -43,7 +43,7 @@ export async function verifyDeletion(context: StepContext) {
     serverToken: live.serverToken.reveal(), userId, commitJson: JSON.stringify(fencedTurn),
   }));
   const startRejected = !start.ok && errorText(start.error).includes(AUTH_REQUIRED);
-  const commitRejected = commit.ok && TurnCommitResultSchema.parse(commit.value).outcome === 'conflict';
+  const commitRejected = !commit.ok && errorText(commit.error).includes(OWNER_ERRORS.accountUnavailable.message);
   const purge = await purgeUntilDone(live, owner).catch(() => {
     throw new Error('account:purge failed for the disposable actor');
   });
