@@ -1,7 +1,7 @@
 import {parseTenantId} from '@praxis/types';
+import {COMPOSIO_API} from '@praxis/protocol';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {
-  COMPOSIO_API_BASE_URL,
   COMPOSIO_ERROR_CODES,
   ComposioError,
   composioFor,
@@ -50,7 +50,7 @@ describe('composioFor', () => {
       expiresAt: Date.parse(LINK_RESPONSE.expires_at),
     });
     const [url, init] = fake.mock.calls[0]!;
-    expect(url).toBe(`${COMPOSIO_API_BASE_URL}/connected_accounts/link`);
+    expect(url).toBe(`${COMPOSIO_API.BASE_URL}/connected_accounts/link`);
     expect(init.method).toBe('POST');
     expect(init.redirect).toBe('manual');
     expect(init.headers).toMatchObject({'x-api-key': API_KEY});
@@ -65,7 +65,7 @@ describe('composioFor', () => {
     const fake = stubFetch(200, {success: true});
     await composioFor(ENV).revokeConnection('ca_1');
     const [url, init] = fake.mock.calls[0]!;
-    expect(url).toBe(`${COMPOSIO_API_BASE_URL}/connected_accounts/ca_1?revoke_on_delete=true`);
+    expect(url).toBe(`${COMPOSIO_API.BASE_URL}/connected_accounts/ca_1?revoke_on_delete=true`);
     expect(init.method).toBe('DELETE');
 
     stubFetch(404, {error: {message: 'not found'}});

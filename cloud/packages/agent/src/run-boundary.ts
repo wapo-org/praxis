@@ -6,18 +6,23 @@ import type {AgentCheckpoint, AgentTool, ToolResult} from './types.js';
 
 export const BOUNDARY_TEXT = {
   denied: 'This mode does not allow tools that send data to outside services.',
+  policyDenied: 'Tool policy denied this call; correct the arguments or choose a permitted action.',
   egress: 'Sends model-chosen data to an outside service',
   tainted: 'Content this run read could steer this action, so it needs a fresh approval.',
 } as const;
 
 /** Tainted side effects need an exact-call approval: standing grants never apply (PRA-57). */
-export function runToolDecision(cp: AgentCheckpoint, tool: AgentTool, spec: ToolSpec, key: string): ToolDecision {
+export function runToolDecision(
+  cp: AgentCheckpoint, tool: AgentTool, spec: ToolSpec, key: string, boundary = tool.boundary,
+): ToolDecision {
   const tainted = cp.run.taint !== undefined;
-  if (tool.boundary) {
-    const decision = boundaryDecision(cp.chat.mode, tool.boundary, tainted);
-    if (decision === 'deny') return {decision: 'refuse', reason: BOUNDARY_TEXT.denied};
+  if (boundary) {
+    const decision = boundaryDecision(cp.chat.mode, boundary, tainted);
+    if (decision === 'deny') {
+      return {decision: 'refuse', reason: boundary.decision === 'deny' ? BOUNDARY_TEXT.policyDenied : BOUNDARY_TEXT.denied};
+    }
     if (decision === 'allow') return {decision: 'allow', reason: ''};
-    return {decision: 'ask', reason: tainted && isSideEffect(tool.boundary.capabilities) ? BOUNDARY_TEXT.tainted : BOUNDARY_TEXT.egress};
+    return {decision: 'ask', reason: tainted && isSideEffect(boundary.capabilities) ? BOUNDARY_TEXT.tainted : BOUNDARY_TEXT.egress};
   }
   const decision = decideTool(spec, cp.chat.mode, cp.policy, key);
   return tainted && decision.decision === 'ask' ? {...decision, reason: BOUNDARY_TEXT.tainted} : decision;

@@ -1,4 +1,6 @@
-export const TENANT_ID_SECRET_ENV = 'PRAXIS_TENANT_ID_SECRET';
+import { COMPOSIO_API } from '@praxis/protocol';
+
+export const TENANT_ID_SECRET_ENV = COMPOSIO_API.TENANT_ID_SECRET_ENV;
 export const ALLOWED_ORIGINS_ENV = 'PRAXIS_WEB_ORIGINS';
 export const NATIVE_RETURN_URL = 'praxis-app://oauth/callback';
 

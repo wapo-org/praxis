@@ -70,6 +70,8 @@ export interface AgentTool {
   classify?(args:JsonValue):{traits:ToolSpec['traits'];policyKey?:string};
   /** PRA-76 classification; when set it replaces decideTool and an untrusted source taints the run. */
   boundary?:ToolClassification;
+  /** Per-call PRA-76 classification from trusted adapter metadata (meta-tool batches); overrides `boundary`. */
+  classifyBoundary?(args:JsonValue):Promise<ToolClassification>;
   execute(args:JsonValue,context:ToolContext):Promise<ToolResult>;
 }
 export const PolicySchema=z.object({trustedSources:z.array(z.string()).default([]),alwaysAllow:z.array(z.string()).default([])});

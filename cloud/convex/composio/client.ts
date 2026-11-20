@@ -1,12 +1,10 @@
+import {COMPOSIO_API} from '@praxis/protocol';
 import {SealedSecret, type TenantId} from '@praxis/types';
 import {z} from 'zod';
 
-/** Plain fetch, not `@composio/core`: no SDK dependency, and it runs in the Convex runtime as is. */
-export const COMPOSIO_API_BASE_URL = 'https://backend.composio.dev/api/v3.1';
-export const COMPOSIO_API_KEY_ENV = 'COMPOSIO_API_KEY';
+// Plain fetch, not `@composio/core`: no SDK dependency, and it runs in the Convex runtime as is.
 /** Followed by the upper-cased toolkit slug, e.g. `COMPOSIO_AUTH_CONFIG_GITHUB`. */
 export const COMPOSIO_AUTH_CONFIG_ENV_PREFIX = 'COMPOSIO_AUTH_CONFIG_';
-export const COMPOSIO_API_KEY_HEADER = 'x-api-key';
 
 export const COMPOSIO_ERROR_CODES = {
   notConfigured: 'composio_not_configured',
@@ -59,12 +57,12 @@ export function normalizeToolkit(toolkit: string): string {
 
 async function request(apiKey: SealedSecret, path: string, init: RequestInit): Promise<Response> {
   try {
-    return await fetch(`${COMPOSIO_API_BASE_URL}${path}`, {
+    return await fetch(`${COMPOSIO_API.BASE_URL}${path}`, {
       ...init,
       redirect: 'manual',
       headers: {
         'content-type': 'application/json',
-        [COMPOSIO_API_KEY_HEADER]: apiKey.reveal(),
+        [COMPOSIO_API.KEY_HEADER]: apiKey.reveal(),
       },
     });
   } catch {
@@ -78,8 +76,8 @@ function httpError(operation: string, status: number): ComposioError {
 
 /** Fails closed: without the API key there is no client at all. */
 export function composioFor(env: Record<string, string | undefined>): ComposioClient {
-  const rawKey = env[COMPOSIO_API_KEY_ENV];
-  if (!rawKey) throw notConfigured(COMPOSIO_API_KEY_ENV);
+  const rawKey = env[COMPOSIO_API.KEY_ENV];
+  if (!rawKey) throw notConfigured(COMPOSIO_API.KEY_ENV);
   const apiKey = SealedSecret.of(rawKey);
 
   return {

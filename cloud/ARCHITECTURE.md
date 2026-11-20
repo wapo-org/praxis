@@ -50,8 +50,9 @@ The sync experiment partitions entity hashes into a deterministic tree over stab
 `packages/agent/src/boundary` provides deterministic capability policy, a restricted shell AST,
 HMAC approval verification with an injected atomic replay store, structural taint joins and meta-tool unwrapping.
 Wire schemas live in `packages/protocol/src/tool-boundary.ts`; the authenticated issuer and durable adapter
-must remain server-owned. The current API adapter returns structured tool errors; the future Modal and
-Composio executors adopt `executeBoundary` in PRA-56/57/48. This core does not replace the current runner.
+must remain server-owned. The current API adapter returns structured tool errors; the future Modal executor
+adopts `executeBoundary`. This core does not replace the current runner. A tool with
+`classifyBoundary` (the Composio batch tool) is reclassified per call from its arguments before the runner decides.
 Shell denials cannot be approved; unrecognized syntax fails closed and unknown commands require approval.
 `boundaryDecision` permits untainted allow calls in Build/Auto when the adapter certifies workspace
 confinement without secrets or network effects; tainted side effects and egress require verified receipts.
@@ -116,9 +117,27 @@ Sandbox dependency: `modal` **0.11.1**, pinned, the official Modal JavaScript SD
 
 Tool-boundary dependencies: `shell-quote` **1.12.0**, pinned, dependency-free pure JS token scanner for the restricted shell AST; `@types/shell-quote` **1.7.5** for compile-time declarations. `fast-check` **4.10.2**, pinned dev dependency, checks shell obfuscation and monotone taint properties; `npm test` runs the boundary suite; `npm run specs` runs the PRA-75 formal models.
 
+### Composio Tool Router
+
+The model sees only three meta-tools: `COMPOSIO_SEARCH_TOOLS`, `COMPOSIO_GET_TOOL_SCHEMAS` and
+`COMPOSIO_MULTI_EXECUTE_TOOL` (`apps/api/src/features/composio`). App tools are never added to the request.
+Each turn creates at most one Tool Router session. It is created lazily, with no Redis cache. The session is
+scoped to the user's connected rows in `connections`, minus the chat's disabled `composio:<toolkit>` connectors.
+Each toolkit is pinned to its recorded connected account. Instant accounts, the workbench, proxy execution and
+Composio's own connection manager are off. The Firewall is an `after_execute` `prompt_injection_check` hook.
+A session whose echoed config lacks that hook is rejected, and only a result with an explicit Firewall pass is released.
+A batch is classified from trusted `GET /tools/{slug}` tags through `classifyInvocation`. Only `readOnlyHint` without
+create, update or destructive hints is a read. Every other action, and every unknown slug, needs exact-call approval
+(PRA-56). The executor dispatches the checked inner actions in order, through the session's `execute` endpoint.
+An action for an unconnected app dispatches nothing and returns `composio.connect-required`. All results are
+`untrusted-data` and taint the run through the PRA-57 `run.taint`/`taintSource` path.
+Results over 24k characters spill. Executions are counted per run and call in `toolState` before dispatch.
+The pinned `@composio/client` **2.1.33** dev dependency supplies types only; Zod adapters `satisfies` them.
+
 ### Composio environment
 
-Set these variables on the Convex deployment that handles connections.
+Set these variables on the Convex deployment that handles connections. The API needs `COMPOSIO_API_KEY` (pooled
+as `_2`, `_3`, …) and the same `PRAXIS_TENANT_ID_SECRET` to offer app tools; without a key it offers none.
 
 - `COMPOSIO_API_KEY` authenticates Connect Link creation and account revocation.
 - `COMPOSIO_AUTH_CONFIG_<TOOLKIT_UPPER>` holds the Composio auth config ID for a toolkit, for example `COMPOSIO_AUTH_CONFIG_GMAIL`.

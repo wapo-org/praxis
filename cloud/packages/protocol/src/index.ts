@@ -318,3 +318,4 @@ export const TurnResultSchema = z.discriminatedUnion('status', [
 export type TurnResult = z.infer<typeof TurnResultSchema>;
 export * from './subagents.js';
 export * from './web-tools.js';
+export * from './composio.js';

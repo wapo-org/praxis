@@ -1,5 +1,7 @@
 import {webTools} from './features/web/tools.js';
 import type {WebPortsFor} from './features/web/ports.js';
+import {composioTools} from './features/composio/tools.js';
+import type {ComposioPortsFor} from './features/composio/ports.js';
 import {selectRunTools} from './tool-selection.js';
 import {cropImage, cropImageReaderTool} from './features/tools/image-crop.js';
 import {connectorToolNotes} from './features/tools/tool-notes.js';
@@ -19,6 +21,7 @@ import {currentRunTiming, timedStep} from './timing.js';
 export interface ModuleOptions {
   storage?: ToolsStorage;
   web?: WebPortsFor;
+  composio?: ComposioPortsFor;
   mcp?: McpOptions;
   platformVoice?: PlatformVoice;
 }
@@ -62,6 +65,7 @@ export function featureModules(service: ApiService, options: ModuleOptions = {})
         },
         agentTools: async (ctx, {chat}) => [
           ...webTools(options.web?.(ctx), chat.webToolsEnabled !== false),
+          ...composioTools(options.composio?.(ctx), ctx.userId, chat),
           ...await timedStep('visionTools', () => visionTools(service, ctx, chat, storage)),
         ],
       },

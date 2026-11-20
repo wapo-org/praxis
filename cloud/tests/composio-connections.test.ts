@@ -6,7 +6,10 @@ import { registerPassword } from '@convex-dev/auth/components/password/test';
 import { registerCore } from '@convex-dev/auth/test';
 import { deriveTenantId, SealedSecret } from '@praxis/types';
 import { api, internal } from '../convex/_generated/api.js';
-import { COMPOSIO_API_KEY_ENV, type ComposioClient } from '../convex/composio/client.js';
+import { COMPOSIO_API } from '@praxis/protocol';
+import type { ComposioClient } from '../convex/composio/client.js';
+
+const COMPOSIO_API_KEY_ENV = COMPOSIO_API.KEY_ENV;
 import {
   ALLOWED_ORIGINS_ENV, COMPOSIO_ERRORS, NATIVE_RETURN_URL, TENANT_ID_SECRET_ENV,
 } from '../convex/composio/constants.js';
