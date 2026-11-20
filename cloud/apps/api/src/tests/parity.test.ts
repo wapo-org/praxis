@@ -40,7 +40,7 @@ describe('attachments reach the model (parity: AttachmentMedia)', () => {
     const stored:Message[]=(await(await f.req(`/v1/chats/${chat.id}/messages`)).json()).items;
     expect(stored[0]!.parts).toContainEqual(expect.objectContaining({type:'note',attachmentId:id,text:expect.stringContaining('[Attached file: “data.zip”')}));
     expect(stored[0]!.parts.filter(p=>p.type==='text').map(p=>p.text)).toEqual(['Inspect this archive']);
-    const first=JSON.stringify(f.fake.requests[0]);expect(first).toContain('[Attached file: “data.zip”');expect(first).toContain('Never ask permission or confirmation');
+    const first=JSON.stringify(f.fake.requests[0]);expect(first).toContain('[Attached file: “data.zip”');expect(first).toContain('The app asks the user to approve tool calls');
     const resumed=JSON.stringify(f.fake.requests[1].messages);expect(resumed).toContain('data.zip');expect(resumed).toContain('80,75,3,4');
   });
 

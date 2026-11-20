@@ -21,21 +21,16 @@ export async function fingerprint(value:unknown):Promise<string> {
 export async function alwaysAllowKey(tool:ToolSpec):Promise<string> {
   return `${sourceKey(tool)}/${tool.name}#${await fingerprint({description:tool.description,inputSchema:tool.inputSchema})}`;
 }
-export function decideTool(tool:ToolSpec,mode:Mode,policy:Policy,key:string):ToolDecision {
-  if(mode==='build')return {decision:'allow',reason:''};
-  const traits=new Set(tool.source.type==='mcp'&&!policy.trustedSources.includes(sourceKey(tool))?['destructive','openWorld']:tool.traits);
-  const destructive=traits.has('destructive'),readOnly=traits.has('readOnly');
-  const allowed:ToolDecision={decision:'allow',reason:''};
-  const ask=(reason:string):ToolDecision=>({decision:policy.alwaysAllow.includes(key)?'allow':'ask',reason});
-  const refuse=(reason:string):ToolDecision=>({decision:'refuse',reason});
-  if(tool.source.type==='skill'&&!readOnly) {
-    if(mode==='ask'||mode==='plan')return refuse('This mode does not change skills. Propose the change instead.');
-    return mode==='auto'&&!destructive?allowed:ask(destructive?'Replaces or deletes a skill':'Saves a new skill');
+export function decideTool(tool: ToolSpec, mode: Mode, policy: Policy, _key: string): ToolDecision {
+  const trusted = tool.source.type !== 'mcp' || policy.trustedSources.includes(sourceKey(tool));
+  const readOnly = trusted && tool.traits.includes('readOnly') &&
+    !tool.traits.includes('destructive') && !tool.traits.includes('openWorld');
+  if (mode === 'ask' && (tool.source.type === 'mcp' || tool.traits.includes('sandboxed'))) {
+    return {decision: 'refuse', reason: 'This tool is unavailable in Ask mode.'};
   }
-  if(['builtin','skill','server'].includes(tool.source.type))return allowed;
-  if(traits.has('sandboxed'))return mode==='ask'?refuse('Running code is unavailable in Ask mode.'):allowed;
-  if(mode==='ask')return refuse('Tools that reach other services are unavailable in Ask mode.');
-  if(mode==='plan')return readOnly&&!destructive?allowed:refuse('Plan mode only runs read-only tools.');
-  if(mode==='auto'&&!destructive)return allowed;
-  return ask(destructive?'May change or delete data':'Makes changes');
+  if (readOnly) return {decision: 'allow', reason: ''};
+  if (mode === 'ask' || mode === 'plan') {
+    return {decision: 'refuse', reason: mode === 'plan' ? 'Plan mode only runs read-only tools.' : 'Ask mode only runs read-only tools.'};
+  }
+  return {decision: 'ask', reason: 'This tool may change data or send it to an outside service.'};
 }

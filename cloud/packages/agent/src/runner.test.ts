@@ -1,9 +1,10 @@
+import {approvalTestStore} from './approval-test-fixture.js';
 import {describe,it,expect} from 'vitest';
 import {CapabilitiesSchema,RunEventPayloadSchema,type RunEventPayload,type ToolSpec} from '@praxis/protocol';
 import {AgentRunner,createScriptedRunner,createScriptedProvider,scriptedTools,alwaysAllowKey,decideTool,textResult,ProviderFailure,CheckpointSchema,type AgentCheckpoint,type AgentPorts,type RunInput,type ModelProvider,type ProviderRequest} from './index.js';
 const time='2026-10-29T12:00:00.000Z';
 function input():RunInput{return {userId:'u',run:{type:'run',id:'r',chatId:'c',status:'queued',createdAt:time,updatedAt:time,lastEventId:0},chat:{type:'chat',id:'c',title:'Chat',pinned:false,mode:'auto',connectorIds:[],disabledConnectorIds:[],createdAt:time,updatedAt:time},messages:[{type:'message',id:'m',chatId:'c',runId:'r',role:'user',parts:[{type:'text',text:'Hello'}],createdAt:time,updatedAt:time}]};}
-function harness(){let saved:AgentCheckpoint|undefined,cancel=false,id=0;const events:RunEventPayload[]=[];const ports:AgentPorts={save:async(user,cp)=>{expect(user).toBe('u');saved=structuredClone(cp);},emit:async(user,run,e)=>{expect(user).toBe('u');expect(run).toBe('r');RunEventPayloadSchema.parse(e);events.push(structuredClone(e));return events.length;},isCancelled:async()=>cancel,now:()=>time,id:()=>`id-${++id}`,sleep:async()=>{}};return {ports,events,get saved(){return saved;},cancel(){cancel=true;}};}
+function harness(){let saved:AgentCheckpoint|undefined,cancel=false,id=0;const events:RunEventPayload[]=[];const approvals=approvalTestStore();const ports:AgentPorts={...approvals.ports,save:async(user,cp)=>{expect(user).toBe('u');saved=structuredClone(cp);},emit:async(user,run,e)=>{expect(user).toBe('u');expect(run).toBe('r');RunEventPayloadSchema.parse(e);events.push(structuredClone(e));return events.length;},isCancelled:async()=>cancel,now:()=>time,id:()=>`id-${++id}`,sleep:async()=>{}};return {ports,events,approvals,get saved(){return saved;},cancel(){cancel=true;}};}
 const custom=(stream:ModelProvider['stream']):ModelProvider=>({capabilities:CapabilitiesSchema.parse({}),stream});
 describe('scripted durable loop',()=>{
   it.each(['text','tools','long','vision'] as const)('runs %s, preserves the input prefix and emits terminal',async script=>{
@@ -14,14 +15,16 @@ describe('scripted durable loop',()=>{
   it.each(['allowOnce','allowAlways','deny'] as const)('parks approvals and resumes %s from JSON',async decision=>{
     const h=harness();let runner=createScriptedRunner(h.ports,'approval');const cp=await runner.run(input());
     expect(cp.run.status).toBe('awaitingApproval');expect(cp.approval).toBeDefined();
+    h.approvals.decisions.set(cp.approval!.id,decision);
     runner=createScriptedRunner(h.ports,'approval');const done=await runner.resume(JSON.parse(JSON.stringify(cp)),{type:'approval.decision',approvalId:cp.approval!.id,decision});
     expect(done.run.status).toBe('completed');expect(h.events.some(e=>e.type==='tool.finished'&&e.completion.status===(decision==='deny'?'denied':'succeeded'))).toBe(true);
-    expect(done.policy.alwaysAllow.length).toBe(decision==='allowAlways'?1:0);
+    expect(done.policy.alwaysAllow.length).toBe(0);
     expect((await runner.resume(done,{type:'approval.decision',approvalId:cp.approval!.id,decision})).messages).toEqual(done.messages);
     await expect(runner.resume(done,{type:'approval.decision',approvalId:cp.approval!.id,decision:decision==='deny'?'allowOnce':'deny'})).rejects.toThrow('Conflicting');
   });
   it.each(['allowOnce','deny'] as const)('resumes nested %s without a held stack',async decision=>{
     const h=harness(),runner=createScriptedRunner(h.ports,'nestedApproval');const cp=await runner.run(input());expect(cp.approval?.parentCallId).toBeDefined();
+    h.approvals.decisions.set(cp.approval!.id,decision);
     const done=await createScriptedRunner(h.ports,'nestedApproval').resume(cp,{type:'approval.decision',approvalId:cp.approval!.id,decision});expect(done.run.outcome).toBe('completed');
     expect(Object.values(done.calls).filter(c=>c.result)).toHaveLength(2);
   });
@@ -125,7 +128,7 @@ describe('Swift policy matrix',()=>{
   const policy={trustedSources:['mcp:x'],alwaysAllow:[]};
   const spec:ToolSpec={type:'tool.spec',name:'t',description:'Tool',inputSchema:{type:'object'},source:{type:'mcp',serverId:'x'},traits:[]};
   it.each([
-    ['ask',['readOnly'],'refuse'],['plan',['readOnly'],'allow'],['plan',[],'refuse'],['build',['readOnly'],'allow'],['build',[],'allow'],['auto',[],'allow'],['auto',['destructive'],'ask'],['plan',['readOnly','destructive'],'refuse'],
+    ['ask',['readOnly'],'refuse'],['plan',['readOnly'],'allow'],['plan',[],'refuse'],['build',['readOnly'],'allow'],['build',[],'ask'],['auto',[],'ask'],['auto',['destructive'],'ask'],['plan',['readOnly','destructive'],'refuse'],
   ] as const)('%s %j -> %s',(mode,traits,want)=>{expect(decideTool({...spec,traits:[...traits]},mode,policy,'key').decision).toBe(want);});
   it('does not trust remote traits by default or bypass plan refusal',()=>{expect(decideTool({...spec,traits:['readOnly']},'plan',{trustedSources:[],alwaysAllow:['key']},'key').decision).toBe('refuse');});
   it('always allow fingerprint changes with schema or description, never key order',async()=>{const a=await alwaysAllowKey(spec);expect(await alwaysAllowKey({...spec,description:'changed'})).not.toBe(a);expect(await alwaysAllowKey({...spec,inputSchema:{properties:{x:{type:'string'}},type:'object'}})).not.toBe(a);});
@@ -143,7 +146,7 @@ describe('durability and provider fallback regressions',()=>{
     const h=harness(),tools=scriptedTools();let count=0;tools[0]!.execute=async()=>{count++;return textResult('first nested');};
     tools[2]!.execute=async(_,ctx)=>{await ctx.callTool('local_echo',{});return ctx.callTool('local_write',{});};
     const options={ports:h.ports,provider:createScriptedProvider('nestedApproval'),tools};
-    const cp=await new AgentRunner(options).run(input());expect(count).toBe(1);const done=await new AgentRunner(options).resume(cp,{type:'approval.decision',approvalId:cp.approval!.id,decision:'allowOnce'});
+    const cp=await new AgentRunner(options).run(input());expect(count).toBe(1);h.approvals.decisions.set(cp.approval!.id,'allowOnce');const done=await new AgentRunner(options).resume(cp,{type:'approval.decision',approvalId:cp.approval!.id,decision:'allowOnce'});
     expect(count).toBe(1);expect(done.run.status).toBe('completed');
   });
   it('validates tool JSON Schema before approval or execution',async()=>{

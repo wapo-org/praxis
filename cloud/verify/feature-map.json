@@ -174,10 +174,11 @@
     },
     {
       "id": "runs.approvals",
-      "title": "A nested destructive tool parks the run for approval and resumes after allowOnce",
+      "title": "A nested write parks for an exact-call decision and shows a redacted preview",
       "issue": "PRA-56",
       "surfaces": [
-        "api"
+        "api",
+        "web"
       ],
       "covers": [
         {
@@ -185,6 +186,10 @@
           "checks": [
             "nested-approval"
           ]
+        },
+        {
+          "command": "web",
+          "flows": ["tool-approval"]
         }
       ]
     },

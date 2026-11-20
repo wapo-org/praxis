@@ -4,31 +4,17 @@ import { expect, it } from 'vitest';
 import { ApprovalCards } from './ApprovalCards';
 import { ElicitationCards } from './ElicitationCards';
 import type { AgentActivityViewProps } from './activityTypes';
-it('hides empty object argument boxes but retains meaningful and non-JSON arguments', () => {
-  for (const args of [{}, '{}', ' { \n } ']) {
-    const html = renderToStaticMarkup(
-      <ApprovalCards
-        pendingApprovals={[
-          { id: 'a', toolName: 'test', arguments: args } as NonNullable<
-            AgentActivityViewProps['pendingApprovals']
-          >[number],
-        ]}
-      />,
-    );
-    expect(html).not.toContain('<pre');
-  }
-  for (const args of [{ path: 'file.txt' }, 'echo hello']) {
-    const html = renderToStaticMarkup(
-      <ApprovalCards
-        pendingApprovals={[
-          { id: 'a', toolName: 'test', arguments: args } as NonNullable<
-            AgentActivityViewProps['pendingApprovals']
-          >[number],
-        ]}
-      />,
-    );
-    expect(html).toContain('<pre');
-  }
+it('renders the server preview as text and hides an empty preview', () => {
+  const approval = {
+    type: 'approval', id: 'a', callId: 'call', toolName: 'test', title: 'Test',
+    reason: 'Changes data', source: {type: 'builtin'},
+  } as const;
+  const empty = renderToStaticMarkup(<ApprovalCards pendingApprovals={[{...approval, arguments: ''}]} />);
+  expect(empty).not.toContain('<pre');
+  const preview = 'channel: #review\ntoken: [redacted]';
+  const shown = renderToStaticMarkup(<ApprovalCards pendingApprovals={[{...approval, arguments: preview}]} />);
+  expect(shown).toContain('<pre');
+  expect(shown).toContain(preview);
 });
 it('labels questions by title, then description, then a humanised key', () => {
   const fields = {

@@ -1,17 +1,18 @@
-import {ChatSchema, IdSchema, MessageSchema, RunSchema} from '@praxis/protocol';
+import {APPROVAL_RECORD_KIND, ChatSchema, IdSchema, MessageSchema, RunSchema} from '@praxis/protocol';
 import {ConvexError} from 'convex/values';
 import {z} from 'zod';
 import {decodeChat, decodeMessage, encodeChat, encodePart} from './domainValues.js';
 import type {Doc} from './_generated/dataModel.js';
 import type {MutationCtx, QueryCtx} from './functions.js';
+import {approvalValue, ownedApproval, saveApproval} from './approvalRecords.js';
 
-export type DomainKind = 'chat' | 'message' | 'run' | 'outputChunk';
+export type DomainKind = 'chat' | 'message' | 'run' | 'outputChunk' | typeof APPROVAL_RECORD_KIND;
 
 export function isDomainKind(kind: string): kind is DomainKind {
-  return kind === 'chat' || kind === 'message' || kind === 'run' || kind === 'outputChunk';
+  return kind === 'chat' || kind === 'message' || kind === 'run' || kind === 'outputChunk' || kind === APPROVAL_RECORD_KIND;
 }
 
-type DomainDoc = Doc<'chats'> | Doc<'messages'> | Doc<'runs'> | Doc<'outputs'>;
+type DomainDoc = Doc<'chats'> | Doc<'messages'> | Doc<'runs'> | Doc<'outputs'> | Doc<'approvals'>;
 
 export function ownedChat(ctx: QueryCtx, userId: string, chatId: string) {
   return ctx.db.query('chats').withIndex('by_user_id', q => q.eq('userId', userId).eq('id', chatId)).unique();
@@ -33,6 +34,8 @@ function ownedMessage(ctx: QueryCtx, userId: string, id: string) {
 
 export async function domainDocument(ctx: QueryCtx, userId: string, kind: DomainKind, id: string) {
   switch (kind) {
+    case APPROVAL_RECORD_KIND:
+      return ownedApproval(ctx, userId, id);
     case 'chat': {
       const row = await ownedChat(ctx, userId, id);
       return row?.value.deletedAt ? null : row;
@@ -50,6 +53,7 @@ export async function domainDocument(ctx: QueryCtx, userId: string, kind: Domain
 export function domainRow(kind: DomainKind, doc: DomainDoc) {
   const {id, userId, updatedAt, revision} = doc;
   const base = {id, userId, kind, updatedAt, revision, deleted: false};
+  if ('argsHash' in doc) return {...base, parentId: doc.runId, value: approvalValue(doc)};
   if ('lastSequence' in doc) return {...base, value: decodeChat(doc.value)};
   if ('sequence' in doc) return {...base, parentId: doc.chatId, value: decodeMessage(doc.value)};
   if ('text' in doc) return {...base, parentId: doc.parentId, value: {chatId: doc.chatId, text: doc.text}};
@@ -59,6 +63,11 @@ export function domainRow(kind: DomainKind, doc: DomainDoc) {
 export async function listDomainRows(ctx: QueryCtx, userId: string, kind: DomainKind, parentId?: string) {
   let docs: DomainDoc[];
   switch (kind) {
+    case APPROVAL_RECORD_KIND:
+      docs = parentId === undefined
+        ? await ctx.db.query('approvals').withIndex('by_user_id', q => q.eq('userId', userId)).collect()
+        : await ctx.db.query('approvals').withIndex('by_user_run', q => q.eq('userId', userId).eq('runId', parentId)).collect();
+      break;
     case 'chat':
       docs = parentId === undefined
         ? await ctx.db.query('chats').withIndex('by_user_id', q => q.eq('userId', userId)).collect()
@@ -104,6 +113,8 @@ export async function saveDomainRow(ctx: MutationCtx, kind: DomainKind, input: D
   const {id, userId, updatedAt, revision} = input;
   const metadata = {id, userId, updatedAt, revision};
   switch (kind) {
+    case APPROVAL_RECORD_KIND:
+      return saveApproval(ctx, input);
     case 'chat': {
       const chat = ChatSchema.parse(input.value);
       validateAddress(input, chat);

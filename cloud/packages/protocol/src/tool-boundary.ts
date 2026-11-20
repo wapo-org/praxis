@@ -15,6 +15,18 @@ export const ApprovalReceiptWireSchema = z.object({
   payload: ApprovalPayloadSchema, signature: z.string().regex(/^[a-f0-9]{64}$/),
 }).strict();
 export type ApprovalBinding = z.infer<typeof ApprovalBindingSchema>;
+export const APPROVAL_RECORD_KIND = 'approval';
+export const APPROVAL_PREVIEW_CHARACTERS_MAX = 1500;
+export const PendingApprovalRecordSchema = ApprovalBindingSchema.extend({
+  id: z.string().min(1), preview: z.string().max(APPROVAL_PREVIEW_CHARACTERS_MAX),
+});
+export type PendingApprovalRecord = z.infer<typeof PendingApprovalRecordSchema>;
+export const ApprovalRecordSchema = z.discriminatedUnion('status', [
+  PendingApprovalRecordSchema.extend({status: z.literal('pending')}),
+  PendingApprovalRecordSchema.extend({status: z.literal('approved'), decision: z.enum(['allowOnce', 'allowAlways'])}),
+  PendingApprovalRecordSchema.extend({status: z.literal('denied'), decision: z.literal('deny')}),
+]);
+export type ApprovalRecord = z.infer<typeof ApprovalRecordSchema>;
 export type ApprovalReceiptWire = z.infer<typeof ApprovalReceiptWireSchema>;
 export const ToolErrorCodeSchema = z.enum([
   'schema', 'path-traversal', 'taint-blocked', 'policy-denied', 'approval-required', 'budget', 'upstream-firewall', 'upstream',

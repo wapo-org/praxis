@@ -91,6 +91,39 @@ const scriptedChat: WebFlow = {
   },
 };
 
+const toolApproval: WebFlow = {
+  id: 'tool-approval',
+  title: 'A nested write shows its redacted preview and settles after denial',
+  default: true,
+  session: 'shared',
+  allow: [],
+  async run({page, request, api}) {
+    const headers = await sessionHeaders(page);
+    const created = await request.post(`${api}/v1/chats`, {
+      headers, data: {type: 'chat.input', title: 'Approval verification', mode: 'build'},
+    });
+    expect(created.ok()).toBe(true);
+    const {id: chatId} = await created.json();
+    await page.goto(`/c/${chatId}`);
+    const started = await request.post(`${api}/v1/runs`, {
+      headers, data: {type: 'run.start', chatId, text: 'Review a nested write', script: 'nestedApproval'},
+    });
+    expect(started.ok()).toBe(true);
+    const {id: runId} = await started.json();
+    const card = page.locator('[data-testid^="approval-card-"]').filter({hasText: 'local write'});
+    await expect(card).toContainText('#review');
+    await expect(card).toContainText('[redacted]');
+    await expect(card).not.toContainText('scripted-preview-secret');
+    await card.getByRole('button', {name: 'Deny'}).click();
+    await expect(card).toHaveCount(0);
+    await expect.poll(async () => {
+      const response = await request.get(`${api}/v1/runs/${runId}/snapshot`, {headers});
+      const snapshot = await response.json();
+      return snapshot.run.status;
+    }, {timeout: RUN_SETTLE_TIMEOUT_MS}).toBe('completed');
+  },
+};
+
 /** Former `apps/web/scripts/p0-check.mjs`: failure paths must surface, never fabricate data or keep a dead session. */
 const apiResilience: WebFlow = {
   id: 'api-resilience',
@@ -142,7 +175,7 @@ async function toolRuns({api, request, note}: Pick<FlowContext, 'api' | 'request
 }
 
 export const WEB_FLOWS: readonly WebFlow[] = [
-  loadApp, settingsModels, modelSearch, scriptedChat, apiResilience, browserCliFlow, fuzzChatFlow,
+  loadApp, settingsModels, modelSearch, scriptedChat, toolApproval, apiResilience, browserCliFlow, fuzzChatFlow,
   unavailableAccountFlow, previewProviderFlow,
 ];
 

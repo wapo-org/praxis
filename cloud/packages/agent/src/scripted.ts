@@ -188,8 +188,8 @@ export function scriptedTools(script?: Script): AgentTool[] {
       execute: async () => textResult('Local write completed.'),
     },
     {
-      spec: spec('local_nested', { type: 'javascript' }, ['sandboxed']),
-      execute: async (_, ctx) => ctx.callTool('local_write', {}),
+      spec: spec('local_nested', { type: 'javascript' }, ['readOnly', 'sandboxed']),
+      execute: async (_, ctx) => ctx.callTool('local_write', {channel: '#review', token: 'scripted-preview-secret'}),
     },
     {
       spec: spec('local_elicit', { type: 'builtin' }, ['readOnly']),

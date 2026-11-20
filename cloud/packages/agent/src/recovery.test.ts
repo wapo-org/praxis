@@ -1,3 +1,4 @@
+import {approvalTestStore} from './approval-test-fixture.js';
 import {describe, expect, it} from 'vitest';
 import {RunEventPayloadSchema, type RunEventPayload} from '@praxis/protocol';
 import {AgentRunner, createScriptedProvider, scriptedTools, textResult, type AgentCheckpoint, type AgentPorts, type AgentTool, type RunInput} from './index.js';
@@ -61,7 +62,12 @@ describe('interrupted tool replay (REV-A1 P0 idempotency per toolCallId)', () =>
   it('does not re-run a side-effecting tool that started before a crash', async () => {
     const counter = {n: 0};
     const first = process();
-    await new AgentRunner({ports: first.ports, provider: createScriptedProvider('tools'), tools: tools(counter, () => first.kill(), ['sandboxed'])}).run(input()).catch(() => {});
+    const approvals = approvalTestStore();
+    const runner = new AgentRunner({ports: {...first.ports, ...approvals.ports}, provider: createScriptedProvider('tools'), tools: tools(counter, () => first.kill(), ['sandboxed'])});
+    const paused = await runner.run(input());
+    const id = paused.approval!.id;
+    approvals.decisions.set(id, 'allowOnce');
+    await runner.resume(paused, {type: 'approval.decision', approvalId: id, decision: 'allowOnce'}).catch(() => {});
     expect(counter.n).toBe(1);
     const call = Object.values(first.saved.calls)[0]!;
     expect(call.started).toBe(true);

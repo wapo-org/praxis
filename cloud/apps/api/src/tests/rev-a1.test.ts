@@ -42,6 +42,12 @@ describe('REV-A1 P0 execution.ts:195 — one executor per run', () => {
     await f.service.drain();
     expect((await f.snapshot(run.id)).run.status).toBe('continuing');
     expect(scheduled).toEqual([run.id]);
+    await f.driver.continue('local-user', run.id);
+    const parked = await f.snapshot(run.id);
+    expect(executions).toBe(0);
+    expect((await f.req(`/v1/runs/${run.id}/approvals`, {
+      type: 'approval.decision', approvalId: parked.pendingApprovals[0]!.id, decision: 'allowOnce',
+    })).status).toBe(202);
     await Promise.all([f.driver.continue('local-user', run.id), f.driver.continue('local-user', run.id)]);
     expect(executions).toBe(1);
     const events = await f.service.adapters.events.read('local-user', `run:${run.id}`, 0, 500);
@@ -136,7 +142,13 @@ it('expiry during running side effect: a second continuation never repeats it',a
  const f=setup([toolCall('slow'),done],{tools:async()=>[tool('slow',['sandboxed'],async()=>{n++;entered();await blocked;return 'ok';})]},
  {scheduler:{schedule:async()=>{}},budgetMs:500,clock:()=>now+=1000,lease:memoryLease(()=>leaseNow)});
  const chat=await f.chat(),run=await(await f.req('/v1/runs',{type:'run.start',chatId:chat.id,text:'go'})).json();await f.service.drain();
- const first=f.driver.continue('local-user',run.id);await enteredP;
+ await f.driver.continue('local-user', run.id);
+ const parked = await f.snapshot(run.id);
+ expect((await f.req(`/v1/runs/${run.id}/approvals`, {
+   type: 'approval.decision', approvalId: parked.pendingApprovals[0]!.id, decision: 'allowOnce',
+ })).status).toBe(202);
+ const first = f.driver.continue('local-user', run.id);
+ await enteredP;
  leaseNow=1_000_000;await f.driver.continue('local-user',run.id);release();await first;
  expect(n).toBe(1);
 });
