@@ -25,11 +25,18 @@ export const commitStub = internalMutation({
     const saved = await ctx.db.query('turns').withIndex('by_user_run_turn', q =>
       q.eq('userId', input.userId).eq('runId', input.runId).eq('generation', input.generation).eq('turnIndex', input.expectedTurnIndex)).unique();
     if (saved) return TurnResultSchema.parse({done: saved.done, status: saved.status, subagents: [], turnIndex: saved.turnIndex});
-    if (input.expectedTurnIndex !== run.workflow.nextTurnIndex) throw new ConvexError(WORKFLOW_ERRORS.index);
-    if (run.workflow.status !== 'running') {
+    const status = run.value.status;
+    if (status === 'paused' || status === 'queued') {
+      return {done: false, status: 'busy', subagents: [], turnIndex: input.expectedTurnIndex};
+    }
+    if (status !== 'running') {
       return {done: true, status: 'stopped', subagents: [], turnIndex: input.expectedTurnIndex};
     }
-    const done = run.workflow.nextTurnIndex - run.workflow.startTurnIndex + 1 >= STUB_TURNS_MAX;
+    const turnsCompleted = run.workflow.nextTurnIndex - run.workflow.startTurnIndex;
+    if (input.expectedTurnIndex !== run.workflow.nextTurnIndex || turnsCompleted >= STUB_TURNS_MAX) {
+      throw new ConvexError(WORKFLOW_ERRORS.index);
+    }
+    const done = turnsCompleted + 1 === STUB_TURNS_MAX;
     const flags = TurnResultSchema.parse({done, status: done ? 'completed' : 'ready', subagents: [], turnIndex: run.workflow.nextTurnIndex});
     await ctx.db.insert('turns', {userId: input.userId, runId: run._id, generation: run.workflow.generation,
       turnIndex: flags.turnIndex, done: flags.done, status: done ? 'completed' : 'ready'});

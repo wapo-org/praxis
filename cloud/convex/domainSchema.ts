@@ -4,7 +4,6 @@ import {
   ApprovalChoiceSchema, MessagePartSchema, ModeSchema, ReasoningShapeSchema, RunErrorCodeSchema, RunOutcomeSchema,
   RunStatusSchema, StreamAnnotationSchema, ToolSourceSchema, ToolSpecSchema,
 } from '@praxis/protocol';
-import {runStatus} from './workflows/validators.js';
 
 function literals<T extends string>(options: readonly T[]) {
   return v.union(...options.map(option => v.literal(option)) as [VLiteral<T>, ...VLiteral<T>[]]);
@@ -142,7 +141,6 @@ export const domainTables = {
   runs: defineTable({
     ...storeFields, chatId: v.string(), value: run,
     workflow: v.optional(v.object({
-      status: runStatus,
       startTurnIndex: v.number(),
       nextTurnIndex: v.number(),
       generation: v.number(),
@@ -150,7 +148,15 @@ export const domainTables = {
     })),
   })
     .index('by_user_id', ['userId', 'id'])
-    .index('by_user_chat', ['userId', 'chatId']),
+    .index('by_user_chat', ['userId', 'chatId'])
+    .index('by_user_chat_status', ['userId', 'chatId', 'value.status']),
+  runStarts: defineTable({
+    userId: v.string(),
+    chatId: v.string(),
+    key: v.string(),
+    startTurnIndex: v.number(),
+    runId: v.id('runs'),
+  }).index('by_user_chat_key', ['userId', 'chatId', 'key']),
   turns: defineTable({
     userId: v.string(),
     runId: v.id('runs'),

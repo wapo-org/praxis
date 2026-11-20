@@ -1,7 +1,7 @@
 import {cancellationKey} from './run-keys.js';
 import {ensureBuiltins} from './features/mcp/builtins.js';
 import { randomUUID } from 'node:crypto';
-import { APPROVAL_RECORD_KIND,ChatSchema,RunErrorCodeSchema,ModelKeySchema,ModelPreferenceRecordSchema,PROTOCOL_VERSION,RunSchema,type ApprovalDecision,type Bootstrap,type Chat,type JsonObject,type Message,type Run,type RunEventPayload,type RunSnapshot,type StartRun } from '@praxis/protocol';
+import { APPROVAL_RECORD_KIND,ChatSchema,RunErrorCodeSchema,ModelKeySchema,ModelPreferenceRecordSchema,PROTOCOL_VERSION,RUN_START_CONFLICT_CODE,RunSchema,type ApprovalDecision,type Bootstrap,type Chat,type JsonObject,type Message,type Run,type RunEventPayload,type RunSnapshot,type StartRun } from '@praxis/protocol';
 import type { AdapterBundle } from './contracts.js';
 import type {OpenRouterModels} from './openrouter/index.js';
 import {foldSnapshot,initialSnapshot} from './snapshot.js';
@@ -80,7 +80,7 @@ export class ApiService{
     this.list<Run>(userId,'run',input.chatId),
     ...input.attachmentIds.map(id=>this.require<JsonObject>(userId,'attachment',id).then(v=>attachmentRow(id,v))),
    ]);
-   if(prior){if(prior.value.body!==JSON.stringify(input))throw new ApiError(409,'idempotency_conflict','This turn ID was used with different content');return {chat,key,attachments:[] as AttachmentRow[],existingRun:await this.require<Run>(userId,'run',String(prior.value.runId))};}
+   if(prior){if(prior.value.body!==JSON.stringify(input))throw new ApiError(409,RUN_START_CONFLICT_CODE,'This turn ID was used with different content');return {chat,key,attachments:[] as AttachmentRow[],existingRun:await this.require<Run>(userId,'run',String(prior.value.runId))};}
    if(runs.some(r=>!this.terminal(r)))throw new ApiError(409,'run_active','A run is already active in this chat');
    if(!this.driver)throw new ApiError(503,'runner_unavailable','Run executor is not configured');
    return {chat,key,attachments:attachmentObjs,existingRun:undefined as Run|undefined};

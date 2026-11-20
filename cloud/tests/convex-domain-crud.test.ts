@@ -86,7 +86,7 @@ describe('PRA-24 typed table CRUD through domain functions', () => {
     expect(await alice.client.query(api.runs.get, {runId})).toMatchObject({id: runId, chatId: CHAT_ID, status: 'running'});
     await alice.client.mutation(api.runs.cancel, {runId});
     const cancelled = await t.run(ctx => ctx.db.get(runId));
-    expect(cancelled).toMatchObject({userId: alice.userId, chatId: CHAT_ID, workflow: {status: 'cancelling'}});
+    expect(cancelled).toMatchObject({userId: alice.userId, chatId: CHAT_ID, value: {status: 'cancelling'}});
     const owner = {...token, userId: alice.userId, kind: 'run', id: 'store-run'};
     const value = {type: 'run', id: 'store-run', chatId: CHAT_ID, status: 'running', createdAt: NOW, updatedAt: NOW, lastEventId: 0};
     await t.mutation(api.store.put, {...owner, valueJson: JSON.stringify(value)});
