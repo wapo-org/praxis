@@ -1,61 +1,75 @@
 {
   "name": "ssrf-raw-fetch",
-  "gates": [],
+  "gates": [
+    {
+      "key": "check-rules",
+      "rule_id": "GATE.check-rules",
+      "status": "passed",
+      "findings": []
+    }
+  ],
   "sessions": {
     "abstractions": {
+      "findings": [],
       "session": "abstractions",
-      "findings": []
+      "summary": "Boundary parse is present",
+      "ui_check": null
     },
     "maintainability": {
+      "findings": [],
       "session": "maintainability",
-      "findings": []
+      "summary": "No legacy paths found",
+      "ui_check": null
     },
     "conciseness": {
+      "findings": [
+        {
+          "confidence": "high",
+          "evidence": "export async function fetchPage(input: unknown): Promise<string> {",
+          "failure_scenario": "No caller for `fetchPage` exists in `cloud/apps/api/src`, so this new export is unreachable and adds no behavior.",
+          "file": "cloud/apps/api/src/features/tools/fetch-page.ts",
+          "line": 6,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "G.dead-code",
+          "suggestion": "Could this function be added to its tool registry when that integration is ready? "
+        }
+      ],
       "session": "conciseness",
-      "findings": []
+      "summary": "One unused export",
+      "ui_check": null
     },
     "logic_bs": {
+      "findings": [],
       "session": "logic_bs",
-      "findings": [
-        {
-          "rule_id": "R5.ssrf-egress",
-          "file": "cloud/apps/api/src/features/tools/fetch-page.ts",
-          "line": 8,
-          "evidence": "const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_PAGE_TIMEOUT_MS) });",
-          "failure_scenario": "Internal addresses can be fetched because the guard is missing here.",
-          "suggestion": null,
-          "confidence": "high",
-          "linear_issue": null,
-          "linear_quote": null
-        }
-      ]
+      "summary": "No verified logic issues",
+      "ui_check": null
     },
     "security": {
-      "session": "security",
       "findings": [
         {
-          "rule_id": "R5.ssrf-egress",
+          "confidence": "high",
+          "evidence": "const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_PAGE_TIMEOUT_MS) });",
+          "failure_scenario": "A caller supplies a URL targeting localhost, a private-network service, or cloud metadata. This fetch connects directly and can return the response body to the tool caller, enabling SSRF and access to internal data.",
           "file": "cloud/apps/api/src/features/tools/fetch-page.ts",
           "line": 8,
-          "evidence": "const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_PAGE_TIMEOUT_MS) });",
-          "failure_scenario": "The model can pass http://169.254.169.254/ or an internal host and read the response back into the chat.",
-          "suggestion": null,
-          "confidence": "high",
           "linear_issue": null,
-          "linear_quote": null
-        },
-        {
+          "linear_quote": null,
           "rule_id": "R5.ssrf-egress",
-          "file": "cloud/apps/api/src/features/tools/fetch-page.ts",
-          "line": 7,
-          "evidence": "const { url } = InputSchema.parse(input);",
-          "failure_scenario": "The url is only checked for shape, so an internal address passes and is fetched two lines later.",
-          "suggestion": null,
-          "confidence": "medium",
-          "linear_issue": null,
-          "linear_quote": null
+          "suggestion": "Could this use the SSRF-guarded `egress` fetch so user-supplied destinations are checked? "
         }
-      ]
+      ],
+      "session": "security",
+      "summary": "Direct fetch enables SSRF",
+      "ui_check": null
     }
+  },
+  "live": {
+    "source": "praxis-review live stack (PRA-92)",
+    "model": "gpt-6.2-sol",
+    "reasoning_effort": "low",
+    "duration_seconds": 34.8,
+    "session_errors": {},
+    "gates_note": "check-rules re-run with npm dependencies installed (develop 2dd8454); sessions are the live Sol outputs"
   }
 }

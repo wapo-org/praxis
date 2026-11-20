@@ -1,50 +1,75 @@
 {
   "name": "clean-refactor",
-  "gates": [],
-  "sessions": {
-    "abstractions": {
-      "session": "abstractions",
-      "findings": []
-    },
-    "maintainability": {
-      "session": "maintainability",
-      "findings": []
-    },
-    "conciseness": {
-      "session": "conciseness",
-      "findings": [
-        {
-          "rule_id": "G.duplicate-logic",
-          "file": "cloud/packages/sync/src/chunk.ts",
-          "line": 1,
-          "evidence": "the function duplicates lodash chunk",
-          "failure_scenario": "There is already a chunk function in lodash that does this.",
-          "suggestion": null,
-          "confidence": "medium",
-          "linear_issue": null,
-          "linear_quote": null
-        }
-      ]
-    },
-    "logic_bs": {
-      "session": "logic_bs",
-      "findings": [
-        {
-          "rule_id": "CORRECTNESS",
-          "file": "cloud/packages/sync/src/chunk.ts",
-          "line": 8,
-          "evidence": "for (let start = 0; start < items.length; start += size) {",
-          "failure_scenario": "This loop might be slow for very large lists and could potentially be optimized.",
-          "suggestion": null,
-          "confidence": "low",
-          "linear_issue": null,
-          "linear_quote": null
-        }
-      ]
-    },
-    "security": {
-      "session": "security",
+  "gates": [
+    {
+      "key": "check-rules",
+      "rule_id": "GATE.check-rules",
+      "status": "passed",
       "findings": []
     }
+  ],
+  "sessions": {
+    "abstractions": {
+      "findings": [
+        {
+          "confidence": "medium",
+          "evidence": "export const SYNC_PAGE_SIZE_MAX = 100;",
+          "failure_scenario": "The exported page-size maximum is used as the default, but callers can pass a larger size and receive oversized upload pages, so the declared maximum is not enforced.",
+          "file": "cloud/packages/sync/src/chunk.ts",
+          "line": 1,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "R2.shared-constant",
+          "suggestion": "Could the helper reject sizes above `SYNC_PAGE_SIZE_MAX` or name this constant to reflect that it is only a default?"
+        }
+      ],
+      "session": "abstractions",
+      "summary": "One page-limit contract issue",
+      "ui_check": null
+    },
+    "maintainability": {
+      "findings": [],
+      "session": "maintainability",
+      "summary": "Clean chunk helper",
+      "ui_check": null
+    },
+    "conciseness": {
+      "findings": [
+        {
+          "confidence": "high",
+          "evidence": "export function chunk<T>(items: readonly T[], size: number = SYNC_PAGE_SIZE_MAX): T[][] {",
+          "failure_scenario": "The new helper and its exported page-size constant have no callers in the package, so this PR adds code without affecting sync uploads.",
+          "file": "cloud/packages/sync/src/chunk.ts",
+          "line": 3,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "G.dead-code",
+          "suggestion": "Could this helper be added alongside its first upload call site? "
+        }
+      ],
+      "session": "conciseness",
+      "summary": "Unused chunk helper",
+      "ui_check": null
+    },
+    "logic_bs": {
+      "findings": [],
+      "session": "logic_bs",
+      "summary": "Chunk helper handles pages",
+      "ui_check": null
+    },
+    "security": {
+      "findings": [],
+      "session": "security",
+      "summary": "No security issues found",
+      "ui_check": null
+    }
+  },
+  "live": {
+    "source": "praxis-review live stack (PRA-92)",
+    "model": "gpt-6.2-sol",
+    "reasoning_effort": "low",
+    "duration_seconds": 34.9,
+    "session_errors": {},
+    "gates_note": "check-rules re-run with npm dependencies installed (develop 2dd8454); sessions are the live Sol outputs"
   }
 }
