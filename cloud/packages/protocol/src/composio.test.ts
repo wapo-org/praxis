@@ -1,5 +1,7 @@
 import {describe, expect, it} from 'vitest';
-import {COMPOSIO_APPS, composioAppName, composioChatScopePatch, composioEnabledInChat} from './composio.js';
+import {
+  COMPOSIO_APPS, ComposioConnectionListSchema, composioAppName, composioChatScopePatch, composioEnabledInChat,
+} from './composio.js';
 
 const open = {connectorIds: [], disabledConnectorIds: []};
 
@@ -29,5 +31,14 @@ describe('Composio chat scope', () => {
     expect(new Set(COMPOSIO_APPS.map(app => app.toolkit)).size).toBe(COMPOSIO_APPS.length);
     expect(composioAppName('googlecalendar')).toBe('Google Calendar');
     expect(composioAppName('jira')).toBe('jira');
+  });
+});
+
+describe('Composio connection rows', () => {
+  it('accepts list rows, strips server-only fields and rejects unknown statuses', () => {
+    const row = {toolkit: 'gmail', status: 'pending', connectedAccountId: 'ca_1', redirectUrl: 'https://x'};
+    expect(ComposioConnectionListSchema.parse([row])).toEqual([{toolkit: 'gmail', status: 'pending'}]);
+    expect(ComposioConnectionListSchema.safeParse([{...row, status: 'needs_reauth'}]).success).toBe(false);
+    expect(ComposioConnectionListSchema.safeParse([{...row, toolkit: ''}]).success).toBe(false);
   });
 });

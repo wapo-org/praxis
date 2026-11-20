@@ -81,6 +81,15 @@ export function composioChatScopePatch(chat: ComposioChatScope, toolkit: string,
   return {connectorIds: named ? [...connectorIds, id] : connectorIds, disabledConnectorIds};
 }
 
+/** A connection as clients see it (`composio.connections.list` rows); extra row fields are dropped by the parse. */
+export const ComposioConnectionStatusSchema = z.enum(['pending', 'connected', 'failed']);
+export const ComposioConnectionSummarySchema = z.object({
+  toolkit: z.string().min(1),
+  status: ComposioConnectionStatusSchema,
+});
+export const ComposioConnectionListSchema = z.array(ComposioConnectionSummarySchema);
+export type ComposioConnectionStatus = z.infer<typeof ComposioConnectionStatusSchema>;
+
 /** Display name for a toolkit slug; a slug outside the catalogue shows as itself. */
 export function composioAppName(toolkit: string): string {
   return COMPOSIO_APPS.find(app => app.toolkit === toolkit)?.name ?? toolkit;

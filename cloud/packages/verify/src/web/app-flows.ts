@@ -1,4 +1,5 @@
 import {expect, type Locator, type Page} from '@playwright/test';
+import {ChatSchema} from '@praxis/protocol';
 import type {FlowContext, WebFlow} from './flow-types.js';
 import {sessionHeaders} from './session.js';
 
@@ -12,8 +13,8 @@ async function createChat({page, request, api}: FlowContext, title: string): Pro
   const headers = await sessionHeaders(page);
   const created = await request.post(`${api}/v1/chats`, {headers, data: {type: 'chat.input', title}});
   expect(created.ok()).toBe(true);
-  const {id} = await created.json();
-  return {chatId: String(id), headers};
+  const {id} = ChatSchema.parse(await created.json());
+  return {chatId: id, headers};
 }
 
 /** The stand-in for Composio's hosted page (cloud/verify/auth/http.ts.template). */
@@ -91,7 +92,7 @@ const appDirectoryConnect: WebFlow = {
     await page.keyboard.press('Space');
     await expect(toggle).not.toBeChecked();
     await expect.poll(async () => {
-      const chat = await (await request.get(`${api}/v1/chats/${chatId}`, {headers})).json();
+      const chat = ChatSchema.parse(await (await request.get(`${api}/v1/chats/${chatId}`, {headers})).json());
       return chat.disabledConnectorIds;
     }).toContain('composio:gmail');
     await page.keyboard.press('Space');

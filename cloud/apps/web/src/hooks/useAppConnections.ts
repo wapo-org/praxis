@@ -1,10 +1,9 @@
 import React from 'react';
 import { useQueries } from 'convex/react';
+import { ComposioConnectionListSchema, type ComposioConnectionStatus } from '@praxis/protocol';
 import { api } from '../../../../convex/_generated/api';
-import type { Doc } from '../../../../convex/_generated/dataModel';
 
-type ConnectionRows = Doc<'connections'>[];
-export type AppConnectionStatus = Doc<'connections'>['status'];
+export type AppConnectionStatus = ComposioConnectionStatus;
 
 export type AppConnections =
   | { state: 'loading' }
@@ -20,13 +19,16 @@ export function useAppConnections(): AppConnections {
   return React.useMemo(() => connectionsFrom(result), [result]);
 }
 
-function connectionsFrom(result: unknown): AppConnections {
+/** Fails closed: one malformed row makes the whole result unusable, so no card shows a state the server never sent. */
+export function connectionsFrom(result: unknown): AppConnections {
   if (result === undefined) return { state: 'loading' };
   // A failed query arrives as a value, so the directory shows an error instead of unmounting the app.
-  if (result instanceof Error || !Array.isArray(result)) return { state: 'error' };
-  const byToolkit = new Map<string, AppConnectionStatus>();
-  for (const row of result as ConnectionRows) {
-    byToolkit.set(row.toolkit, row.status);
+  if (result instanceof Error) return { state: 'error' };
+  const rows = ComposioConnectionListSchema.safeParse(result);
+  if (!rows.success) {
+    console.warn('App connections had an unexpected shape', rows.error.issues.length);
+    return { state: 'error' };
   }
+  const byToolkit = new Map(rows.data.map(({ toolkit, status }) => [toolkit, status] as const));
   return { state: 'ready', byToolkit };
 }
