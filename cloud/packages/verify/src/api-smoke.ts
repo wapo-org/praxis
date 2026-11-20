@@ -41,6 +41,16 @@ export class ApiClient {
   }
 }
 
+/** Polls the run snapshot until it has a pending approval or the attempts run out. */
+async function parkedSnapshot(client: ApiClient, runId: string): Promise<RunSnapshot> {
+  let snapshot = await client.json(`/v1/runs/${runId}/snapshot`, RunSnapshotSchema);
+  for (let attempt = 1; attempt < APPROVAL_POLL_ATTEMPTS && !snapshot.pendingApprovals.length; attempt++) {
+    await sleep(APPROVAL_POLL_INTERVAL_MS);
+    snapshot = await client.json(`/v1/runs/${runId}/snapshot`, RunSnapshotSchema);
+  }
+  return snapshot;
+}
+
 const need = (state: Map<string, string>, key: string) => {
   const value = state.get(key);
   assert(value, `${key} missing: an earlier check failed`);
@@ -78,17 +88,24 @@ export const API_CHECKS: readonly ApiCheck[] = [
   }},
   {id: 'nested-approval', async run(client, state) {
     const run = await client.json('/v1/runs', RunSchema, {type: 'run.start', chatId: need(state, 'approvalChatId'), text: 'Nested approval', script: 'nestedApproval'});
-    let parked: RunSnapshot | undefined;
-    for (let attempt = 0; attempt < APPROVAL_POLL_ATTEMPTS; attempt++) {
-      parked = await client.json(`/v1/runs/${run.id}/snapshot`, RunSnapshotSchema);
-      if (parked.pendingApprovals.length) break;
-      await sleep(APPROVAL_POLL_INTERVAL_MS);
-    }
-    const approval = parked?.pendingApprovals[0];
+    const parked = await parkedSnapshot(client, run.id);
+    const approval = parked.pendingApprovals[0];
     assert(approval, 'nested tool never asked for approval');
     assert(approval.parentCallId, 'nested approval lost its parentCallId');
     await client.json(`/v1/runs/${run.id}/approvals`, RunSchema, {type: 'approval.decision', approvalId: approval.id, decision: 'allowOnce'});
     assert((await client.events(run.id)).includes('run.finished'), 'approved run never finished');
+  }},
+  {id: 'tainted-approval', async run(client) {
+    // A fresh chat: earlier connector results in the shared approval chat would already taint the run.
+    const chat = await client.json('/v1/chats', ChatSchema, {type: 'chat.input', title: 'praxis-verify taint', mode: 'auto'});
+    const run = await client.json('/v1/runs', RunSchema, {type: 'run.start', chatId: chat.id, text: 'Read then write', script: 'taintedApproval'});
+    const parked = await parkedSnapshot(client, run.id);
+    const approval = parked.pendingApprovals[0];
+    assert(approval, 'write after an untrusted read never asked for approval');
+    assert.equal(approval.taintSource, 'local fetch', 'approval lacks the taint source');
+    assert.equal(parked.run.taint?.source, 'local fetch', 'run row lacks the persisted taint');
+    await client.json(`/v1/runs/${run.id}/approvals`, RunSchema, {type: 'approval.decision', approvalId: approval.id, decision: 'deny'});
+    assert((await client.events(run.id)).includes('run.finished'), 'denied run never finished');
   }},
   {id: 'disconnect-cancel-replay', async run(client, state) {
     const run = await client.json('/v1/runs', RunSchema, {type: 'run.start', chatId: need(state, 'chatId'), text: 'Disconnect and cancel', script: 'long'});

@@ -99,6 +99,20 @@ describe('PRA-24 typed table CRUD through domain functions', () => {
     expect(await alice.client.query(api.runs.get, {runId})).toMatchObject({id: runId});
   });
 
+  it('runs: taint is an atomic OR that a stale or later writer can neither clear nor replace (PRA-57)', async () => {
+    const {t, alice} = await twoOwners();
+    await createChat(alice);
+    const owner = {...token, userId: alice.userId, kind: 'run', id: 'tainted-run'};
+    const value = {type: 'run', id: 'tainted-run', chatId: CHAT_ID, status: 'running', createdAt: NOW, updatedAt: NOW, lastEventId: 0};
+    const taint = {tainted: true, source: 'Gmail', callId: 'call-0'};
+    await t.mutation(api.store.put, {...owner, valueJson: JSON.stringify(value)});
+    expect(await alice.client.query(api.runs.get, {runId: 'tainted-run'})).not.toHaveProperty('taint');
+    await t.mutation(api.store.put, {...owner, valueJson: JSON.stringify({...value, taint})});
+    await t.mutation(api.store.put, {...owner, valueJson: JSON.stringify({...value, status: 'completed'})});
+    await t.mutation(api.store.put, {...owner, valueJson: JSON.stringify({...value, taint: {...taint, source: 'Slack', callId: 'call-9'}})});
+    expect(await alice.client.query(api.runs.get, {runId: 'tainted-run'})).toMatchObject({status: 'running', taint});
+  });
+
   it('turns: commitStub inserts owner-indexed turns, replays saved turns and rejects skipped indexes', async () => {
     const {t, alice} = await twoOwners();
     await createChat(alice);

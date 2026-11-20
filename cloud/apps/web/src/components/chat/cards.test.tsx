@@ -16,6 +16,17 @@ it('renders the server preview as text and hides an empty preview', () => {
   expect(shown).toContain('<pre');
   expect(shown).toContain(preview);
 });
+it('says which untrusted source made a tainted approval necessary, and nothing for a clean run', () => {
+  const approval = {
+    type: 'approval', id: 'a', callId: 'call', toolName: 'send', title: 'Send', arguments: '',
+    reason: 'Content this run read could steer this action, so it needs a fresh approval.', source: {type: 'builtin'},
+  } as const;
+  const tainted = renderToStaticMarkup(<ApprovalCards pendingApprovals={[{...approval, taintSource: 'Gmail'}]} />);
+  expect(tainted).toContain('data-testid="approval-taint"');
+  expect(tainted).toContain('This run read content from Gmail.');
+  const clean = renderToStaticMarkup(<ApprovalCards pendingApprovals={[approval]} />);
+  expect(clean).not.toContain('approval-taint');
+});
 it('labels questions by title, then description, then a humanised key', () => {
   const fields = {
     raw_key: { title: 'Your full name', description: 'Shown on the report' },

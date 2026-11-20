@@ -52,6 +52,7 @@ export async function createPendingApproval(
     type: 'approval', id, callId: call.id, toolName: call.name, source: spec.source,
     arguments: preview, reason, title: `Allow ${spec.originalName ?? call.name}?`,
     ...(call.parentCallId && {parentCallId: call.parentCallId}),
+    ...(cp.run.taint && {taintSource: cp.run.taint.source}),
   };
 }
 

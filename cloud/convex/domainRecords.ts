@@ -148,11 +148,14 @@ export async function saveDomainRow(ctx: MutationCtx, kind: DomainKind, input: D
       return {value, parentId: chatId};
     }
     case 'run': {
-      const value = RunSchema.parse(input.value);
-      validateAddress(input, value);
-      await requireChat(ctx, userId, value.chatId);
+      const parsed = RunSchema.parse(input.value);
+      validateAddress(input, parsed);
+      await requireChat(ctx, userId, parsed.chatId);
       const prior = await ownedRun(ctx, userId, id);
-      if (prior?.workflow || (prior && prior.chatId !== value.chatId)) throw new ConvexError('Run address unavailable');
+      if (prior?.workflow || (prior && prior.chatId !== parsed.chatId)) throw new ConvexError('Run address unavailable');
+      // Atomic OR inside the mutation: a stale writer can never clear or replace a run's recorded taint.
+      const taint = prior?.value.taint ?? parsed.taint;
+      const value = {...parsed, ...(taint && {taint})};
       const row = {...metadata, chatId: value.chatId, value};
       if (prior) await ctx.db.replace(prior._id, row);
       else await ctx.db.insert('runs', row);
