@@ -1,22 +1,24 @@
 import React from 'react';
+import { useAppCatalog } from '../../hooks/useAppCatalog';
 import { useAppConnect } from '../../hooks/useAppConnect';
 import { useAppConnections } from '../../hooks/useAppConnections';
-import { appState, searchApps } from '../../lib/apps';
+import { appState } from '../../lib/apps';
 import { usePraxisStore } from '../../state/store.js';
 import { AppCard } from './AppCard';
-import { ScreenBody, TaskError, useScreenTask } from './ScreenUI.js';
+import { ScreenBody, ScreenButton, TaskError, useScreenTask } from './ScreenUI.js';
 import grid from './AppDirectory.module.css';
 import styles from './Screen.module.css';
 
-/** Settings → App Directory: the curated Composio apps, their connection state, and this chat's toggles. */
+/** Settings → App Directory: all Composio apps, their connection state, and this chat's toggles. */
 export function AppDirectoryScreen() {
   const store = usePraxisStore();
   const connections = useAppConnections();
   const actions = useAppConnect();
   const toggle = useScreenTask();
   const [query, setQuery] = React.useState('');
-  const apps = searchApps(query);
+  const catalog = useAppCatalog(query);
   const chat = store.activeChat;
+  const trimmedQuery = query.trim();
 
   const toggleChat = (toolkit: string, enabled: boolean) => {
     if (!chat) return;
@@ -43,21 +45,43 @@ export function AppDirectoryScreen() {
       {connections.state === 'error' ? (
         <p className={styles.error} role="alert">Couldn’t load your connections. Reload the page to try again.</p>
       ) : null}
-      {apps.length ? (
-        <ul className={grid.grid} aria-label="Apps" data-testid="app-directory">
-          {apps.map((app) => (
-            <AppCard
-              key={app.toolkit}
-              app={app}
-              state={appState(connections, app.toolkit)}
-              chat={chat}
-              actions={actions}
-              onToggleChat={toggleChat}
-            />
-          ))}
-        </ul>
+      {catalog.state === 'error' ? (
+        <div className={grid.feedback} role="alert">
+          <p className={styles.error}>Couldn’t load the app directory.</p>
+          <ScreenButton tone="secondary" onClick={catalog.retry}>Try again</ScreenButton>
+        </div>
+      ) : catalog.state === 'loading' && catalog.items.length === 0 ? (
+        <p className={styles.empty} role="status">Loading apps…</p>
+      ) : catalog.items.length ? (
+        <>
+          <ul className={grid.grid} aria-label="Apps" data-testid="app-directory">
+            {catalog.items.map((app) => (
+              <AppCard
+                key={app.toolkit}
+                app={app}
+                state={appState(connections, app.toolkit)}
+                chat={chat}
+                actions={actions}
+                onToggleChat={toggleChat}
+              />
+            ))}
+          </ul>
+          {catalog.hasMore ? (
+            <div className={grid.footer}>
+              <ScreenButton
+                tone="secondary"
+                disabled={catalog.loadingMore}
+                onClick={catalog.loadMore}
+              >
+                {catalog.loadingMore ? 'Loading more…' : `Load more apps (${catalog.items.length} of ${catalog.totalItems})`}
+              </ScreenButton>
+            </div>
+          ) : null}
+        </>
       ) : (
-        <p className={styles.empty} role="status">No apps match “{query.trim()}”.</p>
+        <p className={styles.empty} role="status">
+          {trimmedQuery ? `No apps match “${trimmedQuery}”.` : 'No apps available.'}
+        </p>
       )}
     </ScreenBody>
   );

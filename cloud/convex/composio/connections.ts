@@ -1,3 +1,4 @@
+import { type ComposioAppPage } from '@praxis/protocol';
 import { v } from 'convex/values';
 import { activeOwner } from '../accountOwner.js';
 import { internal } from '../_generated/api.js';
@@ -38,5 +39,16 @@ export const disconnect = authedAction({
   args: { toolkit: v.string() },
   handler: async (ctx, args): Promise<null> => {
     return ctx.runAction(internal.composio.actions.disconnect, args);
+  },
+});
+
+export const catalog = authedAction({
+  args: {
+    search: v.optional(v.string()),
+    cursor: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { search, cursor, limit }): Promise<ComposioAppPage> => {
+    return ctx.runAction(internal.composio.actions.listCatalog, { search, cursor, limit });
   },
 });

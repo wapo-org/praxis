@@ -1,5 +1,6 @@
 'use node';
 
+import { type ComposioAppPage } from '@praxis/protocol';
 import { deriveTenantId, SealedSecret } from '@praxis/types';
 import { internalAction } from '../_generated/server.js';
 import { internal } from '../_generated/api.js';
@@ -52,5 +53,16 @@ export const disconnect = internalAction({
     await client.revokeConnection(connectedAccountId);
     await ctx.runMutation(store.remove, {...target, connectedAccountId});
     return null;
+  },
+});
+
+export const listCatalog = internalAction({
+  args: {
+    search: v.optional(v.string()),
+    cursor: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (_ctx, args): Promise<ComposioAppPage> => {
+    return composioFor(process.env).listToolkits(args);
   },
 });

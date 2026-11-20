@@ -14,12 +14,24 @@ export function AppCard({ app, state, chat, actions, onToggleChat }: {
   onToggleChat: (toolkit: string, enabled: boolean) => void;
 }) {
   const nameId = React.useId();
+  const [logoFailed, setLogoFailed] = React.useState(false);
   const busy = actions.busy === app.toolkit;
   const blocked = actions.busy !== null || state === 'loading' || state === 'unavailable';
+  const showLogo = Boolean(app.logo) && !logoFailed;
   return (
     <li className={styles.card} aria-labelledby={nameId} data-testid={`app-card-${app.toolkit}`} data-state={state}>
       <div className={styles.head}>
-        <span className={styles.mark} aria-hidden="true">{app.name.slice(0, 1)}</span>
+        <span className={styles.mark} aria-hidden="true">
+          {showLogo ? (
+            <img
+              src={app.logo}
+              alt=""
+              className={styles.logo}
+              loading="lazy"
+              onError={() => setLogoFailed(true)}
+            />
+          ) : app.name.slice(0, 1)}
+        </span>
         <div className={styles.copy}>
           <h3 id={nameId} className={styles.name}>{app.name}</h3>
           <p className={styles.description}>{app.description}</p>
