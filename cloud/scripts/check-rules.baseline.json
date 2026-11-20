@@ -50,7 +50,7 @@
       "apps/web/src/components/chat/ElicitationCards.tsx": 418,
       "apps/web/src/components/chat/chatMotion.ts": 464,
       "apps/web/src/components/chat/useSearchJump.ts": 465,
-      "packages/agent/src/runner.ts": 443,
+      "packages/agent/src/runner.ts": 440,
       "packages/glass/src/dropdown/dropdown.pw.ts": 439,
       "packages/glass/src/morph/engine.ts": 563,
       "scripts/comment-sweep.mjs": 710
