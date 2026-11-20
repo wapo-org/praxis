@@ -106,6 +106,12 @@ export const get = authedQuery({
   },
 });
 
+function startGeneration(ctx: MutationCtx, scope: RunScope, startTurnIndex: number): Promise<WorkflowId> {
+  return workflow.start(ctx, internal.workflows.agentRun.agentRun, {...scope, startTurnIndex}, {
+    onComplete: internal.runs.onComplete, context: scope,
+  });
+}
+
 async function createRun(ctx: MutationCtx, userId: string, chatId: string, startTurnIndex: number): Promise<Id<'runs'>> {
   const updatedAt = new Date().toISOString();
   const value = {
@@ -113,13 +119,33 @@ async function createRun(ctx: MutationCtx, userId: string, chatId: string, start
   };
   const state = {startTurnIndex, nextTurnIndex: startTurnIndex, generation: 0};
   const runId = await ctx.db.insert('runs', {userId, id: '', chatId, updatedAt, revision: 0, value, workflow: state});
-  const scope = {userId, chatId, runId, generation: state.generation};
-  const workflowId = await workflow.start(ctx, internal.workflows.agentRun.agentRun, {...scope, startTurnIndex}, {
-    onComplete: internal.runs.onComplete, context: scope,
-  });
+  const workflowId = await startGeneration(ctx, {userId, chatId, runId, generation: state.generation}, startTurnIndex);
   await ctx.db.patch(runId, {id: runId, value: {...value, id: runId}, workflow: {...state, id: workflowId}});
   return runId;
 }
+
+/** One transaction starts generation N + 1 and moves the run row to it, fencing generation N's late workers out. */
+export const continueAsNew = internalMutation({
+  args: {...runScope, turnIndex: v.number()},
+  handler: async (ctx, args): Promise<{continued: boolean}> => {
+    const {turnIndex: rawIndex, ...scope} = args;
+    const turnIndex = turnIndexSchema.parse(rawIndex);
+    const run = await liveScopedRun(ctx, scope);
+    if (run?.value.status !== 'running') return {continued: false};
+    if (run.workflow.nextTurnIndex !== turnIndex) throw new ConvexError(WORKFLOW_ERRORS.index);
+    const generation = scope.generation + 1;
+    const workflowId = await startGeneration(ctx, {...scope, generation}, turnIndex);
+    await ctx.db.patch(run._id, {workflow: {...run.workflow, generation, id: workflowId}});
+    return {continued: true};
+  },
+});
+
+export const cleanupWorkflow = internalMutation({
+  args: {workflowId: vWorkflowId},
+  handler: async (ctx, {workflowId}) => {
+    await workflow.cleanup(ctx, workflowId);
+  },
+});
 
 export const start = authedMutation({
   args: {chatId: v.string(), startTurnIndex: v.optional(v.number()), idempotencyKey: v.optional(v.string())},
@@ -164,6 +190,11 @@ export const status = internalQuery({
 export const onComplete = internalMutation({
   args: {workflowId: vWorkflowId, result: vResultValidator, context: v.object(runScope)},
   handler: async (ctx, {workflowId, result, context}) => {
+    if (result.kind === 'success' && result.returnValue === 'continued') {
+      // The successor owns the run; the component refuses cleanup from inside onComplete, so it runs next.
+      await ctx.scheduler.runAfter(0, internal.runs.cleanupWorkflow, {workflowId});
+      return;
+    }
     const run = await scopedRun(ctx, context);
     if (!run || run.workflow.id !== workflowId) return;
     const from = WorkflowRunStatusSchema.parse(run.value.status);
