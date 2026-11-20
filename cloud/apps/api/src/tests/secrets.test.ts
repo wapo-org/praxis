@@ -50,12 +50,14 @@ describe('re-encryption for rotation', () => {
     expect(await reencryptAll(store, ['u1', 'u2'], ring)).toMatchObject({rewritten: 0, failed: 1});
   });
   it('enumerates every owner from Convex for the rotation script', async () => {
-    const store = storeFromRPC(convexHarness().rpc);
-    await store.put('alice', 'preferences', 'current', {x: 1});
-    await store.put('bob', 'modelKey', 'current', {sealed: seal('k', 'bob', 'modelKey', A)});
+    const {rpc, owner} = convexHarness();
+    const store = storeFromRPC(rpc);
+    const [alice, bob] = await Promise.all([owner(), owner()]);
+    await store.put(alice, 'preferences', 'current', {x: 1});
+    await store.put(bob, 'modelKey', 'current', {sealed: seal('k', bob, 'modelKey', A)});
     const owners: string[] = [];
     for await (const o of store.owners()) owners.push(o);
-    expect(owners.sort()).toEqual(['alice', 'bob']);
+    expect(owners.sort()).toEqual([alice, bob].sort());
   });
 });
 

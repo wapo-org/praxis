@@ -4,24 +4,35 @@ import type { Events, KV, Store } from '../../contracts.js';
 /** Unique owner per test so live backends need no cleanup between runs. */
 const owner = (label: string) => `${label}-${crypto.randomUUID()}`;
 
-export function storeContract(name: string, factory: () => Store | Promise<Store>) {
+/** Convex fences writes to existing, active `users` rows, so each backend mints its own owners. */
+export interface StoreFixture {
+  store: Store;
+  owner(label: string): Promise<string>;
+}
+
+export function storeFixture(store: Store): StoreFixture {
+  return { store, owner: async (label) => owner(label) };
+}
+
+export function storeContract(name: string, factory: () => StoreFixture | Promise<StoreFixture>) {
   describe(name, () => {
     let store: Store;
+    let newOwner: StoreFixture['owner'];
     beforeEach(async () => {
-      store = await factory();
+      ({ store, owner: newOwner } = await factory());
     });
 
     it('isolates identical kind/id addresses by owner', async () => {
-      const [alice, bob] = [owner('alice'), owner('bob')];
+      const [alice, bob] = await Promise.all([newOwner('alice'), newOwner('bob')]);
       await store.put(alice, 'fixture-chat', 'same', { text: 'a' });
       await store.put(bob, 'fixture-chat', 'same', { text: 'b' });
       expect((await store.get(alice, 'fixture-chat', 'same'))?.value).toEqual({ text: 'a' });
-      expect(await store.get(owner('mallory'), 'fixture-chat', 'same')).toBeNull();
+      expect(await store.get(await newOwner('mallory'), 'fixture-chat', 'same')).toBeNull();
       expect(await store.list(bob, 'fixture-chat')).toHaveLength(1);
     });
 
     it('keeps every immutable revision, even for repeated writes in the same millisecond', async () => {
-      const [alice, bob] = [owner('alice'), owner('bob')];
+      const [alice, bob] = await Promise.all([newOwner('alice'), newOwner('bob')]);
       await store.put(alice, 'fixture-chat', 'x', { n: 1 });
       await store.put(bob, 'fixture-chat', 'hidden', {});
       await store.put(alice, 'fixture-chat', 'x', { n: 2 });
@@ -40,7 +51,7 @@ export function storeContract(name: string, factory: () => Store | Promise<Store
     });
 
     it('reports the owner head revision, 0 when empty, unaffected by other owners', async () => {
-      const [alice, bob] = [owner('alice'), owner('bob')];
+      const [alice, bob] = await Promise.all([newOwner('alice'), newOwner('bob')]);
       expect(await store.head(alice)).toBe(0);
       await store.put(alice, 'fixture-chat', 'x', { n: 1 });
       await store.put(bob, 'fixture-chat', 'y', { n: 1 });
@@ -55,7 +66,7 @@ export function storeContract(name: string, factory: () => Store | Promise<Store
     });
 
     it('returns owned data without leaking mutable references', async () => {
-      const alice = owner('alice');
+      const alice = await newOwner('alice');
       const value = { nested: { n: 1 } };
       const row = await store.put(alice, 'fixture-chat', 'x', value);
       value.nested.n = 2;
@@ -64,7 +75,7 @@ export function storeContract(name: string, factory: () => Store | Promise<Store
     });
 
     it('creates durable tombstones for deletes and can resurrect a row', async () => {
-      const alice = owner('alice');
+      const alice = await newOwner('alice');
       await store.delete(alice, 'fixture-chat', 'absent');
       expect((await store.get(alice, 'fixture-chat', 'absent'))?.deleted).toBe(true);
       await store.put(alice, 'fixture-chat', 'absent', { hello: true });
@@ -72,7 +83,7 @@ export function storeContract(name: string, factory: () => Store | Promise<Store
     });
 
     it('indexes rows by parentId, keeps it on puts without one, and scopes it by owner and kind', async () => {
-      const [alice, bob] = [owner('alice'), owner('bob')];
+      const [alice, bob] = await Promise.all([newOwner('alice'), newOwner('bob')]);
       await store.put(alice, 'fixture-message', 'm1', { n: 1 }, { parentId: 'chat-a' });
       await store.put(alice, 'fixture-message', 'm2', { n: 2 }, { parentId: 'chat-b' });
       await store.put(alice, 'fixture-message', 'm3', { n: 3 }, { parentId: 'chat-a' });

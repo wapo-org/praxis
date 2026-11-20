@@ -156,7 +156,7 @@ async function commit(live: Live, token: string, owner: LiveOwner, chatId: strin
 
 async function put(live: Live, owner: LiveOwner, kind: string, id: string, value: object, parentId?: string) {
   await serverClient(live).mutation(StorePut, {
-    serverToken: live.serverToken.reveal(), userId: owner.userId, kind, id, valueJson: JSON.stringify(value), requireOwner: true,
+    serverToken: live.serverToken.reveal(), userId: owner.userId, kind, id, valueJson: JSON.stringify(value),
     ...(parentId === undefined ? {} : {parentId}),
   });
 }

@@ -22,8 +22,6 @@ function ticketRow(ctx: QueryCtx, userId: string, ticket: string) {
 
 export const createTicket = serverMutation({
   args: {
-    serverToken: v.string(),
-    userId: v.string(),
     ticket: v.string(),
     name: v.string(),
     mediaType: v.string(),
@@ -32,7 +30,7 @@ export const createTicket = serverMutation({
     expiresAt: v.number(),
   },
   handler: async (ctx, a) => {
-    [a.userId, a.ticket, a.name, a.mediaType].forEach(bounded);
+    [a.ticket, a.name, a.mediaType].forEach(bounded);
     if (a.chatId !== undefined) bounded(a.chatId);
     if (!Number.isInteger(a.size) || a.size < 1 || a.size > MAX_BYTES) throw new ConvexError('Invalid upload size');
     if (await ticketRow(ctx, a.userId, a.ticket)) throw new ConvexError('Upload ticket exists');
@@ -52,7 +50,7 @@ export const createTicket = serverMutation({
 
 /** Capability URL accepts bytes only for this owner's existing ticket. */
 export const generateUploadUrl = serverMutation({
-  args: { serverToken: v.string(), userId: v.string(), ticket: v.string() },
+  args: { ticket: v.string() },
   handler: async (ctx, a) => {
     const row = await ticketRow(ctx, a.userId, a.ticket);
     if (!row || row.status !== 'pending' || row.expiresAt <= Date.now()) throw new ConvexError('Upload ticket unavailable');
@@ -65,8 +63,6 @@ export const generateUploadUrl = serverMutation({
 /** Binds uploaded blob to matching owner ticket; idempotent for same owner/file. */
 export const claim = serverMutation({
   args: {
-    serverToken: v.string(),
-    userId: v.string(),
     storageId: v.string(),
     name: v.string(),
     mediaType: v.string(),
@@ -74,7 +70,7 @@ export const claim = serverMutation({
     chatId: v.optional(v.string()),
   },
   handler: async (ctx, a) => {
-    [a.userId, a.name, a.mediaType].forEach(bounded);
+    [a.name, a.mediaType].forEach(bounded);
     const storageId = ctx.db.system.normalizeId('_storage', a.storageId);
     if (!storageId) return { ok: false };
     const same = (row: { name: string; mediaType: string; size: number; chatId?: string }) =>
@@ -93,9 +89,8 @@ export const claim = serverMutation({
 });
 
 export const metadata = serverQuery({
-  args: { serverToken: v.string(), userId: v.string(), storageId: v.string() },
+  args: { storageId: v.string() },
   handler: async (ctx, a) => {
-    bounded(a.userId);
     const row = await owned(ctx, a.userId, a.storageId);
     if (!row || row.status !== 'ready') return null;
     return {
@@ -110,9 +105,8 @@ export const metadata = serverQuery({
 
 /** Short-lived read URL for an owned, ready file (the API fetches it; clients never see it). */
 export const url = serverQuery({
-  args: { serverToken: v.string(), userId: v.string(), storageId: v.string() },
+  args: { storageId: v.string() },
   handler: async (ctx, a) => {
-    bounded(a.userId);
     const row = await owned(ctx, a.userId, a.storageId);
     if (!row || row.status !== 'ready' || !row.storageId) return null;
     const href = await ctx.storage.getUrl(row.storageId);
@@ -121,9 +115,8 @@ export const url = serverQuery({
 });
 
 export const remove = serverMutation({
-  args: { serverToken: v.string(), userId: v.string(), storageId: v.string() },
+  args: { storageId: v.string() },
   handler: async (ctx, a) => {
-    bounded(a.userId);
     const row = await owned(ctx, a.userId, a.storageId);
     if (!row) return false;
     if (row.storageId) await ctx.storage.delete(row.storageId);

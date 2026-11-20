@@ -42,6 +42,7 @@ async function setup() {
     '../convex/composio/actions.ts': () => import('../convex/composio/actions.js'),
     '../convex/composio/connections.ts': () => import('../convex/composio/connections.js'),
     '../convex/composio/connectionStore.ts': () => import('../convex/composio/connectionStore.js'),
+    '../convex/functions.ts': () => import('../convex/functions.js'),
   });
   registerCore(t);
   return {t, ...await signedInUser(t)};
