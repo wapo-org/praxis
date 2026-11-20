@@ -1,8 +1,7 @@
-import { ConvexError, v } from 'convex/values';
+import { v } from 'convex/values';
 import { activeOwner } from '../accountOwner.js';
 import { internal } from '../_generated/api.js';
-import { action, authenticatedUserId, internalMutation, query } from '../functions.js';
-import { COMPOSIO_ERRORS } from './constants.js';
+import { authedAction, authedQuery, internalMutation } from '../functions.js';
 import { webhookStatus } from './schema.js';
 
 export const markFromWebhook = internalMutation({
@@ -19,29 +18,25 @@ export const markFromWebhook = internalMutation({
   },
 });
 
-export const list = query({
+export const list = authedQuery({
   args: {},
-  handler: async ctx => {
-    const userId = await authenticatedUserId(ctx);
-    if (!await activeOwner(ctx, userId)) throw new ConvexError(COMPOSIO_ERRORS.accountUnavailable);
+  handler: async (ctx, { userId }) => {
     return ctx.db.query('connections')
       .withIndex('by_user_toolkit', q => q.eq('userId', userId))
       .collect();
   },
 });
 
-export const connect = action({
+export const connect = authedAction({
   args: { toolkit: v.string(), returnTo: v.string() },
   handler: async (ctx, args): Promise<string> => {
-    const userId = await authenticatedUserId(ctx);
-    return ctx.runAction(internal.composio.actions.connect, { ...args, userId });
+    return ctx.runAction(internal.composio.actions.connect, args);
   },
 });
 
-export const disconnect = action({
+export const disconnect = authedAction({
   args: { toolkit: v.string() },
   handler: async (ctx, args): Promise<null> => {
-    const userId = await authenticatedUserId(ctx);
-    return ctx.runAction(internal.composio.actions.disconnect, { ...args, userId });
+    return ctx.runAction(internal.composio.actions.disconnect, args);
   },
 });

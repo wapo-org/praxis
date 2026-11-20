@@ -2,24 +2,22 @@ import {ChatInputSchema, ChatPatchSchema, ChatSchema, IdSchema} from '@praxis/pr
 import {ConvexError, v} from 'convex/values';
 import {ownedChat} from './domainRecords.js';
 import {decodeChat} from './domainValues.js';
-import {authedMutation, authenticatedOwner, query} from './functions.js';
+import {authedMutation, authedQuery} from './functions.js';
 import {writeRecord} from './store.js';
 import {convexValidator} from './zodValidator.js';
 
-export const list = query({
+export const list = authedQuery({
   args: {},
-  handler: async ctx => {
-    const userId = await authenticatedOwner(ctx);
+  handler: async (ctx, {userId}) => {
     const rows = await ctx.db.query('chats')
       .withIndex('by_user_updated', q => q.eq('userId', userId)).order('desc').collect();
     return rows.filter(row => !row.value.deletedAt).map(row => decodeChat(row.value));
   },
 });
 
-export const get = query({
+export const get = authedQuery({
   args: {chatId: v.string()},
-  handler: async (ctx, {chatId}) => {
-    const userId = await authenticatedOwner(ctx);
+  handler: async (ctx, {userId, chatId}) => {
     const chat = await ownedChat(ctx, userId, IdSchema.parse(chatId));
     return chat && !chat.value.deletedAt ? decodeChat(chat.value) : null;
   },
@@ -27,7 +25,7 @@ export const get = query({
 
 export const create = authedMutation({
   args: {input: convexValidator(ChatInputSchema)},
-  handler: async (ctx, userId, {input}) => {
+  handler: async (ctx, {userId, input}) => {
     const parsed = ChatInputSchema.parse(input);
     const id = parsed.id ?? crypto.randomUUID();
     if (await ownedChat(ctx, userId, id)) throw new ConvexError('Chat ID unavailable');
@@ -42,7 +40,7 @@ const chatChanges = ChatPatchSchema.omit({id: true, type: true});
 
 export const patch = authedMutation({
   args: {chatId: v.string(), input: convexValidator(ChatPatchSchema)},
-  handler: async (ctx, userId, {chatId, input}) => {
+  handler: async (ctx, {userId, chatId, input}) => {
     const id = IdSchema.parse(chatId);
     const prior = await ownedChat(ctx, userId, id);
     if (!prior || prior.value.deletedAt) return null;
@@ -58,7 +56,7 @@ export const patch = authedMutation({
 
 export const remove = authedMutation({
   args: {chatId: v.string()},
-  handler: async (ctx, userId, {chatId}) => {
+  handler: async (ctx, {userId, chatId}) => {
     const id = IdSchema.parse(chatId);
     const prior = await ownedChat(ctx, userId, id);
     if (!prior || prior.value.deletedAt) return false;

@@ -3,6 +3,7 @@ import {convexTest} from 'convex-test';
 import {makeFunctionReference} from 'convex/server';
 import schema from '../../../../../convex/schema.js';
 import {createConvexRPC,type ConvexRPC} from '../../adapters/convex.js';
+import {aliasOwners} from '../../adapters/testing/convex-harness.js';
 import {toolsStorageFromRPC} from './convex-storage.js';
 import {createLocalToolsStorage} from './local-storage.js';
 import {toolsStorageContract,type ClientUpload} from './storage-contract.js';
@@ -16,8 +17,10 @@ function harness(){
   '../../../../../convex/files.ts':()=>import('../../../../../convex/files.js'),
   '../../../../../convex/uploads.ts':()=>import('../../../../../convex/uploads.js'),
   '../../../../../convex/http.ts':()=>import('../../../../../convex/http.js'),
+  '../../../../../convex/functions.ts':()=>import('../../../../../convex/functions.js'),
  });
- const rpc:ConvexRPC={query:(n,a)=>t.query(makeFunctionReference<'query'>(n),{...a,serverToken:token}),mutation:(n,a)=>t.mutation(makeFunctionReference<'mutation'>(n),{...a,serverToken:token}),action:(n,a)=>t.action(makeFunctionReference<'action'>(n),{...a,serverToken:token})};
+ const tokenRPC:ConvexRPC={query:(n,a)=>t.query(makeFunctionReference<'query'>(n),{...a,serverToken:token}),mutation:(n,a)=>t.mutation(makeFunctionReference<'mutation'>(n),{...a,serverToken:token}),action:(n,a)=>t.action(makeFunctionReference<'action'>(n),{...a,serverToken:token})};
+ const rpc=aliasOwners(tokenRPC,()=>t.run(ctx=>ctx.db.insert('users',{})));
  // Serve fake convex-test storage URLs from the test deployment.
  const fetcher=(async(input:RequestInfo|URL)=>{
   const sha=String(input).split('/api/storage/')[1]!;
@@ -93,7 +96,7 @@ describe('Convex direct uploads',()=>{
   expect(await rpc.mutation('files:sweep',{})).toBe(0);await storage.verify('alice',id,input);
   const expired=await storage.createUpload('alice',input),old=await convexUpload(storage,'alice',expired,new TextEncoder().encode('xyz'),'text/plain');
   const stray=await t.run(ctx=>ctx.storage.store(new Blob(['stray'])));
-  await t.run(async ctx=>{const row=await ctx.db.query('files').withIndex('owner_storage',q=>q.eq('userId','alice').eq('storageId',old as never)).unique();await ctx.db.patch(row!._id,{expiresAt:0});});
+  await t.run(async ctx=>{const row=await ctx.db.query('files').withIndex('storage',q=>q.eq('storageId',old as never)).unique();await ctx.db.patch(row!._id,{expiresAt:0});});
   expect(await rpc.mutation('files:sweep',{})).toBe(1);
   expect(await t.run(async ctx=>(await ctx.storage.get(old as never))===null)).toBe(true);
   expect(await t.run(async ctx=>(await ctx.storage.get(stray))!==null)).toBe(true);

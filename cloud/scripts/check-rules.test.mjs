@@ -147,12 +147,15 @@ describe('R5 security', () => {
       'export const trustedQuery = serverQuery({ args: scope, handler: async () => null });',
       'export const trustedMutation = serverMutation({ args: scope, handler: async () => null });',
       'export const trustedAction = serverAction({ args: scope, handler: async () => null });',
+      'export const authed = authedQuery({ args: { ...address }, handler: async () => null });',
+      'export const authedClean = authedMutation({ args: { id: v.string() }, handler: async () => null });',
     ].join('\n');
     const found = checkFile('convex/store.ts', dirty);
     expect(found.map((violation) => [violation.rule, violation.line])).toEqual([
       [RULES.clientOwnerArg, 6],
       [RULES.clientOwnerArg, 7],
       [RULES.clientOwnerArg, 8],
+      [RULES.clientOwnerArg, 14],
     ]);
     expect(rulesFor('apps/api/src/store.ts', dirty)).toEqual([]);
   });
@@ -234,6 +237,19 @@ describe('ratchet baseline', () => {
     const improved = runIn(root);
     expect(improved.code).toBe(0);
     expect(improved.lines.join('\n')).toContain('1 baseline entr(ies) improved');
+  });
+
+  it('CLI: a planted public Convex function taking a client owner id fails against an empty baseline', () => {
+    const root = fixture({
+      'convex/clean.ts': "export const own = authedQuery({ args: { id: v.string() }, handler: async () => null });\n",
+    });
+    writeFileSync(path.join(root, 'check-rules.baseline.json'), JSON.stringify(buildBaseline([])));
+    expect(runIn(root).code).toBe(0);
+
+    writeFileSync(path.join(root, 'convex/planted.ts'), "export const leak = query({ args: { userId: v.string() }, handler: async () => null });\n");
+    const failed = runIn(root);
+    expect(failed.code).toBe(1);
+    expect(failed.lines[0]).toBe('convex/planted.ts:1 R5.client-owner-arg public query takes "userId": derive the owner from auth, or make it internal');
   });
 
   it('CLI: --baseline compares against another file and rejects unknown flags', () => {

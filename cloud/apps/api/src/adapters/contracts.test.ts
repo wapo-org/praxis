@@ -3,13 +3,16 @@ import { makeFunctionReference } from 'convex/server';
 import { createMemoryAdapters } from './memory.js';
 import { createConvexStore, storeFromRPC } from './convex.js';
 import { convexHarness } from './testing/convex-harness.js';
-import { eventsContract, kvContract, storeContract } from './testing/contract-suite.js';
+import { eventsContract, kvContract, storeContract, storeFixture } from './testing/contract-suite.js';
 
-storeContract('Store contract: memory', () => createMemoryAdapters().store);
+storeContract('Store contract: memory', () => storeFixture(createMemoryAdapters().store));
 kvContract('KV contract: memory', () => createMemoryAdapters().kv, { realTime: true });
 eventsContract('Events contract: memory', () => createMemoryAdapters().events);
 
-storeContract('Store contract: Convex functions (convex-test database)', () => storeFromRPC(convexHarness().rpc));
+storeContract('Store contract: Convex functions (convex-test database)', () => {
+  const { rpc, owner } = convexHarness();
+  return { store: storeFromRPC(rpc), owner };
+});
 
 describe('Convex server boundary', () => {
   it('rejects missing or wrong server credentials before touching rows', async () => {
@@ -45,10 +48,10 @@ describe('Convex server boundary', () => {
   });
 
   it('fences legacy Store mutations that require an active owner', async () => {
-    const { t, rpc } = convexHarness();
-    const userId = await t.run(ctx => ctx.db.insert('users', {}));
+    const { t, rpc, owner } = convexHarness();
+    const userId = await owner();
     const address = { userId, kind: 'checkpoint', id: 'r' };
-    const args = { ...address, requireOwner: true, valueJson: JSON.stringify({version: 1}) };
+    const args = { ...address, valueJson: JSON.stringify({version: 1}) };
 
     await expect(rpc.mutation('store:put', { ...args, userId: 'missing' })).rejects.toThrow('Account unavailable');
     await expect(rpc.mutation('store:put', args)).resolves.toMatchObject({ value: { version: 1 } });
@@ -66,14 +69,16 @@ describe('Convex server boundary', () => {
   });
 
   it('compare-and-set writes reject stale revisions', async () => {
-    const store = storeFromRPC(convexHarness().rpc);
-    const first = await store.putIfRevision('a', 'checkpoint', 'r', { v: 1 }, 0);
+    const { rpc, owner } = convexHarness();
+    const store = storeFromRPC(rpc);
+    const alice = await owner();
+    const first = await store.putIfRevision(alice, 'checkpoint', 'r', { v: 1 }, 0);
     expect(first?.value).toEqual({ v: 1 });
-    expect(await store.putIfRevision('a', 'checkpoint', 'r', { v: 9 }, 0)).toBeNull();
-    const second = await store.putIfRevision('a', 'checkpoint', 'r', { v: 2 }, first!.revision);
+    expect(await store.putIfRevision(alice, 'checkpoint', 'r', { v: 9 }, 0)).toBeNull();
+    const second = await store.putIfRevision(alice, 'checkpoint', 'r', { v: 2 }, first!.revision);
     expect(second?.value).toEqual({ v: 2 });
-    expect(await store.putIfRevision('a', 'checkpoint', 'r', { v: 9 }, first!.revision)).toBeNull();
-    expect((await store.get('a', 'checkpoint', 'r'))?.value).toEqual({ v: 2 });
+    expect(await store.putIfRevision(alice, 'checkpoint', 'r', { v: 9 }, first!.revision)).toBeNull();
+    expect((await store.get(alice, 'checkpoint', 'r'))?.value).toEqual({ v: 2 });
   });
 });
 
@@ -83,9 +88,9 @@ if (!liveConvex) {
 }
 describe.skipIf(!liveConvex)('live Convex deployment', () => {
   storeContract('Store contract: live Convex', () =>
-    createConvexStore({
+    storeFixture(createConvexStore({
       url: process.env.PRAXIS_TEST_CONVEX_URL!,
       serverToken: process.env.PRAXIS_TEST_CONVEX_SERVER_TOKEN!,
-    }),
+    })),
   );
 });

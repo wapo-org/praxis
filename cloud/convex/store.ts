@@ -6,9 +6,7 @@ import { bounded, requireServer } from './access.js';
 import {deleteDomainRow, domainDocument, domainRow, isDomainKind, listDomainRows, saveDomainRow} from './domainRecords.js';
 import {activeOwner} from './accountOwner.js';
 
-/** Owner-scoped Store requiring serverToken and userId. */
-const scope = { serverToken: v.string(), userId: v.string() };
-const address = { ...scope, kind: v.string(), id: v.string() };
+const address = { kind: v.string(), id: v.string() };
 const RECORD_JSON_CHARACTERS_MAX = 900_000;
 
 interface Row {
@@ -63,16 +61,14 @@ async function current(ctx: QueryCtx, userId: string, kind: string, id: string):
 export const get = serverQuery({
   args: address,
   handler: async (ctx, a) => {
-    bounded(a.userId);
     if (isDomainKind(a.kind) && !await activeOwner(ctx, a.userId)) return null;
     return publicRow(await current(ctx, a.userId, a.kind, a.id));
   },
 });
 
 export const list = serverQuery({
-  args: { ...scope, kind: v.string(), parentId: v.optional(v.string()) },
+  args: { kind: v.string(), parentId: v.optional(v.string()) },
   handler: async (ctx, a) => {
-    bounded(a.userId);
     bounded(a.kind);
     const parentId = a.parentId === undefined ? undefined : bounded(a.parentId);
     if (isDomainKind(a.kind)) {
@@ -96,9 +92,8 @@ export const list = serverQuery({
 });
 
 export const changes = serverQuery({
-  args: { ...scope, after: v.number(), limit: v.number() },
+  args: { after: v.number(), limit: v.number() },
   handler: async (ctx, a) => {
-    bounded(a.userId);
     if (!Number.isSafeInteger(a.after) || a.after < 0 || !Number.isInteger(a.limit) || a.limit < 1 || a.limit > 1000) {
       throw new ConvexError('Invalid pagination');
     }
@@ -128,9 +123,8 @@ export const owners = query({
 });
 
 export const head = serverQuery({
-  args: scope,
+  args: {},
   handler: async (ctx, a) => {
-    bounded(a.userId);
     const latest = await ctx.db
       .query('changes')
       .withIndex('owner_revision', (q) => q.eq('userId', a.userId))
@@ -214,8 +208,6 @@ export const remove = serverMutation({
 export const putIfRevision = serverMutation({
   args: { ...address, valueJson: v.string(), parentId: v.optional(v.string()), expectedRevision: v.number() },
   handler: async (ctx, a) => {
-    bounded(a.userId);
-    if (isDomainKind(a.kind)) await assertActiveOwner(ctx, a.userId);
     const old = await current(ctx, a.userId, a.kind, a.id);
     if ((old?.revision ?? 0) !== a.expectedRevision) return null;
     return writeRecord(ctx, { userId: a.userId, kind: a.kind, id: a.id, parentId: a.parentId, value: JsonObjectSchema.parse(JSON.parse(a.valueJson)), deleted: false });
