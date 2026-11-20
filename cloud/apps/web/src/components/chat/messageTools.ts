@@ -33,6 +33,7 @@ export function extractMessageToolSteps(msg: Message): ActiveToolStep[] {
         status: part.isError ? ('failed' as const) : ('succeeded' as const),
         summary: part.isError ? 'Tool failed' : 'Tool completed',
         preview,
+        content: part.content,
         outputRef: part.outputRef,
       };
       if (existing) {

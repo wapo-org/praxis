@@ -5,7 +5,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import { AUTH_ENV } from '../../../../convex/authConstants.js';
-import { VERIFY_AUTH, AUTH_BACKEND_PORT_OFFSET, AUTH_SITE_PORT_OFFSET, AUTH_FIXTURE_FILES, AUTH_START_TIMEOUT_MS, AUTH_FUNCTION_POLL_MS } from '../../../../verify/auth/constants.js';
+import { ALLOWED_ORIGINS_ENV, TENANT_ID_SECRET_ENV } from '../../../../convex/composio/constants.js';
+import { VERIFY_AUTH, VERIFY_COMPOSIO, AUTH_BACKEND_PORT_OFFSET, AUTH_SITE_PORT_OFFSET, AUTH_FIXTURE_FILES, AUTH_START_TIMEOUT_MS, AUTH_FUNCTION_POLL_MS } from '../../../../verify/auth/constants.js';
 import { CLOUD_DIR, LOOPBACK_HOST } from '../constants.js';
 import { assertPortFree, runCommand, startServer, waitForUrl, type ManagedServer } from '../proc.js';
 
@@ -79,6 +80,8 @@ export async function startAuthBackend(apiPort: number, base: string, directory:
         : key === AUTH_ENV.senderName ? VERIFY_AUTH.senderName : VERIFY_AUTH.providerCredential;
       return key + '=' + JSON.stringify(value);
     });
+    values.push(TENANT_ID_SECRET_ENV + '=' + JSON.stringify(VERIFY_COMPOSIO.tenantIdSecret));
+    values.push(ALLOWED_ORIGINS_ENV + '=' + JSON.stringify(base));
     const environmentFile = join(project, '.env.fixture');
     await writeFile(environmentFile, values.join('\n'));
     const result = await runCommand(process.execPath, [cli, 'env', 'set', '--from-file', environmentFile], { cwd: project, env });
@@ -87,6 +90,9 @@ export async function startAuthBackend(apiPort: number, base: string, directory:
     for (const file of AUTH_FIXTURE_FILES) {
       await mkdir(dirname(join(functions, file)), { recursive: true });
       await copyFile(join(CLOUD_DIR, 'convex', file), join(functions, file));
+    }
+    for (const {source, target} of VERIFY_COMPOSIO.replacements) {
+      await copyFile(join(CLOUD_DIR, 'verify', 'auth', source), join(functions, target));
     }
     const configPath = join(functions, 'convex.config.ts');
     const config = await readFile(configPath, 'utf8');

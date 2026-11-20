@@ -2,7 +2,6 @@ import type { ResolvedTheme, ThemeMode } from '@praxis/glass';
 import type {
   Attachment,
   Chat,
-  Connector,
   Message,
   Skill,
   ModelKey,
@@ -19,7 +18,6 @@ import {
   type Preferences,
   type Registry,
   type RegistryEntry,
-  type ToolSpec,
 } from '../lib/api';
 import { getReplicaIdentity, readReplicaSync } from '../lib/idb';
 import { readStoredSelection } from './modelSelection';
@@ -104,10 +102,6 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   const [models, setModels] = React.useState<ModelListItem[]>(() =>
     (initialCache?.models ?? []).filter((m) => ModelListItemSchema.safeParse(m).success),
   );
-  const [connectors, setConnectors] = React.useState<Connector[]>(
-    () => initialCache?.connectors ?? [],
-  );
-  const [connectorTools, setConnectorTools] = React.useState<Record<string, ToolSpec[]>>({});
   const [skills, setSkills] = React.useState<Skill[]>(() => initialCache?.skills ?? []);
   const [registries, setRegistries] = React.useState<Registry[]>(
     () => initialCache?.registries ?? [],
@@ -242,10 +236,6 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     setModelKey,
     models,
     setModels,
-    connectors,
-    setConnectors,
-    connectorTools,
-    setConnectorTools,
     skills,
     setSkills,
     registries,

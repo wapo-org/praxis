@@ -33,8 +33,6 @@ export function useReplica(
     setModelKey,
     models,
     setModels,
-    connectors,
-    setConnectors,
     skills,
     setSkills,
     registries,
@@ -58,7 +56,6 @@ export function useReplica(
         messagesByChat,
         models,
         modelKey,
-        connectors,
         skills,
         consents,
         registries,
@@ -74,7 +71,6 @@ export function useReplica(
       messagesByChat,
       models,
       modelKey,
-      connectors,
       skills,
       consents,
       registries,
@@ -107,7 +103,6 @@ export function useReplica(
         .catch(() => null);
       if (catalogue) { setModels(catalogue); state.setCatalogReady(true); }
       if (!selectedModelId && catalogue?.[0]) setSelectedModelId(catalogue[0].id);
-      setConnectors(boot.connectors);
       setSkills(boot.skills);
       if (boot.consents) setConsents(boot.consents);
       if (boot.registries) setRegistries(boot.registries);
@@ -122,7 +117,6 @@ export function useReplica(
           messagesByChat,
           models: catalogue ?? models,
           modelKey: boot.modelKey ?? null,
-          connectors: boot.connectors,
           skills: boot.skills,
           consents: boot.consents ?? [],
           registries: boot.registries ?? [],
@@ -151,8 +145,7 @@ export function useReplica(
               messagesByChat: next,
               models: catalogue ?? models,
               modelKey: boot.modelKey ?? null,
-              connectors: boot.connectors,
-              skills: boot.skills,
+                  skills: boot.skills,
               consents: boot.consents ?? [],
               registries: boot.registries ?? [],
               preferences: boot.preferences,

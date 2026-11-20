@@ -5,12 +5,8 @@ import React from 'react';
 import { PanelLeft } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store.js';
 import { useContentShift } from '../shell/useContentShift';
-import {
-  ConnectorAddURL,
-  ConnectorPasteConfig,
-  ConnectorRegistry,
-  ConnectorsScreen,
-} from './ConnectorsScreen.js';
+import { AppConnectedScreen } from './AppConnectedScreen.js';
+import { AppDirectoryScreen } from './AppDirectoryScreen.js';
 import { ImageReaderScreen } from './ImageReaderScreen.js';
 import { BackButton, ScreenBody } from './ScreenUI.js';
 import {
@@ -38,14 +34,10 @@ function PageContent({ sheet, onOpenGlassLab }: { sheet: SettingsSheet; onOpenGl
       return <ImageReaderScreen />;
     case 'voice-settings':
       return <VoiceSettingsScreen />;
-    case 'connectors':
-      return <ConnectorsScreen />;
-    case 'connector-add-url':
-      return <ConnectorAddURL />;
-    case 'connector-paste-config':
-      return <ConnectorPasteConfig />;
-    case 'connector-registry':
-      return <ConnectorRegistry />;
+    case 'apps':
+      return <AppDirectoryScreen />;
+    case 'app-connected':
+      return <AppConnectedScreen />;
     case 'skills':
       return <SkillsScreen />;
     case 'skill-import':

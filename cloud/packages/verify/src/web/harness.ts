@@ -104,7 +104,12 @@ async function runFlow(browser: Browser, flow: WebFlow, options: HarnessOptions,
         await signIn(page, options.base, account);
       }
       signedIn = flow.session !== undefined;
-      await flow.run({page, api: options.api, request, convexUrl: options.convexUrl, seed: options.seed, note: line => notes.push(line)});
+      const screenshot = async (name: string) => {
+        return (await screenshotEvidence(page, join(options.directory, `${flow.id}.${name}.png`))).path;
+      };
+      await flow.run({
+        page, api: options.api, request, convexUrl: options.convexUrl, seed: options.seed, note: line => notes.push(line), screenshot,
+      });
     };
     await withTimeout(run(), FLOW_TIMEOUT_MS, flow.id);
   } catch (caught) {

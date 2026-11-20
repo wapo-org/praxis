@@ -55,13 +55,6 @@ it('propagates unavailable routes instead of fabricating successful entities', a
   const operations = [
     () => c.checkModelKey(),
     () => c.connectModelKey({ method: 'paste', apiKey: 'sk-or-v1-x' }),
-    () => c.listConnectors(),
-    () => c.createConnector({ name: 'Ghost', url: 'https://invalid.invalid' }),
-    () => c.patchConnector('c', {}),
-    () => c.deleteConnector('c'),
-    () => c.listConnectorTools('c'),
-    () => c.toggleConnectorTool('c', 't', true),
-    () => c.startConnectorOAuth('c'),
     () => c.listSkills(),
     () => c.createSkill({ name: 's', description: '', document: '' }),
     () => c.patchSkill('s', { name: 's', description: '', document: '' }),

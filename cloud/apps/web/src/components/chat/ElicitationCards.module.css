@@ -37,11 +37,6 @@
   margin: 0;
 }
 
-.host {
-  color: var(--color-ink);
-  font-weight: var(--weight-medium);
-}
-
 .fields {
   display: flex;
   flex-direction: column;

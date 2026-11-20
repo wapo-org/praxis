@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {expect, type Locator, type Page} from '@playwright/test';
 import {previewProviderFlow, unavailableAccountFlow} from './auth-flows.js';
+import {APP_FLOWS} from './app-flows.js';
 import {browserCliFlow} from './browser-flow.js';
 import {fuzzChatFlow} from './fuzz.js';
 import type {FlowContext, WebFlow} from './flow-types.js';
@@ -15,7 +16,7 @@ const RUN_SETTLE_TIMEOUT_MS = 10_000;
 
 interface ApiModule {
   apiClient: {
-    createConnector(input: {name: string; url: string}): Promise<unknown>;
+    createSkill(input: {name: string; description: string; document: string}): Promise<unknown>;
     bootstrap(): Promise<unknown>;
   };
 }
@@ -150,15 +151,15 @@ const apiResilience: WebFlow = {
   default: true,
   session: 'isolated',
   allow: [
-    {kind: 'response', pattern: /^\/v1\/connectors$/, status: 404, reason: 'the flow stubs a missing connectors route'},
+    {kind: 'response', pattern: /^\/v1\/skills$/, status: 404, reason: 'the flow stubs a missing skills route'},
     {kind: 'response', pattern: /^\/v1\/bootstrap$/, status: 401, reason: 'the flow stubs an expired session'},
   ],
   async run({page, api, request, note}) {
-    await page.route('**/v1/connectors', route => route.fulfill({status: 404, body: '{}'}));
+    await page.route('**/v1/skills', route => route.fulfill({status: 404, body: '{}'}));
     const unavailable = await page.evaluate(async path => {
       const {apiClient} = (await import(path)) as ApiModule;
       try {
-        await apiClient.createConnector({name: 'Ghost', url: 'https://invalid.invalid'});
+        await apiClient.createSkill({name: 'Ghost', description: '', document: ''});
         return 'FABRICATED';
       } catch (error) {
         return error instanceof Error ? error.message : String(error);
@@ -195,7 +196,7 @@ async function toolRuns({api, request, note}: Pick<FlowContext, 'api' | 'request
 
 export const WEB_FLOWS: readonly WebFlow[] = [
   loadApp, settingsModels, modelSearch, scriptedChat, toolApproval, taintedApproval, apiResilience, browserCliFlow, fuzzChatFlow,
-  unavailableAccountFlow, previewProviderFlow,
+  unavailableAccountFlow, previewProviderFlow, ...APP_FLOWS,
 ];
 
 export function selectFlows(ids: readonly string[] | undefined): WebFlow[] {

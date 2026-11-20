@@ -13,6 +13,7 @@ import { workedLabel } from './components/chat/useActivityClock';
 import { AgentMessageView } from './components/chat/AgentMessageView';
 import { PlusTray } from './components/chat/PlusTray';
 import { PraxisStoreProvider, usePraxisStore } from './state/store';
+vi.mock('./hooks/useAppConnections', () => ({ useAppConnections: () => ({ state: 'ready', byToolkit: new Map() }) }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; vi.useRealTimers(); vi.restoreAllMocks(); });

@@ -1,6 +1,5 @@
 import type {SessionCreateParams} from '@composio/client/resources/tool-router/session';
-import {COMPOSIO_CONNECTOR_PREFIX, COMPOSIO_FIREWALL_HOOK_ID, composioConnectorId, type Chat,
-  type ComposioConnectedAccount} from '@praxis/protocol';
+import {COMPOSIO_FIREWALL_HOOK_ID, composioEnabledInChat, type Chat, type ComposioConnectedAccount} from '@praxis/protocol';
 import type {TenantId} from '@praxis/types';
 
 /** The Firewall: Composio's prompt-injection check withholds a poisoned tool response before the agent sees it. */
@@ -15,13 +14,8 @@ export function byCodeUnit(a: string, b: string): number {
   return a > b ? 1 : 0;
 }
 
-/** Chat scope: disabled app connectors drop out; a chat that names Composio connectors allows only those. */
 export function chatAccounts(accounts: readonly ComposioConnectedAccount[], chat: Pick<Chat, 'connectorIds' | 'disabledConnectorIds'>): ComposioConnectedAccount[] {
-  const named = chat.connectorIds.filter(id => id.startsWith(COMPOSIO_CONNECTOR_PREFIX));
-  return accounts.filter(account => {
-    const id = composioConnectorId(account.toolkit);
-    return !chat.disabledConnectorIds.includes(id) && (!named.length || named.includes(id));
-  });
+  return accounts.filter(account => composioEnabledInChat(chat, account.toolkit));
 }
 
 /** Pins each toolkit to the user's recorded connected account; instant accounts, workbench and proxy calls stay off. */
