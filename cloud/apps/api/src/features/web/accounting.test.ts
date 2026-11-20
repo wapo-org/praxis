@@ -20,12 +20,24 @@ async function fixture(allowanceMicroUsd = 1_000_000) {
   return {t, rpc, userId, input, reserve, finish, attempt};
 }
 afterEach(() => vi.useRealTimers());
-it('fails closed without a provisioned allowance and atomically prevents parallel spend overshoot', async () => {
+it('gives an ungranted owner the free-tier allowance, fails closed at a zero grant and prevents parallel overshoot', async () => {
   const f = await fixture(7000);
-  const otherUserId = (await f.t.run(ctx => ctx.db.insert('users', {}))) as Id<'users'>;
-  expect(await f.reserve(f.input('exa', otherUserId))).toBe('denied');
+  const ungranted = (await f.t.run(ctx => ctx.db.insert('users', {}))) as Id<'users'>;
+  expect(await f.reserve(f.input('exa', ungranted))).toBe('reserved');
+  const zero = (await f.t.run(ctx => ctx.db.insert('users', {}))) as Id<'users'>;
+  await f.t.run(ctx => ctx.db.insert('toolState', {userId: zero, kind: 'platformAllowance', id: '2026-11', value: {allowanceMicroUsd: 0}}));
+  expect(await f.reserve(f.input('exa', zero))).toBe('denied');
   const results = await Promise.all([f.reserve(), f.reserve()]);
   expect(results.sort()).toEqual(['denied', 'reserved']);
+});
+it('shares one platform ledger with sandbox reservations', async () => {
+  const f = await fixture(10_000);
+  const ledger = {allowanceMicroUsd: 10_000, spentMicroUsd: 0, overrunMicroUsd: 0, closed: {}, reservations: {
+    'sandbox:v:1': {key: 'sandbox:v:1', service: 'modal', estimateMicroUsd: 5_000, createdAtMs: NOW, expiresAtMs: NOW + 1, orphaned: false},
+  }};
+  await f.t.run(ctx => ctx.db.insert('toolState', {userId: f.userId, kind: 'platformLedger', id: '2026-11', value: {encoded: JSON.stringify(ledger)}}));
+  expect(await f.reserve()).toBe('denied');
+  expect(await f.reserve(f.input('firecrawl'))).toBe('reserved');
 });
 it('deduplicates call IDs and settles a platform ledger row once', async () => {
   const f = await fixture();
