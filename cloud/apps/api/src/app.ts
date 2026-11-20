@@ -3,7 +3,7 @@ import {protectAnswer,secretMetadata,savedValues,querySavedValues,saveVariable,s
 import { searchChats } from './search.js';
 import {registerAccountDeletion} from './account-routes.js';
 import {platformVoice} from './features/tools/transcribe.js';
-import {ACCOUNT_DELETE_PATH, AccountDeleteSchema} from '@praxis/protocol';
+import {ACCOUNT_DELETE_PATH, AccountDeleteSchema, HEALTH_PATH, type Health} from '@praxis/protocol';
 import {randomUUID} from 'node:crypto';
 import {Hono,type Context} from 'hono';
 import {cors} from 'hono/cors';
@@ -52,7 +52,10 @@ export function createApp(options:AppOptions){
  app.use('*',async(c,next)=>{const started=Date.now();c.set('requestId',randomUUID());c.header('X-Request-ID',c.get('requestId'));c.header('X-Content-Type-Options','nosniff');await next();options.log?.({requestId:c.get('requestId'),method:c.req.method,path:new URL(c.req.url).pathname,status:c.res.status,durationMs:Date.now()-started});});
  app.onError((e,c)=>{if(e instanceof ApiError){if(e.status===429)c.header('Retry-After','1');return c.json({type:'error',code:e.code,message:e.message,requestId:c.get('requestId')},e.status as 400);}if(e instanceof z.ZodError)return c.json({type:'error',code:'validation_error',message:'Request does not match the protocol',requestId:c.get('requestId')},400);return c.json({type:'error',code:'internal_error',message:'Request could not be completed',requestId:c.get('requestId')},500);});
  app.notFound(c=>c.json({type:'error',code:'not_found',message:'Endpoint not found'},404));
- app.get('/health',c=>c.json({type:'health',ok:true,mode:service.local?'local':'production'}));
+ app.get(HEALTH_PATH, c => {
+  const health: Health = {type: 'health', ok: true, mode: service.local ? 'local' : 'production'};
+  return c.json(health);
+ });
  const devCreated=new Map<string,number>();
  const devTokens=new Map<string,string>([['dev-local','local-user']]);
  async function session(request:Request){

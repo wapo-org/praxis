@@ -27,7 +27,7 @@ describe('Vercel function entry', () => {
     const exported = (source: string) => [...source.matchAll(/export const (\w+) = handler/g)].map(match => match[1]);
     const methods = exported(read('src/vercel.ts'));
     expect(methods.length).toBeGreaterThan(0);
-    const shim = /export \{([^}]+)\} from/.exec(read('api/index.mjs'))?.[1].split(',').map(name => name.trim());
+    const shim = /export \{([^}]+)\} from/.exec(read('api/index.mjs'))?.[1]?.split(',').map(name => name.trim());
     expect(shim).toEqual(['default', ...methods]);
   });
 });
