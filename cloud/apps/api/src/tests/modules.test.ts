@@ -28,7 +28,13 @@ async function runToEnd(f: ReturnType<typeof setup>, chatId: string, text: strin
   const run = await (await f.req('/v1/runs', {type: 'run.start', chatId, text, attachmentIds})).json();
   if (!run.id) throw new Error(JSON.stringify(run));
   await f.service.drain();
-  return RunSnapshotSchema.parse(await (await f.req(`/v1/runs/${run.id}/snapshot`)).json());
+  let snapshot = RunSnapshotSchema.parse(await (await f.req(`/v1/runs/${run.id}/snapshot`)).json());
+  for (const approval of snapshot.pendingApprovals.filter(item => item.toolName === 'run_javascript')) {
+    await f.req(`/v1/runs/${run.id}/approvals`, {type: 'approval.decision', approvalId: approval.id, decision: 'allowOnce'});
+    await f.service.drain();
+    snapshot = RunSnapshotSchema.parse(await (await f.req(`/v1/runs/${run.id}/snapshot`)).json());
+  }
+  return snapshot;
 }
 
 describe('feature modules mounted under /v1', () => {
@@ -41,6 +47,26 @@ describe('feature modules mounted under /v1', () => {
     const created = await f.req('/v1/skills', {type: 'skill.input', name: 'haiku-writer', description: 'Writes haiku on request', document: skillDoc});
     expect(created.status).toBeLessThan(300);
     expect((await f.req('/v1/oauth/client-metadata.json', undefined, 'GET', false)).status).toBe(200);
+  });
+
+  it('parks JavaScript sandbox calls for approval before writing or calling tools', async () => {
+    const fake = fakeOpenAI([toolCall('run_javascript', {code: 'kv.set("x", 1)' }), done]);
+    const f = setup(fake.fetcher);
+    const {chat} = await realChat(f, fake);
+    const started = await (await f.req('/v1/runs', {type: 'run.start', chatId: chat.id, text: 'Store a value'})).json();
+    await f.service.drain();
+    const parked = RunSnapshotSchema.parse(await (await f.req(`/v1/runs/${started.id}/snapshot`)).json());
+
+    expect(parked.run.status).toBe('awaitingApproval');
+    expect(parked.pendingApprovals[0]?.toolName).toBe('run_javascript');
+    const decision = await f.req(`/v1/runs/${started.id}/approvals`, {
+      type: 'approval.decision', approvalId: parked.pendingApprovals[0]!.id, decision: 'allowOnce',
+    });
+    expect(decision.status).toBe(202);
+    await f.service.drain();
+    const completed = RunSnapshotSchema.parse(await (await f.req(`/v1/runs/${started.id}/snapshot`)).json());
+
+    expect(completed.run.status).toBe('completed');
   });
 
   it('freezes builtin tools + skill catalog and runs load_skill and run_javascript through the loop', async () => {

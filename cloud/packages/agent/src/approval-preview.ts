@@ -1,8 +1,8 @@
 import {APPROVAL_PREVIEW_CHARACTERS_MAX, type JsonObject, type JsonValue} from '@praxis/protocol';
 import {redactKey} from './openrouter.js';
 
-const SENSITIVE_FIELD = /password|passphrase|secret|token|api[_-]?key|credential|authorization|cookie|^headers$|^env$/i;
-const INLINE_SECRET = /\b(password|passphrase|secret|token|api[_-]?key|authorization)(\s*[:=]\s*|\s+)(?:"[^"]*"|'[^']*'|\S+)/gi;
+const SENSITIVE_FIELD = /password|passphrase|secret|token|api[_-]?key|private[_-]?key|credential|authorization|cookie|^headers$|^env$|^auth$|(?:^|[_-])key(?:$|[_-])/i;
+const INLINE_SECRET = /\b(password|passphrase|secret|token|api[_-]?key|private[_-]?key|authorization|auth|key)(\s*[:=]\s*|\s+(?:is\s+)?)(?:"[^"]*"|'[^']*'|\S+)/gi;
 const URL_CREDENTIALS = /(:\/\/)[^\s/@]+@/g;
 const PREVIEW_DEPTH_MAX = 4;
 const PREVIEW_ENTRIES_MAX = 12;

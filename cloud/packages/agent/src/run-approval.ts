@@ -56,7 +56,7 @@ export async function createPendingApproval(
 }
 
 export function privateArguments(cp: AgentCheckpoint, tool: AgentTool | undefined): boolean {
-  return !tool || !!tool.classify || runToolDecision(cp, tool, tool.spec, '').decision !== 'allow';
+  return !tool || tool.privateArguments === true || !!tool.classify || runToolDecision(cp, tool, tool.spec, '').decision !== 'allow';
 }
 
 export function publicToolMessage(cp: AgentCheckpoint, message: Message, tools: ReadonlyMap<string, AgentTool>): Message {

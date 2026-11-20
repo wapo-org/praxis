@@ -63,6 +63,8 @@ export interface AgentTool {
   spec:ToolSpec;
   /** Hidden tools are reachable through callTool only, never directly from a model. */
   hidden?:boolean;
+  /** Tool arguments can contain credentials and must not be streamed or committed publicly. */
+  privateArguments?:boolean;
   unavailableReason?:string;
   /** Trusted adapter classification; the displayed frozen catalog stays unchanged. */
   classify?(args:JsonValue):{traits:ToolSpec['traits'];policyKey?:string};

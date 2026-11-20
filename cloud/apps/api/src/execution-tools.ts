@@ -16,6 +16,7 @@ export function adaptTool(tool: FeatureTool, featureCtx?: FeatureContext): Agent
     spec: {type: 'tool.spec', ...(tool.originalName ? {originalName:tool.originalName} : {}), name: tool.name, description: tool.description, inputSchema: tool.inputSchema, source: tool.source, traits: tool.traits},
     ...(tool.classify ? {classify: (args: JsonValue) => tool.classify!(args)} : {}),
     ...(tool.hidden ? {hidden: true} : {}),
+    ...(tool.privateArguments ? {privateArguments: true} : {}),
     async execute(args, context): Promise<ToolResult> {
       try {
         const secrets=featureCtx?await executionSecrets(featureCtx,context.chatId):undefined;

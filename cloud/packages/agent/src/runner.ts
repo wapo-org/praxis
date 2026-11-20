@@ -119,7 +119,7 @@ export class AgentRunner {
     try {
       await this.checkCancel(cp);
       if(cp.approval||cp.elicitation)return cp;
-      cp.run.status='running';
+      cp.run.status='running';await this.save(cp);
       if(cp.phase==='model')await this.model(cp);else if(cp.phase==='tools')await this.toolsStep(cp);
     }catch(error) {
       if(error instanceof ExecutionFenced)throw error;
