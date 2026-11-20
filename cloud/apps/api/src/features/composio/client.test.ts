@@ -4,7 +4,7 @@ import {COMPOSIO_FIREWALL_HOOK_ID} from '@praxis/protocol';
 import {parseTenantId} from '@praxis/types';
 import {COMPOSIO_READ_BOUNDARY, classifyMetadata, planBatch, planClassification} from './classify.js';
 import {EXECUTE_FIXTURES, fakeComposio, sessionCreated, TOOLS} from './fixture.js';
-import {chatAccounts, sessionConfig} from './session.js';
+import {byCodeUnit, chatAccounts, sessionConfig} from './session.js';
 
 const signal = new AbortController().signal;
 const tenant = parseTenantId(`tn_${'cd'.repeat(32)}`);
@@ -23,6 +23,13 @@ describe('Tool Router session config', () => {
       connected_accounts: {gmail: ['ca_gmail'], slack: ['ca_slack']},
       instant: false, manage_connections: {enable: false}, workbench: {enable: false}, proxy_execute: {enable: false},
     });
+  });
+
+  it('orders toolkits by code unit, independent of input order and locale', () => {
+    const accounts = ['b', 'B', 'a', 'é'].map(toolkit => ({toolkit, connectedAccountId: `ca_${toolkit}`}));
+    expect(sessionConfig(tenant, accounts).toolkits).toEqual({enable: ['B', 'a', 'b', 'é']});
+    expect(sessionConfig(tenant, [...accounts].reverse()).toolkits).toEqual({enable: ['B', 'a', 'b', 'é']});
+    expect(['b', 'a', 'a'].sort(byCodeUnit)).toEqual(['a', 'a', 'b']);
   });
 
   it('refuses to build an unscoped session', () => {
@@ -99,5 +106,7 @@ describe('trusted classification', () => {
   it('plans a connect request when an inner action belongs to an unconnected app', async () => {
     expect(await planBatch(batch('GMAIL_FETCH_EMAILS', 'SLACK_SEND_MESSAGE'), allowed, lookup))
       .toEqual({kind: 'connect', toolkits: ['slack']});
+    expect(await planBatch(batch('SLACK_SEND_MESSAGE', 'GMAIL_SEND_EMAIL'), new Set(), lookup))
+      .toEqual({kind: 'connect', toolkits: ['gmail', 'slack']});
   });
 });

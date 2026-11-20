@@ -9,6 +9,12 @@ export const COMPOSIO_FIREWALL_HOOK = {
   handler: {type: 'prompt_injection_check', action: 'block'},
 } as const satisfies NonNullable<SessionCreateParams['hooks']>[number];
 
+/** Locale-independent code-unit order, so session config and connect lists are byte-identical across hosts. */
+export function byCodeUnit(a: string, b: string): number {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
+
 /** Chat scope: disabled app connectors drop out; a chat that names Composio connectors allows only those. */
 export function chatAccounts(accounts: readonly ComposioConnectedAccount[], chat: Pick<Chat, 'connectorIds' | 'disabledConnectorIds'>): ComposioConnectedAccount[] {
   const named = chat.connectorIds.filter(id => id.startsWith(COMPOSIO_CONNECTOR_PREFIX));
@@ -21,7 +27,7 @@ export function chatAccounts(accounts: readonly ComposioConnectedAccount[], chat
 /** Pins each toolkit to the user's recorded connected account; instant accounts, workbench and proxy calls stay off. */
 export function sessionConfig(tenantId: TenantId, accounts: readonly ComposioConnectedAccount[]): SessionCreateParams {
   if (!accounts.length) throw new Error('A Tool Router session needs at least one connected toolkit');
-  const toolkits = [...new Set(accounts.map(account => account.toolkit))].sort();
+  const toolkits = [...new Set(accounts.map(account => account.toolkit))].sort(byCodeUnit);
   const pinned = toolkits.map(toolkit => [toolkit, accounts
     .filter(account => account.toolkit === toolkit).map(account => account.connectedAccountId)] as const);
   return {

@@ -52,9 +52,9 @@ describe('Composio Tool Router in the AgentRunner', () => {
     const f = fixture([{name: NAMES.search, args: {queries: [{use_case: 'read my email'}]}}, {name: NAMES.multiExecute, args: read}]);
     const done = await f.runner.run(f.input);
     expect(done.run.status).toBe('completed');
-    const meta = [NAMES.search, NAMES.schemas, NAMES.multiExecute].sort();
+    const meta = [NAMES.search, NAMES.schemas, NAMES.multiExecute];
     expect(f.requests).toHaveLength(3);
-    for (const tools of f.requests) expect([...tools].sort()).toEqual(meta);
+    for (const tools of f.requests) expect(new Set(tools)).toEqual(new Set(meta));
     expect(JSON.stringify(first(done))).toContain('GMAIL_FETCH_EMAILS');
   });
 

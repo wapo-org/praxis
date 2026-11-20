@@ -1,6 +1,7 @@
 import {classifyInvocation, type ToolClassification, type ToolClassifier} from '@praxis/agent';
 import {COMPOSIO_META_TOOL_NAMES, COMPOSIO_TOOL_HINTS, ComposioMultiExecuteInputSchema, type JsonValue} from '@praxis/protocol';
 import type {ToolMetadata} from './client.js';
+import {byCodeUnit} from './session.js';
 
 /** Search and schema lookups only read Composio's catalogue; results still taint the run. */
 export const COMPOSIO_READ_BOUNDARY: ToolClassification = {capabilities: ['read'], decision: 'allow', untrustedSource: true};
@@ -43,7 +44,7 @@ export async function planBatch(args: JsonValue, allowedToolkits: ReadonlySet<st
   const found = new Map(await Promise.all(slugs.map(async slug => [slug, await metadata(slug)] as const)));
   const unconnected = [...new Set([...found.values()]
     .flatMap(entry => entry ? [entry.toolkit.slug.toLowerCase()] : [])
-    .filter(toolkit => !allowedToolkits.has(toolkit)))].sort();
+    .filter(toolkit => !allowedToolkits.has(toolkit)))].sort(byCodeUnit);
   if (unconnected.length) return {kind: 'connect', toolkits: unconnected};
   return {
     kind: 'dispatch',

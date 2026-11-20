@@ -10,7 +10,7 @@ import type {ExecuteResult, ToolMetadata} from './client.js';
 import {COMPOSIO_BATCH_BOUNDARY, COMPOSIO_READ_BOUNDARY, planBatch, planClassification, type BatchAction} from './classify.js';
 import {COMPOSIO_TEXT as TEXT} from './constants.js';
 import type {ComposioPorts} from './ports.js';
-import {chatAccounts, sessionConfig} from './session.js';
+import {byCodeUnit, chatAccounts, sessionConfig} from './session.js';
 
 /** Per-turn memo: one Tool Router session and one metadata lookup per slug, never shared across users or turns. */
 interface TurnRouter {
@@ -204,7 +204,7 @@ async function untrusted(ports: ComposioPorts, context: ToolContext, value: Reco
 }
 
 function connectRequired(toolkits: readonly string[]): ToolResult {
-  const unique = [...new Set(toolkits)].sort();
+  const unique = [...new Set(toolkits)].sort(byCodeUnit);
   const request = ComposioConnectRequiredSchema.parse({
     type: 'composio.connect-required',
     toolkits: unique.map(toolkit => ({toolkit, connectorId: composioConnectorId(toolkit)})),
