@@ -3,7 +3,7 @@ import { ACCOUNT_DELETE_FRESHNESS_MS, AccountDeleteSchema } from '@praxis/protoc
 import { blobOwnerTag } from './blobOwner.js';
 import { ConvexError, v } from 'convex/values';
 import { components, internal } from './_generated/api.js';
-import { mutation, query, serverMutation, serverQuery } from './functions.js';
+import { mutation, query, serverAccountMutation, serverQuery } from './functions.js';
 import type { MutationCtx, QueryCtx } from './functions.js';
 import type { Id } from './_generated/dataModel.js';
 import {activeOwner} from './accountOwner.js';
@@ -73,15 +73,17 @@ export const confirmDeletion = mutation({
 });
 
 export const active = serverQuery({
-  args: { serverToken: v.string(), userId: v.string() },
-  handler: async (ctx, a) => {
-    return activeOwner(ctx, a.userId);
+  args: {},
+  handler: async (ctx, { userId }) => {
+    return activeOwner(ctx, userId);
   },
 });
+
 export const pending = serverQuery({
-  args: { serverToken: v.string(), userId: v.id('users') },
+  args: {},
   handler: async (ctx, { userId }) => {
-    return (await ctx.db.get(userId))?.deleting === true;
+    const ownerId = ctx.db.normalizeId('users', userId);
+    return ownerId !== null && (await ctx.db.get(ownerId))?.deleting === true;
   },
 });
 
@@ -92,8 +94,8 @@ async function ownerRow(ctx: MutationCtx, userId: string) {
   return { ownerId, owner: await ctx.db.get(ownerId) };
 }
 
-export const begin = serverMutation({
-  args: { serverToken: v.string(), userId: v.string(), keepSessionId: v.optional(v.string()) },
+export const begin = serverAccountMutation({
+  args: { keepSessionId: v.optional(v.string()) },
   handler: async (ctx, a) => {
     const { ownerId, owner } = await ownerRow(ctx, a.userId);
     if (!owner) throw new ConvexError('Account unavailable');
@@ -112,10 +114,8 @@ export const begin = serverMutation({
   },
 });
 /** Bounded retryable purge erasing rows, blobs, and file tickets atomically. */
-export const purge = serverMutation({
+export const purge = serverAccountMutation({
   args: {
-    serverToken: v.string(),
-    userId: v.string(),
     blobCursor: v.optional(v.string()),
     blobsDone: v.optional(v.boolean()),
   },

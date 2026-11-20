@@ -1,4 +1,5 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
+import { OWNER_ERRORS } from '@praxis/protocol';
 import { v, ConvexError, type ObjectType, type PropertyValidators } from 'convex/values';
 import { internal } from './_generated/api.js';
 import { bounded, requireServer } from './access.js';
@@ -24,78 +25,92 @@ export type DataModel = DataModelFromSchemaDefinition<typeof schema>;
 export type QueryCtx = GenericQueryCtx<DataModel>;
 export type MutationCtx = GenericMutationCtx<DataModel>;
 export type ActionCtx = GenericActionCtx<DataModel>;
-
-type WrappedDefinition = {
-  args?: unknown;
-  returns?: unknown;
-  handler: (ctx: unknown, args: Record<string, unknown>) => unknown;
-};
-
-type OwnerArgs = Record<string, unknown> & {userId: string};
-type ServerArgs = OwnerArgs & {serverToken: string; requireOwner?: boolean};
-
-function definitionOf(value: unknown): WrappedDefinition {
-  if (typeof value === 'function') {
-    return {handler: value as WrappedDefinition['handler']};
-  }
-  if (!value || typeof value !== 'object' || !('handler' in value) || typeof value.handler !== 'function') {
-    throw new TypeError('A Convex function definition must provide a handler');
-  }
-  return value as WrappedDefinition;
-}
-
-function withDefinition(definition: WrappedDefinition, handler: WrappedDefinition['handler']) {
-  return {...definition, handler};
-}
-
-export async function authenticatedUserId(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<string> {
-  const userId = await getAuthUserId(ctx as unknown as QueryCtx);
-  if (!userId) throw new ConvexError('Authentication required');
-  return userId;
-}
-
-export async function assertActiveOwner(ctx: QueryCtx | MutationCtx | ActionCtx, userId: string): Promise<void> {
-  const active = 'db' in ctx
-    ? await activeOwner(ctx, userId)
-    : await ctx.runQuery(internal.functions.ownerActive, {userId});
-  if (!active) throw new ConvexError('Account unavailable');
-}
-
-function authDefinition(definition: unknown) {
-  const original = definitionOf(definition);
-  return withDefinition(original, async (ctx, args) => {
-    const userId = await authenticatedOwner(ctx as ActionCtx);
-    return original.handler(ctx, {...args, userId});
-  });
-}
-
-function serverDefinition(definition: unknown, checkOwner: boolean) {
-  const original = definitionOf(definition);
-  return withDefinition(
-    {...original, args: {...(original.args as Record<string, unknown> | undefined), requireOwner: v.optional(v.boolean())}},
-    async (ctx, args) => {
-      const serverArgs = args as ServerArgs;
-      await requireServer(serverArgs.serverToken);
-      bounded(serverArgs.userId);
-      if (checkOwner && serverArgs.requireOwner) await assertActiveOwner(ctx as QueryCtx | MutationCtx | ActionCtx, serverArgs.userId);
-      return original.handler(ctx, args);
-    },
-  );
-}
+type AnyCtx = QueryCtx | MutationCtx | ActionCtx;
 
 export const query: QueryBuilder<DataModel, 'public'> = queryGeneric;
 export const mutation: MutationBuilder<DataModel, 'public'> = mutationGeneric;
 export const action: ActionBuilder<DataModel, 'public'> = actionGeneric;
+export const internalQuery: QueryBuilder<DataModel, 'internal'> = internalQueryGeneric;
+export const internalMutation: MutationBuilder<DataModel, 'internal'> = internalMutationGeneric;
+export const httpAction = httpActionGeneric;
 
-type OwnedDefinition<Ctx, Args extends PropertyValidators, Result> = {
-  args: Args & {userId?: never; ownerId?: never; serverToken?: never};
-  handler: (ctx: Ctx, userId: string, args: ObjectType<Args>) => Result;
+/** The wrappers supply the owner; a definition that declared one would let its caller choose it. */
+type NoOwnerArgs = { userId?: never; ownerId?: never; serverToken?: never };
+
+const serverArgs = { serverToken: v.string(), userId: v.string() };
+type ServerArgs = ObjectType<typeof serverArgs>;
+
+export type OwnedArgs<Args extends PropertyValidators> = ObjectType<Args> & { userId: string };
+/** What a server handler sees: the caller's args with `userId` vouched for by the token, minus the token. */
+export type ServerOwnedArgs<Args extends PropertyValidators> = Omit<ObjectType<Args> & ServerArgs, 'serverToken'>;
+
+type Definition<Ctx, Args extends PropertyValidators, HandlerArgs, Result> = {
+  args: Args & NoOwnerArgs;
+  handler: (ctx: Ctx, args: HandlerArgs) => Promise<Result>;
 };
+type OwnedDefinition<Ctx, Args extends PropertyValidators, Result> = Definition<Ctx, Args, OwnedArgs<Args>, Result>;
+type ServerDefinition<Ctx, Args extends PropertyValidators, Result> = Definition<Ctx, Args, ServerOwnedArgs<Args>, Result>;
 
-export async function authenticatedOwner(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<string> {
-  const userId = await authenticatedUserId(ctx);
+/** `active` rejects owners whose account deletion has begun; `any` is for reads and the deletion lifecycle itself. */
+type OwnerFence = 'active' | 'any';
+
+export const ownerActive = internalQueryGeneric({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => activeOwner(ctx, userId),
+});
+
+export async function assertActiveOwner(ctx: AnyCtx, userId: string): Promise<void> {
+  const active = 'db' in ctx
+    ? await activeOwner(ctx, userId)
+    : await ctx.runQuery(internal.functions.ownerActive, { userId });
+  if (!active) throw new ConvexError(OWNER_ERRORS.accountUnavailable);
+}
+
+/** Action `runQuery` differs from the query one only in its unused options argument. */
+type SessionReader = Pick<QueryCtx, 'auth' | 'runQuery'>;
+
+async function authenticatedOwner(ctx: AnyCtx): Promise<string> {
+  const userId = await getAuthUserId(ctx as SessionReader);
+  if (userId === null) throw new ConvexError(OWNER_ERRORS.unauthenticated);
   await assertActiveOwner(ctx, userId);
   return userId;
+}
+
+async function verifyServerOwner(ctx: AnyCtx, args: ServerArgs, fence: OwnerFence): Promise<void> {
+  await requireServer(args.serverToken);
+  bounded(args.userId);
+  if (fence === 'active') await assertActiveOwner(ctx, args.userId);
+}
+
+function ownedArgs<Args extends PropertyValidators>(args: ObjectType<Args>, userId: string): OwnedArgs<Args> {
+  return { ...args, userId };
+}
+
+/** Drops the server credential so handlers never see or forward it. */
+async function serverOwnedArgs<Args extends PropertyValidators>(
+  ctx: AnyCtx,
+  args: ObjectType<Args> & ServerArgs,
+  fence: OwnerFence,
+): Promise<ServerOwnedArgs<Args>> {
+  await verifyServerOwner(ctx, args, fence);
+  const { serverToken: _serverToken, ...owned } = args;
+  return owned;
+}
+
+function withServerArgs<Args extends PropertyValidators>(args: Args): Args & typeof serverArgs {
+  return { ...args, ...serverArgs };
+}
+
+export function authedQuery<Args extends PropertyValidators, Result>(
+  definition: OwnedDefinition<QueryCtx, Args, Result>,
+) {
+  return query({
+    args: definition.args,
+    handler: async (ctx, args) => {
+      const userId = await authenticatedOwner(ctx);
+      return definition.handler(ctx, ownedArgs<Args>(args as ObjectType<Args>, userId));
+    },
+  });
 }
 
 export function authedMutation<Args extends PropertyValidators, Result>(
@@ -103,22 +118,71 @@ export function authedMutation<Args extends PropertyValidators, Result>(
 ) {
   return mutation({
     args: definition.args,
-    handler: async (ctx, args) => definition.handler(ctx, await authenticatedOwner(ctx), args as ObjectType<Args>),
+    handler: async (ctx, args) => {
+      const userId = await authenticatedOwner(ctx);
+      return definition.handler(ctx, ownedArgs<Args>(args as ObjectType<Args>, userId));
+    },
   });
 }
 
-export const authedAction = ((definition: unknown) => actionGeneric(authDefinition(definition) as never)) as unknown as ActionBuilder<DataModel, 'public'>;
+export function authedAction<Args extends PropertyValidators, Result>(
+  definition: OwnedDefinition<ActionCtx, Args, Result>,
+) {
+  return action({
+    args: definition.args,
+    handler: async (ctx, args) => {
+      const userId = await authenticatedOwner(ctx);
+      return definition.handler(ctx, ownedArgs<Args>(args as ObjectType<Args>, userId));
+    },
+  });
+}
 
-export const serverQuery = ((definition: unknown) => queryGeneric(serverDefinition(definition, false) as never)) as unknown as QueryBuilder<DataModel, 'public'>;
-export const serverMutation = ((definition: unknown) => mutationGeneric(serverDefinition(definition, true) as never)) as unknown as MutationBuilder<DataModel, 'public'>;
-export const serverAction = ((definition: unknown) => actionGeneric(serverDefinition(definition, false) as never)) as unknown as ActionBuilder<DataModel, 'public'>;
+/** Worker reads: the server token vouches for `userId`; reads of a deleting owner are filtered per table. */
+export function serverQuery<Args extends PropertyValidators, Result>(
+  definition: ServerDefinition<QueryCtx, Args, Result>,
+) {
+  return query({
+    args: withServerArgs<Args>(definition.args),
+    handler: async (ctx, args) => {
+      const owned = await serverOwnedArgs<Args>(ctx, args as ObjectType<Args> & ServerArgs, 'any');
+      return definition.handler(ctx, owned);
+    },
+  });
+}
 
-export const ownerActive = internalQueryGeneric({
-  args: {userId: v.string()},
-  handler: async (ctx, {userId}) => activeOwner(ctx, userId),
-});
+export function serverMutation<Args extends PropertyValidators, Result>(
+  definition: ServerDefinition<MutationCtx, Args, Result>,
+) {
+  return mutation({
+    args: withServerArgs<Args>(definition.args),
+    handler: async (ctx, args) => {
+      const owned = await serverOwnedArgs<Args>(ctx, args as ObjectType<Args> & ServerArgs, 'active');
+      return definition.handler(ctx, owned);
+    },
+  });
+}
 
-export const internalQuery: QueryBuilder<DataModel, 'internal'> = internalQueryGeneric;
-export const internalMutation: MutationBuilder<DataModel, 'internal'> = internalMutationGeneric;
+/** Account deletion lifecycle only: it must keep running after `account:begin` fences the owner. */
+export function serverAccountMutation<Args extends PropertyValidators, Result>(
+  definition: ServerDefinition<MutationCtx, Args, Result>,
+) {
+  return mutation({
+    args: withServerArgs<Args>(definition.args),
+    handler: async (ctx, args) => {
+      const owned = await serverOwnedArgs<Args>(ctx, args as ObjectType<Args> & ServerArgs, 'any');
+      return definition.handler(ctx, owned);
+    },
+  });
+}
 
-export const httpAction = httpActionGeneric;
+export function serverAction<Args extends PropertyValidators, Result>(
+  definition: ServerDefinition<ActionCtx, Args, Result>,
+) {
+  return action({
+    args: withServerArgs<Args>(definition.args),
+    handler: async (ctx, args) => {
+      const owned = await serverOwnedArgs<Args>(ctx, args as ObjectType<Args> & ServerArgs, 'active');
+      return definition.handler(ctx, owned);
+    },
+  });
+}

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ChatSchema, MessageSchema } from '@praxis/protocol';
 import { createApp } from '../app.js';
 import { createMemoryAdapters } from '../adapters/memory.js';
-import { convexHarness } from '../adapters/testing/convex-harness.js';
+import { aliasOwners, convexHarness } from '../adapters/testing/convex-harness.js';
 import { EMBEDDING_DIMENSIONS, hashEmbedder, loadMiniLmEmbedder, terms, type Embedder } from '../embedding.js';
 import { MAX_PHRASES_PER_CHAT, SearchIndexer, chatItems, chunk, convexVectorIndex, memoryVectorIndex, phrases, type VectorIndex } from '../search-index.js';
 import { SEMANTIC_LIMIT, loadChatDocs } from '../search.js';
@@ -80,7 +80,10 @@ async function seedSource(add: Awaited<ReturnType<typeof world>>['add']) {
 
 const modes: [string, () => VectorIndex][] = [
   ['memory', memoryVectorIndex],
-  ['convex', () => convexVectorIndex(convexHarness().rpc)],
+  ['convex', () => {
+    const { rpc, owner } = convexHarness();
+    return convexVectorIndex(aliasOwners(rpc, owner));
+  }],
 ];
 for (const [mode, makeIndex] of modes)
   describe(`semantic search: ${mode} vectors`, () => {

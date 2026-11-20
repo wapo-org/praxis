@@ -36,6 +36,13 @@
       "covers": [{"command": "gate"}]
     },
     {
+      "id": "convex.owner-wrappers",
+      "title": "Authed and server Convex wrappers derive or verify the owner; no public function takes a client owner id",
+      "issue": "PRA-35",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
       "id": "convex.owner-isolation",
       "title": "Typed Convex rows, authenticated ownership, atomic message sequencing and account purge",
       "issue": "PRA-24",

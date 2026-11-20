@@ -3,7 +3,7 @@ import {vResultValidator, vWorkflowId, type WorkflowId} from '@convex-dev/workfl
 import {z} from 'zod';
 import {IdSchema, RUN_START_CONFLICT_CODE, TURN_INDEX_MAX, WorkflowRunStatusSchema, type WorkflowRunStatus} from '@praxis/protocol';
 import {internal} from './_generated/api.js';
-import {authedMutation, authenticatedOwner, internalMutation, internalQuery, query, type MutationCtx, type QueryCtx} from './functions.js';
+import {authedMutation, authedQuery, internalMutation, internalQuery, type MutationCtx, type QueryCtx} from './functions.js';
 import {workflow} from './workflows/agentRun.js';
 import {ownedChat, ownedRun} from './domainRecords.js';
 import {activeOwner} from './accountOwner.js';
@@ -96,10 +96,9 @@ export const transition = internalMutation({
   },
 });
 
-export const get = query({
+export const get = authedQuery({
   args: {runId: v.string()},
-  handler: async (ctx, {runId}) => {
-    const userId = await authenticatedOwner(ctx);
+  handler: async (ctx, {userId, runId}) => {
     const run = await ownedRun(ctx, userId, IdSchema.parse(runId));
     if (!run) return null;
     const chat = await ownedChat(ctx, userId, run.chatId);
@@ -124,7 +123,7 @@ async function createRun(ctx: MutationCtx, userId: string, chatId: string, start
 
 export const start = authedMutation({
   args: {chatId: v.string(), startTurnIndex: v.optional(v.number()), idempotencyKey: v.optional(v.string())},
-  handler: async (ctx, userId, args): Promise<Id<'runs'>> => {
+  handler: async (ctx, {userId, ...args}): Promise<Id<'runs'>> => {
     const {chatId, startTurnIndex, idempotencyKey: key} = startInput.parse(args);
     const chat = await ownedChat(ctx, userId, chatId);
     if (!chat || chat.value.deletedAt) throw new ConvexError(WORKFLOW_ERRORS.unavailable);
@@ -147,7 +146,7 @@ export const start = authedMutation({
 
 export const cancel = authedMutation({
   args: {runId: v.id('runs')},
-  handler: async (ctx, userId, {runId}) => {
+  handler: async (ctx, {userId, runId}) => {
     const run = await ownedRun(ctx, userId, runId);
     if (!run?.workflow) throw new ConvexError(WORKFLOW_ERRORS.unavailable);
     await requestCancellation(ctx, {...run, workflow: run.workflow});
