@@ -1,6 +1,8 @@
 // Leave capacity for other scheduled jobs on Convex Free/Starter's eight-job limit.
 export const WORKFLOW_PARALLELISM_MAX = 4;
 export const RUN_UNPARK_EVENT = 'run-unpark';
+/** Turns per workflow generation before continue-as-new; a full generation journals about 35 KB of 8 MiB. */
+export const GENERATION_TURNS_MAX = 40;
 /** Worker 5xx, timeouts and unresolved 409s retry with backoff (2 s, 4 s, 8 s) before the run fails. */
 export const TURN_ACTION_RETRY = {maxAttempts: 4, initialBackoffMs: 2_000, base: 2};
 export const TURN_WORKER_URL_ENV = 'PRAXIS_API_URL';
