@@ -45,7 +45,7 @@ export async function prepareInvocation(cp: AgentCheckpoint, call: PendingCall, 
       return {ok: false, error: 'Tool policy classification failed.'} as const;
     }
   }
-  return {ok: true, key, decision: runToolDecision(cp, live, spec, key, boundary), spec, boundary} as const;
+  return {ok: true, key, decision: runToolDecision(cp, live, spec, key, boundary), spec} as const;
 }
 
 export async function createPendingApproval(
@@ -60,6 +60,7 @@ export async function createPendingApproval(
     type: 'approval', id, callId: call.id, toolName: call.name, source: spec.source,
     arguments: preview, reason, title: `Allow ${spec.originalName ?? call.name}?`,
     ...(call.parentCallId && {parentCallId: call.parentCallId}),
+    ...(cp.run.taint && {taintSource: cp.run.taint.source}),
   };
 }
 

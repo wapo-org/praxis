@@ -85,6 +85,7 @@ const part = v.object({
   finishedAt: optionalString,
   durationMs: v.optional(v.number()),
   annotations: v.optional(v.array(annotation)),
+  taintSource: optionalString,
 });
 const message = v.object({
   type: v.literal('message'),
@@ -115,6 +116,7 @@ const run = v.object({
   clientTurnId: optionalString,
   parentRunId: optionalString,
   promptStartedAt: optionalString,
+  taint: v.optional(v.object({tainted: v.literal(true), source: v.string(), callId: v.string()})),
 });
 
 const storeFields = {userId: v.string(), id: v.string(), revision: v.number(), updatedAt: v.string()};

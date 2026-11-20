@@ -3,7 +3,7 @@ import {ReasoningEffortSchema,ReasoningShapeSchema,StreamAnnotationSchema} from 
 import {
   ToolErrorSchema, ApprovalSchema, CapabilitiesSchema, ChatSchema, ConversationSetupSchema, ElicitationSchema,
   IdSchema, JsonObjectSchema, JsonValueSchema, MessagePartSchema, MessageSchema, RunSchema,
-  UsageSchema, type ApprovalBinding, type ApprovalDecision, type PendingApprovalRecord,
+  UsageSchema, TaintSourceSchema, type ApprovalBinding, type ApprovalDecision, type PendingApprovalRecord,
   type Capabilities, type JsonObject, type JsonValue, type Mode, type RunEventPayload, type ToolSpec,
 } from '@praxis/protocol';
 import type {ToolClassification} from './boundary/policy.js';
@@ -90,7 +90,9 @@ export const CheckpointSchema = z.object({
   phase:z.enum(['model','tools','terminal']),iteration:z.number().int().nonnegative(),
   pending:z.array(PendingCallSchema),
   /** started is saved before execution so replay detects interrupted calls. */
-  calls:z.record(z.string(),z.object({call:PendingCallSchema,result:ToolResultSchema.optional(),key:z.string().optional(),started:z.boolean().optional(),approvalId:IdSchema.optional()})),
+  calls:z.record(z.string(),z.object({call:PendingCallSchema,result:ToolResultSchema.optional(),key:z.string().optional(),started:z.boolean().optional(),approvalId:IdSchema.optional(),
+    /** Set when the stored result carries untrusted content; copied onto the committed toolResult part. */
+    taintSource:TaintSourceSchema.optional()})),
   /** Durable outbox awaiting messages.committed delivery. */
   outbox:z.array(MessageSchema).default([]),
   approval:ApprovalSchema.optional(),elicitation:ElicitationSchema.optional(),
@@ -100,8 +102,6 @@ export const CheckpointSchema = z.object({
   pauses:z.number().int().nonnegative().default(0),maxPauses:z.number().int().nonnegative().default(5),
   compaction:z.object({covered:z.number().int().positive(),fingerprint:z.string(),summary:z.string()}).optional(),
   usage:UsageSchema,
-  /** Set once untrusted content enters context; gates later side effects behind fresh approval. */
-  tainted:z.boolean().default(false),
 });
 export type AgentCheckpoint=z.infer<typeof CheckpointSchema>;
 export type PendingCall=z.infer<typeof PendingCallSchema>;

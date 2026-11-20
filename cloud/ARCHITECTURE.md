@@ -51,7 +51,7 @@ The sync experiment partitions entity hashes into a deterministic tree over stab
 HMAC approval verification with an injected atomic replay store, structural taint joins and meta-tool unwrapping.
 Wire schemas live in `packages/protocol/src/tool-boundary.ts`; the authenticated issuer and durable adapter
 must remain server-owned. The current API adapter returns structured tool errors; the future Modal executor
-adopts `executeBoundary` in PRA-57. This core does not replace the current runner. A tool with
+adopts `executeBoundary`. This core does not replace the current runner. A tool with
 `classifyBoundary` (the Composio batch tool) is reclassified per call from its arguments before the runner decides.
 Shell denials cannot be approved; unrecognized syntax fails closed and unknown commands require approval.
 `boundaryDecision` permits untainted allow calls in Build/Auto when the adapter certifies workspace
@@ -130,7 +130,8 @@ A batch is classified from trusted `GET /tools/{slug}` tags through `classifyInv
 create, update or destructive hints is a read. Every other action, and every unknown slug, needs exact-call approval
 (PRA-56). The executor dispatches the checked inner actions in order, through the session's `execute` endpoint.
 An action for an unconnected app dispatches nothing and returns `composio.connect-required`. All results are
-`untrusted-data`; results over 24k characters spill. Executions are counted per run and call in `toolState` before dispatch.
+`untrusted-data` and taint the run through the PRA-57 `run.taint`/`taintSource` path.
+Results over 24k characters spill. Executions are counted per run and call in `toolState` before dispatch.
 The pinned `@composio/client` **2.1.33** dev dependency supplies types only; Zod adapters `satisfies` them.
 
 ### Composio environment
@@ -255,10 +256,18 @@ output spill. Tool schemas remain identical when disabled or unavailable.
 Each tool carries its PRA-76 classification (`AgentTool.boundary`: read plus
 external-egress, untrusted source). The AgentRunner decides classified tools with
 `boundaryDecision` (`run-boundary.ts`): egress asks for approval in Build/Auto and is
-refused in Ask/Plan; always-allow applies only before taint. Executing an untrusted
-source sets the checkpoint's `tainted` flag, which is also seeded from earlier
-untrusted tool results in the chat; while tainted, non-read-only tools need a fresh
-approval. `read_tool_output` is classified as an untrusted read.
+refused in Ask/Plan; a policy-allow standing grant applies only before taint.
+Executing an untrusted source (a boundary `untrustedSource` read, any MCP connector
+result, a result reporting `tainted`, or a nested call that did) records
+`run.taint = {tainted, source, callId}` on the run row and `taintSource` on the stored
+`toolResult` part. Taint is an OR: the runner never clears it, `syncRun` keeps the stored
+value and the Convex run mutation keeps the prior taint against stale writers. Tools
+receive `ToolContext.tainted`, so spawned subagents inherit it, and a tainted subagent
+result taints the parent. While tainted, every side effect needs a fresh exact-call
+approval and the approval carries `taintSource`, which the card shows as
+"This run read content from …". A new run starts tainted only when a `toolResult` part
+with `taintSource` is still in its history; tool names are never consulted. Compaction
+keeps the run's taint. `read_tool_output` is classified as an untrusted read.
 
 The accounting RPC shapes (`WebSpendRequest`, `WebSpendSettlement`, admission) live
 in `@praxis/protocol`; Convex derives its validators from them and parses with them.

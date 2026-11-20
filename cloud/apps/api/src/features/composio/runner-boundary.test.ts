@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {AgentRunner, BOUNDARY_TEXT, fingerprint, type AgentCheckpoint, type ModelProvider, type RunInput} from '@praxis/agent';
+import {AgentRunner, BOUNDARY_TEXT, fingerprint, textResult, type AgentCheckpoint, type AgentTool, type ModelProvider, type RunInput} from '@praxis/agent';
 import {CapabilitiesSchema, COMPOSIO_META_TOOL_NAMES as NAMES, type Chat, type Mode} from '@praxis/protocol';
 import {createLocalAdapters} from '../../local-memory.js';
 import {decideApproval, readApprovalDecision, recordPendingApproval} from '../../approvals.js';
@@ -19,7 +19,7 @@ function chat(mode: Mode): Chat {
   return {type: 'chat', id: 'c', title: 'T', pinned: false, mode, connectorIds: [], disabledConnectorIds: [], createdAt: TIME, updatedAt: TIME};
 }
 
-function fixture(script: Step[], fake: FakeComposio = fakeComposio(), mode: Mode = 'build') {
+function fixture(script: Step[], fake: FakeComposio = fakeComposio(), mode: Mode = 'build', extra: AgentTool[] = []) {
   const requests: string[][] = [];
   const provider: ModelProvider = {capabilities: CapabilitiesSchema.parse({}), async *stream(request) {
     requests.push(request.tools.map(tool => tool.name));
@@ -30,7 +30,7 @@ function fixture(script: Step[], fake: FakeComposio = fakeComposio(), mode: Mode
     yield {type: 'completed', response: {parts, stop: 'endTurn', usage}};
   }};
   const {store} = createLocalAdapters();
-  const runner = new AgentRunner({provider, tools: composioTools(fake.ports, 'u', chat(mode)), ports: {
+  const runner = new AgentRunner({provider, tools: [...composioTools(fake.ports, 'u', chat(mode)), ...extra], ports: {
     save: async () => {}, emit: async () => {}, isCancelled: async () => false,
     pendingApproval: (userId, pending) => recordPendingApproval(store, userId, pending),
     approvalDecision: (userId, binding, id) => readApprovalDecision(store, userId, binding, id),
@@ -45,6 +45,19 @@ function fixture(script: Step[], fake: FakeComposio = fakeComposio(), mode: Mode
   return {runner, input, fake, requests, approve, store};
 }
 const results = (cp: AgentCheckpoint) => cp.messages.flatMap(m => m.parts).filter(p => p.type === 'toolResult');
+const COMPOSIO_TAINT = 'COMPOSIO MULTI EXECUTE TOOL';
+/** A confined workspace write that Build mode runs on its standing grant while the run is clean. */
+function workspaceWrite(writes: string[]): AgentTool {
+  return {
+    spec: {type: 'tool.spec', name: 'save_note', description: 'Save a note', source: {type: 'builtin'}, traits: [],
+      inputSchema: {type: 'object'}},
+    boundary: {capabilities: ['write'], decision: 'allow', untrustedSource: false},
+    execute: async () => {
+      writes.push('saved');
+      return textResult('saved');
+    },
+  };
+}
 const first = (cp: AgentCheckpoint) => results(cp)[0]?.content?.[0];
 
 describe('Composio Tool Router in the AgentRunner', () => {
@@ -63,7 +76,8 @@ describe('Composio Tool Router in the AgentRunner', () => {
     const done = await f.runner.run(f.input);
     expect(done.run.status).toBe('completed');
     expect(done.approval).toBeUndefined();
-    expect(done.tainted).toBe(true);
+    expect(done.run.taint).toEqual({tainted: true, source: COMPOSIO_TAINT, callId: 'call-1'});
+    expect(results(done)[0]).toMatchObject({callId: 'call-1', taintSource: COMPOSIO_TAINT});
     expect(f.fake.executed()).toEqual([{tool_slug: 'GMAIL_FETCH_EMAILS', arguments: {max_results: 5}}]);
     expect(first(done)).toMatchObject({type: 'untrusted-data', source: 'composio'});
     expect(f.fake.usage).toEqual([expect.objectContaining({runId: 'r', executions: 1})]);
@@ -80,6 +94,16 @@ describe('Composio Tool Router in the AgentRunner', () => {
     const done = await f.approve(parked);
     expect(done.run.status).toBe('completed');
     expect(f.fake.executed()).toEqual(send.tools);
+  });
+
+  it('taints the run like any untrusted read, so a standing grant no longer skips approval', async () => {
+    const writes: string[] = [];
+    const f = fixture([{name: NAMES.multiExecute, args: read}, {name: 'save_note', args: {}}], fakeComposio(), 'build',
+      [workspaceWrite(writes)]);
+    const parked = await f.runner.run(f.input);
+    expect(parked.run.status).toBe('awaitingApproval');
+    expect(parked.approval).toMatchObject({toolName: 'save_note', reason: BOUNDARY_TEXT.tainted, taintSource: COMPOSIO_TAINT});
+    expect(writes).toEqual([]);
   });
 
   it.each([
@@ -139,7 +163,7 @@ describe('Composio results', () => {
   it('keeps passed results structurally untrusted', async () => {
     const {done} = await run('completed');
     expect(first(done)).toMatchObject({type: 'untrusted-data', results: [{ok: true}]});
-    expect(done.tainted).toBe(true);
+    expect(done.run.taint).toMatchObject({tainted: true, source: COMPOSIO_TAINT});
   });
 
   it('spills oversized results and keeps the untrusted envelope', async () => {

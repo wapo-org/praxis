@@ -28,6 +28,11 @@ function ApprovalCard({approval, runId, onResolveApproval}: {
         <span>Approval required · {(approval.title || approval.toolName).replace(/_/g, ' ')}</span>
         {approval.source.serverName && <span className={styles.cardSource}>{approval.source.serverName}</span>}
       </div>
+      {approval.taintSource && (
+        <div data-testid="approval-taint" role="note" className={styles.cardReason}>
+          This run read content from {approval.taintSource}.
+        </div>
+      )}
       {approval.reason && <div className={styles.cardReason}>{approval.reason}</div>}
       {preview && <pre className={styles.cardArgs}>{preview}</pre>}
       {submission === 'failed' && <div role="alert">Could not submit the decision. Try again.</div>}

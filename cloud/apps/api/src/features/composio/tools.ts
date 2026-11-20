@@ -121,7 +121,7 @@ async function schemas(turn: TurnRouter, args: JsonValue): Promise<ToolResult> {
   const tools = found.map(({slug, metadata}) => metadata
     ? {tool_slug: slug, toolkit: metadata.toolkit.slug, description: metadata.description, input_schema: metadata.input_parameters}
     : {tool_slug: slug, error: 'Unknown tool slug.'});
-  return {isError: false, tainted: true, content: [{type: 'untrusted-data', source: 'composio', tools: toJson(tools)}]};
+  return {isError: false, content: [{type: 'untrusted-data', source: 'composio', tools: toJson(tools)}]};
 }
 
 async function multiExecute(ports: ComposioPorts, turn: TurnRouter, args: JsonValue, context: ToolContext): Promise<ToolResult> {
@@ -200,7 +200,7 @@ async function untrusted(ports: ComposioPorts, context: ToolContext, value: Reco
     body = {type: 'untrusted-data', source: 'composio', truncated: true, outputRef,
       preview: text.slice(0, COMPOSIO_LIMITS.RESULT_CHARACTERS_MAX)};
   }
-  return error ? {isError: true, error, tainted: true, content: [body]} : {isError: false, tainted: true, content: [body]};
+  return error ? {isError: true, error, content: [body]} : {isError: false, content: [body]};
 }
 
 function connectRequired(toolkits: readonly string[]): ToolResult {

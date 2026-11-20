@@ -35,7 +35,7 @@ CLI references: [Vercel env force/stdin](https://vercel.com/docs/cli/env), [Conv
 Local development needs no accounts (see README: `npm run dev:local`). This page is for the owner who creates the hosted services.
 Agents never create accounts, deploy or read credentials.
 
-The production composition is `apps/api/src/production.ts`; the Vercel entry is `apps/api/api/index.ts`.
+The production composition is `apps/api/src/production.ts`; the bundle entry is `apps/api/src/vercel.ts`. The Vercel function `apps/api/api/index.mjs` only re-exports the esbuild bundle `dist/index.mjs`: Vercel transpiles function files one by one, and the workspace packages export raw `.ts`, so a TypeScript function fails with `ERR_MODULE_NOT_FOUND`.
 At startup the API checks every required variable. If any are missing or malformed, it exits with one error listing all of them.
 It never falls back to memory adapters or dev auth.
 
@@ -98,14 +98,36 @@ Browser builds get only the API origin, never a secret.
 ## 3. Vercel (API)
 
 1. Create a project from this repo with Root Directory `cloud/apps/api`. Enable "Include files outside the root directory" (npm workspaces).
-2. Framework: Other. `vercel.json` sets install (`cd ../.. && npm ci`), build (`npm run build`), Fluid compute, `maxDuration` 300 s, 1024 MB memory, and routes every path to `api/index.ts`.
+2. Framework: Other. `vercel.json` sets install (`cd ../.. && npm ci`), build (`npm run build`), Fluid compute, `maxDuration` 300 s, 1024 MB memory, and routes every path to `api/index.mjs`, which serves the bundle built by `npm run build`.
 3. Node.js version: 24.x. Add the variables above to Production (and Preview, with separate Convex and Upstash resources if possible).
-4. Deploy. Check `GET /health` → `{"mode":"production"}`.
+4. Deploy. Check `GET /health` → `{"mode":"production"}` (for a protected preview, `npm run verify -- live preview-env`, see [Preview environment](#preview-environment-pra-135)).
 5. Native dependencies: `sharp` (image crop) and `quickjs-emscripten` (JS sandbox) stay external and are installed by `npm ci` on Vercel.
 
 ## 4. Vercel (web)
 
 Create a second project with Root Directory `cloud/apps/web` (see `cloud/docs/web/`). Set its API origin to `PRAXIS_API_URL`, and add its origin to `PRAXIS_WEB_ORIGINS`.
+
+## Preview environment (PRA-135)
+
+Every Vercel preview shares one backend: the `develop` branch aliases of both projects and the shared preview Convex deployment (`convex-preview.yml`).
+
+| Where | Variable | Value |
+|---|---|---|
+| `praxis-api` Preview | `PRAXIS_API_URL` | `https://praxis-api-git-develop-artyazs-projects.vercel.app` |
+| `praxis-api` Preview | `PRAXIS_WEB_ORIGINS` | `https://praxis-web-git-develop-artyazs-projects.vercel.app` |
+| `praxis-api` Preview | `CONVEX_URL`, `PRAXIS_CONVEX_SERVER_TOKEN`, `PRAXIS_TURN_CURRENT_SIGNING_KEY`, `PRAXIS_ENCRYPTION_KEYS` | preview Convex URL; token and signing key equal to the Convex values |
+| `praxis-api` Preview | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` | a separate preview Upstash database and QStash; until they exist the preview API refuses to start |
+| `praxis-web` Preview | `VITE_API_BASE_URL`, `VITE_CONVEX_URL` | the API `develop` alias; the preview Convex URL |
+| Convex preview | `PRAXIS_API_URL` | the API `develop` alias |
+| Convex preview | `SITE_URL` | the web `develop` alias |
+| Convex preview | `PRAXIS_CONVEX_SERVER_TOKEN`, `PRAXIS_TURN_CURRENT_SIGNING_KEY` | same values as `praxis-api` Preview |
+
+- **Why aliases.** `PRAXIS_API_URL`, `PRAXIS_WEB_ORIGINS` and `SITE_URL` are exact origins, and every deployment has its own URL. Vercel keeps `<project>-git-develop-<team>.vercel.app` on the newest `develop` build; branch aliases of other branches end in a per-project hash, so web and API aliases cannot be derived from each other.
+- **Per-PR previews** run their own web build against the `develop` API, whose `PRAXIS_WEB_ORIGINS` names only the `develop` web alias, so signed-in API calls from a PR web preview fail CORS. Hands-on checks with real data run on the `develop` previews.
+- **Auth redirects.** `SITE_URL` is the only allowed Google redirect origin and the base of verification, recovery and change-email links. They complete only on the `develop` web alias; on a PR preview, use email and password.
+- **Deployment protection** stays on for both projects. Automation sends `x-vercel-protection-bypass` with the project's Protection Bypass for Automation secret (Vercel → Settings → Deployment Protection); a browser gets a `SameSite=None` bypass cookie per host by adding `x-vercel-set-bypass-cookie: samesitenone`. `praxis-api` has an OPTIONS allowlist for `/`, because CORS preflights carry no cookie; the API answers them itself.
+- **Server-to-server callbacks.** QStash continuations and Convex recovery or turn calls to the protected API preview carry no bypass secret, so Vercel rejects them; preview runs must finish within one slice until those callers send the bypass header.
+- **Check it** from `cloud/` with `PRAXIS_PREVIEW_API_URL`, `PRAXIS_PREVIEW_WEB_URL` (the two aliases) and `PRAXIS_PREVIEW_API_BYPASS_SECRET` set: `npm run verify -- live preview-env`. The reviewer QA profile (`/etc/praxis-review/qa-profile.json`) needs `vercel.api_project_id` and `vercel.api_bypass_secret`.
 
 ## OAuth and callback URLs to register
 
