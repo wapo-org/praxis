@@ -20,9 +20,17 @@ export async function prepareInvocation(cp: AgentCheckpoint, call: PendingCall, 
   } catch {
     return {ok: false, error: 'Tool arguments do not match the frozen input schema.'} as const;
   }
+  let boundary = live.boundary;
+  if (live.classifyBoundary) {
+    try {
+      boundary = await live.classifyBoundary(call.arguments);
+    } catch {
+      return {ok: false, error: 'Tool policy classification failed.'} as const;
+    }
+  }
   let spec = live.spec;
   let key = `${await alwaysAllowKey(spec)}/traits:${await fingerprint({
-    traits: [...spec.traits].sort((a, b) => a < b ? -1 : a > b ? 1 : 0), boundary: live.boundary ?? null,
+    traits: [...spec.traits].sort((a, b) => a < b ? -1 : a > b ? 1 : 0), boundary: boundary ?? null,
   })}`;
   if (live.classify) {
     try {
@@ -37,7 +45,7 @@ export async function prepareInvocation(cp: AgentCheckpoint, call: PendingCall, 
       return {ok: false, error: 'Tool policy classification failed.'} as const;
     }
   }
-  return {ok: true, key, decision: runToolDecision(cp, live, spec, key), spec} as const;
+  return {ok: true, key, decision: runToolDecision(cp, live, spec, key, boundary), spec, boundary} as const;
 }
 
 export async function createPendingApproval(

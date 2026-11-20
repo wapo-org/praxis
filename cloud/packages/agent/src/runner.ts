@@ -360,7 +360,7 @@ export class AgentRunner {
     if (call.decision === 'deny') return this.completeTool(cp, call, textResult('The user declined this tool call.', true), 'denied');
     const prepared = await prepareInvocation(cp, call, spec, live);
     if (!prepared.ok) return this.completeTool(cp, call, textResult(prepared.error, true), 'failed');
-    const {decision, key} = prepared;
+    const {decision, key, boundary} = prepared;
     // Crash replay: a call that started but has no result may already have had its side effects.
     if(entry.started && (entry.approvalId || decision.decision !== 'allow'))
       return this.completeTool(cp,call,textResult('Tool execution was interrupted before it reported a result. It was not retried automatically because it may have side effects; check its effect before calling it again.',true),'failed');
@@ -380,7 +380,7 @@ export class AgentRunner {
     }
     const activityArgs = privateArguments(cp, live) ? approvalPreview(call.arguments, spec.inputSchema) : call.arguments;
     await this.checkCancel(cp);await this.emit(cp,{type:'tool.ready',activity:this.activity(call.id,call.name,spec,call.parentCallId,activityArgs)});
-    entry.started=true;cp.tainted||=live.boundary?.untrustedSource===true;await this.emit(cp,{type:'tool.running',callId:call.id});await this.save(cp);
+    entry.started=true;cp.tainted||=boundary?.untrustedSource===true||live.boundary?.untrustedSource===true;await this.emit(cp,{type:'tool.running',callId:call.id});await this.save(cp);
     let nestedIndex=0,elicitationIndex=0;
     try {
       const output=await controlled(() => this.checkCancel(cp), async signal=>{

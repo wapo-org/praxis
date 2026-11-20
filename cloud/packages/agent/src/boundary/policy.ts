@@ -1,21 +1,18 @@
-import {z} from 'zod';
-import {ToolInvocationSchema, type ToolInvocation, type ToolCapability, type JsonValue} from '@praxis/protocol';
+import {
+  COMPOSIO_LIMITS, COMPOSIO_META_TOOL_NAMES, ComposioMultiExecuteInputSchema, ToolInvocationSchema,
+  type ToolInvocation, type ToolCapability, type JsonValue,
+} from '@praxis/protocol';
 import {strictest, type PolicyDecision} from './shell.js';
 
-export const META_MULTI_EXECUTE = 'COMPOSIO_MULTI_EXECUTE_TOOL';
 export const META_DEPTH_MAX = 8;
-export const META_ACTIONS_MAX = 100;
-const MultiExecuteSchema = z.object({tools: z.array(z.object({
-  tool_slug: z.string().min(1), arguments: z.json(),
-}).strict()).min(1).max(META_ACTIONS_MAX)}).strict();
 export interface MetaToolAdapter {
   recognizes(tool: string): boolean;
   unwrap(call: ToolInvocation): ToolInvocation[];
 }
 export const composioMetaAdapter: MetaToolAdapter = {
-  recognizes: tool => tool === META_MULTI_EXECUTE,
+  recognizes: tool => tool === COMPOSIO_META_TOOL_NAMES.multiExecute,
   unwrap(call) {
-    return MultiExecuteSchema.parse(call.args).tools.map(t => ({tool: t.tool_slug, args: t.arguments}));
+    return ComposioMultiExecuteInputSchema.parse(call.args).tools.map(t => ({tool: t.tool_slug, args: t.arguments}));
   },
 };
 export type ToolClassification = {
@@ -41,7 +38,7 @@ export function classifyInvocation(raw: unknown, registry: ToolClassifier, adapt
   if (!adapter) return registry.classify(call) ?? UNKNOWN_TOOL;
   try {
     const actions = adapter.unwrap(call);
-    if (!actions.length || actions.length > META_ACTIONS_MAX) return DENIED_TOOL;
+    if (!actions.length || actions.length > COMPOSIO_LIMITS.BATCH_ACTIONS_MAX) return DENIED_TOOL;
     const inner = actions.map(action => classifyInvocation(action, registry, adapters, depth + 1));
     return {
       capabilities: [...new Set(inner.flatMap(c => c.capabilities))],

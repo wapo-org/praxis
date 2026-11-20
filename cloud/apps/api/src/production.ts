@@ -1,7 +1,9 @@
-import {INTERNAL_CONTINUATION_PATH} from '@praxis/protocol';
+import {COMPOSIO_API, INTERNAL_CONTINUATION_PATH} from '@praxis/protocol';
+import {COMPOSIO_POOL_SERVICE} from './features/composio/constants.js';
 import {SealedSecret} from '@praxis/types';
 import {verifyAccountRecovery} from './account-recovery.js';
 import {productionWebPorts} from './features/web/production.js';
+import {composioEnvProblems, productionComposioPorts} from './features/composio/production.js';
 import {WEB_PROVIDERS} from './features/web/constants.js';
 import {Hono} from 'hono';
 import {readTurnKeys} from './turn/auth.js';
@@ -39,7 +41,11 @@ export type ProductionEnv = Record<(typeof PRODUCTION_ENV)[number], string> & {P
 export const CONTINUATION_PATH = INTERNAL_CONTINUATION_PATH;
 
 /** Optional pooled platform keys using un-gapped _2, _3, ... suffixes. */
-export const PLATFORM_POOLS: readonly PoolSpec[] = [{service: GROQ_POOL.service, names: GROQ_POOL.name}, ...Object.values(WEB_PROVIDERS).map(p => ({service: p.service, names: p.name}))];
+export const PLATFORM_POOLS: readonly PoolSpec[] = [
+  {service: GROQ_POOL.service, names: GROQ_POOL.name},
+  ...Object.values(WEB_PROVIDERS).map(p => ({service: p.service, names: p.name})),
+  {service: COMPOSIO_POOL_SERVICE, names: COMPOSIO_API.KEY_ENV},
+];
 export interface PoolSpec {service: string; names: string | readonly string[]}
 export interface ReadEnvOptions {pools?: readonly PoolSpec[]; warn?: (message: string) => void}
 
@@ -81,6 +87,7 @@ export function readProductionEnv(env: Record<string, string | undefined>, optio
       problems.push('PRAXIS_WEB_ORIGINS must be a comma-separated list of https origins');
     }
   }
+  problems.push(...composioEnvProblems(env));
   // Half-defined credential slots fail closed; post-gap slots warn.
   const warnings: string[] = [];
   for (const spec of options.pools ?? PLATFORM_POOLS) {
@@ -150,6 +157,7 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
     modules: service => featureModules(service, {
       storage,
       web: context => productionWebPorts(context, accountRPC, upstash.redis, rawEnv),
+      composio: context => productionComposioPorts(context, accountRPC, upstash.redis, rawEnv, credentialLog),
       platformVoice: {pool: pool(GROQ_POOL.name, rawEnv, {service: GROQ_POOL.service}), cooldowns: redisCooldownStore(upstash.redis), log: credentialLog},
       mcp: {publicOrigin: origin, webReturnOrigins: webOrigins, safeFetch: egress, consumeOAuthState: key => upstash.consumeOnce(key), lease: upstash.lease},
     }),

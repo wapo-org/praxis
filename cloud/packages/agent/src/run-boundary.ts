@@ -6,16 +6,21 @@ import type {AgentCheckpoint, AgentTool} from './types.js';
 
 export const BOUNDARY_TEXT = {
   denied: 'This mode does not allow tools that send data to outside services.',
+  policyDenied: 'Tool policy denied this call; correct the arguments or choose a permitted action.',
   egress: 'Sends model-chosen data to an outside service',
   tainted: 'Untrusted content was read in this conversation; this action needs a fresh approval.',
 } as const;
 
-export function runToolDecision(cp: AgentCheckpoint, tool: AgentTool, spec: ToolSpec, key: string): ToolDecision {
+export function runToolDecision(
+  cp: AgentCheckpoint, tool: AgentTool, spec: ToolSpec, key: string, boundary = tool.boundary,
+): ToolDecision {
   const tainted = cp.tainted;
-  if (tool.boundary) {
-    const decision = boundaryDecision(cp.chat.mode, tool.boundary, tainted);
-    if (decision === 'deny') return {decision: 'refuse', reason: BOUNDARY_TEXT.denied};
-    if (decision === 'allow' && tool.boundary.capabilities.includes('read') && !isSideEffect(tool.boundary.capabilities)) {
+  if (boundary) {
+    const decision = boundaryDecision(cp.chat.mode, boundary, tainted);
+    if (decision === 'deny') {
+      return {decision: 'refuse', reason: boundary.decision === 'deny' ? BOUNDARY_TEXT.policyDenied : BOUNDARY_TEXT.denied};
+    }
+    if (decision === 'allow' && boundary.capabilities.includes('read') && !isSideEffect(boundary.capabilities)) {
       return {decision: 'allow', reason: ''};
     }
     return {decision: 'ask', reason: tainted ? BOUNDARY_TEXT.tainted : BOUNDARY_TEXT.egress};
