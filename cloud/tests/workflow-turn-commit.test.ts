@@ -51,6 +51,21 @@ describe('turns.commit fence (PRA-30)', () => {
     expect(await snapshot()).toEqual(after);
   });
 
+  it('rejects a stale generation after a restart at the same cursor and writes nothing', async () => {
+    const {t, first, runId, snapshot} = await setup();
+    await t.run(async ctx => {
+      const run = await ctx.db.get(runId);
+      await ctx.db.patch(runId, {workflow: {...run!.workflow!, generation: 1}});
+    });
+    const before = await snapshot();
+    expect(before.run?.workflow).toMatchObject({generation: 1, nextTurnIndex: 0});
+    const stale = commitArgs(first, {end: {status: 'completed'}, messages: [assistantMessage(first)]});
+    expect(await t.mutation(api.turns.commit, stale)).toEqual({outcome: 'conflict'});
+    expect(await snapshot()).toEqual(before);
+    const current = {...first, generation: 1};
+    expect(await t.mutation(api.turns.commit, commitArgs(current))).toMatchObject({outcome: 'committed', flags: {turnIndex: 0}});
+  });
+
   it('rolls back a commit whose messages are not new assistant messages of its run', async () => {
     const {t, first, snapshot} = await setup();
     const before = await snapshot();

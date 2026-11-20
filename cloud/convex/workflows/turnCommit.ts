@@ -44,14 +44,19 @@ function storedUsage(usage: TurnCommit['usage']) {
   return {usage: counts};
 }
 
+/** A restart can reuse the cursor, so the generation is part of the fence, not only of the run lookup. */
+function fenceHolds(run: Doc<'runs'>, commit: TurnCommit): boolean {
+  return run.value.status === 'running'
+    && run.workflow?.generation === commit.generation
+    && run.workflow.nextTurnIndex === commit.expectedTurnIndex;
+}
+
 /** Compare-and-set on the run's cursor: a stale index or generation, or a run no longer running, writes nothing. */
 export async function commitTurn(ctx: MutationCtx, commit: TurnCommit): Promise<TurnCommitResult> {
   const runId = ctx.db.normalizeId('runs', commit.runId);
   if (!runId) throw new ConvexError(WORKFLOW_ERRORS.unavailable);
   const run = await liveScopedRun(ctx, {...commit, runId});
-  if (!run || run.value.status !== 'running' || run.workflow.nextTurnIndex !== commit.expectedTurnIndex) {
-    return CONFLICT;
-  }
+  if (!run || !fenceHolds(run, commit)) return CONFLICT;
   const turnIndex = commit.expectedTurnIndex;
   if (turnIndex >= TURN_INDEX_MAX) throw new ConvexError(WORKFLOW_ERRORS.exhausted);
   const taint = keptRunTaint(run.value.taint, commit.taint);
