@@ -22,7 +22,7 @@ export async function prepareInvocation(cp: AgentCheckpoint, call: PendingCall, 
   }
   let spec = live.spec;
   let key = `${await alwaysAllowKey(spec)}/traits:${await fingerprint({
-    traits: [...spec.traits].sort(), boundary: live.boundary ?? null,
+    traits: [...spec.traits].sort((a, b) => a < b ? -1 : a > b ? 1 : 0), boundary: live.boundary ?? null,
   })}`;
   if (live.classify) {
     try {
@@ -30,7 +30,9 @@ export async function prepareInvocation(cp: AgentCheckpoint, call: PendingCall, 
         traits: ToolSpecSchema.shape.traits, policyKey: z.string().min(1).max(1000).optional(),
       }).parse(live.classify(call.arguments));
       spec = {...spec, traits};
-      key += `/classification:${await fingerprint({traits: [...traits].sort(), policyKey: policyKey ?? null})}`;
+      key += `/classification:${await fingerprint({
+        traits: [...traits].sort((a, b) => a < b ? -1 : a > b ? 1 : 0), policyKey: policyKey ?? null,
+      })}`;
     } catch {
       return {ok: false, error: 'Tool policy classification failed.'} as const;
     }
