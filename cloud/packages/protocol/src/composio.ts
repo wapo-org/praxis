@@ -42,7 +42,29 @@ export function composioConnectorId(toolkit: string): string {
   return `${COMPOSIO_CONNECTOR_PREFIX}${toolkit}`;
 }
 
-/** The curated launch catalogue (PRA-16); each toolkit also needs its server-side Composio auth config. */
+/** Directory pagination and search bounds shared between Convex, web and tests. */
+export const COMPOSIO_CATALOG_LIMITS = {
+  DEFAULT_PAGE_SIZE: 48,
+  MAX_PAGE_SIZE: 100,
+  SEARCH_CHARACTERS_MAX: 100,
+} as const;
+
+export const ComposioAppSchema = z.object({
+  toolkit: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string(),
+  logo: z.url({protocol: /^https$/}).optional(),
+});
+export type ComposioApp = z.infer<typeof ComposioAppSchema>;
+
+export const ComposioAppPageSchema = z.object({
+  items: z.array(ComposioAppSchema),
+  nextCursor: z.string().min(1).nullable(),
+  totalItems: z.number().int().nonnegative(),
+});
+export type ComposioAppPage = z.infer<typeof ComposioAppPageSchema>;
+
+/** Featured launch catalogue used for friendly labels and local verification fixtures. */
 export const COMPOSIO_APPS = [
   {toolkit: 'gmail', name: 'Gmail', description: 'Read, search and send email'},
   {toolkit: 'googlecalendar', name: 'Google Calendar', description: 'See and schedule events'},
@@ -51,8 +73,7 @@ export const COMPOSIO_APPS = [
   {toolkit: 'notion', name: 'Notion', description: 'Search and edit pages'},
   {toolkit: 'github', name: 'GitHub', description: 'Work with repositories, issues and pull requests'},
   {toolkit: 'linear', name: 'Linear', description: 'Track and update issues'},
-] as const satisfies readonly {toolkit: string; name: string; description: string}[];
-export type ComposioApp = (typeof COMPOSIO_APPS)[number];
+] as const satisfies readonly ComposioApp[];
 
 /** The per-chat app fields of `Chat`, typed structurally so this module does not import the chat schema. */
 export interface ComposioChatScope {
