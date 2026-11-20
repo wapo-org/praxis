@@ -20,7 +20,11 @@ export function toolsStorageFromRPC(rpc:ConvexRPC,baseUrl:string,fetcher:typeof 
   },
   async createUpload(userId,input){
    const ticket=randomUUID(),expiresAt=Date.now()+600_000;
-   await rpc.mutation('files:createTicket',{userId,ticket,...input,expiresAt});
+   // Routes pass the whole wire request; Convex validators reject any field the ticket does not declare.
+   await rpc.mutation('files:createTicket', {
+    userId, ticket, name: input.name, mediaType: input.mediaType, size: input.size, expiresAt,
+    ...(input.chatId === undefined ? {} : {chatId: input.chatId}),
+   });
    // One-time upload capability for this ticket; never send API bearer token.
    const uploadUrl=z.string().url().parse(await rpc.mutation('files:generateUploadUrl',{userId,ticket}));
    return {uploadUrl,expiresAt:new Date(expiresAt).toISOString(),method:'POST'};
