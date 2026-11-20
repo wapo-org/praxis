@@ -79,7 +79,8 @@ Browser builds get only the API origin, never a secret.
 | Variable | Value |
 |---|---|
 | `PRAXIS_CONVEX_SERVER_TOKEN` | Same value as on Vercel. Authenticates server RPCs and signs account recovery callbacks. |
-| `PRAXIS_API_URL` | Same HTTPS API origin as on Vercel. Convex sends signed account recovery callbacks here. |
+| `PRAXIS_API_URL` | Same HTTPS API origin as on Vercel. Convex sends signed account recovery callbacks and `/api/turn` calls here. |
+| `PRAXIS_TURN_CURRENT_SIGNING_KEY` | Same value as on Vercel. Signs each workflow turn request; without it (or an https `PRAXIS_API_URL`) turns fail closed. |
 
 ## 1. Convex
 
@@ -250,7 +251,7 @@ shared only by Convex server actions and the Vercel worker. Optionally set
 verify; switch the caller before promoting the next key. These are signing keys,
 not HTTP provider credential pools.
 
-Convex sends `POST /api/turn` with `x-praxis-timestamp` containing canonical Unix
+Convex (`turns.run`) sends `POST /api/turn` with `x-praxis-timestamp` containing canonical Unix
 milliseconds and `x-praxis-signature` containing lowercase SHA-256 HMAC hex over
 the exact UTF-8 timestamp, a dot, and the raw request bytes. Skew is limited to
 ±5 minutes. The signed body binds `userId`; the Convex caller must derive that
@@ -263,6 +264,12 @@ instances and signing-key rotation. Retries must use a fresh timestamp/signature
 while preserving `expectedTurnIndex`; durable turn acquisition/commit makes
 those retries idempotent. Receipt rows contain only expiry, not credentials;
 a future retention sweep may remove them only after `expiresAtMs`.
+
+The signed body is `{userId, chatId, runId, generation, expectedTurnIndex, nonce}`; the nonce is
+fresh per attempt so overlapping duplicate deliveries never present one envelope. The worker
+writes back only through the `turns.commit` server mutation, and answers 409 (`TurnIndexConflict`)
+when that fence rejects the index; Convex then reads the saved flags. A 401 fails the run,
+5xx and timeouts retry the workflow step.
 
 PRA-38 supplies the contract and authentication boundary. Until PRA-39 supplies
 `AdapterBundle.turn.execute`, an authenticated request returns 503. Never

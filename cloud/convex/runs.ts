@@ -8,16 +8,15 @@ import {workflow} from './workflows/agentRun.js';
 import {ownedChat, ownedRun} from './domainRecords.js';
 import {activeOwner} from './accountOwner.js';
 import {runScope} from './workflows/validators.js';
-import {RUN_UNPARK_EVENT, STUB_TURNS_MAX, WORKFLOW_ERRORS} from './workflows/constants.js';
+import {RUN_UNPARK_EVENT, WORKFLOW_ERRORS} from './workflows/constants.js';
 import {convexValidator} from './zodValidator.js';
 import type {Doc, Id} from './_generated/dataModel.js';
 
-const startIndex = z.number().int().nonnegative().max(TURN_INDEX_MAX - STUB_TURNS_MAX);
 const turnIndexSchema = z.number().int().nonnegative().max(TURN_INDEX_MAX);
 const startInput = z.object({
   chatId: IdSchema,
   idempotencyKey: IdSchema.optional(),
-  startTurnIndex: startIndex.default(0),
+  startTurnIndex: turnIndexSchema.default(0),
 });
 type RunScope = {userId: string; chatId: string; runId: Id<'runs'>; generation: number};
 type ScopedRun = Doc<'runs'> & {workflow: NonNullable<Doc<'runs'>['workflow']>};

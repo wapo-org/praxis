@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
-import {api, internal} from '../convex/_generated/api.js';
+import {api} from '../convex/_generated/api.js';
 import {SERVER_TOKEN} from './workflow-fixture.js';
+import {commitArgs} from './workflow-worker.js';
 import {CHAT_ID, NOW, commit, createChat, textMessage, twoOwners, useDomainEnv} from './convex-domain-fixture.js';
 
 const token = {serverToken: SERVER_TOKEN};
@@ -113,19 +114,20 @@ describe('PRA-24 typed table CRUD through domain functions', () => {
     expect(await alice.client.query(api.runs.get, {runId: 'tainted-run'})).toMatchObject({status: 'running', taint});
   });
 
-  it('turns: commitStub inserts owner-indexed turns, replays saved turns and rejects skipped indexes', async () => {
+  it('turns: commit inserts owner-indexed receipts and messages, and conflicts on replayed or skipped indexes', async () => {
     const {t, alice} = await twoOwners();
     await createChat(alice);
     const runId = await alice.client.mutation(api.runs.start, {chatId: CHAT_ID});
     const scope = {userId: alice.userId, chatId: CHAT_ID, runId, generation: 0};
-    const first = await t.mutation(internal.turns.commitStub, {...scope, expectedTurnIndex: 0});
-    expect(first).toMatchObject({turnIndex: 0, done: false, status: 'ready'});
-    expect(await t.mutation(internal.turns.commitStub, {...scope, expectedTurnIndex: 0})).toEqual(first);
-    await expect(t.mutation(internal.turns.commitStub, {...scope, expectedTurnIndex: 5})).rejects.toThrow('Unexpected turn index');
-    expect(await t.mutation(internal.turns.commitStub, {...scope, expectedTurnIndex: 1})).toMatchObject({turnIndex: 1});
+    const first = await t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 0}));
+    expect(first).toEqual({outcome: 'committed', flags: {turnIndex: 0, done: false, status: 'ready', subagents: []}});
+    expect(await t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 0}))).toEqual({outcome: 'conflict'});
+    expect(await t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 5}))).toEqual({outcome: 'conflict'});
+    expect(await t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 1}))).toMatchObject({flags: {turnIndex: 1}});
     const turns = await t.run(ctx => ctx.db.query('turns').withIndex('by_user_run_turn', q =>
       q.eq('userId', alice.userId).eq('runId', runId)).collect());
     expect(turns.map(turn => [turn.turnIndex, turn.status])).toEqual([[0, 'ready'], [1, 'ready']]);
+    expect(await t.run(ctx => ctx.db.query('messages').collect())).toHaveLength(2);
     expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({workflow: {nextTurnIndex: 2}});
   });
 

@@ -2,15 +2,16 @@ import {ConvexHttpClient} from 'convex/browser';
 import {makeFunctionReference} from 'convex/server';
 import type {StepContext} from '@praxis/verify';
 import {z} from 'zod';
-import {STUB_TURNS_MAX, WORKFLOW_ERRORS} from '../../../convex/workflows/constants.js';
+import {OWNER_ERRORS} from '@praxis/protocol';
 import {typedApi} from '../convex-typed-rows/api.js';
 import {AUTH_REQUIRED, errorText, settle} from '../convex-typed-rows/checks.js';
 import {purgeUntilDone, snapshotJournal} from '../convex-typed-rows/commit-purge.js';
 import {hostedFixture} from '../convex-typed-rows/fixture.js';
-import {readRuns, readTurns, runInternal} from './hosted.js';
+import {readRuns, readTurns} from './hosted.js';
 import {createWorkflowChat, waitForTerminal} from './run-checks.js';
 
 const Begin = makeFunctionReference<'mutation', {serverToken: string; userId: string}, unknown>('account:begin');
+const Commit = makeFunctionReference<'mutation', {serverToken: string; userId: string; commitJson: string}, unknown>('turns:commit');
 const UserRow = z.object({_id: z.string()});
 
 export async function verifyDeletion(context: StepContext) {
@@ -32,13 +33,17 @@ export async function verifyDeletion(context: StepContext) {
   const target = targetRow?.workflow;
   const workflowIds = new Set(runs.flatMap(row => row.workflow?.id ? [row.workflow.id] : []));
   const before = await snapshotJournal(reader, workflowIds);
-  const stoppedMidRun = !!target?.id && targetRow?.value.status === 'running' && target.nextTurnIndex < STUB_TURNS_MAX;
+  const stoppedMidRun = !!target?.id && targetRow?.value.status === 'running';
   const start = await settle(api.startRun(chatId));
-  const commit = await settle(runInternal(context, 'turns:commitStub', {
+  const fencedTurn = {
     userId, chatId, runId, generation: target?.generation ?? 0, expectedTurnIndex: target?.nextTurnIndex ?? 0,
+    messages: [], end: {status: 'ready'},
+  };
+  const commit = await settle(server.mutation(Commit, {
+    serverToken: live.serverToken.reveal(), userId, commitJson: JSON.stringify(fencedTurn),
   }));
   const startRejected = !start.ok && errorText(start.error).includes(AUTH_REQUIRED);
-  const commitRejected = !commit.ok && errorText(commit.error) === WORKFLOW_ERRORS.unavailable;
+  const commitRejected = !commit.ok && errorText(commit.error).includes(OWNER_ERRORS.accountUnavailable.message);
   const purge = await purgeUntilDone(live, owner).catch(() => {
     throw new Error('account:purge failed for the disposable actor');
   });
@@ -59,5 +64,5 @@ export async function verifyDeletion(context: StepContext) {
     || Object.values(remaining).some(count => count !== 0)) {
     return {status: 'fail' as const, summary: 'Mid-run fence, positive pre-purge counts, or zero post-purge counts did not hold'};
   }
-  return {status: 'pass' as const, summary: 'Mid-run deletion fenced start and stub commit, then purged the owner and workflow rows'};
+  return {status: 'pass' as const, summary: 'Mid-run deletion fenced start and worker commit, then purged the owner and workflow rows'};
 }

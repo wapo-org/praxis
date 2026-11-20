@@ -2,7 +2,7 @@ import {setTimeout as sleep} from 'node:timers/promises';
 import {TurnResultSchema, type Run, type TurnResult} from '@praxis/protocol';
 import type {SealedSecret} from '@praxis/types';
 import {z} from 'zod';
-import {STUB_TURNS_MAX, WORKFLOW_PARALLELISM_MAX} from '../../../convex/workflows/constants.js';
+import {WORKFLOW_PARALLELISM_MAX} from '../../../convex/workflows/constants.js';
 import {typedApi, type TypedApi} from '../convex-typed-rows/api.js';
 import {check, errorText, settle, stepResult, type Check, type Settled, type StepResult} from '../convex-typed-rows/checks.js';
 import type {TableReader} from '../convex-typed-rows/commit-purge.js';
@@ -112,12 +112,17 @@ export function redeliveryChecks(
   return checks;
 }
 
-/** The stub writes indices start..start+STUB_TURNS_MAX-1, each exactly once. */
+/** A finished run writes indices start..start+n-1 once each, and only its last turn completes it. */
 export function wholeRunChecks(label: string, rows: readonly TurnRowValue[], startTurnIndex = 0): Check[] {
-  const indices = rows.map(row => row.turnIndex).sort((a, b) => a - b);
-  const expected = Array.from({length: STUB_TURNS_MAX}, (_, offset) => startTurnIndex + offset);
-  return [check(`${label}: each stub turn written once`, indices.join(',') === expected.join(','),
-    `indices [${indices.join(',')}], expected [${expected.join(',')}]`)];
+  const sorted = [...rows].sort((a, b) => a.turnIndex - b.turnIndex);
+  const indices = sorted.map(row => row.turnIndex);
+  const contiguous = indices.length > 0 && indices.every((index, offset) => index === startTurnIndex + offset);
+  const flags = sorted.map(row => `${row.done}:${row.status}`);
+  const lastCompletes = flags.at(-1) === 'true:completed' && flags.slice(0, -1).every(flag => flag === 'false:ready');
+  return [
+    check(`${label}: each turn written once from ${startTurnIndex}`, contiguous, `indices [${indices.join(',')}]`),
+    check(`${label}: only the last turn completes the run`, lastCompletes, flags.join(',')),
+  ];
 }
 
 export function capacityChecks(sourceParallelism: number, deployedParallelism: number | null): Check[] {
@@ -191,7 +196,8 @@ export function redeliveryStep(fixture: RedeliveryFixture): LiveStep {
     const first = await redeliver(fixture, {...scope, expectedTurnIndex: 0}, 2);
     const run = await waitForRun(api, runId);
     checks.push(check('run settled completed', run?.status === 'completed', run?.status ?? 'missing'));
-    const lastIndex = STUB_TURNS_MAX - 1;
+    const settled = turnRowsFor(await fixture.reader('turns'), key);
+    const lastIndex = Math.max(0, ...settled.map(row => row.turnIndex));
     const late = await redeliver(fixture, {...scope, expectedTurnIndex: lastIndex}, 2);
     const rows = turnRowsFor(await fixture.reader('turns'), key);
     const firstRow = rows.find(row => row.turnIndex === 0);

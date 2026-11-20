@@ -3,26 +3,37 @@ import {type WorkflowId} from '@convex-dev/workflow';
 import {TURN_RESULT_MAX_BYTES, TurnResultSchema} from '@praxis/protocol';
 import {api, internal} from '../convex/_generated/api.js';
 import {workflow} from '../convex/workflows/agentRun.js';
-import {chatId, signedInUser, startedRun as setup} from './workflow-fixture.js';
+import {chatId, SERVER_TOKEN, signedInUser, startedRun} from './workflow-fixture.js';
+import {commitArgs, fakeTurnWorker, TURNS_TO_COMPLETE} from './workflow-worker.js';
+
+async function setup() {
+  const started = await startedRun();
+  return {...started, worker: fakeTurnWorker(started.t)};
+}
 
 describe('durable workflow skeleton', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubEnv('CONVEX_CLOUD_URL', 'https://test.convex.cloud');
+    vi.stubEnv('PRAXIS_CONVEX_SERVER_TOKEN', SERVER_TOKEN);
   });
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
-  it('runs exactly three actions, completes, and journals only bounded flags', async () => {
-    const {t, runId} = await setup();
+  it('runs one worker turn per action, completes, and journals only bounded flags', async () => {
+    const {t, runId, worker} = await setup();
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     const run = await t.run(ctx => ctx.db.get(runId));
-    expect(run).toMatchObject({value: {status: 'completed'}, workflow: {nextTurnIndex: 3}});
+    expect(run).toMatchObject({value: {status: 'completed'}, workflow: {nextTurnIndex: TURNS_TO_COMPLETE}});
+    expect(worker.modelCalls.map(call => call.expectedTurnIndex)).toEqual([0, 1, 2]);
+    const messages = await t.run(ctx => ctx.db.query('messages').collect());
+    expect(messages.map(message => [message.sequence, message.value.role])).toEqual([[1, 'assistant'], [2, 'assistant'], [3, 'assistant']]);
     const steps = await t.run(ctx => workflow.listSteps(ctx, run!.workflow!.id as WorkflowId));
     const turns = steps.page.filter(step => step.name === 'turns:run');
-    expect(turns).toHaveLength(3);
+    expect(turns).toHaveLength(TURNS_TO_COMPLETE);
     for (const turn of turns) {
       expect(turn.runResult?.kind).toBe('success');
       if (turn.runResult?.kind !== 'success') throw new Error('Missing flags');
@@ -50,7 +61,7 @@ describe('durable workflow skeleton', () => {
     expect((await t.run(ctx => ctx.db.get(runId)))?.workflow?.nextTurnIndex).toBe(1);
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     expect(await t.action(internal.turns.run, args)).toEqual(results[0]);
-    expect(await t.run(ctx => ctx.db.query('turns').collect())).toHaveLength(3);
+    expect(await t.run(ctx => ctx.db.query('turns').collect())).toHaveLength(TURNS_TO_COMPLETE);
   });
   it('cancels after a committed turn and fences a late action', async () => {
     const {t, owner, scope, runId} = await setup();
@@ -63,7 +74,8 @@ describe('durable workflow skeleton', () => {
   it('settles the workflow when its chat is deleted', async () => {
     const {t, owner, scope, runId} = await setup();
     await owner.mutation(api.chats.remove, {chatId});
-    await expect(t.mutation(internal.turns.commitStub, {...scope, expectedTurnIndex: 0})).rejects.toThrow('unavailable');
+    expect(await t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 0}))).toEqual({outcome: 'conflict'});
+    await expect(t.action(internal.turns.run, {...scope, expectedTurnIndex: 0})).rejects.toThrow('unavailable');
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({value: {status: 'cancelled'}, workflow: {nextTurnIndex: 0}});
   });

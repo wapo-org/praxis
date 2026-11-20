@@ -1,46 +1,62 @@
 import {internalActionGeneric} from 'convex/server';
 import {ConvexError, v} from 'convex/values';
-import {TurnRequestSchema, TurnResultSchema, type TurnResult} from '@praxis/protocol';
+import {TurnCommitSchema, type TurnCommitResult, type TurnResult} from '@praxis/protocol';
 import {internal} from './_generated/api.js';
-import {internalMutation} from './functions.js';
-import {liveScopedRun} from './runs.js';
-import {runScope} from './workflows/validators.js';
-import {STUB_TURNS_MAX, WORKFLOW_ERRORS} from './workflows/constants.js';
+import {internalQuery, serverMutation, serverQuery, type ActionCtx} from './functions.js';
+import {ownerRunScope, runScope} from './workflows/validators.js';
+import {WORKFLOW_ERRORS} from './workflows/constants.js';
+import {turnState, type TurnScope, type TurnState} from './workflows/turnState.js';
+import {commitTurn} from './workflows/turnCommit.js';
+import {dispatchTurn} from './workflows/turnDispatch.js';
 
-const args = {...runScope, expectedTurnIndex: v.number()};
-export const run = internalActionGeneric({
+const turnIndex = {expectedTurnIndex: v.number()};
+const args = {...runScope, ...turnIndex};
+
+export const preflight = internalQuery({
   args,
-  handler: async (ctx, input): Promise<TurnResult> => {
-    TurnRequestSchema.parse({userId: input.userId, chatId: input.chatId, runId: input.runId,
-      expectedTurnIndex: input.expectedTurnIndex});
-    return TurnResultSchema.parse(await ctx.runMutation(internal.turns.commitStub, input));
+  handler: async (ctx, input): Promise<TurnState> => turnState(ctx, input),
+});
+
+/** Worker pre-check: saved flags, or the run taint that seeds the turn snapshot. */
+export const state = serverQuery({
+  args: {...ownerRunScope, ...turnIndex},
+  handler: async (ctx, input): Promise<TurnState> => turnState(ctx, input),
+});
+
+/** The worker's only write path: messages, usage, taint, receipt and cursor in one fenced transaction. */
+export const commit = serverMutation({
+  args: {commitJson: v.string()},
+  handler: async (ctx, {userId, commitJson}): Promise<TurnCommitResult> => {
+    const turn = TurnCommitSchema.parse(JSON.parse(commitJson));
+    if (turn.userId !== userId) throw new ConvexError(WORKFLOW_ERRORS.unavailable);
+    return commitTurn(ctx, turn);
   },
 });
 
-export const commitStub = internalMutation({
+async function settledAfterConflict(ctx: ActionCtx, input: TurnScope): Promise<TurnResult> {
+  const after = await ctx.runQuery(internal.turns.preflight, input);
+  if (after.state === 'settled') return after.flags;
+  throw new Error(WORKFLOW_ERRORS.conflict);
+}
+
+/** A rejected signature is a deployment fault no retry can fix, so the run fails instead of looping. */
+async function failUnauthorizedRun(ctx: ActionCtx, input: TurnScope): Promise<TurnResult> {
+  console.error('Turn worker rejected the signed turn request (HTTP 401); failing the run');
+  const {expectedTurnIndex: turnIndex, ...scope} = input;
+  await ctx.runMutation(internal.runs.transition, {...scope, from: 'running', to: 'failed', turnIndex});
+  return {done: true, status: 'stopped', subagents: [], turnIndex};
+}
+
+export const run = internalActionGeneric({
   args,
   handler: async (ctx, input): Promise<TurnResult> => {
-    const run = await liveScopedRun(ctx, input);
-    if (!run) throw new ConvexError(WORKFLOW_ERRORS.unavailable);
-    const saved = await ctx.db.query('turns').withIndex('by_user_run_turn', q =>
-      q.eq('userId', input.userId).eq('runId', input.runId).eq('generation', input.generation).eq('turnIndex', input.expectedTurnIndex)).unique();
-    if (saved) return TurnResultSchema.parse({done: saved.done, status: saved.status, subagents: [], turnIndex: saved.turnIndex});
-    const status = run.value.status;
-    if (status === 'paused' || status === 'queued') {
-      return {done: false, status: 'busy', subagents: [], turnIndex: input.expectedTurnIndex};
+    const before = await ctx.runQuery(internal.turns.preflight, input);
+    if (before.state === 'settled') return before.flags;
+    const reply = await dispatchTurn(input);
+    switch (reply.kind) {
+      case 'flags': return reply.flags;
+      case 'conflict': return settledAfterConflict(ctx, input);
+      case 'unauthorized': return failUnauthorizedRun(ctx, input);
     }
-    if (status !== 'running') {
-      return {done: true, status: 'stopped', subagents: [], turnIndex: input.expectedTurnIndex};
-    }
-    const turnsCompleted = run.workflow.nextTurnIndex - run.workflow.startTurnIndex;
-    if (input.expectedTurnIndex !== run.workflow.nextTurnIndex || turnsCompleted >= STUB_TURNS_MAX) {
-      throw new ConvexError(WORKFLOW_ERRORS.index);
-    }
-    const done = turnsCompleted + 1 === STUB_TURNS_MAX;
-    const flags = TurnResultSchema.parse({done, status: done ? 'completed' : 'ready', subagents: [], turnIndex: run.workflow.nextTurnIndex});
-    await ctx.db.insert('turns', {userId: input.userId, runId: run._id, generation: run.workflow.generation,
-      turnIndex: flags.turnIndex, done: flags.done, status: done ? 'completed' : 'ready'});
-    await ctx.db.patch(run._id, {workflow: {...run.workflow, nextTurnIndex: run.workflow.nextTurnIndex + 1}});
-    return flags;
   },
 });

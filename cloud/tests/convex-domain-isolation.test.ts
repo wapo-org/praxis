@@ -1,6 +1,7 @@
 import {describe, expect, it, vi} from 'vitest';
-import {api, internal} from '../convex/_generated/api.js';
+import {api} from '../convex/_generated/api.js';
 import {SERVER_TOKEN} from './workflow-fixture.js';
+import {commitArgs} from './workflow-worker.js';
 import {
   CHAT_ID, NOW, TYPED_TABLES, commit, createChat, purgeUntilDone, textMessage, twoOwners, typedRows, useDomainEnv,
   type DomainTest, type Viewer,
@@ -15,7 +16,7 @@ async function seedAllTables(t: DomainTest, viewer: Viewer) {
   const {userId, client} = viewer;
   await createChat(viewer);
   const runId = await client.mutation(api.runs.start, {chatId: CHAT_ID});
-  await t.mutation(internal.turns.commitStub, {userId, chatId: CHAT_ID, runId, generation: 0, expectedTurnIndex: 0});
+  await t.mutation(api.turns.commit, commitArgs({userId, chatId: CHAT_ID, runId, generation: 0, expectedTurnIndex: 0}, {end: {status: 'ready'}}));
   await commit(t, userId, [textMessage('same-message', CHAT_ID, `secret of ${userId}`)]);
   await t.mutation(api.store.put, {...token, userId, kind: 'outputChunk', id: 'same-chunk', parentId: 'manifest',
     valueJson: JSON.stringify({chatId: CHAT_ID, text: `output of ${userId}`})});
@@ -41,9 +42,8 @@ describe('PRA-24 owner isolation', () => {
     expect(await bob.client.mutation(api.chats.remove, {chatId: CHAT_ID})).toBe(false);
     await expect(bob.client.mutation(api.runs.start, {chatId: CHAT_ID})).rejects.toThrow('Run or chat unavailable');
     await expect(bob.client.mutation(api.runs.cancel, {runId: aliceRun})).rejects.toThrow('Run or chat unavailable');
-    await expect(t.mutation(internal.turns.commitStub, {
-      userId: bob.userId, chatId: CHAT_ID, runId: aliceRun, generation: 0, expectedTurnIndex: 1,
-    })).rejects.toThrow('Run or chat unavailable');
+    const foreign = {userId: bob.userId, chatId: CHAT_ID, runId: aliceRun, generation: 0, expectedTurnIndex: 1};
+    expect(await t.mutation(api.turns.commit, commitArgs(foreign))).toEqual({outcome: 'conflict'});
     expect(await typedRows(t)).toEqual(before);
     expect(await alice.client.query(api.chats.get, {chatId: CHAT_ID})).toMatchObject({title: 'Chat'});
     expect(await alice.client.query(api.runs.get, {runId: aliceRun})).toMatchObject({status: 'running'});

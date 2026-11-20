@@ -27,6 +27,7 @@ export interface Events {
  latest?(userId:string,channel:string):Promise<number>;
 }
 export interface TurnWorker {
+ /** Throws `TurnIndexConflict` when `turns.commit` rejects the index fence, so Convex reads the saved flags. */
  execute(input: TurnRequest): Promise<TurnResult>;
 }
 export interface AdapterBundle {turn?:TurnWorker;store:Store;kv:KV;events:Events;purgeOwner?(userId:string):Promise<void>;

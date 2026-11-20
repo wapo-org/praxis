@@ -4,6 +4,7 @@ import {api, components, internal} from '../convex/_generated/api.js';
 import {workflow} from '../convex/workflows/agentRun.js';
 import {ACCOUNT_OWNER_ROWS, ACCOUNT_PURGE_POLICY, ACCOUNT_RUN_CHILD_ROWS} from '../convex/accountTables.js';
 import {chatId, SERVER_TOKEN, startedRun} from './workflow-fixture.js';
+import {commitArgs, fakeTurnWorker} from './workflow-worker.js';
 
 const PURGE_CALLS_MAX = 20;
 type PurgeResult = {done: boolean; blobCursor?: string; blobsDone?: boolean};
@@ -17,6 +18,7 @@ describe('account deletion of workflow state', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it('gives every schema table an explicit purge policy with a row query', () => {
@@ -29,13 +31,14 @@ describe('account deletion of workflow state', () => {
 
   it('fences an in-flight run once deletion begins, then purges run, flags, journal and user', async () => {
     const {t, owner, userId, scope} = await startedRun();
+    fakeTurnWorker(t);
     await t.action(internal.turns.run, {...scope, expectedTurnIndex: 0});
     const sessions = () => t.run(ctx => ctx.runQuery(components.auth.public.listSessions, {userId}));
     expect(await sessions()).toHaveLength(1);
     await t.mutation(api.account.begin, {serverToken: SERVER_TOKEN, userId});
     expect(await sessions()).toHaveLength(0);
 
-    await expect(t.mutation(internal.turns.commitStub, {...scope, expectedTurnIndex: 1})).rejects.toThrow('unavailable');
+    await expect(t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 1}))).rejects.toThrow('Account unavailable');
     await expect(owner.mutation(api.runs.start, {chatId})).rejects.toThrow();
     expect(await t.query(api.account.active, {serverToken: SERVER_TOKEN, userId})).toBe(false);
 
@@ -56,6 +59,6 @@ describe('account deletion of workflow state', () => {
       workflows: (await workflow.list(ctx)).page,
     }));
     expect(rows).toEqual({users: [], chats: [], runs: [], turns: [], workflows: []});
-    await expect(t.mutation(internal.turns.commitStub, {...scope, expectedTurnIndex: 1})).rejects.toThrow('unavailable');
+    await expect(t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 1}))).rejects.toThrow('Account unavailable');
   });
 });

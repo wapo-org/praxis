@@ -46,6 +46,9 @@ import type * as webTools from "../webTools.js";
 import type * as workflows_agentRun from "../workflows/agentRun.js";
 import type * as workflows_constants from "../workflows/constants.js";
 import type * as workflows_purge from "../workflows/purge.js";
+import type * as workflows_turnCommit from "../workflows/turnCommit.js";
+import type * as workflows_turnDispatch from "../workflows/turnDispatch.js";
+import type * as workflows_turnState from "../workflows/turnState.js";
 import type * as workflows_validators from "../workflows/validators.js";
 import type * as zodValidator from "../zodValidator.js";
 
@@ -94,6 +97,9 @@ declare const fullApi: ApiFromModules<{
   "workflows/agentRun": typeof workflows_agentRun;
   "workflows/constants": typeof workflows_constants;
   "workflows/purge": typeof workflows_purge;
+  "workflows/turnCommit": typeof workflows_turnCommit;
+  "workflows/turnDispatch": typeof workflows_turnDispatch;
+  "workflows/turnState": typeof workflows_turnState;
   "workflows/validators": typeof workflows_validators;
   zodValidator: typeof zodValidator;
 }>;

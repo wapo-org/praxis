@@ -4,11 +4,11 @@ import {makeFunctionReference} from 'convex/server';
 import {RunSchema, TurnResultSchema} from '@praxis/protocol';
 import type {StepContext} from '@praxis/verify';
 import {z} from 'zod';
-import {STUB_TURNS_MAX} from '../../../convex/workflows/constants.js';
 import {typedApi} from '../convex-typed-rows/api.js';
 import {hostedFixture} from '../convex-typed-rows/fixture.js';
 import type {LiveOwner} from '../convex-typed-rows/owners.js';
 import {readRuns, readTurns, runInternal} from './hosted.js';
+import {turnRowsFor, wholeRunChecks} from './redelivery-capacity.js';
 
 const Cancel = makeFunctionReference<'mutation', {runId: string}, unknown>('runs:cancel');
 const SETTLE_TIMEOUT_MS = 30_000;
@@ -40,7 +40,7 @@ export async function verifyCompletion(context: StepContext) {
   const status = await waitForTerminal(owner, runId);
   const [runs, turns, workflows, steps] = await Promise.all([
     readRuns(reader, owner.userId),
-    readTurns(reader, owner.userId),
+    reader('turns'),
     reader('workflows', 'workflow'),
     reader('steps', 'workflow'),
   ]);
@@ -52,19 +52,16 @@ export async function verifyCompletion(context: StepContext) {
   const actionSteps = steps.map(row => Step.safeParse(row).data).filter(
     row => row?.workflowId === workflowId && row?.step.functionType === 'action',
   ).length;
-  const flags = turns.filter(turn => turn.runId === runId).sort((a, b) => a.turnIndex - b.turnIndex);
-  const expectedFlags = flags.length === STUB_TURNS_MAX && flags.every((turn, index) => {
-    const terminal = index === STUB_TURNS_MAX - 1;
-    return turn.turnIndex === index && turn.done === terminal && turn.status === (terminal ? 'completed' : 'ready');
-  });
+  const flags = turnRowsFor(turns, {userId: owner.userId, runId, generation: 0});
+  const flagChecks = wholeRunChecks('completion', flags);
   context.attach('completion.json', JSON.stringify({
-    workflowId, runId, status, workflowExists, actionSteps, flags,
+    workflowId, runId, status, workflowExists, actionSteps, flags, flagChecks,
   }, null, 2));
   if (status !== 'completed' || run?.value.status !== 'completed' || !workflowExists
-    || actionSteps !== STUB_TURNS_MAX || !expectedFlags) {
+    || actionSteps !== flags.length || flagChecks.some(result => !result.ok)) {
     return {status: 'fail' as const, summary: 'Hosted run, workflow journal, or persisted turn flags did not match completion'};
   }
-  return {status: 'pass' as const, summary: 'Authenticated workflow completed with three journaled actions and three persisted turn flags'};
+  return {status: 'pass' as const, summary: `Signed worker turns completed the run: ${actionSteps} journaled actions, ${flags.length} turn receipts`};
 }
 
 export async function verifyCancellation(context: StepContext) {
@@ -75,7 +72,7 @@ export async function verifyCancellation(context: StepContext) {
   const status = await waitForTerminal(owner, runId);
   const run = (await readRuns(reader, owner.userId)).find(row => row._id === runId);
   const workflow = run?.workflow;
-  if (status !== 'cancelled' || run?.value.status !== 'cancelled' || !workflow || workflow.nextTurnIndex >= STUB_TURNS_MAX) {
+  if (status !== 'cancelled' || run?.value.status !== 'cancelled' || !workflow) {
     return {status: 'fail' as const, summary: `Cancellation settled ${status} at turn ${workflow?.nextTurnIndex ?? 'unknown'}`};
   }
   const expectedTurnIndex = workflow.nextTurnIndex;

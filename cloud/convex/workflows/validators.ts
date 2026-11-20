@@ -1,6 +1,6 @@
 import {v} from 'convex/values';
 
-export const runScope = {
-  userId: v.string(), chatId: v.string(), runId: v.id('runs'), generation: v.number(),
-};
+/** A run's address below its owner; server functions get the owner from the token-vouched `userId`. */
+export const ownerRunScope = {chatId: v.string(), runId: v.id('runs'), generation: v.number()};
+export const runScope = {userId: v.string(), ...ownerRunScope};
 export const terminalStatus = v.union(v.literal('completed'), v.literal('cancelled'), v.literal('failed'));

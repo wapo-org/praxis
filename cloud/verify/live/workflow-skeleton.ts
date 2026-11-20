@@ -27,7 +27,7 @@ export default defineSuite({
     {
       id: 'completion',
       kind: 'auto',
-      checklist: '`runs.start` with a real Auth v2 session (via `getAuthUserId`) creates a run and workflow; the three stub turns complete and the run settles `completed`.',
+      checklist: '`runs.start` with a real Auth v2 session (via `getAuthUserId`) creates a run and workflow; each turn runs through the signed hosted `/api/turn` worker and commits once, and the run settles `completed`.',
       needs: HOSTED_NEEDS,
       run: verifyCompletion,
     },
@@ -43,7 +43,7 @@ export default defineSuite({
     {
       id: 'deletion',
       kind: 'auto',
-      checklist: 'Account deletion mid-run (`account:begin`, then `account:purge` to `done`): `runs.start` and stub commits are rejected; no `runs`, `turnFlags`, workflow `workflows`/`steps` or `users` rows remain for the owner.',
+      checklist: 'Account deletion mid-run (`account:begin`, then `account:purge` to `done`): `runs.start` and a worker `turns.commit` are rejected; no `runs`, `turnFlags`, workflow `workflows`/`steps` or `users` rows remain for the owner.',
       needs: HOSTED_NEEDS,
       run: verifyDeletion,
     },
