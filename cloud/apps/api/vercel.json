@@ -5,7 +5,7 @@
   "outputDirectory": "dist/public",
   "fluid": true,
   "functions": {
-    "api/index.ts": {"maxDuration": 300, "memory": 1024}
+    "api/index.mjs": {"maxDuration": 300, "memory": 1024}
   },
   "rewrites": [{"source": "/api/turn", "destination": "/api"}, {"source": "/(.*)", "destination": "/api"}]
 }
