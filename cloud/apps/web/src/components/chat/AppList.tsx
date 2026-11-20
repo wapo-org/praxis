@@ -1,5 +1,5 @@
 import { ScrollBlur } from '@praxis/glass';
-import { COMPOSIO_APPS, composioEnabledInChat } from '@praxis/protocol';
+import { composioAppName, composioEnabledInChat } from '@praxis/protocol';
 import React from 'react';
 import type { AppConnections } from '../../hooks/useAppConnections';
 import { useAutoFocus } from '../../hooks/useAutoFocus';
@@ -23,9 +23,11 @@ export function AppList({ connections, onBack, onOpenDirectory, autoFocus = true
   const inputRef = React.useRef<HTMLInputElement>(null);
   useAutoFocus(inputRef, autoFocus);
 
-  const connected = COMPOSIO_APPS.filter(
-    (app) => connections.state === 'ready' && connections.byToolkit.get(app.toolkit) === 'connected',
-  );
+  const connected = connections.state === 'ready'
+    ? [...connections.byToolkit.entries()]
+        .filter(([, status]) => status === 'connected')
+        .map(([toolkit]) => ({ toolkit, name: composioAppName(toolkit) }))
+    : [];
   const needle = query.trim().toLowerCase();
   const filtered = needle ? connected.filter((app) => app.name.toLowerCase().includes(needle)) : connected;
   const chat = store.activeChat;

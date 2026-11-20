@@ -17,6 +17,7 @@ import schema from '../convex/schema.js';
 import { SERVER_TOKEN, signedInUser } from './workflow-fixture.js';
 
 const fake = vi.hoisted(() => ({
+  listToolkits: vi.fn<ComposioClient['listToolkits']>(),
   createConnectLink: vi.fn<ComposioClient['createConnectLink']>(),
   revokeConnection: vi.fn<ComposioClient['revokeConnection']>(),
 }));
@@ -62,6 +63,11 @@ describe('Composio connections', () => {
     vi.stubEnv(ALLOWED_ORIGINS_ENV, origin);
     vi.stubEnv(TENANT_ID_SECRET_ENV, tenantSecret);
     vi.stubEnv(COMPOSIO_API_KEY_ENV, 'test-composio-key');
+    fake.listToolkits.mockReset().mockResolvedValue({
+      items: [{toolkit: 'gmail', name: 'Gmail', description: 'Email'}],
+      nextCursor: null,
+      totalItems: 1,
+    });
     fake.createConnectLink.mockReset().mockResolvedValue(link('ca_first'));
     fake.revokeConnection.mockReset().mockResolvedValue(undefined);
   });
@@ -207,5 +213,13 @@ describe('Composio connections', () => {
     await expect(client.action(connections.connect, target)).rejects.toThrow(error);
     expect(fake.createConnectLink).not.toHaveBeenCalled();
     expect(await client.query(connections.list, {})).toEqual([]);
+  });
+
+  it('lists the Composio catalog for signed-in users and rejects signed-out callers', async () => {
+    const {t, client} = await setup();
+    const page = await client.action(connections.catalog, {search: 'mail', limit: 20});
+    expect(page.items).toEqual([{toolkit: 'gmail', name: 'Gmail', description: 'Email'}]);
+    expect(fake.listToolkits).toHaveBeenCalledExactlyOnceWith({search: 'mail', cursor: undefined, limit: 20});
+    await expect(t.action(connections.catalog, {})).rejects.toThrow('Authentication required');
   });
 });
