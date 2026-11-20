@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import type { Chat } from '@praxis/protocol';
+import { COMPOSIO_APPS, type Chat } from '@praxis/protocol';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AppCatalog } from '../../hooks/useAppCatalog';
 import type { AppConnect } from '../../hooks/useAppConnect';
 import type { AppConnections } from '../../hooks/useAppConnections';
 import type { PraxisStoreContextValue } from '../../state/store.js';
@@ -11,9 +12,30 @@ import { AppDirectoryScreen } from './AppDirectoryScreen';
 let store: PraxisStoreContextValue;
 let connections: AppConnections;
 let actions: AppConnect;
+let catalogOverride: AppCatalog | null;
+const loadMore = vi.fn();
+const retry = vi.fn();
 vi.mock('../../state/store.js', () => ({ usePraxisStore: () => store }));
 vi.mock('../../hooks/useAppConnections', () => ({ useAppConnections: () => connections }));
 vi.mock('../../hooks/useAppConnect', () => ({ useAppConnect: () => actions }));
+vi.mock('../../hooks/useAppCatalog', () => ({
+  useAppCatalog: (query: string): AppCatalog => {
+    if (catalogOverride) return catalogOverride;
+    const needle = query.trim().toLowerCase();
+    const items = needle
+      ? COMPOSIO_APPS.filter((app) => `${app.name} ${app.description}`.toLowerCase().includes(needle))
+      : [...COMPOSIO_APPS];
+    return {
+      state: 'ready',
+      items,
+      totalItems: items.length,
+      hasMore: false,
+      loadingMore: false,
+      loadMore,
+      retry,
+    };
+  },
+}));
 
 const chat: Chat = {
   type: 'chat', id: 'c1', title: 'Chat', pinned: false, mode: 'ask', connectorIds: [],
@@ -32,6 +54,9 @@ beforeEach(() => {
     byToolkit: new Map([['gmail', 'connected'], ['github', 'connected'], ['slack', 'failed'], ['notion', 'pending']]),
   };
   actions = { busy: null, error: null, connect: vi.fn(), disconnect: vi.fn() };
+  catalogOverride = null;
+  loadMore.mockReset();
+  retry.mockReset();
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -107,5 +132,37 @@ describe('App Directory', () => {
     expect(container.querySelector('[role="alert"]')!.textContent).toBe('Toolkit is already connected');
     expect(button('Connect Linear')!.textContent).toBe('Opening…');
     expect(button('Connect Linear')!.disabled).toBe(true);
+  });
+
+  it('renders pagination controls, logos, and catalog retry errors', async () => {
+    catalogOverride = {
+      state: 'ready',
+      items: [{ toolkit: 'trello', name: 'Trello', description: 'Boards', logo: 'https://assets.composio.dev/trello.png' }],
+      totalItems: 200,
+      hasMore: true,
+      loadingMore: false,
+      loadMore,
+      retry,
+    };
+    await mount();
+    expect(container.querySelector('img[src="https://assets.composio.dev/trello.png"]')).not.toBeNull();
+    const more = [...container.querySelectorAll('button')].find((el) => el.textContent?.includes('Load more apps'));
+    expect(more?.textContent).toContain('1 of 200');
+    await act(async () => more!.click());
+    expect(loadMore).toHaveBeenCalledOnce();
+
+    catalogOverride = {
+      state: 'error',
+      items: [],
+      totalItems: 0,
+      hasMore: false,
+      loadingMore: false,
+      loadMore,
+      retry,
+    };
+    await mount();
+    const tryAgain = [...container.querySelectorAll('button')].find((el) => el.textContent === 'Try again');
+    await act(async () => tryAgain!.click());
+    expect(retry).toHaveBeenCalledOnce();
   });
 });
