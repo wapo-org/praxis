@@ -1,61 +1,51 @@
 {
   "name": "linear-contradiction",
-  "gates": [],
-  "sessions": {
-    "abstractions": {
-      "session": "abstractions",
-      "findings": [
-        {
-          "rule_id": "R1.api-thin-routes",
-          "file": "cloud/apps/api/src/features/preferences/routes.ts",
-          "line": 7,
-          "evidence": "app.post('/v1/preferences', async (c) => {",
-          "failure_scenario": "A new public Hono route is added although client calls are moving to Convex functions.",
-          "suggestion": "Would a Convex mutation fit here?",
-          "confidence": "medium",
-          "linear_issue": null,
-          "linear_quote": null
-        }
-      ]
-    },
-    "maintainability": {
-      "session": "maintainability",
-      "findings": [
-        {
-          "rule_id": "G.linear-contradiction",
-          "file": "cloud/apps/api/src/features/preferences/routes.ts",
-          "line": 7,
-          "evidence": "app.post('/v1/preferences', async (c) => {",
-          "failure_scenario": "The web app gains a new dependency on a Vercel route that PRA-41 schedules for deletion.",
-          "suggestion": null,
-          "confidence": "medium",
-          "linear_issue": "PRA-41",
-          "linear_quote": "No client-facing route stays on Vercel."
-        },
-        {
-          "rule_id": "G.linear-contradiction",
-          "file": "cloud/apps/api/src/features/preferences/routes.ts",
-          "line": 10,
-          "evidence": "return c.json({ ok: true });",
-          "failure_scenario": "PRA-13 requires every response to be streamed, so a JSON response contradicts it.",
-          "suggestion": null,
-          "confidence": "medium",
-          "linear_issue": "PRA-13",
-          "linear_quote": "All responses must be streamed to the client."
-        }
-      ]
-    },
-    "conciseness": {
-      "session": "conciseness",
-      "findings": []
-    },
-    "logic_bs": {
-      "session": "logic_bs",
-      "findings": []
-    },
-    "security": {
-      "session": "security",
+  "gates": [
+    {
+      "key": "check-rules",
+      "rule_id": "GATE.check-rules",
+      "status": "passed",
       "findings": []
     }
+  ],
+  "sessions": {
+    "abstractions": {
+      "findings": [],
+      "session": "abstractions",
+      "summary": "No changes assessed",
+      "ui_check": null
+    },
+    "maintainability": {
+      "findings": [],
+      "session": "maintainability",
+      "summary": "No confirmed issue found",
+      "ui_check": "Preferences route changes web settings behavior. On the settings screen, submit updated preferences and verify the request succeeds and the saved values persist."
+    },
+    "conciseness": {
+      "findings": [],
+      "session": "conciseness",
+      "summary": "No removable logic confirmed",
+      "ui_check": null
+    },
+    "logic_bs": {
+      "findings": [],
+      "session": "logic_bs",
+      "summary": "No concrete defects found",
+      "ui_check": null
+    },
+    "security": {
+      "findings": [],
+      "session": "security",
+      "summary": "No security issues found",
+      "ui_check": "Preferences settings flow: submit the preferences form and confirm it saves successfully for the signed-in user."
+    }
+  },
+  "live": {
+    "source": "praxis-review live stack (PRA-92)",
+    "model": "gpt-6.2-sol",
+    "reasoning_effort": "low",
+    "duration_seconds": 34.8,
+    "session_errors": {},
+    "gates_note": "check-rules re-run with npm dependencies installed (develop 2dd8454); sessions are the live Sol outputs"
   }
 }

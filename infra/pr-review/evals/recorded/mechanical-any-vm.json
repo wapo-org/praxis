@@ -7,64 +7,82 @@
       "status": "failed",
       "findings": [
         {
-          "rule_id": "R5.banned-primitives",
-          "file": "cloud/apps/api/src/features/tools/run-snippet.ts",
-          "line": 1,
-          "message": "import \"node:vm\" is banned in apps/api"
-        },
-        {
           "rule_id": "R4.no-any",
           "file": "cloud/apps/api/src/features/tools/run-snippet.ts",
           "line": 3,
           "message": "raw `any`: use a real type, `unknown` plus a parse, or a generic"
+        },
+        {
+          "rule_id": "R5.banned-primitives",
+          "file": "cloud/apps/api/src/features/tools/run-snippet.ts",
+          "line": 1,
+          "message": "import \"node:vm\" is banned in apps/api"
         }
       ]
     }
   ],
   "sessions": {
     "abstractions": {
+      "findings": [],
       "session": "abstractions",
-      "findings": [
-        {
-          "rule_id": "R4.no-any",
-          "file": "cloud/apps/api/src/features/tools/run-snippet.ts",
-          "line": 3,
-          "evidence": "export function runSnippet(code: string, context: any): unknown {",
-          "failure_scenario": "The any type removes type checking for the context value.",
-          "suggestion": null,
-          "confidence": "high",
-          "linear_issue": null,
-          "linear_quote": null
-        }
-      ]
+      "summary": "No boundary contract changes found",
+      "ui_check": null
     },
     "maintainability": {
+      "findings": [],
       "session": "maintainability",
-      "findings": []
+      "summary": "No issue linked; clean break clear",
+      "ui_check": null
     },
     "conciseness": {
+      "findings": [],
       "session": "conciseness",
-      "findings": []
+      "summary": "No confirmed subtraction findings",
+      "ui_check": null
     },
     "logic_bs": {
-      "session": "logic_bs",
-      "findings": []
-    },
-    "security": {
-      "session": "security",
       "findings": [
         {
-          "rule_id": "R5.banned-primitives",
-          "file": "cloud/apps/api/src/features/tools/run-snippet.ts",
-          "line": 1,
-          "evidence": "import vm from 'node:vm';",
-          "failure_scenario": "The vm module is banned in apps/api and allows code execution.",
-          "suggestion": null,
           "confidence": "high",
+          "evidence": "return vm.runInNewContext(code, context);",
+          "failure_scenario": "When `code` is a JavaScript infinite loop such as `while (true) {}`, `runInNewContext` runs synchronously without a timeout, so the API worker remains blocked indefinitely and cannot serve other requests.",
+          "file": "cloud/apps/api/src/features/tools/run-snippet.ts",
+          "line": 4,
           "linear_issue": null,
-          "linear_quote": null
+          "linear_quote": null,
+          "rule_id": "CORRECTNESS",
+          "suggestion": "Could the runner enforce a bounded execution time for snippets?"
         }
-      ]
+      ],
+      "session": "logic_bs",
+      "summary": "Unbounded snippet execution",
+      "ui_check": null
+    },
+    "security": {
+      "findings": [
+        {
+          "confidence": "high",
+          "evidence": "return vm.runInNewContext(code, context);",
+          "failure_scenario": "A caller that passes user- or model-controlled `code` executes it in the API process. A `vm` context is not a security boundary, so crafted JavaScript can escape the context and access server capabilities available to the process.",
+          "file": "cloud/apps/api/src/features/tools/run-snippet.ts",
+          "line": 4,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "SECURITY",
+          "suggestion": "Could we run calculator snippets in a separately isolated runtime with explicit resource and capability limits? "
+        }
+      ],
+      "session": "security",
+      "summary": "Snippet executes untrusted code",
+      "ui_check": null
     }
+  },
+  "live": {
+    "source": "praxis-review live stack (PRA-92)",
+    "model": "gpt-6.2-sol",
+    "reasoning_effort": "low",
+    "duration_seconds": 36.4,
+    "session_errors": {},
+    "gates_note": "check-rules re-run with npm dependencies installed (develop 2dd8454); sessions are the live Sol outputs"
   }
 }

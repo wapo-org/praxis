@@ -1,62 +1,87 @@
 {
   "name": "fail-open-store",
-  "gates": [],
+  "gates": [
+    {
+      "key": "check-rules",
+      "rule_id": "GATE.check-rules",
+      "status": "passed",
+      "findings": []
+    }
+  ],
   "sessions": {
     "abstractions": {
+      "findings": [
+        {
+          "confidence": "high",
+          "evidence": "return createMemoryRunStore();",
+          "failure_scenario": "When `CONVEX_URL` is absent in production, API requests use a process-local run store. Run records disappear on restart and are not shared across instances, so run state is silently lost.",
+          "file": "cloud/apps/api/src/adapters/run-store.ts",
+          "line": 9,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "R1.api-thin-routes",
+          "suggestion": "Could a missing Convex configuration return an explicit unavailable error instead of selecting the in-memory store? "
+        }
+      ],
       "session": "abstractions",
-      "findings": []
+      "summary": "Production store fallback",
+      "ui_check": null
     },
     "maintainability": {
+      "findings": [
+        {
+          "confidence": "high",
+          "evidence": "    return createMemoryRunStore();",
+          "failure_scenario": "When `CONVEX_URL` is missing in production, run data is stored only in process memory and disappears on restart or across instances, while the API continues operating as though persistence were available.",
+          "file": "cloud/apps/api/src/adapters/run-store.ts",
+          "line": 9,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "G.clean-break",
+          "suggestion": "Could this return an explicit configuration error instead of keeping the in-memory fallback in the production adapter?"
+        }
+      ],
       "session": "maintainability",
-      "findings": []
+      "summary": "Production memory fallback remains",
+      "ui_check": null
     },
     "conciseness": {
+      "findings": [],
       "session": "conciseness",
-      "findings": [
-        {
-          "rule_id": "G.dead-code",
-          "file": "cloud/apps/api/src/adapters/other.ts",
-          "line": 1,
-          "evidence": "export function unused() {}",
-          "failure_scenario": "This helper has no callers anywhere in the repository.",
-          "suggestion": null,
-          "confidence": "medium",
-          "linear_issue": null,
-          "linear_quote": null
-        }
-      ]
+      "summary": "No redundant code found",
+      "ui_check": null
     },
     "logic_bs": {
-      "session": "logic_bs",
       "findings": [
         {
-          "rule_id": "R3.root-cause",
+          "confidence": "high",
+          "evidence": "return createMemoryRunStore();",
+          "failure_scenario": "When `CONVEX_URL` is unset in a production deployment, the adapter accepts a run write into process memory and reports success. A restart or another instance then has no record, while the PR description says operation continues without Convex.",
           "file": "cloud/apps/api/src/adapters/run-store.ts",
           "line": 9,
-          "evidence": "return createMemoryRunStore();",
-          "failure_scenario": "The fallback hides a missing configuration value instead of reporting it, so runs vanish with no error.",
-          "suggestion": null,
-          "confidence": "medium",
           "linear_issue": null,
-          "linear_quote": null
+          "linear_quote": null,
+          "rule_id": "R3.root-cause",
+          "suggestion": "Could the production adapter return an explicit unavailable error when Convex is not configured, reserving the memory store for tests? "
         }
-      ]
+      ],
+      "session": "logic_bs",
+      "summary": "In-memory fallback hides outage",
+      "ui_check": null
     },
     "security": {
+      "findings": [],
       "session": "security",
-      "findings": [
-        {
-          "rule_id": "R3.fail-closed",
-          "file": "cloud/apps/api/src/adapters/run-store.ts",
-          "line": 9,
-          "evidence": "return createMemoryRunStore();",
-          "failure_scenario": "A production deploy with a missing CONVEX_URL starts fine and loses every run when the function instance is recycled.",
-          "suggestion": "Could this throw at startup instead?",
-          "confidence": "high",
-          "linear_issue": null,
-          "linear_quote": null
-        }
-      ]
+      "summary": "No security issues found",
+      "ui_check": null
     }
+  },
+  "live": {
+    "source": "praxis-review live stack (PRA-92)",
+    "model": "gpt-6.2-sol",
+    "reasoning_effort": "low",
+    "duration_seconds": 34.2,
+    "session_errors": {},
+    "gates_note": "check-rules re-run with npm dependencies installed (develop 2dd8454); sessions are the live Sol outputs"
   }
 }

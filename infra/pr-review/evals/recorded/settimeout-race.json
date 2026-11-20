@@ -1,50 +1,63 @@
 {
   "name": "settimeout-race",
-  "gates": [],
-  "sessions": {
-    "abstractions": {
-      "session": "abstractions",
-      "findings": [
-        {
-          "rule_id": "R2.unit-suffix",
-          "file": "cloud/apps/web/src/chat/scroll-to-latest.ts",
-          "line": 1,
-          "evidence": "const SCROLL_DELAY_MS = 50;",
-          "failure_scenario": "The constant name has a unit already but maybe needs a comment.",
-          "suggestion": null,
-          "confidence": "low",
-          "linear_issue": null,
-          "linear_quote": null
-        }
-      ]
-    },
-    "maintainability": {
-      "session": "maintainability",
-      "findings": []
-    },
-    "conciseness": {
-      "session": "conciseness",
-      "findings": []
-    },
-    "logic_bs": {
-      "session": "logic_bs",
-      "findings": [
-        {
-          "rule_id": "R3.root-cause",
-          "file": "cloud/apps/web/src/chat/scroll-to-latest.ts",
-          "line": 4,
-          "evidence": "setTimeout(() => {",
-          "failure_scenario": "On a slow device layout takes longer than 50 ms, so the scroll runs before the new row exists and the chat stays one message short.",
-          "suggestion": "Could this run after the row is committed?",
-          "confidence": "medium",
-          "linear_issue": null,
-          "linear_quote": null
-        }
-      ]
-    },
-    "security": {
-      "session": "security",
+  "gates": [
+    {
+      "key": "check-rules",
+      "rule_id": "GATE.check-rules",
+      "status": "passed",
       "findings": []
     }
+  ],
+  "sessions": {
+    "abstractions": {
+      "findings": [],
+      "session": "abstractions",
+      "summary": "No boundary violations found",
+      "ui_check": null
+    },
+    "maintainability": {
+      "findings": [],
+      "session": "maintainability",
+      "summary": "No legacy paths found",
+      "ui_check": null
+    },
+    "conciseness": {
+      "findings": [],
+      "session": "conciseness",
+      "summary": "No deletable code verified",
+      "ui_check": null
+    },
+    "logic_bs": {
+      "findings": [
+        {
+          "confidence": "high",
+          "evidence": "  setTimeout(() => {",
+          "failure_scenario": "If a new message's layout takes longer than 50 ms, the timeout scrolls to the current scrollHeight before that message is laid out. The new message then remains below the viewport, so the reported fix still fails for that input.",
+          "file": "cloud/apps/web/src/chat/scroll-to-latest.ts",
+          "line": 4,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "R3.root-cause",
+          "suggestion": "Could scrolling run after the message has been committed and laid out instead of after a fixed delay?"
+        }
+      ],
+      "session": "logic_bs",
+      "summary": "Fixed delay leaves race",
+      "ui_check": "In the chat screen, send a message that causes delayed message rendering or layout and confirm the viewport ends at the newest message."
+    },
+    "security": {
+      "findings": [],
+      "session": "security",
+      "summary": "No security issues found",
+      "ui_check": null
+    }
+  },
+  "live": {
+    "source": "praxis-review live stack (PRA-92)",
+    "model": "gpt-6.2-sol",
+    "reasoning_effort": "low",
+    "duration_seconds": 32.4,
+    "session_errors": {},
+    "gates_note": "check-rules re-run with npm dependencies installed (develop 2dd8454); sessions are the live Sol outputs"
   }
 }

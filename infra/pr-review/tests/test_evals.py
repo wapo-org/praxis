@@ -43,18 +43,20 @@ def test_fixtures_are_well_formed() -> None:
         assert all(path.startswith("cloud/") for path in case.files)
 
 
-def test_validation_turns_raw_model_output_into_postable_predictions() -> None:
+def test_live_recording_predictions_survive_validation() -> None:
     case = next(case for case in load_cases() if case.name == "owner-from-body")
     recorded = json.loads((RECORDED_DIR / "owner-from-body.json").read_text(encoding="utf-8"))
     predictions = predictions_from_run(case, recorded)
     path = "cloud/apps/api/src/features/media/share-routes.ts"
-    assert predictions["posted"] == {("R5.owner-from-auth", path)}
-    assert predictions["raw"] == {
+    expected = {
         ("R5.owner-from-auth", path),
-        ("R5.secret-leak", path),
         ("R4.boundary-parse", path),
-        ("G.linear-contradiction", path),
+        ("G.dead-code", path),
+        ("CORRECTNESS", path),
     }
+    # Live Sol output (PRA-92): every finding quoted the diff, so validation dropped nothing.
+    assert predictions["raw"] == expected
+    assert predictions["posted"] == expected
     failed_session = predictions_from_run(case, {"sessions": {"security": None}, "gates": []})
     assert failed_session == {"raw": set(), "posted": set()}
 
@@ -62,17 +64,20 @@ def test_validation_turns_raw_model_output_into_postable_predictions() -> None:
 def test_offline_run_scores_the_recorded_outputs() -> None:
     scores = run_offline()
     assert scores["cases"] == 10
-    assert scores["raw"] == {**scores["raw"], "tp": 10, "fp": 13, "fn": 0, "precision": 0.435, "recall": 1.0}
-    assert scores["posted"] == {**scores["posted"], "tp": 10, "fp": 1, "fn": 0, "precision": 0.909, "recall": 1.0}
-    assert scores["clean_cases_with_findings"] == []
-    assert scores["per_case"]["fail-open-store"]["unexpected"] == [
-        ("R3.root-cause", "cloud/apps/api/src/adapters/run-store.ts")
-    ]
-    assert scores["per_case"]["mechanical-any-vm"] == {"missed": [], "unexpected": []}
+    live = {"tp": 7, "fp": 15, "fn": 3, "precision": 0.318, "recall": 0.7}
+    assert scores["raw"] == {**scores["raw"], **live}
+    assert scores["posted"] == {**scores["posted"], **live}
+    assert scores["clean_cases_with_findings"] == ["clean-refactor", "clean-ui-copy"]
+    store = "cloud/apps/api/src/adapters/run-store.ts"
+    assert scores["per_case"]["fail-open-store"] == {
+        "missed": [("R3.fail-closed", store)],
+        "unexpected": [("G.clean-break", store), ("R1.api-thin-routes", store), ("R3.root-cause", store)],
+    }
+    assert scores["per_case"]["mechanical-any-vm"]["missed"] == []
 
     text = format_scores(scores)
-    assert "posted  precision 0.909  recall 1.000  (tp 10, fp 1, fn 0)" in text
-    assert "clean cases that still got findings: none" in text
+    assert "posted  precision 0.318  recall 0.700  (tp 7, fp 15, fn 3)" in text
+    assert "clean cases that still got findings: ['clean-refactor', 'clean-ui-copy']" in text
 
 
 def test_missing_expected_issue_lowers_recall() -> None:
