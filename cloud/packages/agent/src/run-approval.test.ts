@@ -35,7 +35,7 @@ function fixture(name: string, mode: Mode, args: JsonObject, options: {ports?: b
     },
   };
   const events: RunEventPayload[] = [];
-  const hooks = {onApprovalRead: () => {}};
+  const hooks = {onApprovalRead: () => {}, cancelled: false};
   const runner = new AgentRunner({provider, tools: [tool], ports: {
     ...(options.ports !== false && {
       ...approvals.ports,
@@ -47,7 +47,7 @@ function fixture(name: string, mode: Mode, args: JsonObject, options: {ports?: b
     }),
     async save() {},
     async emit(_user, _run, event) { events.push(event); },
-    async isCancelled() { return false; },
+    async isCancelled() { return hooks.cancelled; },
   }});
   const input: RunInput = {
     userId: 'owner', policy: {trustedSources: options.trusted ? ['mcp:connector'] : [], alwaysAllow: []},
@@ -116,4 +116,33 @@ it('never executes a side effect without a matching approved row', async () => {
       expect(f.output).toHaveBeenCalledTimes(!changed && (decision === 'allowOnce' || decision === 'allowAlways') ? 1 : 0);
     },
   ));
+});
+
+it('never dispatches an approved call once the run is cancelled', async () => {
+  const f = fixture(TOOLS[0], 'build', ARGS);
+  const paused = await f.runner.run(f.input);
+  const decision = {type: 'approval.decision', approvalId: paused.approval!.id, decision: 'allowOnce'};
+  f.approvals.decisions.set(paused.approval!.id, 'allowOnce');
+  const cancelled = await f.runner.cancel(paused);
+  expect(cancelled.run.status).toBe('cancelled');
+  expect(cancelled.approval).toBeUndefined();
+  await expect(f.runner.resume(cancelled, decision)).rejects.toThrow('Run is finished');
+  f.cancelled = true;
+  const raced = await f.runner.resume(paused, decision);
+  expect(raced.run.status).toBe('cancelled');
+  expect(f.output).not.toHaveBeenCalled();
+  expect(f.events.filter(event => event.type === 'tool.running')).toHaveLength(0);
+});
+
+it('rejects a conflicting replay after the recorded decision resumed the run', async () => {
+  const f = fixture(TOOLS[1], 'build', ARGS);
+  const paused = await f.runner.run(f.input);
+  const id = paused.approval!.id;
+  f.approvals.decisions.set(id, 'deny');
+  const completed = await f.runner.resume(paused, {type: 'approval.decision', approvalId: id, decision: 'deny'});
+  await expect(f.runner.resume(completed, {type: 'approval.decision', approvalId: id, decision: 'allowOnce'}))
+    .rejects.toThrow('Conflicting response');
+  await expect(f.runner.resume(paused, {type: 'approval.decision', approvalId: id, decision: 'allowOnce'}))
+    .rejects.toThrow('No recorded decision');
+  expect(f.output).not.toHaveBeenCalled();
 });
