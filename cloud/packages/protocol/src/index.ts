@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {SubagentIdSchema, SUBAGENT_LIMITS} from './subagents.js';
+import {RunTaintSchema, TaintSourceSchema} from './taint.js';
 export const PROTOCOL_VERSION = 1;
 export const JsonValueSchema = z.json();
 export type JsonValue = z.infer<typeof JsonValueSchema>;
@@ -98,6 +99,8 @@ export const MessagePartSchema = z.object({
   afterToolCallId:IdSchema.optional(),blockId:IdSchema.optional(),shape:ReasoningShapeSchema.optional(),redacted:z.boolean().optional(),
   startedAt:TimestampSchema.optional(),finishedAt:TimestampSchema.optional(),durationMs:z.number().nonnegative().optional(),
   annotations:z.array(StreamAnnotationSchema).optional(),
+  /** Structural untrusted-content mark set when a tool result is stored; history taint reads only this. */
+  taintSource:TaintSourceSchema.optional(),
 });
 export type MessagePart = z.infer<typeof MessagePartSchema>;
 export const MessageSchema = z.object({
@@ -124,7 +127,7 @@ export const RunStatusSchema = z.enum([
 ]);
 export const RUN_START_CONFLICT_CODE = 'idempotency_conflict';
 export const RunOutcomeSchema = z.enum(['completed','truncated','maxIterations','refused','cancelled','failed']);
-export const RunSchema = z.object({type:z.literal('run'),id:IdSchema,chatId:IdSchema,status:RunStatusSchema,outcome:RunOutcomeSchema.optional(),error:z.string().optional(),errorCode:RunErrorCodeSchema.optional(),note:z.string().optional(),createdAt:TimestampSchema,updatedAt:TimestampSchema,lastEventId:z.number().int().nonnegative(),clientTurnId:IdSchema.optional(),parentRunId:IdSchema.optional(),promptStartedAt:TimestampSchema.optional()});
+export const RunSchema = z.object({type:z.literal('run'),id:IdSchema,chatId:IdSchema,status:RunStatusSchema,outcome:RunOutcomeSchema.optional(),error:z.string().optional(),errorCode:RunErrorCodeSchema.optional(),note:z.string().optional(),createdAt:TimestampSchema,updatedAt:TimestampSchema,lastEventId:z.number().int().nonnegative(),clientTurnId:IdSchema.optional(),parentRunId:IdSchema.optional(),promptStartedAt:TimestampSchema.optional(),taint:RunTaintSchema.optional()});
 export type Run = z.infer<typeof RunSchema>;
 export const StreamSimOptionsSchema = z.object({
   sample: z.enum(['short', 'torture']).default('torture'),
@@ -141,13 +144,13 @@ export const StartRunSchema = z.object({regenerateMessageId:IdSchema.optional(),
   modelId:z.string().optional(),mode:ModeSchema.optional(),effort:z.string().optional(),
   attachmentIds:z.array(IdSchema).default([]),idempotencyKey:IdSchema.optional(),clientTurnId:IdSchema.optional(),
   script:z.enum([
-    'text','tools','approval','nestedApproval','elicitation','elicitationURL','error','long','compaction','vision',
+    'text','tools','approval','nestedApproval','taintedApproval','elicitation','elicitationURL','error','long','compaction','vision',
     'reasoningTitles','reasoningSummary','reasoningRaw','reasoningRedacted','reasoningNone','reasoningInterleaved','helloReplay','realShape','streamSim','codeFeatures','bursty',
   ]).optional(),
   streamSim:StreamSimOptionsSchema.optional(),
 });
 export type StartRun = z.infer<typeof StartRunSchema>;
-export const ApprovalSchema = z.object({type:z.literal('approval'),id:IdSchema,callId:IdSchema,toolName:z.string(),source:ToolSourceSchema,arguments:JsonValueSchema,reason:z.string(),title:z.string(),parentCallId:IdSchema.optional()});
+export const ApprovalSchema = z.object({type:z.literal('approval'),id:IdSchema,callId:IdSchema,toolName:z.string(),source:ToolSourceSchema,arguments:JsonValueSchema,reason:z.string(),title:z.string(),parentCallId:IdSchema.optional(),taintSource:TaintSourceSchema.optional()});
 export type Approval = z.infer<typeof ApprovalSchema>;
 export const ApprovalChoiceSchema = z.enum(['allowOnce','allowAlways','deny']);
 export const ApprovalDecisionSchema = z.object({type:z.literal('approval.decision'),approvalId:IdSchema,decision:ApprovalChoiceSchema});
@@ -266,6 +269,7 @@ export const AccountDeleteRecoverySchema = z.object({
 export const AccountDeleteSchema=z.object({type:z.literal('account.delete').optional(),password:z.string().min(1).max(1024).optional()});
 export const AccountDeletedSchema=z.object({type:z.literal('account.deleted')});
 export * from './tool-boundary.js';
+export * from './taint.js';
 
 export * from './auth.js';
 export * from './auth-config.js';

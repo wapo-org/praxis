@@ -194,6 +194,27 @@
       ]
     },
     {
+      "id": "runs.taint",
+      "title": "A side effect after an untrusted read needs a fresh exact-call approval that names the source",
+      "issue": "PRA-57",
+      "surfaces": [
+        "api",
+        "web"
+      ],
+      "covers": [
+        {
+          "command": "api",
+          "checks": [
+            "tainted-approval"
+          ]
+        },
+        {
+          "command": "web",
+          "flows": ["tainted-approval"]
+        }
+      ]
+    },
+    {
       "id": "runs.stop-replay",
       "title": "Disconnect, cancel and Last-Event-ID replay without duplicate events",
       "issue": "PRA-58",

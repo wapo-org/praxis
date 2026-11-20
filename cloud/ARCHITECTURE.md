@@ -237,10 +237,18 @@ output spill. Tool schemas remain identical when disabled or unavailable.
 Each tool carries its PRA-76 classification (`AgentTool.boundary`: read plus
 external-egress, untrusted source). The AgentRunner decides classified tools with
 `boundaryDecision` (`run-boundary.ts`): egress asks for approval in Build/Auto and is
-refused in Ask/Plan; always-allow applies only before taint. Executing an untrusted
-source sets the checkpoint's `tainted` flag, which is also seeded from earlier
-untrusted tool results in the chat; while tainted, non-read-only tools need a fresh
-approval. `read_tool_output` is classified as an untrusted read.
+refused in Ask/Plan; a policy-allow standing grant applies only before taint.
+Executing an untrusted source (a boundary `untrustedSource` read, any MCP connector
+result, a result reporting `tainted`, or a nested call that did) records
+`run.taint = {tainted, source, callId}` on the run row and `taintSource` on the stored
+`toolResult` part. Taint is an OR: the runner never clears it, `syncRun` keeps the stored
+value and the Convex run mutation keeps the prior taint against stale writers. Tools
+receive `ToolContext.tainted`, so spawned subagents inherit it, and a tainted subagent
+result taints the parent. While tainted, every side effect needs a fresh exact-call
+approval and the approval carries `taintSource`, which the card shows as
+"This run read content from …". A new run starts tainted only when a `toolResult` part
+with `taintSource` is still in its history; tool names are never consulted. Compaction
+keeps the run's taint. `read_tool_output` is classified as an untrusted read.
 
 The accounting RPC shapes (`WebSpendRequest`, `WebSpendSettlement`, admission) live
 in `@praxis/protocol`; Convex derives its validators from them and parses with them.

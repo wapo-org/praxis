@@ -90,6 +90,8 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
         service.require<Chat>(userId, 'chat', cp.chat.id).catch(() => null),
       ]);
       cp.run.lastEventId = Math.max(cp.run.lastEventId, current.lastEventId);
+      // Taint is an OR across writers; the Convex mutation enforces the same for concurrent stale writes.
+      if (current.taint) cp.run.taint ??= current.taint;
       const writes: Promise<unknown>[] = [service.put(userId, 'run', cp.run.id, cp.run)];
       if (chat && !chat.setup) {
         chat.setup = cp.setup;

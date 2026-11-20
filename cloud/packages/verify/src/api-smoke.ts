@@ -90,6 +90,23 @@ export const API_CHECKS: readonly ApiCheck[] = [
     await client.json(`/v1/runs/${run.id}/approvals`, RunSchema, {type: 'approval.decision', approvalId: approval.id, decision: 'allowOnce'});
     assert((await client.events(run.id)).includes('run.finished'), 'approved run never finished');
   }},
+  {id: 'tainted-approval', async run(client) {
+    // A fresh chat: earlier connector results in the shared approval chat would already taint the run.
+    const chat = await client.json('/v1/chats', ChatSchema, {type: 'chat.input', title: 'praxis-verify taint', mode: 'auto'});
+    const run = await client.json('/v1/runs', RunSchema, {type: 'run.start', chatId: chat.id, text: 'Read then write', script: 'taintedApproval'});
+    let parked: RunSnapshot | undefined;
+    for (let attempt = 0; attempt < APPROVAL_POLL_ATTEMPTS; attempt++) {
+      parked = await client.json(`/v1/runs/${run.id}/snapshot`, RunSnapshotSchema);
+      if (parked.pendingApprovals.length) break;
+      await sleep(APPROVAL_POLL_INTERVAL_MS);
+    }
+    const approval = parked?.pendingApprovals[0];
+    assert(approval, 'write after an untrusted read never asked for approval');
+    assert.equal(approval.taintSource, 'local fetch', 'approval lacks the taint source');
+    assert.equal(parked?.run.taint?.source, 'local fetch', 'run row lacks the persisted taint');
+    await client.json(`/v1/runs/${run.id}/approvals`, RunSchema, {type: 'approval.decision', approvalId: approval.id, decision: 'deny'});
+    assert((await client.events(run.id)).includes('run.finished'), 'denied run never finished');
+  }},
   {id: 'disconnect-cancel-replay', async run(client, state) {
     const run = await client.json('/v1/runs', RunSchema, {type: 'run.start', chatId: need(state, 'chatId'), text: 'Disconnect and cancel', script: 'long'});
     const stream = await fetch(`${client.base}/v1/runs/${run.id}/events`, {headers: {Authorization: DEV_BEARER}});

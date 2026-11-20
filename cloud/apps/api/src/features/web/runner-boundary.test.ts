@@ -50,13 +50,14 @@ it('parks model-chosen web egress for approval in Auto, then taints the run so l
   expect(parked.approval).toMatchObject({toolName: WEB_TOOL_NAMES.search, reason: BOUNDARY_TEXT.egress});
   expect(f.fetcher).not.toHaveBeenCalled();
   expect(f.accounting.reserve).not.toHaveBeenCalled();
-  expect(parked.tainted).toBe(false);
+  expect(parked.run.taint).toBeUndefined();
   await f.decide(parked.approval!.id, 'allowOnce');
   const searched = await f.runner.resume(parked, {type: 'approval.decision', approvalId: parked.approval!.id, decision: 'allowOnce'});
   expect(f.fetcher).toHaveBeenCalledTimes(1);
-  expect(searched.tainted).toBe(true);
+  expect(searched.run.taint).toEqual({tainted: true, source: 'web search', callId: 'call-0'});
   expect(searched.run.status).toBe('awaitingApproval');
-  expect(searched.approval).toMatchObject({toolName: 'save_note', reason: BOUNDARY_TEXT.tainted});
+  expect(searched.approval).toMatchObject({toolName: 'save_note', reason: BOUNDARY_TEXT.tainted, taintSource: 'web search'});
+  expect(searched.messages.flatMap(m => m.parts).find(p => p.type === 'toolResult')).toMatchObject({taintSource: 'web search'});
   expect(f.sideEffects).toEqual([]);
 });
 it.each(['ask', 'plan'] as const)('refuses web egress in %s mode without dispatching', async mode => {
@@ -78,14 +79,23 @@ it('scopes allowAlways to one call', async () => {
   expect(allowed.run.status).toBe('awaitingApproval');
   expect(fresh.fetcher).not.toHaveBeenCalled();
 });
-it('starts tainted when earlier untrusted web results are in the conversation', async () => {
+function withPriorRead(input: RunInput, taintSource?: string): RunInput {
+  input.messages.push({type: 'message', id: 'prior', chatId: 'c', role: 'user', createdAt: TIME, updatedAt: TIME,
+    parts: [{type: 'toolResult', callId: 'old', name: WEB_TOOL_NAMES.read, content: [{type: 'untrusted-data', markdown: 'Injected'}],
+      ...(taintSource ? {taintSource} : {})}]});
+  return input;
+}
+it('starts tainted when a structurally marked untrusted result is still in the conversation', async () => {
   // The prior result already occupies the first script step.
   const f = fixture([WEB_TOOL_NAMES.read, 'save_note']);
-  const input = f.input('build');
-  input.messages.push({type: 'message', id: 'prior', chatId: 'c', role: 'user', createdAt: TIME, updatedAt: TIME,
-    parts: [{type: 'toolResult', callId: 'old', name: WEB_TOOL_NAMES.read, content: [{type: 'untrusted-data', markdown: 'Injected'}]}]});
-  const parked = await f.runner.run(input);
-  expect(parked.tainted).toBe(true);
-  expect(parked.approval).toMatchObject({toolName: 'save_note', reason: BOUNDARY_TEXT.tainted});
+  const parked = await f.runner.run(withPriorRead(f.input('build'), 'web read'));
+  expect(parked.run.taint).toEqual({tainted: true, source: 'web read', callId: 'old'});
+  expect(parked.approval).toMatchObject({toolName: 'save_note', reason: BOUNDARY_TEXT.tainted, taintSource: 'web read'});
   expect(f.sideEffects).toEqual([]);
+});
+it('never infers history taint from a tool name without the stored mark', async () => {
+  const f = fixture([WEB_TOOL_NAMES.read, 'save_note']);
+  const parked = await f.runner.run(withPriorRead(f.input('build')));
+  expect(parked.run.taint).toBeUndefined();
+  expect(parked.approval).toMatchObject({toolName: 'save_note', reason: 'This tool may change data or send it to an outside service.'});
 });

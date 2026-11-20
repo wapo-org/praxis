@@ -125,6 +125,31 @@ const toolApproval: WebFlow = {
 };
 
 /** Former `apps/web/scripts/p0-check.mjs`: failure paths must surface, never fabricate data or keep a dead session. */
+const taintedApproval: WebFlow = {
+  id: 'tainted-approval',
+  title: 'A write after an untrusted read names the source on its approval card',
+  default: true,
+  session: 'shared',
+  allow: [],
+  async run({page, request, api}) {
+    const headers = await sessionHeaders(page);
+    const created = await request.post(`${api}/v1/chats`, {
+      headers, data: {type: 'chat.input', title: 'Taint verification', mode: 'build'},
+    });
+    expect(created.ok()).toBe(true);
+    const {id: chatId} = await created.json();
+    await page.goto(`/c/${chatId}`);
+    const started = await request.post(`${api}/v1/runs`, {
+      headers, data: {type: 'run.start', chatId, text: 'Read a page, then write', script: 'taintedApproval'},
+    });
+    expect(started.ok()).toBe(true);
+    const card = page.locator('[data-testid^="approval-card-"]').filter({hasText: 'local write'});
+    await expect(card.getByTestId('approval-taint')).toHaveText('This run read content from local fetch.');
+    await card.getByRole('button', {name: 'Deny'}).click();
+    await expect(card).toHaveCount(0);
+  },
+};
+
 const apiResilience: WebFlow = {
   id: 'api-resilience',
   title: 'Missing route errors, a 401 signs out, 30 tool runs keep the API alive',
@@ -175,7 +200,7 @@ async function toolRuns({api, request, note}: Pick<FlowContext, 'api' | 'request
 }
 
 export const WEB_FLOWS: readonly WebFlow[] = [
-  loadApp, settingsModels, modelSearch, scriptedChat, toolApproval, apiResilience, browserCliFlow, fuzzChatFlow,
+  loadApp, settingsModels, modelSearch, scriptedChat, toolApproval, taintedApproval, apiResilience, browserCliFlow, fuzzChatFlow,
   unavailableAccountFlow, previewProviderFlow,
 ];
 
