@@ -13,6 +13,7 @@ export const TOOL_REMEDIATION: Record<ToolErrorCode, string> = {
   conflict: 'Re-read the current state, then retry with an edit that matches it exactly.',
   timeout: 'Run it in the background and poll with wait_for_job, or narrow the work.',
   'connection-required': 'Ask the user to connect the app with the inline connect button, then retry.',
+  unavailable: 'Tell the user the sandbox is temporarily unavailable; retry after retryAtMs, not sooner.',
 };
 export function toolError(code: ToolErrorCode, message: string): ToolError {
   return ToolErrorSchema.parse({code, message, remediation: TOOL_REMEDIATION[code]});

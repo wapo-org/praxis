@@ -40,7 +40,7 @@ export const ACCOUNT_OWNER_ROWS: Record<TablesWith<'ownerRows'>, RowsBy<string>>
   messages: (ctx, userId, limit) => ctx.db.query('messages')
     .withIndex('by_chat_sequence', q => q.eq('userId', userId)).take(limit),
   sandboxes: (ctx, userId, limit) => ctx.db.query('sandboxes')
-    .withIndex('by_user_chat', q => q.eq('userId', userId)).take(limit),
+    .withIndex('by_user_scope', q => q.eq('userId', userId)).take(limit),
   outputs: (ctx, userId, limit) => ctx.db.query('outputs')
     .withIndex('by_user_id', q => q.eq('userId', userId)).take(limit),
   records: (ctx, userId, limit) => ctx.db.query('records')

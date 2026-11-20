@@ -176,14 +176,21 @@ export const domainTables = {
     // The tool call and approval a suspended turn parked the run on (PRA-32 resumes with the decision).
     suspension: v.optional(v.object({callId: v.string(), approvalId: v.string()})),
   }).index('by_user_run_turn', ['userId', 'runId', 'generation', 'turnIndex']),
+  // One row per owner and scope (PRA-52). `generation` fences writers: Modal Volumes are last-writer-wins.
   sandboxes: defineTable({
     userId: v.string(),
-    chatId: v.string(),
-    sandboxId: v.string(),
+    scope: v.string(),
+    // The Modal account the owner was placed on; never rewritten by failover (PRA-99).
+    slot: v.number(),
     volumeName: v.string(),
-    status: v.union(v.literal('starting'), v.literal('running'), v.literal('stopped'), v.literal('failed')),
-    lastUsedAt: v.string(),
-  }).index('by_user_chat', ['userId', 'chatId']),
+    generation: v.number(),
+    state: v.union(
+      v.object({status: v.literal('booting'), leaseExpiresAt: v.number()}),
+      v.object({status: v.literal('ready'), sandboxId: v.string(), expiresAt: v.number()}),
+      v.object({status: v.literal('terminated'), sandboxId: v.optional(v.string())}),
+    ),
+    lastUsedAt: v.number(),
+  }).index('by_user_scope', ['userId', 'scope']),
   outputs: defineTable({
     ...storeFields, chatId: v.string(), parentId: v.string(), text: v.string(),
   })

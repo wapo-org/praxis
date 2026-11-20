@@ -1,8 +1,9 @@
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {describe, expect, it} from 'vitest';
 import type {Message} from '@praxis/protocol';
 import {api} from '../convex/_generated/api.js';
 import {SERVER_TOKEN, signedInUser, workflowTest} from './workflow-fixture.js';
 import {commitArgs} from './workflow-worker.js';
+import {useDomainEnv} from './convex-domain-fixture.js';
 
 const now = '2026-11-18T00:00:00.000Z';
 const chatId = 'shared-chat';
@@ -28,11 +29,7 @@ async function fixture() {
 }
 
 describe('Convex typed owner storage', () => {
-  beforeEach(() => {
-    vi.stubEnv('PRAXIS_CONVEX_SERVER_TOKEN', SERVER_TOKEN);
-    vi.stubEnv('CONVEX_CLOUD_URL', 'https://test.convex.cloud');
-  });
-  afterEach(() => vi.unstubAllEnvs());
+  useDomainEnv();
 
   it('creates, reads, patches and removes chats through verified viewer identity', async () => {
     const {t, alice, bob} = await fixture();
@@ -136,11 +133,11 @@ describe('Convex typed owner storage', () => {
       await t.mutation(api.messages.commit, {...owner, chatId, messagesJson: JSON.stringify([message('same')])});
       await t.mutation(api.store.put, {...owner, kind: 'outputChunk', id: 'chunk', parentId: 'manifest', valueJson: JSON.stringify({chatId, text: 'secret'})});
       await t.run(async ctx => {
-        const id = await ctx.db.insert('sandboxes', {userId, chatId, sandboxId: 'instance', volumeName: 'volume',
-          status: 'starting', lastUsedAt: now});
-        await ctx.db.patch(id, {status: 'running'});
-        expect(await ctx.db.query('sandboxes').withIndex('by_user_chat', q =>
-          q.eq('userId', userId).eq('chatId', chatId)).unique()).toMatchObject({status: 'running'});
+        const id = await ctx.db.insert('sandboxes', {userId, scope: 'workspace', slot: 1, volumeName: 'praxis-workspace-00000000000000000000000000000000', generation: 1,
+          state: {status: 'booting', leaseExpiresAt: Date.parse(now)}, lastUsedAt: Date.parse(now)});
+        await ctx.db.patch(id, {state: {status: 'ready', sandboxId: 'instance', expiresAt: Date.parse(now)}});
+        expect(await ctx.db.query('sandboxes').withIndex('by_user_scope', q =>
+          q.eq('userId', userId).eq('scope', 'workspace')).unique()).toMatchObject({state: {status: 'ready'}});
       });
     }
     const typedTables = ['chats', 'messages', 'runs', 'turns', 'sandboxes', 'outputs'] as const;

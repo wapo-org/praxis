@@ -30,9 +30,13 @@ export type ApprovalRecord = z.infer<typeof ApprovalRecordSchema>;
 export type ApprovalReceiptWire = z.infer<typeof ApprovalReceiptWireSchema>;
 export const ToolErrorCodeSchema = z.enum([
   'schema', 'path-traversal', 'taint-blocked', 'policy-denied', 'approval-required', 'budget', 'upstream-firewall', 'upstream',
-  'not-found', 'conflict', 'timeout', 'connection-required',
+  'not-found', 'conflict', 'timeout', 'connection-required', 'unavailable',
 ]);
 export type ToolErrorCode = z.infer<typeof ToolErrorCodeSchema>;
 /** Every code carries the same fields, so one object over the code enum is the whole schema; a new code is one enum entry. */
-export const ToolErrorSchema = z.object({code: ToolErrorCodeSchema, message: z.string(), remediation: z.string().min(1)});
+export const ToolErrorSchema = z.object({
+  code: ToolErrorCodeSchema, message: z.string(), remediation: z.string().min(1),
+  /** When a retry can succeed, for `unavailable`; absent when nobody knows. */
+  retryAtMs: z.number().int().positive().optional(),
+});
 export type ToolError = z.infer<typeof ToolErrorSchema>;

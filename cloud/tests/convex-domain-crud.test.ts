@@ -131,16 +131,17 @@ describe('PRA-24 typed table CRUD through domain functions', () => {
     expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({workflow: {nextTurnIndex: 2}});
   });
 
-  it('sandboxes: rows insert, read by (userId, chatId), patch and delete', async () => {
+  it('sandboxes: rows insert, read by (userId, scope), patch and delete', async () => {
     const {t, alice, bob} = await twoOwners();
-    const row = {chatId: CHAT_ID, sandboxId: 'sbx', volumeName: 'vol', status: 'starting' as const, lastUsedAt: NOW};
+    const row = {scope: 'workspace', slot: 1, volumeName: 'praxis-workspace-00000000000000000000000000000000', generation: 1,
+      state: {status: 'booting' as const, leaseExpiresAt: Date.parse(NOW)}, lastUsedAt: Date.parse(NOW)};
     const byOwner = (userId: string) => t.run(ctx => ctx.db.query('sandboxes')
-      .withIndex('by_user_chat', q => q.eq('userId', userId).eq('chatId', CHAT_ID)).unique());
+      .withIndex('by_user_scope', q => q.eq('userId', userId).eq('scope', 'workspace')).unique());
     const id = await t.run(ctx => ctx.db.insert('sandboxes', {...row, userId: alice.userId}));
-    expect(await byOwner(alice.userId)).toMatchObject({_id: id, status: 'starting'});
+    expect(await byOwner(alice.userId)).toMatchObject({_id: id, state: {status: 'booting'}});
     expect(await byOwner(bob.userId)).toBeNull();
-    await t.run(ctx => ctx.db.patch(id, {status: 'running'}));
-    expect(await byOwner(alice.userId)).toMatchObject({status: 'running'});
+    await t.run(ctx => ctx.db.patch(id, {state: {status: 'ready', sandboxId: 'sbx', expiresAt: Date.parse(NOW)}}));
+    expect(await byOwner(alice.userId)).toMatchObject({state: {status: 'ready', sandboxId: 'sbx'}});
     await t.run(ctx => ctx.db.delete(id));
     expect(await byOwner(alice.userId)).toBeNull();
   });

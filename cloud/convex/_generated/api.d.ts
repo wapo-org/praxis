@@ -36,6 +36,7 @@ import type * as functions from "../functions.js";
 import type * as http from "../http.js";
 import type * as messages from "../messages.js";
 import type * as runs from "../runs.js";
+import type * as sandboxes from "../sandboxes.js";
 import type * as search from "../search.js";
 import type * as store from "../store.js";
 import type * as tools from "../tools.js";
@@ -87,6 +88,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   messages: typeof messages;
   runs: typeof runs;
+  sandboxes: typeof sandboxes;
   search: typeof search;
   store: typeof store;
   tools: typeof tools;

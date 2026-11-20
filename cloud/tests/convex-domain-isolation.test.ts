@@ -20,8 +20,8 @@ async function seedAllTables(t: DomainTest, viewer: Viewer) {
   await commit(t, userId, [textMessage('same-message', CHAT_ID, `secret of ${userId}`)]);
   await t.mutation(api.store.put, {...token, userId, kind: 'outputChunk', id: 'same-chunk', parentId: 'manifest',
     valueJson: JSON.stringify({chatId: CHAT_ID, text: `output of ${userId}`})});
-  await t.run(ctx => ctx.db.insert('sandboxes', {userId, chatId: CHAT_ID, sandboxId: 'sbx', volumeName: 'vol',
-    status: 'running', lastUsedAt: NOW}));
+  await t.run(ctx => ctx.db.insert('sandboxes', {userId, scope: 'workspace', slot: 1, volumeName: 'praxis-workspace-00000000000000000000000000000000', generation: 1,
+    state: {status: 'ready', sandboxId: 'sbx', expiresAt: Date.parse(NOW)}, lastUsedAt: Date.parse(NOW)}));
   return runId;
 }
 
