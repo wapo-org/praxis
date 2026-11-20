@@ -2,7 +2,7 @@ import {WorkflowManager} from '@convex-dev/workflow';
 import {v} from 'convex/values';
 import {components, internal} from '../_generated/api.js';
 import {runScope, terminalStatus} from './validators.js';
-import {RUN_UNPARK_EVENT, WORKFLOW_ERRORS, WORKFLOW_PARALLELISM_MAX} from './constants.js';
+import {RUN_UNPARK_EVENT, TURN_ACTION_RETRY, WORKFLOW_ERRORS, WORKFLOW_PARALLELISM_MAX} from './constants.js';
 
 export const workflow = new WorkflowManager(components.workflow, {
   workpoolOptions: {maxParallelism: WORKFLOW_PARALLELISM_MAX},
@@ -30,14 +30,18 @@ export const agentRun = workflow.define({
         if (applied) return 'completed';
         continue;
       }
-      const flags = await step.runAction(internal.turns.run, {...scope, expectedTurnIndex});
+      const flags = await step.runAction(internal.turns.run, {...scope, expectedTurnIndex}, {retry: TURN_ACTION_RETRY});
       if (flags.turnIndex !== expectedTurnIndex || flags.subagents.length > 0) {
         throw new Error(WORKFLOW_ERRORS.flags);
       }
       if (flags.status === 'busy') continue;
       if (flags.done) {
         switch (flags.status) {
-          case 'stopped': return 'cancelled';
+          case 'stopped': {
+            // A stopped turn reflects the run's own terminal state, such as a worker rejecting its credentials.
+            const settled = await step.runQuery(internal.runs.status, scope);
+            return settled === 'failed' ? 'failed' : 'cancelled';
+          }
           case 'completed': resultCommitted = true; break;
           case 'failed': return 'failed';
         }

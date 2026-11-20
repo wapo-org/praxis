@@ -1,4 +1,4 @@
-import {APPROVAL_RECORD_KIND, ChatSchema, IdSchema, MessageSchema, RunSchema} from '@praxis/protocol';
+import {APPROVAL_RECORD_KIND, ChatSchema, IdSchema, MessageSchema, RunSchema, type RunTaint} from '@praxis/protocol';
 import {ConvexError} from 'convex/values';
 import {z} from 'zod';
 import {cancelChatRun} from './runs.js';
@@ -23,6 +23,11 @@ export async function requireChat(ctx: QueryCtx, userId: string, chatId: string)
   const chat = await ownedChat(ctx, userId, chatId);
   if (!chat || chat.value.deletedAt) throw new ConvexError('Chat unavailable');
   return chat;
+}
+
+/** Atomic OR inside the caller's mutation: a stale writer can never clear or replace a run's recorded taint. */
+export function keptRunTaint(prior: RunTaint | undefined, next: RunTaint | undefined): RunTaint | undefined {
+  return prior ?? next;
 }
 
 export function ownedRun(ctx: QueryCtx, userId: string, runId: string) {
@@ -153,8 +158,7 @@ export async function saveDomainRow(ctx: MutationCtx, kind: DomainKind, input: D
       await requireChat(ctx, userId, parsed.chatId);
       const prior = await ownedRun(ctx, userId, id);
       if (prior?.workflow || (prior && prior.chatId !== parsed.chatId)) throw new ConvexError('Run address unavailable');
-      // Atomic OR inside the mutation: a stale writer can never clear or replace a run's recorded taint.
-      const taint = prior?.value.taint ?? parsed.taint;
+      const taint = keptRunTaint(prior?.value.taint, parsed.taint);
       const value = {...parsed, ...(taint && {taint})};
       const row = {...metadata, chatId: value.chatId, value};
       if (prior) await ctx.db.replace(prior._id, row);

@@ -7,6 +7,7 @@ import {readLimited} from '../features/tools/http.js';
 import {ApiError} from '../service.js';
 import {validTurnHeaders, VerifiedTurn, type TurnKeys} from './auth.js';
 import {TURN_ALLOW_HEADER, TURN_ERROR, TURN_METHOD} from './constants.js';
+import {TurnIndexConflict} from './conflict.js';
 
 export function registerTurnRoute(app: Hono, adapters: AdapterBundle, keys?: TurnKeys, clock = Date.now): void {
  app.all(TURN_PATH, async c => {
@@ -37,7 +38,8 @@ export function registerTurnRoute(app: Hono, adapters: AdapterBundle, keys?: Tur
    if (!await verified.consume(adapters.store)) return c.json(TURN_ERROR.unauthorized, 401);
    if (!adapters.turn) return c.json(TURN_ERROR.unavailable, 503);
    return c.json(TurnResultSchema.parse(await adapters.turn.execute(verified.claims)));
-  } catch {
+  } catch (error) {
+   if (error instanceof TurnIndexConflict) return c.json(TURN_ERROR.conflict, 409);
    return c.json(TURN_ERROR.upstream, 503);
   }
  });

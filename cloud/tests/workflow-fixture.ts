@@ -29,7 +29,7 @@ export function workflowTest() {
   workflowComponent.register(t);
   return t;
 }
-type WorkflowTest = ReturnType<typeof workflowTest>;
+export type WorkflowTest = ReturnType<typeof workflowTest>;
 
 // Auth v2 tokens carry the session id as subject, so tests mint a real session for a real `users` row.
 export async function signedInUser(t: WorkflowTest) {

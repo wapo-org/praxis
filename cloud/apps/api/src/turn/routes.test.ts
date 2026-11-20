@@ -7,20 +7,22 @@ import fc from 'fast-check';
 import {
  TURN_PATH, TURN_SIGNATURE_HEADER, TURN_TIMESTAMP_HEADER, TURN_CLOCK_SKEW_MS,
  TURN_BODY_MAX_BYTES, TURN_FAILURE_MESSAGE_MAX_BYTES, TurnRequestSchema, TurnResultSchema, SUBAGENT_LIMITS,
+ TURN_CURRENT_KEY_ENV, TURN_NEXT_KEY_ENV, TURN_KEY_MIN_CHARACTERS,
 } from '@praxis/protocol';
 import {ProviderFailure, runOneTurn} from '@praxis/agent';
 import {fixture} from '../../../../packages/agent/src/one-turn-fixture.js';
 import {createMemoryAdapters} from '../adapters/memory.js';
 import {registerTurnRoute} from './routes.js';
 import {readTurnKeys} from './auth.js';
-import {TURN_CURRENT_KEY_ENV, TURN_NEXT_KEY_ENV, TURN_KEY_MIN_CHARACTERS} from './constants.js';
+import {TurnIndexConflict} from './conflict.js';
+import {TURN_ERROR} from './constants.js';
 
 const NOW_MS = 1_800_000_000_000;
 const rawKeys = {current: 'c'.repeat(TURN_KEY_MIN_CHARACTERS), next: 'n'.repeat(TURN_KEY_MIN_CHARACTERS)};
 const keys = readTurnKeys({
  [TURN_CURRENT_KEY_ENV]: rawKeys.current, [TURN_NEXT_KEY_ENV]: rawKeys.next,
 });
-const input = {userId: 'owner', chatId: 'chat', runId: 'run', expectedTurnIndex: 0};
+const input = {userId: 'owner', chatId: 'chat', runId: 'run', generation: 0, expectedTurnIndex: 0, nonce: 'attempt-1'};
 const flags = {done: false as const, status: 'ready' as const, turnIndex: 1, subagents: []};
 function headers(body: string, timestamp = NOW_MS, key = rawKeys.current) {
  const time = String(timestamp);
@@ -91,6 +93,16 @@ describe('turn contract', () => {
    expect(await response.json()).toMatchObject({done: true, status: 'failed', turnIndex: 0, failure: {code: 'model_credit_exhausted'}});
   }
   expect(turn.store.data.response).toBeUndefined();
+ });
+ it('answers 409 when the commit fence rejects the index and 503 for any other worker failure', async () => {
+  const {app, execute} = setup();
+  const body = JSON.stringify(input);
+  execute.mockRejectedValueOnce(new TurnIndexConflict());
+  const conflict = await send(app, body, headers(body, NOW_MS));
+  expect(conflict.status).toBe(409);
+  expect(await conflict.json()).toEqual(TURN_ERROR.conflict);
+  execute.mockRejectedValueOnce(new Error('model down'));
+  expect((await send(app, body, headers(body, NOW_MS + 1))).status).toBe(503);
  });
  it('uses PRA-79 child ID syntax and bounds for compact scheduler references', () => {
   const subagents = Array.from({length: SUBAGENT_LIMITS.CHILDREN_MAX}, (_, index) =>

@@ -166,6 +166,15 @@ export const domainTables = {
     turnIndex: v.number(),
     done: v.boolean(),
     status: v.union(v.literal('ready'), v.literal('completed'), v.literal('stopped')),
+    usage: v.optional(v.object({
+      inputTokens: v.number(),
+      outputTokens: v.number(),
+      cacheReadTokens: v.number(),
+      cacheWriteTokens: v.number(),
+      cost: v.optional(v.number()),
+    })),
+    // The tool call and approval a suspended turn parked the run on (PRA-32 resumes with the decision).
+    suspension: v.optional(v.object({callId: v.string(), approvalId: v.string()})),
   }).index('by_user_run_turn', ['userId', 'runId', 'generation', 'turnIndex']),
   sandboxes: defineTable({
     userId: v.string(),

@@ -29,7 +29,7 @@ export async function readTurns(reader: TableReader, userId: string) {
     .map(row => TurnRow.parse(row));
 }
 
-export async function runInternal(context: StepContext, name: 'turns:run' | 'turns:commitStub', args: {
+export async function runInternal(context: StepContext, name: 'turns:run', args: {
   userId: string; chatId: string; runId: string; generation: number; expectedTurnIndex: number;
 }): Promise<unknown> {
   const deployKey = context.secret('CONVEX_DEPLOY_KEY');

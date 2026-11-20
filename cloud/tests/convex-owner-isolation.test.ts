@@ -1,7 +1,8 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {Message} from '@praxis/protocol';
-import {api, internal} from '../convex/_generated/api.js';
+import {api} from '../convex/_generated/api.js';
 import {SERVER_TOKEN, signedInUser, workflowTest} from './workflow-fixture.js';
+import {commitArgs} from './workflow-worker.js';
 
 const now = '2026-11-18T00:00:00.000Z';
 const chatId = 'shared-chat';
@@ -131,7 +132,7 @@ describe('Convex typed owner storage', () => {
     for (const {userId, client} of [alice, bob]) {
       const owner = {...token, userId};
       const runId = await client.mutation(api.runs.start, {chatId});
-      await t.mutation(internal.turns.commitStub, {userId, chatId, runId, generation: 0, expectedTurnIndex: 0});
+      await t.mutation(api.turns.commit, commitArgs({userId, chatId, runId, generation: 0, expectedTurnIndex: 0}, {end: {status: 'ready'}}));
       await t.mutation(api.messages.commit, {...owner, chatId, messagesJson: JSON.stringify([message('same')])});
       await t.mutation(api.store.put, {...owner, kind: 'outputChunk', id: 'chunk', parentId: 'manifest', valueJson: JSON.stringify({chatId, text: 'secret'})});
       await t.run(async ctx => {
