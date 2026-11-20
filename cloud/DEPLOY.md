@@ -57,11 +57,12 @@ It never falls back to memory adapters or dev auth.
 | `PRAXIS_RUN_BUDGET_MS` | no | Time budget per run slice, default `240000`. Keep it under `maxDuration` (300 s) minus about 30 s. |
 | `PRAXIS_SYNC_STRATEGY` | no | `cursor` (default) or `merkle`. |
 | `GROQ_API_KEY` | no | Server-side fallback for `/v1/transcribe` (console.groq.com → API Keys). Users can also save their own key; it is stored encrypted. More keys: `GROQ_API_KEY_2`, … (see "Numbered siblings" below). |
+| `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` | no | Platform Modal account for sandboxes (modal.com → Settings → API Tokens). More accounts: `MODAL_TOKEN_ID_2` + `MODAL_TOKEN_SECRET_2`, … A user stays on the account they were first placed on, so removing a slot makes its users' sandboxes unavailable instead of moving them. |
 
 ### Numbered siblings: several keys for one service
 
 A platform-paid key can have siblings from other accounts of the same service: `NAME` is slot 1, then `NAME_2`, `NAME_3`, … **with no gaps**.
-Today this applies to `GROQ_API_KEY` (`GROQ_API_KEY_2`, `GROQ_API_KEY_3`, …).
+Today this applies to `GROQ_API_KEY` (`GROQ_API_KEY_2`, `GROQ_API_KEY_3`, …) and the Modal token pair, whose slots are sticky per user rather than failover (PRA-99).
 
 - **To add a key:** set `NAME_n` in the Vercel project, and in the Convex deployment env too if the service is called from Convex, then redeploy. No code change.
   `npm run deploy` forwards only the unsuffixed name from `.env.deploy`, so add the siblings in the dashboards (or with `vercel env add NAME_2 production`).

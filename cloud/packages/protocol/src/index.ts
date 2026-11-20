@@ -354,3 +354,4 @@ export type TurnCommitResult = z.infer<typeof TurnCommitResultSchema>;
 export * from './subagents.js';
 export * from './web-tools.js';
 export * from './composio.js';
+export * from './sandboxes.js';

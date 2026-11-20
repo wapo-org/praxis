@@ -8,7 +8,7 @@ import {WEB_PROVIDERS} from './features/web/constants.js';
 import {Hono} from 'hono';
 import {readTurnKeys} from './turn/auth.js';
 import {registerTurnRoute} from './turn/routes.js';
-import {GROQ_POOL, pool, redisCooldownStore, type CredentialLogEvent} from '@praxis/credentials';
+import {GROQ_POOL, MODAL_POOL, pool, redisCooldownStore, type CredentialLogEvent} from '@praxis/credentials';
 import {confirmConvexDeletion, isAccountDeletion, verifiedConvexOwner} from './adapters/convex-session.js';
 import {createConvexRPC} from './adapters/convex.js';
 import {accountEraser} from './account-deletion.js';
@@ -45,6 +45,7 @@ export const PLATFORM_POOLS: readonly PoolSpec[] = [
   {service: GROQ_POOL.service, names: GROQ_POOL.name},
   ...Object.values(WEB_PROVIDERS).map(p => ({service: p.service, names: p.name})),
   {service: COMPOSIO_POOL_SERVICE, names: COMPOSIO_API.KEY_ENV},
+  {service: MODAL_POOL.service, names: MODAL_POOL.names},
 ];
 export interface PoolSpec {service: string; names: string | readonly string[]}
 export interface ReadEnvOptions {pools?: readonly PoolSpec[]; warn?: (message: string) => void}

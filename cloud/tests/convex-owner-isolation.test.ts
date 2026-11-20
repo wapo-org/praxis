@@ -136,11 +136,11 @@ describe('Convex typed owner storage', () => {
       await t.mutation(api.messages.commit, {...owner, chatId, messagesJson: JSON.stringify([message('same')])});
       await t.mutation(api.store.put, {...owner, kind: 'outputChunk', id: 'chunk', parentId: 'manifest', valueJson: JSON.stringify({chatId, text: 'secret'})});
       await t.run(async ctx => {
-        const id = await ctx.db.insert('sandboxes', {userId, chatId, sandboxId: 'instance', volumeName: 'volume',
-          status: 'starting', lastUsedAt: now});
-        await ctx.db.patch(id, {status: 'running'});
-        expect(await ctx.db.query('sandboxes').withIndex('by_user_chat', q =>
-          q.eq('userId', userId).eq('chatId', chatId)).unique()).toMatchObject({status: 'running'});
+        const id = await ctx.db.insert('sandboxes', {userId, scope: 'workspace', slot: 1, volumeName: 'praxis-workspace-00000000000000000000000000000000', generation: 1,
+          state: {status: 'booting', leaseExpiresAt: Date.parse(now)}, lastUsedAt: Date.parse(now)});
+        await ctx.db.patch(id, {state: {status: 'ready', sandboxId: 'instance', expiresAt: Date.parse(now)}});
+        expect(await ctx.db.query('sandboxes').withIndex('by_user_scope', q =>
+          q.eq('userId', userId).eq('scope', 'workspace')).unique()).toMatchObject({state: {status: 'ready'}});
       });
     }
     const typedTables = ['chats', 'messages', 'runs', 'turns', 'sandboxes', 'outputs'] as const;

@@ -74,6 +74,16 @@ Python/git/build-tools/tmux layer; browser and per-harness layers extend it inde
 it shares snapshot and screenshot capture with `praxis-verify`. Neither package may be imported by `apps/api`
 directly while it is a Hono app (child_process lives in the local port and the browser session).
 
+Sandbox lifecycle (PRA-52, `@praxis/sandbox-tools/lifecycle`, `convex/sandboxes.ts`): one Convex `sandboxes` row per owner and
+scope holds the sticky Modal slot, a random Volume name and a `generation`. `sandboxResolver().ensure(userId, scope)` is the only way
+a tool reaches a sandbox; it takes no sandbox id. `sandboxes:claim` (a serializable mutation) reuses a `ready` row, or turns the row
+`booting` with a new generation and a boot lease, so concurrent callers wait instead of booting twice. Before a boot mounts the Volume
+(last-writer-wins on Modal), the previous generation's sandbox is terminated by id, or by its `<volume>-<generation>` name when a booter
+crashed, and confirmed gone. `commit` and `release` compare-and-set on the generation, so a booter that lost its lease terminates its own
+sandbox. A ready row whose sandbox Modal no longer runs is released and rebooted on the same Volume. Every call uses
+`credentialFor(pool, storedSlot)`: a cooling or removed slot is a typed `unavailable` tool error with `retryAtMs`, never another account.
+No per-sandbox token or tunnel exists in v1 (PRA-100, PRA-84). The tool registry wires the resolver in PRA-53.
+
 ## Platform spend reservation (PRA-81 for PRA-22)
 
 `packages/spend` (dependency-free) is the pre-reservation ledger for platform-paid calls only (Exa, Firecrawl,
