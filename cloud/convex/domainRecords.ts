@@ -1,6 +1,7 @@
 import {ChatSchema, IdSchema, MessageSchema, RunSchema} from '@praxis/protocol';
 import {ConvexError} from 'convex/values';
 import {z} from 'zod';
+import {cancelChatRun} from './runs.js';
 import {decodeChat, decodeMessage, encodeChat, encodePart} from './domainValues.js';
 import type {Doc} from './_generated/dataModel.js';
 import type {MutationCtx, QueryCtx} from './functions.js';
@@ -167,6 +168,7 @@ const outputChunkSchema = z.object({chatId: IdSchema, text: z.string()}).strict(
 
 export async function deleteDomainRow(ctx: MutationCtx, doc: DomainDoc, updatedAt: string) {
   if ('lastSequence' in doc) {
+    await cancelChatRun(ctx, doc.userId, doc.id);
     await ctx.db.patch(doc._id, {value: {...doc.value, deletedAt: updatedAt, updatedAt}});
   } else {
     await ctx.db.delete(doc._id);

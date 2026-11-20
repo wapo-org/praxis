@@ -19,7 +19,7 @@ describe('durable workflow skeleton', () => {
     const {t, runId} = await setup();
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     const run = await t.run(ctx => ctx.db.get(runId));
-    expect(run).toMatchObject({workflow: {status: 'completed', nextTurnIndex: 3}});
+    expect(run).toMatchObject({value: {status: 'completed'}, workflow: {nextTurnIndex: 3}});
     const steps = await t.run(ctx => workflow.listSteps(ctx, run!.workflow!.id as WorkflowId));
     const turns = steps.page.filter(step => step.name === 'turns:run');
     expect(turns).toHaveLength(3);
@@ -40,7 +40,7 @@ describe('durable workflow skeleton', () => {
     });
     const {t, runId} = await setup();
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
-    expect((await t.run(ctx => ctx.db.get(runId)))?.workflow?.status).toBe('failed');
+    expect((await t.run(ctx => ctx.db.get(runId)))?.value.status).toBe('failed');
   });
   it('redelivers committed turns concurrently without advancing twice', async () => {
     const {t, scope, runId} = await setup();
@@ -58,20 +58,20 @@ describe('durable workflow skeleton', () => {
     await owner.mutation(api.runs.cancel, {runId});
     expect(await t.action(internal.turns.run, {...scope, expectedTurnIndex: 1})).toMatchObject({done: true, status: 'stopped'});
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
-    expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({workflow: {status: 'cancelled', nextTurnIndex: 1}});
+    expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({value: {status: 'cancelled'}, workflow: {nextTurnIndex: 1}});
   });
   it('settles the workflow when its chat is deleted', async () => {
     const {t, owner, scope, runId} = await setup();
     await owner.mutation(api.chats.remove, {chatId});
     await expect(t.mutation(internal.turns.commitStub, {...scope, expectedTurnIndex: 0})).rejects.toThrow('unavailable');
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
-    expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({workflow: {status: 'cancelled', nextTurnIndex: 0}});
+    expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({value: {status: 'cancelled'}, workflow: {nextTurnIndex: 0}});
   });
   it('finalizes invalid flags as failed rather than looping', async () => {
     const {t, runId, userId} = await setup();
     await t.run(ctx => ctx.db.insert('turns', {userId, runId, generation: 0, turnIndex: 0, done: false, status: 'completed'}));
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
-    expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({workflow: {status: 'failed', nextTurnIndex: 0}});
+    expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({value: {status: 'failed'}, workflow: {nextTurnIndex: 0}});
   });
   it('rejects foreign users, missing auth, invalid indices and stale generations', async () => {
     const {t, owner, scope, runId} = await setup();
@@ -91,7 +91,7 @@ describe('durable workflow skeleton', () => {
     await t.run(ctx => ctx.db.patch(runId, {workflow: {...run!.workflow!, generation: 1}}));
     await t.mutation(internal.runs.onComplete, {workflowId: run!.workflow!.id as WorkflowId,
       context: scope, result: {kind: 'failed', error: 'old failure'}});
-    expect((await t.run(ctx => ctx.db.get(runId)))?.workflow?.status).toBe('running');
+    expect((await t.run(ctx => ctx.db.get(runId)))?.value.status).toBe('running');
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
   });
 });

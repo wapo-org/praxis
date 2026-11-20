@@ -117,7 +117,12 @@ export const ChatSchema = z.object({
 export type Chat = z.infer<typeof ChatSchema>;
 export const ChatInputSchema = z.object({type:z.literal('chat.input'),webToolsEnabled:z.boolean().optional(),id:IdSchema.optional(),pinned:z.boolean().optional(),title:z.string().max(300).default('New chat'),mode:ModeSchema.default('build'),modelId:z.string().optional(),effort:z.string().optional(),connectorIds:z.array(IdSchema).default([]),disabledConnectorIds:z.array(IdSchema).default([])});
 export const ChatPatchSchema = ChatInputSchema.partial().extend({type:z.literal('chat.patch'),title:ChatInputSchema.shape.title.removeDefault().optional(),mode:ChatInputSchema.shape.mode.removeDefault().optional(),connectorIds:ChatInputSchema.shape.connectorIds.removeDefault().optional(),disabledConnectorIds:ChatInputSchema.shape.disabledConnectorIds.removeDefault().optional()});
-export const RunStatusSchema = z.enum(['queued','running','awaitingApproval','awaitingElicitation','continuing','completed','cancelled','failed']);
+export const WorkflowRunStatusSchema = z.enum(['queued', 'running', 'paused', 'cancelling', 'completed', 'cancelled', 'failed']);
+export type WorkflowRunStatus = z.infer<typeof WorkflowRunStatusSchema>;
+export const RunStatusSchema = z.enum([
+  ...WorkflowRunStatusSchema.options, 'awaitingApproval', 'awaitingElicitation', 'continuing',
+]);
+export const RUN_START_CONFLICT_CODE = 'idempotency_conflict';
 export const RunOutcomeSchema = z.enum(['completed','truncated','maxIterations','refused','cancelled','failed']);
 export const RunSchema = z.object({type:z.literal('run'),id:IdSchema,chatId:IdSchema,status:RunStatusSchema,outcome:RunOutcomeSchema.optional(),error:z.string().optional(),errorCode:RunErrorCodeSchema.optional(),note:z.string().optional(),createdAt:TimestampSchema,updatedAt:TimestampSchema,lastEventId:z.number().int().nonnegative(),clientTurnId:IdSchema.optional(),parentRunId:IdSchema.optional(),promptStartedAt:TimestampSchema.optional()});
 export type Run = z.infer<typeof RunSchema>;

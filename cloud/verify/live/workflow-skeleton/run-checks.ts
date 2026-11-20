@@ -60,7 +60,7 @@ export async function verifyCompletion(context: StepContext) {
   context.attach('completion.json', JSON.stringify({
     workflowId, runId, status, workflowExists, actionSteps, flags,
   }, null, 2));
-  if (status !== 'completed' || run?.workflow?.status !== 'completed' || !workflowExists
+  if (status !== 'completed' || run?.value.status !== 'completed' || !workflowExists
     || actionSteps !== STUB_TURNS_MAX || !expectedFlags) {
     return {status: 'fail' as const, summary: 'Hosted run, workflow journal, or persisted turn flags did not match completion'};
   }
@@ -75,7 +75,7 @@ export async function verifyCancellation(context: StepContext) {
   const status = await waitForTerminal(owner, runId);
   const run = (await readRuns(reader, owner.userId)).find(row => row._id === runId);
   const workflow = run?.workflow;
-  if (status !== 'cancelled' || workflow?.status !== 'cancelled' || workflow.nextTurnIndex >= STUB_TURNS_MAX) {
+  if (status !== 'cancelled' || run?.value.status !== 'cancelled' || !workflow || workflow.nextTurnIndex >= STUB_TURNS_MAX) {
     return {status: 'fail' as const, summary: `Cancellation settled ${status} at turn ${workflow?.nextTurnIndex ?? 'unknown'}`};
   }
   const expectedTurnIndex = workflow.nextTurnIndex;

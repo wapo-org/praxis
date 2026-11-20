@@ -3,7 +3,6 @@ import type {FunctionReference} from 'convex/server';
 import {RunStatusSchema} from '@praxis/protocol';
 import {api, internal} from '../convex/_generated/api.js';
 import type {Id} from '../convex/_generated/dataModel.js';
-import * as runsModule from '../convex/runs.js';
 import {chatId, startedRun, workflowTest, signedInUser} from './workflow-fixture.js';
 
 // PRA-25 contract: the transition table from the issue, kept independent of the production table it checks.
@@ -14,8 +13,7 @@ const LEGAL = new Set<string>([
   'queued>running',
   'running>paused', 'paused>running',
   'running>cancelling', 'paused>cancelling', 'cancelling>cancelled',
-  // Listed by PRA-25 ("running → cancelling → completed"); durable.qnt CancelFence only models cancelling → cancelled.
-  'running>completed', 'cancelling>completed',
+  'running>completed',
   ...STATUSES.filter(from => !TERMINAL.includes(from)).map(from => `${from}>failed`),
 ]);
 const PAIRS = STATUSES.flatMap(from => STATUSES.map(to => ({from, to, legal: LEGAL.has(`${from}>${to}`)})));
@@ -27,24 +25,17 @@ type TransitionRef = FunctionReference<'mutation', 'internal', TransitionArgs, {
 type StartArgs = {chatId: string; startTurnIndex?: number; idempotencyKey?: string};
 type StartRef = FunctionReference<'mutation', 'public', StartArgs, Id<'runs'>>;
 
-// Feature probes keep this slice green before PRA-25 B lands; delete them when integrating.
-const exported: Record<string, unknown> = runsModule;
-// `_generated/api.js` is an anyApi proxy, so probe the module export rather than the reference.
-const implemented = exported.transition !== undefined;
-const transitionRef = (internal.runs as unknown as Record<string, TransitionRef>).transition;
+const transitionRef = internal.runs.transition as unknown as TransitionRef;
 const start = api.runs.start as unknown as StartRef;
 
 type Started = Awaited<ReturnType<typeof startedRun>>;
 
-// Pre-PRA-25 rows mirror status in workflow.status; PRA-25 keeps value.status as the only copy.
 async function seedStatus(run: Started, status: Status) {
   await run.t.run(async ctx => {
     const row = await ctx.db.get(run.runId);
     if (!row?.workflow) throw new Error('Seeded run is missing workflow state');
-    const mirrored = 'status' in row.workflow ? {status} : {};
     await ctx.db.patch(run.runId, {
       value: {...row.value, status} as typeof row.value,
-      workflow: {...row.workflow, ...mirrored} as typeof row.workflow,
     });
   });
 }
@@ -52,8 +43,6 @@ async function seedStatus(run: Started, status: Status) {
 async function storedStatus(run: Started) {
   const row = await run.t.run(ctx => ctx.db.get(run.runId));
   if (!row?.workflow) throw new Error('Run row disappeared');
-  const state: Record<string, unknown> = row.workflow;
-  if ('status' in state) expect(state.status).toBe(row.value.status);
   return {status: row.value.status, turnIndex: row.workflow.nextTurnIndex};
 }
 
@@ -88,7 +77,7 @@ describe('PRA-25 run status state machine', () => {
     expect(await storedStatus(run)).toMatchObject({status: 'completed'});
   });
 
-  describe.skipIf(!implemented)('runs.transition compare-and-set', () => {
+  describe('runs.transition compare-and-set', () => {
     it('exposes every contract status on the wire schema', () => {
       expect(RunStatusSchema.options).toEqual(expect.arrayContaining([...STATUSES]));
     });
@@ -134,7 +123,7 @@ describe('PRA-25 run status state machine', () => {
     });
   });
 
-  describe.skipIf(!implemented)('idempotent start and one active run per chat', () => {
+  describe('idempotent start and one active run per chat', () => {
     async function ownedChat() {
       const t = workflowTest();
       const {userId, client: owner} = await signedInUser(t);
