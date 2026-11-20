@@ -3,14 +3,15 @@ import {fileURLToPath} from 'node:url';
 import {promisify} from 'node:util';
 import type {StepContext} from '@praxis/verify';
 import {z} from 'zod';
+import {RunStatusSchema} from '@praxis/protocol';
 import {WORKFLOW_ERRORS} from '../../../convex/workflows/constants.js';
 import type {TableReader} from '../convex-typed-rows/commit-purge.js';
 
 const run = promisify(execFile);
 const CLOUD_DIR = fileURLToPath(new URL('../../../', import.meta.url));
 const RunRow = z.object({
-  _id: z.string(), userId: z.string(), workflow: z.object({
-    id: z.string().optional(), generation: z.number(), nextTurnIndex: z.number(), status: z.string(),
+  _id: z.string(), userId: z.string(), value: z.object({status: RunStatusSchema}), workflow: z.object({
+    id: z.string().optional(), generation: z.number(), nextTurnIndex: z.number(),
   }).optional(),
 });
 const TurnRow = z.object({

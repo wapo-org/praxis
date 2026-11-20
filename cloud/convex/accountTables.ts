@@ -15,6 +15,7 @@ export const ACCOUNT_PURGE_POLICY = {
   connections: 'ownerRows',
   oauthEmails: 'identity',
   runs: 'workflowRun',
+  runStarts: 'ownerRows',
   turns: 'runChild',
   chats: 'ownerRows',
   messages: 'ownerRows',
@@ -29,6 +30,8 @@ type PurgedRow = {_id: Id<TableNames>; storageId?: Id<'_storage'>};
 type RowsBy<K> = (ctx: QueryCtx, key: K, limit: number) => Promise<PurgedRow[]>;
 
 export const ACCOUNT_OWNER_ROWS: Record<TablesWith<'ownerRows'>, RowsBy<string>> = {
+  runStarts: (ctx, userId, limit) => ctx.db.query('runStarts')
+    .withIndex('by_user_chat_key', q => q.eq('userId', userId)).take(limit),
   chats: (ctx, userId, limit) => ctx.db.query('chats')
     .withIndex('by_user_id', q => q.eq('userId', userId)).take(limit),
   messages: (ctx, userId, limit) => ctx.db.query('messages')

@@ -57,11 +57,11 @@ try {
   let completed;
   while (Date.now() < deadline) {
     completed = (await data('runs')).find(row => row._id === runId);
-    if (completed?.workflow.status === 'completed') break;
-    assert.equal(completed?.workflow.status, 'running');
+    if (completed?.value.status === 'completed') break;
+    assert.equal(completed?.value.status, 'running');
     await delay(POLL_MS);
   }
-  assert.equal(completed?.workflow.status, 'completed');
+  assert.equal(completed?.value.status, 'completed');
   assert.equal(completed.workflow.nextTurnIndex, 3);
   const scope = {userId, chatId, runId, generation: 0, expectedTurnIndex: 0};
   const redeliveries = await Promise.all([run('turns:run', scope), run('turns:run', scope)]);

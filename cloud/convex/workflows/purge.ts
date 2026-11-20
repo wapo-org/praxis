@@ -18,7 +18,7 @@ export async function purgeOwnedRun(ctx: MutationCtx, userId: string): Promise<b
     if (status.type === 'inProgress') await workflow.cancel(ctx, workflowId);
     await workflow.cleanup(ctx, workflowId);
     // Persist cleanup progress before batching child rows so retries never address a deleted workflow.
-    await ctx.db.patch(run._id, {workflow: {...run.workflow, id: undefined, status: 'cancelled'}});
+    await ctx.db.patch(run._id, {workflow: {...run.workflow, id: undefined}});
   }
   for (const rowsOf of Object.values(ACCOUNT_RUN_CHILD_ROWS)) {
     const rows = await rowsOf(ctx, {userId, runId: run._id}, ACCOUNT_PURGE_BATCH_MAX);

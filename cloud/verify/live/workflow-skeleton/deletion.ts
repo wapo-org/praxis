@@ -28,10 +28,11 @@ export async function verifyDeletion(context: StepContext) {
   if (!begun.ok) throw new Error('account:begin failed for the disposable actor');
 
   const [runs, turns] = await Promise.all([readRuns(reader, userId), readTurns(reader, userId)]);
-  const target = runs.find(row => row._id === runId)?.workflow;
+  const targetRow = runs.find(row => row._id === runId);
+  const target = targetRow?.workflow;
   const workflowIds = new Set(runs.flatMap(row => row.workflow?.id ? [row.workflow.id] : []));
   const before = await snapshotJournal(reader, workflowIds);
-  const stoppedMidRun = !!target?.id && target.status === 'running' && target.nextTurnIndex < STUB_TURNS_MAX;
+  const stoppedMidRun = !!target?.id && targetRow?.value.status === 'running' && target.nextTurnIndex < STUB_TURNS_MAX;
   const start = await settle(api.startRun(chatId));
   const commit = await settle(runInternal(context, 'turns:commitStub', {
     userId, chatId, runId, generation: target?.generation ?? 0, expectedTurnIndex: target?.nextTurnIndex ?? 0,
@@ -49,7 +50,7 @@ export async function verifyDeletion(context: StepContext) {
     users: users.filter(row => UserRow.parse(row)._id === userId).length,
   };
   context.attach('deletion.json', JSON.stringify({
-    target: {runId, status: target?.status, nextTurnIndex: target?.nextTurnIndex},
+    target: {runId, status: targetRow?.value.status, nextTurnIndex: target?.nextTurnIndex},
     before: {runs: runs.length, turnFlags: turns.length, ...before}, stoppedMidRun,
     startRejected, commitRejected, purge, remaining,
   }, null, 2));
