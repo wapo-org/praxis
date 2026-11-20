@@ -255,6 +255,9 @@ export const ChatTruncateResultSchema = z.object({type:z.literal('chat.truncated
 export const AttachmentPatchSchema = z.object({type:z.literal('attachment.patch'),hiddenFromCode:z.boolean()});
 export const TranscribeRequestSchema = z.object({type:z.literal('transcribe.request'),audioBase64:z.string().min(1).max(35000000),mediaType:z.string(),fileName:z.string().optional(),model:z.string().optional(),language:z.string().optional(),prompt:z.string().max(10000).optional()});
 
+export const HEALTH_PATH = '/health';
+export const HealthSchema = z.object({type: z.literal('health'), ok: z.boolean(), mode: z.enum(['local', 'production'])});
+export type Health = z.infer<typeof HealthSchema>;
 export const ACCOUNT_DELETE_PATH = '/v1/account';
 export const ACCOUNT_DELETE_FRESHNESS_MS = 5 * 60 * 1000;
 export const INTERNAL_CONTINUATION_PATH = '/internal/continue';
