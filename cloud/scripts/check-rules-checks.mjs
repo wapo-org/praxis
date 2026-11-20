@@ -53,6 +53,9 @@ const PUBLIC_CONVEX_BUILDERS = new Set([
   'queryGeneric',
   'mutationGeneric',
   'actionGeneric',
+  'authedQuery',
+  'authedMutation',
+  'authedAction',
 ]);
 const OWNER_ARG_NAMES = new Set(['userId', 'ownerId']);
 const NUMBERED_ENV_KEY = /_\d+$/;

@@ -6,7 +6,7 @@ import { bounded } from './access.js';
 
 export const DIMENSIONS = 384;
 const scopeOf = (userId: string, embedder: string) => `${bounded(userId)}\u0000${bounded(embedder)}`;
-const owner = { serverToken: v.string(), userId: v.string(), embedder: v.string() };
+const owner = { embedder: v.string() };
 
 /** Item ids for the owner, a page at a time. */
 export const ids = serverQuery({

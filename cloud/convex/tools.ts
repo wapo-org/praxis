@@ -2,7 +2,7 @@ import {JsonObjectSchema} from '@praxis/protocol';
 import {v, ConvexError} from 'convex/values';
 import {serverQuery, serverMutation, type QueryCtx} from './functions.js';
 import {bounded} from './access.js';
-const address={serverToken:v.string(),userId:v.string(),kind:v.string(),id:v.string()};
+const address = {kind: v.string(), id: v.string()};
 function row(ctx:QueryCtx,a:{userId:string;kind:string;id:string}) {
  [a.userId,a.kind,a.id].forEach(bounded);
  if(!['skill','javascriptKV'].includes(a.kind))throw new ConvexError('Invalid tools state kind');
@@ -58,7 +58,14 @@ export const put = serverMutation({
   return null;
  },
 });
-export const remove=serverMutation({args:address,handler:async(ctx,a)=>{
- const existing=await row(ctx,a);if(existing)await ctx.db.delete(existing._id);
- if(a.kind==='skill')for(const f of await files(ctx,a))await ctx.db.delete(f._id);return null;
-}});
+export const remove = serverMutation({
+ args: address,
+ handler: async (ctx, a) => {
+  const existing = await row(ctx, a);
+  if (existing) await ctx.db.delete(existing._id);
+  if (a.kind === 'skill') {
+   for (const f of await files(ctx, a)) await ctx.db.delete(f._id);
+  }
+  return null;
+ },
+});
