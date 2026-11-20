@@ -1,8 +1,10 @@
 import {WorkflowManager} from '@convex-dev/workflow';
 import {v} from 'convex/values';
 import {components, internal} from '../_generated/api.js';
-import {runScope, terminalStatus} from './validators.js';
-import {RUN_UNPARK_EVENT, TURN_ACTION_RETRY, WORKFLOW_ERRORS, WORKFLOW_PARALLELISM_MAX} from './constants.js';
+import {generationOutcome, runScope} from './validators.js';
+import {
+  GENERATION_TURNS_MAX, RUN_UNPARK_EVENT, TURN_ACTION_RETRY, WORKFLOW_ERRORS, WORKFLOW_PARALLELISM_MAX,
+} from './constants.js';
 
 export const workflow = new WorkflowManager(components.workflow, {
   workpoolOptions: {maxParallelism: WORKFLOW_PARALLELISM_MAX},
@@ -10,8 +12,8 @@ export const workflow = new WorkflowManager(components.workflow, {
 
 export const agentRun = workflow.define({
   args: {...runScope, startTurnIndex: v.number()},
-  returns: terminalStatus,
-  handler: async (step, args): Promise<'completed' | 'cancelled' | 'failed'> => {
+  returns: generationOutcome,
+  handler: async (step, args): Promise<'completed' | 'cancelled' | 'failed' | 'continued'> => {
     const {startTurnIndex, ...scope} = args;
     let expectedTurnIndex = startTurnIndex;
     let resultCommitted = false;
@@ -28,6 +30,12 @@ export const agentRun = workflow.define({
           ...scope, from: 'running', to: 'completed', turnIndex: expectedTurnIndex,
         });
         if (applied) return 'completed';
+        continue;
+      }
+      // Checked only here: after any wake-up, at a turn boundary, and with no subagent outstanding (flags forbid them).
+      if (expectedTurnIndex - startTurnIndex >= GENERATION_TURNS_MAX) {
+        const {continued} = await step.runMutation(internal.runs.continueAsNew, {...scope, turnIndex: expectedTurnIndex});
+        if (continued) return 'continued';
         continue;
       }
       const flags = await step.runAction(internal.turns.run, {...scope, expectedTurnIndex}, {retry: TURN_ACTION_RETRY});

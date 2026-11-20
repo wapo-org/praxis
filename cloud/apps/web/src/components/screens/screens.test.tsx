@@ -19,6 +19,17 @@ vi.mock('../../hooks/useAppConnections', () => ({ useAppConnections: () => ({ st
 vi.mock('../../hooks/useAppConnect', () => ({
   useAppConnect: () => ({ busy: null, error: null, connect: vi.fn(), disconnect: vi.fn() }),
 }));
+vi.mock('../../hooks/useAppCatalog', () => ({
+  useAppCatalog: () => ({
+    state: 'ready',
+    items: [],
+    totalItems: 0,
+    hasMore: false,
+    loadingMore: false,
+    loadMore: vi.fn(),
+    retry: vi.fn(),
+  }),
+}));
 vi.mock('../../hooks/useCloseWindow', () => ({ useCloseWindow: () => undefined }));
 
 let container: HTMLDivElement;
