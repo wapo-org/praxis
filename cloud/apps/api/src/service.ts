@@ -1,7 +1,7 @@
 import {cancellationKey} from './run-keys.js';
 import {ensureBuiltins} from './features/mcp/builtins.js';
 import { randomUUID } from 'node:crypto';
-import { ChatSchema,RunErrorCodeSchema,ModelKeySchema,ModelPreferenceRecordSchema,PROTOCOL_VERSION,RUN_START_CONFLICT_CODE,RunSchema,type Bootstrap,type Chat,type JsonObject,type Message,type Run,type RunEventPayload,type RunSnapshot,type StartRun } from '@praxis/protocol';
+import { APPROVAL_RECORD_KIND,ChatSchema,RunErrorCodeSchema,ModelKeySchema,ModelPreferenceRecordSchema,PROTOCOL_VERSION,RUN_START_CONFLICT_CODE,RunSchema,type ApprovalDecision,type Bootstrap,type Chat,type JsonObject,type Message,type Run,type RunEventPayload,type RunSnapshot,type StartRun } from '@praxis/protocol';
 import type { AdapterBundle } from './contracts.js';
 import type {OpenRouterModels} from './openrouter/index.js';
 import {foldSnapshot,initialSnapshot} from './snapshot.js';
@@ -9,9 +9,10 @@ import {attachmentParts,makeTitle,wantsTitle,type AttachmentRow} from './attachm
 import type {SearchIndexer} from './search-index.js';
 import {validateTitle} from './title-model.js';
 import {currentRunTiming,registerRunTiming,RunTimingTracker,timedStep,withRunTiming} from './timing.js';
+import {decideApproval} from './approvals.js';
 const attachmentRow=(id:string,v:JsonObject):AttachmentRow=>({id,name:String(v.name??'file'),mediaType:String(v.mediaType??'application/octet-stream'),size:Number(v.size??0),hiddenFromCode:v.hiddenFromCode===true});
 export class ApiError extends Error{constructor(public status:number,public code:string,message:string){super(message);}}
-export type RunDecision={type:'approval.decision';approvalId:string;decision:'allowOnce'|'allowAlways'|'deny'}|{type:'elicitation.response';elicitationId:string;action:'accept'|'decline'|'cancel';content?:JsonObject};
+export type RunDecision=ApprovalDecision|{type:'elicitation.response';elicitationId:string;action:'accept'|'decline'|'cancel';content?:JsonObject};
 export interface ExecutionDriver{
  title?(userId:string,chat:Chat,text:string):Promise<string|undefined>;
  validate?(userId:string,chat:Chat,input:StartRun):Promise<void>;
@@ -19,6 +20,7 @@ export interface ExecutionDriver{
  notes?(userId:string,chat:Chat,input:StartRun,previous:Message[]):Promise<string[]>;
  start(userId:string,run:Run,chat:Chat,messages:Message[],request:StartRun):Promise<void>;
  resume(userId:string,runId:string,decision:RunDecision):Promise<void>;
+ scheduleApprovalResume?(userId: string, runId: string): Promise<void>;
  cancel?(userId:string,runId:string):Promise<void>;
 }
 export class ApiService{
@@ -208,7 +210,9 @@ export class ApiService{
    if (event.type === 'messages.committed') {
     await this.commitMessages(userId, run, event.messages);
    }
-   const eventKey=event.type==='messages.committed'?`messages:${JSON.stringify(event.messages.map(m=>m.id))}`:undefined;
+   const eventKey = event.type === 'messages.committed' ? `messages:${JSON.stringify(event.messages.map(m => m.id))}`
+    : event.type === 'approval.requested' ? `approval.requested:${event.approval.id}`
+    : event.type === 'approval.resolved' ? `approval.resolved:${event.approvalId}` : undefined;
    const record=await this.adapters.events.append(userId,`run:${runId}`,{event,createdAt:this.now(),chatId:run.chatId},eventKey);run.lastEventId=Math.max(run.lastEventId,record.id);
    await Promise.all([
     this.put(userId,'run',runId,run),
@@ -246,17 +250,36 @@ export class ApiService{
    await this.write(userId, 'message', message.id, message);
   }
  }
- async decision(userId:string,runId:string,decision:RunDecision):Promise<Run>{return this.exclusive(`decision:${userId}:${runId}`,async()=>{
-  const run=await this.require<Run>(userId,'run',runId);
-  const id=decision.type==='approval.decision'?decision.approvalId:decision.elicitationId;
-  const prior=await this.adapters.store.get(userId,'decision',`${runId}:${id}`);if(prior){if(JSON.stringify(prior.value)!==JSON.stringify(decision))throw new ApiError(409,'decision_conflict','Decision already resolved');return run;}
-  const snapshot=await this.require<RunSnapshot>(userId,'snapshot',runId);
-  const exists=decision.type==='approval.decision'?snapshot.pendingApprovals.some(x=>x.id===id):snapshot.pendingElicitations.some(x=>x.id===id);
-  if(!exists||this.terminal(run))throw new ApiError(409,'decision_stale','Pending request no longer exists');
-  await this.put(userId,'decision',`${runId}:${id}`,decision);run.status='running';await this.put(userId,'run',runId,run);
-  if(decision.type==='elicitation.response')await this.emit(userId,runId,{type:'elicitation.resolved',elicitationId:id,action:decision.action});
-  this.enqueue(userId,runId,()=>this.driver!.resume(userId,runId,decision));return run;
- });}
+ async decision(userId: string, runId: string, decision: RunDecision): Promise<Run> {
+  return this.exclusive(`decision:${userId}:${runId}`, async () => {
+   const run = await this.require<Run>(userId, 'run', runId);
+   if (decision.type === 'approval.decision') {
+    const driver = this.driver;
+    if (!driver?.scheduleApprovalResume) throw new ApiError(503, 'approval_unavailable', 'Approval continuation unavailable');
+    const snapshot = await this.require<RunSnapshot>(userId, 'snapshot', runId);
+    const pending = !this.terminal(run) && snapshot.pendingApprovals.some(approval => approval.id === decision.approvalId);
+    await decideApproval(this.adapters.store, userId, runId, decision, pending);
+    if (pending) await driver.scheduleApprovalResume(userId, runId);
+    return run;
+   }
+   const id = decision.elicitationId;
+   const prior = await this.adapters.store.get(userId, 'decision', `${runId}:${id}`);
+   if (prior) {
+    if (JSON.stringify(prior.value) !== JSON.stringify(decision)) throw new ApiError(409, 'decision_conflict', 'Decision already resolved');
+    return run;
+   }
+   const snapshot = await this.require<RunSnapshot>(userId, 'snapshot', runId);
+   if (this.terminal(run) || !snapshot.pendingElicitations.some(elicitation => elicitation.id === id)) {
+    throw new ApiError(409, 'decision_stale', 'Pending request no longer exists');
+   }
+   await this.put(userId, 'decision', `${runId}:${id}`, decision);
+   run.status = 'running';
+   await this.put(userId, 'run', runId, run);
+   await this.emit(userId, runId, {type:'elicitation.resolved', elicitationId:id, action:decision.action});
+   this.enqueue(userId, runId, () => this.driver!.resume(userId, runId, decision));
+   return run;
+  });
+ }
  async truncate(userId:string,chatId:string,clientTurnId:string){return this.exclusive(`${userId}:${chatId}`,async()=>{
   const chat=await this.require<Chat>(userId,'chat',chatId);
   const messages=(await this.list<Message>(userId,'message',chatId)).sort((a,b)=>(a.sequence??0)-(b.sequence??0)||a.createdAt.localeCompare(b.createdAt));
@@ -266,7 +289,12 @@ export class ApiService{
   const removed=messages.slice(cut);const runIds=new Set(removed.flatMap(m=>m.runId?[m.runId]:[]));for(const r of targetRuns)runIds.add(r.id);
   for(const id of runIds){const run=turns.find(r=>r.id===id);if(run&&!this.terminal(run))await this.cancel(userId,id);}
   for(const m of removed)await this.remove(userId,'message',m.id);
-  for(const id of runIds){for(const kind of ['run','snapshot','checkpoint','runRequest'])await this.adapters.store.delete(userId,kind,id);await this.changed(userId,'run',id,'delete');}
+  for (const id of runIds) {
+   const approvals = await this.adapters.store.list(userId, APPROVAL_RECORD_KIND, {parentId: id});
+   for (const approval of approvals) await this.adapters.store.delete(userId, APPROVAL_RECORD_KIND, approval.id);
+   for (const kind of ['run', 'snapshot', 'checkpoint', 'runRequest']) await this.adapters.store.delete(userId, kind, id);
+   await this.changed(userId, 'run', id, 'delete');
+  }
   for(const r of await this.adapters.store.list(userId,'idempotency'))if(runIds.has(String(r.value.runId)))await this.adapters.store.delete(userId,'idempotency',r.id);
   for(const r of await this.adapters.store.list(userId,'output'))if(runIds.has(String(r.value.runId)))await this.adapters.store.delete(userId,'output',r.id);
   delete chat.activeRunId;chat.updatedAt=this.now();await this.write(userId,'chat',chatId,chat);

@@ -42,6 +42,8 @@ export interface FeatureTool {
  traits:('readOnly'|'destructive'|'idempotent'|'openWorld'|'sandboxed')[];
  /** Hidden from the model; reachable only via nested callTool (e.g. MCP gateway). */
  hidden?:boolean;
+ /** Tool arguments can contain credentials and must not be streamed or committed publicly. */
+ privateArguments?:boolean;
  classify?(args:JsonValue):{traits:FeatureTool['traits'];policyKey?:string};
  execute(args:JsonValue,context:{chatId:string;runId:string;mode:'ask'|'plan'|'build'|'auto';callId?:string;signal?:AbortSignal;elicit?:(request:{message:string;schema:JsonObject})=>Promise<{type:'elicitation.response';elicitationId:string;action:'accept'|'decline'|'cancel';content?:JsonObject}>;callTool?:(name:string,args:JsonValue)=>Promise<JsonValue>;emit?:(event:JsonObject)=>Promise<void>}):Promise<JsonValue>;
 }

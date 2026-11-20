@@ -328,7 +328,8 @@ export function createMcpGateway(catalog: FeatureTool[]): FeatureTool[] {
         required: ['tool', 'arguments'],
       },
       source,
-      traits: ['destructive', 'openWorld'],
+      traits: ['readOnly'],
+      privateArguments: true,
       execute: async (args, run) => {
         const input = z.object({ tool: z.string(), arguments: JsonObjectSchema }).parse(args);
         const tool = resolve(input.tool);

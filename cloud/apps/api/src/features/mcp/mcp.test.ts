@@ -63,6 +63,7 @@ describe('official SDK transports and policy', () => {
   it('rejects cross-chat tools and forces gateway nested calls through injected policy', async () => {
     const s = setup(); await s.chat(); await s.consent(); await s.add(); const catalog = await getMcpTools(s.ctx, { chatId: 'chat-1', disabledConnectorIds: [] }); await expect(catalog[0]!.execute({}, { ...run, chatId: 'another' })).rejects.toMatchObject({ code: 'chat_mismatch' });
     const invoke = createMcpGateway(catalog).find(t => t.name === 'mcp_call_tool')!; await expect(invoke.execute({ tool: catalog[0]!.name, arguments: {} }, run)).rejects.toMatchObject({ code: 'policy_unconfigured' });
+    expect(invoke.privateArguments).toBe(true);
     const policy = vi.fn(async () => ({ approved: true })); expect(await invoke.execute({ tool: catalog[0]!.name, arguments: { x: 1 } }, { ...run, callTool: policy })).toEqual({ approved: true }); expect(policy).toHaveBeenCalledWith(catalog[0]!.name, { x: 1 });
   });
   it('lists and reads resources and gets prompt arguments with SDK calls', async () => {

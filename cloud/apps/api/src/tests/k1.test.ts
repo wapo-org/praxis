@@ -57,7 +57,12 @@ it('calls Firecrawl directly on the first model turn and exposes ask_user in Exe
  let calls=0;
  f.service.driver=createExecutionDriver({service:f.service,fetcher:f.fake.fetcher,features:{tools:async()=>[...tools,{name,originalName:'firecrawl_search',description:'Find current sources; query, limit. Credits apply.',source:{type:'mcp',serverId:'builtin-firecrawl',serverName:'Firecrawl'},inputSchema:{type:'object',properties:{query:{type:'string'}},required:['query']},traits:['readOnly'],execute:async()=>{calls++;return 'Source found';}}]}});
  const snap=await f.run(chat.id,'Search Firecrawl for Praxis news');
- expect(snap.run.status).toBe('completed');expect(calls).toBe(1);
+ expect(snap.run.status).toBe('awaitingApproval');
+ expect(calls).toBe(0);
+ const reply = {type: 'approval.decision', approvalId: snap.pendingApprovals[0]!.id, decision: 'allowOnce'};
+ expect((await f.req(`/v1/runs/${snap.run.id}/approvals`, reply)).status).toBe(202);
+ await f.service.drain();
+ expect(calls).toBe(1);
  expect(f.fake.requests[0].tools.some((t:any)=>t.function.name===name)).toBe(true);
  expect(f.fake.requests[0].tools.some((t:any)=>t.function.name==='ask_user')).toBe(true);
 });

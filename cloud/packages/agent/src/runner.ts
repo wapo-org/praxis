@@ -11,15 +11,18 @@ import {
   type AgentCheckpoint,type AgentRunnerOptions,type AgentTool,type PendingCall,type ProviderRequest,
   type ProviderResponse,type RunInput,type ToolResult,
 } from './types.js';
-import {alwaysAllowKey,canonical,fingerprint} from './policy.js';
-import {historyTainted,runToolDecision} from './run-boundary.js';
+import {canonical,fingerprint} from './policy.js';
+import {historyTainted} from './run-boundary.js';
+import {approvalBinding, createPendingApproval, prepareInvocation, privateArguments, publicToolMessage} from './run-approval.js';
+import {approvalPreview} from './approval-preview.js';
+import {abortableSleep, Cancelled, controlled} from './run-control.js';
+export {abortableSleep} from './run-control.js';
 
 class Park extends Error {}
 /** Loop control signals; tool adapters must rethrow rather than stringify. */
 export function isRunControl(error:unknown):boolean{return error instanceof Park||error instanceof Cancelled;}
 /** Thrown on CAS save failure when this slice lost its lease. */
 export class ExecutionFenced extends Error {constructor(){super('Execution fenced: another executor owns this run');}}
-class Cancelled extends Error {}
 export class ResumeConflict extends Error {}
 const terminal=(run:Run)=>['completed','cancelled','failed'].includes(run.status);
 function addUsage(total:Usage,part:Usage):void {
@@ -58,7 +61,8 @@ export class AgentRunner {
   /** Commits message into checkpoint outbox; next slice flushes crashed deliveries. */
   private async commit(cp:AgentCheckpoint,message:Message) {
     if(cp.messages.some(m=>m.id===message.id))throw new Error('Duplicate message id');
-    cp.messages.push(message);cp.outbox.push(message);
+    cp.messages.push(message);
+    cp.outbox.push(publicToolMessage(cp, message, this.tools));
     await this.save(cp);
     await this.flush(cp);
   }
@@ -115,7 +119,7 @@ export class AgentRunner {
     try {
       await this.checkCancel(cp);
       if(cp.approval||cp.elicitation)return cp;
-      cp.run.status='running';
+      cp.run.status='running';await this.save(cp);
       if(cp.phase==='model')await this.model(cp);else if(cp.phase==='tools')await this.toolsStep(cp);
     }catch(error) {
       if(error instanceof ExecutionFenced)throw error;
@@ -141,13 +145,14 @@ export class AgentRunner {
     if(terminal(cp.run))throw new ResumeConflict('Run is finished');
     if(reply.type==='approval.decision') {
       if(cp.approval?.id!==id)throw new ResumeConflict('Approval is no longer pending');
-      const approval=cp.approval;const entry=cp.calls[approval.callId];
-      if(!entry)throw new ResumeConflict('Missing pending call');
-      entry.call.decision=reply.decision;
-      const pending=cp.pending.find(p=>p.id===entry.call.id);if(pending)pending.decision=reply.decision;
-      if(reply.decision==='allowAlways'&&entry.key&&!cp.policy.alwaysAllow.includes(entry.key)) {
-        cp.policy.alwaysAllow.push(entry.key);await this.emit(cp,{type:'policy.updated',alwaysAllowKey:entry.key});
+      const approval = cp.approval;
+      const entry = cp.calls[approval.callId];
+      if (!entry || entry.approvalId !== id) throw new ResumeConflict('Missing pending call');
+      const binding = await approvalBinding(cp.run.id, entry.call);
+      if (await this.options.ports.approvalDecision?.(cp.userId, binding, id) !== reply.decision) {
+        throw new ResumeConflict('No recorded decision matches this invocation');
       }
+      if (reply.decision === 'deny') entry.call.decision = 'deny';
       delete cp.approval;
       await this.emit(cp,{type:'approval.resolved',approvalId:id,callId:approval.callId,decision:reply.decision});
     }else {
@@ -160,20 +165,6 @@ export class AgentRunner {
     return this.advance(cp,maxSteps);
   }
   private async checkCancel(cp:AgentCheckpoint){if(await this.options.ports.isCancelled(cp.userId,cp.run.id))throw new Cancelled();}
-  private async controlled<T>(cp:AgentCheckpoint,operation:(signal:AbortSignal)=>Promise<T>,timeout:number):Promise<T> {
-    await this.checkCancel(cp);const controller=new AbortController();
-    let poll:ReturnType<typeof setTimeout>|undefined,deadline:ReturnType<typeof setTimeout>|undefined,stopped=false;
-    const interrupt=new Promise<never>((_,reject)=>{
-      const check=async()=>{
-        try{await this.checkCancel(cp);}catch(e){controller.abort();reject(e);return;}
-        if(!stopped)poll=setTimeout(()=>{void check();},50);
-      };
-      poll=setTimeout(()=>{void check();},50);
-      deadline=setTimeout(()=>{controller.abort();reject(new Error('Operation timed out'));},timeout);
-    });
-    try {const result=await Promise.race([operation(controller.signal),interrupt]);await this.checkCancel(cp);return result;}
-    finally {stopped=true;clearTimeout(poll);clearTimeout(deadline);controller.abort();}
-  }
   private markFinished(cp:AgentCheckpoint,outcome:NonNullable<Run['outcome']>) {
     cp.phase='terminal';cp.run.status=outcome==='failed'?'failed':outcome==='cancelled'?'cancelled':'completed';cp.run.outcome=outcome;
   }
@@ -228,7 +219,7 @@ export class AgentRunner {
     const id=this.id();await this.emit(cp,{type:'compaction',id,phase:'started'});
     try{
       const req=await this.request(cp);
-      const summary=await this.controlled(cp,signal=>this.options.ports.summarize
+      const summary=await controlled(() => this.checkCancel(cp), signal=>this.options.ports.summarize
         ?this.options.ports.summarize({...req,tools:[],messages:cp.messages.slice(0,cut)},signal)
         :this.summarize(cp,cut,req,signal),this.options.streamTimeoutMs??120000);
       z.string().min(1).max(1000000).parse(summary);
@@ -248,7 +239,7 @@ export class AgentRunner {
     for(let attempt=0;attempt<=cp.maxRetries+2;attempt++) {
       const blocks:string[]=[],reasoningBlocks=new Set<string>(),callIds:string[]=[],calls=new Map<number,{id:string;name:string}>();let bytes=0;
       try {
-        response=await this.controlled(cp,async signal=>{
+        response=await controlled(() => this.checkCancel(cp), async signal=>{
           let completed:ProviderResponse|undefined;
           const reasoningMeta = new Map<string,{blockId:string;startedAt:string;finishedAt?:string;durationMs?:number;afterToolCallId?:string}>();
           const closed = new Set<string>();
@@ -273,7 +264,10 @@ export class AgentRunner {
               const spec=cp.setup.tools.find(t=>t.name===e.name);
               await this.emit(cp,{type:'tool.started',activity:this.activity(e.id,e.name,spec)});
             }else if(e.type==='arguments') {
-              const call=calls.get(e.index);if(call)await this.emit(cp,{type:'tool.arguments.delta',callId:call.id,json:e.json});
+              const call = calls.get(e.index);
+              if (call && !privateArguments(cp, this.tools.get(call.name))) {
+                await this.emit(cp,{type:'tool.arguments.delta',callId:call.id,json:e.json});
+              }
             }else if(e.type==='blockEnd') {
               if(blocks.includes(blockId)&&!closed.has(blockId)){
                 closed.add(blockId);
@@ -314,7 +308,7 @@ export class AgentRunner {
         await this.emit(cp,{type:'attempt.discarded',blockIds:blocks,toolCallIds:callIds});
         await this.emit(cp,{type:'retrying',attempt:attempt+1,delayMs:delay,reason:error.message});
         await this.save(cp);req=await this.request(cp);
-        if(delay)await this.controlled(cp,signal=>this.options.ports.sleep?.(delay,signal)??abortableSleep(delay,signal),delay+1000);
+        if(delay)await controlled(() => this.checkCancel(cp), signal=>this.options.ports.sleep?.(delay,signal)??abortableSleep(delay,signal),delay+1000);
       }
     }
     if(!accepted||!response)throw new Error('Provider retry budget exhausted');
@@ -363,39 +357,36 @@ export class AgentRunner {
     const spec=cp.setup.tools.find(t=>t.name===call.name)??(nested?cp.hiddenTools.find(t=>t.name===call.name):undefined);
     const entry=previous??(cp.calls[call.id]={call});
     if(!spec||!live||live.unavailableReason)return this.completeTool(cp,call,textResult(live?.unavailableReason??`Unknown or unavailable tool: ${call.name}`,true),'failed');
-    if(call.arguments===null||typeof call.arguments!=='object'||Array.isArray(call.arguments))return this.completeTool(cp,call,textResult('Tool arguments must be a valid JSON object.',true),'failed');
-    JsonObjectSchema.parse(call.arguments);
-    try {z.fromJSONSchema(spec.inputSchema).parse(call.arguments);}catch {
-      return this.completeTool(cp,call,textResult('Tool arguments do not match the frozen input schema.',true),'failed');
-    }
-    let effectiveSpec=spec;
-    let key=await alwaysAllowKey(spec);
-    if(live.classify) {
-      try {
-        const classified=z.object({traits:ToolSpecSchema.shape.traits,policyKey:z.string().min(1).max(1000).optional()}).parse(live.classify(call.arguments));
-        effectiveSpec={...spec,traits:classified.traits};
-        key+=`/classification:${await fingerprint({traits:[...classified.traits].sort(),policyKey:classified.policyKey??null})}`;
-      }catch{return this.completeTool(cp,call,textResult('Tool policy classification failed.',true),'failed');}
-    }
-    // A changed live subject invalidates a parked one-shot approval too.
-    if(entry.key&&entry.key!==key)delete call.decision;
-    entry.key=key;
-    const decision=runToolDecision(cp,live,effectiveSpec,key);
-    if(decision.decision==='refuse')return this.completeTool(cp,call,textResult(decision.reason,true),'denied');
-    if(call.decision==='deny')return this.completeTool(cp,call,textResult('The user declined this tool call.',true),'denied');
-    if(decision.decision==='ask'&&!call.decision) {
-      cp.approval={type:'approval',id:this.id(),callId:call.id,toolName:call.name,source:spec.source,arguments:call.arguments,reason:decision.reason,title:`Allow ${call.name}?`,parentCallId:call.parentCallId};
-      cp.run.status='awaitingApproval';await this.save(cp);
-      await this.emit(cp,{type:'approval.requested',approval:cp.approval});await this.emit(cp,{type:'run.parked',reason:'approval'});throw new Park();
-    }
+    if (call.decision === 'deny') return this.completeTool(cp, call, textResult('The user declined this tool call.', true), 'denied');
+    const prepared = await prepareInvocation(cp, call, spec, live);
+    if (!prepared.ok) return this.completeTool(cp, call, textResult(prepared.error, true), 'failed');
+    const {decision, key} = prepared;
     // Crash replay: a call that started but has no result may already have had its side effects.
-    if(entry.started&&!effectiveSpec.traits.some(t=>t==='idempotent'||t==='readOnly'))
+    if(entry.started && (entry.approvalId || decision.decision !== 'allow'))
       return this.completeTool(cp,call,textResult('Tool execution was interrupted before it reported a result. It was not retried automatically because it may have side effects; check its effect before calling it again.',true),'failed');
-    await this.checkCancel(cp);await this.emit(cp,{type:'tool.ready',activity:this.activity(call.id,call.name,spec,call.parentCallId,call.arguments)});
+    if (entry.key !== key) delete entry.approvalId;
+    entry.key = key;
+    if (decision.decision === 'refuse') return this.completeTool(cp, call, textResult(decision.reason, true), 'denied');
+    if (decision.decision === 'ask' && !entry.approvalId) {
+      const {pendingApproval, approvalDecision} = this.options.ports;
+      if (!pendingApproval || !approvalDecision) return this.completeTool(cp, call, textResult('Tool approval is unavailable.', true), 'denied');
+      cp.approval = await createPendingApproval(pendingApproval, cp, call, prepared.spec, decision.reason, key);
+      entry.approvalId = cp.approval.id;
+      cp.run.status = 'awaitingApproval';
+      await this.save(cp);
+      await this.emit(cp, {type: 'approval.requested', approval: cp.approval});
+      await this.emit(cp, {type: 'run.parked', reason: 'approval'});
+      throw new Park();
+    }
+    const activityArgs = privateArguments(cp, live) ? approvalPreview(call.arguments, spec.inputSchema) : call.arguments;
+    await this.checkCancel(cp);await this.emit(cp,{type:'tool.ready',activity:this.activity(call.id,call.name,spec,call.parentCallId,activityArgs)});
     entry.started=true;cp.tainted||=live.boundary?.untrustedSource===true;await this.emit(cp,{type:'tool.running',callId:call.id});await this.save(cp);
     let nestedIndex=0,elicitationIndex=0;
     try {
-      const output=await this.controlled(cp,signal=>live.execute(call.arguments,{
+      const output=await controlled(() => this.checkCancel(cp), async signal=>{
+        if (entry.approvalId) await this.verifyApproved(cp, call, entry.approvalId);
+        if (signal.aborted) throw new Cancelled();
+        return live.execute(call.arguments,{
         userId:cp.userId,chatId:cp.chat.id,runId:cp.run.id,mode:cp.chat.mode,callId:call.id,signal,
         emit:async event=>{if(signal.aborted)throw new Cancelled();await this.emit(cp,event);},
         callTool:async(name,args)=>{
@@ -412,13 +403,22 @@ export class AgentRunner {
           cp.run.status='awaitingElicitation';await this.save(cp);await this.emit(cp,{type:'elicitation.requested',elicitation:cp.elicitation});
           await this.emit(cp,{type:'run.parked',reason:'elicitation'});throw new Park();
         },
-      }),this.options.toolTimeoutMs??120000);
+        });
+      },this.options.toolTimeoutMs??120000);
       return this.completeTool(cp,call,ToolResultSchema.parse(output),output.isError?'failed':'succeeded');
     }catch(error){
       // Parked mid-call tools re-run on resume rather than fail as interrupted.
       if(error instanceof Park){delete entry.started;throw error;}
       if(error instanceof Cancelled||error instanceof ExecutionFenced)throw error;
+      if(error instanceof ResumeConflict) return this.completeTool(cp, call, textResult(error.message, true), 'denied');
       return this.completeTool(cp,call,textResult(error instanceof Error?error.message:'Tool failed',true),'failed');
+    }
+  }
+  private async verifyApproved(cp: AgentCheckpoint, call: PendingCall, approvalId: string): Promise<void> {
+    const binding = await approvalBinding(cp.run.id, call);
+    const decision = await this.options.ports.approvalDecision?.(cp.userId, binding, approvalId);
+    if (decision !== 'allowOnce' && decision !== 'allowAlways') {
+      throw new ResumeConflict(decision === 'deny' ? 'The user declined this tool call.' : 'No recorded approval matches this invocation.');
     }
   }
   private async completeTool(cp:AgentCheckpoint,call:PendingCall,result:ToolResult,status:'succeeded'|'failed'|'denied'|'cancelled') {
@@ -440,11 +440,4 @@ export class AgentRunner {
     // Persist results and phase together, so a replay cannot append them twice.
     cp.phase='model';cp.pending=[];await this.commit(cp,this.message(cp,'user',parts));
   }
-}
-export function abortableSleep(ms:number,signal:AbortSignal):Promise<void> {
-  return new Promise((resolve,reject)=>{
-    const abort=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);reject(new Cancelled());};
-    const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve();},ms);
-    signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
-  });
 }

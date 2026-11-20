@@ -6,5 +6,5 @@ it('current system prefix has deterministic bytes across discovery order and rep
   const baseline = buildSystemPrompt(input);
   expect(buildSystemPrompt({...input, skills: [...input.skills].reverse(), toolNotes: [...input.toolNotes].reverse()})).toBe(baseline);
   expect(buildSystemPrompt(input)).toBe(baseline);
-  expect(Buffer.byteLength(buildSystemPrompt({}))).toBe(1993);
+  expect(Buffer.byteLength(buildSystemPrompt({}))).toBe(2023);
 });

@@ -3,7 +3,8 @@ import {ReasoningEffortSchema,ReasoningShapeSchema,StreamAnnotationSchema} from 
 import {
   ToolErrorSchema, ApprovalSchema, CapabilitiesSchema, ChatSchema, ConversationSetupSchema, ElicitationSchema,
   IdSchema, JsonObjectSchema, JsonValueSchema, MessagePartSchema, MessageSchema, RunSchema,
-  UsageSchema, type Capabilities, type JsonObject, type JsonValue, type Mode, type RunEventPayload, type ToolSpec,
+  UsageSchema, type ApprovalBinding, type ApprovalDecision, type PendingApprovalRecord,
+  type Capabilities, type JsonObject, type JsonValue, type Mode, type RunEventPayload, type ToolSpec,
 } from '@praxis/protocol';
 import type {ToolClassification} from './boundary/policy.js';
 
@@ -62,6 +63,8 @@ export interface AgentTool {
   spec:ToolSpec;
   /** Hidden tools are reachable through callTool only, never directly from a model. */
   hidden?:boolean;
+  /** Tool arguments can contain credentials and must not be streamed or committed publicly. */
+  privateArguments?:boolean;
   unavailableReason?:string;
   /** Trusted adapter classification; the displayed frozen catalog stays unchanged. */
   classify?(args:JsonValue):{traits:ToolSpec['traits'];policyKey?:string};
@@ -85,7 +88,7 @@ export const CheckpointSchema = z.object({
   phase:z.enum(['model','tools','terminal']),iteration:z.number().int().nonnegative(),
   pending:z.array(PendingCallSchema),
   /** started is saved before execution so replay detects interrupted calls. */
-  calls:z.record(z.string(),z.object({call:PendingCallSchema,result:ToolResultSchema.optional(),key:z.string().optional(),started:z.boolean().optional()})),
+  calls:z.record(z.string(),z.object({call:PendingCallSchema,result:ToolResultSchema.optional(),key:z.string().optional(),started:z.boolean().optional(),approvalId:IdSchema.optional()})),
   /** Durable outbox awaiting messages.committed delivery. */
   outbox:z.array(MessageSchema).default([]),
   approval:ApprovalSchema.optional(),elicitation:ElicitationSchema.optional(),
@@ -109,6 +112,8 @@ export const RunInputSchema = z.object({
 });
 export type RunInput=z.infer<typeof RunInputSchema>;
 export interface AgentPorts {
+  pendingApproval?(userId: string, pending: PendingApprovalRecord): Promise<void>;
+  approvalDecision?(userId: string, binding: ApprovalBinding, approvalId: string): Promise<ApprovalDecision['decision'] | null>;
   /** Must persist a detached owner-scoped snapshot; scheduler serializes runs. */
   save(userId:string,checkpoint:AgentCheckpoint):Promise<void>;
   /** Return assigned durable sequence to update run.lastEventId. */

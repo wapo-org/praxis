@@ -112,7 +112,8 @@ export function javascriptTool(ctx: FeatureContext, input: {attachmentIds: strin
     description: 'Run JavaScript in an isolated QuickJS sandbox (no Node, no DOM). Use it for calculations, data processing and parsing attached files (fs.list(), fs.readText(name), fs.readBytes(name)). It has no network access; use web_search and web_read for the web. kv.get/kv.set persist small JSON values for this chat; tools.<name>(args) or callTool(name, args) calls other tools. Return a value or console.log the result. Default timeout 5 s, max 30 s; 16 MB memory.',
     inputSchema: {type: 'object', properties: {env:{type:'object',additionalProperties:{type:'string'},description:'Environment variables, available as env.NAME. Pass opaque secret references here; never paste credentials into code.'},code: {type: 'string', description: 'JavaScript source; top-level await is allowed'}, timeout_ms: {type: 'integer', description: 'Time limit in milliseconds (default 5000, max 30000)'}}, required: ['code']},
     source: {type: 'builtin'},
-    traits: ['sandboxed', 'openWorld'],
+    traits: ['sandboxed'],
+    privateArguments: true,
     async execute(args: JsonValue, execution) {
       const output = await runSandbox(args, ctx, execution, files, input.hostToolNames, toolsState(ctx, input.storage));
       return text(JSON.stringify(output), !!output.error);

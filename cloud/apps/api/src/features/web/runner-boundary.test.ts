@@ -4,6 +4,8 @@ import {AgentRunner, BOUNDARY_TEXT, textResult, type AgentTool, type ModelProvid
 import {CapabilitiesSchema, WEB_TOOL_NAMES, type Mode} from '@praxis/protocol';
 import {assertPublicUrl} from '../../adapters/security.js';
 import type {WebPorts} from './ports.js';
+import {createLocalAdapters} from '../../local-memory.js';
+import {decideApproval, readApprovalDecision, recordPendingApproval} from '../../approvals.js';
 import {webTools} from './tools.js';
 
 const TIME = '2026-11-17T00:00:00.000Z';
@@ -27,12 +29,18 @@ function fixture(script: string[]) {
     const args = name === WEB_TOOL_NAMES.search ? {query: `news ${done}`} : {};
     yield {type: 'completed', response: {parts: name ? [{type: 'toolCall', callId: `call-${done}`, name, arguments: JSON.stringify(args)}] : [{type: 'text', text: 'Done'}], stop: 'endTurn', usage}};
   }};
-  const runner = new AgentRunner({provider, tools: [...webTools(ports), note], ports: {save: async () => {}, emit: async () => {}, isCancelled: async () => false}});
+  const {store} = createLocalAdapters();
+  const decide = (approvalId: string, decision: 'allowAlways' | 'allowOnce') =>
+    decideApproval(store, 'u', 'r', {type: 'approval.decision', approvalId, decision}, true);
+  const runner = new AgentRunner({provider, tools: [...webTools(ports), note], ports: {save: async () => {}, emit: async () => {}, isCancelled: async () => false,
+    pendingApproval: (userId, pending) => recordPendingApproval(store, userId, pending),
+    approvalDecision: (userId, binding, id) => readApprovalDecision(store, userId, binding, id),
+  }});
   const input = (mode: Mode, alwaysAllow: string[] = []): RunInput => ({userId: 'u', policy: {trustedSources: [], alwaysAllow},
     run: {type: 'run', id: 'r', chatId: 'c', status: 'queued', lastEventId: 0, createdAt: TIME, updatedAt: TIME},
     chat: {type: 'chat', id: 'c', title: 'T', pinned: false, mode, connectorIds: [], disabledConnectorIds: [], createdAt: TIME, updatedAt: TIME},
     messages: [{type: 'message', id: 'm', chatId: 'c', role: 'user', parts: [{type: 'text', text: 'Search'}], createdAt: TIME, updatedAt: TIME}]});
-  return {runner, input, fetcher, accounting, sideEffects};
+  return {runner, input, fetcher, accounting, sideEffects, decide};
 }
 
 it('parks model-chosen web egress for approval in Auto, then taints the run so later side effects need fresh approval', async () => {
@@ -43,6 +51,7 @@ it('parks model-chosen web egress for approval in Auto, then taints the run so l
   expect(f.fetcher).not.toHaveBeenCalled();
   expect(f.accounting.reserve).not.toHaveBeenCalled();
   expect(parked.tainted).toBe(false);
+  await f.decide(parked.approval!.id, 'allowOnce');
   const searched = await f.runner.resume(parked, {type: 'approval.decision', approvalId: parked.approval!.id, decision: 'allowOnce'});
   expect(f.fetcher).toHaveBeenCalledTimes(1);
   expect(searched.tainted).toBe(true);
@@ -57,16 +66,17 @@ it.each(['ask', 'plan'] as const)('refuses web egress in %s mode without dispatc
   expect(JSON.stringify(done.messages)).toContain(BOUNDARY_TEXT.denied);
   expect(f.fetcher).not.toHaveBeenCalled();
 });
-it('honors always-allow only before the run is tainted', async () => {
+it('scopes allowAlways to one call', async () => {
   const f = fixture([WEB_TOOL_NAMES.search, WEB_TOOL_NAMES.search]);
   const first = await f.runner.run(f.input('auto'));
+  await f.decide(first.approval!.id, 'allowAlways');
   const always = await f.runner.resume(first, {type: 'approval.decision', approvalId: first.approval!.id, decision: 'allowAlways'});
   expect(f.fetcher).toHaveBeenCalledTimes(1);
   expect(always.approval).toMatchObject({toolName: WEB_TOOL_NAMES.search, reason: BOUNDARY_TEXT.tainted});
   const fresh = fixture([WEB_TOOL_NAMES.search]);
   const allowed = await fresh.runner.run(fresh.input('auto', always.policy.alwaysAllow));
-  expect(allowed.run.status).toBe('completed');
-  expect(fresh.fetcher).toHaveBeenCalledTimes(1);
+  expect(allowed.run.status).toBe('awaitingApproval');
+  expect(fresh.fetcher).not.toHaveBeenCalled();
 });
 it('starts tainted when earlier untrusted web results are in the conversation', async () => {
   // The prior result already occupies the first script step.

@@ -63,7 +63,13 @@ export function setup(turns: string[][] = []) {
   const run = async (chatId: string, text: string, attachmentIds: string[] = []) => {
     const r = await (await req('/v1/runs', {type: 'run.start', chatId, text, attachmentIds})).json();
     await service.drain();
-    return RunSnapshotSchema.parse(await (await req(`/v1/runs/${r.id}/snapshot`)).json());
+    let snapshot = RunSnapshotSchema.parse(await (await req(`/v1/runs/${r.id}/snapshot`)).json());
+    for (const approval of snapshot.pendingApprovals.filter(item => item.toolName === 'run_javascript')) {
+      await req(`/v1/runs/${r.id}/approvals`, {type: 'approval.decision', approvalId: approval.id, decision: 'allowOnce'});
+      await service.drain();
+      snapshot = RunSnapshotSchema.parse(await (await req(`/v1/runs/${r.id}/snapshot`)).json());
+    }
+    return snapshot;
   };
   return {req, chat, upload, run, fake, service};
 }

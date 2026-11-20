@@ -19,6 +19,9 @@ import {ApiError, type ApiService, type ExecutionDriver, type RunDecision} from 
 import {isScripted, type RunModel} from './openrouter/index.js';
 import {withMedia, type ModelCapabilities} from './media-provider.js';
 import {readToolOutputTool} from './read-tool-output.js';
+import {memoryLease, type RunLease} from './run-lease.js';
+export {memoryLease, type RunLease} from './run-lease.js';
+import {readApprovalDecision, recordPendingApproval, resolvedApproval} from './approvals.js';
 import {currentRunTiming, timedStep} from './timing.js';
 
 export {withMedia} from './media-provider.js';
@@ -55,28 +58,6 @@ export interface ExecutionOptions {
   instructions?: string;
   /** One executor per run across instances (Upstash lease in production; process-local by default). */
   lease?: RunLease;
-}
-
-export interface RunLease {
-  acquire(key: string, ttlMs: number, ownerId?: string): Promise<string | null>;
-  release(key: string, token: string): Promise<void>;
-}
-
-/** Process-local lease for dev/tests; production injects the Redis lease. */
-export function memoryLease(clock: () => number = Date.now): RunLease {
-  const held = new Map<string, {token: string; expires: number}>();
-  return {
-    async acquire(key, ttlMs) {
-      const current = held.get(key);
-      if (current && current.expires > clock()) return null;
-      const token = crypto.randomUUID();
-      held.set(key, {token, expires: clock() + ttlMs});
-      return token;
-    },
-    async release(key, token) {
-      if (held.get(key)?.token === token) held.delete(key);
-    },
-  };
 }
 
 type RunRequest = StartRun & {attachmentIds: string[]};
@@ -118,10 +99,15 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   }
 
   /** Runs fn exclusively for this run; concurrent callers return without acting. */
-  async function exclusive(userId: string, runId: string, fn: (fence: {revision: number}) => Promise<AgentCheckpoint | void>) {
+  function exclusive(userId: string, runId: string, fn: (fence: {revision: number}) => Promise<AgentCheckpoint | void>) {
     const key = `run:${userId}:${runId}`;
+    const run = () => leased(userId, runId, key, fn);
+    return options.lease ? run() : service.exclusive(key, run);
+  }
+
+  async function leased(userId: string, runId: string, key: string, fn: (fence: {revision: number}) => Promise<AgentCheckpoint | void>) {
     const token = await timedStep('leaseAcquire', () => lease.acquire(key, leaseTtlMs, userId));
-    if (!token) return;
+    if (!token) return false;
     let cp: AgentCheckpoint | void = undefined;
     try {
       const row = await service.adapters.store.get(userId, 'checkpoint', runId);
@@ -135,6 +121,7 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
     if (cp?.run.errorCode === 'model_key_invalid') await service.models?.keys.markInvalid(userId, cp.run.error ?? '').catch(() => undefined);
     // Schedule the next slice only after releasing the lease, or it would find the run still owned.
     if (cp) await settle(userId, cp);
+    return true;
   }
 
   async function trustedSources(userId: string): Promise<string[]> {
@@ -151,6 +138,8 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
   const ports: Omit<AgentPorts, 'save'> = {
     emit: async (userId, runId, event) => service.emit(userId, runId, event),
     isCancelled: async (userId, runId) => !!(await service.adapters.kv.get(cancellationKey(userId, runId))),
+    pendingApproval: (userId, pending) => recordPendingApproval(service.adapters.store, userId, pending),
+    approvalDecision: (userId, binding, id) => readApprovalDecision(service.adapters.store, userId, binding, id),
     spill: async (userId, runId, callId, text) => {
       const id = crypto.randomUUID();
       const run = await service.require<Run>(userId, 'run', runId);
@@ -304,11 +293,15 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
       });
     },
 
+    async scheduleApprovalResume(userId: string, runId: string) {
+      await scheduler.schedule(userId, runId);
+    },
+
     async continue(userId: string, runId: string) {
       // Acknowledge continuations for deleted runs as done so QStash stops retrying.
       const row = await service.adapters.store.get(userId, 'checkpoint', runId);
       if (!row || row.deleted) return;
-      await exclusive(userId, runId, async fence => {
+      const acquired = await exclusive(userId, runId, async fence => {
         const current = await service.adapters.store.get(userId, 'checkpoint', runId);
         if (!current || current.deleted) return;
         fence.revision = current.revision;
@@ -319,11 +312,18 @@ export function createExecutionDriver(options: ExecutionOptions): ExecutionDrive
           pending.outbox = [];
           await slicePorts(fence).save(userId, pending);
         }
+        if (pending.approval) {
+          const decision = await resolvedApproval(service.adapters.store, userId, runId, pending.approval.id);
+          if (!decision) return;
+          const {cp, runner} = await load(userId, runId, fence);
+          return runner.resume(cp, decision);
+        }
         if (['completed', 'failed', 'cancelled', 'awaitingApproval', 'awaitingElicitation'].includes(pending.run.status)) return;
         const {cp, runner} = await load(userId, runId, fence);
         // A redelivery may find a running checkpoint whose previous executor crashed.
         return runner.advance(cp);
       });
+      if (!acquired) throw new ApiError(503, 'run_busy', 'Run continuation is already in progress');
     },
 
     async cancel(userId: string, runId: string) {

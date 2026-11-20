@@ -1,7 +1,7 @@
 import {defineTable} from 'convex/server';
 import {v, type VLiteral} from 'convex/values';
 import {
-  MessagePartSchema, ModeSchema, ReasoningShapeSchema, RunErrorCodeSchema, RunOutcomeSchema,
+  ApprovalChoiceSchema, MessagePartSchema, ModeSchema, ReasoningShapeSchema, RunErrorCodeSchema, RunOutcomeSchema,
   RunStatusSchema, StreamAnnotationSchema, ToolSourceSchema, ToolSpecSchema,
 } from '@praxis/protocol';
 
@@ -120,6 +120,18 @@ const run = v.object({
 const storeFields = {userId: v.string(), id: v.string(), revision: v.number(), updatedAt: v.string()};
 
 export const domainTables = {
+  approvals: defineTable({
+    ...storeFields,
+    runId: v.string(),
+    toolCallId: v.string(),
+    tool: v.string(),
+    argsHash: v.string(),
+    preview: v.string(),
+    status: v.union(v.literal('pending'), v.literal('approved'), v.literal('denied')),
+    decision: v.optional(literals(ApprovalChoiceSchema.options)),
+  })
+    .index('by_user_id', ['userId', 'id'])
+    .index('by_user_run', ['userId', 'runId']),
   chats: defineTable({...storeFields, value: chat, lastSequence: v.number()})
     .index('by_user_id', ['userId', 'id'])
     .index('by_user_updated', ['userId', 'value.updatedAt']),
