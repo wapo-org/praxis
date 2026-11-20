@@ -1,9 +1,34 @@
 # Agent ports
 
-`runOneTurn()` is an isolated PRA-78 prototype, not the current API execution path.
-It calls the existing ModelProvider once, then handles that response's tools through
-PRA-76's `executeBoundary` and permission decision table. It adds no runtime dependencies.
-The existing AgentRunner stays until the PRA-14 migration.
+`createTurnAgent()` (`turn-harness.ts`) is the one-turn harness entry point (PRA-43); it is not
+wired into the API yet (PRA-39). Built per request from the model, the tool registry and request
+transforms, it runs `runOneTurn()`: one ModelProvider call, then that response's tools through
+PRA-76's `executeBoundary` and permission decision table, then one commit. It adds no runtime
+dependencies; PRA-78 ruled out LangChain/DeepAgents for this worker. The existing AgentRunner
+stays until the PRA-14 migration.
+
+## Message mapping
+
+`toModelMessages` / `toStoredMessages` (`model-messages.ts`) map stored `Message` rows to the
+request-scoped model view (human input, one response, one tool result each) and back without loss;
+`model-messages.test.ts` proves the round trip on the captured `hello-replay.json` chat and decoded
+OpenRouter turns. The mapper accepts only what `MessageSchema` allows, in a possible layout: results
+lead a user message or trail an assistant message, and parts must fit the role. `raw` provider
+payloads stay on the message, so merged `reasoning_details` with signatures replay unchanged.
+`buildProviderRequest` renders the OpenRouter wire from this view.
+
+`buildTurnSnapshot` builds the snapshot a claim carries from the frozen setup, history and model.
+`assembleTurnRequest` answers a crashed turn's dangling call with a synthetic interrupted result in
+the request view only. Request transforms (`rehydrateAttachments`, two reads at a time) run just
+before the model call, so history and the snapshot keep attachment references. `onEvent` streams
+provider events to the live writer (PRA-9).
+
+A turn commits `TurnOutput` (`turn-output.ts`): assistant-role messages only (the response with its
+raw payload, then one message of tool results in call order, as `turns.commit` accepts), usage once,
+the first untrusted result as `taint`, and `end` `ready` while results must go back to the model.
+Several calls in one response run sequentially in model order whatever `parallelToolCalls` says,
+so a Stop or an uncertain call fences the rest of the batch. A tool's own `boundary` classification
+(web tools) wins over the injected registry.
 
 ## Durable adapter contract
 
@@ -26,8 +51,8 @@ PRA-7/13 must implement and verify it against Convex before adopting this protot
   and invalid results; only a returned result or pre-dispatch refusal completes a call.
 - Model dispatch requires tools enabled, a frozen offered schema and an available, non-hidden adapter.
 - `saveCall` persists result plus provenance/monotone taint, including errors.
-- `commit` atomically stores messages, usage exactly once, joined taint, control
-  flags and increments turnIndex under the fence. A lost reply returns saved flags.
+- `commit` atomically stores the `TurnOutput` messages, usage exactly once, joined taint and
+  its `end`, and increments turnIndex under the fence. A lost reply returns saved flags.
   Stop owns a separate atomic partial/truncated commit; late worker commits lose.
 - `fail` ends the turn as `failed` under the fence when the model call hits a revoked key or
   spent credit (`model_key_invalid` / `model_credit_exhausted` with remediation), releases the

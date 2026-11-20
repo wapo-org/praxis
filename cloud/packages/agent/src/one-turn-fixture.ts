@@ -5,6 +5,7 @@ import {textResult, type ProviderResponse, type AgentTool, type ModelProvider} f
 import {ONE_TURN_SYSTEM} from './one-turn-prompt.js';
 import type {TurnFailure} from '@praxis/protocol';
 import type {CallClaim, OneTurnOptions, SavedCall, TurnFlags, TurnSnapshot, TurnStore} from './one-turn-state.js';
+import type {TurnOutput} from './turn-output.js';
 
 export const response = (calls = false): ProviderResponse => ({
   parts: calls ? [{type: 'toolCall', callId: 'call', name: 'read', arguments: '{"query":"hello"}'}] : [{type: 'text', text: 'done'}],
@@ -33,10 +34,10 @@ export const snapshot = (): TurnSnapshot => ({
 // This fake models atomic Convex operations; production needs durable fencing, not an in-memory lease.
 export class TestTurnStore implements TurnStore {
   data: {snapshot: TurnSnapshot; response?: ProviderResponse; calls: Record<string, SavedCall | null>;
-    flags: TurnFlags; claimed: boolean; commits: number; usage: number; tainted: boolean};
+    flags: TurnFlags; claimed: boolean; commits: number; usage: number; tainted: boolean; outputs: TurnOutput[]};
   constructor(data?: TestTurnStore['data']) {
     this.data = data ?? {snapshot: snapshot(), calls: {}, flags: {turnIndex: 0, status: 'ready', done: false},
-      claimed: false, commits: 0, usage: 0, tainted: false};
+      claimed: false, commits: 0, usage: 0, tainted: false, outputs: []};
   }
   async acquire(_runId: string, expected: number) {
     if (this.data.claimed || this.data.flags.done || this.data.flags.turnIndex !== expected) {
@@ -67,12 +68,18 @@ export class TestTurnStore implements TurnStore {
   async saveCall(_token: string, id: string, value: SavedCall) {
     this.data.calls[id] = structuredClone(value);
   }
-  async commit(_token: string, value: ProviderResponse, _calls: SavedCall[], tainted: boolean) {
+  /** Like Convex, a commit appends to the history the next turn's snapshot is built from. */
+  async commit(_token: string, output: TurnOutput) {
     if (!await this.active()) return this.data.flags;
     this.data.commits++;
-    this.data.usage += value.usage.inputTokens;
-    this.data.tainted ||= tainted;
-    this.data.flags = {turnIndex: this.data.flags.turnIndex + 1, ...(value.stop === 'toolUse' ? {status: 'ready', done: false} : {status: 'completed', done: true})};
+    this.data.usage += output.usage.inputTokens;
+    this.data.tainted ||= output.tainted;
+    this.data.outputs.push(structuredClone(output));
+    this.data.snapshot.request.messages.push(...structuredClone(output.messages));
+    this.data.snapshot.tainted = this.data.tainted;
+    delete this.data.response;
+    const turnIndex = this.data.flags.turnIndex + 1;
+    this.data.flags = output.end.status === 'ready' ? {turnIndex, status: 'ready', done: false} : {turnIndex, status: 'completed', done: true};
     this.data.claimed = false;
     return this.data.flags;
   }
