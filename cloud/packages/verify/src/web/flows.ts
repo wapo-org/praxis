@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {expect, type Page} from '@playwright/test';
+import {expect, type Locator, type Page} from '@playwright/test';
 import {previewProviderFlow, unavailableAccountFlow} from './auth-flows.js';
 import {browserCliFlow} from './browser-flow.js';
 import {fuzzChatFlow} from './fuzz.js';
@@ -91,65 +91,59 @@ const scriptedChat: WebFlow = {
   },
 };
 
+/** Opens a fresh Build chat, starts a scripted run that parks on the local write, and returns that write's card. */
+async function parkedWrite({page, request, api}: FlowContext, title: string, text: string, script: string) {
+  const headers = await sessionHeaders(page);
+  const created = await request.post(`${api}/v1/chats`, {headers, data: {type: 'chat.input', title, mode: 'build'}});
+  expect(created.ok()).toBe(true);
+  const {id: chatId} = await created.json();
+  await page.goto(`/c/${chatId}`);
+  const started = await request.post(`${api}/v1/runs`, {headers, data: {type: 'run.start', chatId, text, script}});
+  expect(started.ok()).toBe(true);
+  const {id: runId} = await started.json();
+  const card = page.locator('[data-testid^="approval-card-"]').filter({hasText: 'local write'});
+  return {headers, runId: String(runId), card};
+}
+
+async function deny(card: Locator): Promise<void> {
+  await card.getByRole('button', {name: 'Deny'}).click();
+  await expect(card).toHaveCount(0);
+}
+
 const toolApproval: WebFlow = {
   id: 'tool-approval',
   title: 'A nested write shows its redacted preview and settles after denial',
   default: true,
   session: 'shared',
   allow: [],
-  async run({page, request, api}) {
-    const headers = await sessionHeaders(page);
-    const created = await request.post(`${api}/v1/chats`, {
-      headers, data: {type: 'chat.input', title: 'Approval verification', mode: 'build'},
-    });
-    expect(created.ok()).toBe(true);
-    const {id: chatId} = await created.json();
-    await page.goto(`/c/${chatId}`);
-    const started = await request.post(`${api}/v1/runs`, {
-      headers, data: {type: 'run.start', chatId, text: 'Review a nested write', script: 'nestedApproval'},
-    });
-    expect(started.ok()).toBe(true);
-    const {id: runId} = await started.json();
-    const card = page.locator('[data-testid^="approval-card-"]').filter({hasText: 'local write'});
+  async run(context) {
+    const {headers, runId, card} = await parkedWrite(context, 'Approval verification', 'Review a nested write', 'nestedApproval');
     await expect(card).toContainText('#review');
     await expect(card).toContainText('[redacted]');
     await expect(card).not.toContainText('scripted-preview-secret');
-    await card.getByRole('button', {name: 'Deny'}).click();
-    await expect(card).toHaveCount(0);
+    await deny(card);
     await expect.poll(async () => {
-      const response = await request.get(`${api}/v1/runs/${runId}/snapshot`, {headers});
+      const response = await context.request.get(`${context.api}/v1/runs/${runId}/snapshot`, {headers});
       const snapshot = await response.json();
       return snapshot.run.status;
     }, {timeout: RUN_SETTLE_TIMEOUT_MS}).toBe('completed');
   },
 };
 
-/** Former `apps/web/scripts/p0-check.mjs`: failure paths must surface, never fabricate data or keep a dead session. */
 const taintedApproval: WebFlow = {
   id: 'tainted-approval',
   title: 'A write after an untrusted read names the source on its approval card',
   default: true,
   session: 'shared',
   allow: [],
-  async run({page, request, api}) {
-    const headers = await sessionHeaders(page);
-    const created = await request.post(`${api}/v1/chats`, {
-      headers, data: {type: 'chat.input', title: 'Taint verification', mode: 'build'},
-    });
-    expect(created.ok()).toBe(true);
-    const {id: chatId} = await created.json();
-    await page.goto(`/c/${chatId}`);
-    const started = await request.post(`${api}/v1/runs`, {
-      headers, data: {type: 'run.start', chatId, text: 'Read a page, then write', script: 'taintedApproval'},
-    });
-    expect(started.ok()).toBe(true);
-    const card = page.locator('[data-testid^="approval-card-"]').filter({hasText: 'local write'});
+  async run(context) {
+    const {card} = await parkedWrite(context, 'Taint verification', 'Read a page, then write', 'taintedApproval');
     await expect(card.getByTestId('approval-taint')).toHaveText('This run read content from local fetch.');
-    await card.getByRole('button', {name: 'Deny'}).click();
-    await expect(card).toHaveCount(0);
+    await deny(card);
   },
 };
 
+/** Former `apps/web/scripts/p0-check.mjs`: failure paths must surface, never fabricate data or keep a dead session. */
 const apiResilience: WebFlow = {
   id: 'api-resilience',
   title: 'Missing route errors, a 401 signs out, 30 tool runs keep the API alive',
