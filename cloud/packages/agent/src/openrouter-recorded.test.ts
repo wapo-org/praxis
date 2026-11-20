@@ -94,15 +94,12 @@ describe('runOneTurn on the OpenRouter provider', () => {
     const f = await fixture(true);
     const transport = recordedTransport(recording('tool-call.sse'));
     f.provider = provider(transport.fetcher);
-    const committed: ProviderResponse[] = [];
-    const commit = f.store.commit.bind(f.store);
-    f.store.commit = async (token, response, calls, tainted) => {
-      committed.push(response);
-      return commit(token, response, calls, tainted);
-    };
     expect(await runOneTurn(f)).toEqual({turnIndex: 1, status: 'ready', done: false});
+    const committed = f.store.data.outputs;
     expect(committed).toHaveLength(1);
     expect(committed[0]?.usage).toMatchObject({cost: 0.001545, inputTokens: 310, outputTokens: 41});
+    expect(committed[0]?.messages.map(m => m.parts.map(p => p.type))).toEqual([['text', 'toolCall'], ['toolResult']]);
+    expect(committed[0]?.messages[0]?.raw?.data).toMatchObject({role: 'assistant'});
     expect(f.store.data.calls.toolu_01ReadHello?.result.ok).toBe(true);
     expect(transport.calls[0]?.body.usage).toEqual({include: true});
   });

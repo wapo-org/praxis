@@ -1,6 +1,8 @@
 import {z} from 'zod';
 import {IdSchema, ModeSchema, type ToolInvocation, type TurnFailure} from '@praxis/protocol';
-import {ProviderRequestSchema, type ProviderResponse, type ToolContext, type AgentTool, type ModelProvider} from './types.js';
+import {ProviderRequestSchema, type ProviderEvent, type ProviderResponse, type ToolContext, type AgentTool, type ModelProvider} from './types.js';
+import type {RequestTransform} from './request-transforms.js';
+import type {TurnOutput} from './turn-output.js';
 import type {GateResult, BoundaryContext} from './boundary/gate.js';
 import type {ToolClassifier} from './boundary/policy.js';
 
@@ -26,7 +28,8 @@ export interface TurnStore {
   saveResponse(token: string, response: ProviderResponse): Promise<void>;
   startCall(token: string, callId: string, call: ToolInvocation): Promise<CallClaim>;
   saveCall(token: string, callId: string, value: SavedCall): Promise<void>;
-  commit(token: string, response: ProviderResponse, calls: SavedCall[], tainted: boolean): Promise<TurnFlags>;
+  /** Stores messages, usage exactly once, taint and the end under the fence, then advances turnIndex. */
+  commit(token: string, output: TurnOutput): Promise<TurnFlags>;
   /** Ends the turn as failed under the fence and releases the claim; turnIndex stays, and nothing of the attempt is kept. */
   fail(token: string, failure: TurnFailure): Promise<TurnFlags>;
 }
@@ -41,4 +44,10 @@ export interface OneTurnOptions {
   boundary: Pick<BoundaryContext, 'key' | 'replay' | 'nowMs'>;
   receipts?: Readonly<Record<string, unknown>>;
   context: Pick<ToolContext, 'signal' | 'elicit' | 'emit'>;
+  /** Request-time rewrites (attachment rehydration); the persisted snapshot keeps references. */
+  transforms?: readonly RequestTransform[];
+  /** Streaming port for the live writer (PRA-9); a replayed saved response streams nothing. */
+  onEvent?(event: ProviderEvent): Promise<void> | void;
+  /** Ids for committed messages; defaults to random UUIDs. */
+  newId?(): string;
 }

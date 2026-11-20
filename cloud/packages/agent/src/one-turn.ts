@@ -8,6 +8,8 @@ import {ToolBoundaryError, toolError} from './boundary/errors.js';
 import {canonical} from './policy.js';
 import {assembleTurnRequest} from './one-turn-prompt.js';
 import {TurnSnapshotSchema, type OneTurnOptions, type SavedCall, type TurnFlags} from './one-turn-state.js';
+import {withRequestTransforms} from './request-transforms.js';
+import {turnOutput} from './turn-output.js';
 
 export class UncertainToolCall extends Error {
   constructor(readonly callId: string, cause?: unknown) {
@@ -30,7 +32,8 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
     response = ProviderResponseSchema.parse(acquired.claim.response);
   } else {
     try {
-      response = await collectResponse(provider, request, context.signal);
+      const model = withRequestTransforms(provider, options.transforms ?? []);
+      response = await collectResponse(model, request, context.signal, options.onEvent);
     } catch (error) {
       // A revoked key or spent credit cannot succeed on redelivery; other failures keep the claim for recovery.
       const failure = turnFailure(error);
@@ -41,7 +44,7 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
     if (!await active()) return store.flags(runId);
     await store.saveResponse(token, response);
   }
-  const calls: SavedCall[] = [];
+  const calls: Array<{id: string; saved: SavedCall}> = [];
   let tainted = snapshot.tainted;
   const parts = response.parts.filter(part => part.type === 'toolCall');
   const ids = new Set<string>();
@@ -104,11 +107,14 @@ export async function runOneTurn(options: OneTurnOptions): Promise<TurnFlags> {
       saved = {call, result};
       await store.saveCall(token, id, saved);
     }
-    calls.push(saved);
+    calls.push({id, saved});
     tainted ||= saved.result.taint.tainted;
   }
   if (!await active()) return store.flags(runId);
-  return store.commit(token, response, calls, tainted);
+  return store.commit(token, turnOutput({
+    chatId: snapshot.chatId, runId, response, calls, offered: request.tools, tainted,
+    nowIso: new Date(options.boundary.nowMs()).toISOString(), newId: options.newId ?? (() => crypto.randomUUID()),
+  }));
 }
 
 function validateArguments(schema: import('@praxis/protocol').JsonObject, args: unknown): void {

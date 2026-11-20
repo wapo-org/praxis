@@ -1,10 +1,10 @@
 import {describe, expect, it, vi} from 'vitest';
 import sharp from 'sharp';
-import {MAX_RESULT_CHARACTERS, type ModelProvider, type ProviderRequest} from '@praxis/agent';
+import {MAX_RESULT_CHARACTERS, MEDIA_CONCURRENCY, type ModelProvider, type ProviderRequest} from '@praxis/agent';
 import {CapabilitiesSchema, type MessagePart} from '@praxis/protocol';
 import {createLocalAdapters} from '../local-memory.js';
 import {ApiService} from '../service.js';
-import {MEDIA_CONCURRENCY, withMedia} from '../media-provider.js';
+import {withMedia} from '../media-provider.js';
 import {MAX_READ_CHARACTERS, readToolOutputTool} from '../read-tool-output.js';
 import {MAX_INPUT_PIXELS, rehydrateAttachment} from '../features/tools/media.js';
 import type {ToolsStorage} from '../features/tools/ports.js';
