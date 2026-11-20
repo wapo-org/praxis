@@ -1,7 +1,6 @@
 import type {
   Bootstrap,
   Chat,
-  Connector,
   Message,
   ModelKey,
   ModelListItem,
@@ -16,7 +15,6 @@ export interface LocalReplicaSnapshot {
   /** The OpenRouter catalogue entries this client has seen (first page, plus any model it selected). */
   models: ModelListItem[];
   modelKey?: ModelKey | null;
-  connectors: Connector[];
   skills: Skill[];
   consents: Consent[];
   registries: Registry[];

@@ -10,6 +10,8 @@ export interface FlowContext {
   /** Seed for flows that make random choices; the same seed replays the same actions. */
   seed: number;
   note(line: string): void;
+  /** Saves an extra full-page screenshot as `<flow>.<name>.png` and returns its path. */
+  screenshot(name: string): Promise<string>;
 }
 
 export interface WebFlow {

@@ -1,0 +1,17 @@
+// Verification stand-in for convex/composio/returnTarget.ts: the local web origin is http, so http is allowed here only.
+import { ALLOWED_ORIGINS_ENV, COMPOSIO_ERRORS, NATIVE_RETURN_URL } from './constants.js';
+
+export function returnTarget(raw: string, env: Record<string, string | undefined>): string {
+  if (raw === NATIVE_RETURN_URL) return raw;
+  let url: URL | null = null;
+  try {
+    url = new URL(raw);
+  } catch {
+    url = null;
+  }
+  const origins = env[ALLOWED_ORIGINS_ENV]?.split(',').map(origin => origin.trim());
+  if (!url || url.search || url.hash || url.username || !origins?.includes(url.origin)) {
+    throw new Error(COMPOSIO_ERRORS.invalidReturnUrl);
+  }
+  return url.href;
+}

@@ -4,7 +4,6 @@ import type {
   Approval,
   Attachment,
   Chat,
-  Connector,
   Message,
   Run,
   Skill,
@@ -19,7 +18,6 @@ import {
   type RegistryEntry,
   type ToolActivity,
   type ToolCompletion,
-  type ToolSpec,
 } from '../lib/api';
 
 export interface ActiveToolStep {
@@ -79,10 +77,8 @@ export type ActiveSheet =
   | 'settings'
   | 'models'
   | 'openrouter-callback'
-  | 'connectors'
-  | 'connector-add-url'
-  | 'connector-paste-config'
-  | 'connector-registry'
+  | 'apps'
+  | 'app-connected'
   | 'skills'
   | 'skill-import'
   | 'skill-browser'
@@ -136,8 +132,6 @@ export interface PraxisStoreContextValue {
   modelKey: ModelKey | null;
   /** OpenRouter catalogue entries seen so far: the first page plus any model this client selected. */
   models: ModelListItem[];
-  connectors: Connector[];
-  connectorTools: Record<string, ToolSpec[]>;
   skills: Skill[];
   registries: Registry[];
   registryEntries: Record<string, RegistryEntry[]>;
@@ -167,7 +161,8 @@ export interface PraxisStoreContextValue {
   renameChat: (chatId: string, title: string) => Promise<void>;
   togglePinChat: (chatId: string) => Promise<void>;
   deleteChats: (chatIds: string[]) => Promise<void>;
-  toggleChatConnector: (chatId: string, connectorId: string, enabled: boolean) => Promise<void>;
+  /** Turns one App Directory app on or off for a chat (`composio:<toolkit>` connector ids). */
+  setChatApp: (chatId: string, toolkit: string, enabled: boolean) => Promise<void>;
   setChatWebTools: (chatId: string, enabled: boolean) => Promise<void>;
 
   /** Resolves false when the connect card opened instead (no OpenRouter key); the caller keeps the draft. */
@@ -207,30 +202,6 @@ export interface PraxisStoreContextValue {
   ) => Promise<ModelKey>;
   checkModelKey: () => Promise<ModelKey>;
   disconnectModelKey: () => Promise<void>;
-  createConnector: (input: {
-    name: string;
-    url: string;
-    transport?: 'streamableHttp' | 'sse';
-    token?: string;
-    extraHeaders?: Record<string, string>;
-  }) => Promise<Connector>;
-  updateConnector: (
-    connectorId: string,
-    patch: {
-      token?: string;
-      enabled?: boolean;
-      trusted?: boolean;
-      name?: string;
-      url?: string;
-    },
-  ) => Promise<void>;
-  removeConnector: (connectorId: string) => Promise<void>;
-  loadConnectorTools: (connectorId: string) => Promise<ToolSpec[]>;
-  setConnectorToolEnabled: (
-    connectorId: string,
-    toolName: string,
-    enabled: boolean,
-  ) => Promise<void>;
 
   saveSkill: (input: {
     id?: string;

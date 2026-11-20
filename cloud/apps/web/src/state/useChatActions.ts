@@ -1,4 +1,4 @@
-import type { Chat } from '@praxis/protocol';
+import { composioChatScopePatch, type Chat } from '@praxis/protocol';
 import React from 'react';
 import { fromWireMode, toWireMode } from '../lib/modes';
 import { apiClient } from '../lib/api';
@@ -156,16 +156,11 @@ export function useChatActions(
     [activeChatId, persistState],
   );
 
-  const toggleChatConnector = React.useCallback(
-    async (chatId: string, connectorId: string, enabled: boolean) => {
+  const setChatApp = React.useCallback(
+    async (chatId: string, toolkit: string, enabled: boolean) => {
       const chat = chats.find((c) => c.id === chatId);
       if (!chat) return;
-      const disabledSet = new Set(chat.disabledConnectorIds ?? []);
-      if (enabled) disabledSet.delete(connectorId);
-      else disabledSet.add(connectorId);
-      const updated = await apiClient.patchChat(chatId, {
-        disabledConnectorIds: Array.from(disabledSet),
-      });
+      const updated = await apiClient.patchChat(chatId, composioChatScopePatch(chat, toolkit, enabled));
       setChats((prev) => prev.map((c) => (c.id === chatId ? updated : c)));
     },
     [chats],
@@ -185,7 +180,7 @@ export function useChatActions(
     renameChat,
     togglePinChat,
     deleteChats,
-    toggleChatConnector,
+    setChatApp,
     setChatWebTools,
   };
 }

@@ -42,6 +42,50 @@ export function composioConnectorId(toolkit: string): string {
   return `${COMPOSIO_CONNECTOR_PREFIX}${toolkit}`;
 }
 
+/** The curated launch catalogue (PRA-16); each toolkit also needs its server-side Composio auth config. */
+export const COMPOSIO_APPS = [
+  {toolkit: 'gmail', name: 'Gmail', description: 'Read, search and send email'},
+  {toolkit: 'googlecalendar', name: 'Google Calendar', description: 'See and schedule events'},
+  {toolkit: 'googledrive', name: 'Google Drive', description: 'Find and read files'},
+  {toolkit: 'slack', name: 'Slack', description: 'Read channels and post messages'},
+  {toolkit: 'notion', name: 'Notion', description: 'Search and edit pages'},
+  {toolkit: 'github', name: 'GitHub', description: 'Work with repositories, issues and pull requests'},
+  {toolkit: 'linear', name: 'Linear', description: 'Track and update issues'},
+] as const satisfies readonly {toolkit: string; name: string; description: string}[];
+export type ComposioApp = (typeof COMPOSIO_APPS)[number];
+
+/** The per-chat app fields of `Chat`, typed structurally so this module does not import the chat schema. */
+export interface ComposioChatScope {
+  connectorIds: readonly string[];
+  disabledConnectorIds: readonly string[];
+}
+
+/** Chat scope: a disabled toolkit drops out; a chat that names Composio connectors allows only those. */
+export function composioEnabledInChat(chat: ComposioChatScope, toolkit: string): boolean {
+  const id = composioConnectorId(toolkit);
+  const named = chat.connectorIds.filter(connectorId => connectorId.startsWith(COMPOSIO_CONNECTOR_PREFIX));
+  return !chat.disabledConnectorIds.includes(id) && (!named.length || named.includes(id));
+}
+
+/** The chat patch that turns one toolkit on or off under the same scope rules. */
+export function composioChatScopePatch(chat: ComposioChatScope, toolkit: string, enabled: boolean): {
+  connectorIds: string[];
+  disabledConnectorIds: string[];
+} {
+  const id = composioConnectorId(toolkit);
+  const disabledConnectorIds = chat.disabledConnectorIds.filter(connectorId => connectorId !== id);
+  if (!enabled) return {connectorIds: [...chat.connectorIds], disabledConnectorIds: [...disabledConnectorIds, id]};
+
+  const named = chat.connectorIds.some(connectorId => connectorId.startsWith(COMPOSIO_CONNECTOR_PREFIX));
+  const connectorIds = chat.connectorIds.filter(connectorId => connectorId !== id);
+  return {connectorIds: named ? [...connectorIds, id] : connectorIds, disabledConnectorIds};
+}
+
+/** Display name for a toolkit slug; a slug outside the catalogue shows as itself. */
+export function composioAppName(toolkit: string): string {
+  return COMPOSIO_APPS.find(app => app.toolkit === toolkit)?.name ?? toolkit;
+}
+
 // Nested meta-tools are an unsupported wrapper shape, so the reserved prefix never parses as an app action.
 const ToolSlugSchema = z.string().regex(/^(?!COMPOSIO_)[A-Za-z0-9_]+$/).max(COMPOSIO_LIMITS.TOOL_SLUG_CHARACTERS_MAX);
 const ActionArgumentsSchema = z.record(z.string(), z.json());

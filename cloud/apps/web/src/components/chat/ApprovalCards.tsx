@@ -1,5 +1,6 @@
 import {useState} from 'react';
 import type {Approval, ApprovalDecision} from '@praxis/protocol';
+import {friendlyToolLabel} from '../../lib/apps';
 import styles from './Activity.module.css';
 import card from './ElicitationCards.module.css';
 import type {AgentActivityViewProps} from './activityTypes';
@@ -25,12 +26,12 @@ function ApprovalCard({approval, runId, onResolveApproval}: {
   return (
     <div data-testid={`approval-card-${approval.id}`} className={`${card.card} ${card.body}`}>
       <div className={card.message}>
-        <span>Approval required · {(approval.title || approval.toolName).replace(/_/g, ' ')}</span>
+        <span>Approval required · {friendlyToolLabel(approval.title || approval.toolName, 'Connected app action').replace(/_/g, ' ')}</span>
         {approval.source.serverName && <span className={styles.cardSource}>{approval.source.serverName}</span>}
       </div>
       {approval.taintSource && (
         <div data-testid="approval-taint" role="note" className={styles.cardReason}>
-          This run read content from {approval.taintSource}.
+          This run read content from {friendlyToolLabel(approval.taintSource, 'a connected app')}.
         </div>
       )}
       {approval.reason && <div className={styles.cardReason}>{approval.reason}</div>}

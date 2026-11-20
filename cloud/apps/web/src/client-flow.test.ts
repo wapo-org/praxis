@@ -142,7 +142,7 @@ describe('@praxis/web client flows against Lead A local API', () => {
     expect(finalSnap.run.status).toBe('completed');
   });
 
-  it('exercises preferences, connectors, skills, registries, consents, and sync/pull', async () => {
+  it('exercises preferences, skills, registries, consents, and sync/pull', async () => {
     const prefs = await client.patchPreferences({
       vision: { enabled: true, modelId: 'scripted-vision' },
       voice: { model: 'whisper-large-v3-turbo', language: 'en' },
@@ -150,8 +150,6 @@ describe('@praxis/web client flows against Lead A local API', () => {
     expect(prefs.vision.modelId).toBe('scripted-vision');
     expect(prefs.voice.model).toBe('whisper-large-v3-turbo');
 
-    await expect(client.createConnector({ name: 'Unavailable', url: 'https://invalid.invalid' }))
-      .rejects.toMatchObject({ status: 404 });
     await expect(client.createSkill({ name: 'Unavailable', description: '', document: '' }))
       .rejects.toMatchObject({ status: 404 });
 

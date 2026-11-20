@@ -2,7 +2,7 @@ import { effortsFor } from '../lib/models';
 import type { Chat, ModelListItem as Model } from '@praxis/protocol';
 import type { PraxisStoreContextValue as Store } from '../state/types';
 import { isMode, MODE_LABELS, MODES } from '../lib/modes';
-import { Camera, Copy, Edit, Folder, Globe, Link, Photo, Pin, Settings, Sliders, Sparkles, Trash2 } from '../lib/icons';
+import { Camera, Copy, Edit, Folder, Globe, LayoutGrid, Photo, Pin, Settings, Sliders, Sparkles, Trash2 } from '../lib/icons';
 
 export const ATTACHMENTS = [
   { name: 'Photos', Icon: Photo, accept: 'image/*', capture: undefined },
@@ -33,7 +33,7 @@ export const ACTIONS = {
   newChat: { label: 'New chat', Icon: Edit, available: () => true, apply: s => s.startNewConversation() },
   web: { label: 'Web tools', Icon: Globe, available: s => !!s.activeChat,
     apply: s => s.activeChat ? s.setChatWebTools(s.activeChat.id, s.activeChat.webToolsEnabled === false) : undefined },
-  connectors: { label: 'Connectors', Icon: Link, available: () => true, apply: s => s.setActiveSheet('connectors') },
+  apps: { label: 'App Directory', Icon: LayoutGrid, available: () => true, apply: s => s.setActiveSheet('apps') },
   providers: { label: 'Models & OpenRouter', Icon: Settings, available: () => true, apply: s => s.setActiveSheet('models') },
   pin: { label: 'Pin chat', Icon: Pin, available: s => !!s.activeChat, apply: s => s.activeChat ? s.togglePinChat(s.activeChat.id) : undefined },
   delete: { label: 'Delete chat', Icon: Trash2, available: s => !!s.activeChat, apply: s => s.activeChat ? s.deleteChats([s.activeChat.id]) : undefined },

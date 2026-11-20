@@ -92,6 +92,13 @@
       "covers": [{"command": "gate"}]
     },
     {
+      "id": "composio.app-directory",
+      "title": "App Directory grid, popup and full-page connect, live connection state, per-chat app toggles and the in-chat connect card",
+      "issue": "PRA-49",
+      "surfaces": ["web"],
+      "covers": [{"command": "gate"}, {"command": "web", "flows": ["app-directory-connect", "app-connect-card"]}]
+    },
+    {
       "id": "account.deletion",
       "title": "Convex-authenticated account deletion, interrupted purge recovery and session revocation",
       "issue": "PRA-64",

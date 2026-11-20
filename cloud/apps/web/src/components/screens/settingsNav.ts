@@ -1,13 +1,13 @@
-import { FlaskConical, Link, Settings, Shield, Sparkles, Star, User } from '../../lib/icons';
+import { FlaskConical, LayoutGrid, Settings, Shield, Sparkles, Star, User } from '../../lib/icons';
 import type { ActiveSheet } from '../../state/store.js';
 
 export type SettingsSheet = Exclude<NonNullable<ActiveSheet>, 'history' | 'openrouter-callback'>;
-export type SettingsSection = 'general' | 'models' | 'connectors' | 'skills' | 'consents' | 'saved-values' | 'account' | 'developer';
+export type SettingsSection = 'general' | 'models' | 'apps' | 'skills' | 'consents' | 'saved-values' | 'account' | 'developer';
 
 export const SETTINGS_NAV: Array<{ sheet: SettingsSection; title: string; Icon: typeof Settings; devOnly?: boolean }> = [
   { sheet: 'general', title: 'General', Icon: Settings },
   { sheet: 'models', title: 'Models', Icon: Star },
-  { sheet: 'connectors', title: 'Connectors', Icon: Link },
+  { sheet: 'apps', title: 'App Directory', Icon: LayoutGrid },
   { sheet: 'skills', title: 'Skills', Icon: Sparkles },
   { sheet: 'saved-values', title: 'Secrets & variables', Icon: Shield },
   { sheet: 'consents', title: 'Data & privacy', Icon: Shield },
@@ -21,10 +21,8 @@ export const SETTINGS_PAGES: Record<Exclude<SettingsSheet, 'settings'>, { title:
   'voice-settings': { title: 'Voice input', section: 'general', parent: 'general' },
   models: { title: 'Models', section: 'models' },
   'image-reader': { title: 'Image reading model', section: 'models', parent: 'models' },
-  connectors: { title: 'Connectors', section: 'connectors' },
-  'connector-add-url': { title: 'Add by URL', section: 'connectors', parent: 'connectors' },
-  'connector-paste-config': { title: 'Paste a config', section: 'connectors', parent: 'connectors' },
-  'connector-registry': { title: 'MCP registry', section: 'connectors', parent: 'connectors' },
+  apps: { title: 'App Directory', section: 'apps' },
+  'app-connected': { title: 'App connected', section: 'apps', parent: 'apps' },
   skills: { title: 'Skills', section: 'skills' },
   'skill-import': { title: 'Import skill', section: 'skills', parent: 'skills' },
   'skill-browser': { title: 'Browse skills', section: 'skills', parent: 'skills' },

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import type { Connector, ModelListItem } from '@praxis/protocol';
+import type { ModelListItem } from '@praxis/protocol';
+import type { AppConnections } from '../../hooks/useAppConnections';
 import React from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -8,6 +9,9 @@ import { apiClient } from '../../lib/api';
 import { PraxisStoreProvider, usePraxisStore } from '../../state/store';
 import { buildModelRows, MODEL_ROW_HEIGHT } from './ModelList';
 import { PlusTray } from './PlusTray';
+
+let connections: AppConnections = { state: 'ready', byToolkit: new Map() };
+vi.mock('../../hooks/useAppConnections', () => ({ useAppConnections: () => connections }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -23,18 +27,6 @@ const model = (id: string, pinned = false, name = id, recommended = false): Mode
   pinned,
   favorite: false,
   recommended,
-});
-const makeConnector = (id: string, name = id, enabled = true): Connector => ({
-  type: 'connector',
-  id,
-  name,
-  url: `https://${id}.example/mcp`,
-  enabled,
-  transport: 'streamableHttp',
-  authStatus: 'none',
-  trusted: false,
-  disabledTools: [],
-  updatedAt: new Date().toISOString(),
 });
 const page = (items: Model[], nextCursor: string | null = null) => ({ type: 'page', items, nextCursor }) as never;
 
@@ -74,11 +66,12 @@ async function openList() {
   await act(async () => query<HTMLButtonElement>('[data-testid="tray-model-picker-trigger"]')!.click());
   await flush();
 }
-async function openConnectors() {
-  await act(async () => query<HTMLButtonElement>('[data-testid="tray-connectors-trigger"]')!.click());
+async function openApps() {
+  await act(async () => query<HTMLButtonElement>('[data-testid="tray-apps-trigger"]')!.click());
   await flush();
 }
-async function mountBootstrap(connectors: Connector[]) {
+async function mountBootstrap(connected: string[]) {
+  connections = { state: 'ready', byToolkit: new Map(connected.map((toolkit) => [toolkit, 'connected'])) };
   await act(async () => root.unmount());
   const now = new Date().toISOString();
   const chat = { type: 'chat', id: 'c1', title: 'Chat', mode: 'build', pinned: false, connectorIds: [], disabledConnectorIds: [], createdAt: now, updatedAt: now };
@@ -89,7 +82,7 @@ async function mountBootstrap(connectors: Connector[]) {
     chats: [chat],
     models: [model('a', true)],
     providers: [],
-    connectors,
+    connectors: [],
     skills: [],
     activeRuns: [],
     syncCursor: 'first',
@@ -139,8 +132,8 @@ describe('composer tray', () => {
     const order = ['Auto', 'Execute'];
     expect(tray.textContent!.indexOf(order[0]!)).toBeLessThan(tray.textContent!.indexOf('Photos'));
     expect(tray.textContent!.indexOf('Photos')).toBeLessThan(tray.textContent!.indexOf('Web tools'));
-    expect(tray.textContent!.indexOf('Web tools')).toBeLessThan(tray.textContent!.indexOf('Connectors'));
-    expect(tray.textContent!.indexOf('Connectors')).toBeLessThan(tray.textContent!.indexOf('Models & OpenRouter'));
+    expect(tray.textContent!.indexOf('Web tools')).toBeLessThan(tray.textContent!.indexOf('App Directory'));
+    expect(tray.textContent!.indexOf('App Directory')).toBeLessThan(tray.textContent!.indexOf('Models & OpenRouter'));
   });
 
   it('opens the file picker with an image filter from the Photos tile', async () => {
@@ -149,61 +142,47 @@ describe('composer tray', () => {
     expect(picks).toHaveBeenCalledWith('image/*', undefined);
   });
 
-  it('moves connectors into a nested view with search and Manage button (0, 2, and 30 connectors)', async () => {
+  it('moves connected apps into a nested view with search, per-chat switches and a Manage button', async () => {
     const patch = vi
       .spyOn(apiClient, 'patchChat')
       .mockImplementation(async (_id, change) => ({ id: 'c1', ...change }) as never);
 
-    // 0 active connectors
-    await mountBootstrap([makeConnector('disabled-one', 'Disabled One', false)]);
+    await mountBootstrap([]);
     await openTray();
-    expect(query('input[aria-label="Disabled One"]')).toBeNull();
-    expect(query('[data-testid="tray-connectors-trigger"]')!.textContent).toContain('None');
-    await openConnectors();
-    expect(query('[data-testid="tray-connectors-empty"]')).not.toBeNull();
-    await act(async () => query<HTMLButtonElement>('[data-testid="tray-connectors-manage"]')!.click());
+    expect(query('[data-testid="tray-apps-trigger"]')!.textContent).toContain('None');
+    await openApps();
+    expect(query('[data-testid="tray-apps-empty"]')).not.toBeNull();
+    await act(async () => query<HTMLButtonElement>('[data-testid="tray-apps-manage"]')!.click());
     expect(store.plusTrayOpen).toBe(false);
-    expect(store.activeSheet).toBe('connectors');
+    expect(store.activeSheet).toBe('apps');
 
-    // 2 active connectors
-    await mountBootstrap([makeConnector('docs', 'Docs'), makeConnector('github', 'GitHub')]);
+    await mountBootstrap(['gmail', 'github']);
     await openTray();
-    // Main tray has no inline connector toggles anymore.
-    expect(query('input[aria-label="Docs"]')).toBeNull();
-    expect(query('[data-testid="tray-connectors-trigger"]')!.textContent).toContain('· 2');
+    expect(query('input[aria-label="Gmail"]')).toBeNull();
+    expect(query('[data-testid="tray-apps-trigger"]')!.textContent).toContain('· 2');
     await act(async () => store.selectChat('c1'));
     await flush();
-    await openConnectors();
-    const toggle = query<HTMLInputElement>('input[aria-label="Docs"]')!;
+    await openApps();
+    const toggle = query<HTMLInputElement>('input[aria-label="Gmail"]')!;
     expect(toggle.getAttribute('role')).toBe('switch');
     expect(toggle.checked).toBe(true);
     await act(async () => toggle.click());
-    expect(patch).toHaveBeenCalledWith('c1', { disabledConnectorIds: ['docs'] });
+    expect(patch).toHaveBeenCalledWith('c1', { connectorIds: [], disabledConnectorIds: ['composio:gmail'] });
 
-    // Search filters connectors by name
-    const search = query<HTMLInputElement>('input[aria-label="Search connectors"]')!;
+    const search = query<HTMLInputElement>('input[aria-label="Search apps"]')!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'git');
       search.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    expect(document.querySelectorAll('[data-testid^="tray-connector-row-"]')).toHaveLength(1);
-    expect(query('[data-testid="tray-connector-row-github"]')).not.toBeNull();
+    expect(document.querySelectorAll('[data-testid^="tray-app-row-"]')).toHaveLength(1);
+    expect(query('[data-testid="tray-app-row-github"]')).not.toBeNull();
 
-    // Back returns to main tray, and Escape from connectors returns to main tray before closing
-    await act(async () => query<HTMLButtonElement>('[data-testid="tray-connectors-view"] button[aria-label="Back"]')!.click());
-    expect(query('[data-testid="tray-connectors-trigger"]')!.getAttribute('aria-expanded')).toBe('false');
-    await openConnectors();
+    await act(async () => query<HTMLButtonElement>('[data-testid="tray-apps-view"] button[aria-label="Back"]')!.click());
+    expect(query('[data-testid="tray-apps-trigger"]')!.getAttribute('aria-expanded')).toBe('false');
+    await openApps();
     await press('Escape');
-    expect(query('[data-testid="tray-connectors-trigger"]')!.getAttribute('aria-expanded')).toBe('false');
+    expect(query('[data-testid="tray-apps-trigger"]')!.getAttribute('aria-expanded')).toBe('false');
     expect(store.plusTrayOpen).toBe(true);
-
-    // 30 active connectors
-    const many = Array.from({ length: 30 }, (_, i) => makeConnector(`c-${i}`, `Connector ${String(i + 1).padStart(2, '0')}`));
-    await mountBootstrap(many);
-    await openTray();
-    expect(query('[data-testid="tray-connectors-trigger"]')!.textContent).toContain('· 30');
-    await openConnectors();
-    expect(document.querySelectorAll('[data-testid^="tray-connector-row-"]')).toHaveLength(30);
   });
 
   it('closes on Escape and on an outside press, but not on the + button', async () => {

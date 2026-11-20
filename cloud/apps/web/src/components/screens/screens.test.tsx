@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
-import type { Chat, Connector, ModelListItem as Model, Skill } from '@praxis/protocol';
+import type { Chat, ModelListItem as Model, Skill } from '@praxis/protocol';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../../lib/api.js';
 import type { PraxisStoreContextValue } from '../../state/store.js';
 import { Sidebar } from '../shell/Sidebar.js';
-import { ConnectorsScreen, parseConnectorConfig } from './ConnectorsScreen.js';
 import { ImageReaderScreen } from './ImageReaderScreen.js';
 import { SidebarSettings } from '../shell/SidebarSettings';
 import { SettingsPage } from './SettingsPage.js';
@@ -16,6 +15,11 @@ import { VoiceSettingsScreen } from './VoiceSettingsScreen.js';
 
 let store: PraxisStoreContextValue;
 vi.mock('../../state/store.js', () => ({ usePraxisStore: () => store }));
+vi.mock('../../hooks/useAppConnections', () => ({ useAppConnections: () => ({ state: 'ready', byToolkit: new Map() }) }));
+vi.mock('../../hooks/useAppConnect', () => ({
+  useAppConnect: () => ({ busy: null, error: null, connect: vi.fn(), disconnect: vi.fn() }),
+}));
+vi.mock('../../hooks/useCloseWindow', () => ({ useCloseWindow: () => undefined }));
 
 let container: HTMLDivElement;
 let root: Root;
@@ -31,18 +35,6 @@ const chat = (id: string, pinned = false): Chat => ({
   createdAt: now,
   updatedAt: now,
 });
-const connector: Connector = {
-  type: 'connector',
-  id: 'connector-1',
-  name: 'Docs',
-  url: 'https://example.com/mcp',
-  transport: 'streamableHttp',
-  enabled: true,
-  trusted: false,
-  disabledTools: [],
-  authStatus: 'connected',
-  updatedAt: now,
-};
 const skill: Skill = {
   type: 'skill',
   id: 'skill-1',
@@ -72,8 +64,6 @@ beforeEach(() => {
     messagesByChat: {},
     providers: [],
     models: [],
-    connectors: [],
-    connectorTools: {},
     skills: [],
     registries: [],
     registryEntries: {},
@@ -94,10 +84,7 @@ beforeEach(() => {
     renameChat: vi.fn().mockResolvedValue(undefined),
     togglePinChat: vi.fn().mockResolvedValue(undefined),
     deleteChats: vi.fn().mockResolvedValue(undefined),
-    loadConnectorTools: vi.fn().mockResolvedValue([]),
-    setConnectorToolEnabled: vi.fn().mockResolvedValue(undefined),
     refreshAll: vi.fn().mockResolvedValue(undefined),
-    updateConnector: vi.fn().mockResolvedValue(undefined),
     saveSkill: vi.fn().mockResolvedValue(skill),
     updatePreferences: vi.fn().mockResolvedValue(undefined),
     grantConsent: vi.fn().mockResolvedValue(undefined),
@@ -137,53 +124,6 @@ async function fill(input: HTMLInputElement | HTMLTextAreaElement, value: string
   });
 }
 
-describe('remote connector import', () => {
-  it('accepts URLs and Claude/Cursor configs, preserving SSE and bearer tokens', () => {
-    expect(parseConnectorConfig('https://example.com/mcp')).toEqual([
-      {
-        name: 'example.com',
-        url: 'https://example.com/mcp',
-        transport: 'streamableHttp',
-      },
-    ]);
-    expect(
-      parseConnectorConfig(
-        JSON.stringify({
-          mcpServers: {
-            Docs: {
-              url: 'https://example.com/sse',
-              type: 'sse',
-              headers: { Authorization: 'Bearer test-token' },
-            },
-          },
-        }),
-      ),
-    ).toEqual([
-      {
-        name: 'Docs',
-        url: 'https://example.com/sse',
-        transport: 'sse',
-        token: 'test-token',
-      },
-    ]);
-  });
-  it('rejects local commands, malformed configs, and unsupported headers before import', () => {
-    expect(() => parseConnectorConfig('{')).toThrow('valid JSON');
-    expect(() => parseConnectorConfig('{"mcpServers":{}}')).toThrow('no servers');
-    expect(() => parseConnectorConfig('{"mcpServers":{"Local":{"command":"npx"}}}')).toThrow(
-      'only remote servers',
-    );
-    expect(() =>
-      parseConnectorConfig(
-        '{"mcpServers":{"Docs":{"url":"https://example.com","headers":{"X-API-Key":"secret"}}}}',
-      ),
-    ).toThrow('only an Authorization');
-    expect(() =>
-      parseConnectorConfig('{"mcpServers":{"Docs":{"url":"file:///tmp/server"}}}'),
-    ).toThrow('HTTP or HTTPS');
-  });
-});
-
 describe('history in the floating sidebar', () => {
   it('groups pinned chats first and opens the dedicated search surface', async () => {
     store.chats = [chat('one', true), chat('two')];
@@ -211,26 +151,6 @@ describe('history in the floating sidebar', () => {
   });
 });
 
-describe('connector health status', () => {
-  it('uses the API health field and never infers Connected from authStatus', async () => {
-    store.connectors = [{ ...connector, authStatus: 'none' }];
-    await mount(<ConnectorsScreen />);
-    expect(container.textContent).toContain('Ready to connect');
-    expect(container.textContent).not.toContain('Connected');
-    for (const [status, label] of [
-      ['connected', 'Connected'],
-      ['unreachable', 'Unreachable'],
-      ['needs_auth', 'Sign in to connect'],
-      ['needs_reauth', 'Sign in again'],
-      ['error', 'Error'],
-    ] as const) {
-      store.connectors = [{ ...connector, status }];
-      await mount(<ConnectorsScreen />);
-      expect(container.textContent).toContain(label);
-    }
-  });
-});
-
 describe('settings and capabilities', () => {
   it('navigates to providers and tools, and updates the appearance preference', async () => {
     await mount(<ModelsSection />);
@@ -239,8 +159,8 @@ describe('settings and capabilities', () => {
     await click(button('Light'));
     expect(store.setThemeMode).toHaveBeenCalledWith('light');
     await mount(<SidebarSettings sheet="settings" devTools={false} />);
-    await click(document.querySelector<HTMLButtonElement>('[data-testid="settings-nav-connectors"]')!);
-    expect(store.setActiveSheet).toHaveBeenCalledWith('connectors');
+    await click(document.querySelector<HTMLButtonElement>('[data-testid="settings-nav-apps"]')!);
+    expect(store.setActiveSheet).toHaveBeenCalledWith('apps');
   });
   it('labels every page after its section with no visible Settings page or sidebar header', async () => {
     const labelOf = () =>
@@ -251,8 +171,8 @@ describe('settings and capabilities', () => {
       ['general', 'General', 'General'],
       ['models', 'Models', 'Models'],
       ['image-reader', 'Image reading model', 'Models'],
-      ['connectors', 'Connectors', 'Connectors'],
-      ['connector-add-url', 'Add by URL', 'Connectors'],
+      ['apps', 'App Directory', 'App Directory'],
+      ['app-connected', 'App connected', 'App Directory'],
       ['skills', 'Skills', 'Skills'],
       ['consents', 'Data & privacy', 'Data & privacy'],
       ['voice-settings', 'Voice input', 'General'],
@@ -269,39 +189,16 @@ describe('settings and capabilities', () => {
     }
   });
   it('goes back to the parent page; the way out of Settings is the floating nav, not a Done button', async () => {
-    await mount(<SettingsPage sheet="connector-add-url" />);
+    await mount(<SettingsPage sheet="app-connected" />);
     await click(button('Back'));
-    expect(store.setActiveSheet).toHaveBeenLastCalledWith('connectors');
-    await mount(<SettingsPage sheet="connectors" />);
+    expect(store.setActiveSheet).toHaveBeenLastCalledWith('apps');
+    await mount(<SettingsPage sheet="apps" />);
     expect(document.body.textContent).not.toContain('Done');
     expect(document.querySelector('[aria-label="Back"]')).toBeNull();
     expect(document.querySelector('[aria-label="Settings sections"]')).toBeNull();
-    await mount(<SidebarSettings sheet="connectors" devTools={false} />);
+    await mount(<SidebarSettings sheet="apps" devTools={false} />);
     await click(button('Close settings'));
     expect(store.setActiveSheet).toHaveBeenLastCalledWith(null);
-  });
-  it('loads a connector’s tools on expansion and persists a per-tool toggle', async () => {
-    store.connectors = [connector];
-    store.connectorTools = {
-      [connector.id]: [
-        {
-          type: 'tool.spec',
-          name: 'search',
-          description: 'Search docs',
-          inputSchema: {},
-          source: { type: 'mcp' },
-          traits: ['readOnly'],
-        },
-      ],
-    };
-    await mount(<ConnectorsScreen />);
-    await click(document.querySelector<HTMLButtonElement>('[aria-expanded="false"]')!);
-    expect(store.loadConnectorTools).toHaveBeenCalledWith(connector.id);
-    const searchToggle = Array.from(
-      document.querySelectorAll<HTMLInputElement>('[role="switch"]'),
-    ).find((node) => node.closest('label')?.textContent?.includes('Search docs'))!;
-    await click(searchToggle);
-    expect(store.setConnectorToolEnabled).toHaveBeenCalledWith(connector.id, 'search', false);
   });
   it('preserves a skill document when disabling it', async () => {
     store.skills = [skill];
