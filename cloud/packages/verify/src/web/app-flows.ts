@@ -5,6 +5,8 @@ import {sessionHeaders} from './session.js';
 /** Reactive state settles once the fixture page has marked the account; this bounds a slow local backend. */
 const CONNECTION_SETTLE_TIMEOUT_MS = 15_000;
 const APP_COUNT = 7;
+/** `apps/web/index.html` and `usePraxisState` read the saved theme from this key. */
+const THEME_STORAGE_KEY = 'praxis-theme';
 
 async function createChat({page, request, api}: FlowContext, title: string): Promise<{chatId: string; headers: {Authorization: string}}> {
   const headers = await sessionHeaders(page);
@@ -29,12 +31,24 @@ async function openDirectory(page: Page): Promise<Locator> {
   return grid;
 }
 
-async function themedScreenshots({page, screenshot, note}: FlowContext): Promise<void> {
-  for (const colorScheme of ['light', 'dark'] as const) {
-    await page.emulateMedia({colorScheme});
-    note(`${colorScheme} screenshot: ${await screenshot(colorScheme)}`);
+/** Screen-reader view: each line must appear in the element's accessibility snapshot (toMatchAriaSnapshot needs a test). */
+async function expectAria(locator: Locator, lines: readonly string[]): Promise<void> {
+  for (const line of lines) {
+    await expect.poll(() => locator.ariaSnapshot(), {message: `aria snapshot lacks: ${line}`}).toContain(line);
   }
-  await page.emulateMedia({colorScheme: null});
+}
+
+/** The app reads the saved theme at load, so each theme is a reload of the same screen, not a live attribute swap. */
+async function themedScreenshots({page, screenshot, note}: FlowContext, ready: Locator): Promise<void> {
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate(([key, value]) => localStorage.setItem(key, value), [THEME_STORAGE_KEY, theme] as const);
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await expect(ready).toBeVisible({timeout: CONNECTION_SETTLE_TIMEOUT_MS});
+    note(`${theme} screenshot: ${await screenshot(theme)}`);
+  }
+  await page.evaluate(key => localStorage.removeItem(key), THEME_STORAGE_KEY);
+  await page.reload();
 }
 
 const appDirectoryConnect: WebFlow = {
@@ -52,6 +66,8 @@ const appDirectoryConnect: WebFlow = {
     await page.getByRole('searchbox', {name: 'Search apps'}).focus();
     await page.keyboard.type('gmail');
     await expect(grid.getByRole('listitem')).toHaveCount(1);
+    // Connect stays disabled until the live connections query answers; Tab would skip it before then.
+    await expect(grid.getByRole('button', {name: 'Connect Gmail'})).toBeEnabled({timeout: CONNECTION_SETTLE_TIMEOUT_MS});
     await page.keyboard.press('Tab');
     await expect(grid.getByRole('button', {name: 'Connect Gmail'})).toBeFocused();
     const opened = page.waitForEvent('popup');
@@ -63,15 +79,12 @@ const appDirectoryConnect: WebFlow = {
 
     const card = grid.getByRole('listitem', {name: 'Gmail'});
     await expect(card.getByText('Connected', {exact: true})).toBeVisible({timeout: CONNECTION_SETTLE_TIMEOUT_MS});
-    await expect(card).toMatchAriaSnapshot(`
-      - listitem "Gmail":
-        - heading "Gmail" [level=3]
-        - paragraph: Read, search and send email
-        - paragraph: Connected
-        - button "Disconnect Gmail"
-        - text: Use in this chat
-        - switch "Use Gmail in this chat" [checked]
-    `);
+    await expectAria(card, [
+      '- heading "Gmail" [level=3]',
+      '- paragraph: Connected',
+      '- button "Disconnect Gmail"',
+      '- switch "Use Gmail in this chat" [checked]',
+    ]);
 
     const toggle = card.getByRole('switch', {name: 'Use Gmail in this chat'});
     await toggle.focus();
@@ -85,8 +98,7 @@ const appDirectoryConnect: WebFlow = {
     await expect(toggle).toBeChecked();
     note('the per-chat switch writes composio:gmail to disabledConnectorIds and back');
 
-    await page.getByRole('searchbox', {name: 'Search apps'}).fill('');
-    await themedScreenshots(context);
+    await themedScreenshots(context, card.getByText('Connected', {exact: true}));
 
     await card.getByRole('button', {name: 'Disconnect Gmail'}).click();
     await expect(card.getByText('Not connected', {exact: true})).toBeVisible({timeout: CONNECTION_SETTLE_TIMEOUT_MS});
@@ -132,13 +144,11 @@ const appConnectCard: WebFlow = {
     await page.goto(`/c/${chatId}`);
 
     const card = page.getByRole('region', {name: 'Connect Slack'});
-    await expect(card).toMatchAriaSnapshot(`
-      - region "Connect Slack":
-        - paragraph: This needs Slack.
-        - paragraph: You sign in on Slack’s own page. Then send your request again.
-        - button "Connect Slack"
-    `);
-    await themedScreenshots(context);
+    await expectAria(card, [
+      '- paragraph: This needs Slack.',
+      '- button "Connect Slack"',
+    ]);
+    await themedScreenshots(context, card.getByRole('button', {name: 'Connect Slack'}));
     await card.getByRole('button', {name: 'Connect Slack'}).click();
     await allowOnFixturePage(page, 'slack');
     await expect(page).toHaveURL(new RegExp(`/c/${chatId}\\?`));

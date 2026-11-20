@@ -6,13 +6,12 @@ import { Switch } from '../ui/controls';
 import { ScreenButton } from './ScreenUI.js';
 import styles from './AppDirectory.module.css';
 
-export function AppCard({ app, state, chat, actions, onToggleChat, toggling }: {
+export function AppCard({ app, state, chat, actions, onToggleChat }: {
   app: ComposioApp;
   state: AppState;
   chat: Chat | null;
   actions: AppConnect;
   onToggleChat: (toolkit: string, enabled: boolean) => void;
-  toggling: boolean;
 }) {
   const nameId = React.useId();
   const busy = actions.busy === app.toolkit;
@@ -48,15 +47,15 @@ export function AppCard({ app, state, chat, actions, onToggleChat, toggling }: {
           </ScreenButton>
         )}
       </div>
-      {state === 'connected' ? <ChatToggle app={app} chat={chat} disabled={toggling} onToggle={onToggleChat} /> : null}
+      {state === 'connected' ? <ChatToggle app={app} chat={chat} onToggle={onToggleChat} /> : null}
     </li>
   );
 }
 
-function ChatToggle({ app, chat, disabled, onToggle }: {
+// Never disabled while saving: a disabled switch drops keyboard focus; the screen task ignores overlapping saves.
+function ChatToggle({ app, chat, onToggle }: {
   app: ComposioApp;
   chat: Chat | null;
-  disabled: boolean;
   onToggle: (toolkit: string, enabled: boolean) => void;
 }) {
   if (!chat) return <p className={styles.note}>Open a chat to turn {app.name} on or off there.</p>;
@@ -66,7 +65,6 @@ function ChatToggle({ app, chat, disabled, onToggle }: {
       <Switch
         label={`Use ${app.name} in this chat`}
         checked={composioEnabledInChat(chat, app.toolkit)}
-        disabled={disabled}
         onChange={(enabled) => onToggle(app.toolkit, enabled)}
       />
     </label>

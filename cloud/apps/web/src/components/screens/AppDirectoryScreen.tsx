@@ -53,7 +53,6 @@ export function AppDirectoryScreen() {
               chat={chat}
               actions={actions}
               onToggleChat={toggleChat}
-              toggling={toggle.busy}
             />
           ))}
         </ul>
