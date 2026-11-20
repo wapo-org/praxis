@@ -1,8 +1,9 @@
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {describe, expect, it} from 'vitest';
 import type {Message} from '@praxis/protocol';
 import {api} from '../convex/_generated/api.js';
 import {SERVER_TOKEN, signedInUser, workflowTest} from './workflow-fixture.js';
 import {commitArgs} from './workflow-worker.js';
+import {useDomainEnv} from './convex-domain-fixture.js';
 
 const now = '2026-11-18T00:00:00.000Z';
 const chatId = 'shared-chat';
@@ -28,11 +29,7 @@ async function fixture() {
 }
 
 describe('Convex typed owner storage', () => {
-  beforeEach(() => {
-    vi.stubEnv('PRAXIS_CONVEX_SERVER_TOKEN', SERVER_TOKEN);
-    vi.stubEnv('CONVEX_CLOUD_URL', 'https://test.convex.cloud');
-  });
-  afterEach(() => vi.unstubAllEnvs());
+  useDomainEnv();
 
   it('creates, reads, patches and removes chats through verified viewer identity', async () => {
     const {t, alice, bob} = await fixture();
