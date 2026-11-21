@@ -87,6 +87,7 @@ export function useReplica(
     setSyncing(true);
     try {
       const boot = await apiClient.bootstrap();
+      state.setUser(boot.user);
       setChats(boot.chats);
       setModelKey(boot.modelKey ?? null);
       // The catalogue is not in bootstrap; a failed first page must not block the app.

@@ -16,13 +16,12 @@ export function useSendGate(
     async (text: string, options?: SendOptions): Promise<boolean> => {
       // Before the first load the key is unknown; the server decides then (and answers model_key_missing).
       if (hydrated && !modelKey && !isScriptedModel(selectedModelId) && !options?.script) {
-        state.setErrorBanner('Connect an OpenRouter key and choose a model before sending. Your draft is still in the composer.');
         setActiveSheet('models');
         return false;
       }
       return executeSendMessage(text, options);
     },
-    [modelKey, selectedModelId, hydrated, executeSendMessage, setActiveSheet, state],
+    [modelKey, selectedModelId, hydrated, executeSendMessage, setActiveSheet],
   );
 
   return { sendMessage };

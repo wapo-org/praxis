@@ -13,12 +13,10 @@ export function useAccountSession(
   const [deletionError, setDeletionError] = useState('');
   const deletionInFlight = useRef(false);
   const [readyUser, setReadyUser] = useState<string | null>(null);
-  const [identity, setIdentity] = useState<{ name: string; email?: string } | null>(null);
   const signOutSession = useCallback(async () => {
     apiClient.setSessionIdentity(null);
     apiClient.setBearerToken('');
     setReadyUser(null);
-    setIdentity(null);
     try {
       await signOut();
     } finally {
@@ -43,8 +41,8 @@ export function useAccountSession(
       void clearReplica();
       return;
     }
-    void Promise.all([setReplicaIdentity(apiClient.getBaseUrl(), user).then(loadReplica), apiClient.bootstrap()]).then(([, bootstrap]) => {
-      if (active) { setIdentity({ name: bootstrap.user.name, email: bootstrap.user.email }); setReadyUser(user); }
+    void setReplicaIdentity(apiClient.getBaseUrl(), user).then(loadReplica).then(() => {
+      if (active) setReadyUser(user);
     });
     return () => { active = false; apiClient.setSessionIdentity(null); };
   }, [user, hasToken, emailLanding]);
@@ -68,5 +66,5 @@ export function useAccountSession(
     }
   }
 
-  return { readyUser, identity, signOutSession, deleteAccount, deleting, deletionError };
+  return { readyUser, signOutSession, deleteAccount, deleting, deletionError };
 }

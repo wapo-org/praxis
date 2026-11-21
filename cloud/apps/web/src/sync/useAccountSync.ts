@@ -14,6 +14,7 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
   const latest = React.useRef(state); latest.current = state;
   const palette = useSidebarPalette();
   const account = useAccount();
+  const accountUserId = account?.userId ?? null;
   const values = { theme: state.themeMode, palette, model: state.selectedModelId, effort: state.selectedEffort };
   const caughtUp = React.useRef(false);
   const previous = React.useRef(values);
@@ -28,7 +29,7 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
     void flushEdits();
   }, [values.theme, palette, values.model, values.effort]);
   React.useEffect(() => {
-    if (!account || !state.replicaKey.current || !state.hydrated) return;
+    if (!accountUserId || !state.replicaKey.current || !state.hydrated) return;
     let stopped = false;
     const controller = new AbortController();
     let cursor = state.syncCursor; // Bootstrap is an authoritative snapshot; resume after its revision.
@@ -108,5 +109,5 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
       apply({ type: 'sync.response', strategy: 'cursor', root: '', cursor, nextCursor: null, nodes: [], entities: settings.items.map(setting => ({ type: 'sync.entity', key: `accountSetting:${setting.field}`, value: setting, hash: '', deleted: false, updatedAt: new Date().toISOString() })) });
     }).catch(() => {}).finally(() => { if (!stopped) void loop(); });
     return () => { stopped = true; controller.abort(); window.removeEventListener('online', online); };
-  }, [state.hydrated, account]);
+  }, [state.hydrated, accountUserId]);
 }

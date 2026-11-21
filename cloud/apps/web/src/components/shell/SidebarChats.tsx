@@ -93,10 +93,10 @@ export function SidebarChats({
           {...pressProps}
         >
           <span className={styles.avatar} aria-hidden="true">
-            (account?.displayName ?? account?.email ?? 'Praxis').slice(0, 1).toUpperCase()
+            {(store.user?.name || store.user?.email || account?.displayName || account?.email || account?.userId || 'Praxis').slice(0, 1).toUpperCase()}
           </span>
           <span className={styles.accountCopy}>
-            <span className={styles.accountName}>{account?.displayName ?? account?.email ?? 'Praxis'}</span>
+            <span className={styles.accountName}>{store.user?.name || store.user?.email || account?.displayName || account?.email || account?.userId || 'Praxis'}</span>
             <span className={styles.accountDetail}>Settings</span>
           </span>
           <Settings size={16} />
