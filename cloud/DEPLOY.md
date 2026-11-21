@@ -87,7 +87,7 @@ Browser builds get only the API origin, never a secret.
 
 1. Create a project at dashboard.convex.dev (production deployment).
 2. In `cloud/`, run `npx convex deploy`. It asks for login/`CONVEX_DEPLOY_KEY`, and pushes `cloud/convex/` (schema plus the store, auth, files and tools functions).
-3. Set `PRAXIS_CONVEX_SERVER_TOKEN` and `PRAXIS_API_URL` in the Convex env, and copy the deployment URL into `CONVEX_URL` on Vercel.
+3. Set `PRAXIS_CONVEX_SERVER_TOKEN`, `PRAXIS_API_URL` and `PRAXIS_ENCRYPTION_KEYS` in the Convex env, and copy the deployment URL into `CONVEX_URL` on Vercel. The agent turn runs in Convex (PRA-169) and unseals each user's OpenRouter key there, so the Convex keyring must equal the Vercel one, rotations included.
 4. Never ship `CONVEX_DEPLOY_KEY` to the API or clients. It is only for the deploy step.
 
 ## 2. Upstash

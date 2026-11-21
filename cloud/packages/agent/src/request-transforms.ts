@@ -1,4 +1,4 @@
-import type {Capabilities, MessagePart} from '@praxis/protocol';
+import type {Capabilities, Message, MessagePart} from '@praxis/protocol';
 import type {ModelProvider, ProviderRequest} from './types.js';
 
 /** Rewrites the request view just before the model call; the snapshot and stored history stay unchanged. */
@@ -33,24 +33,43 @@ function isReference(part: MessagePart): boolean {
   return (part.type === 'image' || part.type === 'document') && !!part.attachmentId && !part.data && !part.url;
 }
 
-/** A failed read becomes a short text note, so one missing attachment cannot fail the turn. */
-export function rehydrateAttachments(resolve: AttachmentResolver): RequestTransform {
-  const cache = new Map<string, Promise<MessagePart>>();
-  const one = (part: MessagePart, caps: Capabilities): Promise<MessagePart> => {
+/** Resolves every reference at most `MEDIA_CONCURRENCY` at a time; a failed read becomes a short text note. */
+async function rehydrateParts(
+  messages: readonly Message[], one: (part: MessagePart) => Promise<MessagePart>,
+): Promise<Message[]> {
+  const flat = messages.flatMap((message, mi) => message.parts.map((part, pi) => ({mi, pi, part})));
+  const resolved = await mapLimited(flat, MEDIA_CONCURRENCY, ({part}) => one(part));
+  const out = messages.map(message => ({...message, parts: [...message.parts]}));
+  flat.forEach(({mi, pi}, index) => {
+    out[mi]!.parts[pi] = resolved[index]!;
+  });
+  return out;
+}
+
+type PartCache = Map<string, Promise<MessagePart>>;
+
+function cached(cache: PartCache, resolve: (part: MessagePart) => Promise<MessagePart>, keyOf: (part: MessagePart) => string) {
+  return (part: MessagePart): Promise<MessagePart> => {
     if (!isReference(part)) return Promise.resolve(part);
-    const key = `${part.type}:${part.attachmentId}:${caps.vision ? 1 : 0}${caps.documents ? 1 : 0}`;
-    if (!cache.has(key)) cache.set(key, resolve(part, caps).catch(error => unavailableAttachment(part, error)));
+    const key = keyOf(part);
+    if (!cache.has(key)) cache.set(key, resolve(part).catch(error => unavailableAttachment(part, error)));
     return cache.get(key)!;
   };
+}
+
+/** Legacy runner transform: one model request, with its capabilities deciding what a reference becomes. */
+export function rehydrateAttachments(resolve: AttachmentResolver): RequestTransform {
+  const cache: PartCache = new Map();
   return async request => {
-    const flat = request.messages.flatMap((message, mi) => message.parts.map((part, pi) => ({mi, pi, part})));
-    const resolved = await mapLimited(flat, MEDIA_CONCURRENCY, ({part}) => one(part, request.capabilities));
-    const messages = request.messages.map(message => ({...message, parts: [...message.parts]}));
-    flat.forEach(({mi, pi}, index) => {
-      messages[mi]!.parts[pi] = resolved[index]!;
-    });
-    return {...request, messages};
+    const caps = request.capabilities;
+    const one = cached(cache, part => resolve(part, caps), part => `${part.type}:${part.attachmentId}:${caps.vision ? 1 : 0}${caps.documents ? 1 : 0}`);
+    return {...request, messages: await rehydrateParts(request.messages, one)};
   };
+}
+
+/** Turn harness transform: the request history only; stored rows and the ledger keep references. */
+export function rehydrateMessages(resolve: (part: MessagePart) => Promise<MessagePart>): (messages: readonly Message[]) => Promise<Message[]> {
+  return async messages => rehydrateParts(messages, cached(new Map(), resolve, part => `${part.type}:${part.attachmentId}`));
 }
 
 /** Applies transforms in order to every request this provider streams. */

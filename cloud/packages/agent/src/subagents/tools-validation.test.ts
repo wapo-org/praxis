@@ -7,8 +7,8 @@ import {
 import {harnessFixture} from './tools-fixture.js';
 import {reduceSubagents} from './reducer.js';
 import {createRequest} from './test-fixtures.js';
-import {answerWith, fixture, response} from '../one-turn-fixture.js';
-import {runOneTurn} from '../one-turn.js';
+import {turnFixture} from '../harness/turn-fixture.js';
+import {runTurn} from '../harness/turn.js';
 import {ToolResultSchema} from '../types.js';
 
 it('publishes uniqueness constraints for wait addresses and child grants', () => {
@@ -28,7 +28,8 @@ it.each([false, true])('settles invalid arguments and replays the schema ToolErr
     ['spawn_agent', {...createRequest, tools: ['read_file', 'read_file']}],
   ] as const) {
     const f = harnessFixture();
-    const opts = await fixture();
+    const reply = {calls: [{id: 'invalid', name, args: JSON.stringify(args)}]};
+    const opts = await turnFixture([reply, reply]);
     let executions = 0;
     let transactions = 0;
     f.port.transact = async () => {transactions++; throw new Error('Invalid input must never reach persistence');};
@@ -38,23 +39,25 @@ it.each([false, true])('settles invalid arguments and replays the schema ToolErr
     }}));
     opts.registry = f.harness.registry;
     // Frozen catalogs can predate uniqueness metadata, so the runtime boundary must settle invalid arguments too.
-    opts.store.data.snapshot.request.tools = opts.tools.map(tool => legacy ? {...tool.spec, inputSchema: {type: 'object'}} : tool.spec);
-    answerWith(opts.provider, async () => ({...response(true), parts: [
-      {type: 'toolCall', callId: 'invalid', name, arguments: JSON.stringify(args)},
-    ]}));
-    opts.store.commit = async () => {throw new Error('Crash after saveCall');};
-    await expect(runOneTurn(opts)).rejects.toThrow('Crash after saveCall');
-    const saved = opts.store.data.calls.invalid;
+    opts.input = {...opts.input, tools: opts.tools.map(tool => legacy ? {...tool.spec, inputSchema: {type: 'object'}} : tool.spec)};
+    const commitLost = opts.ledger.saveCall.bind(opts.ledger);
+    opts.ledger.saveCall = async (id, value) => {
+      await commitLost(id, value);
+      throw new Error('Crash after saveCall');
+    };
+    await expect(runTurn(opts)).rejects.toThrow('Crash after saveCall');
+    const saved = opts.ledger.calls.invalid;
     expect(saved).not.toBeNull();
     if (!saved) throw new Error('Expected a settled tool result');
     const result = saved.result.ok ? ToolResultSchema.parse(saved.result.result.value) : saved.result;
     expect(result).toMatchObject({error: {code: 'schema', remediation: expect.any(String)}});
     expect(result.error?.remediation.length).toBeGreaterThan(0);
-    opts.store = opts.store.rehydrateAfterFencing();
-    await expect(runOneTurn(opts)).resolves.toMatchObject({status: 'ready', turnIndex: 1});
+    opts.ledger = opts.ledger.rehydrated();
+    await expect(runTurn(opts)).resolves.toMatchObject({state: 'output', output: {end: {status: 'ready'}}});
+    expect(opts.counts.model).toBe(1);
     expect(executions).toBe(legacy ? 1 : 0);
     expect(transactions).toBe(0);
-    expect(opts.store.data.calls.invalid).toEqual(saved);
+    expect(opts.ledger.calls.invalid).toEqual(saved);
   }
 });
 

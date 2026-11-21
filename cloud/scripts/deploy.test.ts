@@ -144,6 +144,7 @@ it('never puts a secret in argv; each credential reaches only the tool that need
     inputKey: 'PRAXIS_API_URL',
     fileInput: true,
   });
+  expect(plan.find(step => step.inputKey === 'PRAXIS_ENCRYPTION_KEYS' && step.tool === 'convex')).toMatchObject({fileInput: true});
   const argv = plan.map((s: any) => s.args.join(' ') + ' ' + maskCommand(s)).join('\n');
   for (const [key, value] of Object.entries(SECRETS))
     if (!key.endsWith('_ID')) expect(argv, key).not.toContain(value);

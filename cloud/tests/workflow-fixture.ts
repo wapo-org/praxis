@@ -20,6 +20,8 @@ const modules = {
   '../convex/account.ts': () => import('../convex/account.js'),
   '../convex/runs.ts': () => import('../convex/runs.js'),
   '../convex/turns.ts': () => import('../convex/turns.js'),
+  '../convex/agent/hydrate.ts': () => import('../convex/agent/hydrate.js'),
+  '../convex/agent/ledger.ts': () => import('../convex/agent/ledger.js'),
   '../convex/workflows/agentRun.ts': () => import('../convex/workflows/agentRun.js'),
 };
 

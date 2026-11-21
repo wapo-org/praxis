@@ -1,7 +1,7 @@
 import {describe, expect, it, vi} from 'vitest';
 import {api} from '../convex/_generated/api.js';
 import {SERVER_TOKEN} from './workflow-fixture.js';
-import {commitArgs} from './workflow-worker.js';
+import {commitArgs} from './workflow-commit.js';
 import {
   CHAT_ID, NOW, TYPED_TABLES, commit, createChat, purgeUntilDone, textMessage, twoOwners, typedRows, useDomainEnv,
   type DomainTest, type Viewer,

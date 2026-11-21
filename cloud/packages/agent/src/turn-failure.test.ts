@@ -5,8 +5,8 @@ import {
   TurnResultSchema, jsonStringBytes, type TurnFailure,
 } from '@praxis/protocol';
 import {ProviderFailure} from './provider-error.js';
-import {runOneTurn} from './one-turn.js';
-import {fixture} from './one-turn-fixture.js';
+import {runTurn} from './harness/turn.js';
+import {turnFixture} from './harness/turn-fixture.js';
 import {truncateJsonBytes, turnFailure} from './turn-failure.js';
 
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
@@ -24,21 +24,19 @@ const anyText = (minLength = 0) => fc.oneof(
 
 describe('turn failure sizing', () => {
   it('keeps the reviewer case (CJK credit message, four maximal child IDs) under the result limit, on delivery and redelivery', async () => {
-    const f = await fixture(true);
     const message = '余额不足'.repeat(80);
-    f.provider.stream = async function* () {
-      throw new ProviderFailure('creditExhausted', message, {status: 402});
-    };
+    const f = await turnFixture(() => ({error: {status: 402, message}}));
     for (const delivery of [1, 2]) {
-      const flags = await runOneTurn(f);
-      expect(flags.status, `delivery ${delivery}`).toBe('failed');
-      if (flags.status !== 'failed') continue;
-      expect(message.startsWith(flags.failure.message)).toBe(true);
-      expect(jsonStringBytes(flags.failure.message)).toBeLessThanOrEqual(TURN_FAILURE_MESSAGE_MAX_BYTES);
-      const result = {...flags, turnIndex: Number.MAX_SAFE_INTEGER, subagents: maxIds};
+      const run = await runTurn(f);
+      expect(run.state, `delivery ${delivery}`).toBe('failed');
+      if (run.state !== 'failed') continue;
+      expect(message.startsWith(run.failure.message)).toBe(true);
+      expect(jsonStringBytes(run.failure.message)).toBeLessThanOrEqual(TURN_FAILURE_MESSAGE_MAX_BYTES);
+      const result = failed(run.failure);
       expect(TurnResultSchema.parse(result)).toEqual(result);
       expect(bytes(result)).toBeLessThan(TURN_RESULT_MAX_BYTES);
     }
+    expect(f.ledger.saved).toBeUndefined();
   });
 
   it('derives the caps from the other fields at their maxima: escape-heavy text at both caps still fits', () => {

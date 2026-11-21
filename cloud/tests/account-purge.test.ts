@@ -4,7 +4,8 @@ import {api, components, internal} from '../convex/_generated/api.js';
 import {workflow} from '../convex/workflows/agentRun.js';
 import {ACCOUNT_OWNER_ROWS, ACCOUNT_PURGE_POLICY, ACCOUNT_RUN_CHILD_ROWS} from '../convex/accountTables.js';
 import {chatId, SERVER_TOKEN, startedRun} from './workflow-fixture.js';
-import {commitArgs, fakeTurnWorker} from './workflow-worker.js';
+import {commitArgs} from './workflow-commit.js';
+import {fakeOpenRouter} from './workflow-model.js';
 
 const PURGE_CALLS_MAX = 20;
 type PurgeResult = {done: boolean; blobCursor?: string; blobsDone?: boolean};
@@ -31,7 +32,7 @@ describe('account deletion of workflow state', () => {
 
   it('fences an in-flight run once deletion begins, then purges run, flags, journal and user', async () => {
     const {t, owner, userId, scope} = await startedRun();
-    fakeTurnWorker(t);
+    await fakeOpenRouter(t, scope);
     await t.action(internal.turns.run, {...scope, expectedTurnIndex: 0});
     const sessions = () => t.run(ctx => ctx.runQuery(components.auth.public.listSessions, {userId}));
     expect(await sessions()).toHaveLength(1);

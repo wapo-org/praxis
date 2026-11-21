@@ -48,6 +48,15 @@ export function deploymentPlan(env) {
       fileInput: true,
       tool: 'convex',
     },
+    {
+      name: 'Convex turn keyring (PRA-169: turns unseal OpenRouter keys in Convex)',
+      cwd: root,
+      args: [...convex, 'env', 'set', 'PRAXIS_ENCRYPTION_KEYS', '--from-file', '<private-input>'],
+      remote: true,
+      inputKey: 'PRAXIS_ENCRYPTION_KEYS',
+      fileInput: true,
+      tool: 'convex',
+    },
     ...apiKeys
       .filter(
         (k) =>

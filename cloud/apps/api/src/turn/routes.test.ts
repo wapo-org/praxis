@@ -9,8 +9,7 @@ import {
  TURN_BODY_MAX_BYTES, TURN_FAILURE_MESSAGE_MAX_BYTES, TurnRequestSchema, TurnResultSchema, SUBAGENT_LIMITS,
  TURN_CURRENT_KEY_ENV, TURN_NEXT_KEY_ENV, TURN_KEY_MIN_CHARACTERS,
 } from '@praxis/protocol';
-import {ProviderFailure, runOneTurn} from '@praxis/agent';
-import {fixture} from '../../../../packages/agent/src/one-turn-fixture.js';
+import {ProviderFailure, turnFailure} from '@praxis/agent';
 import {createMemoryAdapters} from '../adapters/memory.js';
 import {registerTurnRoute} from './routes.js';
 import {readTurnKeys} from './auth.js';
@@ -75,16 +74,12 @@ describe('turn contract', () => {
   ]) expect(TurnResultSchema.safeParse(value).success).toBe(false);
  });
  it('answers a 402 with a long CJK message and four maximal child IDs as a failed 200, on delivery and redelivery', async () => {
-  const turn = await fixture(true);
-  turn.provider.stream = async function* () {
-   throw new ProviderFailure('creditExhausted', '余额不足'.repeat(80), {status: 402});
-  };
+  const failure = turnFailure(new ProviderFailure('creditExhausted', '余额不足'.repeat(80), {status: 402}));
   const subagents = Array.from({length: SUBAGENT_LIMITS.CHILDREN_MAX}, (_, index) =>
    String(index) + 'a'.repeat(SUBAGENT_LIMITS.ID_MAX_CHARACTERS - 1));
   const {app, adapters} = setup();
   adapters.turn = {async execute(request) {
-   const result = await runOneTurn({...turn, runId: request.runId, expectedTurnIndex: request.expectedTurnIndex});
-   return {...result, subagents};
+   return {turnIndex: request.expectedTurnIndex, done: true, status: 'failed', failure: failure!, subagents};
   }};
   const body = JSON.stringify(input);
   for (const offset of [0, 1]) {
@@ -92,7 +87,6 @@ describe('turn contract', () => {
    expect(response.status).toBe(200);
    expect(await response.json()).toMatchObject({done: true, status: 'failed', turnIndex: 0, failure: {code: 'model_credit_exhausted'}});
   }
-  expect(turn.store.data.response).toBeUndefined();
  });
  it('answers 409 when the commit fence rejects the index and 503 for any other worker failure', async () => {
   const {app, execute} = setup();
@@ -220,19 +214,21 @@ describe('Convex-only turn route', () => {
  });
  it('preserves expectedTurnIndex idempotency across newly signed retry envelopes', async () => {
   await fc.assert(fc.asyncProperty(fc.integer({min: 2, max: 12}), async retries => {
-   const turn = await fixture(true);
    const {app, adapters} = setup();
+   const settled = new Map<number, typeof flags>();
+   let executions = 0;
    adapters.turn = {async execute(request) {
-    const result = await runOneTurn({...turn, runId: request.runId, expectedTurnIndex: request.expectedTurnIndex});
-    return {...result, subagents: []};
+    if (!settled.has(request.expectedTurnIndex)) {
+     executions++;
+     settled.set(request.expectedTurnIndex, {...flags, turnIndex: request.expectedTurnIndex + 1});
+    }
+    return settled.get(request.expectedTurnIndex)!;
    }};
    const body = JSON.stringify(input);
    for (let i = 0; i < retries; i++) {
     expect((await send(app, body, headers(body, NOW_MS + i))).status).toBe(200);
    }
-   expect(turn.counts.model).toBe(1);
-   expect(turn.counts.tool).toBe(1);
-   expect(turn.store.data.commits).toBe(1);
+   expect(executions).toBe(1);
   }), {numRuns: 30});
  });
 });

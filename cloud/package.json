@@ -32,10 +32,16 @@
     "vitest": "^4.0.0"
   },
   "dependencies": {
+    "@ai-sdk/provider": "4.0.36",
+    "@ai-sdk/provider-utils": "5.0.75",
+    "@convex-dev/agent": "0.7.9",
     "@convex-dev/auth": "2.0.0",
     "@convex-dev/resend": "0.2.10",
     "@convex-dev/workflow": "0.4.10",
+    "@openrouter/ai-sdk-provider": "3.1.0",
+    "ai": "7.0.163",
     "convex": "1.50.0",
+    "convex-helpers": "0.1.134",
     "patch-package": "8.0.1"
   }
 }

@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest';
 import type {Message} from '@praxis/protocol';
 import {api} from '../convex/_generated/api.js';
 import {SERVER_TOKEN, signedInUser, workflowTest} from './workflow-fixture.js';
-import {commitArgs} from './workflow-worker.js';
+import {commitArgs} from './workflow-commit.js';
 import {useDomainEnv} from './convex-domain-fixture.js';
 
 const now = '2026-11-18T00:00:00.000Z';
