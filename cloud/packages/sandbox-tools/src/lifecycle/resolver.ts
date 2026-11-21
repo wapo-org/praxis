@@ -1,13 +1,13 @@
 import {randomBytes} from 'node:crypto';
 import {ToolBoundaryError, toolError} from '@praxis/agent';
 import {CredentialsUnavailableError, credentialFor, healthySlots, placeOwner, type CooldownStore, type CredentialPool} from '@praxis/credentials';
-import {SANDBOX_LIFECYCLE, type SandboxClaim, type SandboxScope} from '@praxis/protocol';
+import {SANDBOX_LIFECYCLE, SANDBOX_RESOURCES, type SandboxClaim, type SandboxScope} from '@praxis/protocol';
 import type {SandboxPort} from '../port.js';
 import {
   SANDBOX_BOOT_RETRY_MS,
   SANDBOX_MESSAGES,
   SANDBOX_READY_TIMEOUT_MS,
-  SANDBOX_RESOURCES,
+  SANDBOX_REFUSAL_MESSAGES,
   SANDBOX_VOLUME_MOUNT,
   SANDBOX_WAIT_MAX_MS,
 } from './constants.js';
@@ -48,15 +48,17 @@ export interface SandboxResolver {
 type Placement = {slot: number; volumeName: string};
 type Boot = Extract<SandboxClaim, {kind: 'boot'}>;
 type Ready = Extract<SandboxClaim, {kind: 'ready'}>;
+type Refused = Extract<SandboxClaim, {kind: 'unavailable'}>;
 
 export const sandboxName = (volumeName: string, generation: number) => `${volumeName}-${generation}`;
 
-export function sandboxSpec(volumeName: string, generation: number): SandboxSpec {
+/** `lifetimeMs` is what the claim reserved, so Modal's hard timeout is the spend ceiling (PRA-170). */
+export function sandboxSpec(volumeName: string, generation: number, lifetimeMs: number): SandboxSpec {
   return {
     name: sandboxName(volumeName, generation),
     volumeName,
     mountPath: SANDBOX_VOLUME_MOUNT,
-    timeoutMs: SANDBOX_RESOURCES.LIFETIME_MS,
+    timeoutMs: lifetimeMs,
     idleTimeoutMs: SANDBOX_RESOURCES.IDLE_TIMEOUT_MS,
     cpu: SANDBOX_RESOURCES.CPU_CORES,
     memoryMiB: SANDBOX_RESOURCES.MEMORY_MIB,
@@ -77,6 +79,12 @@ export function sandboxResolver<C>(options: SandboxResolverOptions<C>): SandboxR
     const retryAtMs = error.retryAt?.getTime() ?? null;
     log({event: 'sandbox.unavailable', scope, slot, detail: error.detail, retryAtMs});
     return new SandboxUnavailableError(SANDBOX_MESSAGES.unavailable, retryAtMs ?? undefined);
+  };
+
+  /** A free-tier limit: the user sees why and when to retry; nothing was reserved or locked. */
+  const refused = (scope: SandboxScope, claim: Refused) => {
+    log({event: 'sandbox.unavailable', scope, slot: null, detail: claim.reason, retryAtMs: claim.retryAtMs});
+    return new SandboxUnavailableError(SANDBOX_REFUSAL_MESSAGES[claim.reason], claim.retryAtMs);
   };
 
   /** Every call re-reads the stored slot's health and never picks another slot for a placed owner. */
@@ -116,7 +124,7 @@ export function sandboxResolver<C>(options: SandboxResolverOptions<C>): SandboxR
   /** Holds the boot lock for `claim.generation`; every exit either commits or releases it. */
   const boot = async (userId: string, scope: SandboxScope, claim: Boot): Promise<ResolvedSandbox | undefined> => {
     const started = now();
-    const spec = sandboxSpec(claim.volumeName, claim.generation);
+    const spec = sandboxSpec(claim.volumeName, claim.generation, claim.lifetimeMs);
     let account: ModalAccount | undefined;
     let created: string | undefined;
     try {
@@ -167,6 +175,8 @@ export function sandboxResolver<C>(options: SandboxResolverOptions<C>): SandboxR
           case 'unplaced':
             placement = await place(userId, scope, claim.slot);
             continue;
+          case 'unavailable':
+            throw refused(scope, claim);
           case 'wait':
             if (now() + claim.retryAfterMs > deadline) {
               throw new SandboxUnavailableError(SANDBOX_MESSAGES.starting, now() + SANDBOX_BOOT_RETRY_MS);
