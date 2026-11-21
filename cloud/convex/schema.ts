@@ -1,7 +1,8 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { connections } from './composio/schema.js';
-import {domainTables} from './domainSchema.js';
+import { domainTables } from './domainSchema.js';
+import { contextItems, contextVectors } from './context/tables.js';
 
 /** Generic owner-scoped row with optional parentId index. */
 const row = {
@@ -80,4 +81,6 @@ export default defineSchema({
     .index('storage', ['storageId'])
     .index('owner_storage', ['userId', 'storageId'])
     .index('status_expires', ['status', 'expiresAt']),
+  contextItems,
+  contextVectors,
 });

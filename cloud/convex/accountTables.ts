@@ -13,6 +13,8 @@ export const ACCOUNT_PURGE_POLICY = {
   files: 'ownerRows',
   embeddings: 'ownerRows',
   connections: 'ownerRows',
+  contextItems: 'ownerRows',
+  contextVectors: 'ownerRows',
   oauthEmails: 'identity',
   runs: 'workflowRun',
   approvals: 'ownerRows',
@@ -61,6 +63,10 @@ export const ACCOUNT_OWNER_ROWS: Record<TablesWith<'ownerRows'>, RowsBy<string>>
   connections: (ctx, userId, limit) => ctx.db.query('connections')
     .withIndex('by_user_toolkit', q => q.eq('userId', userId)).take(limit),
   embeddings: (ctx, userId, limit) => ctx.db.query('embeddings')
+    .withIndex('owner', q => q.eq('userId', userId)).take(limit),
+  contextItems: (ctx, userId, limit) => ctx.db.query('contextItems')
+    .withIndex('owner_status', q => q.eq('userId', userId)).take(limit),
+  contextVectors: (ctx, userId, limit) => ctx.db.query('contextVectors')
     .withIndex('owner', q => q.eq('userId', userId)).take(limit),
 };
 

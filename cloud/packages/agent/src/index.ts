@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './policy.js';
 export * from './runner.js';
 export * from './provider-error.js';
+export * from './context/embedding.js';
 export * from './collect.js';
 export * from './scripted.js';
 export {buildProviderRequest} from './wire.js';
