@@ -2,7 +2,8 @@ import {SavedValues} from './SavedSecrets';
 import { GlassIconButton, PANEL } from '@praxis/glass';
 import { motion } from 'framer-motion';
 import React from 'react';
-import { PanelLeft } from '../../lib/icons';
+import { ChevronLeft, PanelLeft } from '../../lib/icons';
+import { useIsNarrow } from '../shell/useIsNarrow';
 import { usePraxisStore } from '../../state/store.js';
 import { useContentShift } from '../shell/useContentShift';
 import { AppConnectedScreen } from './AppConnectedScreen.js';
@@ -66,11 +67,20 @@ export function SettingsPage({
   const page = settingsPage(sheet);
   const title = page.title;
   const shift = useContentShift();
+  const narrow = useIsNarrow();
+  React.useEffect(() => {
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) store.setActiveSheet(null);
+    };
+    document.addEventListener('keydown', dismiss);
+    return () => document.removeEventListener('keydown', dismiss);
+  }, [store]);
 
   return (
     <div className={styles.pageShell} data-testid="settings-page" aria-label={title}>
       {!store.desktopSidebarOpen ? (
         <div className={styles.navCluster}>
+          {narrow && <button type="button" onClick={() => store.setActiveSheet(null)} aria-label="Close Settings"><ChevronLeft size={18} /> Back</button>}
           <GlassIconButton
             label="Open sidebar"
             data-testid="nav-sidebar-button"

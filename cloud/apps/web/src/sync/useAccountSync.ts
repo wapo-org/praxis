@@ -5,6 +5,7 @@ import { applySidebarLook, useSidebarPalette } from '../lib/sidebarPalette';
 import { enqueue, flushEdits, pendingEdits } from './outbox';
 import type { PraxisState } from '../state/usePraxisState';
 import { reconcileMessages } from '../state/reconcileMessages';
+import { useAccount } from '../lib/account';
 
 /** Account preferences use one durable row per field: unrelated concurrent edits never overwrite each other. */
 export function useAccountSync(state: PraxisState, streams: { attachRunStream: (run: import('@praxis/protocol').Run, after?: number) => void; applySnapshotToLiveRun: (snapshot: import('@praxis/protocol').RunSnapshot) => void }) {
@@ -12,6 +13,7 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
   const following = React.useRef(new Set<string>());
   const latest = React.useRef(state); latest.current = state;
   const palette = useSidebarPalette();
+  const account = useAccount();
   const values = { theme: state.themeMode, palette, model: state.selectedModelId, effort: state.selectedEffort };
   const caughtUp = React.useRef(false);
   const previous = React.useRef(values);
@@ -26,7 +28,7 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
     void flushEdits();
   }, [values.theme, palette, values.model, values.effort]);
   React.useEffect(() => {
-    if (!state.replicaKey.current || !state.hydrated) return;
+    if (!account || !state.replicaKey.current || !state.hydrated) return;
     let stopped = false;
     const controller = new AbortController();
     let cursor = state.syncCursor; // Bootstrap is an authoritative snapshot; resume after its revision.
@@ -106,5 +108,5 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
       apply({ type: 'sync.response', strategy: 'cursor', root: '', cursor, nextCursor: null, nodes: [], entities: settings.items.map(setting => ({ type: 'sync.entity', key: `accountSetting:${setting.field}`, value: setting, hash: '', deleted: false, updatedAt: new Date().toISOString() })) });
     }).catch(() => {}).finally(() => { if (!stopped) void loop(); });
     return () => { stopped = true; controller.abort(); window.removeEventListener('online', online); };
-  }, [state.hydrated]);
+  }, [state.hydrated, account]);
 }

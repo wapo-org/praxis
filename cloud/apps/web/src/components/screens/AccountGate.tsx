@@ -18,7 +18,7 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
   const hasToken = token !== null;
   const { signOut } = useAuthActions();
   const deletion = useQuery(api.account.deletionOwner, isAuthenticated && user === null ? {} : 'skip');
-  const { readyUser, signOutSession, deleteAccount, deleting, deletionError } =
+  const { readyUser, identity, signOutSession, deleteAccount, deleting, deletionError } =
     useAccountSession(user, token, emailLanding, signOut);
   const code = new URLSearchParams(location.search).get('code') ?? '';
   if (location.pathname === AUTH_ROUTES.validate) return <ValidateEmail code={code} />;
@@ -34,7 +34,7 @@ export function AccountGate({ children }: { children: React.ReactNode }) {
   </AuthFrame>;
   if (!user || !hasToken || readyUser !== user) return <AuthFrame>{AUTH_COPY.loading}</AuthFrame>;
   return <AccountContext.Provider key={user} value={{
-    userId: user, signOut: signOutSession,
+    userId: user, displayName: identity?.name || identity?.email || user, email: identity?.email, signOut: signOutSession,
     deleteAccount,
     busy: deleting, error: '', server: apiClient.getBaseUrl() || window.location.origin,
   }}>{children}</AccountContext.Provider>;

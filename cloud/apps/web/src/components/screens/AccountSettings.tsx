@@ -14,7 +14,7 @@ export function AccountSettings() {
       <Card>
         <div className={styles.row}>
           <span className={styles.rowCopy}>
-            <span>{account.userId}</span>
+            <span>{account.displayName || account.email || account.userId}</span>
             <span className={styles.detail}>Server: {account.server}</span>
           </span>
         </div>
