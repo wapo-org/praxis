@@ -8,6 +8,7 @@
   - `npm --prefix cloud run check:rules` (mechanical rules below; see `cloud/scripts/check-rules.mjs`)
   - `npm --prefix cloud run lint` (oxlint, see **Lint** below)
   - `node cloud/scripts/comment-sweep.mjs check`
+  - `node cloud/scripts/convex-bundle.mjs` (bundles `cloud/convex` with the Convex CLI's esbuild settings; a Node import in a default-runtime module fails here, not at deploy)
   - `npm --prefix cloud run build -w @praxis/web` and `-w @praxis/api`
 - **Behaviour checks:** `verify -- web` (Playwright flows: accessibility snapshot, screenshot, fail on console errors or unlisted 4xx/5xx), `verify -- api`, `verify -- ios` (macOS), `verify -- map --check`. Every flow, check and live suite is owned by a feature in `cloud/verify/feature-map.json`; add the entry with the code. Live checks: `verify -- live <suite>` writes a redacted `proof.json` (contract in `cloud/packages/verify/README.md`).
 - **Comment hygiene (`cloud/scripts/comment-sweep.mjs`):**

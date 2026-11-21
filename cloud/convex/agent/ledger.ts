@@ -1,7 +1,7 @@
 import {ConvexError, v} from 'convex/values';
 import {z} from 'zod';
 import {ToolInvocationSchema} from '@praxis/protocol';
-import {SavedResponseSchema, type CallClaim, type SavedCall, type SavedResponse, type TurnLedger} from '@praxis/agent';
+import {SavedResponseSchema, type CallClaim, type SavedCall, type SavedResponse, type TurnLedger} from '@praxis/agent/harness';
 import {internal} from '../_generated/api.js';
 import {internalMutation, internalQuery, type ActionCtx, type MutationCtx, type QueryCtx} from '../functions.js';
 import {liveScopedRun} from '../runs.js';

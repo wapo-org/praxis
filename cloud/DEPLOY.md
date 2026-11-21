@@ -230,6 +230,7 @@ gate is green. There is no merge or deployment step in CI.
 ## Convex Auth v2 web (PRA-34)
 
 Install with `cd cloud && npm install`, then run `CONVEX_AGENT_MODE=anonymous npx convex dev` for local development.
+Regenerate `convex/_generated` with `CONVEX_AGENT_MODE=anonymous npx convex dev --once`. It pushes to a local anonymous backend, which also loads every module the way a hosted deploy does; set the six variables below on that deployment first. PRs run `node scripts/convex-bundle.mjs` (a `verify -- gate` step) to catch Node imports in default-runtime modules without any deployment.
 Set deployment variables with `npx convex env set NAME` (enter secret values interactively):
 `RESEND_API_KEY`, `SENDER_EMAIL`, `SENDER_NAME`, `SITE_URL`,
 `AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET`.
