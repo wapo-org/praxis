@@ -148,6 +148,7 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     onNavigate?.(pathForSheet(sheet, activeChatId));
   };
   const startNewConversation = () => {
+    setErrorBanner(null);
     pendingChatSwitchRef.current = null;
     navigatingChatRef.current = null;
     activeChatIdRef.current = null;
@@ -161,6 +162,7 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     requestComposerFocus();
   };
   const restoreRoute = (chatId: string | null, sheet: ActiveSheet) => {
+    setErrorBanner(null);
     setActiveSheetState(sheet);
     if (sheet) return;
     activeChatIdRef.current = chatId;

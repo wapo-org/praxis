@@ -32,6 +32,7 @@ export function useChatActions(
       const isSwitch =
         state.activeChatIdRef.current !== chatId || state.activeSheetRef.current !== null;
       if (isSwitch) {
+        setErrorBanner(null);
         state.pendingChatSwitchRef.current = chatId;
       }
       if (typeof performance !== 'undefined') {
