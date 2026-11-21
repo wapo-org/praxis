@@ -382,6 +382,9 @@ nav.list {
   color: var(--sb-mute);
   font: 400 10px / 1.25 var(--font-sans);
 }
+:global([data-sidebar-palette='graphite'][data-theme='light']) .account,
+:global([data-sidebar-palette='graphite'][data-theme='light']) .account svg,
+:global([data-sidebar-palette='graphite'][data-theme='light']) .accountDetail { color: #454545; }
 
 .account svg {
   flex-shrink: 0;

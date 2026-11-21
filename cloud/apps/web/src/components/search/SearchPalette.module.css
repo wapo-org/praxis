@@ -6,6 +6,7 @@
   width: min(var(--sheet-width), calc(100vw - var(--space-6)));
   z-index: 100;
 }
+.position::before { content: ''; position: fixed; inset: 0; z-index: -1; background: rgb(0 0 0 / 12%); pointer-events: none; }
 .surface { overflow: hidden; transform-origin: center var(--space-6); }
 /* The dropdown menus' material: their tint, and their rim (morph.module.css .rim at rest), in light and dark. */
 .surface.surface { --glass-tint: var(--glass-menu-tint); }

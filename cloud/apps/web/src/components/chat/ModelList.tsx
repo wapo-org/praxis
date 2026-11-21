@@ -254,6 +254,7 @@ export function ModelList({ onBack, autoFocus = true }: { onBack: () => void; au
         </p>
       ) : null}
       {showEmpty ? <p className={styles.note}>No models found.</p> : null}
+      {search.busy && rows.length === 0 ? <p className={styles.note} role="status">Loading models…</p> : null}
       <ScrollBlur
         className={styles.list}
         height="100%"

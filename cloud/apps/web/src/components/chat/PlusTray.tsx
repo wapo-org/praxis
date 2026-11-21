@@ -17,7 +17,7 @@ export interface PlusTrayProps {
 
 export function PlusTray({ onPickFiles }: PlusTrayProps) {
   const open = usePraxisStore().plusTrayOpen;
-  return <AnimatePresence>{open ? <TrayPopover key="tray" onPickFiles={onPickFiles} /> : null}</AnimatePresence>;
+  return <AnimatePresence>{open ? <motion.div key="tray" className={styles.popoverMotion} initial={{ clipPath: 'circle(0% at 24px 100%)' }} animate={{ clipPath: 'circle(150% at 24px 100%)' }} exit={{ clipPath: 'circle(0% at 24px 100%)' }} transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}><TrayPopover onPickFiles={onPickFiles} /></motion.div> : null}</AnimatePresence>;
 }
 
 function TrayPopover({ onPickFiles }: PlusTrayProps) {

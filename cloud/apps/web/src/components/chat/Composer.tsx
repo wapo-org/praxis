@@ -218,7 +218,7 @@ export const Composer: React.FC = () => {
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <input ref={fileInputRef} type="file" multiple data-testid="composer-file-input" onChange={handleFileChange} hidden />
+      <input ref={fileInputRef} type="file" accept="*/*" multiple data-testid="composer-file-input" onChange={handleFileChange} hidden />
 
       {mediaError ? (
         <div role="alert" className={styles.alert}>

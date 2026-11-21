@@ -4,6 +4,7 @@
   --tray-fill-hover: color-mix(in srgb, var(--color-ink) 7%, transparent);
   --tray-fill-press: color-mix(in srgb, var(--color-ink) 10%, transparent);
 }
+.popoverMotion { transform-origin: 24px 100%; }
 .anchor {
   position: absolute;
   bottom: calc(100% + var(--space-2));
