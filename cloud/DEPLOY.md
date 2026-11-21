@@ -80,8 +80,7 @@ Browser builds get only the API origin, never a secret.
 | Variable | Value |
 |---|---|
 | `PRAXIS_CONVEX_SERVER_TOKEN` | Same value as on Vercel. Authenticates server RPCs and signs account recovery callbacks. |
-| `PRAXIS_API_URL` | Same HTTPS API origin as on Vercel. Convex sends signed account recovery callbacks and `/api/turn` calls here. |
-| `PRAXIS_TURN_CURRENT_SIGNING_KEY` | Same value as on Vercel. Signs each workflow turn request; without it (or an https `PRAXIS_API_URL`) turns fail closed. |
+| `PRAXIS_API_URL` | Same HTTPS API origin as on Vercel. Convex sends signed account recovery callbacks here. |
 
 ## 1. Convex
 
@@ -117,18 +116,18 @@ Every Vercel preview shares one backend: the `develop` branch aliases of both pr
 |---|---|---|
 | `praxis-api` Preview | `PRAXIS_API_URL` | `https://praxis-api-git-develop-artyazs-projects.vercel.app` |
 | `praxis-api` Preview | `PRAXIS_WEB_ORIGINS` | `https://praxis-web-git-develop-artyazs-projects.vercel.app` |
-| `praxis-api` Preview | `CONVEX_URL`, `PRAXIS_CONVEX_SERVER_TOKEN`, `PRAXIS_TURN_CURRENT_SIGNING_KEY`, `PRAXIS_ENCRYPTION_KEYS` | preview Convex URL; token and signing key equal to the Convex values |
+| `praxis-api` Preview | `CONVEX_URL`, `PRAXIS_CONVEX_SERVER_TOKEN`, `PRAXIS_ENCRYPTION_KEYS` | preview Convex URL; token and keyring equal to the Convex values |
 | `praxis-api` Preview | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` | a separate preview Upstash database and QStash; until they exist the preview API refuses to start |
 | `praxis-web` Preview | `VITE_API_BASE_URL`, `VITE_CONVEX_URL` | the API `develop` alias; the preview Convex URL |
 | Convex preview | `PRAXIS_API_URL` | the API `develop` alias |
 | Convex preview | `SITE_URL` | the web `develop` alias |
-| Convex preview | `PRAXIS_CONVEX_SERVER_TOKEN`, `PRAXIS_TURN_CURRENT_SIGNING_KEY` | same values as `praxis-api` Preview |
+| Convex preview | `PRAXIS_CONVEX_SERVER_TOKEN`, `PRAXIS_ENCRYPTION_KEYS` | same values as `praxis-api` Preview |
 
 - **Why aliases.** `PRAXIS_API_URL`, `PRAXIS_WEB_ORIGINS` and `SITE_URL` are exact origins, and every deployment has its own URL. Vercel keeps `<project>-git-develop-<team>.vercel.app` on the newest `develop` build; branch aliases of other branches end in a per-project hash, so web and API aliases cannot be derived from each other.
 - **Per-PR previews** run their own web build against the `develop` API, whose `PRAXIS_WEB_ORIGINS` names only the `develop` web alias, so signed-in API calls from a PR web preview fail CORS. Hands-on checks with real data run on the `develop` previews.
 - **Auth redirects.** `SITE_URL` is the only allowed Google redirect origin and the base of verification, recovery and change-email links. They complete only on the `develop` web alias; on a PR preview, use email and password.
 - **Deployment protection** stays on for both projects. Automation sends `x-vercel-protection-bypass` with the project's Protection Bypass for Automation secret (Vercel → Settings → Deployment Protection); a browser gets a `SameSite=None` bypass cookie per host by adding `x-vercel-set-bypass-cookie: samesitenone`. `praxis-api` has an OPTIONS allowlist for `/`, because CORS preflights carry no cookie; the API answers them itself.
-- **Server-to-server callbacks.** QStash continuations and Convex recovery or turn calls to the protected API preview carry no bypass secret, so Vercel rejects them; preview runs must finish within one slice until those callers send the bypass header.
+- **Server-to-server callbacks.** QStash continuations and Convex recovery calls to the protected API preview carry no bypass secret, so Vercel rejects them; preview runs must finish within one slice until those callers send the bypass header.
 - **Check it** from `cloud/` with `PRAXIS_PREVIEW_API_URL`, `PRAXIS_PREVIEW_WEB_URL` (the two aliases) and `PRAXIS_PREVIEW_API_BYPASS_SECRET` set: `npm run verify -- live preview-env`. The reviewer QA profile (`/etc/praxis-review/qa-profile.json`) needs `vercel.api_project_id` and `vercel.api_bypass_secret`.
 
 ## OAuth and callback URLs to register
@@ -245,40 +244,6 @@ The HTTPS page for the future iOS handoff must share the SITE_URL origin.
 No cloud deployment is part of PRA-34 verification.
 Component tests use the upstream fake Resend component, retaining the real password WASM and auth code.
 Run them with `npx vitest run tests/auth-v2.test.ts`.
-### Internal turn caller (PRA-38)
-
-Set `PRAXIS_TURN_CURRENT_SIGNING_KEY` to a random secret of at least 32 characters,
-shared only by Convex server actions and the Vercel worker. Optionally set
-`PRAXIS_TURN_NEXT_SIGNING_KEY` (same minimum length) during rotation. Both keys
-verify; switch the caller before promoting the next key. These are signing keys,
-not HTTP provider credential pools.
-
-Convex (`turns.run`) sends `POST /api/turn` with `x-praxis-timestamp` containing canonical Unix
-milliseconds and `x-praxis-signature` containing lowercase SHA-256 HMAC hex over
-the exact UTF-8 timestamp, a dot, and the raw request bytes. Skew is limited to
-±5 minutes. The signed body binds `userId`; the Convex caller must derive that
-owner from its verified auth/workflow context. A browser cookie or bearer session
-cannot authorize this route. The streamed raw body limit is 1,000,000 bytes.
-
-The worker atomically records a hashed envelope receipt through
-`AdapterBundle.store.putIfRevision` in Convex. Exact replay returns 401 across
-instances and signing-key rotation. Retries must use a fresh timestamp/signature
-while preserving `expectedTurnIndex`; durable turn acquisition/commit makes
-those retries idempotent. Receipt rows contain only expiry, not credentials;
-a future retention sweep may remove them only after `expiresAtMs`.
-
-The signed body is `{userId, chatId, runId, generation, expectedTurnIndex, nonce}`; the nonce is
-fresh per attempt so overlapping duplicate deliveries never present one envelope. The worker
-writes back only through the `turns.commit` server mutation, and answers 409 (`TurnIndexConflict`)
-when that fence rejects the index; Convex then reads the saved flags. A 401 fails the run,
-5xx and timeouts retry the workflow step.
-
-PRA-38 supplies the contract and authentication boundary. Until PRA-39 supplies
-`AdapterBundle.turn.execute`, an authenticated request returns 503. Never
-replace that with a successful dummy result. Execution must validate owner/chat/run
-relationships against durable state and return only flags and addressed child IDs;
-verified subagent handoffs and message content remain in durable state.
-
 ### Built-in web search and reading (PRA-60)
 
 Configure `EXA_API_KEY` and `FIRECRAWL_API_KEY` in the API environment. Both support
@@ -295,8 +260,8 @@ The ledger itself is the `platformLedger` row for that month. Usage rows have ki
 PRA-22 reconciliation must settle or release interrupted web reservations
 and preserve `webSpendCall` receipts across the retry horizon.
 
-The thin turn worker must include `webToolClassifier` when composing its trusted
-classification registry; external-egress retains PRA-76 approval requirements.
+When the web tools move into the Convex harness (`convex/agent/turn.ts`), they must carry their
+`boundary` so `toolBoundaryClassifier` classifies them; external-egress retains PRA-76 approval requirements.
 The account deletion sweep already purges owner `toolState` and output records.
 Verify real search, scrape, credential failover, Upstash TTL and usage settlement in
 the `Live check: PRA-60` sub-issue before moving the parent to Done.

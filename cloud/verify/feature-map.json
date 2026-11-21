@@ -58,7 +58,7 @@
     },
     {
       "id": "convex.workflow-turn-action",
-      "title": "Signed /api/turn action, expectedTurnIndex idempotency and fenced worker commit",
+      "title": "Convex turn action, expectedTurnIndex idempotency and fenced commit",
       "issue": "PRA-30",
       "surfaces": ["api"],
       "covers": [{"command": "gate"}]

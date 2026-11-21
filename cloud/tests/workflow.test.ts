@@ -77,7 +77,7 @@ describe('durable workflow skeleton', () => {
   it('settles the workflow when its chat is deleted', async () => {
     const {t, owner, scope, runId} = await setup();
     await owner.mutation(api.chats.remove, {chatId});
-    expect(await t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 0}))).toEqual({outcome: 'conflict'});
+    expect(await t.mutation(internal.turns.commitInternal, commitArgs({...scope, expectedTurnIndex: 0}))).toEqual({outcome: 'conflict'});
     await expect(t.action(internal.turns.run, {...scope, expectedTurnIndex: 0})).rejects.toThrow('unavailable');
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     expect(await t.run(ctx => ctx.db.get(runId))).toMatchObject({value: {status: 'cancelled'}, workflow: {nextTurnIndex: 0}});
