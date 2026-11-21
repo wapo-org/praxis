@@ -2,6 +2,13 @@
   "$schema": "praxis-verify/feature-map@1",
   "features": [
     {
+      "id": "agents.context-index",
+      "title": "Owner-scoped context items, vector embeddings, and bounded re-embedding",
+      "issue": "PRA-177",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
       "id": "agents.harness-tools",
       "title": "Subagent harness registry, safe grants, model validation and deterministic collaboration instructions",
       "issue": "PRA-115",

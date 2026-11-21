@@ -198,6 +198,10 @@ OAuth-first email collisions reject password verification transactionally; pendi
 Account deletion fences the owner before purging data and blobs. The final batch erases the owner's `oauthEmails`, Convex Auth component credentials and user row in one transaction.
 The API derives the application owner from the verified Convex session.
 
+## Context index (PRA-177)
+
+`contextItems` stores bounded owner-scoped summaries and searchable text for tools, skills, memories and later document/history sources. `contextVectors` stores the current model vector by item and owner/model/dimension/kind scope. Shared rows use the reserved `@shared` owner and are excluded from account purge queries. Internal mutations upsert, enable and remove rows. Content changes mark an item pending, and the next embedding action uses the owner's sealed OpenRouter key. Embedding failures retry with exponential minute backoff up to five attempts, while missing or rejected credentials leave items pending for a later turn. Re-embedding is an explicit bounded page operation invoked by retrieval when it detects stale model metadata. Account purge removes user-owned items and vectors.
+
 Dependencies:
 - `@convex-dev/auth@2.0.0`: component authentication and browser session lifecycle (latest dist-tag confirmed v2).
 - `@convex-dev/resend@0.2.10`: documented email delivery component for verification and recovery.

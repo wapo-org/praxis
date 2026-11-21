@@ -6,6 +6,7 @@ const responseSchema = z.object({
   data: z.array(z.object({embedding: z.array(z.number().finite())})),
   error: z.object({message: z.string()}).optional(),
 });
+const EMBEDDING_TIMEOUT_MS = 5_000;
 
 export interface EmbeddedQuery {
   text: string;
@@ -44,7 +45,7 @@ export async function embedQuery(
     ? [{type: 'text', text: input.text}, ...input.images.map(image => ({type: 'image_url', image_url: {url: image}}))]
     : input.text;
   const response = await request(key, model, dimensions, [content], fetcher);
-  if (!response.ok && input.images?.length) {
+  if (!response.ok && input.images?.length && (response.status === 400 || response.status === 422)) {
     const retry = await request(key, model, dimensions, [input.text], fetcher);
     if (!retry.ok) throw await failure(retry);
     return {embedding: readSingleEmbedding(await retry.json(), dimensions), imagesDropped: true};
@@ -90,7 +91,7 @@ async function request(key: SealedSecret, model: string, dimensions: number, inp
       method: 'POST',
       headers: {Authorization: `Bearer ${key.reveal()}`, 'Content-Type': 'application/json'},
       body: JSON.stringify({model, input, dimensions, encoding_format: 'float'}),
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(EMBEDDING_TIMEOUT_MS),
     });
   } catch (error) {
     throw new ProviderFailure('unavailable', 'Embedding provider is unavailable', {cause: error});
