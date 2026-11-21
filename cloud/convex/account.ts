@@ -10,6 +10,8 @@ import {activeOwner} from './accountOwner.js';
 import {ACCOUNT_OWNER_ROWS, ACCOUNT_PURGE_BATCH_MAX} from './accountTables.js';
 import { ACCOUNT_DELETE_RETRY_MS } from './accountRecovery.js';
 import {purgeOwnedRun} from './workflows/purge.js';
+import { takeBounded } from './boundedRead.js';
+import { OAUTH_EMAILS_PER_USER_MAX } from './listConstants.js';
 
 async function revokeOwnerSessions(ctx: MutationCtx, userId: Id<'users'>, keepSessionId?: string): Promise<void> {
   const sessions = await ctx.runQuery(components.auth.public.listSessions, { userId });
@@ -24,7 +26,8 @@ async function eraseAuthCredentials(ctx: MutationCtx, userId: Id<'users'>): Prom
   await ctx.runMutation(components.authGoogle.provider.deleteUser, { userId });
   await ctx.runMutation(components.authEmail.verifiedEmails.deleteUser, { userId });
   // Keep the OAuth email reserved until the associated credentials are erased.
-  const emails = await ctx.db.query('oauthEmails').withIndex('user', q => q.eq('userId', userId)).collect();
+  const emails = await takeBounded(ctx.db.query('oauthEmails').withIndex('user', q => q.eq('userId', userId)),
+    OAUTH_EMAILS_PER_USER_MAX, 'OAuth email');
   for (const email of emails) await ctx.db.delete(email._id);
 }
 

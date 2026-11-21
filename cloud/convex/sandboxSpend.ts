@@ -3,11 +3,13 @@ import {
   SANDBOX_FREE_TIER as TIER,
   SANDBOX_LIFECYCLE,
   SANDBOX_RESOURCES,
+  SandboxScopeSchema,
   type SandboxRefusalReason,
 } from '@praxis/protocol';
 import {availableMicroUsd, modalSandboxAffordableMs, modalSandboxMicroUsd, reserve} from '@praxis/spend';
 import type {Doc} from './_generated/dataModel.js';
 import type {MutationCtx} from './functions.js';
+import {takeBounded} from './boundedRead.js';
 import {closePlatformSpend, loadPlatformLedger, nextPeriodStartMs, periodFor, readEncoded, savePlatformLedger,
   writeEncoded} from './platformLedger.js';
 
@@ -92,7 +94,9 @@ function adjust(spend: Spend | undefined, delta: {charged: number; reserved: num
 }
 
 async function liveLimit(ctx: MutationCtx, userId: string, scope: string, now: number): Promise<Admission | undefined> {
-  const rows = await ctx.db.query('sandboxes').withIndex('by_user_scope', q => q.eq('userId', userId)).collect();
+  // One row per scope, so the range is as small as the scope enum.
+  const rows = await takeBounded(ctx.db.query('sandboxes').withIndex('by_user_scope', q => q.eq('userId', userId)),
+    SandboxScopeSchema.options.length, 'sandbox');
   const others = rows.filter(row => row.scope !== scope).map(row => liveUntil(row, now)).filter(until => until !== undefined);
   if (others.length < TIER.LIVE_SANDBOXES_PER_USER_MAX) return undefined;
   return {kind: 'unavailable', reason: 'live_limit', retryAtMs: Math.min(...others)};

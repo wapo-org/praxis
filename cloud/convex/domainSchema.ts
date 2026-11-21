@@ -203,4 +203,19 @@ export const domainTables = {
   })
     .index('by_user_id', ['userId', 'id'])
     .index('by_user_output', ['userId', 'parentId']),
+  // One offloaded tool result (PRA-26); its text lives in `outputs` chunks `${id}:${n}` with `parentId = id`.
+  toolOutputs: defineTable({
+    userId: v.string(),
+    id: v.string(),
+    chatId: v.string(),
+    runId: v.string(),
+    callId: v.string(),
+    characters: v.number(),
+    chunks: v.number(),
+    // False until a committed message references it; the sweep removes uncommitted ones after a day.
+    committed: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index('by_user_id', ['userId', 'id'])
+    .index('by_committed_created', ['committed', 'createdAt']),
 };

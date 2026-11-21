@@ -22,6 +22,7 @@ export const ACCOUNT_PURGE_POLICY = {
   messages: 'ownerRows',
   sandboxes: 'ownerRows',
   outputs: 'ownerRows',
+  toolOutputs: 'ownerRows',
   users: 'identity',
 } as const satisfies Record<TableNames, 'ownerRows' | 'workflowRun' | 'runChild' | 'identity'>;
 
@@ -42,6 +43,8 @@ export const ACCOUNT_OWNER_ROWS: Record<TablesWith<'ownerRows'>, RowsBy<string>>
   sandboxes: (ctx, userId, limit) => ctx.db.query('sandboxes')
     .withIndex('by_user_scope', q => q.eq('userId', userId)).take(limit),
   outputs: (ctx, userId, limit) => ctx.db.query('outputs')
+    .withIndex('by_user_id', q => q.eq('userId', userId)).take(limit),
+  toolOutputs: (ctx, userId, limit) => ctx.db.query('toolOutputs')
     .withIndex('by_user_id', q => q.eq('userId', userId)).take(limit),
   records: (ctx, userId, limit) => ctx.db.query('records')
     .withIndex('owner_kind_id', q => q.eq('userId', userId)).take(limit),

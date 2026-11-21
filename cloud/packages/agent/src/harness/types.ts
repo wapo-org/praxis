@@ -66,6 +66,8 @@ export interface TurnOptions {
   rehydrate?(messages: readonly Message[]): Promise<Message[]>;
   /** Ids for committed messages; defaults to random UUIDs. */
   newId?(): string;
+  /** Offloads a result over MAX_RESULT_CHARACTERS before the ledger saves it; without it the result is only truncated. */
+  spill?(callId: string, text: string): Promise<string>;
 }
 
 export type TurnRun =

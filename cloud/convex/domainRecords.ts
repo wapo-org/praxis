@@ -66,38 +66,49 @@ export function domainRow(kind: DomainKind, doc: DomainDoc) {
   return {...base, parentId: doc.chatId, value: doc.value};
 }
 
-export async function listDomainRows(ctx: QueryCtx, userId: string, kind: DomainKind, parentId?: string) {
-  let docs: DomainDoc[];
+type Page<T> = {page: T[]; continueCursor: string; isDone: boolean};
+type Paged<T> = {paginate(options: {cursor: string | null; numItems: number}): Promise<Page<T>>};
+export type DomainListPage = {rows: ReturnType<typeof domainRow>[]; cursor: string | null};
+
+function domainQuery(ctx: QueryCtx, userId: string, kind: DomainKind, parentId?: string): Paged<DomainDoc> | undefined {
   switch (kind) {
     case APPROVAL_RECORD_KIND:
-      docs = parentId === undefined
-        ? await ctx.db.query('approvals').withIndex('by_user_id', q => q.eq('userId', userId)).collect()
-        : await ctx.db.query('approvals').withIndex('by_user_run', q => q.eq('userId', userId).eq('runId', parentId)).collect();
-      break;
+      return parentId === undefined
+        ? ctx.db.query('approvals').withIndex('by_user_id', q => q.eq('userId', userId))
+        : ctx.db.query('approvals').withIndex('by_user_run', q => q.eq('userId', userId).eq('runId', parentId));
     case 'chat':
-      docs = parentId === undefined
-        ? await ctx.db.query('chats').withIndex('by_user_id', q => q.eq('userId', userId)).collect()
-        : [];
-      break;
+      return parentId === undefined ? ctx.db.query('chats').withIndex('by_user_id', q => q.eq('userId', userId)) : undefined;
     case 'message':
-      docs = parentId === undefined
-        ? await ctx.db.query('messages').withIndex('by_user_id', q => q.eq('userId', userId)).collect()
-        : await ctx.db.query('messages').withIndex('by_chat_sequence', q => q.eq('userId', userId).eq('chatId', parentId)).collect();
-      break;
-    case 'run': {
-      const rows = parentId === undefined
-        ? await ctx.db.query('runs').withIndex('by_user_id', q => q.eq('userId', userId)).collect()
-        : await ctx.db.query('runs').withIndex('by_user_chat', q => q.eq('userId', userId).eq('chatId', parentId)).collect();
-      docs = rows.filter(row => !row.workflow);
-      break;
-    }
+      return parentId === undefined
+        ? ctx.db.query('messages').withIndex('by_user_id', q => q.eq('userId', userId))
+        : ctx.db.query('messages').withIndex('by_chat_sequence', q => q.eq('userId', userId).eq('chatId', parentId));
+    case 'run':
+      return parentId === undefined
+        ? ctx.db.query('runs').withIndex('by_user_id', q => q.eq('userId', userId))
+        : ctx.db.query('runs').withIndex('by_user_chat', q => q.eq('userId', userId).eq('chatId', parentId));
     case 'outputChunk':
-      docs = parentId === undefined
-        ? await ctx.db.query('outputs').withIndex('by_user_id', q => q.eq('userId', userId)).collect()
-        : await ctx.db.query('outputs').withIndex('by_user_output', q => q.eq('userId', userId).eq('parentId', parentId)).collect();
-      break;
+      return parentId === undefined
+        ? ctx.db.query('outputs').withIndex('by_user_id', q => q.eq('userId', userId))
+        : ctx.db.query('outputs').withIndex('by_user_output', q => q.eq('userId', userId).eq('parentId', parentId));
   }
-  return docs.filter(doc => !('lastSequence' in doc && doc.value.deletedAt)).map(doc => domainRow(kind, doc));
+}
+
+/** Workflow runs and deleted chats are not Store rows; a filtered page may come back short, the cursor still advances. */
+function isStoreRow(doc: DomainDoc): boolean {
+  if ('lastSequence' in doc) return !doc.value.deletedAt;
+  return !('workflow' in doc && doc.workflow);
+}
+
+export async function listDomainRows(
+  ctx: QueryCtx, userId: string, kind: DomainKind, page: {cursor: string | null; numItems: number}, parentId?: string,
+): Promise<DomainListPage> {
+  const query = domainQuery(ctx, userId, kind, parentId);
+  if (!query) return {rows: [], cursor: null};
+  const result = await query.paginate(page);
+  return {
+    rows: result.page.filter(isStoreRow).map(doc => domainRow(kind, doc)),
+    cursor: result.isDone ? null : result.continueCursor,
+  };
 }
 
 type DomainWrite = {

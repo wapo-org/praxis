@@ -8,3 +8,4 @@ export * from './openrouter-model.js';
 export type {TurnOutput} from '../turn-output.js';
 export type {AgentTool} from '../types.js';
 export type {ToolClassifier} from '../boundary/policy.js';
+export * from '../tool-output.js';

@@ -13,7 +13,7 @@ Cloud paths are relative to `cloud/`. Audited 2026-10-31 (WP-A7). Status values:
 | JS persistent kv, attachment file scoping (`fs`, hidden-from-code) | AgentJS/JSSession.swift | sandbox.ts + builtin.ts `javascriptTool` | done |
 | JS nested tool calls through policy | RunJavaScriptTool.swift | sandbox `tools.<name>` → `execution.callTool` | done |
 | `look_at_image` (vision fallback), with crop | AgentRuntime/ImageReading.swift | packages/agent/src/image-reader.ts, modules.ts `visionTools`, tools/image-crop.ts | done |
-| Spilled tool output + `read_tool_output` | AgentCore/Tools/ToolRegistry.swift | runner spill → `output` rows; execution.ts `readToolOutputTool` | done (WP-A7) |
+| Spilled tool output + `read_tool_output` | AgentCore/Tools/ToolRegistry.swift | runner spill → `output` rows; Convex harness spill → `toolOutputs` + `outputs` chunks; shared `toolOutputReaderTool` | done (WP-A7, PRA-26) |
 | **Skills** | | | |
 | Catalog in the frozen system prompt + "new skills" turn notes | SkillCatalog.swift, TurnNotes.swift | apps/api/src/conversation.ts | done |
 | Skill CRUD | SkillStore.swift | features/tools/index.ts `/skills` | done |

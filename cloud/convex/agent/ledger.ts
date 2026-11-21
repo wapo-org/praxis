@@ -7,7 +7,10 @@ import {internalMutation, internalQuery, type ActionCtx, type MutationCtx, type 
 import {liveScopedRun} from '../runs.js';
 import {runScope} from '../workflows/validators.js';
 import type {TurnScope} from '../workflows/turnState.js';
-import {AGENT_ERRORS, LEDGER_KIND, LEDGER_VALUE_BYTES_MAX} from './constants.js';
+import {assertDocumentFits} from '../sizeGuard.js';
+import {takeBounded} from '../boundedRead.js';
+import {LEDGER_ROWS_PER_TURN_MAX} from '../listConstants.js';
+import {AGENT_ERRORS, LEDGER_KIND} from './constants.js';
 
 const turnArgs = {...runScope, expectedTurnIndex: v.number()};
 const Started = z.object({started: z.literal(true)});
@@ -30,9 +33,9 @@ function decoded(value: {encoded?: string} | object): unknown {
 }
 
 function encoded(value: unknown): {encoded: string} {
-  const text = JSON.stringify(value);
-  if (new TextEncoder().encode(text).byteLength > LEDGER_VALUE_BYTES_MAX) throw new ConvexError(AGENT_ERRORS.ledger);
-  return {encoded: text};
+  const row = {encoded: JSON.stringify(value)};
+  assertDocumentFits(LEDGER_KIND, row);
+  return row;
 }
 
 /** The run still holds this turn: running, same generation, and the cursor still at this index. */
@@ -41,15 +44,15 @@ export async function turnIsLive(ctx: QueryCtx, scope: TurnScope): Promise<boole
   return run?.value.status === 'running' && run.workflow.nextTurnIndex === scope.expectedTurnIndex;
 }
 
-async function requireLiveTurn(ctx: MutationCtx, scope: TurnScope) {
+export async function requireLiveTurn(ctx: MutationCtx, scope: TurnScope) {
   if (!await turnIsLive(ctx, scope)) throw new ConvexError(AGENT_ERRORS.fenced);
 }
 
 /** Deletes one turn's rows; the commit calls it in its own transaction. */
 export async function clearLedger(ctx: MutationCtx, scope: TurnScope): Promise<void> {
   const prefix = ledgerPrefix(scope);
-  const rows = await ctx.db.query('toolState').withIndex('owner_kind_id', q => q
-    .eq('userId', scope.userId).eq('kind', LEDGER_KIND).gte('id', prefix).lt('id', `${prefix}￿`)).collect();
+  const rows = await takeBounded(ctx.db.query('toolState').withIndex('owner_kind_id', q => q
+    .eq('userId', scope.userId).eq('kind', LEDGER_KIND).gte('id', prefix).lt('id', `${prefix}￿`)), LEDGER_ROWS_PER_TURN_MAX, 'ledger');
   for (const stale of rows) await ctx.db.delete(stale._id);
 }
 

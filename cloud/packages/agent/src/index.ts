@@ -31,3 +31,4 @@ export * from './harness/ai-response.js';
 export * from './harness/prompt.js';
 export * from './harness/turn.js';
 export * from './harness/openrouter-model.js';
+export * from './tool-output.js';

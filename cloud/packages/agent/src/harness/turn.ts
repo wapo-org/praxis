@@ -8,6 +8,7 @@ import type {ToolClassifier} from '../boundary/policy.js';
 import {canonical} from '../policy.js';
 import {turnFailure} from '../turn-failure.js';
 import {turnOutput} from '../turn-output.js';
+import {compactResult} from '../tool-output.js';
 import {requestMessages} from './ai-messages.js';
 import {InactiveTurn, ledgerModel, providerFailureOf, providerResponse, type ResponseSlot} from './ai-response.js';
 import {frozenPrompt, toolDefinitions} from './prompt.js';
@@ -82,13 +83,16 @@ async function dispatch(d: Dispatch, {id, call, invalid}: Invocation, tainted: b
     }, d.registry, async checked => {
       if (!await d.active()) throw new UncertainToolCall(id);
       dispatched = true;
-      const output = ToolResultSchema.parse(await tool.execute(checked.args, {
+      const executed = ToolResultSchema.parse(await tool.execute(checked.args, {
         ...context, userId: input.userId, chatId: input.chatId, runId: input.runId,
         mode: input.mode, callId: id, tainted,
         async callTool() {
           throw new ToolBoundaryError(toolError('policy-denied', 'Nested dispatch needs its own durable boundary call.'));
         },
       }));
+      // Offload before the ledger saves the call, so neither the ledger row nor the message carries the full text.
+      const {spill} = options;
+      const output = await compactResult(executed, spill && (text => spill(id, text)));
       joined ||= output.tainted === true;
       return JsonValueSchema.parse(JSON.parse(JSON.stringify(output)));
     }, options.receipts?.[id], undefined, error => {

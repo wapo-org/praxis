@@ -1,36 +1,18 @@
 import {readWebOutput} from './features/web/output.js';
-import {MAX_RESULT_CHARACTERS, textResult, type AgentTool} from '@praxis/agent';
-import {READ_TOOL_OUTPUT_TOOL_NAME} from '@praxis/protocol';
+import {toolOutputReaderTool, type AgentTool, type ToolOutputReader} from '@praxis/agent';
 import type {ApiService} from './service.js';
 
-/** Leaves room for the page header below MAX_RESULT_CHARACTERS. */
-export const MAX_READ_CHARACTERS = MAX_RESULT_CHARACTERS - 200;
-const DEFAULT_READ = 20_000;
+export {MAX_READ_CHARACTERS} from '@praxis/agent';
 
-/** Pages through spilled tool results in this chat. */
+/** Pages through spilled tool results in this chat; a missing or partial output reads as no longer available. */
 export function readToolOutputTool(service: ApiService): AgentTool {
-  return {
-    spec: {
-      type: 'tool.spec', name: READ_TOOL_OUTPUT_TOOL_NAME, source: {type: 'builtin'}, traits: ['readOnly', 'idempotent'],
-      description: 'Read more of a tool result that was truncated. Pass the id from the truncation note and a character offset.',
-      inputSchema: {type: 'object', properties: {id: {type: 'string', description: 'Id from the truncation note'}, offset: {type: 'integer', description: 'Character offset to start at'}, limit: {type: 'integer', description: `Characters to read (default ${DEFAULT_READ}, at most ${MAX_READ_CHARACTERS})`}}, required: ['id', 'offset']},
-    },
-    // Spilled output is external tool data, so paging it back in taints the run like the original result.
-    boundary: {capabilities: ['read'], decision: 'allow', untrustedSource: true},
-    async execute(args, context) {
-      const a = (args && typeof args === 'object' && !Array.isArray(args) ? args : {}) as {id?: unknown; offset?: unknown; limit?: unknown};
-      if (typeof a.id !== 'string') return textResult('Missing id', true);
-      const offset = Math.max(0, Number.isInteger(a.offset) ? (a.offset as number) : 0);
-      const limit = Math.min(Number.isInteger(a.limit) && (a.limit as number) > 0 ? (a.limit as number) : DEFAULT_READ, MAX_READ_CHARACTERS);
-      const row = await service.adapters.store.get(context.userId, 'output', a.id);
-      if (!row || row.deleted || row.value.chatId !== context.chatId) return textResult(`No stored output with id ${a.id}. Stored output is kept per conversation.`, true);
-      if (row.value.chunkIds) {
-        const {page, characters} = await readWebOutput(service.adapters.store, context.userId, context.chatId, row.value, offset, limit);
-        return textResult(`[characters ${offset}–${Math.min(characters, offset + page.length)} of ${characters}]\n${page}`);
-      }
-      const text = String(row.value.text ?? '');
-      const page = text.slice(offset, offset + limit);
-      return textResult(`[characters ${offset}–${Math.min(text.length, offset + page.length)} of ${text.length}]\n${page}`);
-    },
+  const {store} = service.adapters;
+  const read: ToolOutputReader = async (context, id, offset, limit) => {
+    const row = await store.get(context.userId, 'output', id);
+    if (!row || row.deleted || row.value.chatId !== context.chatId) return undefined;
+    if (row.value.chunkIds) return readWebOutput(store, context.userId, context.chatId, row.value, offset, limit);
+    const text = String(row.value.text ?? '');
+    return {page: text.slice(offset, offset + limit), characters: text.length};
   };
+  return toolOutputReaderTool(read);
 }

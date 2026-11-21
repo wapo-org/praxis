@@ -24,15 +24,10 @@ interface GroupOutput {
 
 function assistantMessage(model: ModelMessage & {kind: 'ai'}, c: Capabilities): JsonObject | undefined {
   const raw = model.envelope.raw;
-  // The provider's own assistant object carries reasoning_details (with signatures) that must replay unchanged.
-  if (c.tools && raw && object(raw.data).role === 'assistant') {
-    const replay = structuredClone(object(raw.data));
-    replay.role = 'assistant';
-    return replay;
-  }
   const calls = model.parts.filter(p => p.type === 'toolCall');
   const txt = model.parts.filter(p => p.type === 'text').map(p => p.text ?? '').join('');
-  if (!txt && !calls.length) return undefined;
+  const replay = c.tools && raw && object(raw.data).role === 'assistant';
+  if (!txt && !calls.length && !replay) return undefined;
   const content = c.tools ? txt || null : [txt, ...calls.map(flattenCall)].filter(Boolean).join('\n');
   const message: JsonObject = {role: 'assistant', content};
   if (c.tools && calls.length) {
@@ -40,7 +35,8 @@ function assistantMessage(model: ModelMessage & {kind: 'ai'}, c: Capabilities): 
       id: p.callId ?? '', type: 'function', function: {name: p.name ?? '', arguments: p.arguments ?? '{}'},
     }));
   }
-  return message;
+  // The provider's own fields (reasoning_details with signatures) replay unchanged; the Convex harness stores only those.
+  return replay && raw ? {...message, ...structuredClone(object(raw.data)), role: 'assistant'} : message;
 }
 
 function addToolResult(out: GroupOutput, part: MessagePart, c: Capabilities): void {

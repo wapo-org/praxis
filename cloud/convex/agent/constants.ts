@@ -11,12 +11,9 @@ export const LEDGER_KIND = 'turnLedger';
 export const TURN_DEADLINE_MS = 600_000;
 /** History beyond this fails closed until context shortening (PRA-46) lands; a query reads at most 16 MiB. */
 export const HISTORY_MESSAGES_MAX = 2_000;
-/** A ledger row must fit one Convex document (1 MiB). */
-export const LEDGER_VALUE_BYTES_MAX = 900_000;
 export const AGENT_ERRORS = {
   encryption: 'Secret storage is not configured',
   sealed: 'The OpenRouter key could not be read',
   history: 'Chat history is too long for one turn',
-  ledger: 'Turn ledger value is too large',
   fenced: 'The run left this turn',
 } as const;

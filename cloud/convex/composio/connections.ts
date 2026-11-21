@@ -4,6 +4,8 @@ import { activeOwner } from '../accountOwner.js';
 import { internal } from '../_generated/api.js';
 import { authedAction, authedQuery, internalMutation } from '../functions.js';
 import { webhookStatus } from './schema.js';
+import { takeBounded } from '../boundedRead.js';
+import { CONNECTIONS_PER_USER_MAX } from '../listConstants.js';
 
 export const markFromWebhook = internalMutation({
   args: { connectedAccountId: v.string(), status: webhookStatus },
@@ -22,9 +24,8 @@ export const markFromWebhook = internalMutation({
 export const list = authedQuery({
   args: {},
   handler: async (ctx, { userId }) => {
-    return ctx.db.query('connections')
-      .withIndex('by_user_toolkit', q => q.eq('userId', userId))
-      .collect();
+    return takeBounded(ctx.db.query('connections').withIndex('by_user_toolkit', q => q.eq('userId', userId)),
+      CONNECTIONS_PER_USER_MAX, 'connection');
   },
 });
 
