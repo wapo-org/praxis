@@ -42,6 +42,7 @@ export const MODAL_GIB_SECOND_MICRO_USD = 6.72;
 export const MODAL_DEFAULT_CORES = 1;
 export const MODAL_DEFAULT_MEMORY_GIB = 2;
 export const SECONDS_PER_MINUTE = 60;
+export const MS_PER_SECOND = 1_000;
 
 function wholeMicroUsd(value: number): number {
   return Math.ceil(value - 1e-9);
@@ -69,10 +70,25 @@ export function firecrawlMaxMicroUsd(pages: number, pdfPages = 0): number {
   return (pages * FIRECRAWL_PAGE_CREDITS_MAX + pdfPages * FIRECRAWL_PDF_PAGE_CREDITS_MAX) * FIRECRAWL_CREDIT_MICRO_USD;
 }
 
+export function modalSandboxSecondMicroUsd(cores = MODAL_DEFAULT_CORES, memoryGiB = MODAL_DEFAULT_MEMORY_GIB): number {
+  return cores * MODAL_CORE_SECOND_MICRO_USD + memoryGiB * MODAL_GIB_SECOND_MICRO_USD;
+}
+
 /** Reserve sandbox time by the sandbox's own timeout, which Modal enforces, so the actual cost cannot exceed it. */
 export function modalSandboxMaxMicroUsd(minutes: number, cores = MODAL_DEFAULT_CORES, memoryGiB = MODAL_DEFAULT_MEMORY_GIB): number {
-  const perSecond = cores * MODAL_CORE_SECOND_MICRO_USD + memoryGiB * MODAL_GIB_SECOND_MICRO_USD;
-  return wholeMicroUsd(minutes * SECONDS_PER_MINUTE * perSecond);
+  return wholeMicroUsd(minutes * SECONDS_PER_MINUTE * modalSandboxSecondMicroUsd(cores, memoryGiB));
+}
+
+/** Prices a span of sandbox time, rounded up to whole seconds and whole micro-USD so it never undercounts. */
+export function modalSandboxMicroUsd(durationMs: number, cores = MODAL_DEFAULT_CORES, memoryGiB = MODAL_DEFAULT_MEMORY_GIB): number {
+  const seconds = Math.ceil(Math.max(0, durationMs) / MS_PER_SECOND);
+  return seconds === 0 ? 0 : wholeMicroUsd(seconds * modalSandboxSecondMicroUsd(cores, memoryGiB));
+}
+
+/** The longest whole-second span that `budgetMicroUsd` pays for, so its price never exceeds the budget. */
+export function modalSandboxAffordableMs(budgetMicroUsd: number, cores = MODAL_DEFAULT_CORES, memoryGiB = MODAL_DEFAULT_MEMORY_GIB): number {
+  const seconds = Math.floor(Math.max(0, budgetMicroUsd) / modalSandboxSecondMicroUsd(cores, memoryGiB) + 1e-9);
+  return seconds * MS_PER_SECOND;
 }
 
 /** Converts the provider's billed amount, in dollars, to whole micro-USD rounded up, so settlement never undercounts. */

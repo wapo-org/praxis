@@ -1,3 +1,5 @@
+import {SANDBOX_RESOURCES} from '@praxis/protocol';
+
 /** Every chat works in its own directory on the user's Volume (PRA-19 decision). */
 export const WORKSPACE_ROOT = '/workspace';
 /** Tool bookkeeping (jobs, diagnostics config) lives here; checkpoints never commit it. */
@@ -8,7 +10,7 @@ export const JOBS_DIR = '/var/lib/praxis/jobs';
 
 export const SHELL_TIMEOUT_DEFAULT_MS = 30_000;
 /** Longer work goes to the background and is polled with wait_for_job, so no call blocks a turn. */
-export const SHELL_TIMEOUT_MAX_MS = 120_000;
+export const SHELL_TIMEOUT_MAX_MS = SANDBOX_RESOURCES.EXEC_MAX_MS;
 /** Per stream; the head and tail are kept and the middle is elided. */
 export const OUTPUT_MAX_BYTES = 16_384;
 export const READ_FILE_MAX_BYTES = 1_048_576;

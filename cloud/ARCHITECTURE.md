@@ -84,6 +84,14 @@ sandbox. A ready row whose sandbox Modal no longer runs is released and rebooted
 `credentialFor(pool, storedSlot)`: a cooling or removed slot is a typed `unavailable` tool error with `retryAtMs`, never another account.
 No per-sandbox token or tunnel exists in v1 (PRA-100, PRA-84). The tool registry wires the resolver in PRA-53.
 
+Free-tier boot limits (PRA-170, `convex/sandboxSpend.ts`, values in `SANDBOX_FREE_TIER`): a boot is admitted inside `claim`, in the
+same transaction as the lock. It is refused, as a `{kind: 'unavailable', reason, retryAtMs}` claim and a typed `unavailable` tool error,
+when the owner already has a live sandbox in another scope, when the owner's Modal slot has `SANDBOXES_PER_SLOT_MAX` boots that may still
+run, or when the owner's daily or monthly sandbox budget or the shared platform allowance cannot pay for `MIN_LIFETIME_MS`. An admitted
+boot reserves the price of its lifetime in the shared platform ledger (`convex/platformLedger.ts`, also used by web tools), and the
+lifetime is trimmed to what the remaining budget pays for, so Modal's hard timeout is the spend ceiling. `release` and the next boot of
+the row settle it from the last activity plus one exec and the idle timeout, the latest moment Modal can still have been billing.
+
 ## Platform spend reservation (PRA-81 for PRA-22)
 
 `packages/spend` (dependency-free) is the pre-reservation ledger for platform-paid calls only (Exa, Firecrawl,
@@ -299,8 +307,8 @@ keeps the run's taint. `read_tool_output` is classified as an untrusted read.
 The accounting RPC shapes (`WebSpendRequest`, `WebSpendSettlement`, admission) live
 in `@praxis/protocol`; Convex derives its validators from them and parses with them.
 Convex `webTools` actions authenticate the server before invoking internal atomic
-mutations. User allowance, spend reservation and sliding hourly admission share a
-transaction; provider attempts separately enforce global QPS/minute and browser
+mutations. User allowance, spend reservation (in the shared `convex/platformLedger.ts`
+ledger, one per owner and month) and sliding hourly admission share a transaction; provider attempts separately enforce global QPS/minute and browser
 concurrency caps, including credential failover attempts. The pure `@praxis/spend`
 ledger prices/reserves/settles calls. Completed call receipts are separate rows so
 monthly ledger records do not accumulate closed-call history. Interrupted calls

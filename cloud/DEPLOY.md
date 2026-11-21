@@ -285,12 +285,13 @@ contiguous `_2`, `_3`, … siblings through `@praxis/credentials`; cooldowns use
 Missing keys return a structured unavailable result and never use a development key.
 Deploy the `convex/webTools.ts` actions and internal mutations alongside the API.
 
-PRA-22 must provision an owner-scoped `toolState` row with kind `platformAllowance`,
-id equal to the UTC billing month (`YYYY-MM`), and value `{allowanceMicroUsd: integer}`.
-No row means no paid admission. PRA-102 determines the amount; this feature supplies
-no default allowance or unauthenticated allowance setter. Usage rows have kind
+Every active owner gets the free-tier platform allowance of $5 per UTC month
+(`FREE_TIER_PLATFORM_ALLOWANCE_MICRO_USD`, PRA-102 / PRA-170) for Exa, Firecrawl and Modal together.
+To override it for one owner, add an owner-scoped `toolState` row with kind `platformAllowance`,
+id equal to the UTC billing month (`YYYY-MM`) and value `{allowanceMicroUsd: integer}`; `0` blocks paid calls.
+The ledger itself is the `platformLedger` row for that month. Usage rows have kind
 `platformUsage` and contain payer, provider service, serving slot and micro-USD cost.
-PRA-22 reconciliation must settle or release interrupted `webAccounting` reservations
+PRA-22 reconciliation must settle or release interrupted web reservations
 and preserve `webSpendCall` receipts across the retry horizon.
 
 The thin turn worker must include `webToolClassifier` when composing its trusted

@@ -1,12 +1,5 @@
+import type {SandboxRefusalReason} from '@praxis/protocol';
 import {WORKSPACE_ROOT} from '../constants.js';
-
-/** PRA-19 defaults: 10 minutes idle, 2 hours lifetime, 1 CPU and 2 GiB; limits equal requests so PRA-22 can bound cost. */
-export const SANDBOX_RESOURCES = {
-  IDLE_TIMEOUT_MS: 600_000,
-  LIFETIME_MS: 7_200_000,
-  CPU_CORES: 1,
-  MEMORY_MIB: 2_048,
-} as const;
 
 /** The Volume is the workspace; the sandbox's own disk holds nothing that must survive a reboot. */
 export const SANDBOX_VOLUME_MOUNT = WORKSPACE_ROOT;
@@ -26,3 +19,12 @@ export const SANDBOX_MESSAGES = {
   bootFailed: 'The sandbox failed to start.',
   starting: 'The sandbox is still starting.',
 } as const;
+
+/** Free-tier refusals (PRA-170): what the user sees beside the retry time; no slot or account is ever named. */
+export const SANDBOX_REFUSAL_MESSAGES: Record<SandboxRefusalReason, string> = {
+  live_limit: 'Another sandbox is still running for this account; the free tier runs one at a time.',
+  slot_busy: 'Sandboxes are busy right now.',
+  daily_cap: 'The free tier\'s daily sandbox time is used up.',
+  monthly_cap: 'The free tier\'s monthly sandbox time is used up.',
+  allowance: 'This month\'s included usage is used up.',
+};

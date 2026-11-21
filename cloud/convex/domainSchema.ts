@@ -190,6 +190,13 @@ export const domainTables = {
       v.object({status: v.literal('terminated'), sandboxId: v.optional(v.string())}),
     ),
     lastUsedAt: v.number(),
+    // `lastUsedAt` before the latest reuse claim: if that claim finds the sandbox gone, its billing ended from here.
+    priorUsedAt: v.optional(v.number()),
+    // The open free-tier spend reservation of `generation`'s boot (PRA-170); cleared once settled.
+    reservation: v.optional(v.object({
+      generation: v.number(), period: v.string(), day: v.string(),
+      startedAtMs: v.number(), lifetimeMs: v.number(), estimateMicroUsd: v.number(),
+    })),
   }).index('by_user_scope', ['userId', 'scope']),
   outputs: defineTable({
     ...storeFields, chatId: v.string(), parentId: v.string(), text: v.string(),
