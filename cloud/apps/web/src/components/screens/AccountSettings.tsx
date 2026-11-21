@@ -11,7 +11,8 @@ export function AccountSettings() {
   const store = React.useContext(PraxisStoreContext);
   const [deleting, setDeleting] = React.useState(false);
   if (!account) return null;
-  const label = store?.user?.name || store?.user?.email || account.displayName || account.email || account.userId;
+  const matchedUser = store?.user && store.user.id === account.userId ? store.user : null;
+  const label = matchedUser?.name || matchedUser?.email || account.displayName || account.email || account.userId;
   return (
     <Section title="Signed in as">
       <Card>
