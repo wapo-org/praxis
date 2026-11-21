@@ -2,6 +2,7 @@ import {describe, expect, it} from 'vitest';
 import {randomBytes} from 'node:crypto';
 import sharp from 'sharp';
 import {RunSnapshotSchema, type Message} from '@praxis/protocol';
+import {outputUnavailableText} from '@praxis/agent';
 import {createLocalAdapters} from '../local-memory.js';
 import {localModules} from '../modules.js';
 import {createPraxisApp} from '../server.js';
@@ -106,7 +107,9 @@ describe('read_tool_output (parity: ReadToolOutputTool)', () => {
     expect(tail.isError).toBe(false);
     expect(JSON.stringify(tail.content)).toContain('THE-END');
     expect(JSON.stringify(tail.content)).toMatch(/characters 50000–\d+ of \d+/);
-    expect((await tool.execute({id, offset: 0}, ctx('other-chat'))).isError).toBe(true);
+    // Another chat's output reads like a purged one: a plain result, never a failure of the turn.
+    const foreign = await tool.execute({id, offset: 0}, ctx('other-chat'));
+    expect(foreign).toEqual({content: [{type: 'text', text: outputUnavailableText(id)}], isError: false});
   });
 });
 

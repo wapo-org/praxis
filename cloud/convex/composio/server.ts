@@ -7,6 +7,8 @@ import { requireServer } from '../access.js';
 import { activeOwner } from '../accountOwner.js';
 import { mutation, query, type MutationCtx } from '../functions.js';
 import { convexValidator } from '../zodValidator.js';
+import { takeBounded } from '../boundedRead.js';
+import { CONNECTIONS_PER_USER_MAX } from '../listConstants.js';
 
 // Server-token RPC for the API's Tool Router (PRA-48); the owner arrives only inside the server-signed request.
 const EXECUTION_KIND = 'composioExecution';
@@ -20,9 +22,8 @@ export const connectedAccounts = query({
     await requireServer(args.serverToken);
     const { userId } = ComposioOwnerRequestSchema.parse(args.request);
     if (!await activeOwner(ctx, userId)) return [];
-    const rows = await ctx.db.query('connections')
-      .withIndex('by_user_toolkit', q => q.eq('userId', userId))
-      .collect();
+    const rows = await takeBounded(ctx.db.query('connections').withIndex('by_user_toolkit', q => q.eq('userId', userId)),
+      CONNECTIONS_PER_USER_MAX, 'connection');
     return ComposioConnectedAccountsSchema.parse(rows
       .filter(row => row.status === 'connected')
       .map(row => ({ toolkit: row.toolkit, connectedAccountId: row.connectedAccountId })));

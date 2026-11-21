@@ -34,6 +34,11 @@ describe('account deletion of workflow state', () => {
     const {t, owner, userId, scope} = await startedRun();
     await fakeOpenRouter(t, scope);
     await t.action(internal.turns.run, {...scope, expectedTurnIndex: 0});
+    await t.run(async ctx => {
+      await ctx.db.insert('toolOutputs', {userId, id: 'out', chatId, runId: scope.runId, callId: 'call', characters: 1,
+        chunks: 1, committed: true, createdAt: Date.now()});
+      await ctx.db.insert('outputs', {userId, id: 'out:0', revision: 0, updatedAt: new Date().toISOString(), chatId, parentId: 'out', text: 'x'});
+    });
     const sessions = () => t.run(ctx => ctx.runQuery(components.auth.public.listSessions, {userId}));
     expect(await sessions()).toHaveLength(1);
     await t.mutation(api.account.begin, {serverToken: SERVER_TOKEN, userId});
@@ -57,9 +62,11 @@ describe('account deletion of workflow state', () => {
       chats: await ctx.db.query('chats').collect(),
       runs: await ctx.db.query('runs').collect(),
       turns: await ctx.db.query('turns').collect(),
+      toolOutputs: await ctx.db.query('toolOutputs').collect(),
+      outputs: await ctx.db.query('outputs').collect(),
       workflows: (await workflow.list(ctx)).page,
     }));
-    expect(rows).toEqual({users: [], chats: [], runs: [], turns: [], workflows: []});
+    expect(rows).toEqual({users: [], chats: [], runs: [], turns: [], toolOutputs: [], outputs: [], workflows: []});
     await expect(t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 1}))).rejects.toThrow('Account unavailable');
   });
 });

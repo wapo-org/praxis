@@ -2,6 +2,7 @@ import {JsonObjectSchema} from '@praxis/protocol';
 import {v, ConvexError} from 'convex/values';
 import {serverQuery, serverMutation, type QueryCtx} from './functions.js';
 import {bounded} from './access.js';
+import {takeBounded} from './boundedRead.js';
 const address = {kind: v.string(), id: v.string()};
 function row(ctx:QueryCtx,a:{userId:string;kind:string;id:string}) {
  [a.userId,a.kind,a.id].forEach(bounded);
@@ -9,7 +10,7 @@ function row(ctx:QueryCtx,a:{userId:string;kind:string;id:string}) {
  return ctx.db.query('toolState').withIndex('owner_kind_id',q=>q.eq('userId',a.userId).eq('kind',a.kind).eq('id',a.id)).unique();
 }
 function files(ctx:QueryCtx,a:{userId:string;id:string}) {
- return ctx.db.query('toolSkillFiles').withIndex('owner_skill',q=>q.eq('userId',a.userId).eq('skillId',a.id)).collect();
+ return takeBounded(ctx.db.query('toolSkillFiles').withIndex('owner_skill',q=>q.eq('userId',a.userId).eq('skillId',a.id)),SKILL_FILES_MAX,'skill file');
 }
 const TOOLS_STATE_JSON_CHARACTERS_MAX = 6_000_000;
 const TOOLS_METADATA_JSON_CHARACTERS_MAX = 400_000;

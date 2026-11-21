@@ -10,12 +10,15 @@ import type {ActionCtx} from '../functions.js';
 import type {TurnScope} from '../workflows/turnState.js';
 import {componentGenerate} from './component.js';
 import {convexLedger} from './ledger.js';
+import {convexOutputReaderTool, convexSpill} from './outputs.js';
 import {unsealSecret} from './secrets.js';
 import {MODEL_KEY_RESOURCE, TURN_DEADLINE_MS} from './constants.js';
 import type {TurnHydration} from './hydrate.js';
 
 /** Tools that run inside Convex; the apps/api implementations move here with PRA-39, PRA-48 and PRA-60. */
-const TURN_TOOLS: readonly AgentTool[] = [];
+function turnTools(ctx: ActionCtx): readonly AgentTool[] {
+  return [convexOutputReaderTool(ctx)];
+}
 /** Unknown calls get no classification, so the boundary refuses them. */
 const NO_CLASSIFICATION: ToolClassifier = {classify: () => undefined};
 
@@ -67,7 +70,7 @@ export async function runConvexTurn(ctx: ActionCtx, scope: TurnScope, runTainted
   const apiKey = await modelKey(hydration, scope.userId);
   if (!apiKey) return failTurn(ctx, scope, MISSING_KEY);
   const {model, providerOptions} = openRouterTurnModel(apiKey, hydration.modelId ?? DEFAULT_MODEL_ID, effortOf(hydration));
-  const tools = TURN_TOOLS.filter(tool => hydration.tools.some(spec => spec.name === tool.spec.name));
+  const tools = turnTools(ctx).filter(tool => hydration.tools.some(spec => spec.name === tool.spec.name));
   const run = await runTurn({
     input: {
       userId: scope.userId, chatId: scope.chatId, runId: scope.runId, mode: hydration.mode, tainted: runTainted,
@@ -76,6 +79,7 @@ export async function runConvexTurn(ctx: ActionCtx, scope: TurnScope, runTainted
     },
     model, ...(providerOptions ? {providerOptions} : {}),
     generate: componentGenerate(ctx, scope.userId),
+    spill: convexSpill(ctx, scope),
     tools, registry: NO_CLASSIFICATION,
     ledger: convexLedger(ctx, scope),
     boundary: await refusingApprovals(),

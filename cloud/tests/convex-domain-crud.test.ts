@@ -16,7 +16,7 @@ describe('PRA-24 typed table CRUD through domain functions', () => {
     const named = await createChat(alice, CHAT_ID, 'Named');
     expect(named).toMatchObject({type: 'chat', id: CHAT_ID, title: 'Named', mode: 'build', pinned: false});
     expect(await alice.client.query(api.chats.get, {chatId: CHAT_ID})).toEqual(named);
-    expect((await alice.client.query(api.chats.list, {})).map(chat => chat.id).sort())
+    expect((await alice.client.query(api.chats.list, {})).chats.map(chat => chat.id).sort())
       .toEqual([CHAT_ID, generated.id].sort());
     await expect(createChat(alice, CHAT_ID)).rejects.toThrow('Chat ID unavailable');
     const patched = await alice.client.mutation(api.chats.patch, {
@@ -29,7 +29,7 @@ describe('PRA-24 typed table CRUD through domain functions', () => {
     expect(await alice.client.query(api.chats.get, {chatId: CHAT_ID})).toBeNull();
     expect(await alice.client.mutation(api.chats.patch, {chatId: CHAT_ID, input: {type: 'chat.patch', title: 'Late'}}))
       .toBeNull();
-    expect((await alice.client.query(api.chats.list, {})).map(chat => chat.id)).toEqual([generated.id]);
+    expect((await alice.client.query(api.chats.list, {})).chats.map(chat => chat.id)).toEqual([generated.id]);
     const stored = await t.run(ctx => ctx.db.query('chats').withIndex('by_user_id', q =>
       q.eq('userId', alice.userId).eq('id', CHAT_ID)).unique());
     expect(stored?.value.deletedAt).toEqual(expect.any(String));
@@ -93,7 +93,7 @@ describe('PRA-24 typed table CRUD through domain functions', () => {
     await t.mutation(api.store.put, {...owner, valueJson: JSON.stringify(value)});
     await t.mutation(api.store.put, {...owner, valueJson: JSON.stringify({...value, status: 'completed', lastEventId: 4})});
     expect(await alice.client.query(api.runs.get, {runId: 'store-run'})).toMatchObject({status: 'completed', lastEventId: 4});
-    expect(await t.query(api.store.list, {...token, userId: alice.userId, kind: 'run', parentId: CHAT_ID}))
+    expect((await t.query(api.store.list, {...token, userId: alice.userId, kind: 'run', parentId: CHAT_ID})).rows)
       .toMatchObject([{id: 'store-run'}]);
     await t.mutation(api.store.remove, owner);
     expect(await alice.client.query(api.runs.get, {runId: 'store-run'})).toBeNull();
@@ -155,14 +155,14 @@ describe('PRA-24 typed table CRUD through domain functions', () => {
     expect(await t.query(api.store.get, {...owner, ...chunk}))
       .toMatchObject({id: 'chunk-1', parentId: 'manifest', value: {chatId: CHAT_ID, text: 'one'}, deleted: false});
     await t.mutation(api.store.put, {...owner, ...chunk, parentId: 'manifest', valueJson: JSON.stringify({chatId: CHAT_ID, text: 'two'})});
-    expect(await t.query(api.store.list, {...owner, kind: 'outputChunk', parentId: 'manifest'}))
+    expect((await t.query(api.store.list, {...owner, kind: 'outputChunk', parentId: 'manifest'})).rows)
       .toMatchObject([{id: 'chunk-1', value: {text: 'two'}}]);
     await expect(t.mutation(api.store.put, {...owner, ...chunk, parentId: 'other', valueJson: JSON.stringify({chatId: CHAT_ID, text: 'x'})}))
       .rejects.toThrow('Output chunk address cannot change');
     await expect(t.mutation(api.store.put, {...owner, kind: 'outputChunk', id: 'orphan', parentId: 'manifest',
       valueJson: JSON.stringify({chatId: 'missing-chat', text: 'x'})})).rejects.toThrow('Chat unavailable');
     await t.mutation(api.store.remove, {...owner, ...chunk});
-    expect(await t.query(api.store.list, {...owner, kind: 'outputChunk'})).toEqual([]);
+    expect((await t.query(api.store.list, {...owner, kind: 'outputChunk'})).rows).toEqual([]);
     expect(await t.run(ctx => ctx.db.query('outputs').collect())).toEqual([]);
   });
 });

@@ -16,16 +16,16 @@ export async function spillWebOutput(store: Store, input: {userId: string; runId
     chatId, callId: input.callId, chunkIds, characters: input.text.length});
   return id;
 }
+/** Undefined when a chunk is gone or from another chat, so the reader answers "no longer available" instead of failing. */
 export async function readWebOutput(store: Store, userId: string, chatId: string, manifest: JsonObject,
-  offset: number, limit: number): Promise<{page: string; characters: number}> {
+  offset: number, limit: number): Promise<{page: string; characters: number} | undefined> {
   const {chunkIds, characters} = WebOutputManifestSchema.parse(manifest);
   const end = Math.min(characters, offset + limit);
   const pages: string[] = [];
   for (let index = Math.floor(offset / CHUNK_MAX); index * CHUNK_MAX < end; index++) {
     const id = chunkIds[index];
-    if (!id) throw new Error('Missing web output chunk');
-    const chunk = await store.get(userId, 'outputChunk', id);
-    if (!chunk || chunk.deleted || chunk.value.chatId !== chatId || typeof chunk.value.text !== 'string') throw new Error('Web output chunk is unavailable');
+    const chunk = id === undefined ? null : await store.get(userId, 'outputChunk', id);
+    if (!chunk || chunk.deleted || chunk.value.chatId !== chatId || typeof chunk.value.text !== 'string') return undefined;
     const startAt = Math.max(0, offset - index * CHUNK_MAX);
     pages.push(chunk.value.text.slice(startAt, Math.min(CHUNK_MAX, end - index * CHUNK_MAX)));
   }

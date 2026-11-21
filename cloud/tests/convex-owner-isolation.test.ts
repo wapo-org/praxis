@@ -34,7 +34,7 @@ describe('Convex typed owner storage', () => {
   it('creates, reads, patches and removes chats through verified viewer identity', async () => {
     const {t, alice, bob} = await fixture();
     expect(await bob.client.query(api.chats.get, {chatId})).toBeNull();
-    expect(await bob.client.query(api.chats.list, {})).toEqual([]);
+    expect(await bob.client.query(api.chats.list, {})).toEqual({chats: [], cursor: null});
     expect(await bob.client.mutation(api.chats.patch, {chatId, input: {type: 'chat.patch', title: 'Foreign'}})).toBeNull();
     expect(await bob.client.mutation(api.chats.remove, {chatId})).toBe(false);
     const bobChat = await bob.client.mutation(api.chats.create, {
@@ -46,7 +46,7 @@ describe('Convex typed owner storage', () => {
     expect(await alice.client.query(api.chats.get, {chatId})).toMatchObject({title: 'Alice'});
     expect(await bob.client.mutation(api.chats.remove, {chatId})).toBe(true);
     expect(await bob.client.query(api.chats.get, {chatId})).toBeNull();
-    expect(await bob.client.query(api.chats.list, {})).toEqual([]);
+    expect(await bob.client.query(api.chats.list, {})).toEqual({chats: [], cursor: null});
     expect(await t.query(api.store.get, {...token, userId: bob.userId, kind: 'chat', id: chatId}))
       .toMatchObject({deleted: true});
     expect(await t.run(ctx => ctx.db.query('records').collect())).toEqual([]);
@@ -114,11 +114,11 @@ describe('Convex typed owner storage', () => {
     const output = {kind: 'outputChunk', id: 'chunk', parentId: 'manifest'};
     await t.mutation(api.store.put, {...owner, ...output, valueJson: JSON.stringify({chatId, text: 'first'})});
     await t.mutation(api.store.put, {...owner, kind: output.kind, id: output.id, valueJson: JSON.stringify({chatId, text: 'second'})});
-    expect(await t.query(api.store.list, {...owner, kind: output.kind, parentId: output.parentId}))
+    expect((await t.query(api.store.list, {...owner, kind: output.kind, parentId: output.parentId})).rows)
       .toMatchObject([{id: output.id, value: {chatId, text: 'second'}}]);
     expect(await t.query(api.store.get, {...token, userId: bob.userId, kind: output.kind, id: output.id})).toBeNull();
     await t.mutation(api.store.remove, {...owner, kind: output.kind, id: output.id});
-    expect(await t.query(api.store.list, {...owner, kind: output.kind})).toEqual([]);
+    expect((await t.query(api.store.list, {...owner, kind: output.kind})).rows).toEqual([]);
     await t.mutation(api.store.remove, {...owner, ...record});
     expect(await alice.client.query(api.runs.get, {runId: 'r'})).toBeNull();
   });

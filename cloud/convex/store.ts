@@ -5,9 +5,10 @@ import { assertActiveOwner, query, serverMutation, serverQuery, type MutationCtx
 import { bounded, requireServer } from './access.js';
 import {deleteDomainRow, domainDocument, domainRow, isDomainKind, listDomainRows, saveDomainRow} from './domainRecords.js';
 import {activeOwner} from './accountOwner.js';
+import {assertDocumentFits} from './sizeGuard.js';
+import {STORE_LIST_PAGE_MAX} from './listConstants.js';
 
 const address = { kind: v.string(), id: v.string() };
-const RECORD_JSON_CHARACTERS_MAX = 900_000;
 
 interface Row {
   userId: string;
@@ -66,28 +67,33 @@ export const get = serverQuery({
   },
 });
 
+/** One page of an owner's rows of `kind`; callers follow `cursor` until it is null. */
 export const list = serverQuery({
-  args: { kind: v.string(), parentId: v.optional(v.string()) },
-  handler: async (ctx, a) => {
+  args: { kind: v.string(), parentId: v.optional(v.string()), cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, a): Promise<{rows: Array<ReturnType<typeof publicRow>>; cursor: string | null}> => {
     bounded(a.kind);
     const parentId = a.parentId === undefined ? undefined : bounded(a.parentId);
+    const page = {cursor: a.cursor ?? null, numItems: STORE_LIST_PAGE_MAX};
     if (isDomainKind(a.kind)) {
-      if (!await activeOwner(ctx, a.userId)) return [];
-      return listDomainRows(ctx, a.userId, a.kind, parentId);
+      if (!await activeOwner(ctx, a.userId)) return {rows: [], cursor: null};
+      return listDomainRows(ctx, a.userId, a.kind, page, parentId);
     }
-    const rows =
+    const result =
       parentId === undefined
         ? await ctx.db
             .query('records')
             .withIndex('owner_kind_id', (q) => q.eq('userId', a.userId).eq('kind', a.kind))
-            .collect()
+            .paginate(page)
         : await ctx.db
             .query('records')
             .withIndex('owner_kind_parent', (q) =>
               q.eq('userId', a.userId).eq('kind', a.kind).eq('parentId', parentId),
             )
-            .collect();
-    return rows.filter(r => !r.deleted).map(row => publicRow(decodeRow(row)));
+            .paginate(page);
+    return {
+      rows: result.page.filter(r => !r.deleted).map(row => publicRow(decodeRow(row))),
+      cursor: result.isDone ? null : result.continueCursor,
+    };
   },
 });
 
@@ -147,7 +153,7 @@ export async function writeRecord(ctx: MutationCtx, a: WriteInput) {
   [a.userId, a.kind, a.id].forEach(bounded);
   if (a.parentId !== undefined) bounded(a.parentId);
   if (isDomainKind(a.kind)) await assertActiveOwner(ctx, a.userId);
-  if (JSON.stringify(a.value).length > RECORD_JSON_CHARACTERS_MAX) throw new ConvexError('Record too large');
+  assertDocumentFits(a.kind, a.value);
 
   const seq = await ctx.db
     .query('sequences')

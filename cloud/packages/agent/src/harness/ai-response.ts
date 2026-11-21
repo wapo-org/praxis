@@ -1,12 +1,10 @@
 import {z} from 'zod';
 import {APICallError, type LanguageModelV4, type LanguageModelV4GenerateResult} from '@ai-sdk/provider';
 import {RetryError} from 'ai';
-import {JsonObjectSchema, JsonValueSchema, UsageSchema, type JsonObject, type MessagePart, type Usage} from '@praxis/protocol';
+import {DOCUMENT_BYTES_MAX, JsonObjectSchema, JsonValueSchema, UsageSchema, jsonBytes, type JsonObject, type MessagePart, type Usage} from '@praxis/protocol';
 import {ProviderFailure, classifyProviderError} from '../provider-error.js';
 import type {ProviderResponse} from '../types.js';
 
-/** A saved response must fit one Convex document (1 MiB) with room for its row. */
-export const SAVED_RESPONSE_BYTES_MAX = 900_000;
 
 const MetadataSchema = z.record(z.string(), JsonObjectSchema);
 const ContentSchema = z.discriminatedUnion('type', [
@@ -51,7 +49,7 @@ export function savedResponse(result: LanguageModelV4GenerateResult): SavedRespo
     ...(result.providerMetadata ? {providerMetadata: result.providerMetadata} : {}),
   }));
   const saved = SavedResponseSchema.parse(json);
-  if (new TextEncoder().encode(JSON.stringify(saved)).byteLength > SAVED_RESPONSE_BYTES_MAX) {
+  if (jsonBytes(saved) > DOCUMENT_BYTES_MAX) {
     throw new ProviderFailure('context', 'The model response is too large to keep durably');
   }
   return saved;
@@ -131,17 +129,11 @@ function partOf(part: SavedResponse['content'][number]): MessagePart {
   }
 }
 
-/** OpenRouter's own assistant object, so the next turn replays `reasoning_details` (signatures, encrypted) as sent. */
-function rawOf(saved: SavedResponse, parts: MessagePart[]): ProviderResponse['raw'] {
-  const text = parts.filter(part => part.type === 'text').map(part => part.text).join('');
-  const calls = parts.filter(part => part.type === 'toolCall');
+/** Only what the stored parts cannot rebuild: `reasoning_details` (signatures, encrypted) replay to OpenRouter as sent. */
+function rawOf(saved: SavedResponse): ProviderResponse['raw'] {
   const details = openRouterMetadata(saved).reasoning_details;
-  const data: JsonObject = {role: 'assistant', content: text || null};
-  if (calls.length) {
-    data.tool_calls = calls.map(call => ({id: call.callId ?? '', type: 'function', function: {name: call.name ?? '', arguments: call.arguments ?? '{}'}}));
-  }
-  if (Array.isArray(details) && details.length) data.reasoning_details = details;
-  return {type: 'provider.payload', data: JsonValueSchema.parse(data)};
+  if (!Array.isArray(details) || !details.length) return undefined;
+  return {type: 'provider.payload', data: JsonValueSchema.parse({role: 'assistant', reasoning_details: details})};
 }
 
 const STOP: Record<SavedResponse['finishReason']['unified'], ProviderResponse['stop']> = {
@@ -152,7 +144,8 @@ const STOP: Record<SavedResponse['finishReason']['unified'], ProviderResponse['s
 /** The saved model output in the stored-message vocabulary the commit and the next request share. */
 export function providerResponse(saved: SavedResponse): ProviderResponse {
   const parts = saved.content.map(partOf);
-  return {parts, stop: STOP[saved.finishReason.unified], usage: usageOf(saved), raw: rawOf(saved, parts)};
+  const raw = rawOf(saved);
+  return {parts, stop: STOP[saved.finishReason.unified], usage: usageOf(saved), ...(raw ? {raw} : {})};
 }
 
 /** The AI SDK wraps exhausted retries; the last HTTP failure decides the kind, as the legacy client did. */

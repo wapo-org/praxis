@@ -11,6 +11,7 @@ import {liveScopedRun} from '../runs.js';
 import {writeRecord} from '../store.js';
 import {WORKFLOW_ERRORS} from './constants.js';
 import {clearLedger} from '../agent/ledger.js';
+import {markOutputsCommitted} from '../outputs.js';
 import {turnState, type TurnScope} from './turnState.js';
 
 const CONFLICT: TurnCommitResult = {outcome: 'conflict'};
@@ -65,6 +66,7 @@ export async function commitTurn(ctx: MutationCtx, commit: TurnCommit): Promise<
   assertTaintRecorded(commit.messages, taint);
   await assertPendingApproval(ctx, run, commit.end);
   for (const message of commit.messages) await writeTurnMessage(ctx, commit, message);
+  await markOutputsCommitted(ctx, commit.userId, commit.chatId, commit.messages);
   await clearLedger(ctx, {...commit, runId});
   const done = commit.end.status === 'completed';
   const status = done ? 'completed' : 'ready';

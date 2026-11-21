@@ -33,7 +33,7 @@ describe('PRA-24 owner isolation', () => {
     const aliceRun = await seedAllTables(t, alice);
     const before = await typedRows(t);
     expect(await bob.client.query(api.chats.get, {chatId: CHAT_ID})).toBeNull();
-    expect(await bob.client.query(api.chats.list, {})).toEqual([]);
+    expect(await bob.client.query(api.chats.list, {})).toEqual({chats: [], cursor: null});
     expect(await bob.client.query(api.messages.page, {chatId: CHAT_ID, limit: 10}))
       .toEqual({messages: [], cursor: 0, hasMore: false});
     expect(await bob.client.query(api.runs.get, {runId: aliceRun})).toBeNull();
@@ -55,7 +55,7 @@ describe('PRA-24 owner isolation', () => {
     const bobScope = {...token, userId: bob.userId};
     for (const [kind, id] of [['chat', CHAT_ID], ['message', 'same-message'], ['outputChunk', 'same-chunk']] as const) {
       expect(await t.query(api.store.get, {...bobScope, kind, id})).toBeNull();
-      expect(await t.query(api.store.list, {...bobScope, kind})).toEqual([]);
+      expect((await t.query(api.store.list, {...bobScope, kind})).rows).toEqual([]);
       await t.mutation(api.store.remove, {...bobScope, kind, id});
     }
     const rows = await typedRows(t);

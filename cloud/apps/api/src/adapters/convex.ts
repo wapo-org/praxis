@@ -57,6 +57,9 @@ function parent(options?: ListOptions) {
 }
 
 /** Drops absent optional fields so callers see the same shape as the memory adapter. */
+/** `store:list` returns one bounded page per call; the adapter follows the cursor. */
+const ListPageSchema = z.object({ rows: z.array(z.unknown()), cursor: z.string().nullable() });
+
 function toRecord(value: unknown): StoredRecord {
   const row = RecordSchema.parse(value);
   const { parentId, ...rest } = row;
@@ -85,8 +88,14 @@ export function storeFromRPC(rpc: ConvexRPC): ConvexStore {
       return row === null ? null : toRecord(row);
     },
     async list(userId, kind, options) {
-      const rows = z.array(z.unknown()).parse(await rpc.query('store:list', { ...address(userId, kind), ...parent(options) }));
-      return rows.map(toRecord);
+      const records: StoredRecord[] = [];
+      let cursor: string | null = null;
+      do {
+        const page = ListPageSchema.parse(await rpc.query('store:list', { ...address(userId, kind), ...parent(options), cursor }));
+        records.push(...page.rows.map(toRecord));
+        cursor = page.cursor;
+      } while (cursor);
+      return records;
     },
     async put(userId, kind, id, value, options) {
       const args = { ...address(userId, kind, id), ...parent(options), valueJson: JSON.stringify(JsonObjectSchema.parse(value)) };

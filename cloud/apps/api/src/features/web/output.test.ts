@@ -11,6 +11,6 @@ it('spills a two-megabyte page below the Convex document cap and pages across ch
   expect(manifest.text).toBeUndefined();
   for (const row of await store.list('user', 'outputChunk')) expect(Buffer.byteLength(JSON.stringify(row.value))).toBeLessThan(1_000_000);
   expect(await readWebOutput(store, 'user', 'chat', manifest, CHUNK_MAX - 3, 8)).toEqual({page: 'boundary', characters: text.length});
-  await expect(readWebOutput(store, 'other', 'chat', manifest, 0, 10)).rejects.toThrow();
-  await expect(readWebOutput(store, 'user', 'other', manifest, 0, 10)).rejects.toThrow();
+  expect(await readWebOutput(store, 'other', 'chat', manifest, 0, 10)).toBeUndefined();
+  expect(await readWebOutput(store, 'user', 'other', manifest, 0, 10)).toBeUndefined();
 });
