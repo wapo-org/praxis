@@ -1,4 +1,4 @@
-import { GlassMorph, ScrollBlur, slideIn, slideUnder, usePreset } from '@praxis/glass';
+import { GlassMorph, PANEL, ScrollBlur, slideIn, slideUnder, usePreset } from '@praxis/glass';
 import { AnimatePresence, motion } from 'framer-motion';
 import React from 'react';
 import { ChevronRight, Globe, LayoutGrid, Settings } from '../../lib/icons';
@@ -17,7 +17,22 @@ export interface PlusTrayProps {
 
 export function PlusTray({ onPickFiles }: PlusTrayProps) {
   const open = usePraxisStore().plusTrayOpen;
-  return <AnimatePresence>{open ? <TrayPopover key="tray" onPickFiles={onPickFiles} /> : null}</AnimatePresence>;
+  return (
+    <AnimatePresence>
+      {open ? (
+        <motion.div
+          key="tray"
+          className={styles.popoverMotion}
+          initial={{ clipPath: 'circle(0% at 24px 100%)' }}
+          animate={{ clipPath: 'circle(150% at 24px 100%)' }}
+          exit={{ clipPath: 'circle(0% at 24px 100%)' }}
+          transition={PANEL}
+        >
+          <TrayPopover onPickFiles={onPickFiles} />
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
 }
 
 function TrayPopover({ onPickFiles }: PlusTrayProps) {

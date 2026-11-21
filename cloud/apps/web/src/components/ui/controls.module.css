@@ -29,6 +29,9 @@
   cursor: pointer;
   transition: color var(--duration-fast) var(--ease-standard);
 }
+@media (pointer: coarse) {
+  .segment { height: 40px; }
+}
 .segment[aria-pressed='true'] {
   color: var(--color-ink);
 }

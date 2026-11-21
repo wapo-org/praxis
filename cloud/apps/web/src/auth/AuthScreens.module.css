@@ -21,3 +21,4 @@
 .button:disabled {
   cursor: wait;
 }
+.fields .button { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-on-accent); font-weight: var(--weight-semibold); box-shadow: var(--shadow-1); }

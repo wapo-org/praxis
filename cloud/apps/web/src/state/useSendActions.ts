@@ -228,7 +228,7 @@ export function useSendActions(
           attachmentIds: options?.attachmentIds ?? [],
           clientTurnId,
           idempotencyKey: clientTurnId,
-          script: inferredScript,
+          script: isScriptedModel(pick.modelId) ? inferredScript : undefined,
         });
 
         if (state.cancelledTurnIdsRef.current.delete(clientTurnId)) {

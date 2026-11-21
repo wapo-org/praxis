@@ -2,7 +2,9 @@ import {SavedValues} from './SavedSecrets';
 import { GlassIconButton, PANEL } from '@praxis/glass';
 import { motion } from 'framer-motion';
 import React from 'react';
-import { PanelLeft } from '../../lib/icons';
+import { ChevronLeft, PanelLeft } from '../../lib/icons';
+import { useEscapeToClose } from '../../hooks/useEscapeToClose';
+import { useIsNarrow } from '../shell/useIsNarrow';
 import { usePraxisStore } from '../../state/store.js';
 import { useContentShift } from '../shell/useContentShift';
 import { AppConnectedScreen } from './AppConnectedScreen.js';
@@ -66,11 +68,22 @@ export function SettingsPage({
   const page = settingsPage(sheet);
   const title = page.title;
   const shift = useContentShift();
+  const narrow = useIsNarrow();
+  useEscapeToClose(() => store.setActiveSheet(null));
 
   return (
     <div className={styles.pageShell} data-testid="settings-page" aria-label={title}>
       {!store.desktopSidebarOpen ? (
         <div className={styles.navCluster}>
+          {narrow ? (
+            <GlassIconButton
+              label="Close Settings"
+              data-testid="nav-close-settings-button"
+              onClick={() => store.setActiveSheet(null)}
+            >
+              <ChevronLeft size={18} />
+            </GlassIconButton>
+          ) : null}
           <GlassIconButton
             label="Open sidebar"
             data-testid="nav-sidebar-button"

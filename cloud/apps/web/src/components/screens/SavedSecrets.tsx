@@ -84,7 +84,7 @@ function useSavedPages(filter: SavedFilter, query: string) {
           return { items: [...(reset ? [] : s.items), ...fresh], cursor: page.nextCursor, done: !page.nextCursor, loading: false, error: '' };
         });
       } catch (error) {
-        if (controller.signal.aborted || mine !== generation.current) return;
+        if (controller.signal.aborted || mine !== generation.current || (error instanceof Error && error.name === 'AbortError')) return;
         setState((s) => ({ ...s, loading: false, error: unavailable(error) }));
       } finally {
         if (inFlight.current === controller) inFlight.current = null;

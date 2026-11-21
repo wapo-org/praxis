@@ -47,7 +47,7 @@ export function ChatHeader() {
             type="button"
             className={styles.title}
             data-testid="nav-chat-title-pill"
-            onClick={() => store.setActiveSheet('settings')}
+            onClick={() => store.setActiveSheet('models')}
             aria-label="Chat and model settings"
             {...pressProps}
           >

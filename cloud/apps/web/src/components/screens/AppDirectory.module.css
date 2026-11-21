@@ -26,6 +26,15 @@
   border-radius: var(--radius-lg);
   background: var(--color-surface);
 }
+.skeleton {
+  display: block;
+  width: 68%;
+  height: var(--space-3);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-ink) 7%, transparent);
+  animation: app-pulse var(--duration-ambient) var(--ease-ambient) infinite alternate;
+}
+@keyframes app-pulse { to { opacity: 0.45; } }
 .card[data-state='connected'] {
   border-color: color-mix(in srgb, var(--color-success) 40%, var(--color-hairline));
 }

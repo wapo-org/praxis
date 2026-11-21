@@ -1,6 +1,7 @@
 import type { ResolvedTheme, ThemeMode } from '@praxis/glass';
 import type {
   Attachment,
+  Bootstrap,
   Chat,
   Message,
   Skill,
@@ -38,6 +39,7 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   const initialCache = React.useMemo(() => readReplicaSync(), []);
 
   const [hydrated, setHydrated] = React.useState<boolean>(Boolean(initialCache));
+  const [user, setUser] = React.useState<Bootstrap['user'] | null>(initialCache?.bootstrap?.user ?? null);
   const [syncing, setSyncing] = React.useState<boolean>(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
 
@@ -148,6 +150,7 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     onNavigate?.(pathForSheet(sheet, activeChatId));
   };
   const startNewConversation = () => {
+    setErrorBanner(null);
     pendingChatSwitchRef.current = null;
     navigatingChatRef.current = null;
     activeChatIdRef.current = null;
@@ -161,6 +164,7 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     requestComposerFocus();
   };
   const restoreRoute = (chatId: string | null, sheet: ActiveSheet) => {
+    setErrorBanner(null);
     setActiveSheetState(sheet);
     if (sheet) return;
     activeChatIdRef.current = chatId;
@@ -277,6 +281,8 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     localTurnIdsRef,
     eventCursor,
     setEventCursor,
+    user,
+    setUser,
   };
 }
 export type PraxisState = ReturnType<typeof usePraxisState>;

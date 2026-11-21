@@ -96,6 +96,7 @@ export interface PendingConsentPrompt {
 }
 
 export interface PraxisStoreContextValue {
+  user: import('@praxis/protocol').Bootstrap['user'] | null;
   draftTitle: string;
   pendingChatSwitchRef: React.RefObject<string | null>;
   // Hydration & Perf

@@ -51,7 +51,9 @@ export function AppDirectoryScreen() {
           <ScreenButton tone="secondary" onClick={catalog.retry}>Try again</ScreenButton>
         </div>
       ) : catalog.state === 'loading' && catalog.items.length === 0 ? (
-        <p className={styles.empty} role="status">Loading apps…</p>
+        <ul className={grid.grid} aria-label="Loading apps" aria-busy="true" data-testid="app-directory-loading">
+          {Array.from({ length: 6 }, (_, index) => <li key={index} className={grid.card} aria-hidden="true"><span className={grid.skeleton} /><span className={grid.skeleton} /><span className={grid.skeleton} /></li>)}
+        </ul>
       ) : catalog.items.length ? (
         <>
           <ul className={grid.grid} aria-label="Apps" data-testid="app-directory">

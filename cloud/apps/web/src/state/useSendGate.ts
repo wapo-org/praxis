@@ -21,7 +21,7 @@ export function useSendGate(
       }
       return executeSendMessage(text, options);
     },
-    [modelKey, selectedModelId, hydrated, executeSendMessage],
+    [modelKey, selectedModelId, hydrated, executeSendMessage, setActiveSheet],
   );
 
   return { sendMessage };

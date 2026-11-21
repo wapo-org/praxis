@@ -1,20 +1,24 @@
 import React from 'react';
 import { useAccount } from '../../lib/account';
 import { Trash2 } from '../../lib/icons';
+import { PraxisStoreContext } from '../../state/context';
 import { Card, Section, TaskError, useScreenTask } from './ScreenUI';
 import styles from './DeleteConfirm.module.css';
 
 /** Inline account deletion: an explicit two-step confirm inside the page. */
 export function AccountSettings() {
   const account = useAccount();
+  const store = React.useContext(PraxisStoreContext);
   const [deleting, setDeleting] = React.useState(false);
   if (!account) return null;
+  const matchedUser = store?.user && store.user.id === account.userId ? store.user : null;
+  const label = matchedUser?.name || matchedUser?.email || account.displayName || account.email || account.userId;
   return (
     <Section title="Signed in as">
       <Card>
         <div className={styles.row}>
           <span className={styles.rowCopy}>
-            <span>{account.userId}</span>
+            <span>{label}</span>
             <span className={styles.detail}>Server: {account.server}</span>
           </span>
         </div>
