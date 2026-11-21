@@ -106,6 +106,10 @@ This is the pure core. PRA-22 still has to persist it, with each operation as on
 account row so parallel sub-agents are serialized; nothing calls it in production yet. fast-check properties check
 PRA-75's `AtomicSpendCap` and `ChargeOnce` on interleaved, serially applied operations, TTL expiry included.
 
+## Context selection (PRA-179)
+
+`packages/agent/src/decision` selects context candidates with Celeris Decision behind an injected port. Six or fewer candidates bypass the provider. Invalid responses, timeouts, missing keys, exhausted allowance and provider errors use deterministic score-ranked fallback with per-kind caps. The optional `CELERIS_API_KEY` platform credential is sealed in memory and its usage reserves and settles against the platform allowance. Selection changes context quality only and cannot grant tools, approvals or trust.
+
 iOS OpenRouter PKCE: `ASWebAuthenticationSession` opens OpenRouter with `callback_url` set to the hosted
 `/settings/openrouter/app-callback`, which needs no session and only forwards a well-formed `code` to
 `praxis-app://openrouter/callback`; the app holds the verifier and exchanges the code itself.

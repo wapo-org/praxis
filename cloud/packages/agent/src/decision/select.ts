@@ -9,7 +9,7 @@ export interface Candidate {
   score: number;
 }
 export type FallbackReason = 'no_key' | 'timeout' | 'rate_limited' | 'quota' | 'unavailable' | 'invalid_response' | 'allowance';
-export type DecisionResult = {kind: 'success'; probabilities: ReadonlyMap<string, number>; usage?: {inputTokens: number}} | {kind: 'failure'; reason: FallbackReason};
+export type DecisionResult = {kind: 'success'; probabilities: ReadonlyMap<string, number>; usage?: {inputTokens: number}} | {kind: 'failure'; reason: FallbackReason | 'unauthorized'};
 export interface DecisionRequest {query: string; candidates: readonly Candidate[]}
 export interface DecisionPort {decide(request: DecisionRequest): Promise<DecisionResult>}
 export interface Selection {chosen: Candidate[]; selection: 'all' | 'decision' | 'fallback'; reason?: FallbackReason; usage?: {inputTokens: number}}
@@ -39,7 +39,7 @@ export async function selectCandidates({query, candidates, port, sendsMemories =
   const memories = sendsMemories ? [] : unique.filter(candidate => candidate.kind === 'memory');
   if (eligible.length <= CONTEXT_DECISION_MIN_CANDIDATES) return {chosen: capByKind(sortCandidates([...eligible, ...memories])), selection: 'all'};
   const result = await port.decide({query, candidates: eligible});
-  if (result.kind === 'failure') return fallback([...eligible, ...memories], result.reason);
+  if (result.kind === 'failure') return fallback([...eligible, ...memories], result.reason === 'unauthorized' ? 'unavailable' : result.reason);
   if (result.probabilities.size !== eligible.length || eligible.some(candidate => {
     const probability = result.probabilities.get(candidate.key);
     return probability === undefined || !Number.isFinite(probability) || probability < 0 || probability > 1;

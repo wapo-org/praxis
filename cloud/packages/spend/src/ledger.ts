@@ -1,7 +1,7 @@
 /** PRA-22 pre-reservation core for platform-paid calls: pure, one ledger per user and period; persistence is PRA-22's job. */
 
 /** Platform services only: OpenRouter is the user's own key, so it never reserves against the platform allowance. */
-export type PlatformService = 'exa' | 'firecrawl' | 'modal';
+export type PlatformService = 'exa' | 'firecrawl' | 'modal' | 'celeris';
 
 export interface Reservation {
   /** Idempotency key chosen by the caller, e.g. `runId:callId:exa`; one reservation and one charge per key. */

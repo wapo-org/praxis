@@ -1,4 +1,7 @@
 import {SealedSecret} from '@praxis/types';
+import {pool} from '@praxis/credentials/pool';
+import {memoryCooldownStore} from '@praxis/credentials/cooldown';
+import {withCredential} from '@praxis/credentials/failover';
 import {z} from 'zod';
 import {CELERIS_BASE_URL, CELERIS_DECISION_PATH_SEGMENT, CONTEXT_DECISION_MODEL, CONTEXT_DECISION_QUERY_MAX_CHARACTERS, CONTEXT_DECISION_TIMEOUT_MS} from './constants.js';
 import type {DecisionPort, DecisionRequest, DecisionResult} from './select.js';
@@ -30,7 +33,8 @@ export function celerisDecisionPort({key, fetch: fetcher = fetch, signal}: {key:
       if (!response.ok) {
         if (response.status === 429) return {kind: 'failure', reason: 'rate_limited'};
         if (response.status === 402) return {kind: 'failure', reason: 'quota'};
-        if (response.status >= 500 || response.status === 401 || response.status === 404 || response.status === 413) return {kind: 'failure', reason: 'unavailable'};
+        if (response.status === 401) return {kind: 'failure', reason: 'unauthorized'};
+        if (response.status >= 500 || response.status === 404 || response.status === 413) return {kind: 'failure', reason: 'unavailable'};
         return {kind: 'failure', reason: 'invalid_response'};
       }
       const parsed = responseSchema.safeParse(await response.json());
@@ -42,6 +46,24 @@ export function celerisDecisionPort({key, fetch: fetcher = fetch, signal}: {key:
     } finally {
       clearTimeout(timeout);
       signal?.removeEventListener('abort', abort);
+    }
+  }};
+}
+
+export function pooledCelerisDecisionPort({env, fetch: fetcher = fetch, signal}: {env: Record<string, string | undefined>; fetch?: typeof fetch; signal?: AbortSignal}): DecisionPort {
+  const credentials = pool('CELERIS_API_KEY', env, {service: 'celeris'});
+  const cooldowns = memoryCooldownStore();
+  if (!credentials.slots.length) return {decide: async () => ({kind: 'failure', reason: 'no_key'})};
+  return {async decide(request) {
+    try {
+      const result = await withCredential(credentials, cooldowns, async key => celerisDecisionPort({key, fetch: fetcher, signal}).decide(request), {
+        classify: value => value.kind === 'failure' && (value.reason === 'quota' || value.reason === 'unauthorized')
+          ? {kind: 'exhausted', cooldownMs: 60_000}
+          : {kind: 'ok'},
+      });
+      return result.value;
+    } catch {
+      return {kind: 'failure', reason: 'unavailable'};
     }
   }};
 }
