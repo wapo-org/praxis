@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue, Message, TurnRequest, TurnResult } from '@praxis/protocol';
+import type { JsonObject, JsonValue, Message } from '@praxis/protocol';
 export interface StoredRecord { userId:string; kind:string; id:string; value:JsonObject; revision:number; updatedAt:string; deleted:boolean; parentId?:string }
 /** Secondary index (e.g. chatId) so list queries never scan a whole kind. */
 export interface ListOptions { parentId?:string }
@@ -26,11 +26,7 @@ export interface Events {
  /** Newest event id (0 if none) so clients subscribe from now without replay. */
  latest?(userId:string,channel:string):Promise<number>;
 }
-export interface TurnWorker {
- /** Throws `TurnIndexConflict` when `turns.commit` rejects the index fence, so Convex reads the saved flags. */
- execute(input: TurnRequest): Promise<TurnResult>;
-}
-export interface AdapterBundle {turn?:TurnWorker;store:Store;kv:KV;events:Events;purgeOwner?(userId:string):Promise<void>;
+export interface AdapterBundle {store:Store;kv:KV;events:Events;purgeOwner?(userId:string):Promise<void>;
  /** dev:local only: lets a fresh dev sign-in recreate an erased user as a clean, empty account. */
  reopenOwner?(userId:string):Promise<void>}
 export interface FeatureContext {userId:string;store:Store;kv:KV;fetch:typeof fetch;

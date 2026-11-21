@@ -75,15 +75,10 @@ OAuth native returnUrl is exactly `praxis-app://oauth/callback`; callback redire
 
 Connector `authStatus:"required"` represents needs-reauth; `error:"needs_reauth"` identifies revoked OAuth credentials. Calls stop until connector sign-in succeeds; refresh failures never downgrade an OAuth connector to anonymous MCP.
 
-## Internal turn worker
+## Turn results and commits
 
-`POST /api/turn` uses `TurnRequestSchema` and `TurnResultSchema`. Convex signs
-the raw body and Unix-millisecond timestamp with HMAC-SHA256; session credentials
-are not accepted. See `cloud/DEPLOY.md` for canonical signing and replay rules.
-
-The request carries signed `userId`, `chatId`, `runId`,
-`expectedTurnIndex` and an optional structured approval/elicitation decision.
-Results carry `turnIndex`, `done`, `status` and `subagents` (unique addressed
+The Convex action `turns.run` runs one turn and returns a `TurnResultSchema` result,
+which the workflow journals. Results carry `turnIndex`, `done`, `status` and `subagents` (unique addressed
 child IDs using PRA-79 `SubagentIdSchema` and
 `SUBAGENT_LIMITS.CHILDREN_MAX`, currently four). Status is ready/busy while active
 and stopped/completed/failed
@@ -91,8 +86,9 @@ when terminal, matching the one-turn harness flags. `failed` carries a `TurnFail
 (`model_key_invalid` / `model_credit_exhausted`, a message and remediation capped at
 `TURN_FAILURE_MESSAGE_MAX_BYTES` / `TURN_FAILURE_REMEDIATION_MAX_BYTES` of serialized UTF-8, so a
 failed result with every other field at its maximum still fits `TURN_RESULT_MAX_BYTES`). Child lifecycle/handoffs use
-PRA-79's durable subagent protocol; this response never embeds handoffs or messages.
-The runtime adapter is supplied by PRA-39; absent configuration returns 503.
+PRA-79's durable subagent protocol; this result never embeds handoffs or messages.
+The harness writes a turn back with `TurnCommitSchema` through the internal mutation
+`turns.commitInternal`; no HTTP endpoint carries turns.
 
 
 ## Subagent tool results

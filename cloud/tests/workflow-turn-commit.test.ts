@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {Message} from '@praxis/protocol';
-import {api, internal} from '../convex/_generated/api.js';
+import {internal} from '../convex/_generated/api.js';
 import {SERVER_TOKEN, startedRun} from './workflow-fixture.js';
 import {assistantMessage, commitArgs} from './workflow-commit.js';
 
@@ -20,7 +20,7 @@ async function setup() {
   return {...started, first, snapshot};
 }
 
-describe('turns.commit fence (PRA-30)', () => {
+describe('turns.commitInternal fence (PRA-30)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubEnv('CONVEX_CLOUD_URL', 'https://test.convex.cloud');
@@ -34,7 +34,7 @@ describe('turns.commit fence (PRA-30)', () => {
   it('writes messages, usage, receipt and cursor together, and a stale index or generation writes nothing', async () => {
     const {t, first, runId, snapshot} = await setup();
     const usage = {type: 'usage' as const, inputTokens: 120, outputTokens: 30, cacheReadTokens: 0, cacheWriteTokens: 0, cost: 0.002};
-    const committed = await t.mutation(api.turns.commit, commitArgs(first, {end: {status: 'ready'}, usage,
+    const committed = await t.mutation(internal.turns.commitInternal, commitArgs(first, {end: {status: 'ready'}, usage,
       messages: [assistantMessage(first)]}));
     expect(committed).toEqual({outcome: 'committed', flags: {done: false, status: 'ready', subagents: [], turnIndex: 0}});
     const after = await snapshot();
@@ -45,7 +45,7 @@ describe('turns.commit fence (PRA-30)', () => {
     expect(after.run?.workflow?.nextTurnIndex).toBe(1);
     for (const stale of [first, {...first, expectedTurnIndex: 3}, {...first, expectedTurnIndex: 1, generation: 1}]) {
       const fresh = assistantMessage({...stale, expectedTurnIndex: 9});
-      expect(await t.mutation(api.turns.commit, commitArgs(stale, {end: {status: 'completed'}, messages: [fresh]})))
+      expect(await t.mutation(internal.turns.commitInternal, commitArgs(stale, {end: {status: 'completed'}, messages: [fresh]})))
         .toEqual({outcome: 'conflict'});
     }
     expect(await snapshot()).toEqual(after);
@@ -60,10 +60,10 @@ describe('turns.commit fence (PRA-30)', () => {
     const before = await snapshot();
     expect(before.run?.workflow).toMatchObject({generation: 1, nextTurnIndex: 0});
     const stale = commitArgs(first, {end: {status: 'completed'}, messages: [assistantMessage(first)]});
-    expect(await t.mutation(api.turns.commit, stale)).toEqual({outcome: 'conflict'});
+    expect(await t.mutation(internal.turns.commitInternal, stale)).toEqual({outcome: 'conflict'});
     expect(await snapshot()).toEqual(before);
     const current = {...first, generation: 1};
-    expect(await t.mutation(api.turns.commit, commitArgs(current))).toMatchObject({outcome: 'committed', flags: {turnIndex: 0}});
+    expect(await t.mutation(internal.turns.commitInternal, commitArgs(current))).toMatchObject({outcome: 'committed', flags: {turnIndex: 0}});
   });
 
   it('rolls back a commit whose messages are not new assistant messages of its run', async () => {
@@ -71,27 +71,27 @@ describe('turns.commit fence (PRA-30)', () => {
     const before = await snapshot();
     const own = assistantMessage(first);
     for (const message of [{...own, role: 'user' as const}, {...own, chatId: 'other-chat'}, {...own, runId: 'other-run'}]) {
-      await expect(t.mutation(api.turns.commit, commitArgs(first, {end: {status: 'ready'}, messages: [message]})))
+      await expect(t.mutation(internal.turns.commitInternal, commitArgs(first, {end: {status: 'ready'}, messages: [message]})))
         .rejects.toThrow('only new assistant messages');
     }
     expect(await snapshot()).toEqual(before);
-    await t.mutation(api.turns.commit, commitArgs(first, {end: {status: 'ready'}, messages: [own]}));
+    await t.mutation(internal.turns.commitInternal, commitArgs(first, {end: {status: 'ready'}, messages: [own]}));
     const reused = commitArgs({...first, expectedTurnIndex: 1}, {end: {status: 'ready'}, messages: [own]});
-    await expect(t.mutation(api.turns.commit, reused)).rejects.toThrow('only new assistant messages');
+    await expect(t.mutation(internal.turns.commitInternal, reused)).rejects.toThrow('only new assistant messages');
     expect((await snapshot()).run?.workflow?.nextTurnIndex).toBe(1);
   });
 
   it('keeps the first run taint and refuses tainted tool results without one (PRA-57)', async () => {
     const {t, first, snapshot} = await setup();
     const tainted = [assistantMessage(first, TAINTED_RESULT)];
-    await expect(t.mutation(api.turns.commit, commitArgs(first, {end: {status: 'ready'}, messages: tainted})))
+    await expect(t.mutation(internal.turns.commitInternal, commitArgs(first, {end: {status: 'ready'}, messages: tainted})))
       .rejects.toThrow('need run taint');
     expect((await snapshot()).messages).toEqual([]);
-    expect(await t.query(api.turns.state, {serverToken: SERVER_TOKEN, ...first})).toEqual({state: 'open', runTainted: false});
-    await t.mutation(api.turns.commit, commitArgs(first, {end: {status: 'ready'}, messages: tainted, taint: TAINT}));
+    expect(await t.query(internal.turns.preflight, first)).toEqual({state: 'open', runTainted: false});
+    await t.mutation(internal.turns.commitInternal, commitArgs(first, {end: {status: 'ready'}, messages: tainted, taint: TAINT}));
     const second = {...first, expectedTurnIndex: 1};
-    expect(await t.query(api.turns.state, {serverToken: SERVER_TOKEN, ...second})).toEqual({state: 'open', runTainted: true});
-    await t.mutation(api.turns.commit, commitArgs(second, {end: {status: 'ready'},
+    expect(await t.query(internal.turns.preflight, second)).toEqual({state: 'open', runTainted: true});
+    await t.mutation(internal.turns.commitInternal, commitArgs(second, {end: {status: 'ready'},
       taint: {tainted: true, source: 'Slack', callId: 'call-9'}}));
     expect((await snapshot()).run?.value.taint).toEqual(TAINT);
   });
@@ -103,20 +103,13 @@ describe('turns.commit fence (PRA-30)', () => {
       preview: 'Send the draft', status: 'pending', revision: 1, updatedAt: NOW,
     }));
     const suspend = (callId: string) => commitArgs(first, {end: {status: 'suspended', callId, approvalId: 'approval-1'}});
-    await expect(t.mutation(api.turns.commit, suspend('call-2'))).rejects.toThrow('pending approval');
-    expect(await t.mutation(api.turns.commit, suspend('call-1'))).toMatchObject({flags: {done: false, status: 'ready'}});
+    await expect(t.mutation(internal.turns.commitInternal, suspend('call-2'))).rejects.toThrow('pending approval');
+    expect(await t.mutation(internal.turns.commitInternal, suspend('call-1'))).toMatchObject({flags: {done: false, status: 'ready'}});
     const after = await snapshot();
     expect(after.run?.value.status).toBe('paused');
     expect(after.turns).toMatchObject([{suspension: {callId: 'call-1', approvalId: 'approval-1'}}]);
     const next = {...first, expectedTurnIndex: 1};
     expect(await t.query(internal.turns.preflight, next)).toEqual({state: 'settled',
       flags: {done: false, status: 'busy', subagents: [], turnIndex: 1}});
-  });
-
-  it('serves the worker pre-check only to the server token holder', async () => {
-    const {t, first} = await setup();
-    await expect(t.query(api.turns.state, {serverToken: 'x'.repeat(40), ...first})).rejects.toThrow('Server authentication');
-    await expect(t.mutation(api.turns.commit, {...commitArgs(first), serverToken: 'x'.repeat(40)}))
-      .rejects.toThrow('Server authentication');
   });
 });

@@ -10,7 +10,6 @@ import {createLocalAdapters} from '../local-memory.js';
 import {createPraxisApp, jsonLog} from '../server.js';
 
 const env = () => ({
-  PRAXIS_TURN_CURRENT_SIGNING_KEY: 't'.repeat(32),
   PRAXIS_API_URL: 'https://api.praxis.test',
   PRAXIS_WEB_ORIGINS: 'https://app.praxis.test',
   PRAXIS_ENCRYPTION_KEYS: `${randomBytes(32).toString('base64')},${randomBytes(32).toString('base64')}`,
@@ -39,8 +38,7 @@ describe('production startup', () => {
     expect(service.local).toBe(false);
     expect(await (await app.request('/health')).json()).toMatchObject({mode: 'production'});
     expect((await app.request('/v1/auth/dev', {method: 'POST', body: '{}'})).status).toBe(404);
-    expect((await app.request('/api/turn', {method: 'POST', body: '{}', headers: {cookie: 'praxis_session=fake'}})).status).toBe(401);
-    expect((await app.request('/api/turn', {method: 'OPTIONS'})).status).toBe(405);
+    expect((await app.request('/api/turn', {method: 'POST', body: '{}'})).status).toBe(404);
     expect((await app.request(CONTINUATION_PATH, {method: 'POST', body: '{}'})).status).toBe(401);
   });
 

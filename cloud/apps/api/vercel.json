@@ -7,5 +7,5 @@
   "functions": {
     "api/index.mjs": {"maxDuration": 300, "memory": 1024}
   },
-  "rewrites": [{"source": "/api/turn", "destination": "/api"}, {"source": "/(.*)", "destination": "/api"}]
+  "rewrites": [{"source": "/(.*)", "destination": "/api"}]
 }

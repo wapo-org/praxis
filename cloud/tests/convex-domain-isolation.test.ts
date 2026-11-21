@@ -1,5 +1,5 @@
 import {describe, expect, it, vi} from 'vitest';
-import {api} from '../convex/_generated/api.js';
+import {api, internal} from '../convex/_generated/api.js';
 import {SERVER_TOKEN} from './workflow-fixture.js';
 import {commitArgs} from './workflow-commit.js';
 import {
@@ -16,7 +16,7 @@ async function seedAllTables(t: DomainTest, viewer: Viewer) {
   const {userId, client} = viewer;
   await createChat(viewer);
   const runId = await client.mutation(api.runs.start, {chatId: CHAT_ID});
-  await t.mutation(api.turns.commit, commitArgs({userId, chatId: CHAT_ID, runId, generation: 0, expectedTurnIndex: 0}, {end: {status: 'ready'}}));
+  await t.mutation(internal.turns.commitInternal, commitArgs({userId, chatId: CHAT_ID, runId, generation: 0, expectedTurnIndex: 0}, {end: {status: 'ready'}}));
   await commit(t, userId, [textMessage('same-message', CHAT_ID, `secret of ${userId}`)]);
   await t.mutation(api.store.put, {...token, userId, kind: 'outputChunk', id: 'same-chunk', parentId: 'manifest',
     valueJson: JSON.stringify({chatId: CHAT_ID, text: `output of ${userId}`})});
@@ -43,7 +43,7 @@ describe('PRA-24 owner isolation', () => {
     await expect(bob.client.mutation(api.runs.start, {chatId: CHAT_ID})).rejects.toThrow('Run or chat unavailable');
     await expect(bob.client.mutation(api.runs.cancel, {runId: aliceRun})).rejects.toThrow('Run or chat unavailable');
     const foreign = {userId: bob.userId, chatId: CHAT_ID, runId: aliceRun, generation: 0, expectedTurnIndex: 1};
-    expect(await t.mutation(api.turns.commit, commitArgs(foreign))).toEqual({outcome: 'conflict'});
+    expect(await t.mutation(internal.turns.commitInternal, commitArgs(foreign))).toEqual({outcome: 'conflict'});
     expect(await typedRows(t)).toEqual(before);
     expect(await alice.client.query(api.chats.get, {chatId: CHAT_ID})).toMatchObject({title: 'Chat'});
     expect(await alice.client.query(api.runs.get, {runId: aliceRun})).toMatchObject({status: 'running'});
