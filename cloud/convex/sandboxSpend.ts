@@ -106,9 +106,9 @@ interface Budget {
 
 /** The time a boot may buy, or the budget that refuses it; a later renewal wins so the retry time is honest. */
 function lifetimeOrRefusal(budgets: Budget[]): {lifetimeMs: number} | Admission {
-  const short = budgets.filter(budget => affordableMs(budget.leftMicroUsd) < TIER.MIN_LIFETIME_MS);
-  if (short.length) {
-    const binding = short.reduce((a, b) => (b.retryAtMs > a.retryAtMs ? b : a));
+  const [first, ...rest] = budgets.filter(budget => affordableMs(budget.leftMicroUsd) < TIER.MIN_LIFETIME_MS);
+  if (first) {
+    const binding = rest.reduce((a, b) => (b.retryAtMs > a.retryAtMs ? b : a), first);
     return {kind: 'unavailable', reason: binding.reason, retryAtMs: binding.retryAtMs};
   }
   const left = Math.min(...budgets.map(budget => budget.leftMicroUsd));
