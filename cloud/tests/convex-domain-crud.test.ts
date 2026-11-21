@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {api} from '../convex/_generated/api.js';
 import {SERVER_TOKEN} from './workflow-fixture.js';
-import {commitArgs} from './workflow-worker.js';
+import {commitArgs} from './workflow-commit.js';
 import {CHAT_ID, NOW, commit, createChat, textMessage, twoOwners, useDomainEnv} from './convex-domain-fixture.js';
 
 const token = {serverToken: SERVER_TOKEN};

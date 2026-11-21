@@ -2,7 +2,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {Message} from '@praxis/protocol';
 import {api, internal} from '../convex/_generated/api.js';
 import {SERVER_TOKEN, startedRun} from './workflow-fixture.js';
-import {assistantMessage, commitArgs} from './workflow-worker.js';
+import {assistantMessage, commitArgs} from './workflow-commit.js';
 
 const NOW = '2026-11-20T00:00:00.000Z';
 const TAINT = {tainted: true as const, source: 'Gmail', callId: 'call-1'};

@@ -5,8 +5,8 @@ import {createRequest, handoff, workspacePort} from './test-fixtures.js';
 import {reduceSubagents} from './reducer.js';
 import {VerifiedHandoff} from './handoff.js';
 import {defaultChildTools} from './tools.js';
-import {fixture} from '../one-turn-fixture.js';
-import {runOneTurn} from '../one-turn.js';
+import {turnFixture} from '../harness/turn-fixture.js';
+import {runTurn} from '../harness/turn.js';
 import {ToolBoundaryError, toolError} from '../boundary/errors.js';
 import {executeBoundary} from '../boundary/gate.js';
 
@@ -95,21 +95,18 @@ it('joins peer taint before the next harness effect, requiring a fresh receipt',
   f.actor('child-1');
   await f.call('message_agent', {action: 'send', subagent_id: 'root', message: 'untrusted coordination'});
   f.actor('root');
-  const opts = await fixture();
+  const opts = await turnFixture([{calls: [
+    {id: 'discover', name: 'message_agent', args: {action: 'discover'}},
+    {id: 'effect', name: 'read', args: {query: 'effect'}},
+  ]}]);
   opts.tools = [...f.harness.tools, ...opts.tools];
   opts.registry = {classify: call => f.harness.registry.classify(call) ??
     {capabilities: ['write'], decision: 'allow', untrustedSource: false}};
-  opts.store.data.snapshot.request.tools = opts.tools.map(tool => tool.spec);
-  opts.provider = {...opts.provider, async *stream() {
-    yield {type: 'completed', response: {parts: [
-      {type: 'toolCall', callId: 'discover', name: 'message_agent', arguments: '{"action":"discover"}'},
-      {type: 'toolCall', callId: 'effect', name: 'read', arguments: '{"query":"effect"}'},
-    ], stop: 'toolUse', usage: {type: 'usage', inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0}}};
-  }};
-  await runOneTurn(opts);
+  opts.input = {...opts.input, tools: opts.tools.map(tool => tool.spec)};
+  const run = await runTurn(opts);
   expect(opts.counts.tool).toBe(0);
-  expect(opts.store.data.tainted).toBe(true);
-  expect(opts.store.data.calls.effect?.result).toMatchObject({ok: false, error: {code: 'taint-blocked'}});
+  expect(run).toMatchObject({state: 'output', output: {tainted: true}});
+  expect(opts.ledger.calls.effect?.result).toMatchObject({ok: false, error: {code: 'taint-blocked'}});
   const result = await executeBoundary({tool: 'outbound', args: {}}, {...opts.boundary, runId: 'run', toolCallId: 'outbound',
     taint: {tainted: false}, mode: 'auto'}, {classify: () => f.metadata.find(tool => tool.name === 'outbound')!.classification}, async () => null);
   expect(result).toMatchObject({ok: false, error: {code: 'approval-required'}});

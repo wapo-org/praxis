@@ -1,7 +1,7 @@
 import {ConvexError} from 'convex/values';
 import {
   JsonObjectSchema, TURN_INDEX_MAX, TurnResultSchema,
-  type Message, type RunTaint, type TurnCommit, type TurnCommitEnd, type TurnCommitResult,
+  type Message, type RunTaint, type TurnCommit, type TurnCommitEnd, type TurnCommitResult, type TurnFailure, type TurnResult,
 } from '@praxis/protocol';
 import type {Doc} from '../_generated/dataModel.js';
 import type {MutationCtx} from '../functions.js';
@@ -10,6 +10,8 @@ import {domainDocument, keptRunTaint} from '../domainRecords.js';
 import {liveScopedRun} from '../runs.js';
 import {writeRecord} from '../store.js';
 import {WORKFLOW_ERRORS} from './constants.js';
+import {clearLedger} from '../agent/ledger.js';
+import {turnState, type TurnScope} from './turnState.js';
 
 const CONFLICT: TurnCommitResult = {outcome: 'conflict'};
 
@@ -45,7 +47,7 @@ function storedUsage(usage: TurnCommit['usage']) {
 }
 
 /** A restart can reuse the cursor, so the generation is part of the fence, not only of the run lookup. */
-function fenceHolds(run: Doc<'runs'>, commit: TurnCommit): boolean {
+function fenceHolds(run: Doc<'runs'>, commit: Pick<TurnCommit, 'generation' | 'expectedTurnIndex'>): boolean {
   return run.value.status === 'running'
     && run.workflow?.generation === commit.generation
     && run.workflow.nextTurnIndex === commit.expectedTurnIndex;
@@ -63,6 +65,7 @@ export async function commitTurn(ctx: MutationCtx, commit: TurnCommit): Promise<
   assertTaintRecorded(commit.messages, taint);
   await assertPendingApproval(ctx, run, commit.end);
   for (const message of commit.messages) await writeTurnMessage(ctx, commit, message);
+  await clearLedger(ctx, {...commit, runId});
   const done = commit.end.status === 'completed';
   const status = done ? 'completed' : 'ready';
   const suspension = commit.end.status === 'suspended'
@@ -82,4 +85,20 @@ export async function commitTurn(ctx: MutationCtx, commit: TurnCommit): Promise<
     workflow: {...run.workflow, nextTurnIndex: turnIndex + 1},
   });
   return {outcome: 'committed', flags: TurnResultSchema.parse({done, status, subagents: [], turnIndex})};
+}
+
+/** Ends the run as failed with the user-fixable reason; a turn the run no longer holds returns its saved flags. */
+export async function failTurn(ctx: MutationCtx, scope: TurnScope, failure: TurnFailure): Promise<TurnResult> {
+  const run = await liveScopedRun(ctx, scope);
+  if (!run || !fenceHolds(run, scope)) {
+    const state = await turnState(ctx, scope);
+    if (state.state === 'settled') return state.flags;
+    throw new ConvexError(WORKFLOW_ERRORS.index);
+  }
+  const updatedAt = new Date().toISOString();
+  await clearLedger(ctx, scope);
+  await ctx.db.patch(run._id, {
+    updatedAt, value: {...run.value, status: 'failed', updatedAt, error: failure.message, errorCode: failure.code},
+  });
+  return TurnResultSchema.parse({done: true, status: 'failed', failure, subagents: [], turnIndex: scope.expectedTurnIndex});
 }

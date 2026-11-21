@@ -6,6 +6,7 @@ import email from '@convex-dev/auth/components/email/convex.config.js';
 import google from '@convex-dev/auth/components/google/convex.config.js';
 import resend from '@convex-dev/resend/convex.config.js';
 import workflow from '@convex-dev/workflow/convex.config.js';
+import agent from '@convex-dev/agent/convex.config.js';
 import { AUTH_ENV, AUTH_PATHS } from './authConstants.js';
 
 const app = defineApp({
@@ -20,4 +21,5 @@ app.use(google, {
   env: { CLIENT_ID: app.env[AUTH_ENV.googleId], CLIENT_SECRET: app.env[AUTH_ENV.googleSecret] },
 });
 app.use(workflow);
+app.use(agent);
 export default app;

@@ -5,7 +5,7 @@ import {api, internal} from '../convex/_generated/api.js';
 import {GENERATION_TURNS_MAX} from '../convex/workflows/constants.js';
 import {workflow} from '../convex/workflows/agentRun.js';
 import {SERVER_TOKEN, startedRun, type WorkflowTest} from './workflow-fixture.js';
-import {assistantMessage, fakeTurnWorker, type TurnPlan, type TurnScope} from './workflow-worker.js';
+import {defaultEnd, fakeOpenRouter} from './workflow-model.js';
 
 const SCRIPTED_TURNS = 100;
 const JOURNAL_PAGE_MAX = 1_000;
@@ -14,10 +14,7 @@ const LONG_RUN_TIMEOUT_MS = 60_000;
 // A full 40-turn generation measured 34,568 bytes (PRA-31); content leaking into steps would blow past this.
 const GENERATION_JOURNAL_BYTES_MAX = 64 * 1024;
 
-function scriptedPlan(request: TurnScope): TurnPlan {
-  const last = request.expectedTurnIndex + 1 >= SCRIPTED_TURNS;
-  return {end: {status: last ? 'completed' : 'ready'}, messages: [assistantMessage(request)]};
-}
+const scriptedEnd = (turnIndex: number) => defaultEnd(turnIndex, SCRIPTED_TURNS);
 
 async function currentWorkflowId(t: WorkflowTest, runId: Awaited<ReturnType<typeof startedRun>>['runId']) {
   const run = await t.run(ctx => ctx.db.get(runId));
@@ -30,14 +27,13 @@ async function journalBytes(t: WorkflowTest, workflowId: WorkflowId): Promise<nu
   return steps.page.reduce((total, step) => total + getConvexSize(JSON.parse(JSON.stringify(step)) as Value), 0);
 }
 
-/** Runs `after` once the worker has answered the given turn, before the workflow sees the flags. */
-function afterTurn(worker: ReturnType<typeof fakeTurnWorker>, after: (turnIndex: number) => Promise<void>) {
+/** Runs `after` once the model has answered the given turn, before the turn commits. */
+function afterTurn(worker: Awaited<ReturnType<typeof fakeOpenRouter>>, after: (turnIndex: number) => Promise<void>) {
   const forward = worker.fetch.getMockImplementation();
-  if (!forward) throw new Error('Fake worker has no fetch implementation');
+  if (!forward) throw new Error('Fake OpenRouter has no fetch implementation');
   worker.fetch.mockImplementation(async (input, init) => {
     const response = await forward(input, init);
-    const {expectedTurnIndex} = JSON.parse(String(init?.body)) as {expectedTurnIndex: number};
-    await after(expectedTurnIndex);
+    await after(worker.modelCalls.at(-1)!.expectedTurnIndex);
     return response;
   });
 }
@@ -56,8 +52,8 @@ describe('continue-as-new hand-off', () => {
   });
 
   it('runs 100 turns across three generations with contiguous sequence and one terminal status', async () => {
-    const {t, runId} = await startedRun();
-    const worker = fakeTurnWorker(t, scriptedPlan);
+    const {t, runId, scope} = await startedRun();
+    const worker = await fakeOpenRouter(t, scope, scriptedEnd);
     const generations: WorkflowId[] = [];
     const journals: number[] = [];
     afterTurn(worker, async turnIndex => {
@@ -74,7 +70,8 @@ describe('continue-as-new hand-off', () => {
       Array.from({length: SCRIPTED_TURNS}, (_, i) => Math.floor(i / GENERATION_TURNS_MAX)),
     );
     const messages = await t.run(ctx => ctx.db.query('messages').collect());
-    expect(messages.map(message => message.sequence)).toEqual(Array.from({length: SCRIPTED_TURNS}, (_, i) => i + 1));
+    // The prompt, two messages per tool turn, and the final answer.
+    expect(messages.map(message => message.sequence)).toEqual(Array.from({length: 2 * SCRIPTED_TURNS}, (_, i) => i + 1));
     const turns = await t.run(ctx => ctx.db.query('turns').collect());
     expect(turns.filter(turn => turn.done)).toHaveLength(1);
     expect([0, 1, 2].map(generation => turns.filter(turn => turn.generation === generation).length)).toEqual([40, 40, 20]);
@@ -89,8 +86,8 @@ describe('continue-as-new hand-off', () => {
   }, LONG_RUN_TIMEOUT_MS);
 
   it('stops generation 2 when Stop arrives after a hand-off', async () => {
-    const {t, owner, runId} = await startedRun();
-    const worker = fakeTurnWorker(t, scriptedPlan);
+    const {t, owner, runId, scope} = await startedRun();
+    const worker = await fakeOpenRouter(t, scope, scriptedEnd);
     const stopAt = GENERATION_TURNS_MAX + 5;
     afterTurn(worker, async turnIndex => {
       if (turnIndex === stopAt) await owner.mutation(api.runs.cancel, {runId});
@@ -98,7 +95,8 @@ describe('continue-as-new hand-off', () => {
     await t.finishAllScheduledFunctions(() => vi.runAllTimers(), SCRIPTED_TURNS * 20);
 
     const run = await t.run(ctx => ctx.db.get(runId));
-    expect(run).toMatchObject({value: {status: 'cancelled'}, workflow: {generation: 1, nextTurnIndex: stopAt + 1}});
+    // Stop lands after the model answered but before the commit, so the cancel fence keeps that turn out.
+    expect(run).toMatchObject({value: {status: 'cancelled'}, workflow: {generation: 1, nextTurnIndex: stopAt}});
     expect(worker.modelCalls.at(-1)).toMatchObject({generation: 1, expectedTurnIndex: stopAt});
     const status = await t.run(ctx => workflow.status(ctx, run!.workflow!.id as WorkflowId));
     expect(status).toEqual({type: 'completed', result: 'cancelled'});
@@ -106,7 +104,7 @@ describe('continue-as-new hand-off', () => {
 
   it('fences the old generation once the successor owns the run', async () => {
     const {t, runId, scope} = await startedRun();
-    fakeTurnWorker(t);
+    await fakeOpenRouter(t, scope);
     const oldScope = {...scope, generation: 0};
     expect(await t.mutation(internal.runs.continueAsNew, {...oldScope, turnIndex: 0})).toEqual({continued: true});
     expect(await t.mutation(internal.runs.continueAsNew, {...oldScope, turnIndex: 0})).toEqual({continued: false});

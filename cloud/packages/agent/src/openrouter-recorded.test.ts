@@ -3,9 +3,7 @@ import {CapabilitiesSchema, type JsonObject, type Message} from '@praxis/protoco
 import {SealedSecret} from '@praxis/types';
 import {createOpenRouterProvider} from './openrouter.js';
 import {collectResponse} from './collect.js';
-import {runOneTurn} from './one-turn.js';
 import {AgentRunner} from './runner.js';
-import {fixture} from './one-turn-fixture.js';
 import {recordedTransport, recording} from './recorded-transport.js';
 import type {AgentPorts, ProviderEvent, ProviderRequest, ProviderResponse} from './types.js';
 
@@ -86,57 +84,6 @@ describe('OpenRouter over a recorded transport', () => {
     expect((sent(transport, 0).messages as JsonObject[])[1]?.content).toEqual([
       {type: 'text', text: 'What is this?'}, {type: 'image_url', image_url: {url: 'data:image/png;base64,iVBORw0KGgo='}},
     ]);
-  });
-});
-
-describe('runOneTurn on the OpenRouter provider', () => {
-  it('commits the response with OpenRouter cost and dispatches the streamed tool call', async () => {
-    const f = await fixture(true);
-    const transport = recordedTransport(recording('tool-call.sse'));
-    f.provider = provider(transport.fetcher);
-    expect(await runOneTurn(f)).toEqual({turnIndex: 1, status: 'ready', done: false});
-    const committed = f.store.data.outputs;
-    expect(committed).toHaveLength(1);
-    expect(committed[0]?.usage).toMatchObject({cost: 0.001545, inputTokens: 310, outputTokens: 41});
-    expect(committed[0]?.messages.map(m => m.parts.map(p => p.type))).toEqual([['text', 'toolCall'], ['toolResult']]);
-    expect(committed[0]?.messages[0]?.raw?.data).toMatchObject({role: 'assistant'});
-    expect(f.store.data.calls.toolu_01ReadHello?.result.ok).toBe(true);
-    expect(transport.calls[0]?.body.usage).toEqual({include: true});
-  });
-
-  it.each([
-    [401, 'User not found.', 'model_key_invalid', /Reconnect OpenRouter/],
-    [402, 'Insufficient credits. Add more at https://openrouter.ai/settings/credits', 'model_credit_exhausted', /Add credit/],
-  ] as const)('a %d ends the turn as failed, releases the claim, and keeps nothing of the attempt', async (status, message, code, remediation) => {
-    const f = await fixture(true);
-    const transport = recordedTransport({status, body: {error: {code: status, message}}});
-    f.provider = provider(transport.fetcher);
-    const failed = {turnIndex: 0, status: 'failed', done: true, failure: {code, message, remediation: expect.stringMatching(remediation)}};
-    expect(await runOneTurn(f)).toEqual(failed);
-    expect(f.store.data.claimed).toBe(false);
-    expect(await runOneTurn(f)).toEqual(failed);
-    expect(transport.calls).toHaveLength(1);
-    expect(f.store.data.response).toBeUndefined();
-    expect(f.store.data.calls).toEqual({});
-    expect(f.store.data.commits).toBe(0);
-    expect(f.counts.tool).toBe(0);
-  });
-
-  it('a 429 worded as a quota is a rate limit, not spent credit: the turn is not ended as failed', async () => {
-    const f = await fixture(true);
-    const body = {error: {code: 429, message: 'Quota exceeded for requests per minute; retry in 3 seconds'}};
-    f.provider = provider(recordedTransport({status: 429, body, headers: {'retry-after': '3'}}).fetcher);
-    await expect(runOneTurn(f)).rejects.toMatchObject({kind: 'rateLimited', retryable: true, retryAfterMs: 3000, status: 429});
-    expect(f.store.data.flags).toEqual({turnIndex: 0, status: 'ready', done: false});
-  });
-
-  it('other provider failures still propagate and keep the claim for fenced recovery', async () => {
-    const f = await fixture(true);
-    f.provider = provider(recordedTransport({status: 400, body: {error: {code: 400, message: 'Bad request'}}}).fetcher);
-    await expect(runOneTurn(f)).rejects.toMatchObject({kind: 'fatal', status: 400});
-    expect(f.store.data.claimed).toBe(true);
-    expect(f.store.data.flags).toEqual({turnIndex: 0, status: 'ready', done: false});
-    expect(f.store.data.response).toBeUndefined();
   });
 });
 

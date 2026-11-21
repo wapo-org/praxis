@@ -6,6 +6,9 @@ import {collectResponse} from './collect.js';
 import {recordedTransport, recording} from './recorded-transport.js';
 import {turnOutput} from './turn-output.js';
 import type {ProviderResponse} from './types.js';
+import {runTurn} from './harness/turn.js';
+import {prompt, readCall, turnFixture} from './harness/turn-fixture.js';
+import type {FakeReply} from './harness/fake-model.js';
 
 const TIME = '2026-11-17T12:00:00.000Z';
 const helloReplay = helloReplayJson as unknown as {messages: Array<{sequence: number; role: Message['role']; parts: MessagePart[]}>};
@@ -60,6 +63,26 @@ export async function committedTurns(): Promise<Message[]> {
       newId: () => `${name}-${next++}`,
     });
     out.push(...output.messages);
+  }
+  return out;
+}
+
+/** Turns as the PRA-169 harness commits them: signed reasoning, tool calls, untrusted results, plain text. */
+export async function harnessTurns(): Promise<Message[]> {
+  const replies: FakeReply[] = [
+    {reasoning: {text: 'Look it up.', signature: 'sig-anthropic-corpus'}, text: 'Checking.', ...readCall('corpus-call')},
+    {calls: [{id: 'corpus-bad', name: 'read', args: '{not json'}]},
+    {text: 'Here is the answer.'},
+  ];
+  const out: Message[] = [];
+  let ids = 0;
+  for (const [index, reply] of replies.entries()) {
+    const f = await turnFixture([reply]);
+    f.input = {...f.input, history: [prompt(`corpus-prompt-${index}`, 'Hello')]};
+    f.newId = () => `harness-${ids++}`;
+    const run = await runTurn(f);
+    if (run.state !== 'output') throw new Error(`Corpus turn ${index} ended ${run.state}`);
+    out.push(...run.output.messages);
   }
   return out;
 }

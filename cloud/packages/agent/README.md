@@ -1,78 +1,73 @@
-# Agent ports
+# Agent harness
 
-`createTurnAgent()` (`turn-harness.ts`) is the one-turn harness entry point (PRA-43); it is not
-wired into the API yet (PRA-39). Built per request from the model, the tool registry and request
-transforms, it runs `runOneTurn()`: one ModelProvider call, then that response's tools through
-PRA-76's `executeBoundary` and permission decision table, then one commit. It adds no runtime
-dependencies; PRA-78 ruled out LangChain/DeepAgents for this worker. The existing AgentRunner
-stays until the PRA-14 migration.
+`runTurn()` (`src/harness/turn.ts`, PRA-169) runs one workflow turn: one model call, then that
+response's tool calls through PRA-76's `executeBoundary` and permission decision table. It returns
+a `TurnOutput` for the caller's fenced commit. The model call goes through an injected `generate`
+port on the AI SDK (`ai`). In production, `cloud/convex/agent/component.ts` binds that port to the
+Convex Agent component (`@convex-dev/agent`, `Agent.generateText`) inside the `turns.run` action,
+with no thread and no component storage. Package tests call the AI SDK's `generateText` directly.
+This package imports no Convex, Vercel or Upstash code. The legacy `AgentRunner` stays until PRA-46.
 
-## Message mapping
+## Model and messages
 
-`toModelMessages` / `toStoredMessages` (`model-messages.ts`) map stored `Message` rows to the
-request-scoped model view (human input, one response, one tool result each) and back without loss;
-`model-messages.test.ts` proves the round trip on the captured `hello-replay.json` chat and decoded
-OpenRouter turns. The mapper accepts only what `MessageSchema` allows, in a possible layout: results
-lead a user message or trail an assistant message, and parts must fit the role. `raw` provider
-payloads stay on the message, so merged `reasoning_details` with signatures replay unchanged.
-`buildProviderRequest` renders the OpenRouter wire from this view.
+- `openRouterTurnModel(key, modelId, effort)` builds the AI SDK model with the user's own key.
+  The key is a `SealedSecret` and is revealed only into this request's provider.
+- Usage accounting is on, so the response metadata carries `usage.cost`.
+- `requestMessages(history)` maps stored rows to AI SDK messages through the model view in
+  `model-messages.ts`. It fails closed on invalid rows. It answers a crashed turn's dangling call
+  with an interrupted result in the request only, and drops empty responses from the request only.
+- `toAiMessages` / `fromAiMessages` (`src/harness/ai-messages.ts`) round-trip without loss.
+  Every stored field the AI SDK part cannot express rides under `providerOptions.praxis`, which
+  providers ignore.
+- A message's `raw.reasoning_details` goes on the assistant message as
+  `providerOptions.openrouter.reasoning_details`. The OpenRouter provider replays it unchanged,
+  Anthropic signatures and encrypted reasoning included (`openrouter-turn.test.ts`).
 
-`buildTurnSnapshot` builds the snapshot a claim carries from the frozen setup, history and model.
-`assembleTurnRequest` answers a crashed turn's dangling call with a synthetic interrupted result in
-the request view only. Request transforms (`rehydrateAttachments`, two reads at a time) run just
-before the model call, so history and the snapshot keep attachment references. `onEvent` streams
-provider events to the live writer (PRA-9).
+## Tools
 
-A turn commits `TurnOutput` (`turn-output.ts`): assistant-role messages only (the response with its
-raw payload, then one message of tool results in call order, as `turns.commit` accepts), usage once,
-the first untrusted result as `taint`, and `end` `ready` while results must go back to the model.
-Several calls in one response run sequentially in model order whatever `parallelToolCalls` says,
-so a Stop or an uncertain call fences the rest of the batch. A tool's own `boundary` classification
-(web tools) wins over the injected registry.
+- Tools reach the model as definitions only (`toolDefinitions`): no `execute` and no AI SDK
+  validator.
+- The harness runs each call itself, sequentially in model order:
+  1. it checks the frozen offered schema;
+  2. it runs `executeBoundary` with the exact approval receipt;
+  3. it joins taint monotonically.
+- A tool's own `boundary` (the web tools) wins over the injected registry.
+- Unknown tools and malformed input become `policy-denied` / `schema` results, not crashes.
+- The component's own `needsApproval` flow is not used: approvals stay structural receipts.
 
-## Durable adapter contract
+## Durable ledger (`TurnLedger`)
 
-`TurnStore` is a required injected port, not an in-memory production implementation.
-PRA-7/13 must implement and verify it against Convex before adopting this prototype:
+Convex implements the ledger in `cloud/convex/agent/ledger.ts`. Its rows are `toolState` rows of
+kind `turnLedger`, keyed by run, generation and turn index.
 
-- `acquire` derives owner from trusted server context and atomically compares
-  expectedTurnIndex, terminal/Stop state and exclusive attempt fence. Duplicate,
-  future and concurrent deliveries return flags without calling a provider.
-- A claim does not expire into automatic replay. Recovery first proves the old
-  worker fenced; an interrupted model request may have incurred upstream usage.
-- `saveResponse` persists a detached response, including raw reasoning and usage,
-  before dispatch. Recovery reuses it without another model call.
-- `startCall` atomically records the exact invocation and call ID before effects.
-  A completed call returns its saved result; an ambiguous started call requires
-  reconciliation through provider idempotency/status, never blind execution.
-- All writes reject stale tokens. Stop, auth, connection validity and the attempt
-  fence must also be checked by the dispatch adapter immediately before upstream I/O.
-- Exceptions after dispatch retain an uncertain call and stop the batch, including typed errors
-  and invalid results; only a returned result or pre-dispatch refusal completes a call.
-- Model dispatch requires tools enabled, a frozen offered schema and an available, non-hidden adapter.
-- `saveCall` persists result plus provenance/monotone taint, including errors.
-- `commit` atomically stores the `TurnOutput` messages, usage exactly once, joined taint and
-  its `end`, and increments turnIndex under the fence. A lost reply returns saved flags.
-  Stop owns a separate atomic partial/truncated commit; late worker commits lose.
-- `fail` ends the turn as `failed` under the fence when the model call hits a revoked key or
-  spent credit (`model_key_invalid` / `model_credit_exhausted` with remediation), releases the
-  claim and keeps turnIndex; redelivery sees the failure, not `busy`. Suspending until the user
-  reconnects and resuming belongs to PRA-32's `awaitEvent`.
+- `saveResponse` stores the model output (`SavedResponse`, at most 900 KB) before any tool runs.
+  A retried attempt replays it through `ledgerModel` instead of making a second paid call.
+- `startCall` atomically marks a call started before its effect.
+- `saveCall` stores the result with its taint.
+- A started call with no result is `uncertain`. It throws `UncertainToolCall` on every retry,
+  never a blind re-execution. The same holds for any exception after dispatch.
+- `active()` is false once the run is stopped or fenced. The harness checks it before saving a
+  response, before each call and before returning output. Every ledger mutation re-checks the fence.
+- 401 and 402 return `{state: 'failed'}`. Other provider failures throw, so the workflow's bounded
+  retry runs.
 
-Tests use an atomic fake and explicit JSON round-trips. They are not evidence of
-implemented distributed persistence, full streaming truncation, live model fidelity,
-or real provider idempotency. The prototype exposes tool refusals as structured
-results; authenticated approval suspension/resumption belongs to PRA-21.
-Nested `callTool` is denied; an adapter must surface nested work with its own ledger
-and boundary rather than bypassing policy. Meta-tools use PRA-76's checked batch.
+`MemoryLedger` (`turn-fixture.ts`) is the in-memory test double. `rehydrated()` simulates a fresh
+attempt that reads the same durable rows as JSON.
+
+## Tests
+
+- **Fake model.** `fakeLanguageModel(script)` is a deterministic AI SDK `LanguageModelV4`. It gives
+  fixed call ids, signed reasoning in OpenRouter metadata, usage and cost, and scripted HTTP failures.
+  It comes with `fakeTools()` and `fakeRegistry`.
+- **`turn-scenarios.test.ts`:** text, tools, approval, nested approval, error, long, compaction and
+  vision, plus the edge cases.
+- **`turn.test.ts`:** the PRA-78 properties carried over: replay stability, cancel fence, uncertain
+  calls, receipts and the mode table.
+- **`ai-messages.test.ts`:** the round trip on the captured `hello-replay.json` chat, the legacy
+  decoder's turns and turns committed by this harness.
 
 ## Prompt bytes
 
-`assembleTurnRequest` canonicalizes object keys, sorts unique tool names and preserves
-message/array order. Dynamic memory belongs on a persisted newest-user-turn note;
-it never changes the frozen system or tool prefix. `ONE_TURN_SYSTEM` is a 200-byte
-candidate, not a silent replacement of today's product prompt. The API's existing
-prompt now stabilizes connector discovery and duplicate skill ordering.
-
-Research measurements and decisions live on PRA-78, PRA-96 and PRA-97 in Linear;
-DeepAgents, LangChain and Supermemory were installed only in external scratch.
+`frozenPrompt` sorts unique tool names, canonicalizes schema bytes and appends the collaboration
+instructions when the subagent tools are present. Dynamic content belongs at the tail. It never
+changes the frozen system or tool prefix (`TURN_SYSTEM` is the 200-byte default).

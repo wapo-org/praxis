@@ -4,11 +4,12 @@ import {TURN_RESULT_MAX_BYTES, TurnResultSchema} from '@praxis/protocol';
 import {api, internal} from '../convex/_generated/api.js';
 import {workflow} from '../convex/workflows/agentRun.js';
 import {chatId, SERVER_TOKEN, signedInUser, startedRun} from './workflow-fixture.js';
-import {commitArgs, fakeTurnWorker, TURNS_TO_COMPLETE} from './workflow-worker.js';
+import {commitArgs} from './workflow-commit.js';
+import {fakeOpenRouter, TURNS_TO_COMPLETE} from './workflow-model.js';
 
 async function setup() {
   const started = await startedRun();
-  return {...started, worker: fakeTurnWorker(started.t)};
+  return {...started, worker: await fakeOpenRouter(started.t, started.scope)};
 }
 
 describe('durable workflow skeleton', () => {
@@ -23,14 +24,16 @@ describe('durable workflow skeleton', () => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
-  it('runs one worker turn per action, completes, and journals only bounded flags', async () => {
+  it('runs one harness turn per action, completes, and journals only bounded flags', async () => {
     const {t, runId, worker} = await setup();
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     const run = await t.run(ctx => ctx.db.get(runId));
     expect(run).toMatchObject({value: {status: 'completed'}, workflow: {nextTurnIndex: TURNS_TO_COMPLETE}});
     expect(worker.modelCalls.map(call => call.expectedTurnIndex)).toEqual([0, 1, 2]);
     const messages = await t.run(ctx => ctx.db.query('messages').collect());
-    expect(messages.map(message => [message.sequence, message.value.role])).toEqual([[1, 'assistant'], [2, 'assistant'], [3, 'assistant']]);
+    // The prompt, then per tool turn a response and its results, then the final answer.
+    expect(messages.map(message => message.sequence)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(messages.map(message => message.value.role)).toEqual(['user', 'assistant', 'assistant', 'assistant', 'assistant', 'assistant']);
     const steps = await t.run(ctx => workflow.listSteps(ctx, run!.workflow!.id as WorkflowId));
     const turns = steps.page.filter(step => step.name === 'turns:run');
     expect(turns).toHaveLength(TURNS_TO_COMPLETE);
@@ -41,7 +44,7 @@ describe('durable workflow skeleton', () => {
       expect(JSON.stringify(turn.runResult.returnValue).length).toBeLessThan(TURN_RESULT_MAX_BYTES);
     }
   });
-  it('preserves a terminal worker failure instead of completing the run', async () => {
+  it('preserves a terminal turn failure instead of completing the run', async () => {
     const parse = TurnResultSchema.parse.bind(TurnResultSchema);
     vi.spyOn(TurnResultSchema, 'parse').mockImplementation(input => {
       const flags = parse(input);

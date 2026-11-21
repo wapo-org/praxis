@@ -4,7 +4,7 @@ import {
 import {ToolResultSchema, type ProviderResponse} from './types.js';
 import {taintLabel} from './run-boundary.js';
 import {toModelMessages, toStoredMessages, type ModelMessage, type MessageEnvelope} from './model-messages.js';
-import type {SavedCall} from './one-turn-state.js';
+import type {SavedCall} from './harness/types.js';
 
 /** What one turn hands the store to commit atomically under its fence. */
 export interface TurnOutput {
