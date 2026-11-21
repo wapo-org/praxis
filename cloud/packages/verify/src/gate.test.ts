@@ -6,7 +6,7 @@ import {gitState} from './run-context.js';
 
 describe('gate', () => {
   it('runs the AGENTS.md verification list in CI order', () => {
-    expect(GATE_STEPS.map(step => step.id)).toEqual(['typecheck', 'test', 'check-rules', 'lint', 'comment-sweep', 'web-build', 'api-build']);
+    expect(GATE_STEPS.map(step => step.id)).toEqual(['typecheck', 'test', 'check-rules', 'lint', 'comment-sweep', 'convex-bundle', 'web-build', 'api-build']);
   });
 
   it('selects named steps and rejects unknown ones', () => {

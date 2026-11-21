@@ -85,6 +85,13 @@
       ]
     },
     {
+      "id": "repo.convex-bundle",
+      "title": "Convex functions bundle for their runtimes (no Node built-ins in the default runtime), as `convex deploy` bundles them",
+      "issue": "PRA-169",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
       "id": "composio.connections",
       "title": "Owner-scoped Connect Links, pending link reuse, revocation and account purge",
       "issue": "PRA-47",

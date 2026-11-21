@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [typecheck, tests, lint, web-build, api-build, comments, audit]
+        check: [typecheck, tests, lint, web-build, api-build, comments, convex-bundle, audit]
         include:
           - check: typecheck
             command: npm --prefix cloud run typecheck
@@ -31,6 +31,9 @@ jobs:
             command: npm --prefix cloud run build -w @praxis/api
           - check: comments
             command: node cloud/scripts/comment-sweep.mjs check
+          # Bundles cloud/convex like `convex deploy`, which otherwise first runs after merge (Convex preview).
+          - check: convex-bundle
+            command: node cloud/scripts/convex-bundle.mjs
           - check: audit
             command: npm --prefix cloud run audit
     steps:

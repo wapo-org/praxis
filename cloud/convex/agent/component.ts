@@ -1,5 +1,5 @@
 import {Agent} from '@convex-dev/agent';
-import type {TurnGenerate} from '@praxis/agent';
+import type {TurnGenerate} from '@praxis/agent/harness';
 import {components} from '../_generated/api.js';
 import type {ActionCtx} from '../functions.js';
 

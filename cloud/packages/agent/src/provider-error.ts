@@ -1,4 +1,4 @@
-import {classifyHttp, retryAfterMs, type HeadersLike} from '@praxis/credentials';
+import {classifyHttp, retryAfterMs, type HeadersLike} from '@praxis/credentials/classify';
 import type {RunErrorCode, ToolError} from '@praxis/protocol';
 import {toolError} from './boundary/errors.js';
 

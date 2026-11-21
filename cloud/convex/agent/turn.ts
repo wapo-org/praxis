@@ -3,7 +3,7 @@ import {
 } from '@praxis/protocol';
 import {
   TURN_SYSTEM, openRouterTurnModel, runTurn, type AgentTool, type ToolClassifier, type TurnOutput,
-} from '@praxis/agent';
+} from '@praxis/agent/harness';
 import type {SealedSecret} from '@praxis/types';
 import {internal} from '../_generated/api.js';
 import type {ActionCtx} from '../functions.js';

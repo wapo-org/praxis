@@ -16,6 +16,8 @@ export const GATE_STEPS: readonly GateStep[] = [
   {id: 'check-rules', command: 'npm', args: ['run', 'check:rules']},
   {id: 'lint', command: 'npm', args: ['run', 'lint']},
   {id: 'comment-sweep', command: 'node', args: ['scripts/comment-sweep.mjs', 'check']},
+  // PR CI never ran `convex deploy`, so a Node import in the default runtime first failed on develop (PRA-169).
+  {id: 'convex-bundle', command: 'node', args: ['scripts/convex-bundle.mjs']},
   {id: 'web-build', command: 'npm', args: ['run', 'build', '-w', '@praxis/web']},
   {id: 'api-build', command: 'npm', args: ['run', 'build', '-w', '@praxis/api']},
 ];
