@@ -44,7 +44,7 @@ describe('account deletion of workflow state', () => {
     await t.mutation(api.account.begin, {serverToken: SERVER_TOKEN, userId});
     expect(await sessions()).toHaveLength(0);
 
-    await expect(t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 1}))).rejects.toThrow('Account unavailable');
+    await expect(t.mutation(internal.turns.commitInternal, commitArgs({...scope, expectedTurnIndex: 1}))).rejects.toThrow('Account unavailable');
     await expect(owner.mutation(api.runs.start, {chatId})).rejects.toThrow();
     expect(await t.query(api.account.active, {serverToken: SERVER_TOKEN, userId})).toBe(false);
 
@@ -67,6 +67,6 @@ describe('account deletion of workflow state', () => {
       workflows: (await workflow.list(ctx)).page,
     }));
     expect(rows).toEqual({users: [], chats: [], runs: [], turns: [], toolOutputs: [], outputs: [], workflows: []});
-    await expect(t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 1}))).rejects.toThrow('Account unavailable');
+    await expect(t.mutation(internal.turns.commitInternal, commitArgs({...scope, expectedTurnIndex: 1}))).rejects.toThrow('Account unavailable');
   });
 });

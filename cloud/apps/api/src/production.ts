@@ -5,9 +5,6 @@ import {verifyAccountRecovery} from './account-recovery.js';
 import {productionWebPorts} from './features/web/production.js';
 import {composioEnvProblems, productionComposioPorts} from './features/composio/production.js';
 import {WEB_PROVIDERS} from './features/web/constants.js';
-import {Hono} from 'hono';
-import {readTurnKeys} from './turn/auth.js';
-import {registerTurnRoute} from './turn/routes.js';
 import {GROQ_POOL, MODAL_POOL, pool, redisCooldownStore, type CredentialLogEvent} from '@praxis/credentials';
 import {confirmConvexDeletion, isAccountDeletion, verifiedConvexOwner} from './adapters/convex-session.js';
 import {createConvexRPC} from './adapters/convex.js';
@@ -63,7 +60,6 @@ export function encryptionKeyring(env: Record<string, string | undefined>): stri
 export function readProductionEnv(env: Record<string, string | undefined>, options: ReadEnvOptions = {}): ProductionEnv {
   if (env.PRAXIS_LOCAL_DATA_DIR !== undefined) throw new Error('PRAXIS_LOCAL_DATA_DIR is only supported by dev:local');
   const problems: string[] = [];
-  try { readTurnKeys(env); } catch (error) { problems.push((error as Error).message); }
   for (const name of PRODUCTION_ENV) if (!env[name]?.trim()) problems.push(`${name} is missing`);
   const https = (name: string) => {
     const v = env[name];
@@ -118,7 +114,7 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
   // Semantic search: off unless an embedder is configured (PRAXIS_EMBEDDER / PRAXIS_OPENAI_EMBEDDINGS_KEY).
   const embedder = productionEmbedder(rawEnv);
   const callbackUrl = `${origin}${CONTINUATION_PATH}`;
-  const result = createPraxisApp({
+  return createPraxisApp({
     adapters: {store, kv: upstash.kv, events: upstash.events},
     local: false,
     encryptionKey: encryptionKeyring(env)!,
@@ -163,8 +159,4 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
       mcp: {publicOrigin: origin, webReturnOrigins: webOrigins, safeFetch: egress, consumeOAuthState: key => upstash.consumeOnce(key), lease: upstash.lease},
     }),
   });
-  const app = new Hono();
-  registerTurnRoute(app, result.service.adapters, readTurnKeys(rawEnv));
-  app.route('/', result.app);
-  return {...result, app};
 }

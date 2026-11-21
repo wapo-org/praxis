@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {api} from '../convex/_generated/api.js';
+import {api, internal} from '../convex/_generated/api.js';
 import {SERVER_TOKEN} from './workflow-fixture.js';
 import {commitArgs} from './workflow-commit.js';
 import {CHAT_ID, NOW, commit, createChat, textMessage, twoOwners, useDomainEnv} from './convex-domain-fixture.js';
@@ -119,11 +119,11 @@ describe('PRA-24 typed table CRUD through domain functions', () => {
     await createChat(alice);
     const runId = await alice.client.mutation(api.runs.start, {chatId: CHAT_ID});
     const scope = {userId: alice.userId, chatId: CHAT_ID, runId, generation: 0};
-    const first = await t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 0}));
+    const first = await t.mutation(internal.turns.commitInternal, commitArgs({...scope, expectedTurnIndex: 0}));
     expect(first).toEqual({outcome: 'committed', flags: {turnIndex: 0, done: false, status: 'ready', subagents: []}});
-    expect(await t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 0}))).toEqual({outcome: 'conflict'});
-    expect(await t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 5}))).toEqual({outcome: 'conflict'});
-    expect(await t.mutation(api.turns.commit, commitArgs({...scope, expectedTurnIndex: 1}))).toMatchObject({flags: {turnIndex: 1}});
+    expect(await t.mutation(internal.turns.commitInternal, commitArgs({...scope, expectedTurnIndex: 0}))).toEqual({outcome: 'conflict'});
+    expect(await t.mutation(internal.turns.commitInternal, commitArgs({...scope, expectedTurnIndex: 5}))).toEqual({outcome: 'conflict'});
+    expect(await t.mutation(internal.turns.commitInternal, commitArgs({...scope, expectedTurnIndex: 1}))).toMatchObject({flags: {turnIndex: 1}});
     const turns = await t.run(ctx => ctx.db.query('turns').withIndex('by_user_run_turn', q =>
       q.eq('userId', alice.userId).eq('runId', runId)).collect());
     expect(turns.map(turn => [turn.turnIndex, turn.status])).toEqual([[0, 'ready'], [1, 'ready']]);

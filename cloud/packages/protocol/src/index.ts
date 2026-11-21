@@ -276,19 +276,8 @@ export * from './taint.js';
 
 export * from './auth.js';
 export * from './auth-config.js';
-export const TURN_PATH = '/api/turn';
-export const TURN_SIGNATURE_HEADER = 'x-praxis-signature';
-export const TURN_TIMESTAMP_HEADER = 'x-praxis-timestamp';
-export const TURN_BODY_MAX_BYTES = 1_000_000;
-export const TURN_CLOCK_SKEW_MS = 5 * 60 * 1_000;
 export const TURN_RESULT_MAX_BYTES = 1_000;
 export const TURN_INDEX_MAX = Number.MAX_SAFE_INTEGER;
-/** Convex (caller) and Vercel (verifier) read the same signing keys; the next key exists only during rotation. */
-export const TURN_CURRENT_KEY_ENV = 'PRAXIS_TURN_CURRENT_SIGNING_KEY';
-export const TURN_NEXT_KEY_ENV = 'PRAXIS_TURN_NEXT_SIGNING_KEY';
-export const TURN_KEY_MIN_CHARACTERS = 32;
-/** Above the worker's 300 s Vercel `maxDuration`, so the caller never abandons a turn the worker may still commit. */
-export const TURN_REQUEST_TIMEOUT_MS = 310_000;
 /** A turn commits the assistant messages it produced; this bounds one commit mutation. */
 export const TURN_COMMIT_MESSAGES_MAX = 16;
 const TurnScopeFields = {
@@ -296,16 +285,7 @@ const TurnScopeFields = {
   generation: z.number().int().nonnegative().max(TURN_INDEX_MAX),
   expectedTurnIndex: z.number().int().nonnegative().max(TURN_INDEX_MAX),
 };
-export const TurnRequestSchema = z.object({
-  ...TurnScopeFields,
-  /** Fresh per delivery attempt: overlapping duplicates must not present one envelope, which reads as a replay. */
-  nonce: IdSchema,
-  decision: z.discriminatedUnion('type', [
-    ApprovalDecisionSchema.strict(), ElicitationResponseSchema.strict(),
-  ]).optional(),
-}).strict();
-export type TurnRequest = z.infer<typeof TurnRequestSchema>;
-// Only addressed child IDs cross the worker boundary; verified handoffs stay in durable subagent state.
+// Only addressed child IDs reach the workflow journal; verified handoffs stay in durable subagent state.
 const TurnResultFields = {
   turnIndex: z.number().int().nonnegative().max(TURN_INDEX_MAX),
   subagents: z.array(SubagentIdSchema).max(SUBAGENT_LIMITS.CHILDREN_MAX).refine(ids => new Set(ids).size === ids.length),
@@ -337,7 +317,7 @@ export const TurnCommitEndSchema = z.discriminatedUnion('status', [
   z.object({status: z.literal('suspended'), callId: IdSchema, approvalId: IdSchema}).strict(),
 ]);
 export type TurnCommitEnd = z.infer<typeof TurnCommitEndSchema>;
-/** What the worker writes back in one fenced transaction: messages, usage, run taint and how the turn ends. */
+/** What the harness writes back in one fenced transaction: messages, usage, run taint and how the turn ends. */
 export const TurnCommitSchema = z.object({
   ...TurnScopeFields,
   messages: z.array(MessageSchema).max(TURN_COMMIT_MESSAGES_MAX),

@@ -1,10 +1,9 @@
-import type {Message, TurnCommit, TurnRequest} from '@praxis/protocol';
-import {SERVER_TOKEN} from './workflow-fixture.js';
+import type {Message, TurnCommit} from '@praxis/protocol';
 
 const NOW = '2026-11-20T00:00:00.000Z';
 const PLANNED_TURNS = 3;
 
-export type TurnScope = Pick<TurnRequest, 'userId' | 'chatId' | 'runId' | 'generation' | 'expectedTurnIndex'>;
+export type TurnScope = Pick<TurnCommit, 'userId' | 'chatId' | 'runId' | 'generation' | 'expectedTurnIndex'>;
 export type TurnPlan = Pick<TurnCommit, 'end'> & Partial<Pick<TurnCommit, 'messages' | 'usage' | 'taint'>>;
 
 export function assistantMessage(request: TurnScope, parts: Message['parts'] = [{type: 'text', text: 'answer'}]): Message {
@@ -19,7 +18,7 @@ function defaultPlan(request: TurnScope): TurnPlan {
   return {end: {status: last ? 'completed' : 'ready'}, messages: [assistantMessage(request)]};
 }
 
-/** Arguments for the legacy worker commit (`turns:commit`), which fence tests still drive until PRA-172. */
+/** Arguments for `turns.commitInternal`, the harness's fenced write path. */
 export function commitArgs(request: TurnScope, plan: TurnPlan = defaultPlan(request)) {
   const {userId, chatId, runId, generation, expectedTurnIndex} = request;
   const commit: TurnCommit = {
@@ -29,5 +28,5 @@ export function commitArgs(request: TurnScope, plan: TurnPlan = defaultPlan(requ
     ...(plan.usage && {usage: plan.usage}),
     ...(plan.taint && {taint: plan.taint}),
   };
-  return {serverToken: SERVER_TOKEN, userId: request.userId, commitJson: JSON.stringify(commit)};
+  return {commitJson: JSON.stringify(commit)};
 }
