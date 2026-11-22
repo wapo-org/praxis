@@ -63,6 +63,7 @@ describe('official SDK transports and policy', () => {
   it('rejects cross-chat tools and forces gateway nested calls through injected policy', async () => {
     const s = setup(); await s.chat(); await s.consent(); await s.add(); const catalog = await getMcpTools(s.ctx, { chatId: 'chat-1', disabledConnectorIds: [] }); await expect(catalog[0]!.execute({}, { ...run, chatId: 'another' })).rejects.toMatchObject({ code: 'chat_mismatch' });
     const invoke = createMcpGateway(catalog).find(t => t.name === 'mcp_call_tool')!; await expect(invoke.execute({ tool: catalog[0]!.name, arguments: {} }, run)).rejects.toMatchObject({ code: 'policy_unconfigured' });
+    expect(invoke.privateArguments).toBe(true);
     const policy = vi.fn(async () => ({ approved: true })); expect(await invoke.execute({ tool: catalog[0]!.name, arguments: { x: 1 } }, { ...run, callTool: policy })).toEqual({ approved: true }); expect(policy).toHaveBeenCalledWith(catalog[0]!.name, { x: 1 });
   });
   it('lists and reads resources and gets prompt arguments with SDK calls', async () => {
@@ -117,8 +118,8 @@ describe('OAuth token refresh (REV-A1 P1 client.ts:13)', () => {
     const callback = new URL((await fetch(authorization.url, { redirect: 'manual' })).headers.get('location')!);
     expect((await s.request(`/connectors/oauth/callback${callback.search}`, undefined, 'GET', '')).status).toBeLessThan(400);
     expect(await readSecret(s.ctx, value.id, 'discovery')).toMatchObject({ resource: value.url });
-    expect((await connector(s.ctx, value.id)).status).toBe('connected'); // sign-in re-runs the handshake
-    const { catalogKey } = await import('./tools.js'); await s.ctx.kv.del(catalogKey(s.ctx, value.id)); // force the next call to reach the server
+    expect((await connector(s.ctx, value.id)).status).toBe('connected');
+    const { catalogKey } = await import('./tools.js'); await s.ctx.kv.del(catalogKey(s.ctx, value.id));
     return { s, value };
   }
   it('refreshes an expiring token once for concurrent callers (single-flight) without re-authorizing', async () => {

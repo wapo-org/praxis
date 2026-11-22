@@ -6,21 +6,9 @@ import {createLocalAdapters} from '../local-memory.js';
 import {createExecutionDriver, type ExecutionFeatures} from '../execution.js';
 import {ApiService} from '../service.js';
 import type {FeatureTool} from '../contracts.js';
+import {connectKey, delta, fakeOpenRouter} from './harness.js';
 
-/** Fake OpenAI-compatible endpoint: plays one SSE body per chat.completions request and records the bodies. */
-function fakeOpenAI(turns: string[][]) {
-  const requests: any[] = [];
-  const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url.endsWith('/models')) return Response.json({data: [{id: 'fake-model'}]});
-    requests.push(JSON.parse(String(init?.body)));
-    const frames = turns[requests.length - 1] ?? [];
-    const body = frames.map(f => `data: ${f}\n\n`).join('') + 'data: [DONE]\n\n';
-    return new Response(body, {headers: {'content-type': 'text/event-stream'}});
-  }) as typeof fetch;
-  return {fetcher, requests};
-}
-const delta = (d: object, finish: string | null = null) => JSON.stringify({choices: [{index: 0, delta: d, finish_reason: finish}]});
+const fakeOpenAI = (turns: string[][]) => fakeOpenRouter(turns, [{id: 'fake-model'}]);
 
 function setup(fetcher: typeof fetch, features?: ExecutionFeatures) {
   const service = new ApiService(createLocalAdapters(), true);
@@ -31,11 +19,10 @@ function setup(fetcher: typeof fetch, features?: ExecutionFeatures) {
   return {service, req};
 }
 
-async function realChat(f: ReturnType<typeof setup>, consent = true) {
-  const provider = await (await f.req('/v1/providers', {type: 'provider.input', name: 'Fake', flavor: 'openAIChat', baseUrl: 'https://llm.example.test/v1', apiKey: 'sk-test-123456'})).json();
-  if (consent) await f.req('/v1/consents', {type: 'consent', host: 'llm.example.test', allowed: true});
-  const chat = await (await f.req('/v1/chats', {type: 'chat.input', title: 'Real', providerId: provider.id, modelId: 'fake-model'})).json();
-  return {provider, chat};
+async function realChat(f: ReturnType<typeof setup>, connect = true) {
+  if (connect) await connectKey(f.req);
+  const chat = await (await f.req('/v1/chats', {type: 'chat.input', title: 'Real', modelId: 'fake-model'})).json();
+  return {chat};
 }
 
 describe('execution driver with a real HTTP provider', () => {
@@ -61,12 +48,15 @@ describe('execution driver with a real HTTP provider', () => {
     expect(fake.requests[1].messages[0]).toEqual(fake.requests[0].messages[0]);
   });
 
-  it('refuses to start without per-host AI data consent', async () => {
-    const f = setup(fakeOpenAI([]).fetcher);
+  it('refuses to start without a connected key, before anything is sent to OpenRouter', async () => {
+    const fake = fakeOpenAI([]);
+    const f = setup(fake.fetcher);
     const {chat} = await realChat(f, false);
     const res = await f.req('/v1/runs', {type: 'run.start', chatId: chat.id, text: 'Hi'});
-    expect(res.status).toBe(403);
-    expect((await res.json()).code).toBe('consent_required');
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('model_key_missing');
+    expect(fake.requests).toHaveLength(0);
+    expect(await f.service.list('local-user', 'run')).toHaveLength(0);
   });
 
   it('runs feature tools through the loop policy and returns results to the model', async () => {
@@ -116,7 +106,7 @@ describe('background work never rejects unobserved', () => {
     const unhandled: unknown[] = [];
     const onUnhandled = (reason: unknown) => unhandled.push(reason);
     process.on('unhandledRejection', onUnhandled);
-    // The task fails and the failure path cannot find the run either; emit then throws inside the catch handler.
+    // Forces failure path inside catch handler when run is missing.
     await service.adapters.store.put('u', 'run', 'r1', {type: 'run', id: 'r1', chatId: 'c', status: 'running', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lastEventId: 0});
     service.emit = async () => { throw new Error('event store down'); };
     service.enqueue('u', 'r1', async () => { throw new Error('task failed'); });

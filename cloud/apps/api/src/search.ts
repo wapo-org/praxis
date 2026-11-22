@@ -10,10 +10,6 @@ const SNIPPET = 160;
 export const SEMANTIC_LIMIT = 8;
 /** A semantic-only match must reach this share of the best match's score (a relative cut-off). */
 export const RELATIVE_CUTOFF = 0.5;
-/**
- * Title hits count for less: new chats get random two-word names ("Brave Compass") that mean nothing, and a
- * short title meets unrelated short queries ("zebra quantum") as closely as real content does.
- */
 export const TITLE_WEIGHT = 0.8;
 
 /** Every chat with its messages' text, in message order. */
@@ -46,13 +42,6 @@ function window(text: string, words: string[]) {
   return `${start ? '…' : ''}${text.slice(start, end)}${text.length > end ? '…' : ''}`;
 }
 
-/**
- * Hybrid search: lexical (every query word in the title or one message, as before) fused with vector
- * similarity over titles and message chunks. A chat appears when it matches every word or is semantically
- * close (the embedder's threshold); stemmed word overlap ("packing" ~ "pack") adds to its rank. Ranked by
- * the fused score, then recency. The snippet is the best-matching text: the lexical window when the words
- * occur, else the closest chunk.
- */
 export async function searchChats(service: ApiService, userId: string, query: string) {
   const raw = query.trim().toLocaleLowerCase();
   const words = raw.split(/\s+/u).filter(Boolean);
@@ -77,8 +66,6 @@ export async function searchChats(service: ApiService, userId: string, query: st
     if (score > (best.get(hit.chatId)?.score ?? -Infinity)) best.set(hit.chatId, { ...hit, score });
   }
   const queryTerms = new Set(terms(raw));
-  // Semantic-only hits must clear the embedder's calibrated floor and a share of the best hit, so a precise
-  // query returns its few close chats, a vague one a short ranked list, and noise nothing.
   const top = Math.max(0, ...[...best.values()].map(hit => hit.score));
   const threshold = Math.max(indexer?.embedder.threshold ?? 1, top * RELATIVE_CUTOFF);
   const ranked = docs.flatMap(({ chat, texts }) => {

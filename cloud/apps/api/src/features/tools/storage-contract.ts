@@ -2,7 +2,7 @@ import type {JsonObject} from '@praxis/protocol';
 import {describe,it,expect} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import type {ToolsStorage} from './ports.js';
-/** `upload` performs the client's byte transfer for the issued URL and returns the storageId the client would get back. */
+/** Performs direct client byte transfer and returns the resulting storageId. */
 export type ClientUpload=(s:ToolsStorage,user:string,url:{uploadUrl:string;method?:string},bytes:Uint8Array,mediaType:string)=>Promise<string>;
 export function toolsStorageContract(name:string,create:()=>ToolsStorage,upload:ClientUpload){
  describe(name,()=>{

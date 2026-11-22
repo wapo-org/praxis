@@ -1,16 +1,7 @@
 import type {ConversationSetup, Message, MessagePart, Mode, ToolSpec} from '@praxis/protocol';
 
-/**
- * Port of AgentCore `SystemPrompt`, AgentSkills `SkillCatalog` and AgentRuntime `TurnNotes`.
- * Base instructions are frozen per conversation (no dates or names); current connector advertisements
- * refresh in the request. Mode/effort and later skill additions use new user notes, never history edits.
- */
 export interface CatalogSkill {name: string; description: string}
 
-/**
- * What the web app's code blocks can do, for the model (WP-N2). The renderer reads the same fence syntax:
- * apps/web/src/components/chat/codeFence.ts. Kept short: it is in every request.
- */
 const F = '```';
 export const FORMATTING_GUIDE = [
   '# Code blocks',
@@ -33,8 +24,8 @@ export function buildSystemPrompt(sections: {assistantName?: string; instruction
 The user picks a mode; the current mode is announced in a system note and may change mid-conversation:
 - ask: answer directly. Only skill tools are available; other tool calls will be refused.
 - plan: investigate with read-only tools and code, then propose a plan. Tools that change things will be refused.
-- build (Execute): carry out the task directly and use enabled tools immediately. Never ask permission or confirmation for tool calls, writes, or skill saving.
-- auto: carry out the task end to end. Only destructive actions need approval.
+- build (Execute): carry out the task directly. The app asks the user to approve tool calls that can change data or send it to an outside service.
+- auto: carry out the task end to end. Tool calls that can change data or send it to an outside service require approval.
 If a tool call is refused or declined, adapt instead of retrying the same call.
 
 Use ask_user to ask the user anything in every mode, including Execute; it is always available. Do not search the connector catalogue for a question tool.
@@ -43,7 +34,7 @@ Keep answers concise and well structured. Use Markdown.`,
     FORMATTING_GUIDE,
   ];
   if (sections.instructions) parts.push(sections.instructions);
-  if (sections.toolNotes?.length) parts.push('Connected tools:\n' + sections.toolNotes.map(n => `- ${n}`).join('\n'));
+  if (sections.toolNotes?.length) parts.push('Connected tools:\n' + [...new Set(sections.toolNotes)].sort((a, b) => a < b ? -1 : a > b ? 1 : 0).map(n => `- ${n}`).join('\n'));
   const catalog = skillCatalogSection(sections.skills ?? []);
   if (catalog) parts.push(catalog);
   return parts.join('\n\n');
@@ -71,7 +62,7 @@ export function skillAdditionNote(skills: CatalogSkill[]): string {
 function skillLines(skills: CatalogSkill[]): string[] {
   const seen = new Set<string>();
   return [...skills]
-    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.description < b.description ? -1 : a.description > b.description ? 1 : 0))
     .filter(s => !seen.has(s.name) && seen.add(s.name))
     .map(s => `- ${s.name}: ${s.description.split(/\s+/).filter(Boolean).join(' ')}`);
 }
@@ -95,7 +86,7 @@ function announcedSkills(note: string): string[] {
   });
 }
 
-/** Notes for the next user turn: the mode note when it differs from the last one announced, then new skills. */
+/** Emits next-turn mode note on change, followed by newly added skills. */
 export function turnNotes(input: {mode: Mode; effort?: string; previous: Message[]; setup?: ConversationSetup; skills: CatalogSkill[]}): string[] {
   const userNotes = input.previous
     .filter(m => m.role === 'user')
@@ -122,7 +113,6 @@ function includesSkills(tools: ToolSpec[]): boolean {
   return tools.some(t => t.name === 'load_skill');
 }
 
-/** Skill names listed in a frozen catalog section. */
 export function catalogNames(catalog: string): string[] {
   const start = catalog.indexOf('<available_skills>');
   const end = catalog.indexOf('</available_skills>');

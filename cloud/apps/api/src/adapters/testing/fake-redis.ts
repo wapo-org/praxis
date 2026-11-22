@@ -2,16 +2,12 @@ import {INDEX_SKEW_MS, OWNER_LEASE_LUA, OWNER_UNLOCK_LUA, OWNER_WRITE_LUA, owner
 import {APPEND_EVENT_LUA, FIXED_WINDOW_LUA, RELEASE_LEASE_LUA, type RedisLike} from '../upstash.js';
 const OWNED_APPEND_LUA = ownerAppendLua(APPEND_EVENT_LUA);
 
-/**
- * In-memory stand-in for the Upstash REST client subset (strings + streams + our two Lua scripts).
- * It lets the shared contract suite exercise the adapter's key layout, serialization and cursor logic
- * offline; the live suite (env-gated) checks the same contract against real Upstash.
- */
+/** In-memory Upstash REST fake (strings, streams, Lua) for offline contract tests. */
 export function fakeRedis() {
   let now = 0;
   const strings = new Map<string, {value: string; expires?: number}>();
   const zsets = new Map<string, Map<string, number>>();
-  /** The owner-script guard: active check, prune expired index entries, then register keys with their expiry. */
+  /** Owner guard: checks active, prunes expired index entries, then registers keys. */
   const owned = (active: string, index: string, at: string, entries: [string, number][]) => {
     if (live(active)?.value !== 'active') throw Error('Account unavailable');
     const z = zsets.get(index) ?? new Map<string, number>();

@@ -1,15 +1,3 @@
-/**
- * Text embedders for semantic search. Every embedder returns unit-length vectors of EMBEDDING_DIMENSIONS, so
- * cosine similarity is a dot product and one Convex vector index (fixed dimensions) serves all of them.
- *
- * - `minilm`: all-MiniLM-L6-v2 (q8, 24 MB, Apache-2.0) on the server through transformers.js. No key, no paid
- *   service; the weights are fetched once from the Hugging Face hub into a local cache, then it runs offline.
- *   The dependency is dev-only and loaded dynamically, so a bundle without it falls back.
- * - `openai`: text-embedding-3-small at 384 dimensions. Only when the operator sets PRAXIS_OPENAI_EMBEDDINGS_KEY
- *   (a paid API: never enabled by default).
- * - `hash`: offline and deterministic: stemmed words and their trigrams hashed into the vector. Lexical-fuzzy,
- *   not semantic; the fallback when no model can load.
- */
 export const EMBEDDING_DIMENSIONS = 384;
 
 export interface Embedder {
@@ -82,10 +70,6 @@ export const hashEmbedder: Embedder = {
   },
 };
 
-/**
- * MiniLM's floor for a semantic-only match, calibrated on phrase windows (search-index `phrases`): the WP-H3b
- * probe's real matches score 0.30 to 0.76, unrelated queries ("zebra quantum", "learn guitar") at most 0.20.
- */
 export const MINILM_THRESHOLD = 0.27;
 
 type FeatureExtractor = (texts: string[], options: { pooling: 'mean'; normalize: boolean }) => Promise<{ data: Float32Array; dims: number[] }>;

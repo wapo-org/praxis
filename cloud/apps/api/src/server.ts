@@ -1,5 +1,5 @@
 import type {Hono} from 'hono';
-import type {User} from '@praxis/protocol';
+import {ACCOUNT_DELETE_RECOVERY_SIGNATURE_HEADER, type User} from '@praxis/protocol';
 import {createApp} from './app.js';
 import type {AdapterBundle, FeatureContext} from './contracts.js';
 import {createExecutionDriver, type ContinuationScheduler, type ExecutionFeatures, type RunLease} from './execution.js';
@@ -9,12 +9,10 @@ import type {Embedder} from './embedding.js';
 import {SearchIndexer, type VectorIndex} from './search-index.js';
 import {loadChatDocs} from './search.js';
 
-/** Feature modules plugged in by the entry point (MCP, tools). */
 export interface FeatureModule {
   deleteAccount?(userId:string):Promise<void>;
   /** dev:local only: undo the post-deletion write fence for a fresh dev sign-in. */
   restoreAccount?(userId:string):Promise<void>;
-  /** Mounted under /v1 after auth. */
   routes?(contextFor: (request: Request) => Promise<FeatureContext>): Hono<any>;
   /** /v1 paths that must skip session auth (OAuth callbacks). */
   publicPaths?: string[];
@@ -28,18 +26,22 @@ export interface PraxisDeps {
   fetcher?: typeof fetch;
   allowedOrigins?: string[];
   resolveSession?: (request: Request) => Promise<{user: User; expiresAt: string} | null>;
-  authHandler?: (request: Request) => Promise<Response>;
   accountDeletion?:{confirm(request:Request,password?:string):Promise<{userId:string;sessionId:string}|null>;purge(userId:string,sessionId:string):Promise<void>};
   rateLimit?: (key: string) => Promise<{ok: boolean; retryAfterSeconds?: number}>;
   scheduler?: ContinuationScheduler;
   /** Keeps background slices alive after the response (Vercel `waitUntil`). */
   defer?: (work: Promise<unknown>) => void;
   budgetMs?: number;
-  /** Shared run lease (Redis in production) so one executor advances a run at a time across instances. */
+  /** Shared run lease (Redis in production) serializing run slices across instances. */
   lease?: RunLease;
-  /** Signed continuation callback (production): verifies a delivery and returns the run to advance. */
-  continuation?: {path: string; verify: (request: Request) => Promise<{userId: string; runId: string}>};
-  /** Test hook for slice budgets. */
+  continuation?: {
+    path: string;
+    verify: (request: Request) => Promise<{userId: string; runId: string}>;
+    accountRecovery?: {
+      verify: (request: Request) => Promise<{userId: string}>;
+      resume: (userId: string) => Promise<void>;
+    };
+  };
   clock?: () => number;
   /** Semantic search: an embedder and where its vectors live. Absent = lexical search only. */
   search?: {embedder: Embedder; vectors: VectorIndex; debounceMs?: number};
@@ -75,9 +77,9 @@ export function createPraxisApp(deps: PraxisDeps) {
     service,
     ...(deps.encryptionKey ? {encryptionKey: deps.encryptionKey} : {}),
     ...(deps.fetcher ? {fetcher: deps.fetcher} : {}),
+    ...(deps.clock ? {clock: deps.clock} : {}),
     ...(deps.allowedOrigins ? {allowedOrigins: deps.allowedOrigins} : {}),
     ...(deps.resolveSession ? {resolveSession: deps.resolveSession} : {}),
-    ...(deps.authHandler ? {authHandler: deps.authHandler} : {}),
     ...(deps.accountDeletion ? {accountDeletion:deps.accountDeletion} : deps.local ? {accountDeletion:{purge:async(userId:string)=>{for(const module of modules)await module.deleteAccount?.(userId);await deps.adapters.purgeOwner?.(userId);}}} : {}),
     ...(deps.local ? {reopenDevUser: async (userId: string) => {for (const module of modules) await module.restoreAccount?.(userId); await deps.adapters.reopenOwner?.(userId);}} : {}),
     ...(deps.rateLimit ? {rateLimit: deps.rateLimit} : {}),
@@ -88,18 +90,23 @@ export function createPraxisApp(deps: PraxisDeps) {
     },
   });
   if (deps.continuation) {
-    const {path, verify} = deps.continuation;
-    // Outside /v1: no session; authenticity comes only from the signed delivery. The slice runs inside this
-    // request so a failure returns 5xx and QStash redelivers (duplicates are fenced by the run lease + CAS).
+    const {path, verify, accountRecovery} = deps.continuation;
+    // Signed callbacks run inline so a failed attempt returns 5xx.
     app.post(path, async c => {
-      let message: {userId: string; runId: string};
+      let advance: () => Promise<unknown>;
       try {
-        message = await verify(c.req.raw);
+        if (accountRecovery && c.req.header(ACCOUNT_DELETE_RECOVERY_SIGNATURE_HEADER) !== undefined) {
+          const {userId} = await accountRecovery.verify(c.req.raw);
+          advance = () => accountRecovery.resume(userId);
+        } else {
+          const {userId, runId} = await verify(c.req.raw);
+          advance = () => driver.continue(userId, runId);
+        }
       } catch (error) {
         if (error instanceof ContinuationAuthError) return c.json({type: 'error', code: 'unauthorized', message: 'Invalid continuation signature'}, 401);
         return c.json({type: 'error', code: 'invalid_continuation', message: 'Invalid continuation'}, 400);
       }
-      await driver.continue(message.userId, message.runId);
+      await advance();
       return c.json({type: 'ok'});
     });
   }

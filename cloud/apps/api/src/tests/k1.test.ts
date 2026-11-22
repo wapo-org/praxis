@@ -57,17 +57,22 @@ it('calls Firecrawl directly on the first model turn and exposes ask_user in Exe
  let calls=0;
  f.service.driver=createExecutionDriver({service:f.service,fetcher:f.fake.fetcher,features:{tools:async()=>[...tools,{name,originalName:'firecrawl_search',description:'Find current sources; query, limit. Credits apply.',source:{type:'mcp',serverId:'builtin-firecrawl',serverName:'Firecrawl'},inputSchema:{type:'object',properties:{query:{type:'string'}},required:['query']},traits:['readOnly'],execute:async()=>{calls++;return 'Source found';}}]}});
  const snap=await f.run(chat.id,'Search Firecrawl for Praxis news');
- expect(snap.run.status).toBe('completed');expect(calls).toBe(1);
+ expect(snap.run.status).toBe('awaitingApproval');
+ expect(calls).toBe(0);
+ const reply = {type: 'approval.decision', approvalId: snap.pendingApprovals[0]!.id, decision: 'allowOnce'};
+ expect((await f.req(`/v1/runs/${snap.run.id}/approvals`, reply)).status).toBe(202);
+ await f.service.drain();
+ expect(calls).toBe(1);
  expect(f.fake.requests[0].tools.some((t:any)=>t.function.name===name)).toBe(true);
  expect(f.fake.requests[0].tools.some((t:any)=>t.function.name==='ask_user')).toBe(true);
 });
-it('titles use one non-streaming 32-token provider request and never replace a rename',async()=>{
+it('titles use one streamed 32-token provider request and never replace a rename',async()=>{
  const {setup}=await import('./harness.js');
  const f=setup(),chat=await f.chat();
  await f.run(chat.id,'Please help plan a trip to Lisbon');
  expect(f.fake.titleRequests).toHaveLength(1);
- expect(f.fake.titleRequests[0].stream).toBe(false);
- expect(f.fake.titleRequests[0].max_tokens??f.fake.titleRequests[0].max_completion_tokens).toBe(32);
+ expect(f.fake.titleRequests[0]!.stream).toBe(true);
+ expect(f.fake.titleRequests[0]!.max_tokens??f.fake.titleRequests[0]!.max_completion_tokens).toBe(32);
  await f.req('/v1/chats/'+chat.id,{type:'chat.patch',title:'My own title'},'PATCH');
  await f.run(chat.id,'Second message');
  expect((await f.req('/v1/chats/'+chat.id).then(r=>r.json())).title).toBe('My own title');
@@ -111,9 +116,9 @@ it('accepts a sensitive answer over HTTP without exposing it in decisions, check
 });
 it('chooses the least expensive advertised title model before speed and uses speed without prices',async()=>{
  const {titleModel}=await import('../title-model.js');
- const base={type:'model' as const,providerId:'p',displayName:'Model',capabilities:(await import('@praxis/protocol')).CapabilitiesSchema.parse({}),reasoningEfforts:[],pinned:false,favorite:false};
- expect(titleModel([{...base,id:'costly',speed:5,pricing:{prompt:1,completion:1}},{...base,id:'cheap',speed:1,pricing:{prompt:0.001,completion:0.001}}])?.id).toBe('cheap');
- expect(titleModel([{...base,id:'slow',speed:1},{...base,id:'fast',speed:5}])?.id).toBe('fast');
+ const base={type:'catalogModel' as const,name:'Model',contextLength:128000,capabilities:{tools:true,reasoning:false,images:false,files:false}};
+ expect(titleModel([{...base,id:'costly',pricing:{prompt:'1',completion:'1'}},{...base,id:'cheap',pricing:{prompt:'0.001',completion:'0.001'}}])?.id).toBe('cheap');
+
 });
 it('QuickJS receives an opaque env reference only at execution and persists redacted KV and results',async()=>{
  const {adaptTool}=await import('../execution.js');

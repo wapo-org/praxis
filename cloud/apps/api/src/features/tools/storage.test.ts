@@ -3,10 +3,12 @@ import {convexTest} from 'convex-test';
 import {makeFunctionReference} from 'convex/server';
 import schema from '../../../../../convex/schema.js';
 import {createConvexRPC,type ConvexRPC} from '../../adapters/convex.js';
+import {aliasOwners} from '../../adapters/testing/convex-harness.js';
 import {toolsStorageFromRPC} from './convex-storage.js';
 import {createLocalToolsStorage} from './local-storage.js';
 import {toolsStorageContract,type ClientUpload} from './storage-contract.js';
 const token='test-tools-server-credential-with-32-characters';
+const LARGE_UPLOAD_TEST_TIMEOUT_MS = 15_000;
 function harness(){
  process.env.PRAXIS_CONVEX_SERVER_TOKEN=token;process.env.CONVEX_SITE_URL='https://happy-otter-123.convex.site';
  const t=convexTest(schema,{
@@ -15,9 +17,11 @@ function harness(){
   '../../../../../convex/files.ts':()=>import('../../../../../convex/files.js'),
   '../../../../../convex/uploads.ts':()=>import('../../../../../convex/uploads.js'),
   '../../../../../convex/http.ts':()=>import('../../../../../convex/http.js'),
+  '../../../../../convex/functions.ts':()=>import('../../../../../convex/functions.js'),
  });
- const rpc:ConvexRPC={query:(n,a)=>t.query(makeFunctionReference<'query'>(n),{...a,serverToken:token}),mutation:(n,a)=>t.mutation(makeFunctionReference<'mutation'>(n),{...a,serverToken:token}),action:(n,a)=>t.action(makeFunctionReference<'action'>(n),{...a,serverToken:token})};
- // Storage URLs from convex-test are fake; serve their bytes from the test deployment instead of the network.
+ const tokenRPC:ConvexRPC={query:(n,a)=>t.query(makeFunctionReference<'query'>(n),{...a,serverToken:token}),mutation:(n,a)=>t.mutation(makeFunctionReference<'mutation'>(n),{...a,serverToken:token}),action:(n,a)=>t.action(makeFunctionReference<'action'>(n),{...a,serverToken:token})};
+ const rpc=aliasOwners(tokenRPC,()=>t.run(ctx=>ctx.db.insert('users',{})));
+ // Serve fake convex-test storage URLs from the test deployment.
  const fetcher=(async(input:RequestInfo|URL)=>{
   const sha=String(input).split('/api/storage/')[1]!;
   const bytes=await t.run(async ctx=>{const doc=(await ctx.db.system.query('_storage').collect()).find(d=>d.sha256===sha);const blob=doc?await ctx.storage.get(doc._id):null;return blob?await blob.arrayBuffer():null;});
@@ -28,7 +32,7 @@ function harness(){
 const localUpload:ClientUpload=async(s,user,url,bytes,type)=>s.acceptUpload!(user,new URL(url.uploadUrl).pathname.split('/').at(-1)!,bytes,type);
 toolsStorageContract('tools storage: local',()=>createLocalToolsStorage('http://localhost'),localUpload);
 let current:ReturnType<typeof harness>;
-/** The client's direct POST to the Convex upload URL, simulated by storing the blob in the test deployment. */
+/** Simulates client POST to Convex upload URL by storing the blob directly. */
 const convexUpload:ClientUpload=async(_s,_user,url,bytes,type)=>{
  expect(url.method).toBe('POST');expect(url.uploadUrl).toContain('convex.site');
  const response=await current.t.fetch(new URL(url.uploadUrl).pathname,{method:'POST',headers:{'content-type':type},body:Uint8Array.from(bytes)});
@@ -41,8 +45,8 @@ describe('Convex direct uploads',()=>{
   try{const url=await storage.createUpload('u',{name:'x.txt',mediaType:'text/plain',size:1});expect(new URL(url.uploadUrl).origin).toBe('https://uploads.example.org');expect(new URL(url.uploadUrl).pathname).toMatch(/^\/uploads\/[a-f0-9-]{36}$/);}
   finally{process.env.CONVEX_SITE_URL=before;}
  });
- it('handles 25 MB without passing bytes through a function argument',async()=>{
-  const {t,storage}=current=harness(),user='big',size=25_000_000,input={name:'big.bin',mediaType:'application/octet-stream',size};
+ it('handles 25 MB without passing bytes through a function argument', {timeout: LARGE_UPLOAD_TEST_TIMEOUT_MS}, async () => {
+  const {storage}=current=harness(),user='big',size=25_000_000,input={name:'big.bin',mediaType:'application/octet-stream',size};
   const url=await storage.createUpload(user,input);expect(url.method).toBe('POST');
   const id=await convexUpload(storage,user,url,new Uint8Array(size),input.mediaType);
   await storage.verify(user,id,input);expect((await storage.read(user,id)).bytes.byteLength).toBe(size);
@@ -92,7 +96,7 @@ describe('Convex direct uploads',()=>{
   expect(await rpc.mutation('files:sweep',{})).toBe(0);await storage.verify('alice',id,input);
   const expired=await storage.createUpload('alice',input),old=await convexUpload(storage,'alice',expired,new TextEncoder().encode('xyz'),'text/plain');
   const stray=await t.run(ctx=>ctx.storage.store(new Blob(['stray'])));
-  await t.run(async ctx=>{const row=await ctx.db.query('files').withIndex('owner_storage',q=>q.eq('userId','alice').eq('storageId',old as never)).unique();await ctx.db.patch(row!._id,{expiresAt:0});});
+  await t.run(async ctx=>{const row=await ctx.db.query('files').withIndex('storage',q=>q.eq('storageId',old as never)).unique();await ctx.db.patch(row!._id,{expiresAt:0});});
   expect(await rpc.mutation('files:sweep',{})).toBe(1);
   expect(await t.run(async ctx=>(await ctx.storage.get(old as never))===null)).toBe(true);
   expect(await t.run(async ctx=>(await ctx.storage.get(stray))!==null)).toBe(true);
@@ -113,7 +117,7 @@ describe('local fixture uploads',()=>{
 });
 describe('tools Convex authentication',()=>{
  it.each(['get','put','remove'])('rejects unauthorized %s',async name=>{
-  const {t}=harness(),a={serverToken:'wrong',userId:'a',kind:'skill',id:'x',...(name==='put'?{value:{}}:{})};
+  const {t}=harness(),a={serverToken:'wrong',userId:'a',kind:'skill',id:'x',...(name==='put'?{valueJson:'{}'}:{})};
   if(name==='get')await expect(t.query(makeFunctionReference<'query'>(`tools:${name}`),a)).rejects.toThrow('Server authentication');
   else await expect(t.mutation(makeFunctionReference<'mutation'>(`tools:${name}`),a)).rejects.toThrow('Server authentication');
  });

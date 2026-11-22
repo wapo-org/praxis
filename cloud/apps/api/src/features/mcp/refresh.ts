@@ -4,7 +4,7 @@ import type {Connector} from '@praxis/protocol';
 import type {FeatureContext} from '../../contracts.js';
 import {guardedFetch, now, readSecret, writeSecret, requireReauth, McpError, type McpOptions} from './shared.js';
 
-/** What finishOAuth persists so later refreshes need no interactive discovery. */
+/** Persisted OAuth discovery so refreshes skip interactive lookup. */
 export interface SavedDiscovery {authorizationServerUrl: string; metadata?: AuthorizationServerMetadata; resource: string}
 
 const EARLY_MS = 60_000;
@@ -15,12 +15,7 @@ function expired(tokens: OAuthTokens, savedAt: string | undefined): boolean {
   return Date.parse(savedAt) + tokens.expires_in * 1000 - EARLY_MS <= Date.now();
 }
 
-/**
- * Returns usable OAuth tokens for a connector, refreshing them shortly before expiry (or when `force`d after
- * a 401). Single-flight per connector: concurrent callers in this process share one refresh, and across
- * instances `options.lease` (Redis in production) lets only one instance spend the refresh token; the others
- * wait briefly and re-read the tokens it saved. Returns undefined when no refresh is possible.
- */
+/** Refreshes tokens with in-process single-flight and Redis lease across instances. */
 export async function ensureFreshTokens(ctx: FeatureContext, value: Connector, options: McpOptions, force = false): Promise<OAuthTokens | undefined> {
   const tokens = await readSecret<OAuthTokens>(ctx, value.id, 'tokens');
   if (!tokens) return undefined;
@@ -38,7 +33,7 @@ async function refresh(ctx: FeatureContext, value: Connector, options: McpOption
   const leaseKey = `mcp:refresh:${ctx.userId}:${value.id}`;
   const token = options.lease ? await options.lease.acquire(leaseKey, 30_000, ctx.userId) : 'local';
   if (!token) {
-    // Another instance holds the refresh: wait for the tokens it saves instead of spending the refresh token twice.
+    // Another instance holds the lease; wait for its tokens instead of double-spending refresh.
     for (let i = 0; i < 10; i++) {
       await new Promise(r => setTimeout(r, 300));
       const current = await readSecret<OAuthTokens>(ctx, value.id, 'tokens');

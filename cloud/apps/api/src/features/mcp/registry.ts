@@ -11,7 +11,7 @@ const Listing=z.object({servers:z.array(z.object({server:z.object({name:z.string
 export async function searchRegistry(ctx:FeatureContext,query:Record<string,string>):Promise<JsonObject>{
  const q=Query.parse(query),key=JSON.stringify(['mcp-registry',ctx.userId,q]);const cached=await ctx.kv.get<JsonObject>(key);if(cached)return cached;
  const url=new URL('https://registry.modelcontextprotocol.io/v0.1/servers');url.searchParams.set('version','latest');url.searchParams.set('limit','50');if(q.q)url.searchParams.set('search',q.q);if(q.cursor)url.searchParams.set('cursor',q.cursor);
- const {response,bytes}=await publicFetch(ctx,url.href,{headers:{Accept:'application/json'}},false,8<<20);
+ const {response,bytes}=await publicFetch(ctx,url.href,{headers:{Accept:'application/json'}},8<<20);
  if(!response.ok)throw new McpError(502,'registry_failed','MCP registry request failed');
  const listing=Listing.parse(JSON.parse(new TextDecoder().decode(bytes)));const items=[];
  for(const entry of listing.servers){
@@ -19,11 +19,11 @@ export async function searchRegistry(ctx:FeatureContext,query:Record<string,stri
   for(const remote of entry.server.remotes){
    if(!['streamable-http','sse'].includes(remote.type))continue;
    try{
-    // Templates remain visible for clients to fill before POST /connectors; creation owns validation and health checks.
+    // Keep template URLs visible for client substitution; POST /connectors validates them.
     remoteUrl(remote.url.replace(/\{[^{}]+\}/g,'x'),false);
     const input=ConnectorInputSchema.parse({type:'connector.input',name:(entry.server.title||entry.server.name).slice(0,MAX_NAME),url:remote.url,transport:remote.type==='sse'?'sse':'streamableHttp',enabled:true});
     items.push({type:'connector.registry.entry',id:entry.server.name,description:(entry.server.description??'').slice(0,MAX_DESCRIPTION),input,headerNames:remote.headers.map(h=>h.name),requiresConfiguration:/\{[^{}]+\}/.test(remote.url)||remote.headers.length>0});
-   }catch{/* Unusable/non-public remote entries are excluded. */}
+   }catch{/* Ignore invalid remote entries. */}
   }
  }
  const result={type:'page',items,nextCursor:listing.metadata?.nextCursor||null};await ctx.kv.set(key,result,600);return result;

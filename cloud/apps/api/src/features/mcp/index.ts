@@ -1,12 +1,12 @@
 import {connectorIcon} from '../../connector-icons.js';
-import {ensureBuiltins,builtin,builtinCatalog} from './builtins.js';
+import {ensureBuiltins} from './builtins.js';
 import {searchRegistry} from './registry.js';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { ConnectorInputSchema, ConnectorPatchSchema, ConnectorSchema, ConsentSchema, JsonObjectSchema, MCPPromptSchema, MCPResourceSchema } from '@praxis/protocol';
 import type { FeatureContext } from '../../contracts.js';
-import { catalogKey, discoverTools, settingsTools, toolSpec } from './tools.js';
+import { catalogKey, settingsTools, toolSpec } from './tools.js';
 import { withClient } from './client.js';
 import { clientMetadata, finishOAuth, startOAuth } from './oauth.js';
 import { connector, HeadersSchema, McpError, now, opaqueId, page, remoteUrl, grantConsent, requireConsent, saveConnector, secretKind, writeSecret, type McpOptions } from './shared.js';
@@ -23,7 +23,7 @@ async function body<T extends z.ZodType>(c: Context, schema: T): Promise<z.infer
   if (Buffer.byteLength(text) > 1_000_000) throw new McpError(413, 'too_large', 'Request is too large');
   try { return schema.parse(JSON.parse(text)); } catch (error) { if (error instanceof z.ZodError) throw error; throw new McpError(400, 'invalid_json', 'Expected JSON'); }
 }
-/** Mounted at /v1 after auth EXCEPT public OAuth callback + CIMD. Context provides adapters there with userId ''. */
+/** Mounted under /v1 after auth; public OAuth callback & CIMD get userId ''. */
 export function createMcpRoutes(context: (req: Request) => Promise<FeatureContext>, options: McpOptions = {}): Hono {
   const app = new Hono();
   app.onError((error, c) => {

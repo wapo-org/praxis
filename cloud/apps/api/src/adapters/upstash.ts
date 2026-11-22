@@ -3,16 +3,11 @@ import {createHash, randomUUID} from 'node:crypto';
 import {Redis} from '@upstash/redis';
 import {Ratelimit} from '@upstash/ratelimit';
 import {z} from 'zod';
-import {JsonObjectSchema} from '@praxis/protocol';
+import {JsonObjectSchema, type JsonObject} from '@praxis/protocol';
 import type {Events, KV} from '../contracts.js';
 import {EventSchema, Limit, Revision, Scope} from './validation.js';
 
-/**
- * Atomic append: INCR the per-stream sequence, XADD with the explicit `<seq>-0` id (so the SSE id and the
- * stream id are the same safe integer), trim to bounded retention, and refresh stream/dedup TTLs.
- * An optional stable key returns the original record atomically without allocating another SSE id.
- * A cursor older than retention shows up as a gap, which the SSE route reports as `cursor_expired`.
- */
+/** Atomic stream XADD with explicit <seq>-0 SSE id, bounded retention, and dedup key. */
 export const APPEND_EVENT_LUA = `
 if ARGV[4] ~= '' then
  local prior = redis.call('HGET', KEYS[3], ARGV[4])
@@ -35,11 +30,38 @@ return 0`;
 
 export interface UpstashOptions {url: string; token: string; prefix?: string; streamMaxLen?: number; streamTtlSeconds?: number; accountOwnership?: boolean; clock?: () => number}
 
-/** The subset of the Upstash client the adapters use (lets tests run the contract suite on a fake). */
+/** Minimal Redis surface so tests can run against fakeRedis. */
 export type RedisLike = Pick<Redis, 'get' | 'set' | 'del' | 'getdel' | 'eval' | 'xrange' | 'zrange' | 'zrem'>;
 
-/** Keys never contain user ids or other caller text: owner/channel/kv names are SHA-256 hashed. */
+/** Hash owner/channel/kv names with SHA-256 so caller text never enters Redis keys. */
 export const opaque = (...parts: string[]) => createHash('sha256').update(JSON.stringify(parts.map(p => Scope.parse(p)))).digest('hex').slice(0, 40);
+
+/** Upstash with automaticDeserialization:false returns raw [id, [field, value, ...]] tuples from xrange. */
+function extractStreamPayload(fields: unknown): unknown {
+  if (Array.isArray(fields)) {
+    for (let i = 0; i + 1 < fields.length; i += 2) {
+      if (fields[i] === 'payload') return fields[i + 1];
+    }
+    return undefined;
+  }
+  if (fields && typeof fields === 'object' && 'payload' in fields) {
+    return (fields as {payload: unknown}).payload;
+  }
+  return undefined;
+}
+
+function parseStreamEntries(result: unknown): Array<{id: number; payload: JsonObject}> {
+  const entries: Array<[string, unknown]> = Array.isArray(result)
+    ? result.filter((item): item is [string, unknown] => Array.isArray(item) && typeof item[0] === 'string')
+    : result && typeof result === 'object'
+      ? Object.entries(result)
+      : [];
+  return entries.map(([id, fields]) => {
+    const raw = extractStreamPayload(fields);
+    const payload = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return EventSchema.parse({id: Number(id.split('-')[0]), payload});
+  });
+}
 
 export function createUpstashAdapters(options: UpstashOptions) {
   z.string().url().parse(options.url);
@@ -90,13 +112,13 @@ export function upstashFromRedis(redis: RedisLike, options: Omit<UpstashOptions,
       Limit.parse(limit);
       if (after === Number.MAX_SAFE_INTEGER) return [];
       const result = await redis.xrange<{payload: string}>(stream(u, c), `(${after}-0`, '+', limit);
-      return Object.entries(result ?? {}).map(([id, fields]) => EventSchema.parse({id: Number(id.split('-')[0]), payload: JSON.parse(fields.payload)}));
+      return parseStreamEntries(result);
     },
     // The per-stream sequence APPEND_EVENT_LUA increments is exactly the newest event id.
     latest: async (u, c) => Revision.parse(Number((await redis.get<string | number>(`${stream(u, c)}:seq`)) ?? 0)),
   };
 
-  /** Fenced execution lease (SET NX PX + compare-and-delete) so duplicate continuations never run one run twice. */
+  /** Fenced SET NX PX lease so duplicate continuations never advance a run twice. */
   const lease = {
     acquire: async (k: string, ttlMs: number, ownerId?: string): Promise<string | null> => {
       const token = randomUUID();
@@ -115,18 +137,14 @@ export function upstashFromRedis(redis: RedisLike, options: Omit<UpstashOptions,
   return {kv, events, consumeOnce, lease, ownership};
 }
 
-/** KEYS: counter. ARGV: window ms. Fixed window in one self-expiring key; returns {count, ms left}. */
+/** KEYS: counter; ARGV: windowMs; returns {count, msLeft}. */
 export const FIXED_WINDOW_LUA = `
 local n=redis.call('INCR',KEYS[1])
 local left=redis.call('PTTL',KEYS[1])
 if left < 0 then redis.call('PEXPIRE',KEYS[1],ARGV[1]) left=tonumber(ARGV[1]) end
 return {n,left}`;
 
-/**
- * Limiter shaped for `createApp({rateLimit})`. Per-user keys use one fixed-window counter each: it is never
- * owner-indexed (bounded, expires within its window), so account deletion cannot reset it and limits keep applying.
- * Other keys (per-IP) use @upstash/ratelimit's sliding window. Keys are hashed with our opaque id.
- */
+/** Per-user fixed window isn't owner-indexed so account deletion can't reset limits. */
 export function createRateLimiter(redis: Pick<Redis, 'eval'> & Partial<Redis>, options: {requests?: number; window?: `${number} s`; prefix?: string} = {}) {
   const prefix = options.prefix ?? 'praxis:v1:ratelimit';
   const limiter = new Ratelimit({redis: redis as Redis, limiter: Ratelimit.slidingWindow(options.requests ?? 120, options.window ?? '60 s'), prefix, analytics: false});
@@ -136,7 +154,7 @@ export function createRateLimiter(redis: Pick<Redis, 'eval'> & Partial<Redis>, o
   };
   return async (key: string) => {
     if (key.startsWith('account-delete:')) return fixed(key, 5, 3600);
-    if (key.startsWith('user:')) return fixed(key, options.requests ?? 120, Number.parseInt(options.window ?? '60 s'));
+    if (key.startsWith('user:')) return fixed(key, options.requests ?? 120, Number.parseInt(options.window ?? '60 s', 10));
     const result = await limiter.limit(opaque(key));
     return result.success ? {ok: true} : {ok: false, retryAfterSeconds: Math.max(1, Math.ceil((result.reset - Date.now()) / 1000))};
   };

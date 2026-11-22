@@ -54,7 +54,7 @@ export async function selectRunTools(ctx:FeatureContext,chat:Chat,catalog:Featur
       if(m.chatId===chat.id)sticky.add(p.name);
     }
     const query=history.filter(m=>m.chatId===chat.id&&m.role==='user').sort((a,b)=>(b.sequence??0)-(a.sequence??0)).find(m=>m.parts.some(p=>p.type==='text'))?.parts.filter(p=>p.type==='text').map(p=>p.text??'').join(' ')??'';
-    const selected=new Set([...sticky]);
+    const selected=new Set(sticky);
     [...catalog].filter(t=>counts.has(t.name)).sort((a,b)=>(counts.get(b.name)??0)-(counts.get(a.name)??0)||a.name.localeCompare(b.name)).slice(0,10).forEach(t=>selected.add(t.name));
     if(query&&catalog.length) {
       const texts=catalog.map(t=>(t.originalName??t.name)+' '+t.description);

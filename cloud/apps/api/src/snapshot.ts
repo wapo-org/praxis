@@ -60,7 +60,10 @@ export function foldSnapshot(state:RunSnapshot,event:RunEventPayload,id:number,r
  case 'tool.running':{const t=s.tools.find(t=>t.activity.id===event.callId);if(t)t.running=true;break;}
  case 'tool.progress':{const t=s.tools.find(t=>t.activity.id===event.callId);if(t){t.progress.push(event);t.progress=t.progress.slice(-200);}break;}
  case 'tool.finished':{const t=s.tools.find(t=>t.activity.id===event.callId);if(t){t.running=false;t.completion=event.completion;}break;}
- case 'approval.requested':s.pendingApprovals.push(event.approval);break;
+ case 'approval.requested': {
+  if (!s.pendingApprovals.some(approval => approval.id === event.approval.id)) s.pendingApprovals.push(event.approval);
+  break;
+ }
  case 'approval.resolved':s.pendingApprovals=s.pendingApprovals.filter(a=>a.id!==event.approvalId);break;
  case 'elicitation.requested':s.pendingElicitations.push(event.elicitation);break;
  case 'elicitation.resolved':s.pendingElicitations=s.pendingElicitations.filter(a=>a.id!==event.elicitationId);break;
