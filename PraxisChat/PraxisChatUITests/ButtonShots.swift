@@ -1,9 +1,5 @@
 import XCTest
 
-/// Button-consistency probe (not part of the regular suite): walks
-/// Settings → Skills → Connectors → Add → registries and holds each
-/// screen while the host takes `simctl io screenshot`s. Skipped unless
-/// `PRAXIS_BUTTONSHOTS` is set. Each pose prints `BUTTONSHOTS <label>`.
 final class ButtonShots: XCTestCase {
     var app: XCUIApplication!
 
@@ -45,7 +41,6 @@ final class ButtonShots: XCTestCase {
         app.buttons["History options"].tap()
         app.buttons["Select chats"].tap()
         Thread.sleep(forTimeInterval: 1.0)
-        // Select the first conversation row to enable Delete.
         let firstRow = app.cells.firstMatch
         if firstRow.waitForExistence(timeout: 5) { firstRow.tap() }
         Thread.sleep(forTimeInterval: 0.8)
@@ -68,7 +63,7 @@ final class ButtonShots: XCTestCase {
         hold("skill-browser")
         back(from: "Browse skills", waitFor: app.buttons["Import skill"])
 
-        back(from: "Skills", waitFor: app.staticTexts["Tools"]) // Skills -> Settings
+        back(from: "Skills", waitFor: app.staticTexts["Tools"])
         let connectors = button(containing: "Connectors")
         XCTAssertTrue(connectors.waitForExistence(timeout: 5))
         connectors.tap()

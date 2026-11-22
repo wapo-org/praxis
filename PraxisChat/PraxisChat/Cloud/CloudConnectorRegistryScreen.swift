@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// The official registry can return several remote addresses per server and
-/// empty filtered pages with a next cursor. The editor owns health-checked add.
+/// Registry handles multi-address entries and empty filtered cursor pages.
 struct CloudConnectorRegistryScreen: View {
     let services: CloudServices
     @State private var query = ""

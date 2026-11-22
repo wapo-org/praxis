@@ -2,9 +2,7 @@ import XCTest
 import AgentCore
 @testable import PraxisChat
 
-/// The activity's row model (`StepPresentation`'s `Step` extension): every
-/// call reads as one line, only lines with something behind them open,
-/// and the folded header follows the call running now.
+/// Verifies Step row invariants: single-line summary, expandable details, and live folded header.
 final class ActivityLineTests: XCTestCase {
 
     private func step(_ status: Step.Status = .succeeded, source: String? = nil, title: String? = "Web search",
@@ -19,7 +17,7 @@ final class ActivityLineTests: XCTestCase {
         s.title = "Web\nsearch"
         XCTAssertFalse(s.lineBody.contains("\n"), s.lineBody)
         XCTAssertEqual(s.lineBody, "Web search: recent AI breakthroughs")
-        // The source isn't repeated in the body; the view sets it in medium weight.
+        // Source name is omitted from lineBody because the view renders it separately in medium weight.
         XCTAssertFalse(s.lineBody.contains("Exa"))
     }
 
@@ -66,7 +64,6 @@ final class ActivityLineTests: XCTestCase {
         s.traces = [Trace(kind: .api, text: "exa.web_search_exa({\"query\":\"x\"})")]
         XCTAssertTrue(s.visibleTraces.isEmpty)
         XCTAssertFalse(s.hasDetails)
-        // Under code, each call trace is a call the script made.
         s.command = CommandData(code: "await exa.search()")
         XCTAssertEqual(s.visibleTraces.count, 1)
     }

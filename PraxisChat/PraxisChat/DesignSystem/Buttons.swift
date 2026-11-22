@@ -1,20 +1,5 @@
 import SwiftUI
 
-/// Shared button styles for the app's secondary screens (Settings, Skills,
-/// Connectors, sheets). One height, one font, one icon-to-label rhythm, one
-/// press feel, so a primary and a secondary action sitting side by side
-/// differ in material only: calm, monochrome, liquid glass.
-///
-///     Button { … } label: { PraxisButtonLabel("Import skill", systemImage: "square.and.arrow.down") }
-///         .buttonStyle(.praxisPrimary())
-///
-/// - Primary: ink-filled capsule (inverts in dark mode via `Praxis.ink`).
-/// - Secondary: native interactive glass capsule, same metrics as primary.
-/// - Text: no chrome, for inline actions ("Withdraw", "Remove saved key").
-/// - Icon: round glass button for single-glyph actions (back, close).
-///
-/// `Button(role: .destructive)` turns the label red in secondary/text, and
-/// the fill red in primary. Disabled dims to 40% everywhere.
 enum PraxisButtonSize: Sendable {
     case regular, compact
 
@@ -26,19 +11,14 @@ enum PraxisButtonSize: Sendable {
         self == .regular ? Type.inter(15, weight: .semibold, .body)
                          : Type.inter(14, weight: .semibold, .subheadline)
     }
-    /// Diameter of the icon-only circle.
     var circle: CGFloat { self == .regular ? 44 : 32 }
-    /// Glyph size inside the icon-only circle.
     var circleGlyph: CGFloat { self == .regular ? 14 : 13 }
 }
 
 extension EnvironmentValues {
-    /// Set by the Praxis button styles so `PraxisButtonLabel` matches them.
     @Entry var praxisButtonSize: PraxisButtonSize = .regular
 }
 
-/// Standard label: optional SF Symbol, title, optional spinner replacing the
-/// symbol while work is in flight. Font and spacing come from the style.
 struct PraxisButtonLabel: View {
     let title: String
     var systemImage: String?
@@ -116,7 +96,6 @@ private struct PraxisCapsuleButtonBody: View {
     }
 }
 
-/// Ink-filled capsule: the one main action on a screen.
 struct PraxisPrimaryButtonStyle: ButtonStyle {
     var size: PraxisButtonSize = .regular
     var fillsWidth = false
@@ -125,7 +104,6 @@ struct PraxisPrimaryButtonStyle: ButtonStyle {
     }
 }
 
-/// Interactive glass capsule with the primary's metrics.
 struct PraxisSecondaryButtonStyle: ButtonStyle {
     var size: PraxisButtonSize = .regular
     var fillsWidth = false
@@ -136,7 +114,6 @@ struct PraxisSecondaryButtonStyle: ButtonStyle {
 
 // MARK: Text and icon styles
 
-/// No chrome: an inline action inside a row or a footer.
 struct PraxisTextButtonStyle: ButtonStyle {
     var muted = false
     @Environment(\.isEnabled) private var isEnabled
@@ -159,7 +136,6 @@ struct PraxisTextButtonStyle: ButtonStyle {
     }
 }
 
-/// Round glass button for a single glyph (back, close).
 struct PraxisIconButtonStyle: ButtonStyle {
     var size: PraxisButtonSize = .regular
     @Environment(\.isEnabled) private var isEnabled

@@ -4,13 +4,7 @@ import AgentCore
 import AgentMCP
 import AgentRuntime
 
-/// Single source of truth (spec §2): `@Observable @MainActor`.
-///
-/// Runs are per conversation: sending in one chat never stops another,
-/// and the stop button reflects the selected chat. Engine events arrive
-/// coalesced (≤ 30 flushes/s) and are folded in batches by each run's
-/// `TurnReducer`; streamed text goes to the block's `LiveText` without
-/// touching the turn. Conversations are written to disk at commit points.
+/// Single @Observable store; coalesced per-conversation runs persist at commits.
 @MainActor
 @Observable
 final class ChatStore {
@@ -18,43 +12,28 @@ final class ChatStore {
     var selectedID: UUID?
     var mode: ChatMode = .auto
     var effort: Effort = .high
-    /// The demo catalogue's pick; when live, `model` is the provider's.
     var demoModel: AIModel = MockData.models[1]
     var webSearch = true
     var memory = true
-    /// Demo connectors; live mode lists installed servers (`trayConnectors`).
     var connectors: [Connector] = MockData.connectors
     var connectorDiscovery = true
     var attachments: [Attachment] = []
     var draft: String = ""
-    /// Unsent drafts stashed per conversation (`switchSelection`): the
-    /// composer's text + attachments belong to the selected chat. Not
-    /// observed — every stash/restore already touches observed state.
+    /// Unobserved since every stash and restore already updates observed state.
     @ObservationIgnored private var drafts: [UUID: ChatDraft] = [:]
-    /// The model picker's search text. The composer binds to this (not the
-    /// draft) while the tray's Model page is open; cleared when the page
-    /// closes or a model is picked. The draft is never touched.
+    /// Model search binding while tray is open; keeps draft untouched.
     var modelQuery: String = ""
-    /// Id the draft's turn will get when sent. The composer tags the draft
-    /// with it, so the new bubble can fly in from where the text was typed.
     private(set) var nextTurnID = UUID()
-    /// Runs in flight, keyed by conversation.
     private(set) var runs: [UUID: RunHandle] = [:]
-    /// Engine the next run uses. Changes to live when the first provider
-    /// is added (unless `-PraxisEngine` pinned it).
+    /// Auto-switches from demo to live on first provider unless -PraxisEngine pinned.
     private(set) var engineKind: EngineKind
-    /// Settings were asked for from elsewhere (a "needs provider" note).
     var isSettingsPresented = false
-    /// Where Settings opens when presented from elsewhere (the tray's
-    /// "Manage connectors"); Settings consumes it on appear.
+    /// Consumed by Settings on appear.
     var settingsPage: SettingsPage = .root
-    /// A live send waiting on the AI-data consent sheet. Nothing has
-    /// been sent or added to the thread while this is set.
+    /// Holds send and transcript update until AI-data consent completes.
     var pendingConsent: ConsentRequest?
-    /// Voice consent allow-path: the controller sets this; allowing retries
-    /// the held transcription, declining is a no-op (audio stays queued).
+    /// Voice consent callback retries transcription; decline keeps queued audio.
     @ObservationIgnored var voiceRetryTranscription: ((UUID) -> Void)?
-    /// Whether the selected conversation is running.
     var isRunning: Bool { selectedID.map(isRunning(_:)) ?? false }
 
     let approvals = ApprovalCenter()
@@ -64,41 +43,27 @@ final class ChatStore {
     var cloudModelID = ""
     var elicitationCenter: ElicitationCenter? { engineKind == .cloud ? cloudElicitations : services?.elicitations }
     let haptics = HapticCenter()
-    /// Background execution for runs in flight (continued tasks, fallback
-    /// grace, pause/resume, notifications). Never touches request building.
     @ObservationIgnored let background: BackgroundRuntime
-    /// Voice input state (nil in previews and store-only tests). Set by
-    /// `forLaunch`; the composer and banners read it from here.
     @ObservationIgnored var voice: VoiceInputController?
-    /// Trust and "always allow" grants (persisted with the index).
     private(set) var policy = ToolPolicy()
 
     @ObservationIgnored private(set) var engine: any ChatEngine
-    /// Providers, connectors, skills and the runtime (nil in previews and
-    /// most tests: demo data only).
     @ObservationIgnored let services: AgentServices?
     @ObservationIgnored let cloudServices: CloudServices?
     @ObservationIgnored private let picksEngineAutomatically: Bool
     @ObservationIgnored private var persistence: ConversationStore?
     @ObservationIgnored let attachmentStore: AttachmentStore
-    /// Streaming blocks' text, by block id. Not observed: the turn change
-    /// that adds a block already re-renders its turn, which looks it up.
+    /// Unobserved since inserting the block already re-renders the turn.
     @ObservationIgnored private var liveTexts: [UUID: LiveText] = [:]
     @ObservationIgnored private var collapseTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored var coalesceInterval: Duration = .milliseconds(33)
 
-    /// - Parameters:
-    ///   - conversations: start from these (previews, tests); otherwise
-    ///     load from `persistence`, seeding the demo threads on first launch.
-    ///   - picksEngineAutomatically: switch to live once a provider
-    ///     profile is added (no `-PraxisEngine` override).
     init(engine: any ChatEngine = DemoAgentEngine(), conversations: [Conversation]? = nil,
          persistence: ConversationStore? = nil, attachments: AttachmentStore = .shared,
          services: AgentServices? = nil, picksEngineAutomatically: Bool = false,
          cloudServices: CloudServices? = nil,
          background: BackgroundRuntime? = nil) {
-        // Integration wiring (BACKGROUND_PLAN.md §6): the live ActivityKit
-        // reporter; tests inject fakes via the `background` parameter.
+        // Default LiveRunActivityReporter in production; injectable for tests.
         self.background = background ?? BackgroundRuntime(reporter: LiveRunActivityReporter())
         self.engine = engine
         self.engineKind = engine.kind
@@ -130,16 +95,13 @@ final class ChatStore {
         collapseTasks.removeAll()
     }
 
-    /// Call after provider profiles change: the first profile switches the
-    /// demo to live. Once live it stays live — with no provider left, runs
-    /// point to Settings instead of quietly answering with demo scripts.
+    /// One-way switch from demo to live on first provider.
     func providersChanged() {
         guard picksEngineAutomatically, let services, engineKind != .live,
               EngineKind.resolve(override: nil, hasProvider: services.settings.hasProfiles) == .live else { return }
         use(services.makeEngine())
     }
 
-    /// Swaps the engine for future runs; runs in flight keep theirs.
     func use(_ engine: any ChatEngine) {
         self.engine = engine
         engineKind = engine.kind
@@ -167,11 +129,7 @@ final class ChatStore {
         switchSelection(to: id)
     }
 
-    /// Appends `text` to a conversation's draft (voice transcripts deposit
-    /// here): live when it's selected, else into its stash — so a
-    /// transcript that finishes after a chat switch still lands in its own
-    /// chat, attachments untouched. Unknown ids (chat deleted mid-flight)
-    /// are dropped; the audio stays recoverable.
+    /// Routes transcripts to target conversation even after a chat switch.
     func depositToDraft(text: String, conversationID: UUID) {
         guard conversations.contains(where: { $0.id == conversationID }) else { return }
         if conversationID == selectedID {
@@ -184,8 +142,6 @@ final class ChatStore {
         }
     }
 
-    /// Moves the selection, stashing the composer's draft under the old
-    /// chat and restoring the new chat's (a fresh chat starts empty).
     private func switchSelection(to id: UUID?) {
         if let current = selectedID, current != id {
             drafts[current] = ChatDraft(text: draft, attachments: attachments)
@@ -200,12 +156,7 @@ final class ChatStore {
         }
     }
 
-    /// Deposits attachments picked for one chat. A slow attach (an iCloud
-    /// photo, a picker transfer) can finish after the user switched chats,
-    /// so callers capture the target id before awaiting: when it is still
-    /// selected the composer takes them live (returns true), otherwise
-    /// they join that chat's stashed draft and surface on return (false).
-    /// A chat that no longer exists drops them (false).
+    /// Uses captured target chat ID so slow picks never land in a switched chat.
     @discardableResult
     func deposit(_ attachments: [Attachment], for conversationID: UUID) -> Bool {
         guard conversations.contains(where: { $0.id == conversationID }) else { return false }
@@ -227,7 +178,6 @@ final class ChatStore {
         saveIndex()
     }
 
-    /// Deletes chats, stopping their runs and dropping their files.
     func deleteConversations(_ ids: Set<UUID>) {
         let removed = conversations.filter { ids.contains($0.id) }
         for conv in removed {
@@ -239,12 +189,9 @@ final class ChatStore {
         if let selectedID, !conversations.contains(where: { $0.id == selectedID }) {
             switchSelection(to: conversations.first?.id)
         }
-        // After the switch: it may have stashed the old draft under a
-        // deleted chat, which must not linger.
+        // Purge after switch in case selection stashed old draft under deleted ID.
         for id in ids { drafts.removeValue(forKey: id) }
-        // Index first: a crash between the two then leaves orphan files
-        // (ignored at load), not ghost chats (index entries whose files
-        // are gone get synthesized back as empty conversations).
+        // Save index first so a crash leaves orphan files rather than ghost chats.
         saveIndex()
         persistence?.delete(Array(ids))
     }
@@ -255,8 +202,7 @@ final class ChatStore {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty else { return }
         guard let conv = selected else { return }
-        // First live send to this provider host: ask before anything
-        // leaves the device. The composer keeps its text meanwhile.
+        // Require consent before first live send; keeps draft intact meanwhile.
         if let needed = consentNeeded() {
             pendingConsent = ConsentRequest(host: needed.host, providerName: needed.providerName,
                                             connectorNames: connectorNames(for: conv),
@@ -266,15 +212,11 @@ final class ChatStore {
         }
         var turn = Turn(id: nextTurnID, userText: trimmed, attachments: attachments, modelID: model.id)
         turn.engine = engine.kind
-        // A live engine builds the user message itself (the runtime picks
-        // its notes) and commits it as the run's first message.
         if !engine.buildsUserMessage {
             turn.transcript = [userMessage(trimmed, in: conv, before: conv.turns.count)]
         }
         nextTurnID = UUID()
         attachmentStore.persist(attachments.map(\.id))
-        // Named by its first message: the words, or what it carries when
-        // there are none ("Photo", "2 photos", a file's name).
         let retitle = conv.wantsTitle(for: trimmed)
         conv.turns.append(turn)
         if retitle, let title = ConversationTitle.make(text: trimmed, attachments: turn.attachments) {
@@ -283,8 +225,7 @@ final class ChatStore {
         conv.updatedAt = Date()
         attachments = []
         draft = ""
-        // A sent draft is gone for good: switching away and back must
-        // not resurrect it from the stash.
+        // Clear sent draft so switching chats cannot resurrect it.
         drafts.removeValue(forKey: conv.id)
         haptics.fire(.light)
         save(conv)
@@ -301,8 +242,6 @@ final class ChatStore {
                                             conversationID: conv.id, action: .retry(turnID))
             return
         }
-        // Retrying rewinds the thread: everything below goes away,
-        // the retried turn itself re-runs from scratch.
         cancelRun(conv.id)
         forget(Array(conv.turns[(i + 1)...]))
         forgetBlocks(of: conv.turns[i])
@@ -318,7 +257,6 @@ final class ChatStore {
         startRun(in: conv, turnID: turnID)
     }
 
-    /// Edit puts the text back in the composer and re-runs from that point (§8).
     func edit(turnID: UUID) {
         guard let conv = selected, let idx = conv.turns.firstIndex(where: { $0.id == turnID }) else { return }
         draft = conv.turns[idx].userText
@@ -327,8 +265,7 @@ final class ChatStore {
         }
         forget(Array(conv.turns[idx...]))
         conv.turns.removeSubrange(idx..<conv.turns.count)
-        // The first message is going to be rewritten: its title goes
-        // with it, and the resend names the chat again.
+        // Reset title when editing first message so resend re-titles it.
         if idx == 0 { conv.title = ConversationTitle.placeholder }
         save(conv)
         saveIndex()
@@ -339,23 +276,18 @@ final class ChatStore {
         send(text: turn.userText)
     }
 
-    /// Stops the selected conversation's run.
     func stop() {
         guard let selectedID else { return }
         stop(conversationID: selectedID)
     }
 
-    /// Stops one conversation's run: whatever already arrived is applied,
-    /// then the turn settles as stopped and is saved.
     func stop(conversationID: UUID) {
         guard let handle = runs.removeValue(forKey: conversationID) else { return }
         background.runStopped(conversationID: conversationID)
         handle.cancelled.cancel()
         handle.task?.cancel()
         elicitationCenter?.cancel(scope: handle.elicitationScope)
-        // Drain first: an approval event may have arrived without a
-        // main-actor drain yet, and its waiter must be released too —
-        // denying before the drain would miss it and hang the engine.
+        // Drain before denying approvals so undrained waiters still resolve.
         let (events, _) = handle.inbox.drain()
         guard let conv = conversation(conversationID), let ti = locate(handle, in: conv) else {
             approvals.denyAll(handle.approvalIDs.union(approvalIDs(in: events)))
@@ -382,7 +314,6 @@ final class ChatStore {
         save(conv)
     }
 
-    /// Approval ids asked in `events` but not resolved there.
     private func approvalIDs(in events: [AgentEvent]) -> Set<String> {
         var ids = Set<String>()
         for event in events {
@@ -402,11 +333,7 @@ final class ChatStore {
 
     // MARK: Background
 
-    /// Resumes a background-paused turn as a NEW turn: its replayed
-    /// history includes the paused turn's committed transcript, so the
-    /// run continues from the last completed step without re-executing
-    /// finished tools (BACKGROUND_PLAN.md §2.7). Partial (uncommitted)
-    /// stream text stays visible on the old turn and is not replayed.
+    /// Resumes as new turn from committed transcript; omits partial stream text.
     func continueRun(conversationID: UUID) {
         guard let conv = conversation(conversationID),
               conv.turns.last?.outcome == .pausedBackground,
@@ -415,10 +342,7 @@ final class ChatStore {
         send(text: "Continue")
     }
 
-    /// Expiry path (the continued task or the fallback grace ran out):
-    /// settles exactly like `stop()` — drain, deny approvals, keep
-    /// partial blocks and the committed transcript — then marks the
-    /// turn paused-in-background and saves again.
+    /// Settles like stop() on background expiry, then marks turn paused.
     func pauseRunForBackground(conversationID: UUID) {
         guard let handle = runs[conversationID] else { return }
         let turnID = handle.turnID
@@ -444,17 +368,12 @@ final class ChatStore {
 
     // MARK: AI-data consent
 
-    /// The consent sheet's answer. Allowing records the host and performs
-    /// the held send; declining drops it and leaves the draft (text and
-    /// attachments) as it was, so nothing is lost.
+    /// Allow records consent and sends; decline keeps draft and attachments.
     func resolveConsent(allow: Bool) {
         guard let request = pendingConsent else { return }
         pendingConsent = nil
-        // The answer belongs to the chat the send started in, not
-        // necessarily the selected one.
         guard conversation(request.conversationID) != nil else { return }
-        // Stash the current chat's draft first; the held send's own
-        // text + attachments overwrite the restored draft below.
+        // Stash current draft before overwriting with held send.
         switchSelection(to: request.conversationID)
         guard allow else {
             haptics.fire(.soft)
@@ -472,28 +391,22 @@ final class ChatStore {
         case .retry(let turnID):
             retry(turnID: turnID)
         case .transcribe(let recordingID):
-            // Voice (voice-groq): the host is granted above; the controller
-            // retries the held transcription. Set by VoiceInputController.
             voiceRetryTranscription?(recordingID)
         }
     }
 
-    /// Only live runs send anything off the device.
     private func consentNeeded() -> (host: String, providerName: String)? {
         guard engine.kind == .live else { return nil }
         return services?.consentNeeded()
     }
 
-    /// Connectors whose data the agent may read in this chat (named on
-    /// the consent sheet).
     private func connectorNames(for conv: Conversation) -> [String] {
         guard let library = services?.connectors else { return [] }
         let ids = frozenServerIDs(of: conv).map { Array($0) } ?? enabledConnectorIDs(for: conv)
         return ids.filter { !conv.disabledServerIDs.contains($0) }.compactMap { library.server($0)?.name }.sorted()
     }
 
-    // Narrow cloud lifecycle/persistence operations. Replica adapters never
-    // mutate run handles, the tool policy or the persistence reference directly.
+    // Narrow hook so replica adapters never mutate handles or policies.
     var cloudPersistenceForCleanup: ConversationStore? { persistence }
     func persistConversation(_ conv: Conversation) { save(conv) }
     func detachCloudRun(_ id: UUID) {
@@ -522,8 +435,7 @@ final class ChatStore {
     }
 
     private func startRun(in conv: Conversation, turnID: UUID) {
-        // Settle-then-supersede: replacing a run without settling it would
-        // abandon its turn as running forever (resend while streaming).
+        // Settle active run before replacing so its turn never hangs as running.
         stop(conversationID: conv.id)
         collapseTasks.removeValue(forKey: turnID)?.cancel()
         evictRevealedLiveTexts(in: conv)
@@ -547,7 +459,6 @@ final class ChatStore {
         let stream = AgentEventCoalescer.coalesce(engine.run(request), interval: coalesceInterval)
         let inbox = handle.inbox
         let store = WeakStore(value: self)
-        // Read off the main actor; the main actor only sees batches.
         handle.task = Task.detached(priority: .userInitiated) {
             await EventInbox.pump(stream, into: inbox) {
                 Task { @MainActor in store.value?.drain(handle) }
@@ -555,9 +466,6 @@ final class ChatStore {
         }
     }
 
-    /// Cancels a run without settling its turn (the turn is going away
-    /// or about to re-run). Waiters are still released: denying covers the
-    /// collected ids plus approvals whose events never reached a drain.
     private func cancelRun(_ conversationID: UUID) {
         guard let handle = runs.removeValue(forKey: conversationID) else { return }
         background.runStopped(conversationID: conversationID)
@@ -568,7 +476,6 @@ final class ChatStore {
     }
 
     private func drain(_ handle: RunHandle) {
-        // A stopped or replaced run's leftovers are dropped.
         guard runs[handle.conversationID] === handle else { return }
         let (events, ended) = handle.inbox.drain()
         guard let conv = conversation(handle.conversationID), let ti = locate(handle, in: conv) else {
@@ -582,15 +489,12 @@ final class ChatStore {
             change.merge(handle.reducer.reduce(event, into: &turn, at: now))
         }
         if ended, !change.effects.contains(.finished), turn.isRunning {
-            // The engine closed its stream without a verdict.
             change.merge(handle.reducer.finish(&turn, outcome: .completed, at: now))
         }
 
-        // Live text before the turn: views for blocks this batch opens
-        // must find their LiveText when the turn re-renders.
+        // Apply live text before mutating turn so new blocks find their state.
         applyLiveText(change)
-        // Text-only batches leave the turn alone, so the transcript
-        // doesn't re-render per token.
+        // Skip turn update on text-only batches to avoid per-token re-renders.
         if change.effects.contains(.turn) { conv.turns[ti] = turn }
         background.reportBatch(conversationID: conv.id, title: conv.displayTitle, events: events)
 
@@ -625,7 +529,7 @@ final class ChatStore {
 
     private func applyLiveText(_ change: TurnReducer.Change) {
         for id in change.openedText where liveTexts[id] == nil { liveTexts[id] = LiveText(id: id) }
-        // One append (one incremental parse) per block per batch.
+        // Coalesce to one incremental parse per block per batch.
         var order: [UUID] = []
         var appended: [UUID: String] = [:]
         for (id, text) in change.appendedText {
@@ -637,11 +541,7 @@ final class ChatStore {
         for id in change.discardedText { liveTexts.removeValue(forKey: id) }
     }
 
-    /// Finished activity folds away once the whole run is done — not
-    /// mid-answer. Collapsing while text still streamed meant two layout
-    /// changes fighting each other (the shrinking block animating, every
-    /// chunk re-pinning the bottom instantly), and the thread jiggled.
-    /// Blocks the user opened or closed themselves are left alone.
+    /// Folds on run completion so layout shifts never fight active streaming.
     private func autoCollapseActivities(turnID: UUID) {
         collapseTasks[turnID]?.cancel()
         collapseTasks[turnID] = Task { @MainActor [weak self] in
@@ -652,7 +552,6 @@ final class ChatStore {
                 self.updateTurn(turnID) { t in
                     for i in t.blocks.indices {
                         t.updateActivity(at: i) { act in
-                            // Waiting on the user: never fold that away.
                             let waiting = act.steps.contains(where: \.isWaitingOnUser)
                             if act.userExpanded == nil, act.isExpanded, !waiting { act.isExpanded = false }
                         }
@@ -676,9 +575,7 @@ final class ChatStore {
         }
     }
 
-    /// Opens or closes one line's details (a command's card, a call's
-    /// parameters and result). Kept in the model: rows are recreated as
-    /// the transcript scrolls.
+    /// Stored on model since scroll recycling recreates rows.
     func setCommandExpanded(turnID: UUID, stepID: UUID, expanded: Bool) {
         updateTurn(turnID) { turn in
             for i in turn.blocks.indices {
@@ -697,8 +594,7 @@ final class ChatStore {
         if let conv = owner(of: turnID) { save(conv) }
     }
 
-    /// Mutates the turn in place inside whichever conversation owns it —
-    /// a run keeps landing in its own thread after the user switches chats.
+    /// Updates owning conversation directly across chat switches.
     private func updateTurn(_ turnID: UUID, _ mutate: (inout Turn) -> Void) {
         guard let conv = owner(of: turnID), let ti = conv.turns.firstIndex(where: { $0.id == turnID }) else { return }
         mutate(&conv.turns[ti])
@@ -724,7 +620,6 @@ final class ChatStore {
 
     // MARK: Cleanup
 
-    /// Turns leaving the thread: their timers, live text and attachments go.
     private func forget(_ turns: [Turn]) {
         for turn in turns {
             collapseTasks.removeValue(forKey: turn.id)?.cancel()
@@ -737,8 +632,7 @@ final class ChatStore {
         for block in turn.blocks { liveTexts.removeValue(forKey: block.id) }
     }
 
-    /// A new run in a thread retires the previous answers' live text once
-    /// their reveal has finished; those blocks render from the cache.
+    /// Retire finished live text before next run so rows read from cache.
     private func evictRevealedLiveTexts(in conv: Conversation) {
         for turn in conv.turns {
             for block in turn.blocks {
@@ -763,22 +657,17 @@ final class ChatStore {
             policy: policy))
     }
 
-    /// Waits until queued writes have landed (tests).
     func flushPersistence() async {
         await persistence?.flush()
     }
 }
 
-/// Pages Settings can open on directly.
 enum SettingsPage: Hashable {
     case root, connectors, skills
-    /// One connector's detail (e.g. "Sign in to Gmail" from a chat step).
     case connector(String)
-    /// Voice input (Groq key + model): 401s and missing-key hints link here.
     case voice
 }
 
-/// A weak store reference the off-main reader can carry.
 struct WeakStore: Sendable {
     weak var value: ChatStore?
 }

@@ -7,8 +7,7 @@ struct CloudSSEFrame: Sendable, Equatable {
     var retryMilliseconds: Int?
 }
 
-/// Accumulates bytes until a complete line, so a split UTF-8 scalar is never
-/// decoded independently. CR, LF and CRLF are valid event-stream separators.
+/// Buffers until full line so split UTF-8 scalars decode safely across CR/LF/CRLF.
 struct CloudSSEParser: Sendable {
     private var line: [UInt8] = []
     private var data: [String] = []
@@ -41,8 +40,7 @@ struct CloudSSEParser: Sendable {
         if firstLine { firstLine = false; if text.first == "\u{FEFF}" { text.removeFirst() } }
         if text.isEmpty {
             defer { data.removeAll(keepingCapacity: true); event = ""; retry = nil; eventBytes = 0 }
-            // Control-only frames carry id/retry updates too; consumers do not
-            // acknowledge a run cursor until a JSON event has been accepted.
+            // Consumers only advance run cursor after accepting a JSON event.
             return CloudSSEFrame(event: event.isEmpty ? "message" : event,
                                  data: data.joined(separator: "\n"), id: lastID, retryMilliseconds: retry)
         }
@@ -66,8 +64,7 @@ struct CloudSSEClient: Sendable {
     var initialBackoff: Duration = .milliseconds(250)
     var maxReconnects = 8
 
-    /// `accept` returns only after the consumer has applied the event. A cursor
-    /// is acknowledged afterwards; malformed or rejected events never advance it.
+    /// Advance cursor only after accept completes so bad events never advance it.
     func consume(runID: String, chatID: String, after: Int = 0,
                  onCursor: @escaping @Sendable (Int) async -> Void = { _ in },
                  onEvent: @escaping @Sendable (CloudRunEvent, Data) async throws -> Void = { _, _ in },
@@ -115,8 +112,7 @@ struct CloudSSEClient: Sendable {
             } catch {
                 if Task.isCancelled || error is CancellationError { throw CancellationError() }
                 if let api = error as? CloudAPIError {
-                    // Snapshot reconciliation belongs to the lifecycle owner.
-                    // Never silently reset cursor_expired or skip a bad event.
+                    // Never swallow cursor_expired or malformed events; delegate to lifecycle owner.
                     switch api {
                     case .http(let status, _) where status == 408 || status == 429 || status >= 500: break
                     default: throw api

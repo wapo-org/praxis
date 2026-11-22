@@ -3,39 +3,14 @@ import ImageIO
 import UniformTypeIdentifiers
 import AgentCore
 
-/// Attachments as JS `fs` sees them: read-only, by file name.
-///
-/// Scope rule: **this turn's attachments are listed; earlier ones are
-/// readable only by exact name; ones the user hid from code are neither.**
-/// `list()` names just the files the user attached to the current message
-/// (re-attaching an older file puts it back in the list). A file from an
-/// earlier turn is never enumerated, but the model can read it when it
-/// names it exactly — the name it was shown when the file was attached.
-/// A file the user marked "Hide from code" (`Attachment.isHiddenFromCode`,
-/// any turn) is refused with `HiddenFromCode`, which tells the model why.
-/// No globbing, prefixes or folders: a path is one plain file name
-/// (`VirtualPath`), so `..`, absolute paths and separators are refused,
-/// and a read returns at most 10 MB.
-///
-/// Why earlier files stay readable by default rather than only when
-/// allowed: follow-ups ("now chart column B of data.csv") are the common
-/// case, and a per-file opt-in would make the user re-allow every file
-/// on every turn. Hiding is the explicit, sticky exception.
-///
-/// Names: this turn's files keep their plain names (duplicates get " (2)",
-/// " (3)" …), then earlier files, newest first, take what's left — so a
-/// re-attached "data.csv" means the new copy. Hidden files keep their
-/// names, so hiding one never makes its name point at another file. Only
-/// attachments whose bytes exist count; demo-era picks carry a name and
-/// nothing else.
+/// Current turn attachments list in fs; earlier ones read by exact name unless hidden.
 struct AttachmentFiles: VirtualFileSystem {
     private let current: [String: UUID]
     private let earlier: [String: UUID]
     private let store: AttachmentStore
-    /// The hidden set right now (the store's live state during a run).
     private let hidden: @Sendable () async -> Set<UUID>
 
-    /// The refusal for a hidden file; its text reaches the model.
+    /// Refusal error text shown to the model for hidden files.
     struct HiddenFromCode: LocalizedError, Equatable {
         let name: String
         var errorDescription: String? {
@@ -44,12 +19,6 @@ struct AttachmentFiles: VirtualFileSystem {
         }
     }
 
-    /// - Parameters:
-    ///   - current: the new turn's attachments.
-    ///   - conversation: every attachment in the conversation so far
-    ///     (this turn's may be included; they count as current).
-    ///   - hidden: the attachments hidden from code, asked at every call;
-    ///     nil = the `isHiddenFromCode` flags of the attachments given.
     init(current: [Attachment], conversation: [Attachment] = [], store: AttachmentStore,
          hidden: (@Sendable () async -> Set<UUID>)? = nil) {
         var taken = Set<String>()
@@ -98,14 +67,7 @@ struct AttachmentFiles: VirtualFileSystem {
     }
 }
 
-/// Turns attachments into message parts the providers accept, and keeps
-/// the persisted transcript free of attachment bytes.
-///
-/// Images are normalized once (JPEG/PNG/GIF/WebP within the providers'
-/// size limits; HEIC and huge photos are re-encoded) and the exact bytes
-/// sent are kept as a sidecar, so every later request replays identical
-/// bytes. The transcript stores a reference instead of the bytes
-/// (`dehydrate`) and requests swap them back in (`rehydrate`).
+/// Normalizes images once to a sidecar and stores refs instead of bytes in transcripts.
 enum AttachmentMedia {
     static let referencePrefix = "praxis-attachment:"
     /// Inline text documents above this go to `fs` only.
@@ -117,9 +79,7 @@ enum AttachmentMedia {
     struct Built {
         var images: [MediaData] = []
         var documents: [MediaData] = []
-        /// Media bytes → attachment id, to dehydrate the built message.
         var sources: [MediaData: UUID] = [:]
-        /// Attachments the model only reaches through `fs`.
         var fileOnly: [Attachment] = []
     }
 
@@ -150,8 +110,6 @@ enum AttachmentMedia {
         return built
     }
 
-    /// The user's text plus a line naming files only `fs` can read (and
-    /// those the user hid from code, which nothing can read).
     static func text(_ text: String, fileOnly: [Attachment], hasJavaScript: Bool) -> String {
         guard !fileOnly.isEmpty else { return text }
         func names(_ list: [Attachment]) -> String { list.map { "“\(fileName(for: $0))”" }.joined(separator: ", ") }
@@ -170,7 +128,6 @@ enum AttachmentMedia {
 
     // MARK: Transcript bytes
 
-    /// Media parts built from attachments keep only a reference.
     static func dehydrate(_ message: Message, sources: [MediaData: UUID]) -> Message {
         var message = message
         message.parts = message.parts.map { part in
@@ -184,8 +141,7 @@ enum AttachmentMedia {
         return message
     }
 
-    /// The exact bytes back in place of references. A file that's gone
-    /// becomes a short text part, so the request stays valid.
+    /// Replaces missing file refs with text placeholders so requests stay valid.
     static func rehydrate(_ messages: [Message], store: AttachmentStore) -> [Message] {
         messages.map { message in
             guard message.role == .user, message.parts.contains(where: isReference) else { return message }
@@ -253,8 +209,7 @@ enum AttachmentMedia {
         return nil
     }
 
-    /// Bytes providers accept: the original when it already is, else a
-    /// re-encoded JPEG (stored as the sidecar so it's encoded only once).
+    /// Caches re-encoded JPEGs as sidecars so images encode once.
     private static func normalizedImage(_ data: Data, id: UUID, store: AttachmentStore) -> Data? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]

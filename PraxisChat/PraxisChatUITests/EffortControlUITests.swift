@@ -1,9 +1,5 @@
 import XCTest
 
-/// The tray's effort control follows the selected model: only its levels
-/// are offered, the dial snaps to the nearest one on a model change, and a
-/// model without reasoning hides the control. Demo catalogue doubles as the
-/// fixture (Atlas Mini: three levels; Atlas Chat: none).
 final class EffortControlUITests: XCTestCase {
     var app: XCUIApplication!
 
@@ -33,7 +29,6 @@ final class EffortControlUITests: XCTestCase {
 
     func testEffortControlShowsOnlySupportedLevelsAndSnaps() {
         openTray()
-        // Unknown model (Atlas): all four levels.
         for level in ["Low", "Medium", "High", "Max"] {
             XCTAssertTrue(button(level).waitForExistence(timeout: 10), "\(level) should show for an unknown model")
         }
@@ -41,7 +36,6 @@ final class EffortControlUITests: XCTestCase {
         XCTAssertEqual(button("Max").value as? String, "Selected")
         shot("effort-all-four")
 
-        // A three-level model: Max disappears, the dial snaps to High.
         openModelPage()
         button("Atlas Mini, Fastest answers").tap()
         button("Back").tap()
@@ -51,11 +45,9 @@ final class EffortControlUITests: XCTestCase {
         XCTAssertTrue(button("Low").exists && button("Medium").exists)
         shot("effort-three-levels")
 
-        // A model without reasoning hides the control entirely.
         openModelPage()
         button("Atlas Chat, Quick chat, no reasoning").tap()
         button("Back").tap()
-        // The main page is back when the model row shows the new pick…
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == %@", "Model, Atlas Chat")).firstMatch
             .waitForExistence(timeout: 10))
         for level in ["Low", "Medium", "High", "Max"] {
@@ -63,7 +55,6 @@ final class EffortControlUITests: XCTestCase {
         }
         shot("effort-hidden")
 
-        // …and back to an unknown model restores all four, keeping the dial.
         openModelPage()
         button("Atlas, Balanced for everyday work").tap()
         button("Back").tap()

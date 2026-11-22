@@ -1,8 +1,6 @@
 import XCTest
 @testable import PraxisChat
 
-/// Block-level markdown: GFM tables, and the blocks that used to vanish
-/// (nested list content, task items, quotes holding lists, raw HTML).
 final class MarkdownBlocksTests: XCTestCase {
 
     private func plain(_ s: AttributedString) -> String { String(s.characters) }
@@ -27,7 +25,6 @@ final class MarkdownBlocksTests: XCTestCase {
         XCTAssertEqual(t.alignments, [.leading, .center, .trailing])
         XCTAssertEqual(t.header.map(plain), ["Day", "Meal", "Calories"])
         XCTAssertEqual(t.rows.map { $0.map(plain) }, [["Mon", "Oats", "350"], ["Tue", "Eggs and toast", "420"]])
-        // Inline formatting survives in cells: the code span is a pill.
         XCTAssertTrue(t.rows[1][1].runs.contains { $0[PillTextAttribute.self] != nil })
     }
 
@@ -67,10 +64,8 @@ final class MarkdownBlocksTests: XCTestCase {
 
     func testColumnWidthsFillTheProposalOrCapForScrolling() {
         let natural: [CGFloat] = [40, 600, 80]
-        // Ideal (nil) and too-narrow proposals: capped, the table scrolls.
         XCTAssertEqual(TableGrid.columnWidths(natural: natural, proposed: nil), [40, TableGrid.maxColumnWidth, 80])
         XCTAssertEqual(TableGrid.columnWidths(natural: natural, proposed: 200), [40, TableGrid.maxColumnWidth, 80])
-        // A wider proposal goes to the wrapped column first, then evenly.
         let wide = TableGrid.columnWidths(natural: natural, proposed: 400)
         XCTAssertEqual(wide.reduce(0, +), 400, accuracy: 0.01)
         XCTAssertEqual(wide[0], 40, accuracy: 0.01)

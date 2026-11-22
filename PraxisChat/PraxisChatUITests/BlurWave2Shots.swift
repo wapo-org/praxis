@@ -1,12 +1,5 @@
 import XCTest
 
-/// Wave-2 blur verification probe (not part of the regular suite):
-/// holds poses with content scrolled under every screen's top and bottom
-/// edges while taking screenshots. Skipped unless `PRAXIS_BLUR2SHOTS` is
-/// set (`TEST_RUNNER_PRAXIS_BLUR2SHOTS=1 xcodebuild test
-/// -only-testing:…/BlurWave2Shots`). Writes PNGs to
-/// /tmp/praxis-blur2-shots/. Run once per appearance (set the simulator's
-/// appearance before each run).
 final class BlurWave2Shots: XCTestCase {
     var app: XCUIApplication!
 
@@ -36,7 +29,6 @@ final class BlurWave2Shots: XCTestCase {
 
     // MARK: Chat
 
-    /// Transcript text behind the title (top) and the composer (bottom).
     func testChatEdges() {
         launch(["-PraxisLongThread", "YES"])
         save("chat-0-bottom")
@@ -50,7 +42,6 @@ final class BlurWave2Shots: XCTestCase {
 
     // MARK: Tray
 
-    /// The model page's long list scrolling inside the tray card.
     func testTrayModels() {
         launch(["-PraxisDemoModels", "500"])
         el(.button, "Add photos, files and more").tap()
@@ -70,8 +61,6 @@ final class BlurWave2Shots: XCTestCase {
 
     // MARK: Chat bottom, dense
 
-    /// Nudges dense paragraphs through the bottom feather zone above
-    /// the composer, one pose per nudge.
     func testChatBottomDense() {
         launch(["-PraxisLongThread", "YES"])
         for i in 0..<6 {
@@ -83,8 +72,6 @@ final class BlurWave2Shots: XCTestCase {
         }
     }
 
-    /// Fine nudges: catches a paragraph spanning the feather zone,
-    /// showing several blur levels at once.
     func testChatBottomFine() {
         launch(["-PraxisLongThread", "YES"])
         for i in 0..<6 {
@@ -100,8 +87,7 @@ final class BlurWave2Shots: XCTestCase {
 
     func testHistory() {
         launch(["-PraxisLongThread", "YES"])
-        // The seed lists 6 chats (no scroll); make 8 more so rows pass
-        // under the header.
+        // Seed lists 6 chats (no scroll); add 8 more so rows pass under the header.
         for _ in 0..<8 {
             el(.button, "History").tap()
             Thread.sleep(forTimeInterval: 0.6)
@@ -164,8 +150,6 @@ final class BlurWave2Shots: XCTestCase {
         save("settings-6-image-reader")
     }
 
-    /// The provider editor is the longest settings form: content
-    /// scrolling under its nav bar proves the pinned top edge.
     func testProviderEditor() {
         launch()
         openSettings()

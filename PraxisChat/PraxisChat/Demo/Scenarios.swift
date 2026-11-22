@@ -7,16 +7,13 @@ struct CommandScript {
     var exitCode: Int
 }
 
-/// A step that needs the user's go-ahead: run through the real
-/// `ToolPolicy` (an untrusted connector tool counts as destructive), so
-/// the mode decides between asking and refusing.
+/// Runs through real ToolPolicy (untrusted MCP tools count as destructive) to ask or refuse.
 struct ApprovalScript {
     var toolName: String
     var title: String
     var serverID: String
     var serverName: String
     var arguments: JSONValue
-    /// Row summary when the user declines (or the mode refuses).
     var deniedFinal: String
 }
 
@@ -27,30 +24,21 @@ struct StepScript {
     var traces: [Trace] = []
     var command: CommandScript?
     var approval: ApprovalScript?
-    /// Adds one image trace per attached file.
     var showsAttachments = false
-    /// The call's input: its key argument (a query, a URL) shows on the
-    /// activity line, the whole of it under "Call" when the line opens.
     var arguments: JSONValue?
-    /// What the tool returned, shown under "Result" when the line opens.
     var result: String?
 }
 
 struct Scenario {
-    /// Reasoning streamed before the first tool at High/Max effort.
     var plan: String?
     var steps: [StepScript]
     var answer: String
-    /// Answer used instead of `answer` when an approval was declined.
     var answerIfDenied: String?
-    /// Optional second activity block interleaved between paragraphs (§10).
     var secondSteps: [StepScript]?
     var answerAfterSecond: String?
 }
 
-/// Scenario scripts (spec §10). Chips ride real markdown:
-/// `[file](praxis-file://…)` FileRef, `` `code` `` CodePill,
-/// `[title](https://…)` LinkRef, `[app](praxis-app://…)` integration.
+/// Chips use markdown links: praxis-file:// FileRef, https:// LinkRef, praxis-app:// action.
 enum Scenarios {
     // Demo-only rotation counter; the engine call site is serialized.
     nonisolated(unsafe) private static var roundRobin = 0
@@ -81,7 +69,6 @@ enum Scenarios {
         return s
     }
 
-    // (a) Haptics: read → edit 4 components → build exit 0 (§10a)
     static let haptics = Scenario(
         plan: "Plan: read the button components, add sensoryFeedback to each tap target, build to verify.",
         steps: [
@@ -115,7 +102,6 @@ enum Scenarios {
         The build is green: run `xcodebuild build` any time to verify. No haptics fire on scroll, and none fire twice for one gesture.
         """)
 
-    // (b) Research: web search/fetch traces, LinkRefs + quote (§10b)
     static let research = Scenario(
         plan: "Compare scrim techniques first, then check them against the glass contrast rules.",
         steps: [
@@ -156,7 +142,6 @@ enum Scenarios {
         One more check: text over Thin glass only clears 4.5:1 on calm content. Anything carrying body text sits on Regular or Thick — that is the legibility floor, and it is why the plus tray never drops below Thick.
         """)
 
-    // (c) Failing command: exit 1 destructive, retry, exit 0 (§10c)
     static let failing = Scenario(
         plan: "Reproduce the failure first, read the failing test, then fix the smallest condition.",
         steps: [
@@ -178,8 +163,6 @@ enum Scenarios {
         The retry passes clean — 12 tests, 0 failures. Worth keeping the failing run in the transcript: the red `EXIT 1` and the green `EXIT 0` tell the whole story without a paragraph of apology.
         """)
 
-    // (d) Ship: read → test → merge on GitHub, which asks first. Decline
-    // and the answer says the PR was left open.
     static let ship = Scenario(
         plan: "Check the pull request is green before merging; merging needs the user's go-ahead.",
         steps: [
@@ -211,9 +194,6 @@ enum Scenarios {
         PR #42 is green — 21 tests, 0 failures — but I left it open since you declined the merge. Say the word and I'll squash-merge it, or merge it yourself from [GitHub](praxis-app://GitHub).
         """)
 
-    // (e) A table and the rest of GFM: header, alignment, inline chips in
-    // cells, a task list, strikethrough, a quote and a rule. A tool line
-    // with a query shows the compact activity too.
     static let table = Scenario(
         plan: "Gather the options first, then lay them out side by side.",
         steps: [
@@ -257,8 +237,6 @@ enum Scenarios {
         That is the whole comparison.
         """)
 
-    /// Seeded launch conversation (spec §5): collapsed 3m 51s block,
-    /// long-read answer with every chip type, then a second turn.
     static func seededConversations() -> [Conversation] {
         var activity = ActivityData(isRunning: false, elapsed: 231)
         activity.steps = [
@@ -312,7 +290,6 @@ enum Scenarios {
             Conversation(title: "Welcome to Praxis",
                          updatedAt: Date(timeIntervalSinceNow: -30 * day), turns: []),
         ]
-        // `-PraxisLongThread YES` (UI tests) opens on a long thread instead.
         if UserDefaults.standard.bool(forKey: "PraxisLongThread") {
             conversations.insert(longThread(turn1: turn1, turn2: turn2), at: 0)
         }
@@ -329,9 +306,7 @@ enum Scenarios {
         return conversations
     }
 
-    /// A long live-looking thread: tall answers with activity, then a run
-    /// of short failed turns at the bottom — the shape where a send used
-    /// to land several turns up.
+    /// Regression fixture: tall turns above short failed turns where sends used to land mid-thread.
     private static func longThread(turn1: Turn, turn2: Turn) -> Conversation {
         func copy(_ turn: Turn, _ text: String) -> Turn {
             var t = turn

@@ -1,9 +1,7 @@
 import Foundation
 import AgentCore
 
-/// An authoritative projection used when the event retention window expired.
-/// Lifecycle code fetches and journals the original snapshot before rebuilding;
-/// this value deliberately never changes the stream cursor itself.
+/// Expired-window fallback snapshot; sets the replay cursor to `lastEventId`.
 struct CloudRunSnapshot: Decodable, Sendable {
     struct Block: Decodable, Sendable {
         let type: String
@@ -33,11 +31,7 @@ struct CloudRunSnapshot: Decodable, Sendable {
         return pendingApprovals.map(CloudEventPayload.approval) + pendingElicitations.map(CloudEventPayload.elicitation)
     }
 
-    /// Rebuild a *fresh* reducer, rather than append this full projection to an
-    /// existing one. v1 snapshots preserve array order but do not expose total
-    /// ordering between tools and text blocks; use the journal for exact replay.
-    /// Unknown block/progress types remain forward compatible. Bounds prevent
-    /// an invalid snapshot from producing an unbounded presentation workload.
+    /// Rebuilds a fresh reducer with bounded counts; ignores unknown block types.
     func presentationEvents() throws -> [CloudEventPayload] {
         guard lastEventId >= 0, lastEventId <= 9_007_199_254_740_991,
               blocks.count <= 10_000, tools.count <= 1_000, messages.count <= 10_000,

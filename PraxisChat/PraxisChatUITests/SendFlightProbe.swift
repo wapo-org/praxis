@@ -1,10 +1,5 @@
 import XCTest
 
-/// Recording probe for the send animation (not part of the regular suite):
-/// drives sends while `simctl io recordVideo` captures the screen on the
-/// host. Skipped unless `PRAXIS_SENDPROBE` is set
-/// (`TEST_RUNNER_PRAXIS_SENDPROBE=1 xcodebuild test -only-testing:…/SendFlightProbe`).
-/// Each send writes a wall-clock marker to /tmp/praxis-sendprobe/markers.txt.
 final class SendFlightProbe: XCTestCase {
     var app: XCUIApplication!
 
@@ -47,11 +42,7 @@ final class SendFlightProbe: XCTestCase {
         Thread.sleep(forTimeInterval: 0.6)
     }
 
-    /// Scrolls up a little so the next send also exercises the jump
-    /// back to the bottom. (The keyboard stays up: the drag that fits
-    /// above the composer is too short to complete the interactive
-    /// scroll dismiss, and focus survives backgrounding. The
-    /// attachment-only send covers the keyboard-down geometry.)
+    /// Scrolls up slightly to test bottom-jump; drag is too short to dismiss the keyboard.
     private func scrollUpFromBottom() {
         let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
         from.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)))

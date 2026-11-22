@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// One photo-strip tile: the thumbnail (or a quiet placeholder while it
-/// loads) with the selection checkmark. Same 56pt chrome as the camera tile.
 struct GalleryThumb: View {
     let item: PhotoGallery.Item
     let selected: Bool
@@ -42,7 +40,6 @@ struct GalleryThumb: View {
     }
 }
 
-/// Limited Photos access: opens the system's "Manage" picker to allow more.
 struct ManagePhotosTile: View {
     var onTap: () -> Void = {}
 
@@ -64,7 +61,6 @@ struct ManagePhotosTile: View {
     }
 }
 
-/// Denied Photos access: the strip's only tile, opening Settings.
 struct AllowPhotosTile: View {
     var onTap: () -> Void = {}
 

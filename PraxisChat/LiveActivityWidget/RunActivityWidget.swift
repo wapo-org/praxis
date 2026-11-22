@@ -2,11 +2,7 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
-/// Live Activity views for one agent run (BACKGROUND_PLAN.md §3.2):
-/// lock screen + Dynamic Island compact/minimal/expanded.
-/// Monochrome and calm per the app doctrine; no buttons (§2.5),
-/// no custom animations (the system animates content changes
-/// itself). Tapping anywhere deep-links to the chat.
+/// Monochrome Live Activity views; no buttons or custom animations, deep-links to chat.
 struct RunActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: RunActivityAttributes.self) { context in
@@ -36,12 +32,10 @@ struct RunActivityWidget: Widget {
 }
 
 // MARK: - Shared presentation helpers (widget-local; the extension
-// links neither the app nor the package, so phase display strings
-// live here, next to the views that render them).
+// Widget links neither app nor package, so phase display strings live here.
 
 extension RunPhase {
-    /// SF Symbol for the island glyph (monochrome, static — the
-    /// system ignores animation modifiers in Live Activities).
+    /// System ignores animation modifiers in Live Activities, so keep glyphs static.
     fileprivate var glyphName: String {
         switch self {
         case .thinking: return "circle.fill"
@@ -53,7 +47,6 @@ extension RunPhase {
         }
     }
 
-    /// One or two words for the compact island + VoiceOver.
     fileprivate var shortText: String {
         switch self {
         case .thinking: return "Working"
@@ -71,7 +64,6 @@ extension RunPhase {
 }
 
 extension ActivityViewContext<RunActivityAttributes> {
-    /// praxis-app://chat/<conversationID> (§3.6).
     fileprivate var chatURL: URL? {
         URL(string: "praxis-app://chat/\(attributes.conversationID.uuidString)")
     }
@@ -97,9 +89,7 @@ private struct RunLockScreenView: View {
                     .font(.headline)
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                // A running timer is only truthful mid-run; terminal
-                // states show the step count instead (the state has
-                // no end time to freeze a timer against).
+                // Show step count in terminal states since there is no end time for a frozen timer.
                 if context.state.phase.isTerminal {
                     Text("· \(context.state.stepCount) steps")
                         .font(.subheadline)
@@ -130,9 +120,7 @@ private struct RunLockScreenView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        // The lock card provides ~no leading inset of its own: without
-        // this the top and bottom rows' first glyphs clip on the
-        // card's rounded corners (verified on-device).
+        // Lock card lacks leading inset; horizontal padding prevents glyph clipping.
         .padding(.horizontal)
         .opacity(context.isStale ? 0.6 : 1)
         .widgetURL(context.chatURL)
@@ -142,10 +130,7 @@ private struct RunLockScreenView: View {
 
 // MARK: - Dynamic Island
 
-/// Compact leading + minimal: the monochrome phase glyph. Only one
-/// island presentation is visible at a time, and within compact mode
-/// the trailing text carries the label — so the glyph is hidden from
-/// VoiceOver unless it is the whole presentation (minimal).
+/// Hide compact glyph from VoiceOver since trailing text carries the label.
 private struct RunGlyphView: View {
     let phase: RunPhase
     let isStale: Bool
@@ -161,8 +146,6 @@ private struct RunGlyphView: View {
     }
 }
 
-/// Compact trailing: the tool's short name, else the step count,
-/// else the phase word. Stale reads as "Updating…".
 private struct RunCompactTextView: View {
     let context: ActivityViewContext<RunActivityAttributes>
 

@@ -3,22 +3,17 @@ import Synchronization
 import XCTest
 @testable import PraxisChat
 
-/// Fake `RunActivityStore`: records every call, holds the "live"
-/// activities, and lets tests flip enablement and fail requests.
 @MainActor
 final class FakeRunActivityStore: RunActivityStore {
     typealias Content = RunActivityAttributes.ContentState
 
     var activitiesEnabled = true
-    /// Live activities, as `current()` reports them.
     var states: [UUID: Content] = [:]
     var requested: [(attributes: RunActivityAttributes, state: Content, staleDate: Date, relevance: Double)] = []
     var updated: [(id: UUID, state: Content, staleDate: Date, relevance: Double)] = []
     var ended: [(id: UUID, state: Content, policy: ActivityUIDismissalPolicy)] = []
-    /// Thrown by `request` when set (then cleared, so one failure).
     var requestError: Error?
-    /// Continuations are vended from a nonisolated closure, so they
-    /// live outside the actor; tests only touch them from @MainActor.
+    /// Vended from a nonisolated closure, so stored outside the actor; mutated only on @MainActor.
     nonisolated(unsafe) var enablementContinuations: [AsyncStream<Bool>.Continuation] = []
 
     func enablementUpdates() -> AsyncStream<Bool> {
@@ -51,20 +46,14 @@ final class FakeRunActivityStore: RunActivityStore {
         states.removeValue(forKey: id)
     }
 
-    /// The reporter's init subscribes exactly once.
     func yieldEnablement(_ value: Bool) {
         for continuation in enablementContinuations { continuation.yield(value) }
     }
 }
 
-/// `LiveRunActivityReporter`: throttle/coalesce, truncation,
-/// dismissal mapping and reconciliation, all against the fake store.
-/// Time is injected, so no test sleeps on the throttle.
 @MainActor
 final class RunActivityReporterTests: XCTestCase {
-    /// The reporter's clock. Boxed: Mutex is move-only, so the
-    /// @Sendable `now` closure shares the box instead of copying it.
-    /// Fresh per test (XCTest makes one case instance per method).
+    /// Boxed because Mutex is move-only, letting the @Sendable `now` closure share one instance.
     private final class ClockBox: Sendable {
         let mutex: Mutex<Date>
         init(_ date: Date) { mutex = Mutex(date) }
@@ -77,8 +66,7 @@ final class RunActivityReporterTests: XCTestCase {
         set { clockBox.mutex.withLock { $0 = newValue } }
     }
 
-    /// Fresh fake + reporter per test (no shared setUp: the reporter
-    /// subscribes to enablement in init, so sharing would entangle).
+    /// Create fresh instances per test because init subscribes to enablement; sharing entangles.
     private func fixtures() -> (FakeRunActivityStore, LiveRunActivityReporter) {
         let fake = FakeRunActivityStore()
         let box = clockBox
@@ -116,7 +104,6 @@ final class RunActivityReporterTests: XCTestCase {
         await began(reporter)
         XCTAssertTrue(fake.requested.isEmpty)
 
-        // Enabled later: reconcile starts the remembered run.
         fake.activitiesEnabled = true
         await reporter.reconcile(activeConversationIDs: [id])
         XCTAssertEqual(fake.requested.count, 1)
@@ -126,10 +113,9 @@ final class RunActivityReporterTests: XCTestCase {
     func testBeganNoOpsOnAuthorizationErrorAndRetriesOnUpdate() async {
         let (fake, reporter) = fixtures()
         fake.requestError = ActivityAuthorizationError.denied
-        await began(reporter) // must not throw: the run continues alone.
+        await began(reporter)
         XCTAssertTrue(fake.requested.isEmpty)
 
-        // The next update retries the start with live content.
         await reporter.update(conversationID: id, phase: .runningTool, stepCount: 2,
                               startedAt: testNow, lastLine: "Reading a.txt…", toolName: "read")
         XCTAssertEqual(fake.requested.count, 1)
@@ -258,7 +244,6 @@ final class RunActivityReporterTests: XCTestCase {
 
     func testEndedEndsUntrackedLiveActivity() async {
         let (fake, reporter) = fixtures()
-        // Fresh reporter, activity started by a previous instance.
         fake.states[id] = FakeRunActivityStore.Content(phase: .runningTool, stepCount: 2,
                                                         startedAt: testNow, lastLine: "x", toolName: "t")
         await reporter.ended(conversationID: id, phase: .paused, lastLine: "Paused in background")
@@ -346,8 +331,7 @@ final class RunActivityReporterTests: XCTestCase {
         let (fake, reporter) = fixtures()
         fake.activitiesEnabled = false
         await began(reporter)
-        // The reporter subscribes in init on a detached task: wait for
-        // the subscription before yielding, or the flip is lost.
+        // Init subscribes in a detached task; wait for the subscription before yielding or flips drop.
         await waitUntil { !fake.enablementContinuations.isEmpty }
         fake.activitiesEnabled = true
         fake.yieldEnablement(true)
@@ -356,9 +340,6 @@ final class RunActivityReporterTests: XCTestCase {
     }
 }
 
-/// The real store against real ActivityKit, in the test host:
-/// request → visible in `current()` → update → end. Skips when the
-/// host disables activities (never in the simulator, but cheap).
 @MainActor
 final class LiveActivityKitStoreTests: XCTestCase {
     func testRequestUpdateEndRoundTrip() async throws {
@@ -380,8 +361,7 @@ final class LiveActivityKitStoreTests: XCTestCase {
                                                                          startedAt: started, lastLine: "Reading…",
                                                                          toolName: "read"),
                                staleDate: Date().addingTimeInterval(60), relevanceScore: 100)
-            // The local proxy's content refreshes asynchronously behind
-            // update()'s return; poll for the new phase.
+            // The local proxy's content refreshes asynchronously after update() returns, so poll for it.
             await waitUntil(timeout: 10) { store.current()[id]?.phase == .runningTool }
             XCTAssertEqual(store.current()[id]?.phase, .runningTool)
         } catch {

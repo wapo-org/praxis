@@ -1,9 +1,6 @@
 import SwiftUI
 import AgentSkills
 
-/// Settings → Skills → Browse: skills from public registries (GitHub repos
-/// and Agent Skills discovery indexes). Pick a registry, search, open a
-/// skill for its SKILL.md and install it.
 struct SkillRegistryBrowserScreen: View {
     let library: SkillLibrary
     @Environment(ChatStore.self) private var store
@@ -241,8 +238,6 @@ private struct RegistrySkillRow: View {
     }
 }
 
-/// One registry skill: its SKILL.md as published, what would be installed
-/// and left out, and Install / Update.
 struct RegistrySkillDetailScreen: View {
     let library: SkillLibrary
     let skill: RegistrySkill

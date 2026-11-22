@@ -1,8 +1,7 @@
 import XCTest
 @testable import PraxisChat
 
-/// Chats are named by their first message, including ones that only carry
-/// attachments (they used to be left with a blank title).
+/// Names chats from their first message, including attachment-only messages.
 @MainActor
 final class ConversationTitleTests: XCTestCase {
     private func makeStore() -> ChatStore {

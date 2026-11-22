@@ -1,10 +1,5 @@
 import XCTest
 
-/// Voice input settings (voice-groq): the Settings → Voice input screen
-/// loads the (fake) Groq model list, key + model persist across relaunch,
-/// and the first-transcribe consent sheet shows voice copy. All hermetic:
-/// `-PraxisFakeGroqModels` answers the model list, `-PraxisVoiceConsentDemo`
-/// presents the held transcription (DEBUG seams, no network).
 final class VoiceSettingsUITests: XCTestCase {
     var app: XCUIApplication!
 
@@ -31,7 +26,6 @@ final class VoiceSettingsUITests: XCTestCase {
         add(attachment)
     }
 
-    /// History → ⋯ → Settings.
     private func openSettings() {
         el(.button, "History").tap()
         let options = el(.button, "History options")
@@ -57,7 +51,6 @@ final class VoiceSettingsUITests: XCTestCase {
     func testVoiceSettingsLoadsAndFiltersModelList() {
         launch(["-PraxisFakeGroqModels", "YES"])
         openVoiceSettings()
-        // The fake list answers on open; non-speech ids are filtered out.
         XCTAssertTrue(el(.button, "Use model whisper-large-v3-turbo").waitForExistence(timeout: 10))
         XCTAssertTrue(el(.button, "Use model whisper-large-v3").exists)
         XCTAssertFalse(app.descendants(matching: .button).matching(NSPredicate(format: "label CONTAINS 'llama'")).firstMatch.exists)
@@ -83,7 +76,6 @@ final class VoiceSettingsUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(el(.button, "History").waitForExistence(timeout: 15))
         openVoiceSettings()
-        // Still selected after relaunch (key in Keychain, model in JSON).
         let reselected = el(.button, "Use model whisper-large-v3")
         XCTAssertTrue(reselected.waitForExistence(timeout: 10))
         XCTAssertEqual(reselected.value as? String, "selected")

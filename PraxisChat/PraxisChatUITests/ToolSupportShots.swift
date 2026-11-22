@@ -1,11 +1,5 @@
 import XCTest
 
-/// Tool-support screenshot probe (not part of the regular suite): holds the
-/// chat screen (composer hint row) and the provider profile editor with the
-/// model "Choose" menu open, while the host takes `simctl io screenshot`s.
-/// Skipped unless `PRAXIS_TOOLSHOTS` is set. Each pose prints
-/// `TOOLSHOTS <label>`. Needs a seeded Providers.json (a live profile with
-/// a cached no-tools model); never passes `-PraxisResetData`.
 final class ToolSupportShots: XCTestCase {
     var app: XCUIApplication!
 

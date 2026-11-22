@@ -25,8 +25,7 @@ struct CloudSyncedMessage: Decodable, Sendable {
     }
 }
 
-/// Cursor and raw entities are committed in one atomic file before a UI
-/// projection is published. Rebuilding after a crash therefore loses no page.
+/// Commits cursor and raw entities atomically before UI projection.
 struct CloudCursorReplica: Codable, Sendable {
     struct Entity: Codable, Sendable {
         let key: String

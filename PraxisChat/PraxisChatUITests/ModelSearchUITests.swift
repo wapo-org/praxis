@@ -1,8 +1,5 @@
 import XCTest
 
-/// The Model page with a provider-sized list (400 models): the composer
-/// becomes the search field (the draft is untouched, Return picks the
-/// top result), and long-press pins favourites that persist.
 final class ModelSearchUITests: XCTestCase {
     var app: XCUIApplication!
 
@@ -34,8 +31,7 @@ final class ModelSearchUITests: XCTestCase {
                       "the tray should close")
     }
 
-    /// Removal transitions keep a view in the hierarchy for a beat, so
-    /// absence is always awaited, never asserted at once.
+    /// Removal transitions keep views in the hierarchy briefly, so always await absence instead.
     private func waitForAbsence(_ element: XCUIElement, _ message: String, timeout: TimeInterval = 5) {
         let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: element,
                                handler: nil)
@@ -44,7 +40,6 @@ final class ModelSearchUITests: XCTestCase {
     }
 
     func testSearchFiltersListAndRestoresDraft() {
-        // A real draft first: the search must not touch it.
         let draft = field("Message")
         draft.tap()
         draft.typeText("hello draft")
@@ -60,11 +55,9 @@ final class ModelSearchUITests: XCTestCase {
         waitForAbsence(app.buttons["Atlas Pro, Deepest reasoning"], "non-matches are filtered out")
         XCTAssertTrue(app.buttons["Clear search"].waitForExistence(timeout: 5))
 
-        // Clearing the query brings the whole list back.
         app.buttons["Clear search"].tap()
         XCTAssertTrue(app.buttons["Atlas Pro, Deepest reasoning"].waitForExistence(timeout: 10))
 
-        // Leaving the page restores the draft untouched.
         app.buttons["Back"].tap()
         XCTAssertTrue(field("Message").waitForExistence(timeout: 10))
         XCTAssertEqual(field("Message").value as? String, "hello draft")
@@ -101,7 +94,6 @@ final class ModelSearchUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Favorites"].waitForExistence(timeout: 8),
                       "the pin appears under Favorites")
 
-        // Pins survive a relaunch (no data reset this time).
         app.terminate()
         app = XCUIApplication()
         app.launchArguments += ["-PraxisEngine", "demo", "-PraxisDemoModels", "400"]
@@ -111,7 +103,6 @@ final class ModelSearchUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Favorites"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["Atlas Mini, Fastest answers"].exists)
 
-        // And unpin removes the section again.
         app.buttons["Atlas Mini, Fastest answers"].press(forDuration: 1.0)
         let unpin = app.buttons["Unpin"]
         XCTAssertTrue(unpin.waitForExistence(timeout: 8))

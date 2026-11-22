@@ -1,9 +1,6 @@
 import SwiftUI
 
-/// Recovery-list destination for the Recordings row. voice-rec sets the real
-/// list (from `VoiceRecordingViews`, needs its controller) at the app root;
-/// the default is the correct empty state, so this screen compiles and tests
-/// standalone on the voice-groq branch.
+/// Environment slot decoupled so VoiceSettingsScreen stays independent of VoiceInputController.
 struct VoiceRecordingsListKey: EnvironmentKey {
     static var defaultValue: AnyView { AnyView(VoiceRecordingsEmptyView()) }
 }
@@ -32,10 +29,6 @@ struct VoiceRecordingsEmptyView: View {
     }
 }
 
-/// Settings → Voice input: Groq API key, speech-model picker, language, and
-/// the recordings row. Reached from `SettingsSheet` with a one-line
-/// navigation row; creates no dependency on voice-rec's files (the
-/// Recordings destination arrives via the environment).
 struct VoiceSettingsScreen: View {
     @Bindable var settings: GroqVoiceSettings
     @Environment(\.voiceRecordingsList) private var recordingsList
@@ -60,7 +53,6 @@ struct VoiceSettingsScreen: View {
         .navigationTitle("Voice input")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            // Refresh-on-open when stale (> 24 h), with a manual retry below.
             if settings.modelListIsStale { await settings.refreshModels() }
         }
     }

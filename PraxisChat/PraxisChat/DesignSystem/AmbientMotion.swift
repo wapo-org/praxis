@@ -1,20 +1,11 @@
 import SwiftUI
 import UIKit
 
-/// Looping "still working" motion, run by Core Animation in the render
-/// server. As SwiftUI animations (a `repeatForever` opacity, a 30 Hz
-/// `TimelineView` gradient) they re-ran the view graph and re-rasterized
-/// their text or path in the app every frame for as long as a step ran —
-/// most of the app's CPU while an agent worked. Here the app sets them up
-/// once; frames cost the app nothing. Same curves, same colours, capped
-/// at 30 fps (the shimmer's old timeline rate).
+/// Core Animation runs in the render server so looping animations avoid SwiftUI re-rasterization.
 private let ambientFrameRate = CAFrameRateRange(minimum: 10, maximum: 30, preferred: 30)
 
 // MARK: Pulsing icon
 
-/// A Lucide icon breathing between full and 45% opacity (ease-in-out,
-/// 0.8 s each way) — the running step's icon. Drawn exactly like
-/// `LucideIcon`: the same path, stroke width and caps, in muted ink.
 struct PulsingLucideIcon: UIViewRepresentable {
     let name: String
     var size: CGFloat = 14
@@ -64,14 +55,12 @@ final class PulsingIconView: UIView {
         super.layoutSubviews()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        // The icon's square, centred like `LucideIcon` in its frame.
         let side = key?.size ?? bounds.width
         shape.frame = CGRect(x: (bounds.width - side) / 2, y: (bounds.height - side) / 2, width: side, height: side)
         CATransaction.commit()
     }
 
-    /// Animations are dropped when a view leaves the window (lazy rows,
-    /// backgrounding); re-add on return.
+    /// Core Animation strips animations on window removal (lazy rows, background); re-add on return.
     override func didMoveToWindow() {
         super.didMoveToWindow()
         guard window != nil else { return layer.removeAnimation(forKey: "pulse") }
@@ -94,13 +83,7 @@ final class PulsingIconView: UIView {
 
 // MARK: Shimmer text
 
-/// One line of text in muted ink with a soft band of full ink sweeping
-/// across it every 1.6 s — the running activity header. The band is the
-/// old gradient (muted → ink → muted, one text-width wide, travelling from
-/// fully left to fully right of the text), drawn as an ink copy masked by
-/// a moving gradient. Phase follows the wall clock like the old timeline,
-/// so a recreated row doesn't restart the sweep. Uses the environment font;
-/// one line, truncating at the tail.
+/// Phase locks to wall clock so recreated lazy rows don't restart the 1.6s shimmer sweep.
 struct ShimmerText: UIViewRepresentable {
     let text: String
 
@@ -181,8 +164,6 @@ final class ShimmerTextView: UIView {
         }
     }
 
-    /// Band centre from half a width left of the text to half a width
-    /// past its end, linear, wrapping — phase locked to the wall clock.
     private func startSweep() {
         band.removeAnimation(forKey: "sweep")
         guard window != nil, animatedWidth > 0 else { return }

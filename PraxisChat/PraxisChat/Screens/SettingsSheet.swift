@@ -4,10 +4,6 @@ import AgentProviders
 import AgentMCP
 import AgentSkills
 
-/// Settings: model providers (add / edit / delete, Test connection, model
-/// choice), connectors, skills and AI-data sharing. Reached from
-/// History's options menu, the tray's model page and the tray's
-/// "Manage connectors" (which opens straight on Connectors).
 struct SettingsSheet: View {
     @Environment(ChatStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -21,8 +17,6 @@ struct SettingsSheet: View {
         case addConnectorURL
         case pasteConnectorConfig
         case connectorRegistry
-        /// A candidate to fill in, install and review; `values` were
-        /// already typed on the previous screen (a credential).
         case installConnector(MCPInstallCandidate, values: [String: String])
         case skills
         case skillBrowser
@@ -72,7 +66,6 @@ struct SettingsSheet: View {
         }
         .presentationDetents([.large])
         .onAppear {
-            // Opened from elsewhere on a specific page (no push animation).
             let page = store.settingsPage
             store.settingsPage = .root
             var start = Transaction()
@@ -167,7 +160,6 @@ struct SettingsSheet: View {
         .accessibilityValue(value)
     }
 
-    /// Hosts allowed to receive chat data, revocable one by one.
     private func sharingSection(_ consent: AIDataConsent) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             SettingsSectionTitle("AI data sharing")
@@ -271,8 +263,6 @@ struct SettingsSheet: View {
 
 // MARK: Editor
 
-/// One profile: preset, base URL, key, model, headers, capabilities, and
-/// Test connection. Edits stay local until Save.
 private struct ProviderEditor: View {
     let settings: ProviderSettings
     let isNew: Bool
@@ -306,7 +296,6 @@ private struct ProviderEditor: View {
 
     private var hasSavedKey: Bool { !isNew && settings.hasAPIKey(draft.id) }
 
-    /// Models from the last test, else the profile's cached list.
     private var models: [ModelInfo] {
         if let report, !report.models.isEmpty { return report.models }
         return settings.models(for: draft.id)
@@ -339,7 +328,6 @@ private struct ProviderEditor: View {
             }
         }
         .task {
-            // Fill the model list for a saved profile that has none yet.
             if !isNew, settings.models(for: draft.id).isEmpty { await settings.refreshModels(for: draft.id) }
         }
         .confirmationDialog("Delete \(draft.name)?", isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -609,7 +597,6 @@ private struct ProviderEditor: View {
         report = nil
     }
 
-    /// The draft as an endpoint, with the key typed here or the saved one.
     private func endpoint() -> ProviderEndpoint? {
         let text = baseURLText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: text), let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),

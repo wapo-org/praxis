@@ -1,18 +1,12 @@
 import Foundation
 import AgentCore
 
-/// Replays a fixed script of runtime events: deterministic runs for tests
-/// and `-PraxisEngine scripted`. A script can pause, ask for approval
-/// through the request's handler, or hold the run open until it is
-/// cancelled (to exercise stop and concurrent runs).
+/// Deterministic event script engine for tests and -PraxisEngine scripted.
 struct ScriptedChatEngine: ChatEngine {
     enum Step: Sendable {
         case event(AgentEvent)
         case wait(Duration)
-        /// Emits `toolAwaitingApproval`, asks, emits the resolution, then
-        /// continues with `onAllow` or `onDeny`.
         case approval(ApprovalRequest, onAllow: [Step], onDeny: [Step])
-        /// Suspends until the run is cancelled.
         case hold
     }
 
@@ -64,7 +58,6 @@ struct ScriptedChatEngine: ChatEngine {
 }
 
 extension ScriptedChatEngine {
-    /// One read step, then an answer echoing the prompt.
     static func echo(pause: Duration = .milliseconds(120)) -> ScriptedChatEngine {
         ScriptedChatEngine { request in
             let prompt = request.prompt

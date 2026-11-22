@@ -3,12 +3,7 @@ import Foundation
 import UIKit
 import AgentCore
 
-/// One run's progress for the system UI: total 1000, +40 per completed
-/// step and +1 per coalesced text batch (both capped at 950 so the bar
-/// never sits full while the run is still going), 1000 exactly at end.
-/// Monotonic by construction — the only mutation is `finish()` jumping
-/// to the top. Pure value type: the mapping is unit-testable with no
-/// task, which the simulator can't provide (BACKGROUND_PLAN.md §2.4).
+/// Monotonic progress (capped at 950 until finish() -> 1000); pure for simulator-free tests.
 struct BackgroundProgressDriver: Equatable, Sendable {
     static let total: Int64 = 1000
     static let stepIncrement: Int64 = 40
@@ -30,8 +25,7 @@ struct BackgroundProgressDriver: Equatable, Sendable {
     }
 }
 
-/// Per-run background state, keyed by conversation id in
-/// `BackgroundRuntime` so `RunHandle` stays untouched (plan §2.1).
+/// Per-run background state stored outside RunHandle, keyed by conversationID.
 struct RunBackgroundState {
     var taskRequestID: String
     /// Cloud execution survives suspension without a device background task.
@@ -45,56 +39,32 @@ struct RunBackgroundState {
     var phase = RunPhase.thinking
     var lastLine = "Thinking…"
     var toolName: String?
-    /// A pause is settling through `stop()`: it must end neither the
-    /// task nor the reporter — `runPaused()` does, after the outcome
-    /// overwrite (plan §2.3 order).
+    /// Pause settling via stop() must not end task/reporter; runPaused() does after outcome update.
     var pausing = false
-    /// Finished titles of calls seen starting, for the "finished title
-    /// until the next event" line.
     var titlesByCall: [String: StepPresentation.Titles] = [:]
 }
 
-/// Carries the launched task across the launch handler's domain hop.
-/// BGTask is driven from whatever queue the handler runs on by
-/// framework design (expiry also fires off the main actor), so sharing
-/// the reference until the main-actor bind is sound.
+/// Transfers non-Sendable BGTask from system handler queue to MainActor bind.
 private struct UncheckedBGTask: @unchecked Sendable {
     let task: BGContinuedProcessingTask
 }
 
-/// Owns every run's background execution (plan §2): submits one
-/// `BGContinuedProcessingTask` per run at send time, binds the launched
-/// task, drives its `NSProgress` from drain batches, reports to the
-/// Live Activity reporter, and falls back to `beginBackgroundTask`
-/// when submission fails (always, in the simulator). Expiry settles
-/// through the store's pause path, never losing partial output.
-///
-/// Shared nothing: the store owns one runtime and calls it from its
-/// run hooks; the runtime calls back only to pause and to install the
-/// notification delegate. Test seams (`submitRequest` et al.) default
-/// to the live singletons.
+/// Manages BGContinuedProcessingTask & beginBackgroundTask fallback; expiry settles via pause.
 @MainActor
 final class BackgroundRuntime: Sendable {
-    /// Info.plist holds the `run.*` wildcard; each submission appends
-    /// an 8-hex suffix (plan §2.1).
+    /// Matches Info.plist run.* wildcard; each submission appends a unique 8-hex suffix.
     static let taskIDPrefix = "com.praxis.chat.preview.run."
     static let fallbackTaskName = "Praxis run"
-    /// DEBUG-only: UI tests pass `-PraxisSimulateBackgroundExpiry YES`
-    /// so a backgrounded run pauses a few seconds after the fallback
-    /// task opens, exercising the real expiry path without waiting
-    /// out the ~30 s grace.
+    /// UI test flag that triggers fallback expiry after a few seconds instead of waiting ~30 s.
     static let simulateExpiryFlag = "PraxisSimulateBackgroundExpiry"
 
     private let reporter: any RunActivityReporter
     let notifications: BackgroundNotifications
     weak var store: ChatStore?
 
-    /// Set by the scene-phase observer; batches consult it before
-    /// posting anything (plan §2.5–2.6).
+    /// Updated by scene-phase observer; checked before posting background notifications.
     var isBackgrounded = false
 
-    /// Seams (tests inject fakes; defaults are the live singletons).
-    /// Main-actor state, only ever invoked on the main actor.
     var submitRequest: (BGContinuedProcessingTaskRequest) throws -> Void = {
         try BGTaskScheduler.shared.submit($0)
     }
@@ -111,11 +81,8 @@ final class BackgroundRuntime: Sendable {
         UIApplication.shared.endBackgroundTask($0)
     }
 
-    /// Runs with background state (tests read through this).
     private(set) var states: [UUID: RunBackgroundState] = [:]
 
-    /// `reporter` is `NoOpRunActivityReporter` until bg swaps in
-    /// bg-live's implementation at integration (plan §6: one line).
     init(reporter: any RunActivityReporter = NoOpRunActivityReporter(),
          notifications: BackgroundNotifications = BackgroundNotifications()) {
         self.reporter = reporter
@@ -124,18 +91,12 @@ final class BackgroundRuntime: Sendable {
 
     // MARK: Run start
 
-    /// Registers and submits the run's continued task (plan §2.1).
-    /// Called after the run is registered, so `stop()` settling still
-    /// works when submission throws. Any failure just means the
-    /// scene-phase fallback (§2.2) covers this run.
+    /// Must run after run registration so stop() works if submit throws (falls back on background).
     func runStarted(conversationID: UUID, turnID _: UUID, title: String, modelName: String,
                     continuesOnServer: Bool = false) {
         let taskID = Self.taskIDPrefix + String(UUID().uuidString.prefix(8)).lowercased()
         states[conversationID] = RunBackgroundState(taskRequestID: taskID, continuesOnServer: continuesOnServer, title: title, startedAt: Date())
-        // Dynamic registration is exempt from the register-before-launch
-        // rule for continued tasks; the random suffix keeps every id
-        // unique, so no id is ever registered twice (the system kills
-        // the app for that).
+        // Dynamic registration is exempt for continued tasks; unique suffix avoids duplicate-ID kill.
         let handler: @Sendable (BGTask) -> Void = { [weak self, taskID] task in
             guard let continued = task as? BGContinuedProcessingTask else { return }
             let boxed = UncheckedBGTask(task: continued)
@@ -144,22 +105,17 @@ final class BackgroundRuntime: Sendable {
         // SUNSET(native-loop): only device execution requests continued processing.
         if !continuesOnServer, registerHandler(taskID, handler) {
             let request = BGContinuedProcessingTaskRequest(identifier: taskID, title: title, subtitle: "Starting…")
-            // `.queue` (the default) vs `.fail` only changes which error
-            // we get under load — both fall back identically. Case name
-            // re-verified against BGTaskRequest.h (Queue, not Enqueue).
+            // .queue vs .fail only changes the error under load; both trigger the same fallback.
             request.strategy = .queue
             try? submitRequest(request)
         }
-        // A Continued run supersedes a paused one: its stale approval
-        // notification (kept by the pause path, plan §2.3) goes away.
+        // A resumed run supersedes the paused one, so withdraw its kept approval notification.
         let center = notifications
         Task { await center.withdrawApprovals(for: conversationID) }
         let reporter = reporter
         Task { await reporter.began(conversationID: conversationID, title: title, modelName: modelName) }
     }
 
-    /// The system launched our task (possibly while still foregrounded):
-    /// attach expiry, seed progress, and let it supersede the fallback.
     func bindLaunchedTask(_ task: BGContinuedProcessingTask, id taskID: String) {
         guard let conversationID = states.first(where: { $0.value.taskRequestID == taskID })?.key else {
             // The run ended before its launch arrived: complete at once.
@@ -183,9 +139,6 @@ final class BackgroundRuntime: Sendable {
 
     // MARK: Batches
 
-    /// Folds one drain batch into progress, the reporter and (when
-    /// backgrounded) approval notifications. Costs no extra main-actor
-    /// hops: the store calls it with the batch it already holds.
     func reportBatch(conversationID: UUID, title _: String, events: [AgentEvent]) {
         guard var state = states[conversationID] else { return }
         let previousPhase = state.phase
@@ -237,10 +190,7 @@ final class BackgroundRuntime: Sendable {
                     line = titles.finished
                     tool = nil
                 } else if phase != .needsApproval {
-                    // No titles: the loop reports some failures (unknown
-                    // tool, invalid JSON) without a start event. Never
-                    // surface the summary — it can echo model-written
-                    // arguments or raw error text onto the lock screen.
+                    // Never surface summary here: it may echo model-written args or raw errors onto lock screen.
                     phase = .thinking
                     line = completion.status == .succeeded ? "Thinking…" : "Step failed"
                     tool = nil
@@ -260,16 +210,13 @@ final class BackgroundRuntime: Sendable {
         }
         if textStreamed {
             state.driver.textBatch()
-            // Token text never leaves the app (lock-screen privacy, the
-            // 4 KB cap, the update budget): streaming reads as one line.
+            // Never send token text to lock screen (privacy, 4 KB payload cap, update budget).
             if phase == .thinking {
                 line = "Writing answer…"
                 tool = nil
             }
         }
         state.phase = phase
-        // The reporter's line stays short (bg-live truncates again; the
-        // system title gets the same text).
         state.lastLine = StepPresentation.clip(line, limit: 140) ?? "Thinking…"
         state.toolName = tool
         states[conversationID] = state
@@ -289,8 +236,6 @@ final class BackgroundRuntime: Sendable {
 
     // MARK: Run end
 
-    /// A finished run: completion notification when backgrounded, task
-    /// completed, request slot released, activity ended (plan §2.6).
     func runFinished(conversationID: UUID, title _: String, turn: Turn) {
         guard let state = states.removeValue(forKey: conversationID) else { return }
         var driver = state.driver
@@ -329,9 +274,7 @@ final class BackgroundRuntime: Sendable {
         Task { await reporter.ended(conversationID: conversationID, phase: runPhase, lastLine: line) }
     }
 
-    /// A stopped, cancelled or deleted run: everything ends at once.
-    /// Under `beginPause` only the bookkeeping runs — the pause path
-    /// ends the task and the reporter itself, in plan §2.3 order.
+    /// Under beginPause only clears bookkeeping; runPaused() ends task and reporter after outcome.
     func runStopped(conversationID: UUID) {
         guard let state = states[conversationID] else { return }
         if state.pausing { return }
@@ -354,11 +297,7 @@ final class BackgroundRuntime: Sendable {
         states[conversationID]?.pausing = true
     }
 
-    /// After `stop()` settled and the store overwrote the outcome:
-    /// end the task cleanly (`success: true` — the checkpoint is clean,
-    /// no system retry, no "Task Failed" card) and the activity as
-    /// paused. No completion notification, and the approval one stays
-    /// (it still deep-links back to the chat).
+    /// Complete task with success: true so iOS skips retry/Task Failed card; keep approval card.
     func runPaused(conversationID: UUID) {
         guard let state = states.removeValue(forKey: conversationID) else { return }
         if let task = state.continuedTask {
@@ -374,9 +313,6 @@ final class BackgroundRuntime: Sendable {
 
     // MARK: Scene phase
 
-    /// Backgrounded with runs in flight: permission gate once ever,
-    /// plus one ~30 s fallback task per run without a continued task.
-    /// No-op when nothing runs.
     func appDidEnterBackground(running: Set<UUID>) {
         isBackgrounded = true
         let active = running.filter { states[$0] != nil }
@@ -414,8 +350,6 @@ final class BackgroundRuntime: Sendable {
         #endif
     }
 
-    /// Foreground again: every fallback task ends (a later backgrounding
-    /// opens a fresh one) and activities reconcile with live runs.
     func appDidBecomeActive(running: Set<UUID>) {
         isBackgrounded = false
         for id in states.keys {
@@ -428,8 +362,7 @@ final class BackgroundRuntime: Sendable {
         Task { await reporter.reconcile(activeConversationIDs: running) }
     }
 
-    /// Launch: no runs yet — reconcile orphaned activities and drop
-    /// notification cards orphaned by a kill (their waiters are gone).
+    /// Reconcile orphaned activities and drop dead notification cards left by a prior kill.
     func appDidLaunch() {
         let reporter = reporter
         Task { await reporter.reconcile(activeConversationIDs: []) }
@@ -457,16 +390,11 @@ final class BackgroundRuntime: Sendable {
 
     // MARK: Lines
 
-    /// The activity row's shape: running title, plus the key argument
-    /// when the row shows one ("Reading request.txt" reads the same on
-    /// the lock screen as in the app).
     static func runningLine(_ titles: StepPresentation.Titles) -> String {
         guard let detail = titles.detail else { return titles.running }
         return Step.trimmingEllipsis(titles.running) + ": \(detail)"
     }
 
-    /// `read_file` → "Read file", `mcp__exa__web_search_exa` →
-    /// "Web search exa": short, stable, provider-agnostic.
     static func displayToolName(_ name: String) -> String {
         let human = StepPresentation.humanizedToolName(name)
         return human.prefix(1).uppercased() + human.dropFirst()

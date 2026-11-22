@@ -2,13 +2,10 @@ import XCTest
 import AgentCore
 @testable import PraxisChat
 
-/// The streaming hot path: incremental markdown must match a full parse,
-/// and a long answer must stay linear (reducer + parser per flush).
+/// Incremental markdown must match a full parse and stay linear in time per streaming flush.
 @MainActor
 final class StreamingPerformanceTests: XCTestCase {
 
-    /// ~20 KB of mixed markdown: headings, prose with chips, lists, a
-    /// quote, a code fence.
     static let longAnswer: String = {
         var parts: [String] = []
         var i = 0
@@ -23,7 +20,6 @@ final class StreamingPerformanceTests: XCTestCase {
         return parts.joined(separator: "\n\n")
     }()
 
-    /// Splits like a model stream: small, uneven chunks.
     static func chunks(of text: String, size: Int = 24) -> [String] {
         var out: [String] = []
         var current = ""
@@ -68,8 +64,6 @@ final class StreamingPerformanceTests: XCTestCase {
         XCTAssertFalse(live.isStreaming)
     }
 
-    /// The transcript's rows follow `blockCount` (one per block), and the
-    /// reveal front advances with the text, without a view driving it.
     func testLiveTextCountsBlocksAndAdvancesReveal() {
         let live = LiveText(id: UUID())
         live.append("# Title\n\nFirst")
@@ -82,11 +76,8 @@ final class StreamingPerformanceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(live.revealed, live.document.revealLength)
     }
 
-    /// ~20 KB through the coalesced-size batches the store applies: the
-    /// reducer folds the deltas, LiveText parses once per batch.
     func testStreamingReplayPerformance() {
         let deltas = Self.chunks(of: Self.longAnswer)
-        // ~30 flushes/s of a fast model: about 8 chunks per batch.
         let batches = stride(from: 0, to: deltas.count, by: 8).map { Array(deltas[$0..<min($0 + 8, deltas.count)]) }
         measure(metrics: [XCTClockMetric()]) {
             var reducer = TurnReducer()
@@ -106,7 +97,6 @@ final class StreamingPerformanceTests: XCTestCase {
         }
     }
 
-    /// The old path for comparison: the whole source re-parsed per batch.
     func testFullReparseBaselinePerformance() {
         let deltas = Self.chunks(of: Self.longAnswer)
         let batches = stride(from: 0, to: deltas.count, by: 8).map { deltas[$0..<min($0 + 8, deltas.count)].joined() }
@@ -121,8 +111,6 @@ final class StreamingPerformanceTests: XCTestCase {
 
     // MARK: Reveal cadence (no per-display-frame animation)
 
-    /// The front follows the old spring curve: it starts where it was,
-    /// keeps its speed across a retarget, never jumps, and lands exactly.
     func testRevealMotionIsContinuousAndSettles() {
         let t0 = Date(timeIntervalSinceReferenceDate: 1000)
         let first = RevealMotion.idle.retargeted(to: 100, at: t0)
@@ -131,7 +119,6 @@ final class StreamingPerformanceTests: XCTestCase {
         let second = first.retargeted(to: 250, at: mid)
         XCTAssertEqual(second.value(at: mid), first.value(at: mid), accuracy: 1e-9)
         XCTAssertEqual(second.speed(at: mid), first.speed(at: mid), accuracy: 1e-9)
-        // Monotone (critically damped from rest: no overshoot), small steps.
         var previous = second.value(at: mid)
         var date = mid
         while date < second.end {
@@ -146,9 +133,7 @@ final class StreamingPerformanceTests: XCTestCase {
                        "snapping at the settle time must be invisible")
     }
 
-    /// Rows' 30 Hz timelines run only while the front moves: streaming
-    /// starts it, and it stops by itself once the front settles, so a
-    /// finished answer costs no frames.
+    /// 30 Hz reveal timelines run only while the front moves so settled answers cost zero frames.
     func testLiveTextStopsRevealingAfterTheFrontSettles() async throws {
         let live = LiveText(id: UUID())
         XCTAssertFalse(live.isRevealing)
@@ -162,8 +147,7 @@ final class StreamingPerformanceTests: XCTestCase {
         XCTAssertEqual(live.motion.value(at: Date()), live.revealed)
     }
 
-    /// The running-step pulse and header shimmer are Core Animation
-    /// animations (render server), not SwiftUI frames in the app.
+    /// Pulse and shimmer run in Core Animation on the render server, not as SwiftUI app frames.
     func testAmbientMotionRunsInCoreAnimation() {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 200, height: 100))
         let pulse = PulsingIconView()

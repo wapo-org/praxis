@@ -1,8 +1,7 @@
 import Foundation
 
 extension ChatStore {
-    /// Title refresh is independent of streaming: failure leaves the local
-    /// title intact until normal cursor sync reconciles it.
+    /// Independent of streaming; failure leaves local title until next sync.
     @discardableResult
     func refreshCloudServerTitle(conversationID: UUID, client: CloudAPIClient) async -> Bool {
         guard let conversation = conversations.first(where: { $0.id == conversationID }) else { return false }

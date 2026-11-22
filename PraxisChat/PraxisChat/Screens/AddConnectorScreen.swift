@@ -4,9 +4,6 @@ import AgentMCP
 
 // MARK: Add by URL
 
-/// A server address plus an optional credential header. Validation is
-/// the installer's (https only, a real host); `{variables}` in the URL
-/// become fields on the next screen.
 struct AddConnectorByURLScreen: View {
     @Binding var path: [SettingsSheet.Route]
     @Environment(ChatStore.self) private var store
@@ -29,7 +26,6 @@ struct AddConnectorByURLScreen: View {
         }
     }
 
-    /// Input key the credential travels under (never shown).
     static let secretKey = "praxis_credential"
 
     var body: some View {
@@ -119,8 +115,7 @@ struct AddConnectorByURLScreen: View {
                 store.haptics.fire(.warning)
                 return
             }
-            // A placeholder, so a value containing braces is never read
-            // as one; the value itself goes to the Keychain on install.
+            // Uses a placeholder so credential braces aren't parsed as template vars; stored in Keychain.
             let template = auth == .bearer ? "Bearer {\(Self.secretKey)}" : "{\(Self.secretKey)}"
             candidate.headers.append(MCPHeaderTemplate(name: header, value: template, isSecret: true))
             candidate.inputs.append(MCPInstallInput(key: Self.secretKey, location: .header(header), isSecret: true))
@@ -133,9 +128,6 @@ struct AddConnectorByURLScreen: View {
 
 // MARK: Paste a config
 
-/// `mcp.json` / `claude_desktop_config.json` / VS Code / registry JSON.
-/// Remote entries become candidates; entries that would run a local
-/// process are listed with the reason they can't be added.
 struct PasteConnectorConfigScreen: View {
     @Binding var path: [SettingsSheet.Route]
     @Environment(ChatStore.self) private var store
@@ -256,7 +248,6 @@ struct PasteConnectorConfigScreen: View {
     }
 }
 
-/// A candidate's name, address and what it still needs.
 struct CandidateRow: View {
     let candidate: MCPInstallCandidate
 
@@ -284,9 +275,7 @@ struct CandidateRow: View {
 
 // MARK: Registry
 
-/// The official MCP registry, remote-capable entries only (the client
-/// drops packages-only ones). Pages are filtered client-side, so a page
-/// can come back empty while more exist: keep paging on the cursor.
+/// Pages are filtered client-side for remote entries, so an empty page can still have a cursor.
 struct ConnectorRegistryScreen: View {
     @Binding var path: [SettingsSheet.Route]
     @State private var query = ""
@@ -339,7 +328,6 @@ struct ConnectorRegistryScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search servers")
         .task(id: query) {
-            // Debounce typing; the task is cancelled by the next keystroke.
             if !query.isEmpty { try? await Task.sleep(for: .milliseconds(350)) }
             guard !Task.isCancelled else { return }
             await load(reset: true)
@@ -382,8 +370,6 @@ struct ConnectorRegistryScreen: View {
         }
     }
 
-    /// Fetches until something shows (or pages run out), at most a few
-    /// pages per call.
     private func load(reset: Bool) async {
         if reset {
             entries = []
@@ -414,10 +400,7 @@ struct ConnectorRegistryScreen: View {
 
 // MARK: Install and review
 
-/// Fills in a candidate's inputs, installs it provisionally (off), then
-/// connects: signing in or asking for a token if the server wants one,
-/// and listing the tools for review. Only "Add connector" turns it on;
-/// leaving any other way removes it again.
+/// Installs provisionally off until "Add connector" confirms; exiting early removes the install.
 struct InstallConnectorScreen: View {
     let library: ConnectorLibrary
     let initial: MCPInstallCandidate
@@ -432,14 +415,12 @@ struct InstallConnectorScreen: View {
     @State private var confirmed = false
     @State private var trusted = false
     @State private var error: String?
-    // Credentials the server asked for after connecting.
     @State private var token = ""
     @State private var tokenHeader = "Authorization"
     @State private var clientID = ""
     @State private var clientSecret = ""
     @State private var redirectURI = ""
     @State private var scopes = ""
-    /// The review step's optional sign-in form is open.
     @State private var showsSignInSetup = false
 
     enum Phase: Equatable {
@@ -459,7 +440,6 @@ struct InstallConnectorScreen: View {
         _name = State(initialValue: candidate.name)
     }
 
-    /// Inputs the earlier screen didn't already supply.
     private var openInputs: [MCPInstallInput] { initial.inputs.filter { prefilled[$0.key] == nil } }
 
     var body: some View {
@@ -488,7 +468,6 @@ struct InstallConnectorScreen: View {
                 values[input.key] = prefilled[input.key] ?? input.defaultValue ?? ""
             }
         }
-        // Back out before confirming: the provisional install goes away.
         .onDisappear {
             guard !confirmed, let id = installedID else { return }
             installedID = nil
@@ -643,8 +622,6 @@ struct InstallConnectorScreen: View {
         }
     }
 
-    /// The server answered without credentials but advertises sign-in
-    /// (e.g. Gmail: tools list anonymously, calls need a Google account).
     @ViewBuilder
     private var signInOffer: some View {
         if let id = installedID, let need = library.signInNeed(id), need.isOAuth {
@@ -767,7 +744,6 @@ struct InstallConnectorScreen: View {
             try await library.signIn(id)
             await connect()
         } catch {
-            // Optional sign-in from the review step: back to the review.
             if let tools = library.tools[id], library.authRequirements[id] == nil {
                 phase = .review(tools)
             } else {

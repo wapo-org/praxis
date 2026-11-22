@@ -1,9 +1,6 @@
 import SwiftUI
 
-/// Asked before the first live send to a provider host (App Review
-/// 5.1.2(i)): who receives the data and what it is. Nothing has been
-/// sent while this shows; Don't Allow (or swiping away) puts the message
-/// back in the composer.
+/// App Review 5.1.2(i) prompt before first send to a host; declining restores the composer.
 struct ConsentSheet: View {
     let request: ConsentRequest
     @Environment(ChatStore.self) private var store
@@ -73,13 +70,11 @@ struct ConsentSheet: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.large])
-        // Swiped away: same as Don't Allow (a no-op once answered).
         .onDisappear {
             if store.pendingConsent?.id == request.id { store.resolveConsent(allow: false) }
         }
     }
 
-    /// A held voice transcription (voice-groq): different copy, same sheet.
     private var isTranscribe: Bool {
         if case .transcribe = request.action { return true }
         return false

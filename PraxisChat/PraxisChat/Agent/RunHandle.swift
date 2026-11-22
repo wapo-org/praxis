@@ -2,24 +2,17 @@ import Foundation
 import Synchronization
 import AgentCore
 
-/// One run in flight. Conversations run independently: each has at most
-/// one handle, and stopping or replacing it never touches another chat.
+/// Per-conversation run handle so stopping or replacing never affects other chats.
 @MainActor
 final class RunHandle {
     let conversationID: UUID
     let turnID: UUID
     var reducer = TurnReducer()
-    /// Where the turn was last seen; revalidated before every batch.
     var turnIndex: Int
     let inbox = EventInbox()
     var task: Task<Void, Never>?
-    /// Approval requests this run is waiting on (denied on stop).
     var approvalIDs: Set<String> = []
-    /// Flipped by stop/cancel/replace/delete; the engine watches it
-    /// through the request and ends its stream.
     let cancelled = RunCancelFlag()
-    /// Fresh per run; the run's elicitations carry it, and stop cancels
-    /// it — other chats' runs keep their own scopes.
     let elicitationScope = UUID()
 
     init(conversationID: UUID, turnID: UUID, turnIndex: Int) {
@@ -29,18 +22,13 @@ final class RunHandle {
     }
 }
 
-/// One run's cancel flag, shared with its engine.
 final class RunCancelFlag: Sendable {
     private let box = Mutex(false)
     var isCancelled: Bool { box.withLock { $0 } }
     func cancel() { box.withLock { $0 = true } }
 }
 
-/// Hands events from the engine's (coalesced) stream to the main actor in
-/// batches. The reader pushes off the main actor; the first push after a
-/// drain schedules one main-actor drain, which takes everything that has
-/// arrived by then — so a burst costs one hop and one transcript update,
-/// however many events it holds.
+/// Coalesces off-main events so bursts pay one MainActor hop and transcript update.
 final class EventInbox: Sendable {
     private struct State {
         var events: [AgentEvent] = []
@@ -50,7 +38,6 @@ final class EventInbox: Sendable {
 
     private let state = Mutex(State())
 
-    /// True when the caller should schedule a drain.
     func push(_ event: AgentEvent) -> Bool {
         state.withLock { s in
             s.events.append(event)
@@ -59,7 +46,6 @@ final class EventInbox: Sendable {
         }
     }
 
-    /// The stream ended. True when the caller should schedule a drain.
     func end() -> Bool {
         state.withLock { s in
             s.ended = true
@@ -77,8 +63,6 @@ final class EventInbox: Sendable {
         }
     }
 
-    /// Reads `stream` to the end (or until the reading task is cancelled),
-    /// waking the consumer whenever a drain is due.
     static func pump(_ stream: AsyncStream<AgentEvent>, into inbox: EventInbox,
                      wake: @escaping @Sendable () -> Void) async {
         for await event in stream {

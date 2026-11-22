@@ -1,8 +1,6 @@
 import SwiftUI
 
-/// What happens when the chat model can't call tools.
 enum ToolSupportHint: Equatable {
-    /// Plain answers; connectors, skills and the image reader stay off.
     case noTools
 
     var text: String {
@@ -15,9 +13,7 @@ enum ToolSupportHint: Equatable {
 }
 
 extension ChatStore {
-    /// Shown above the composer while the live model is known not to take
-    /// tools (never for one whose support is unknown, and never when the
-    /// user turned tools off for the endpoint themselves).
+    /// Only shown when live model is confirmed tool-less and user kept tools.
     var toolSupportHint: ToolSupportHint? {
         guard isLive, let services else { return nil }
         let settings = services.settings

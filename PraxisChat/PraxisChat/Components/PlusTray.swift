@@ -4,14 +4,7 @@ import Photos
 import UniformTypeIdentifiers
 @preconcurrency import AVFoundation
 
-/// The plus tray (spec §7). It lives in the same glass card as the
-/// composer row, so opening it grows the composer upward instead of
-/// presenting a separate floating card.
-///
-/// Scrolling and dismissal share one gesture — the scroll view's own pan:
-/// pulling past the top squishes the card, ticks at the threshold, and
-/// dismisses on release. There is no competing drag gesture, so scrolling
-/// the connector list (in either direction) never moves or closes the tray.
+/// Shares scroll pan for dismiss so inner scrolling never closes tray.
 enum TrayPage { case main, models, connectors, prompts }
 
 struct PlusTray: View {
@@ -20,17 +13,12 @@ struct PlusTray: View {
     @Binding var showPhotos: Bool
     @Binding var showFiles: Bool
     @Binding var showCamera: Bool
-    /// Tallest the content may grow before it scrolls inside the card.
     var maxHeight: CGFloat
-    /// How far the content is pulled past its top (0 when not pulled).
     @Binding var pull: CGFloat
-    /// `true` = play the close haptic (the pull already ticked otherwise).
     var onDismiss: (Bool) -> Void
 
     @State private var contentHeight: CGFloat = 0
-    /// Page actually drawn. Lags `page` during a switch so the outgoing
-    /// page can clear before the incoming one is built — two pages are
-    /// never on screen together.
+    /// Lags page state so outgoing page clears before incoming builds.
     @State private var shownPage: TrayPage?
     @State private var pageVisible = true
     @State private var pageRise: CGFloat = 0
@@ -39,21 +27,16 @@ struct PlusTray: View {
     @State private var selectedShots: Set<UUID> = []
     @State private var appeared = false
     @State private var pastThreshold = false
-    /// More rows lie below the viewport: the bottom blur band only
-    /// shows then, so a settled list ends sharp.
+    /// Only shows bottom blur band while rows overflow below.
     @State private var hasMoreBelow = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Pull distance that commits the dismiss on release.
     private static let dismissPull: CGFloat = 64
 
     private var trayHeight: CGFloat {
         contentHeight > 0 ? min(contentHeight, maxHeight) : maxHeight
     }
 
-    /// Content only: the caller wraps this together with the composer
-    /// row in a single glass card. The content scrolls inside the card
-    /// past `maxHeight`; the composer row below it never moves.
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             Group {
@@ -64,9 +47,7 @@ struct PlusTray: View {
                 case .prompts: ConnectorPromptsPage(onBack: { page = .main }, onInserted: { onDismiss(true) })
                 }
             }
-            // Page handoff (see `switchPage`): fade out, swap unseen, then
-            // drift a few points up into place — no sideways push, no
-            // crossfade double exposure.
+            // Fades out and swaps unseen to avoid crossfade double exposure.
             .opacity(pageVisible ? 1 : 0)
             .offset(y: pageRise)
             .padding(16)
@@ -75,17 +56,13 @@ struct PlusTray: View {
         .scrollPosition($position)
         .scrollEdgeEffectStyle(.soft, for: .bottom)
         .accessibilityIdentifier("plusTray")
-        // Hug the content: short pages (Model) get a short card, and page
-        // switches morph the card height instead of jumping.
         .frame(height: trayHeight)
         .animation(reduceMotion ? Motion.reduced : Motion.morph, value: trayHeight)
-        // Clamped before it reaches state: a long lazy list re-estimates
-        // its height while it scrolls, and only the card's height matters.
+        // Clamp height upfront so lazy list re-estimates do not churn state.
         .onScrollGeometryChange(for: CGFloat.self) { min($0.contentSize.height, maxHeight + 1) } action: { _, h in
             contentHeight = h
         }
-        // Only reports while pulled past the top: plain scrolling inside
-        // the list never touches parent state.
+        // Only update pull when dragging past top so plain scrolling skips parent state.
         .onScrollGeometryChange(for: CGFloat.self) { geo in
             max(0, -(geo.contentOffset.y + geo.contentInsets.top)).rounded()
         } action: { _, distance in
@@ -93,15 +70,13 @@ struct PlusTray: View {
             let past = distance > Self.dismissPull
             if past != pastThreshold { pastThreshold = past }
         }
-        // A boolean, so it only touches state when the bottom band
-        // must appear or disappear — never per frame while scrolling.
+        // Boolean state flips only at threshold instead of per-frame scrolling.
         .onScrollGeometryChange(for: Bool.self) { geo in
             geo.contentSize.height - (geo.contentOffset.y + geo.containerSize.height) > 24
         } action: { _, more in
             hasMoreBelow = more
         }
-        // Dismiss is decided once, on release — not on every frame of an
-        // overscroll, and never by a fling's momentum bounce.
+        // Decide dismiss once on release to ignore momentum bounce.
         .onScrollPhaseChange { old, new, context in
             guard old == .interacting, new != .interacting else { return }
             let distance = -(context.geometry.contentOffset.y + context.geometry.contentInsets.top)
@@ -109,13 +84,9 @@ struct PlusTray: View {
         }
         .sensoryFeedback(trigger: pastThreshold) { _, past in past ? .impact(weight: .light) : nil }
         .onChange(of: page) { _, _ in
-            // Leaving the Model page ends the search; the draft was untouched.
             if page != .models { store.modelQuery = "" }
             switchPage()
         }
-        // Content dissolves into the card glass at the bottom instead of
-        // being cut off abruptly above the composer row; the rounded top
-        // keeps scrolled rows inside the card's corners.
         .mask {
             LinearGradient(stops: [
                 .init(color: .black, location: 0),
@@ -126,9 +97,7 @@ struct PlusTray: View {
                                               topTrailingRadius: Praxis.composerRadius,
                                               style: .continuous))
         }
-        // Progressive blur where rows dive toward the composer row. The
-        // system edge effect has no bar to work with inside the card, so
-        // this band does it: untinted, since it floats over content.
+        // Manual progressive blur band since system edge effect misses card interior.
         .overlay(alignment: .bottom) {
             if hasMoreBelow {
                 ProgressiveBlurScrim(edge: .bottom, length: 48, bands: 3, hold: 0.2, tint: 0)
@@ -140,15 +109,10 @@ struct PlusTray: View {
         .onAppear { appeared = true; store.modelQuery = "" }
         .onDisappear { pull = 0 }
         .task { await gallery.loadIfNeeded() }
-        // A chat switch behind the open tray drops the checked tiles:
-        // they belong to the chat they were picked in.
         .onChange(of: store.selectedID) { selectedShots = [] }
     }
 
-    /// Two-phase page change. A transition-based crossfade kept both pages
-    /// half-visible for several frames (the scroll view's implicit page
-    /// animation overrode the per-transition timing), so the swap happens
-    /// while nothing is visible.
+    /// Swaps unseen because scroll view implicit animation overrides transition timing.
     private func switchPage() {
         store.haptics.fire(.selection)
         withAnimation(reduceMotion ? Motion.reduced : Motion.exit) {
@@ -157,7 +121,7 @@ struct PlusTray: View {
             var swap = Transaction()
             swap.disablesAnimations = true
             withTransaction(swap) {
-                shownPage = page // latest target, even after rapid taps
+                shownPage = page
                 pageRise = reduceMotion ? 0 : 8
                 position.scrollTo(edge: .top)
             }
@@ -168,8 +132,6 @@ struct PlusTray: View {
         }
     }
 
-    /// Sections cascade in on open — a short stagger, so the card feels
-    /// like it unfolds rather than appearing in one block.
     private func stagger(_ index: Int) -> some ViewModifier {
         StaggerIn(visible: appeared || reduceMotion, delay: 0.03 * Double(index))
     }
@@ -187,8 +149,6 @@ struct PlusTray: View {
             modelRow
                 .modifier(stagger(1))
 
-            // Only the levels the model takes; unknown shows all four, and a
-            // model without reasoning hides the control entirely.
             if store.supportedEfforts != [] {
                 VStack(alignment: .leading, spacing: 8) {
                     GlassSegmentedControl(
@@ -207,8 +167,7 @@ struct PlusTray: View {
             addSection
                 .modifier(stagger(3))
 
-            // Live: web search only where the provider hosts it; Memory is
-            // a demo control (hidden in v1 of the real loop).
+            // Web search only if provider supports it; Memory stays demo-only.
             if store.showsWebSearch || store.showsDemoToggles {
                 groupedCard {
                     if store.showsWebSearch {
@@ -224,7 +183,6 @@ struct PlusTray: View {
 
             groupedCard {
                 connectorsRow
-                // Connector prompts (MCP), when the chat's connectors offer any.
                 if !store.connectorPrompts.isEmpty || store.cloudServices?.connectors.contains(where: { $0.enabled }) == true {
                     rowDivider
                     promptsRow
@@ -311,9 +269,7 @@ struct PlusTray: View {
                     .opacity(isSimulator ? 0.45 : 1)
                 addTile("Files", symbol: "folder") { showFiles = true }
                 addTile("Screenshot", symbol: "rectangle.on.rectangle") {
-                    // Quick-adds the newest screenshot (a shortcut, not a
-                    // flow: the tray stays open either way). The target chat
-                    // is captured up front, like `attachSelected`.
+                    // Capture target chat ID upfront in case user switches chats mid-attach.
                     let target = store.selectedID
                     Task {
                         guard let target, let shot = await gallery.latestScreenshot() else { return }
@@ -324,8 +280,6 @@ struct PlusTray: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 8) {
-                    // First gallery item is the live camera preview;
-                    // tapping it opens the camera to attach a photo.
                     LiveCameraTile { showCamera = true }
                     ForEach(gallery.items) { item in
                         let selected = selectedShots.contains(item.id)
@@ -334,8 +288,6 @@ struct PlusTray: View {
                             if selected { selectedShots.remove(item.id) } else { selectedShots.insert(item.id) }
                         }
                     }
-                    // Limited access: offer more; denied: the strip's only
-                    // other tile opens Settings.
                     if gallery.access == .library(limited: true) {
                         ManagePhotosTile { gallery.presentLimitedPicker() }
                     }
@@ -367,12 +319,7 @@ struct PlusTray: View {
         .animation(reduceMotion ? Motion.reduced : Motion.pop, value: selectedShots)
     }
 
-    /// Attaches the checked tiles at full resolution (library photos
-    /// download, iCloud included) and closes the tray. The task holds the
-    /// gallery, so closing mid-attach still finishes — and the target chat
-    /// is captured up front, so a chat switch mid-download deposits into
-    /// that chat's stashed draft instead of the new chat's composer (and
-    /// leaves the new chat's tray alone).
+    /// Captures gallery and target chat ID so closing or switching never drops picks.
     private func attachSelected() {
         let ids = selectedShots
         selectedShots = []
@@ -421,9 +368,7 @@ struct PlusTray: View {
             .padding(.leading, 44)
     }
 
-    /// Compact switch: native control scaled down so the row stays
-    /// light, like the reference connector box. The whole row toggles it,
-    /// so the target isn't limited to the 40pt knob.
+    /// Scaled switch lets whole row serve as tap target.
     private func smallSwitch(title: String, isOn: Binding<Bool>) -> some View {
         Toggle(title, isOn: isOn)
             .labelsHidden()
@@ -492,7 +437,6 @@ struct PlusTray: View {
                 } catch is CancellationError { } catch { }
             }
         } else {
-            // SUNSET(native-loop): native model catalog remains intact.
             nativeModelsPage
         }
     }
@@ -500,9 +444,7 @@ struct PlusTray: View {
     private var nativeModelsPage: some View {
         VStack(alignment: .leading, spacing: 12) {
             trayHeader("Model") { page = .main }
-            // One read of the list, pins and selection per render: the
-            // selection used to be looked up per row (O(n²) with a
-            // provider's hundreds of models).
+            // Precompute section lookup once instead of O(n^2) per row.
             let sections = ModelSections.make(models: store.availableModels,
                                               pinnedIDs: store.pinnedModelIDs(),
                                               query: store.modelQuery)
@@ -557,7 +499,6 @@ struct PlusTray: View {
             .padding(.horizontal, 14)
     }
 
-    /// A pinned id with no listed model: dimmed, unpinnable, unselectable.
     private static func unavailableModel(id: String) -> AIModel {
         AIModel(id: id, name: id, tagline: "Unavailable", speed: 0, intelligence: 0, streamMultiplier: 1)
     }
@@ -573,7 +514,6 @@ struct PlusTray: View {
             : "Add a model provider in Settings to chat with a real model."
     }
 
-    /// Picking a model clears the search; the page stays open.
     private func selectModel(_ model: AIModel) {
         store.haptics.fire(.selection)
         withAnimation(Motion.snap) { store.model = model }
@@ -667,7 +607,6 @@ struct PlusTray: View {
         }
     }
 
-    /// A connector that can't be switched from here, with why.
     private func lockedRow(_ connector: Connector, reason: String) -> some View {
         HStack(spacing: 10) {
             IntegrationAvatar(monogram: connector.monogram)
@@ -685,8 +624,7 @@ struct PlusTray: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// Bound by id, not index: a stale index after a reorder must never
-    /// flip the wrong connector.
+    /// Bind by ID rather than index so reorders never toggle the wrong connector.
     private func connectorBinding(_ id: String) -> Binding<Bool> {
         Binding(
             get: { store.trayConnectors.first { $0.id == id }?.isOn ?? false },
@@ -717,9 +655,7 @@ struct PlusTray: View {
 
 }
 
-/// The model page's list. Lazy: a provider can list hundreds of models,
-/// and building every row (eagerly, on open and again on close) made the
-/// tray stutter. Rows are equatable, so a selection redraws two of them.
+/// Lazy equatable rows prevent stutter on large provider catalogs.
 private struct ModelList: View, Equatable {
     let models: [AIModel]
     let selectedID: String
@@ -777,7 +713,6 @@ private struct ModelRow: View, Equatable {
                 Rectangle().fill(Praxis.hairline).frame(height: 1)
                     .padding(.leading, 44)
             }
-            // Unavailable pins (no longer listed) can't be picked, only unpinned.
             Button(action: { if !isUnavailable { onSelect() } }) {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -809,7 +744,6 @@ private struct ModelRow: View, Equatable {
     }
 }
 
-/// Fade + rise + blur-in with a per-section delay, driven by one flag.
 private struct StaggerIn: ViewModifier {
     let visible: Bool
     let delay: Double
@@ -822,10 +756,7 @@ private struct StaggerIn: ViewModifier {
     }
 }
 
-/// First gallery tile: live camera preview in the same rounded-square
-/// chrome as every other attachment. On the Simulator (no camera) or
-/// without camera permission it shows a camera glyph on the tile fill —
-/// it never triggers a permission prompt just by opening the tray.
+/// Shows placeholder on Simulator or unauthorized access without prompting.
 struct LiveCameraTile: View {
     var onTap: () -> Void = {}
 
@@ -858,14 +789,11 @@ struct LiveCameraTile: View {
     }
 }
 
-/// One shared low-preset capture session, started and stopped on its own
-/// queue. Reopening the tray reuses it instead of building a new session
-/// (100–300ms of main-thread-adjacent work) every time.
+/// Reuses single background capture session to avoid 100-300ms setup lag.
 final class CameraPreviewSession: @unchecked Sendable {
     static let shared = CameraPreviewSession()
 
-    /// Device discovery is slow, so it runs once; permission is re-read
-    /// each time (it's a cheap lookup and can change while running).
+    /// Caches device lookup once; re-checks permission dynamically.
     private static let hasDevice = AVCaptureDevice.default(for: .video) != nil
     static var isAvailable: Bool {
         hasDevice && AVCaptureDevice.authorizationStatus(for: .video) == .authorized

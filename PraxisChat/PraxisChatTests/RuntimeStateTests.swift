@@ -6,8 +6,6 @@ import AgentRuntime
 import AgentTestSupport
 @testable import PraxisChat
 
-/// Context compaction through the app, durable runtime state (spills,
-/// JS `kv`) and the JS `fs` scope over attachments.
 @MainActor
 final class RuntimeStateTests: XCTestCase {
     private var directory: URL!
@@ -62,9 +60,8 @@ final class RuntimeStateTests: XCTestCase {
 
     // MARK: Compaction
 
-    /// One earlier live turn far over the default (128K fallback) budget.
     private func longConversation() -> Conversation {
-        let big = String(repeating: "lorem ipsum ", count: 21_000) // ~63K estimated tokens
+        let big = String(repeating: "lorem ipsum ", count: 21_000)
         var turn = Turn(userText: "old question")
         turn.engine = .live
         turn.isFinished = true
@@ -87,17 +84,14 @@ final class RuntimeStateTests: XCTestCase {
         XCTAssertEqual(main.messages.count, 1, "summary joined the new user message")
         XCTAssertEqual(conv.compaction?.coveredMessages, 2)
         XCTAssertEqual(conv.compaction?.summary, "SUMMARY OF OLD")
-        // The full history is still stored for the UI.
         XCTAssertEqual(conv.turns[0].transcript.count, 2)
         XCTAssertEqual(conv.turns[1].transcript.last?.text, "answer")
-        // A divider marker in the thread carries the summary.
         let marker = try XCTUnwrap(conv.turns[1].compactionMarkers.first)
         XCTAssertEqual(marker.state, .done)
         XCTAssertEqual(marker.summary, "SUMMARY OF OLD")
         XCTAssertGreaterThan(marker.tokensBefore, marker.tokensAfter)
         XCTAssertTrue(conv.turns[1].activities.flatMap(\.steps).isEmpty, "no step for it any more")
 
-        // Reload from disk: the record survives and is reused without summarizing again.
         await persistences.last?.flush()
         let reloaded = store(services, provider, conversations: nil)
         let again = try XCTUnwrap(reloaded.conversations.first { $0.id == conv.id })
@@ -156,13 +150,11 @@ final class RuntimeStateTests: XCTestCase {
         XCTAssertEqual(CompactionActivity.sizes(before: marker.tokensBefore, after: marker.tokensAfter), "~120K → ~9K tokens")
         XCTAssertEqual(CompactionActivity.accessibilityLabel(marker), "Earlier messages summarized, ~120K → ~9K tokens")
 
-        // A later step opens a new activity below the marker.
         _ = reducer.reduce(.toolCallStarted(ToolActivity(id: "t2", name: "search", source: .builtin, presentation: tool.presentation)),
                            into: &turn, at: now)
         XCTAssertEqual(turn.activities.count, 2)
         guard case .activity? = turn.blocks.last else { return XCTFail("activity after the marker") }
 
-        // A failed one says why; a cancelled or unfinished one leaves nothing behind.
         _ = reducer.reduce(.compaction(id: "k2", .started(.overflow)), into: &turn, at: now)
         _ = reducer.reduce(.compaction(id: "k2", .failed("Couldn't summarize earlier messages: 500")), into: &turn, at: now)
         XCTAssertEqual(turn.compactionMarkers.last?.state, .failed("Couldn't summarize earlier messages: 500"))
@@ -185,7 +177,6 @@ final class RuntimeStateTests: XCTestCase {
 
     func testMeasuredPromptSizeIsPersistedAndBudgetsTheNextRun() async throws {
         let services = try makeServices()
-        // The provider reports a prompt far larger than the text suggests.
         let huge = Usage(inputTokens: 20_000, outputTokens: 10, cacheReadTokens: 105_000)
         let provider = ScriptedProvider(steps: [ScriptedProvider.text("first answer", usage: huge),
                                                 ScriptedProvider.text("SUMMARY"), ScriptedProvider.text("second answer")])
@@ -197,8 +188,6 @@ final class RuntimeStateTests: XCTestCase {
         XCTAssertEqual(measurement.messageCount, 1)
         XCTAssertNil(conv.compaction)
 
-        // Relaunch: the measurement is on disk, and the next run starts from it — 125K is
-        // over the default window's budget, so it summarizes before sending.
         await persistences.last?.flush()
         let reloaded = store(services, provider, conversations: nil)
         let again = try XCTUnwrap(reloaded.conversations.first { $0.id == conv.id })
@@ -242,7 +231,6 @@ final class RuntimeStateTests: XCTestCase {
         let kept = await services.runtime.spills.spill(for: b).length(id: "x")
         XCTAssertEqual(kept, 4)
 
-        // Launch-time pruning drops directories of conversations that are gone.
         try ScratchStore(root: root).write(Data("orphan".utf8), conversationID: "gone", name: "kv.json")
         services.pruneRuntimeState(keeping: chat.conversations.map(\.id))
         await waitUntil { !FileManager.default.fileExists(atPath: root.appendingPathComponent("gone").path) }
@@ -261,7 +249,6 @@ final class RuntimeStateTests: XCTestCase {
 
         let listed = await files.list()
         XCTAssertEqual(listed, ["data.csv"])
-        // The re-attached copy owns the plain name; the older one is still reachable.
         var read = try await files.read("data.csv", maxBytes: 100)
         XCTAssertEqual(String(decoding: read, as: UTF8.self), "v2")
         read = try await files.read("data (2).csv", maxBytes: 100)
@@ -323,13 +310,11 @@ final class RuntimeStateTests: XCTestCase {
         let chat = store(services, ScriptedProvider(steps: [ScriptedProvider.text("ok")]),
                          conversations: [Conversation(title: "c", turns: [turn])])
         let conv = chat.conversations[0]
-        await send(chat, "go") // indexes the conversation on disk
-        // In the composer, before sending…
+        await send(chat, "go")
         let pending = file("b.txt", "B")
         chat.attachments = [pending]
         chat.setHiddenFromCode(true, attachmentID: pending.id)
         XCTAssertTrue(chat.attachments[0].isHiddenFromCode)
-        // …and on a sent turn.
         chat.setHiddenFromCode(true, attachmentID: a.id)
         XCTAssertEqual(chat.hiddenFromCode(in: conv.id), [a.id])
 
@@ -363,7 +348,6 @@ final class RuntimeStateTests: XCTestCase {
     }
 }
 
-/// A hidden set a test can change while `AttachmentFiles` holds it.
 private final class HiddenSet: @unchecked Sendable {
     private let lock = NSLock()
     private var ids: Set<UUID> = []

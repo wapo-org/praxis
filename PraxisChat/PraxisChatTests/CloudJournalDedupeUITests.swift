@@ -3,10 +3,7 @@ import AgentCore
 import Synchronization
 @testable import PraxisChat
 
-/// REV-C3 F9: journal dedupe must hold at the UI, not only in the journal file.
-/// Within one SSE session the transport cursor drops overlap; across a
-/// background/foreground reattach the journal replay and the new stream both
-/// carry already-shown events, and the UI must still see each delta once.
+/// Verifies UI deduplicates overlapping events across journal replay and reattached SSE streams.
 @MainActor
 final class CloudJournalDedupeUITests: XCTestCase {
     func testReattachAfterBackgroundDeliversEachDeltaOnce() async throws {
@@ -21,8 +18,7 @@ final class CloudJournalDedupeUITests: XCTestCase {
                 let first = cloudNetFrame(1, #"{"type":"text.delta","blockId":"b","text":"Hel"}"#)
                 let second = cloudNetFrame(2, #"{"type":"text.delta","blockId":"b","text":"lo"}"#)
                 let attempt = cursors.withLock { $0.append(request.value(forHTTPHeaderField: "Last-Event-ID")); return $0.count }
-                // The first stream stays open until the app backgrounds; the
-                // reattached stream overlaps by replaying from the start.
+                // Keeps first stream open until backgrounding, then replays from start on reattach to overlap.
                 if attempt == 1 { return CloudNetReply(sse: [first, second], close: false) }
                 return CloudNetReply(sse: [first, second, cloudNetFrame(3, #"{"type":"text.delta","blockId":"b","text":" world"}"#),
                                            cloudNetFrame(4, #"{"type":"run.finished","outcome":"completed"}"#)])

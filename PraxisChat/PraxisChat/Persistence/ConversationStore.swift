@@ -1,14 +1,7 @@
 import Foundation
 import AgentCore
 
-/// Conversations on disk: one JSON file per conversation plus an index
-/// (order, titles, pins, tool policy). The store only writes when the app
-/// reaches a commit point — a block closed, a turn finished or stopped,
-/// a thread edited — never per streamed token.
-///
-/// Writes are queued in order through one stream and applied on the
-/// actor, so a later snapshot can never be overtaken by an earlier one.
-/// Reads are synchronous (`load()`), used once at launch.
+/// Serializes writes in-order at commit points (never per token) so snapshots never reorder.
 actor ConversationStore {
     struct Index: Codable, Sendable, Equatable {
         struct Entry: Codable, Sendable, Equatable {
@@ -37,8 +30,7 @@ actor ConversationStore {
 
     nonisolated let directory: URL
     private nonisolated let queue: AsyncStream<Operation>.Continuation
-    /// Writes performed so far (barriers excluded). `flush` watches it
-    /// to tell a quiet queue from one a Task is still feeding.
+    /// Counts real writes (excluding barriers) so flush() detects a quiet queue vs active Tasks.
     private var performedWrites = 0
 
     init(directory: URL) {
@@ -63,11 +55,7 @@ actor ConversationStore {
     nonisolated func saveIndex(_ index: Index) { queue.yield(.saveIndex(index)) }
     nonisolated func delete(_ ids: [UUID]) { queue.yield(.delete(ids)) }
 
-    /// Returns once the queue is empty and stays empty (tests).
-    /// Barriers are repeated, pausing between rounds so Tasks that are
-    /// about to enqueue get a chance to run, until three barriers in a
-    /// row see no new write. Bounded, so a live run can't stall the
-    /// caller; afterwards `tearDown` owns the directory again.
+    /// Repeats bounded barriers until three see no new writes, letting pending Tasks enqueue first.
     func flush() async {
         var quiet = 0
         var settled = performedWrites
@@ -112,18 +100,12 @@ actor ConversationStore {
                                                    ofItemAtPath: directory.path)
             try Self.encoder.encode(value).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch {
-            // A queued write racing a deleted directory (a test removing
-            // its temp folder, the container going away mid-write) has
-            // nowhere to land: drop it. Anything else still asserts in
-            // Debug, where a failing write is a bug worth catching.
+            // Drop writes racing a deleted directory; assert other write failures in Debug.
             if isDirectoryGone(error) { return }
             assertionFailure("ConversationStore write failed: \(error)")
         }
     }
 
-    /// Whether the write failed because its directory is gone: a
-    /// missing (or not-a-) directory anywhere in the error chain, or
-    /// the folder simply not being there anymore.
     private func isDirectoryGone(_ error: Error) -> Bool {
         var current: Error? = error
         for _ in 0..<8 {
@@ -137,9 +119,7 @@ actor ConversationStore {
 
     // MARK: Reads
 
-    /// Everything on disk, in index order; nil on first launch (no index
-    /// yet), which is when the demo conversations get seeded. Files that
-    /// fail to decode are skipped rather than taking the app down.
+    /// Returns nil only when no index exists (triggers seeding); corrupt files are skipped.
     nonisolated func load() -> Snapshot? {
         guard let data = try? Data(contentsOf: indexURL),
               let index = try? Self.decoder.decode(Index.self, from: data) else { return nil }
@@ -160,8 +140,7 @@ actor ConversationStore {
         directory.appendingPathComponent(id.uuidString).appendingPathExtension("json")
     }
 
-    // Fresh coders per use: cheap next to the file I/O, and no shared
-    // mutable state between the actor and the nonisolated reader.
+    // Fresh coder per use avoids shared mutable state between actor and nonisolated load().
     private static var encoder: JSONEncoder {
         let e = JSONEncoder()
         e.outputFormatting = [.sortedKeys]
@@ -172,9 +151,7 @@ actor ConversationStore {
 }
 
 extension ConversationRecord {
-    /// A thread saved mid-run (the app was killed or suspended for good)
-    /// comes back settled: nothing running, nothing streaming, no card
-    /// waiting on an approval nobody can deliver, finished activity folded.
+    /// Clears in-flight run/stream/approval state after app kill and folds finished activity.
     func settledAfterRelaunch() -> ConversationRecord {
         var record = self
         for t in record.turns.indices {

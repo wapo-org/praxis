@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Haptic vocabulary (spec §12). Never on scroll, never twice per gesture.
-/// Callers flip a token with `bump()` and attach `.praxisHaptics(_:)`.
+/// Haptic tokens: never fire on scroll or twice per gesture; toggle via bump().
 enum Haptic: Equatable {
     case selection, light, soft, success, warning
 }
