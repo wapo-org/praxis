@@ -72,9 +72,6 @@ export function usePositioning(
       const parent = ctx.portal
         ? undefined
         : menu.offsetParent?.getBoundingClientRect();
-      // The live panel's list. While a submenu swaps in place the exiting panel (inert, popped out of the flow)
-      // is still in the DOM first; measuring its list fed the menu's height back into the new list's cap, so the
-      // list and the glass alternated between two heights every frame (L-ref/13).
       const viewport=
         menu.querySelector<HTMLElement>('[data-dropdown-panel]:not([inert]) [data-slot="scroll-blur-viewport"]') ??
         menu.querySelector<HTMLElement>('[data-slot="scroll-blur-viewport"]');
@@ -87,7 +84,6 @@ export function usePositioning(
         width: result.width,
         maxHeight: result.maxHeight,
         // Scroll only when the menu is taller than the space; otherwise stay visible so the glass shadow is not clipped.
-        // A cascading menu's submenu lives outside the box and must not count, or clip.
         overflowY: 'visible',
         visibility: 'visible',
         transformOrigin: `${rect.left + rect.width / 2 - result.left}px ${result.side === 'top' ? 'bottom' : 'top'}`,

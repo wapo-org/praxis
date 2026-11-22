@@ -67,7 +67,7 @@ describe('displacement map', () => {
     expect(alpha(30, 1)).toBeGreaterThan(0);
     expect(alpha(30, 30)).toBe(0);
   });
-  it('has no canvas in tests: maps are simply absent and the frost carries the surface', () => {
-    if (typeof document === 'undefined') expect(() => generateMaps({ width: 10, height: 10, radius: 5, bezel: 5, material: 'clear' })).toThrow();
+  it.skipIf(typeof document !== 'undefined')('has no canvas in tests: maps are simply absent and the frost carries the surface', () => {
+    expect(() => generateMaps({ width: 10, height: 10, radius: 5, bezel: 5, material: 'clear' })).toThrow();
   });
 });

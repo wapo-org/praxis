@@ -4,7 +4,6 @@ import { GlassSurface, type GlassSurfaceProps } from './GlassSurface';
 import { usePress } from './motion';
 import styles from './primitives.module.css';
 
-/** GlassChip — clear-glass capsule for suggestions and small filters (36 px). */
 export interface GlassChipProps extends HTMLMotionProps<'button'> {
   icon?: React.ReactNode;
   trailing?: React.ReactNode;
@@ -35,7 +34,6 @@ export const GlassChip = React.forwardRef<HTMLButtonElement, GlassChipProps>(fun
   );
 });
 
-/** GlassIconButton — 36 px circular glass control for floating chrome. */
 export interface GlassIconButtonProps extends HTMLMotionProps<'button'> {
   active?: boolean;
   label: string;
@@ -73,7 +71,6 @@ export function GlassCard({ children, ...rest }: GlassSurfaceProps) {
   );
 }
 
-/** DotMeter — 5-dot capability meter (Speed / Intelligence) from PlusTray.swift. */
 export function DotMeter({ value = 3, max = 5, label }: { value?: number; max?: number; label?: string }) {
   const clamped = Math.max(0, Math.min(max, Math.round(value)));
   return (

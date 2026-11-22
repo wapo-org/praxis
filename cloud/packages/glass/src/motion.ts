@@ -1,10 +1,3 @@
-/**
- * The one motion module. Every animated component imports from here.
- * Spatial motion is springs through framer-motion, never CSS curves: only they
- * carry velocity when interrupted. CSS --duration-* / --ease-standard
- * (apps/web/src/styles/tokens.css) are for colour fades and ambient loops only.
- * Only transform and opacity animate, plus the lens scale for the held rig.
- */
 import React from 'react';
 import type { Transition } from 'framer-motion';
 
@@ -14,14 +7,8 @@ export const EASE_STANDARD = [0.2, 0, 0, 1] as const;
 /** The default spring: quick, barely-there overshoot (damping ratio ≈ 0.83). */
 export const SPRING_VALUE = { stiffness: 520, damping: 38, mass: 1 } as const;
 export const SPRING: Transition = { type: 'spring', ...SPRING_VALUE };
-/** Delay between staggered list rows. */
 export const STAGGER = 0.03;
 
-/**
- * One family of springs, tuned by feel. Framer carries the live velocity into a
- * retargeted spring, so every one of these is interruptible and reverses from
- * where it is. Nothing in the app plays a canned curve for spatial motion.
- */
 export const SPRINGS = {
   /** Press feedback, switch knob, segmented thumb, chevrons: small, fast things. */
   snap: { stiffness: 760, damping: 46, mass: 1 },
@@ -36,19 +23,12 @@ export const SPRINGS = {
   shadowAlpha: { stiffness: 220, damping: 24 },
 } as const;
 
-/**
- * The menu morph (morph/*), measured from the iOS recording, then 15 % faster and a touch bouncier (WP-G3,
- * the owner's call). Springs carry velocity, so any reversal is continuous. One set of numbers for both classes.
- */
 export const MORPH = {
   open: {
-    /** Critically damped: the glass lands once and stays (WP-I1). A late overshoot or squaring read as a second
-     *  move after the menu had visibly arrived: the "diagonal shift at the end" the owner saw on the tray. */
+    /** Critically damped: the glass lands once and stays (WP-I1). */
     shape: { stiffness: 2900, damping: 108 },
     /** The rows: arrive blurred and oversized, and are sharp, inked and in place before the shape reaches 95 %. */
     content: { stiffness: 6000, damping: 155 },
-    /** The shape's own clock (circle, then squaring), on the shape's own spring: it is square when it is full size,
-     *  so nothing reshapes after it lands. */
     form: { stiffness: 2900, damping: 108 },
     /** The source lifts before the glass starts growing. */
     lift: { stiffness: 3200, damping: 113 },
@@ -58,8 +38,6 @@ export const MORPH = {
     /** No aim past the rest size: any return from past it happens after the menu looks landed. */
     overshoot: 0,
     landAt: 0.82,
-    /** The rows ride the glass while they arrive, and are pinned to their rest layout as they land (progress of
-     *  `c`), so a glass still finishing its last fraction of a pixel never carries them. */
     pinFrom: 0.55,
   },
   close: {
@@ -69,9 +47,9 @@ export const MORPH = {
     form: { stiffness: 2500, damping: 100 },
     lift: { stiffness: 6400, damping: 160 },
   },
-  /** The open panel gliding to a new size: a submenu, a filtered list, the tray's model list. Critically damped
-   *  (WP-I1): it arrives once, with no return from past its new size. */
   resize: { stiffness: 900, damping: 60 },
+  /** Most time one frame may advance the springs, in seconds: a long frame slows the morph instead of skipping it. */
+  maxFrameSeconds: 0.04,
   /** In-place submenus: the outgoing rows are mostly gone before the incoming ones show, so text never stacks. */
   panelFadeDelay: 0.05,
   /** Under prefers-reduced-motion: a plain short fade, no shape change. */
@@ -156,7 +134,6 @@ export const popIn: MotionPreset = {
   transition: SPRING,
 };
 
-/** Sheets and dialogs: rise a little and fade. */
 export const sheet: MotionPreset = {
   initial: { opacity: 0, y: 16, scale: 0.99 },
   animate: { opacity: 1, y: 0, scale: 1 },
@@ -164,7 +141,6 @@ export const sheet: MotionPreset = {
   transition: SPRING,
 };
 
-/** Scrim behind sheets. */
 export const fade: MotionPreset = {
   initial: { opacity: 0 },
   animate: { opacity: 1 },
@@ -172,7 +148,6 @@ export const fade: MotionPreset = {
   transition: TRANSITION.base,
 };
 
-/** New list rows and messages. */
 export const listItem: MotionPreset = {
   initial: { opacity: 0, y: 10 },
   animate: { opacity: 1, y: 0 },
@@ -180,10 +155,6 @@ export const listItem: MotionPreset = {
   transition: SPRING,
 };
 
-/**
- * The floating sidebar, all the way off the leading edge and back. Never a fade:
- * opacity on an ancestor would blank the lens for the whole trip.
- */
 export const sidebarSlide: MotionPreset = {
   initial: { x: '-110%' },
   animate: { x: 0 },
@@ -199,7 +170,6 @@ export const pageChange: MotionPreset = {
   transition: PANEL,
 };
 
-/** Push navigation inside a tray or settings stack: the next page slides in from the trailing edge. */
 export const slideIn: MotionPreset = {
   initial: { opacity: 0, x: 24 },
   animate: { opacity: 1, x: 0 },
@@ -207,7 +177,6 @@ export const slideIn: MotionPreset = {
   transition: SPRING,
 };
 
-/** The page underneath a push: it recedes a little towards the leading edge. */
 export const slideUnder: MotionPreset = {
   initial: { opacity: 1, x: 0 },
   animate: { opacity: 0, x: -24 },
@@ -225,11 +194,7 @@ const REDUCED: MotionPreset = {
   transition: TRANSITION.fast,
 };
 
-/**
- * Collapse any preset to an opacity-only fade under prefers-reduced-motion. Each state keeps the preset's own
- * opacity: an inverted preset (slideUnder rests visible and `animate` hides it) must not turn into a 0 → 1 fade,
- * which left the + tray's main view at opacity 0 for reduced-motion users (WP-I1).
- */
+/** Collapse any preset to an opacity-only fade under prefers-reduced-motion. */
 export function resolvePreset(preset: MotionPreset, reduced: boolean): MotionPreset {
   if (!reduced) return preset;
   const keep = (frame: MotionFrame, fallback: number) => ({ opacity: typeof frame.opacity === 'number' ? frame.opacity : fallback });
@@ -258,7 +223,6 @@ export function useReducedMotion(): boolean {
   return React.useSyncExternalStore(subscribe, snapshot, () => false);
 }
 
-/** Spread onto a motion element: preset props, already reduced-motion aware. */
 export function usePreset(preset: MotionPreset) {
   const p = resolvePreset(preset, useReducedMotion());
   return { initial: p.initial, animate: p.animate, exit: p.exit, transition: p.transition };
@@ -268,10 +232,6 @@ export function usePress() {
   return useReducedMotion() ? {} : press;
 }
 
-/**
- * Leaving: a fixed, short fade that ends. A spring's tail keeps an element on screen (and in the hit test)
- * for hundreds of ms after it looks gone; an exit has nothing to reverse into, so it does not need one.
- */
 export const LEAVE: Transition = { type: 'tween', duration: DURATION.fast, ease: EASE_STANDARD };
 /** The text inside something leaving goes first, so no glyph outlives its glass. */
 export const LEAVE_CONTENT: Transition = { type: 'tween', duration: DURATION.fast * 0.6, ease: EASE_STANDARD };

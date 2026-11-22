@@ -1,0 +1,30 @@
+{
+  "name": "@praxis/sandbox-tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./modal": "./src/modal/port.ts",
+    "./image": "./src/modal/image.ts",
+    "./lifecycle": "./src/lifecycle/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "smoke:modal": "tsx scripts/modal-adapter-check.ts"
+  },
+  "dependencies": {
+    "@praxis/agent": "*",
+    "@praxis/credentials": "*",
+    "@praxis/protocol": "*",
+    "@praxis/types": "*",
+    "@vscode/tree-sitter-wasm": "0.3.1",
+    "modal": "0.11.1",
+    "web-tree-sitter": "0.25.10",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "convex": "1.50.0",
+    "convex-test": "0.0.66"
+  }
+}

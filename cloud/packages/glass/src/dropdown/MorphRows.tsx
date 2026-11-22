@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { STAGGER, TRANSITION } from '../motion';
 import React from 'react';
-/** Children follow the shared header as it rises, rather than appearing as a single opaque block. */
+/** Staggers children beneath rising header. */
 export function MorphRows({ children, stagger, reduced }: { children: React.ReactNode; stagger: boolean; reduced: boolean }) {
   return <>{React.Children.toArray(children).map((child, index) => <motion.div key={React.isValidElement(child) ? child.key ?? index : index}
     data-dropdown-child={index}

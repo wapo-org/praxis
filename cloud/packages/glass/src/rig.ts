@@ -1,17 +1,8 @@
-/**
- * The glass wakes when held (source: the kube.io magnifier rig): refraction
- * rises 0.8 → 1.0 on an underdamped spring and the shadow grows and shifts on
- * its own two springs. Imperative, so a press never re-renders React. At rest
- * nothing is inline and the CSS finish applies, so a theme change just works.
- */
 import { animate, frame, motionValue } from 'framer-motion';
 import { lensScale, type GlassMaterial } from './material';
 import { SPRINGS } from './motion';
 
-/**
- * The contact shadow, rest → held: it spreads and lifts, it never hardens. Rest geometry and
- * alpha are --glass-contact and --glass-contact-a (tokens.css), which `contact` carries.
- */
+/** The contact shadow, rest → held: it spreads and lifts, it never hardens. */
 export const HELD_SHADOW = { x: 4, y: 12, blur: 30, alpha: 0.04 } as const;
 
 export function shadowAt(geometry: number, alpha: number, contact = { y: 1, blur: 14, alpha: 0.03 }) {
@@ -102,4 +93,3 @@ export function createRig(el: HTMLElement, material: GlassMaterial) {
     },
   };
 }
-

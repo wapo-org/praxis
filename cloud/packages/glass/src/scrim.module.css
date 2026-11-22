@@ -1,6 +1,4 @@
-/* Progressive blur without bloom (see ProgressiveBlurScrim.tsx for the technique and its sources).
-   Five layers, radii doubling toward the edge. Layer i holds over its own sixth of the scrim and fades over one
-   sixth on each side, so only neighbours overlap. */
+/* Progressive blur without bloom (see ProgressiveBlurScrim.tsx for the technique and its sources). */
 .scrim {
   position: absolute;
   inset-inline: 0;
@@ -19,8 +17,6 @@
   height: calc(100% + var(--scrim-reach));
   -webkit-backdrop-filter: blur(var(--band-blur));
   backdrop-filter: blur(var(--band-blur));
-  /* The band's window in px from the edge: rise, hold, fall over sixths of the scrim, so the weakest band has
-     faded to nothing exactly at the scrim's inner edge and the reach beyond it is sampled, never shown. */
   --s: calc(var(--scrim-height, 64px) / 6);
   --a: calc((var(--band-index) - 1) * var(--s));
   --b: calc(var(--band-index) * var(--s));
@@ -53,7 +49,7 @@
 .top .feather { --scrim-dir: to bottom; }
 .bottom .feather { --scrim-dir: to top; }
 
-/* Scroll fade for menus and lists: a mask, not a blur, so it is free on glass. */
+/* Uses a mask instead of blur so scrolling over glass stays cheap. */
 @property --fade-top {
   syntax: '<length>';
   inherits: false;

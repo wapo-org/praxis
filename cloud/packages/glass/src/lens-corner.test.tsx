@@ -42,8 +42,6 @@ describe('the lens ring traces the painted corner (WP-G5 composer ghost)', () =>
   });
 
   it('bends the squircle apex, where a circle of the same span left a neutral gap and then a hard ring', () => {
-    // At 45° the superellipse edge sits r(1 - 0.5^(1/n)) = 0.223 r from each side, the circle's 0.293 r: the
-    // band between them is inside the painted glass, so it must be bezel, not neutral.
     const r = 26;
     const p = 6; // 5.8 < 6 < 7.6, and past the circle's 1 px fade
     const circle = map(200, 52, r, 2);

@@ -1,7 +1,7 @@
-import type {JsonValue, ToolSpec} from '@praxis/protocol';
+import {READ_TOOL_OUTPUT_TOOL_NAME, type JsonValue, type ToolSpec} from '@praxis/protocol';
 
 const clean = (s: string) => s.replace(/mcp__/gi, '').replace(/_[a-f0-9]{8,}\b/gi, '').replace(/__/g, ' ').replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim();
-const labels: Record<string,string> = {run_javascript:'Run code',load_skill:'Load skill',read_skill_file:'Read skill file',ask_user:'Ask a question',read_tool_output:'Read tool output',mcp_search_tools:'Find connector tools',mcp_describe_tool:'Describe connector tool',mcp_call_tool:'Call connector tool'};
+const labels: Record<string,string> = {run_javascript:'Run code',load_skill:'Load skill',read_skill_file:'Read skill file',ask_user:'Ask a question',[READ_TOOL_OUTPUT_TOOL_NAME]:'Read tool output',mcp_search_tools:'Find connector tools',mcp_describe_tool:'Describe connector tool',mcp_call_tool:'Call connector tool'};
 export function toolDisplay(name: string, spec?: ToolSpec, args?: JsonValue) {
   const mcp = /^mcp__([^_].*?)__(.+)$/.exec(spec?.originalName ?? name);
   const connectorName = spec?.source.serverName;

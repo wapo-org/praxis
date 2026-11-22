@@ -1,4 +1,3 @@
-// Icons the glass package itself uses, bound through <Icon> (size + stroke enforced).
 import {
   Check as LCheck,
   ChevronDown as LChevronDown,

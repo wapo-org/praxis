@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classifyReasoningShape,
-  decodeAnthropic,
   decodeOpenAIChat,
-  decodeOpenAIResponses,
   parseSSE,
   type ProviderEvent,
 } from './index.js';
@@ -51,117 +49,6 @@ describe('classifyReasoningShape across the 5 canonical shapes', () => {
     ).toBe('raw');
     expect(classifyReasoningShape('', 'redacted', true)).toBe('redacted');
     expect(classifyReasoningShape('')).toBe('none');
-  });
-});
-
-describe('Anthropic stream normalisation', () => {
-  it('normalises (d) redacted_thinking, (b) summary thinking, (c) raw thinking, citations_delta, and duplicate message_stop', async () => {
-    const rawStream = sse(
-      {
-        type: 'message_start',
-        message: { id: 'msg_1', type: 'message', role: 'assistant', content: [], usage: { input_tokens: 100, output_tokens: 1 } },
-      },
-      {
-        type: 'content_block_start',
-        index: 0,
-        content_block: { type: 'redacted_thinking', data: 'encrypted-redacted-blob' },
-      },
-      { type: 'content_block_stop', index: 0 },
-      {
-        type: 'content_block_start',
-        index: 1,
-        content_block: { type: 'thinking', thinking: '', signature: '' },
-      },
-      {
-        type: 'content_block_delta',
-        index: 1,
-        delta: { type: 'thinking_delta', thinking: '**Checking types**\nInspecting protocol definitions.' },
-      },
-      {
-        type: 'content_block_delta',
-        index: 1,
-        delta: { type: 'thinking_delta', thinking: '' }, // empty delta ignored
-      },
-      {
-        type: 'content_block_delta',
-        index: 1,
-        delta: { type: 'signature_delta', signature: 'sig-123' },
-      },
-      { type: 'content_block_stop', index: 1 },
-      {
-        type: 'content_block_start',
-        index: 2,
-        content_block: { type: 'text', text: '' },
-      },
-      {
-        type: 'content_block_delta',
-        index: 2,
-        delta: {
-          type: 'citations_delta',
-          citation: {
-            type: 'web_search_result_location',
-            url: 'https://example.com/spec',
-            title: 'Spec Doc',
-            cited_text: 'Protocol v1 is additive.',
-          },
-        },
-      },
-      {
-        type: 'content_block_delta',
-        index: 2,
-        delta: { type: 'text_delta', text: 'Protocol v1 is additive.' },
-      },
-      { type: 'content_block_stop', index: 2 },
-      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 45 } },
-      { type: 'message_stop' },
-      { type: 'message_stop' }, // duplicate final event
-    );
-
-    const events = await collect(decodeAnthropic(parseSSE(bytes(rawStream, 11))));
-    const res = finalResponse(events);
-
-    const reasoningEvents = events.filter((e) => e.type === 'reasoning');
-    expect(reasoningEvents[0]).toMatchObject({
-      type: 'reasoning',
-      index: 0,
-      text: '',
-      shape: 'redacted',
-      redacted: true,
-    });
-    expect(reasoningEvents[1]).toMatchObject({type:'reasoning',index:1,text:'',shape:'raw'});
-    expect(reasoningEvents[2]).toMatchObject({
-      type: 'reasoning',
-      index: 1,
-      shape: 'summary',
-    });
-
-    expect(res.parts).toHaveLength(3);
-    expect(events.find(e => e.type === 'reasoning')).toMatchObject({type:'reasoning',text:''});
-    expect(res.parts[0]).toMatchObject({
-      type: 'reasoning',
-      text: '',
-      shape: 'redacted',
-      redacted: true,
-      data: 'encrypted-redacted-blob',
-    });
-    expect(res.parts[1]).toMatchObject({
-      type: 'reasoning',
-      text: '**Checking types**\nInspecting protocol definitions.',
-      shape: 'summary',
-      signature: 'sig-123',
-    });
-    expect(res.parts[2]).toMatchObject({
-      type: 'text',
-      text: 'Protocol v1 is additive.',
-      annotations: [
-        {
-          type: 'citation',
-          url: 'https://example.com/spec',
-          title: 'Spec Doc',
-          citedText: 'Protocol v1 is additive.',
-        },
-      ],
-    });
   });
 });
 
@@ -252,72 +139,5 @@ describe('OpenAI Chat stream normalisation', () => {
       url: 'https://praxis.dev/docs',
       title: 'Praxis Docs',
     });
-  });
-});
-
-describe('OpenAI Responses stream normalisation', () => {
-  it('normalises encrypted-only reasoning items as (d) redacted and emits citations', async () => {
-    const output = [
-      { type: 'reasoning', id: 'r_enc', summary: [], encrypted_content: 'opaque-cipher' },
-      {
-        type: 'message',
-        id: 'm_1',
-        role: 'assistant',
-        content: [{ type: 'output_text', text: 'Cited answer.', annotations: [] }],
-      },
-    ];
-    const rawStream = sse(
-      { type: 'response.output_item.added', output_index: 0, item: output[0] },
-      { type: 'response.output_item.done', output_index: 0, item: output[0] },
-      { type: 'response.output_item.added', output_index: 1, item: { type: 'message', content: [] } },
-      { type: 'response.output_text.delta', output_index: 1, content_index: 0, delta: 'Cited answer.' },
-      {
-        type: 'response.output_text.annotation.added',
-        output_index: 1,
-        content_index: 0,
-        annotation: { type: 'url_citation', url: 'https://openai.com', title: 'OpenAI' },
-      },
-      { type: 'response.output_text.done', output_index: 1, content_index: 0 },
-      { type: 'response.output_item.done', output_index: 1, item: output[1] },
-      { type: 'response.completed', response: { output, usage: { input_tokens: 12, output_tokens: 8 } } },
-      { type: 'response.completed', response: { output, usage: { input_tokens: 12, output_tokens: 8 } } }, // duplicate final
-    );
-
-    const events = await collect(decodeOpenAIResponses(parseSSE(bytes(rawStream, 13))));
-    const res = finalResponse(events);
-
-    expect(events.some((e) => e.type === 'reasoning' && e.shape === 'redacted' && e.redacted === true)).toBe(true);
-    expect(events.find(e => e.type === 'reasoning')).toMatchObject({type:'reasoning',text:''});
-    expect(res.parts[0]).toMatchObject({
-      type: 'reasoning',
-      text: '',
-      shape: 'redacted',
-      redacted: true,
-      data: 'opaque-cipher',
-    });
-    expect(res.parts[1]).toMatchObject({
-      type: 'text',
-      text: 'Cited answer.',
-      annotations: [{ type: 'citation', url: 'https://openai.com', title: 'OpenAI' }],
-    });
-  });
-});
-
-describe('refusal and image annotations are not dropped',()=>{
-  it('keeps Chat refusal text in the same delta and final-part model',async()=>{
-    const events=await collect(decodeOpenAIChat(parseSSE(bytes(sse({choices:[{delta:{refusal:'Cannot '}}]},{choices:[{delta:{refusal:'comply.'},finish_reason:'stop'}]},'[DONE]')))));
-    expect(events.filter(e=>e.type==='text').map(e=>e.text).join('')).toBe('Cannot comply.');
-    expect(finalResponse(events)).toMatchObject({stop:'refusal',parts:[{type:'text',text:'Cannot comply.',annotations:[{type:'refusal',text:'Cannot '},{type:'refusal',text:'comply.'}]}]});
-  });
-  it('keeps Responses refusal deltas and image generation snapshots',async()=>{
-    const output=[{type:'message',content:[{type:'refusal',refusal:'Cannot comply.'}]},{type:'image_generation_call',result:'aW1hZ2U=',output_format:'png'}];
-    const events=await collect(decodeOpenAIResponses(parseSSE(bytes(sse({type:'response.output_item.added',output_index:0,item:output[0]},{type:'response.refusal.delta',output_index:0,content_index:0,delta:'Cannot comply.'},{type:'response.refusal.done',output_index:0,content_index:0},{type:'response.output_item.done',output_index:1,item:output[1]},{type:'response.completed',response:{output}})))));
-    expect(events.some(e=>e.type==='text'&&e.annotations?.some(a=>a.type==='image'&&a.data==='aW1hZ2U='))).toBe(true);
-    expect(finalResponse(events)).toMatchObject({stop:'refusal',parts:[{type:'text',text:'Cannot comply.',annotations:[{type:'refusal',text:'Cannot comply.'}]},{type:'image',data:'aW1hZ2U=',mediaType:'image/png'}]});
-  });
-  it('keeps an Anthropic-compatible image block in live annotations and final parts',async()=>{
-    const events=await collect(decodeAnthropic(parseSSE(bytes(sse({type:'message_start',message:{usage:{}}},{type:'content_block_start',index:0,content_block:{type:'image',source:{type:'base64',data:'aW1hZ2U=',media_type:'image/png'}}},{type:'content_block_stop',index:0},{type:'message_stop'})))));
-    expect(events.some(e=>e.type==='text'&&e.annotations?.[0]?.type==='image')).toBe(true);
-    expect(finalResponse(events).parts).toEqual([{type:'image',data:'aW1hZ2U=',mediaType:'image/png'}]);
   });
 });

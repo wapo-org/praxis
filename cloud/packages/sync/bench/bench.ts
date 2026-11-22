@@ -1,8 +1,4 @@
-/**
- * Sync experiment: 1k chats / 50k messages, k ∈ {0, 1, 50} server changes since the replica last synced.
- * Measures round trips, bytes (JSON request+response bodies, no HTTP overhead), in-process time (client +
- * server compute, no network) and estimated wall time at 50 ms and 150 ms RTT. Run: npm run bench -w @praxis/sync
- */
+/** Sync benchmark comparing cursor vs Merkle across k={0,1,50} changes. */
 import {HashTree, MemoryReplica, SyncSimulator, syncCursor, syncMerkle, type SyncRequest} from '../src/index.js';
 
 const CHATS = 1000, MESSAGES = 50_000;

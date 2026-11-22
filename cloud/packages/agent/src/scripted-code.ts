@@ -1,8 +1,3 @@
-/**
- * WP-N2 fixture: one answer that uses every code block feature the web renderer reads from a fence, in the syntax
- * the system prompt teaches (apps/api/src/conversation.ts FORMATTING_GUIDE). Streamed in small chunks so the long
- * block also exercises streaming.
- */
 const F = '```';
 const ESC = '\u001b';
 

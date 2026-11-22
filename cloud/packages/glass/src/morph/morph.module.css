@@ -1,7 +1,5 @@
 /* The morph's layers. Values come from tokens.css; the motion is in engine.ts. */
 
-/* The glass's own clip: rows are cut by the rim while they arrive. Only while moving,
-   so a cascading submenu can leave the glass at rest. */
 [data-morphing='true'] {
   overflow: hidden !important;
 }
@@ -15,8 +13,7 @@
   width: 100%;
 }
 
-/* A fixed blur on a static copy, crossfaded with the sharp rows: the radius never animates.
-   Chromium swaps this for the bend filter; the padding keeps the copy on the rows. */
+/* A fixed blur on a static copy, crossfaded with the sharp rows: the radius never animates. */
 .blurred {
   position: absolute;
   inset: 0;

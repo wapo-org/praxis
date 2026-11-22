@@ -1,11 +1,6 @@
 import React from 'react';
 import type { GlassDropdownContextValue } from './context';
 
-/**
- * Press-drag-release: while the pointer is inside the menu it scrubs the
- * highlight. Past the edge the glass stretches toward it (GlassSurface
- * `stretch="edge"`), so the pull itself no longer lives here.
- */
 export function usePressMotion(ctx: GlassDropdownContextValue, setHighlightedId: (id: string | null) => void) {
   const pointerDownOriginRef = React.useRef<{ x: number; y: number } | null>(null);
 

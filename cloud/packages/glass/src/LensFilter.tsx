@@ -2,12 +2,6 @@ import React from 'react';
 import type { GeneratedMaps } from './displacement-map';
 import { MATERIAL_RAMP, lensScale, type BaseChroma, type GlassMaterial } from './material';
 
-/**
- * The kube.io filter, inline per surface like the shipped components. The lens
- * bends only the bezel: the map is neutral everywhere else, so the frost inside
- * stays still. The displacement scale is written straight to the node by the
- * held rig; React renders this once per geometry.
- */
 export const LensFilter = React.memo(function LensFilter({
   id,
   material,
