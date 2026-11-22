@@ -1,7 +1,7 @@
 import {SealedSecret} from '@praxis/types';
 import {DEFAULT_COOLDOWNS_MS, type CredentialSignal} from '@praxis/credentials/classify';
 import {pool} from '@praxis/credentials/pool';
-import {memoryCooldownStore} from '@praxis/credentials/cooldown';
+import {memoryCooldownStore, type CooldownStore} from '@praxis/credentials/cooldown';
 import {withCredential} from '@praxis/credentials/failover';
 import {z} from 'zod';
 import {CELERIS_BASE_URL, CELERIS_DECISION_PATH_SEGMENT, CONTEXT_DECISION_MODEL, CONTEXT_DECISION_QUERY_MAX_CHARACTERS, CONTEXT_DECISION_TIMEOUT_MS} from './constants.js';
@@ -23,7 +23,8 @@ export function celerisDecisionPort({key, fetch: fetcher = fetch, signal}: {key:
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), CONTEXT_DECISION_TIMEOUT_MS);
     const abort = () => controller.abort(signal?.reason);
-    signal?.addEventListener('abort', abort, {once: true});
+    if (signal?.aborted) controller.abort(signal.reason);
+    else signal?.addEventListener('abort', abort, {once: true});
     try {
       const response = await fetcher(`${CELERIS_BASE_URL}/${CELERIS_DECISION_PATH_SEGMENT}/v1/decisions`, {
         method: 'POST',
@@ -34,13 +35,18 @@ export function celerisDecisionPort({key, fetch: fetcher = fetch, signal}: {key:
       if (!response.ok) {
         if (response.status === 429) return {kind: 'failure', reason: 'rate_limited'};
         if (response.status === 402) return {kind: 'failure', reason: 'quota'};
-        if (response.status === 401) return {kind: 'failure', reason: 'unauthorized'};
+        if (response.status === 401 || response.status === 403) return {kind: 'failure', reason: 'unauthorized'};
         if (response.status >= 500 || response.status === 404 || response.status === 413) return {kind: 'failure', reason: 'unavailable'};
         return {kind: 'failure', reason: 'invalid_response'};
       }
       const parsed = responseSchema.safeParse(await response.json());
       if (!parsed.success || parsed.data.model !== CONTEXT_DECISION_MODEL) return {kind: 'failure', reason: 'invalid_response'};
-      return {kind: 'success', probabilities: new Map(parsed.data.answers.map(answer => [answer.name, answer.probability])), usage: {inputTokens: parsed.data.usage.input_tokens}};
+      const probabilities = new Map<string, number>();
+      for (const answer of parsed.data.answers) {
+        if (probabilities.has(answer.name)) return {kind: 'failure', reason: 'invalid_response'};
+        probabilities.set(answer.name, answer.probability);
+      }
+      return {kind: 'success', probabilities, usage: {inputTokens: parsed.data.usage.input_tokens}};
     } catch {
       if (controller.signal.aborted) return {kind: 'failure', reason: 'timeout'};
       return {kind: 'failure', reason: 'unavailable'};
@@ -62,9 +68,8 @@ function classifyDecision(value: DecisionResult): CredentialSignal {
   return {kind: 'ok'};
 }
 
-export function pooledCelerisDecisionPort({env, fetch: fetcher = fetch, signal}: {env: Record<string, string | undefined>; fetch?: typeof fetch; signal?: AbortSignal}): DecisionPort {
+export function pooledCelerisDecisionPort({env, fetch: fetcher = fetch, signal, cooldowns = memoryCooldownStore()}: {env: Record<string, string | undefined>; fetch?: typeof fetch; signal?: AbortSignal; cooldowns?: CooldownStore}): DecisionPort {
   const credentials = pool('CELERIS_API_KEY', env, {service: 'celeris'});
-  const cooldowns = memoryCooldownStore();
   if (!credentials.slots.length) return {decide: async () => ({kind: 'failure', reason: 'no_key'})};
   return {async decide(request) {
     try {

@@ -3,9 +3,11 @@ import {z} from 'zod';
 import {openLedger, reserve as reserveSpend, settle as settleSpend, release as releaseSpend, type Ledger} from '@praxis/spend';
 import {internalMutation, type MutationCtx} from '../functions.js';
 
-const KIND = 'contextDecisionLedger';
+const KIND = 'platformLedger';
 const ALLOWANCE_KIND = 'platformAllowance';
 const TTL_MS = 300_000;
+const KEY_MAX_CHARS = 256;
+const LEDGER_MAX_CHARS = 900_000;
 const amount = v.number();
 
 const nonNegativeInt = z.number().int().nonnegative();
@@ -51,8 +53,10 @@ async function load(ctx: MutationCtx, userId: string, period: string): Promise<L
 }
 
 async function write(ctx: MutationCtx, userId: string, period: string, ledger: Ledger) {
+  const encoded = JSON.stringify(ledger);
+  if (encoded.length > LEDGER_MAX_CHARS) throw new Error('Platform ledger exceeds document size limit');
   const existing = await row(ctx, userId, KIND, period);
-  const value = {encoded: JSON.stringify(ledger)};
+  const value = {encoded};
   if (existing) await ctx.db.patch(existing._id, {value});
   else await ctx.db.insert('toolState', {userId, kind: KIND, id: period, value});
 }
@@ -60,6 +64,7 @@ async function write(ctx: MutationCtx, userId: string, period: string, ledger: L
 export const reserve = internalMutation({
   args: {userId: v.string(), period: v.string(), key: v.string(), estimateMicroUsd: amount},
   handler: async (ctx, args) => {
+    if (!args.key || args.key.length > KEY_MAX_CHARS) throw new Error('Invalid reservation key');
     const ledger = await load(ctx, args.userId, args.period);
     if (!ledger) return false;
     const result = reserveSpend(ledger, {key: args.key, service: 'celeris', estimateMicroUsd: args.estimateMicroUsd, nowMs: Date.now(), ttlMs: TTL_MS});

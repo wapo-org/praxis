@@ -17,7 +17,7 @@ const LEDGER_KIND = 'platformLedger';
 const ALLOWANCE_KIND = 'platformAllowance';
 const USAGE_KIND = 'platformUsage';
 const Count = z.number().int().nonnegative();
-const Reservation = z.object({key: z.string(), service: z.enum(['exa', 'firecrawl', 'modal']), estimateMicroUsd: Count,
+const Reservation = z.object({key: z.string(), service: z.enum(['exa', 'firecrawl', 'modal', 'celeris']), estimateMicroUsd: Count,
   createdAtMs: Count, expiresAtMs: Count, orphaned: z.boolean()});
 const Closure = z.object({key: z.string(), kind: z.enum(['settled', 'released']), chargedMicroUsd: Count, late: z.boolean(), atMs: Count});
 const LedgerSchema: z.ZodType<Ledger> = z.object({allowanceMicroUsd: Count, spentMicroUsd: Count, overrunMicroUsd: Count,
