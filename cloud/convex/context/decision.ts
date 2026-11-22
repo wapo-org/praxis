@@ -1,4 +1,5 @@
 import {v} from 'convex/values';
+import {z} from 'zod';
 import {openLedger, reserve as reserveSpend, settle as settleSpend, release as releaseSpend, type Ledger} from '@praxis/spend';
 import {internalMutation, type MutationCtx} from '../functions.js';
 
@@ -7,20 +8,46 @@ const ALLOWANCE_KIND = 'platformAllowance';
 const TTL_MS = 300_000;
 const amount = v.number();
 
+const nonNegativeInt = z.number().int().nonnegative();
+const allowanceValueSchema = z.object({allowanceMicroUsd: nonNegativeInt});
+const encodedValueSchema = z.object({encoded: z.string()});
+const reservationSchema = z.object({
+  key: z.string(),
+  service: z.enum(['exa', 'firecrawl', 'modal', 'celeris']),
+  estimateMicroUsd: nonNegativeInt,
+  createdAtMs: z.number(),
+  expiresAtMs: z.number(),
+  orphaned: z.boolean(),
+});
+const closureSchema = z.object({
+  key: z.string(),
+  kind: z.enum(['settled', 'released']),
+  chargedMicroUsd: nonNegativeInt,
+  late: z.boolean(),
+  atMs: z.number(),
+});
+const ledgerSchema: z.ZodType<Ledger> = z.object({
+  allowanceMicroUsd: nonNegativeInt,
+  spentMicroUsd: nonNegativeInt,
+  overrunMicroUsd: nonNegativeInt,
+  reservations: z.record(z.string(), reservationSchema),
+  closed: z.record(z.string(), closureSchema),
+});
+
 async function row(ctx: MutationCtx, userId: string, kind: string, id: string) {
-  return ctx.db.query('toolState').withIndex('owner_kind_id', q => q.eq('userId', userId).eq('kind', kind).eq('id', id)).unique();
+  // Querying the owner_kind_id index range serializes concurrent mutations on the same (userId, kind, id) key.
+  return ctx.db.query('toolState').withIndex('owner_kind_id', q => q.eq('userId', userId).eq('kind', kind).eq('id', id)).first();
 }
 
 async function load(ctx: MutationCtx, userId: string, period: string): Promise<Ledger | null> {
   const allowanceRow = await row(ctx, userId, ALLOWANCE_KIND, period);
   if (!allowanceRow) return null;
-  const allowance = allowanceRow.value as {allowanceMicroUsd?: number};
-  if (!Number.isSafeInteger(allowance.allowanceMicroUsd) || allowance.allowanceMicroUsd! < 0) throw new Error('Invalid platform allowance');
+  const allowance = allowanceValueSchema.parse(allowanceRow.value);
   const saved = await row(ctx, userId, KIND, period);
-  if (!saved) return openLedger(allowance.allowanceMicroUsd!);
-  const encoded = (saved.value as {encoded?: unknown}).encoded;
-  if (typeof encoded !== 'string') throw new Error('Invalid context decision ledger');
-  return {...JSON.parse(encoded) as Ledger, allowanceMicroUsd: allowance.allowanceMicroUsd!};
+  if (!saved) return openLedger(allowance.allowanceMicroUsd);
+  const {encoded} = encodedValueSchema.parse(saved.value);
+  const parsed = ledgerSchema.parse(JSON.parse(encoded));
+  return {...parsed, allowanceMicroUsd: allowance.allowanceMicroUsd};
 }
 
 async function write(ctx: MutationCtx, userId: string, period: string, ledger: Ledger) {

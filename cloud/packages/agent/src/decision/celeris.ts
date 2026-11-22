@@ -1,4 +1,5 @@
 import {SealedSecret} from '@praxis/types';
+import {DEFAULT_COOLDOWNS_MS, type CredentialSignal} from '@praxis/credentials/classify';
 import {pool} from '@praxis/credentials/pool';
 import {memoryCooldownStore} from '@praxis/credentials/cooldown';
 import {withCredential} from '@praxis/credentials/failover';
@@ -50,6 +51,17 @@ export function celerisDecisionPort({key, fetch: fetcher = fetch, signal}: {key:
   }};
 }
 
+function classifyDecision(value: DecisionResult): CredentialSignal {
+  if (value.kind !== 'failure') return {kind: 'ok'};
+  if (value.reason === 'unauthorized') return {kind: 'invalid', cooldownMs: DEFAULT_COOLDOWNS_MS.invalid};
+  if (value.reason === 'quota') return {kind: 'exhausted', cooldownMs: DEFAULT_COOLDOWNS_MS.exhausted};
+  if (value.reason === 'rate_limited') return {kind: 'rateLimited', cooldownMs: DEFAULT_COOLDOWNS_MS.rateLimited};
+  if (value.reason === 'unavailable' || value.reason === 'timeout') {
+    return {kind: 'serverError', cooldownMs: DEFAULT_COOLDOWNS_MS.serverError};
+  }
+  return {kind: 'ok'};
+}
+
 export function pooledCelerisDecisionPort({env, fetch: fetcher = fetch, signal}: {env: Record<string, string | undefined>; fetch?: typeof fetch; signal?: AbortSignal}): DecisionPort {
   const credentials = pool('CELERIS_API_KEY', env, {service: 'celeris'});
   const cooldowns = memoryCooldownStore();
@@ -57,9 +69,7 @@ export function pooledCelerisDecisionPort({env, fetch: fetcher = fetch, signal}:
   return {async decide(request) {
     try {
       const result = await withCredential(credentials, cooldowns, async key => celerisDecisionPort({key, fetch: fetcher, signal}).decide(request), {
-        classify: value => value.kind === 'failure' && (value.reason === 'quota' || value.reason === 'unauthorized')
-          ? {kind: 'exhausted', cooldownMs: 60_000}
-          : {kind: 'ok'},
+        classify: classifyDecision,
       });
       return result.value;
     } catch {

@@ -108,7 +108,7 @@ PRA-75's `AtomicSpendCap` and `ChargeOnce` on interleaved, serially applied oper
 
 ## Context selection (PRA-179)
 
-`packages/agent/src/decision` selects context candidates with Celeris Decision behind an injected port. Six or fewer candidates bypass the provider. Invalid responses, timeouts, missing keys, exhausted allowance and provider errors use deterministic score-ranked fallback with per-kind caps. The optional `CELERIS_API_KEY` platform credential is sealed in memory and its usage reserves and settles against the platform allowance. Selection changes context quality only and cannot grant tools, approvals or trust.
+`packages/agent/src/decision` implements the Celeris Decision client and candidate selector behind an injected port. Six or fewer candidates bypass the provider; invalid responses, timeouts, missing keys, exhausted allowance and provider errors fall back to deterministic score-ranked selection with per-kind caps. `convex/context/decision.ts` provides the allowance reservation/settlement mutations; wiring this selector into live turns lands in a follow-up PR. Selection changes context quality only and cannot grant tools, approvals or trust.
 
 iOS OpenRouter PKCE: `ASWebAuthenticationSession` opens OpenRouter with `callback_url` set to the hosted
 `/settings/openrouter/app-callback`, which needs no session and only forwards a well-formed `code` to
