@@ -44,6 +44,21 @@ describe('withCredential failover', () => {
     expect(fn.mock.calls.filter(c => c[1] === 1)).toHaveLength(2);
   });
 
+  it('reports the cooldown stored by a competing mark', async () => {
+    const clock = fakeClock();
+    const winner = {reason: 'rateLimited' as const, until: clock.now() + 1000};
+    const store = {
+      get: vi.fn(async () => winner),
+      mark: vi.fn(async () => false),
+    };
+
+    const error = await withCredential(pool('EXA_API_KEY', {EXA_API_KEY: 'sk-secret-one'}, {service: 'exa'}), store, async () => new Response('', {status: 401}), {now: clock.now}).catch(e => e);
+
+    expect(error).toBeInstanceOf(CredentialsUnavailableError);
+    expect(error.slots).toEqual([{slot: 1, ...winner}]);
+    expect(error.retryAt).toEqual(new Date(winner.until));
+  });
+
   it('throws CredentialsUnavailableError with the earliest retry time when every slot is cooling', async () => {
     const clock = fakeClock();
     const store = memoryCooldownStore(clock.now);
@@ -112,7 +127,7 @@ describe('withCredential failover', () => {
     const fn = service({'sk-secret-one': new Response('', {status: 429})});
     for (let i = 0; i < 2; i++) expect((await withCredential(exa(), store, fn)).slot).toBe(2);
     expect(fn.mock.calls.map(c => c[1])).toEqual([1, 2, 1, 2]);
-    expect(onError.mock.calls.map(c => c[0])).toEqual(['get', 'mark', 'get', 'get', 'mark', 'get']);
+    expect(onError.mock.calls.map(c => c[0])).toEqual(['get', 'mark', 'get', 'get', 'get', 'mark', 'get', 'get']);
     const rejecting = {get: async () => { throw new Error('down'); }, mark: async () => { throw new Error('down'); }};
     expect((await withCredential(exa(), rejecting, fn)).slot).toBe(2);
   });

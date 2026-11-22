@@ -64,7 +64,8 @@ export async function withCredential<C, T>(pool: CredentialPool<C>, store: Coold
     const cooldown = {reason: signal.kind, until: now() + Math.max(1, signal.cooldownMs)};
     const created = await store.mark(pool.service, slot, cooldown).catch(() => false);
     if (created) options.log?.({event: 'credential.cooldown', service: pool.service, slot, ...cooldown});
-    cooling.push({slot, ...cooldown});
+    const winningCooldown = created ? null : await store.get(pool.service, slot).catch(() => null);
+    cooling.push({slot, ...(winningCooldown && winningCooldown.until > now() ? winningCooldown : cooldown)});
   }
   const error = new CredentialsUnavailableError(pool.service, cooling);
   options.log?.({event: 'credential.unavailable', service: pool.service, slots: cooling.map(s => s.slot), retryAt: error.retryAt?.getTime() ?? null});

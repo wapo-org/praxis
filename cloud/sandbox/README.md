@@ -31,7 +31,9 @@ The apt command has a 150-second deadline. SDK 0.11.1 exposes neither CPU nor a
 whole-build timeout option for image builders; Modal controls registry import and
 builder scheduling. Do not retry beyond an approved build/boot budget.
 
-CI runs the offline image composition test, typecheck and the normal cloud gate.
+Run `npm --prefix cloud run typecheck` and `npm --prefix cloud test` to typecheck
+and test the sandbox packages locally. This revision does not configure CI for
+the offline image composition test.
 A real image build/publish needs a Modal account token and incurs spend. No secret
 or automatic paid build is added to CI; the tracked [PRA-110](https://linear.app/praxis-a/issue/PRA-110) sub-issue
 covers enabling and verifying that authenticated build gate with owner-provided CI

@@ -22,6 +22,16 @@ describe('classifyHttp', () => {
     expect(classifyHttp(400, {}, 'plan limit reached', {quotaBody: /plan limit/})).toMatchObject({kind: 'exhausted'});
   });
 
+  it('classifies repeated quota matches without changing a stateful regex', () => {
+    const quotaBody = /plan limit/g;
+    quotaBody.lastIndex = 3;
+    const options = {quotaBody};
+
+    expect(classifyHttp(400, {}, 'plan limit', options).kind).toBe('exhausted');
+    expect(classifyHttp(400, {}, 'plan limit', options).kind).toBe('exhausted');
+    expect(quotaBody.lastIndex).toBe(3);
+  });
+
   it('uses Retry-After seconds or an HTTP-date for 429, else 60 s', () => {
     expect(classifyHttp(429, {})).toEqual({kind: 'rateLimited', cooldownMs: 60_000});
     expect(classifyHttp(429, new Headers({'Retry-After': '7'}))).toEqual({kind: 'rateLimited', cooldownMs: 7000});

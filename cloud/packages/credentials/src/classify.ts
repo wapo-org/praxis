@@ -40,7 +40,11 @@ export function retryAfterMs(headers: HeadersLike | undefined, now: number): num
 /** Classifies HTTP statuses (401/403 invalid, 402 quota, 429 limit, 5xx cooldown). */
 export function classifyHttp(status: number, headers?: HeadersLike, body?: string, options: ClassifyOptions = {}): CredentialSignal {
   const cool = {...DEFAULT_COOLDOWNS_MS, ...options.cooldownsMs};
-  const quota = body !== undefined && (options.quotaBody ?? QUOTA_BODY).test(body);
+  const quotaPattern = options.quotaBody ?? QUOTA_BODY;
+  const previousLastIndex = quotaPattern.lastIndex;
+  quotaPattern.lastIndex = 0;
+  const quota = body !== undefined && quotaPattern.test(body);
+  quotaPattern.lastIndex = previousLastIndex;
   if (status === 402 || (quota && status >= 400)) return {kind: 'exhausted', cooldownMs: cool.exhausted};
   if (status === 401 || status === 403) return {kind: 'invalid', cooldownMs: cool.invalid};
   if (status === 429) return {kind: 'rateLimited', cooldownMs: retryAfterMs(headers, (options.now ?? Date.now)()) ?? cool.rateLimited};
