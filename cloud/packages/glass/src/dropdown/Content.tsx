@@ -84,6 +84,14 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
     position.visibility !== 'hidden',
   );
   const reduced = useMenuReducedMotion();
+  const [isOpening, setIsOpening] = React.useState(false);
+  React.useEffect(() => {
+    if (ctx.open && !reduced) {
+      setIsOpening(true);
+    } else if (!ctx.open) {
+      setIsOpening(false);
+    }
+  }, [ctx.open, reduced]);
   const { pointerDownOriginRef } = usePressMotion(ctx, setHighlightedId);
 
   const highlightCtx = React.useMemo<PanelHighlightContextValue>(
@@ -206,6 +214,8 @@ const Content = React.forwardRef<HTMLDivElement, ContentProps>(function Content(
                               }
                         }
                         transition={reduced ? TRANSITION.none : { ...TRANSITION.base, opacity: { ...TRANSITION.base, delay: MORPH.panelFadeDelay } }}
+                        style={isOpening ? { pointerEvents: 'none' } : undefined}
+                        onAnimationComplete={() => setIsOpening(false)}
                         className={styles.panel}
                       >
                         <MorphHeader level={activeMorphLevel ?? null} />
