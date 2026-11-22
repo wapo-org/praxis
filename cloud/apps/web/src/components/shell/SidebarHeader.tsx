@@ -25,6 +25,7 @@ export function SidebarHeader({
         className={styles.primaryPill}
         data-testid={testId}
         aria-label={actionLabel}
+        title={actionLabel ?? label}
         onClick={onAction}
         {...press}
       >
@@ -35,6 +36,7 @@ export function SidebarHeader({
         type="button"
         className={styles.iconButton}
         aria-label="Close sidebar"
+        title="Close sidebar"
         data-testid="sidebar-toggle"
         onClick={onClose}
         {...press}
