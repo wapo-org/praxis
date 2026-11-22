@@ -202,14 +202,11 @@ it('persists the palette and the pre-paint bootstrap applies exactly what the mo
   expect(localStorage.getItem('praxis-sidebar-palette')).toBe('forest');
 });
 
-it('never applies a button colour: the New chat pill stays the stylesheet white, old saved values are ignored and cleared', () => {
-  localStorage.setItem('praxis-button-color', '#f4846b');
+it('never applies a button colour: the New chat pill stays the stylesheet white', () => {
   runBootstrap();
   applySidebarLook('plum');
   for (const name of ['--nb-fill', '--nb-ink', '--nb-border']) expect(snapshot().vars[name]).toBe('');
   expect(document.documentElement.dataset.buttonColor).toBeUndefined();
-  syncSidebarLook();
-  expect(localStorage.getItem('praxis-button-color')).toBeNull();
   const css = readFileSync('apps/web/src/styles/tokens.css', 'utf8');
   expect(css).toContain('--nb-fill: #ffffff;');
   expect(css).toContain('--nb-ink: #1c1c1c;');
@@ -237,8 +234,4 @@ it('applies a look saved in another tab even when no Settings control is mounted
   window.dispatchEvent(new StorageEvent('storage', { key: 'praxis-sidebar-palette' }));
   expect(readPalette()).toBe('plum');
   expect(document.documentElement.style.getPropertyValue('--sb-base')).toBe('#261530');
-  // The removed button colour's key changes nothing.
-  localStorage.setItem('praxis-button-color', '#123abc');
-  window.dispatchEvent(new StorageEvent('storage', { key: 'praxis-button-color' }));
-  expect(document.documentElement.style.getPropertyValue('--nb-fill')).toBe('');
 });

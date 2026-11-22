@@ -41,6 +41,8 @@ import { ReasoningBody, hasThought, reasoningLabel, type ReasoningBlock } from '
 import reasoningStyles from './ReasoningView.module.css';
 import { ActivityDetails } from './ActivityDetails';
 import type { AgentActivityViewProps } from './activityTypes';
+import { connectRequestToolkits } from '../../lib/connectRequests';
+import { AppConnectCards } from './AppConnectCards';
 import { ApprovalCards } from './ApprovalCards';
 import { ElicitationCards } from './ElicitationCards';
 import { humanLabel, toolDisplay } from './toolDisplay';
@@ -48,11 +50,6 @@ import { formatTraceTitle } from './WorkEntry.logic';
 
 export type { AgentActivityViewProps } from './activityTypes';
 
-/**
- * Turn fold / work disclosure row built on Trace:
- * Level 1 ("Working · X" / "Worked for X" / "Stopped after X") -> Level 2 steps -> Level 3 output.
- * Approvals and questions always show under the header, even folded.
- */
 export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: string }> = ({
   runId,
   startedAt,
@@ -114,6 +111,7 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
     anchorTopRef.current = null;
   }, [expanded, openStepIds]);
 
+  const connectToolkits = connectRequestToolkits(toolSteps);
   const effectiveStart = resolveTurnStartIso(startedAt, finishedAt, promptStartedAt);
   const worked = useActivityClock(isRunning, startedAt, finishedAt, promptStartedAt);
   // A finished thought with nothing to show is not activity (K-ref/07): no row, no chevron, no group.
@@ -282,6 +280,8 @@ export const AgentActivityView: React.FC<AgentActivityViewProps & { runStatus?: 
         runId={runId}
         onResolveApproval={onResolveApproval}
       />
+
+      {connectToolkits.length ? <AppConnectCards toolkits={connectToolkits} /> : null}
 
       <ElicitationCards
         pendingElicitations={pendingElicitations}

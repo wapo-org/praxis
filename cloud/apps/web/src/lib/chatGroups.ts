@@ -16,7 +16,6 @@ export function dateGroup(chat: Chat, now: Date): ChatGroup {
   return date >= week ? 'Previous 7 Days' : 'Older';
 }
 
-/** Newest first, filtered by a case-insensitive title query, bucketed by date group (empty groups dropped). */
 export function groupChats(chats: Chat[], query: string, now: Date): Array<{ group: ChatGroup; chats: Chat[] }> {
   const needle = query.trim().toLocaleLowerCase();
   const visible = chats

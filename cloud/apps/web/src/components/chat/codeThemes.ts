@@ -1,7 +1,3 @@
-/**
- * Praxis code colours (WP-L3): quiet, ink-first themes on the app's paper neutrals instead of GitHub's.
- * Keywords carry weight in ink, strings and numbers take one muted hue each, comments recede.
- */
 type Theme = { name: string; type: 'light' | 'dark'; fg: string; bg: string; colors: Record<string, string>; settings: Array<{ scope?: string | string[]; settings: { foreground?: string; fontStyle?: string } }> };
 
 const ANSI = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'] as const;

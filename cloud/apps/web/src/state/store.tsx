@@ -3,7 +3,7 @@ import { PraxisStoreContext } from './context';
 import type { PraxisStoreContextValue } from './types';
 import { useCatalogActions } from './useCatalogActions';
 import { useChatActions } from './useChatActions';
-import { useConsent } from './useConsent';
+import { useSendGate } from './useSendGate';
 import { useMediaActions } from './useMediaActions';
 import { usePraxisState } from './usePraxisState';
 import { useLiveFollower } from './useLiveFollower';
@@ -27,7 +27,7 @@ export function PraxisStoreProvider({
   useLiveFollower(state, { ...streams, ...runState });
   const chats = useChatActions(state, replica);
   const send = useSendActions(state, { ...chats, ...streams });
-  const consent = useConsent(state, send);
+  const gate = useSendGate(state, send);
   const catalog = useCatalogActions(state);
   const media = useMediaActions(state);
   const activeChat = React.useMemo(
@@ -46,7 +46,7 @@ export function PraxisStoreProvider({
     ...state,
     ...chats,
     ...send,
-    ...consent,
+    ...gate,
     ...catalog,
     ...media,
     activeChat,

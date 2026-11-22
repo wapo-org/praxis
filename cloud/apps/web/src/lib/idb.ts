@@ -1,10 +1,9 @@
 import type {
   Bootstrap,
   Chat,
-  Connector,
   Message,
-  Model,
-  Provider,
+  ModelKey,
+  ModelListItem,
   Skill,
 } from '@praxis/protocol';
 import type { Consent, Preferences, Registry } from './api';
@@ -13,9 +12,9 @@ export interface LocalReplicaSnapshot {
   bootstrap?: Bootstrap;
   chats: Chat[];
   messagesByChat: Record<string, Message[]>;
-  providers: Provider[];
-  models: Model[];
-  connectors: Connector[];
+  /** The OpenRouter catalogue entries this client has seen (first page, plus any model it selected). */
+  models: ModelListItem[];
+  modelKey?: ModelKey | null;
   skills: Skill[];
   consents: Consent[];
   registries: Registry[];
@@ -28,6 +27,7 @@ const STORE_NAME = 'replica';
 let scope: { key: string; userId: string } | null = null;
 let memoryCache: LocalReplicaSnapshot | null = null;
 let queue = Promise.resolve();
+let identityRequest = 0;
 
 function database(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
@@ -51,19 +51,23 @@ async function remove(key: string) {
 
 /** Called only after the server has verified the current session. */
 export async function setReplicaIdentity(origin: string, userId: string): Promise<void> {
+  const request = ++identityRequest;
   const apiOrigin = new URL(origin || '/', globalThis.location?.origin ?? 'http://localhost').origin;
   const key = JSON.stringify([apiOrigin, userId]);
   if (scope?.key === key) return;
   if (scope) await clearReplica();
-  // The marker contains identity only; no chats, messages or credentials.
+  if (request !== identityRequest) return;
   const marker = `praxis-replica-owner:${apiOrigin}`;
   const previous = localStorage.getItem(marker);
   if (previous && previous !== key) await remove(previous);
+  if (request !== identityRequest) return;
   localStorage.setItem(marker, key);
   localStorage.removeItem('praxis-cloud-replica-v1');
   if (typeof indexedDB !== 'undefined') indexedDB.deleteDatabase('praxis-cloud-idb');
   scope = { key, userId };
 }
+
+export function replicaIdentityMatches(userId: string): boolean { return scope?.userId === userId; }
 
 export async function clearReplica(): Promise<void> {
   const previous = scope;
@@ -116,7 +120,7 @@ export async function saveReplica(snapshot: LocalReplicaSnapshot, expectedKey = 
   await queue;
 }
 
-/** After account deletion: drop every replica on this device (all origins and users) and the owner markers. */
+/** Drops all replicas and owner markers on account deletion. */
 export async function wipeReplicaStorage(): Promise<void> {
   await clearReplica();
   for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -130,7 +134,7 @@ export async function wipeReplicaStorage(): Promise<void> {
       const req = indexedDB.deleteDatabase(name);
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error ?? Error('Could not clear local data'));
-      // Another tab still has it open: the browser finishes the deletion when that tab closes it.
+      // Other tabs holding DB open will complete deletion on close.
       req.onblocked = () => resolve();
     });
 }

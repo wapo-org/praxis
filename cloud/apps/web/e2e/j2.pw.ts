@@ -1,14 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-
-// WP-J2: activity rows on one edge, the column centred beside the sidebar, attachments that look like files
-// and never vanish, voice input on the Web Speech API, and New chat landing the caret in the composer.
-
-async function signIn(page: Page, userId = `j2-${test.info().project.name}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`) {
-  expect((await page.request.post('/v1/auth/dev', { data: { type: 'auth.dev', userId } })).ok()).toBeTruthy();
-  await page.goto('/');
-  await page.getByTestId('chat-top-bar').waitFor();
-  await page.waitForTimeout(300);
-}
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import { expect, type Page } from '@playwright/test';
 
 async function scriptedChat(page: Page, runs: Array<[string, string]>) {
   return page.evaluate(async (runs) => {
@@ -16,7 +7,7 @@ async function scriptedChat(page: Page, runs: Array<[string, string]>) {
     const { apiClient } = (await import(/* @vite-ignore */ path)) as typeof import('../src/lib/api');
     const chat = await apiClient.createChat({ title: 'J2 spec' });
     for (const [text, script] of runs) {
-      const run = await apiClient.startRun({ chatId: chat.id, text, script: script as 'tools', providerId: 'scripted', modelId: 'scripted', clientTurnId: crypto.randomUUID() });
+      const run = await apiClient.startRun({ chatId: chat.id, text, script: script as 'tools',  modelId: 'scripted', clientTurnId: crypto.randomUUID() });
       for (let i = 0; i < 150; i++) {
         const snap = await apiClient.getRunSnapshot(run.id);
         if (['completed', 'failed', 'cancelled'].includes(snap.run.status)) break;
@@ -27,8 +18,6 @@ async function scriptedChat(page: Page, runs: Array<[string, string]>) {
   }, runs);
 }
 
-/** The owner's failing rows (J-ref/01): a long run_javascript fetch and an MCP call, both failed. Injected by
- *  wrapping fetch in the page (Playwright's WebKit does not intercept these requests). */
 async function failedRows(page: Page) {
   await page.addInitScript(() => {
     const original = window.fetch.bind(window);
@@ -62,7 +51,7 @@ const textLeft = (page: Page, selector: string) =>
   }, selector);
 
 test('every activity row starts on the body text’s left edge; failed rows are one line with a status at the end', async ({ page }) => {
-  await signIn(page);
+  await openSignedInPage(page);
   const chatId = await scriptedChat(page, [['Interpret the reports', 'reasoningInterleaved'], ['run the test skill', 'tools']]);
   await failedRows(page);
   await page.goto(`/c/${chatId}`);
@@ -103,7 +92,7 @@ test('every activity row starts on the body text’s left edge; failed rows are 
 
 test('the column, the header pill and the composer are centred right of the open sidebar, and re-centre with it', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await signIn(page);
+  await openSignedInPage(page);
   const chatId = await scriptedChat(page, [['Show me a short answer', 'text']]);
   await page.goto(`/c/${chatId}`);
   await page.getByTestId('assistant-turn').first().waitFor();
@@ -138,7 +127,7 @@ test('the column, the header pill and the composer are centred right of the open
 });
 
 test('a sent message with an attachment never leaves the list, shows the file as a chip and never the model note', async ({ page }) => {
-  await signIn(page);
+  await openSignedInPage(page);
   await page.getByTestId('composer-input').fill('hello there');
   await page.getByTestId('composer-input').press('Enter');
   await page.getByTestId('assistant-turn').last().waitFor();
@@ -181,7 +170,6 @@ test('a sent message with an attachment never leaves the list, shows the file as
 /** A scripted SpeechRecognition: the test speaks through window.__speech. */
 async function mockSpeech(page: Page, mode: 'ok' | 'denied' | 'none') {
   await page.addInitScript((mode) => {
-    const w = window as unknown as Record<string, unknown>;
     const install = (value: unknown) => {
       for (const name of ['SpeechRecognition', 'webkitSpeechRecognition']) Object.defineProperty(window, name, { value, configurable: true, writable: true });
     };
@@ -208,7 +196,7 @@ async function mockSpeech(page: Page, mode: 'ok' | 'denied' | 'none') {
 
 test('voice input streams interim words into the composer and stops on the stop control', async ({ page }) => {
   await mockSpeech(page, 'ok');
-  await signIn(page);
+  await openSignedInPage(page);
   const input = page.getByTestId('composer-input');
   await input.fill('Note:');
   // Typed text hides the mic in favour of send; clear to reach it, as a person would, then type after.
@@ -228,7 +216,7 @@ test('voice input streams interim words into the composer and stops on the stop 
 
 test('voice input says plainly when the microphone is blocked', async ({ page }) => {
   await mockSpeech(page, 'denied');
-  await signIn(page);
+  await openSignedInPage(page);
   await page.getByTestId('composer-voice-button').click();
   await expect(page.getByRole('alert')).toContainText('Microphone access is blocked');
   await expect(page.getByTestId('composer-voice-button')).toHaveAttribute('aria-label', 'Voice input');
@@ -236,14 +224,14 @@ test('voice input says plainly when the microphone is blocked', async ({ page })
 
 test('without a speech API (Firefox) there is no mic: the send button holds the slot', async ({ page }) => {
   await mockSpeech(page, 'none');
-  await signIn(page);
+  await openSignedInPage(page);
   await expect(page.getByTestId('composer-voice-button')).toBeHidden();
   await expect(page.getByTestId('composer-send-button')).toBeVisible();
   await expect(page.getByTestId('composer-send-button')).toBeDisabled();
 });
 
 test('New chat lands the caret in the composer: button and shortcut', async ({ page }) => {
-  await signIn(page);
+  await openSignedInPage(page);
   const input = page.getByTestId('composer-input');
   await page.getByTestId('composer-input').fill('first');
   await page.getByTestId('composer-input').press('Enter');
@@ -260,7 +248,7 @@ test('New chat lands the caret in the composer: button and shortcut', async ({ p
 
 test('New chat from the phone drawer lands the caret in the composer', async ({ page }) => {
   await page.setViewportSize({ width: 402, height: 874 });
-  await signIn(page);
+  await openSignedInPage(page);
   const input = page.getByTestId('composer-input');
   await input.fill('first');
   await input.press('Enter');

@@ -1,6 +1,3 @@
-// Production shell worker. Only content-hashed build assets (/assets/*) are served cache-first;
-// navigations go to the network first so a new deploy is picked up on the next load.
-// Bump CACHE_NAME whenever this policy changes: activate deletes every other cache.
 const CACHE_NAME = 'praxis-shell-v2';
 const SHELL_URLS = ['/', '/index.html', '/manifest.json'];
 

@@ -1,9 +1,3 @@
-/*
- * Assistant answers (WP-L3, the owner's typeset L-ref/19). The body comes from .message (AgentMessageView):
- * Noto Serif 15 px / 1.6. Compact flow: 1em between blocks. Headings are Noto Sans on a scale derived for a
- * 15 px serif body. Everything is a fixed length or em of the body, so a block's height never depends on whether
- * it is still streaming.
- */
 .prose { min-width: 0; overflow-wrap: break-word; }
 .prose :where(p, ul, ol, blockquote, pre, table, hr, h1, h2, h3, h4, h5, h6, figure) { margin: 0; }
 .prose > * + * { margin-top: var(--reading-flow); }
@@ -54,8 +48,6 @@
 .prose :where(sup, sub) { font-size: 0.72em; line-height: 0; }
 .prose sup a { text-decoration: none; padding: 0 0.1em; font-family: var(--font-heading); }
 
-/* Lists: real nesting. Markers per level (disc, circle, dash), 6 px between items, wrapped lines hang under
-   the text. Ordered lists keep their numbers in tabular figures. */
 .prose :where(ul, ol) { padding-inline-start: 1.45em; }
 .prose ol { list-style-type: decimal; }
 .prose ul { list-style-type: disc; }
@@ -65,8 +57,6 @@
 .prose :where(ul, ol) :where(ul, ol) ol { list-style-type: lower-roman; }
 .prose li { padding-inline-start: 0.15em; }
 .prose li::marker { color: var(--color-ink-3); font-variant-numeric: tabular-nums; }
-/* Spacing names block children only: while streaming, words are wrapped in fade spans, and a list can turn from
-   tight to loose (its text wrapped in <p>) as lines arrive. Neither may change a single pixel. */
 .prose li + li { margin-top: 6px; }
 .prose li > :where(ul, ol) { margin-top: 6px; }
 .prose li > p + p { margin-top: 0.6em; }

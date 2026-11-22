@@ -5,6 +5,7 @@ import { applySidebarLook, useSidebarPalette } from '../lib/sidebarPalette';
 import { enqueue, flushEdits, pendingEdits } from './outbox';
 import type { PraxisState } from '../state/usePraxisState';
 import { reconcileMessages } from '../state/reconcileMessages';
+import { useAccount } from '../lib/account';
 
 /** Account preferences use one durable row per field: unrelated concurrent edits never overwrite each other. */
 export function useAccountSync(state: PraxisState, streams: { attachRunStream: (run: import('@praxis/protocol').Run, after?: number) => void; applySnapshotToLiveRun: (snapshot: import('@praxis/protocol').RunSnapshot) => void }) {
@@ -12,7 +13,9 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
   const following = React.useRef(new Set<string>());
   const latest = React.useRef(state); latest.current = state;
   const palette = useSidebarPalette();
-  const values = { theme: state.themeMode, palette, model: state.selectedModelId, provider: state.selectedProviderId, effort: state.selectedEffort };
+  const account = useAccount();
+  const accountUserId = account?.userId ?? null;
+  const values = { theme: state.themeMode, palette, model: state.selectedModelId, effort: state.selectedEffort };
   const caughtUp = React.useRef(false);
   const previous = React.useRef(values);
   const remote = React.useRef<Record<string, string>>({});
@@ -24,9 +27,9 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
     }
     previous.current = values;
     void flushEdits();
-  }, [values.theme, palette, values.model, values.provider, values.effort]);
+  }, [values.theme, palette, values.model, values.effort]);
   React.useEffect(() => {
-    if (!state.replicaKey.current || !state.hydrated) return;
+    if (!accountUserId || !state.replicaKey.current || !state.hydrated) return;
     let stopped = false;
     const controller = new AbortController();
     let cursor = state.syncCursor; // Bootstrap is an authoritative snapshot; resume after its revision.
@@ -61,7 +64,6 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
           if (pending.some(e => e.path === '/v1/sync/settings' && JSON.parse(e.body!).field === field)) continue;
           remote.current[field] = value;
           if (field === 'theme' && ['light','dark','system'].includes(value)) s.setThemeMode(value as 'light'|'dark'|'system');
-          // A synced 'button' row is the removed button-colour option (WP-I1): ignored.
           if (field === 'palette') {
             applySidebarLook(value);
             localStorage.setItem('praxis-sidebar-palette', value);
@@ -69,9 +71,8 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
           }
           // The account's last model applies where no chat has its own, and never over a pick being saved (WP-K2b).
           const openChat = s.chats.find(c => c.id === s.activeChatId);
-          const chatOwnsModel = !!(openChat?.providerId && openChat.modelId) || !!s.pendingPickRef.current;
+          const chatOwnsModel = !!openChat?.modelId || !!s.pendingPickRef.current;
           if (field === 'model' && !chatOwnsModel) s.setSelectedModelId(value);
-          if (field === 'provider' && !chatOwnsModel) s.setSelectedProviderId(value);
           if (field === 'effort') s.setSelectedEffort(value);
         }
       }
@@ -108,5 +109,5 @@ export function useAccountSync(state: PraxisState, streams: { attachRunStream: (
       apply({ type: 'sync.response', strategy: 'cursor', root: '', cursor, nextCursor: null, nodes: [], entities: settings.items.map(setting => ({ type: 'sync.entity', key: `accountSetting:${setting.field}`, value: setting, hash: '', deleted: false, updatedAt: new Date().toISOString() })) });
     }).catch(() => {}).finally(() => { if (!stopped) void loop(); });
     return () => { stopped = true; controller.abort(); window.removeEventListener('online', online); };
-  }, [state.hydrated]);
+  }, [state.hydrated, accountUserId]);
 }

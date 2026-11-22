@@ -1,13 +1,13 @@
-import { FlaskConical, Link, Settings, Shield, Sparkles, Star, User } from '../../lib/icons';
+import { FlaskConical, LayoutGrid, Settings, Shield, Sparkles, Star, User } from '../../lib/icons';
 import type { ActiveSheet } from '../../state/store.js';
 
-export type SettingsSheet = Exclude<NonNullable<ActiveSheet>, 'history'>;
-export type SettingsSection = 'general' | 'providers' | 'connectors' | 'skills' | 'consents' | 'saved-values' | 'account' | 'developer';
+export type SettingsSheet = Exclude<NonNullable<ActiveSheet>, 'history' | 'openrouter-callback'>;
+export type SettingsSection = 'general' | 'models' | 'apps' | 'skills' | 'consents' | 'saved-values' | 'account' | 'developer';
 
 export const SETTINGS_NAV: Array<{ sheet: SettingsSection; title: string; Icon: typeof Settings; devOnly?: boolean }> = [
   { sheet: 'general', title: 'General', Icon: Settings },
-  { sheet: 'providers', title: 'Models & providers', Icon: Star },
-  { sheet: 'connectors', title: 'Connectors', Icon: Link },
+  { sheet: 'models', title: 'Models', Icon: Star },
+  { sheet: 'apps', title: 'App Directory', Icon: LayoutGrid },
   { sheet: 'skills', title: 'Skills', Icon: Sparkles },
   { sheet: 'saved-values', title: 'Secrets & variables', Icon: Shield },
   { sheet: 'consents', title: 'Data & privacy', Icon: Shield },
@@ -19,13 +19,10 @@ export const SETTINGS_NAV: Array<{ sheet: SettingsSection; title: string; Icon: 
 export const SETTINGS_PAGES: Record<Exclude<SettingsSheet, 'settings'>, { title: string; section: SettingsSection; parent?: SettingsSheet }> = {
   general: { title: 'General', section: 'general' },
   'voice-settings': { title: 'Voice input', section: 'general', parent: 'general' },
-  providers: { title: 'Models & providers', section: 'providers' },
-  'provider-editor': { title: 'Provider', section: 'providers', parent: 'providers' },
-  'image-reader': { title: 'Image reading model', section: 'providers', parent: 'providers' },
-  connectors: { title: 'Connectors', section: 'connectors' },
-  'connector-add-url': { title: 'Add by URL', section: 'connectors', parent: 'connectors' },
-  'connector-paste-config': { title: 'Paste a config', section: 'connectors', parent: 'connectors' },
-  'connector-registry': { title: 'MCP registry', section: 'connectors', parent: 'connectors' },
+  models: { title: 'Models', section: 'models' },
+  'image-reader': { title: 'Image reading model', section: 'models', parent: 'models' },
+  apps: { title: 'App Directory', section: 'apps' },
+  'app-connected': { title: 'App connected', section: 'apps', parent: 'apps' },
   skills: { title: 'Skills', section: 'skills' },
   'skill-import': { title: 'Import skill', section: 'skills', parent: 'skills' },
   'skill-browser': { title: 'Browse skills', section: 'skills', parent: 'skills' },

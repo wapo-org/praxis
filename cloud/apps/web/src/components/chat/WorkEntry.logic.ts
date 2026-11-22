@@ -254,8 +254,8 @@ export function workEntry(step: ActiveToolStep) {
       : '';
   const rawPreview = step.completion?.preview || '';
   const output =
-    (rawPreview.length > contentText.length ? rawPreview : contentText) ||
     rawPreview ||
+    contentText ||
     step.completion?.summary ||
     '';
   let answer = output;

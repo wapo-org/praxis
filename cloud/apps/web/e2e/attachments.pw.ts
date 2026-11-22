@@ -1,13 +1,12 @@
-import { expect, test } from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import { expect } from '@playwright/test';
 
 const PNG_1X1_B64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 const PNG_1X1 = Buffer.from(PNG_1X1_B64, 'base64');
 
 test('attachments: paste, drag-drop, upload errors, groups of 1/3/8 in composer & bubble, vertical images & horizontal files', async ({ page }) => {
-  await page.request.post('/v1/auth/dev', {
-    data: { type: 'auth.dev', userId: `attachments-${test.info().project.name}-${Date.now()}` },
-  });
+  await openSignedInPage(page);
   await page.goto('/');
   await page.getByTestId('composer-input').waitFor();
 

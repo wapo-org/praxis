@@ -1,13 +1,14 @@
 import type { ResolvedTheme, ThemeMode } from '@praxis/glass';
 import type {
   Attachment,
+  Bootstrap,
   Chat,
-  Connector,
   Message,
-  Model,
-  Provider,
   Skill,
+  ModelKey,
+  ModelListItem,
 } from '@praxis/protocol';
+import { ModelListItemSchema } from '@praxis/protocol';
 import React from 'react';
 import { requestComposerFocus } from '../components/chat/composerFocus';
 import { DEFAULT_MODE, type Mode } from '../lib/modes';
@@ -18,7 +19,6 @@ import {
   type Preferences,
   type Registry,
   type RegistryEntry,
-  type ToolSpec,
 } from '../lib/api';
 import { getReplicaIdentity, readReplicaSync } from '../lib/idb';
 import { readStoredSelection } from './modelSelection';
@@ -26,11 +26,20 @@ import { pathForSheet } from '../lib/navigation';
 import { mergeFetchedMessages } from './reconcileMessages';
 
 import type { ActiveSheet, LiveRunState, PendingConsentPrompt } from './types';
+
+/** The width at which the sidebar docks beside the content instead of covering it. */
+export const DESKTOP_SIDEBAR_QUERY = '(min-width: 1024px)';
+
+function desktopSidebarFits(): boolean {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(DESKTOP_SIDEBAR_QUERY).matches;
+}
+
 export function usePraxisState(onNavigate?: (path: string) => void) {
   const replicaKey = React.useRef(getReplicaIdentity());
   const initialCache = React.useMemo(() => readReplicaSync(), []);
 
   const [hydrated, setHydrated] = React.useState<boolean>(Boolean(initialCache));
+  const [user, setUser] = React.useState<Bootstrap['user'] | null>(initialCache?.bootstrap?.user ?? null);
   const [syncing, setSyncing] = React.useState<boolean>(false);
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
 
@@ -74,18 +83,8 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
 
   // Sheets & Layout
   const [activeSheet, setActiveSheetState] = React.useState<ActiveSheet>(null);
-  const activeSheetRef = React.useRef<ActiveSheet>(activeSheet);
-  activeSheetRef.current = activeSheet;
-  const [editingProviderId, setEditingProviderIdState] = React.useState<string | null>(null);
-  const providerIdRef = React.useRef(editingProviderId);
-  const setEditingProviderId = (id: string | null) => {
-    providerIdRef.current = id;
-    setEditingProviderIdState(id);
-  };
-  // Right from the first render, so the sidebar does not fly in on every load.
-  const [desktopSidebarOpen, setDesktopSidebarOpen] = React.useState<boolean>(
-    () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1024px)').matches,
-  );
+  // Docked from the first paint: opened in an effect, the column and composer glided 122 px on every desktop load.
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = React.useState<boolean>(desktopSidebarFits);
   const [plusTrayOpen, setPlusTrayOpen] = React.useState<boolean>(false);
   const [inlineModelSearchActive, setInlineModelSearchActive] = React.useState<boolean>(false);
 
@@ -99,14 +98,12 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   const [messagesByChat, setMessagesByChat] = React.useState<Record<string, Message[]>>(
     () => initialCache?.messagesByChat ?? {},
   );
-  const [providers, setProviders] = React.useState<Provider[]>(() => initialCache?.providers ?? []);
-  const [models, setModels] = React.useState<Model[]>(() =>
-    initialCache?.models?.length ? initialCache.models : [],
+  const activeSheetRef = React.useRef<ActiveSheet>(null);
+  const [modelKey, setModelKey] = React.useState<ModelKey | null>(() => initialCache?.modelKey ?? null);
+  // A replica cached before OpenRouter holds the old per-provider model shape: only catalogue entries are kept.
+  const [models, setModels] = React.useState<ModelListItem[]>(() =>
+    (initialCache?.models ?? []).filter((m) => ModelListItemSchema.safeParse(m).success),
   );
-  const [connectors, setConnectors] = React.useState<Connector[]>(
-    () => initialCache?.connectors ?? [],
-  );
-  const [connectorTools, setConnectorTools] = React.useState<Record<string, ToolSpec[]>>({});
   const [skills, setSkills] = React.useState<Skill[]>(() => initialCache?.skills ?? []);
   const [registries, setRegistries] = React.useState<Registry[]>(
     () => initialCache?.registries ?? [],
@@ -120,19 +117,13 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   const [syncCursor, setSyncCursor] = React.useState<string>(() => initialCache?.syncCursor ?? '0');
 
   // Selected composer controls
-  // Starts from this account's last selection (WP-K2b), not from the first model in the list.
-  const storedSelection = React.useMemo(() => readStoredSelection(replicaKey.current), []);
-  const [selectedProviderId, setSelectedProviderId] = React.useState<string>(() => storedSelection?.providerId ?? '');
-  const [selectedModelId, setSelectedModelId] = React.useState<string>(() => storedSelection?.modelId ?? '');
-  /** The full model list has loaded (bootstrap answered or failed): only then may a missing model be replaced. */
+  const [selectedModelId, setSelectedModelId] = React.useState<string>(() => readStoredSelection(replicaKey.current)?.modelId ?? '');
   const [catalogReady, setCatalogReady] = React.useState(false);
-  /** A model the user picked whose save to the chat has not answered yet: nothing automatic replaces it. */
-  const pendingPickRef = React.useRef<{ chatId: string; providerId: string; modelId: string } | null>(null);
-  const [webSearch, setWebSearch] = React.useState(false);
+  const pendingPickRef = React.useRef<{chatId: string; modelId: string} | null>(null);
   const cacheModels = React.useCallback(
-    (items: Model[]) =>
+    (items: ModelListItem[]) =>
       setModels((prev) => [
-        ...prev.filter((p) => !items.some((m) => m.providerId === p.providerId && m.id === p.id)),
+        ...prev.filter((p) => !items.some((m) => m.id === p.id)),
         ...items,
       ]),
     [],
@@ -156,9 +147,10 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
   const setActiveSheet = (sheet: ActiveSheet) => {
     activeSheetRef.current = sheet;
     setActiveSheetState(sheet);
-    onNavigate?.(pathForSheet(sheet, activeChatIdRef.current, providerIdRef.current));
+    onNavigate?.(pathForSheet(sheet, activeChatId));
   };
   const startNewConversation = () => {
+    setErrorBanner(null);
     pendingChatSwitchRef.current = null;
     navigatingChatRef.current = null;
     activeChatIdRef.current = null;
@@ -171,10 +163,9 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     // Button, shortcut or phone drawer: the caret lands in the composer (inside the gesture where possible).
     requestComposerFocus();
   };
-  const restoreRoute = (chatId: string | null, sheet: ActiveSheet, providerId?: string | null) => {
-    activeSheetRef.current = sheet;
+  const restoreRoute = (chatId: string | null, sheet: ActiveSheet) => {
+    setErrorBanner(null);
     setActiveSheetState(sheet);
-    if (providerId !== undefined) setEditingProviderId(providerId);
     if (sheet) return;
     activeChatIdRef.current = chatId;
     setActiveChatId(chatId);
@@ -231,11 +222,6 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     setThemeMode,
     activeSheet,
     setActiveSheetState,
-    activeSheetRef,
-    editingProviderId,
-    setEditingProviderIdState,
-    providerIdRef,
-    setEditingProviderId,
     desktopSidebarOpen,
     setDesktopSidebarOpen,
     plusTrayOpen,
@@ -246,17 +232,14 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     setChats,
     activeChatId,
     setActiveChatId,
+    activeSheetRef,
     activeChatIdRef,
     messagesByChat,
     setMessagesByChat,
-    providers,
-    setProviders,
+    modelKey,
+    setModelKey,
     models,
     setModels,
-    connectors,
-    setConnectors,
-    connectorTools,
-    setConnectorTools,
     skills,
     setSkills,
     registries,
@@ -271,15 +254,11 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     setAttachmentsById,
     syncCursor,
     setSyncCursor,
-    selectedProviderId,
-    setSelectedProviderId,
     selectedModelId,
     setSelectedModelId,
     catalogReady,
     setCatalogReady,
     pendingPickRef,
-    webSearch,
-    setWebSearch,
     cacheModels,
     selectedEffort,
     setSelectedEffort,
@@ -302,6 +281,8 @@ export function usePraxisState(onNavigate?: (path: string) => void) {
     localTurnIdsRef,
     eventCursor,
     setEventCursor,
+    user,
+    setUser,
   };
 }
 export type PraxisState = ReturnType<typeof usePraxisState>;

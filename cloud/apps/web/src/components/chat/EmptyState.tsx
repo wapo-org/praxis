@@ -27,7 +27,6 @@ const SUGGESTIONS: Array<{ label: string; prompt: string; script: Script }> = [
   },
 ];
 
-/** Centered greeting and suggestion chips for a new conversation. */
 export function EmptyState({ onPick }: { onPick: (prompt: string, script: Script) => void }) {
   const pressProps = usePress();
   return (

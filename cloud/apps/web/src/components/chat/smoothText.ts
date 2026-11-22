@@ -18,10 +18,7 @@ export function revealBoundaries(text: string): number[] {
   return ends;
 }
 
-/** Retain the burst rate until caught up: a backlog drains over about 2.5 s live, 2 s after the end.
- * Fine streams use 60 chars/s. Completion runs at >=300 chars/s, without snapping.
- * requestAnimationFrame follows the actual rendered text, so ResizeObserver sees only paced growth.
- */
+/** Retain the burst rate until caught up: a backlog drains over about 2.5 s live, 2 s after the end. */
 export function useSmoothText(text: string, streaming: boolean, identity?: string): string {
   const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const [state, setState] = React.useState(() => ({ identity, text: streaming && !reduced ? '' : text }));
@@ -40,9 +37,6 @@ export function useSmoothText(text: string, streaming: boolean, identity?: strin
       setState({ identity, text: c.text });
     }
     if (reduced) { c.text = text; setState({ identity, text }); return; }
-    // Real gateways (OpenRouter models measured 2026-11-14) often hold the whole answer and release it in one burst
-    // as the run ends: 486 chars in one read, or 1,647 chars in 28 events within 30 ms. Spread a backlog over about
-    // 2.5 s while live and 2 s once finished, never under 300 chars/s after the end, so a burst reads as a stream.
     c.rate = Math.max(streaming ? 60 : 300, c.rate, (text.length - c.text.length) / (streaming ? 2.5 : 2));
     if (frameRef.current) return;
     let previous = performance.now();

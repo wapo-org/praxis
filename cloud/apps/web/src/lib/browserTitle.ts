@@ -1,5 +1,3 @@
-/** Chrome Prompt API: https://developer.chrome.com/docs/ai/prompt-api
- * Only an already available model may be used: never start a download automatically. */
 export async function browserTitle(text:string):Promise<string|undefined> {
  const api=(globalThis as unknown as {LanguageModel?:{availability():Promise<string>;create(options?:{signal:AbortSignal}):Promise<{prompt(s:string,options?:{signal:AbortSignal}):Promise<string>;destroy():void}>}}).LanguageModel;
  if(!api)return;

@@ -1,5 +1,3 @@
-/* A modal on the native <dialog> (top layer, focus trap, Escape, inert page). The owner asked for one in
-   Settings → Secrets & variables (L-ref/10, 15); DESIGN.md "No modals" lists it as the exception. */
 .dialog {
   max-width: none;
   max-height: none;

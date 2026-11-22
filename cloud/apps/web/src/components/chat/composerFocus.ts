@@ -1,8 +1,3 @@
-/**
- * "New chat" lands the caret in the composer, from the button, the shortcut or the phone drawer.
- * Focus is taken synchronously when the composer is mounted, which keeps it inside the user's gesture
- * (iOS only raises the keyboard then); otherwise the next composer to mount takes it.
- */
 let input: HTMLTextAreaElement | null = null;
 let pending = false;
 

@@ -2,13 +2,6 @@ import React from 'react';
 import type { GrammarState } from 'shiki/core';
 import { loadHighlighter, peekHighlighter, resolveLanguage, type Highlighter, type HighlightedLine, type Language } from './highlighter';
 
-/**
- * Highlighted lines for a code block (port of shadcn's `useHighlightedCode`). While the code streams, only the lines
- * that completed since the last render are tokenized, continuing from the grammar state of the line before; the line
- * that is still being written is tokenized on every render. Finished lines keep the same React nodes, so a frame that
- * adds a few characters re-renders one line, not the block.
- */
-
 /** How each line is coloured: one grammar for the block, or one per line (a terminal's commands and output). */
 export interface HighlightPlan {
   /** Identity of the plan: a different key starts over. */

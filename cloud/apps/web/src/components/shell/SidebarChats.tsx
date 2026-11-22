@@ -93,10 +93,10 @@ export function SidebarChats({
           {...pressProps}
         >
           <span className={styles.avatar} aria-hidden="true">
-            {(account?.userId ?? 'P').slice(0, 1).toUpperCase()}
+            {((store.user && (!account || store.user.id === account.userId) ? store.user.name || store.user.email : undefined) || account?.displayName || account?.email || account?.userId || 'Praxis').slice(0, 1).toUpperCase()}
           </span>
           <span className={styles.accountCopy}>
-            <span className={styles.accountName}>{account?.userId ?? 'Praxis'}</span>
+            <span className={styles.accountName}>{(store.user && (!account || store.user.id === account.userId) ? store.user.name || store.user.email : undefined) || account?.displayName || account?.email || account?.userId || 'Praxis'}</span>
             <span className={styles.accountDetail}>Settings</span>
           </span>
           <Settings size={16} />
@@ -116,8 +116,6 @@ function ChatRow({
   onNavigate?: () => void;
 }) {
   const store = usePraxisStore();
-  // The Settings rows' press (scale on the SNAP spring, and the row's fill), for pointer and keyboard alike.
-  // Driven by the select button only, so pressing the row's actions button does not press the row.
   const canPress = Object.keys(usePress()).length > 0;
   const [pressed, setPressed] = React.useState(false);
   const release = () => setPressed(false);

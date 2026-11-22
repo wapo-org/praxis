@@ -3,12 +3,6 @@ import { WrapText } from 'lucide-react';
 import { Check, ChevronDown, Copy } from '../../../lib/icons';
 import styles from './CodeBlock.module.css';
 
-/**
- * Code block: a port of shadcn's base-nova Code Block (same parts, props and data-slot hooks) on CSS Modules and the
- * app's tokens. Line numbers and diff markers are CSS counters and pseudo-elements, so they are never copied; an empty
- * line holds a newline, so a copied selection keeps its blank lines.
- */
-
 const cx = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ');
 
 export type CodeBlockVariant = 'default' | 'destructive';
@@ -74,10 +68,6 @@ export function CodeBlockWrapButton({ pressed, className, ...props }: Omit<React
 const sameEdges = (a: Edges, b: Edges) => a.overflow === b.overflow && a.start === b.start && a.end === b.end;
 type Edges = { overflow: boolean; start: boolean; end: boolean };
 
-/**
- * Watches the scroller: which horizontal edges have more content (the fades), and whether the code overflows at all.
- * Fades are written straight to the element; only a change of overflow reaches React.
- */
 function useScrollEdges(ref: React.RefObject<HTMLPreElement | null>, onOverflowChange?: (overflow: boolean) => void) {
   const report = React.useRef(onOverflowChange);
   report.current = onOverflowChange;

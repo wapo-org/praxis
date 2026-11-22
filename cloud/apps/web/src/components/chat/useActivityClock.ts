@@ -78,11 +78,6 @@ export function maxIsoTimestamp(
   return firstMs >= secondMs ? first : second;
 }
 
-/**
- * Resolves the turn start boundary so startup time before run creation (or
- * steered/instant turns where `startedAt` equals `finishedAt`) falls back to
- * the preceding user prompt timestamp when valid.
- */
 export function resolveTurnStartIso(
   startedAt?: string,
   finishedAt?: string,

@@ -1,17 +1,16 @@
-import { expect, test } from '@playwright/test';
+import { apiRequest, openSignedInPage, signedInTest as test } from './sign-in';
+import { expect } from '@playwright/test';
 
 test('search jump centers deep matches smoothly after entrance, expands collapsed work groups, skips scroll on title-only, and snaps on mount', async ({
   page,
 }) => {
-  await page.request.post('/v1/auth/dev', {
-    data: { type: 'auth.dev', userId: `search-jump-${test.info().project.name}-${Date.now()}` },
-  });
+  await openSignedInPage(page);
   await page.goto('/');
   await page.getByTestId('composer-input').waitFor();
 
   // 1. Seed a long chat (24 messages) where the match is near the top, far above default bottom scroll.
   const longChat = await (
-    await page.request.post('/v1/chats', { data: { type: 'chat.input', title: 'Long Archive' } })
+    await apiRequest(page, 'post', '/v1/chats', { data: { type: 'chat.input', title: 'Long Archive' } })
   ).json();
   const filler = Array.from({ length: 24 }, (_, i) => ({
     type: 'message',
@@ -34,7 +33,7 @@ test('search jump centers deep matches smoothly after entrance, expands collapse
 
   // 2. Seed an activity chat where the match is inside a collapsed work group (reasoning + text).
   const activityChat = await (
-    await page.request.post('/v1/chats', { data: { type: 'chat.input', title: 'Tool Worklog' } })
+    await apiRequest(page, 'post', '/v1/chats', { data: { type: 'chat.input', title: 'Tool Worklog' } })
   ).json();
   const activityMessages = [
     {
@@ -64,7 +63,7 @@ test('search jump centers deep matches smoothly after entrance, expands collapse
 
   // 3. Seed a title-only long chat (18 messages, none containing the title's search words).
   const titleOnlyChat = await (
-    await page.request.post('/v1/chats', { data: { type: 'chat.input', title: 'Zeppelin Title Only Hit' } })
+    await apiRequest(page, 'post', '/v1/chats', { data: { type: 'chat.input', title: 'Zeppelin Title Only Hit' } })
   ).json();
   const titleOnlyMessages = Array.from({ length: 18 }, (_, i) => ({
     type: 'message',

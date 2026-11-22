@@ -1,4 +1,3 @@
-// One icon family (lucide-react), bound through <Icon> so size and stroke come from tokens.
 import {
   ArrowDown as LArrowDown,
   ArrowLeft as LArrowLeft,

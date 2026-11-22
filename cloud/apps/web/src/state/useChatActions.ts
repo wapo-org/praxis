@@ -1,4 +1,4 @@
-import type { Chat } from '@praxis/protocol';
+import { composioChatScopePatch, type Chat } from '@praxis/protocol';
 import React from 'react';
 import { fromWireMode, toWireMode } from '../lib/modes';
 import { apiClient } from '../lib/api';
@@ -18,8 +18,6 @@ export function useChatActions(
     activeChatId,
     setActiveChatId,
     setMessagesByChat,
-    selectedProviderId,
-    setSelectedProviderId,
     selectedModelId,
     setSelectedModelId,
     selectedEffort,
@@ -28,12 +26,16 @@ export function useChatActions(
     setSelectedMode,
   } = state;
   const selectSeqRef = React.useRef(0);
+  const scopeWritesRef = React.useRef(new Map<string, Promise<void>>());
+  const chatsRef = React.useRef(chats);
+  chatsRef.current = chats;
   const selectChat = React.useCallback(
     async (chatId: string) => {
       const seq = ++selectSeqRef.current;
       const isSwitch =
         state.activeChatIdRef.current !== chatId || state.activeSheetRef.current !== null;
       if (isSwitch) {
+        setErrorBanner(null);
         state.pendingChatSwitchRef.current = chatId;
       }
       if (typeof performance !== 'undefined') {
@@ -44,10 +46,7 @@ export function useChatActions(
       setActiveChatId(chatId);
       onNavigate?.(`/c/${encodeURIComponent(chatId)}`);
       const chat = chats.find((c) => c.id === chatId);
-      if (chat?.providerId && chat?.modelId) {
-        setSelectedProviderId(chat.providerId);
-        setSelectedModelId(chat.modelId);
-      }
+      if (chat?.modelId) setSelectedModelId(chat.modelId);
       if (chat?.effort) setSelectedEffort(chat.effort);
       if (chat?.mode) setSelectedMode(fromWireMode(chat.mode));
 
@@ -91,7 +90,7 @@ export function useChatActions(
         id,
         title,
         mode: toWireMode(selectedMode),
-        providerId: selectedProviderId,
+
         modelId: selectedModelId,
         effort: selectedEffort,
       });
@@ -109,7 +108,7 @@ export function useChatActions(
       }));
       return created;
     },
-    [selectedMode, selectedProviderId, selectedModelId, selectedEffort, persistState],
+    [selectedMode, selectedModelId, selectedEffort, persistState],
   );
 
   const renameChat = React.useCallback(
@@ -161,19 +160,29 @@ export function useChatActions(
     [activeChatId, persistState],
   );
 
-  const toggleChatConnector = React.useCallback(
-    async (chatId: string, connectorId: string, enabled: boolean) => {
-      const chat = chats.find((c) => c.id === chatId);
-      if (!chat) return;
-      const disabledSet = new Set(chat.disabledConnectorIds ?? []);
-      if (enabled) disabledSet.delete(connectorId);
-      else disabledSet.add(connectorId);
-      const updated = await apiClient.patchChat(chatId, {
-        disabledConnectorIds: Array.from(disabledSet),
+  const setChatApp = React.useCallback(
+    async (chatId: string, toolkit: string, enabled: boolean) => {
+      const previous = scopeWritesRef.current.get(chatId) ?? Promise.resolve();
+      const write = previous.catch(() => undefined).then(async () => {
+        const chat = chatsRef.current.find((c) => c.id === chatId);
+        if (!chat) return;
+        const updated = await apiClient.patchChat(chatId, composioChatScopePatch(chat, toolkit, enabled));
+        setChats((prev) => prev.map((c) => (c.id === chatId ? updated : c)));
       });
+      scopeWritesRef.current.set(chatId, write);
+      try { await write; } finally {
+        if (scopeWritesRef.current.get(chatId) === write) scopeWritesRef.current.delete(chatId);
+      }
+    },
+    [setChats],
+  );
+
+  const setChatWebTools = React.useCallback(
+    async (chatId: string, enabled: boolean) => {
+      const updated = await apiClient.patchChat(chatId, { webToolsEnabled: enabled });
       setChats((prev) => prev.map((c) => (c.id === chatId ? updated : c)));
     },
-    [chats],
+    [],
   );
 
   return {
@@ -182,6 +191,7 @@ export function useChatActions(
     renameChat,
     togglePinChat,
     deleteChats,
-    toggleChatConnector,
+    setChatApp,
+    setChatWebTools,
   };
 }

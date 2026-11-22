@@ -2,7 +2,7 @@ import React from 'react';
 import { apiClient, PraxisApiError, type SavedValue, type SavedValueQuery } from '../../lib/api';
 import { Plus, Search } from '../../lib/icons';
 import { Button } from '../ui/Button';
-import { Input, Select, Textarea } from '../ui/fields';
+import { Input, Select } from '../ui/fields';
 import { Modal, modalStyles } from '../ui/Modal';
 import { RowGroup, rowClass } from '../ui/RowGroup';
 import { ChoiceChip, Field, TaskError, useScreenTask } from './ScreenUI';
@@ -57,8 +57,6 @@ function useSavedPages(filter: SavedFilter, query: string) {
   const [state, setState] = React.useState<ListState>(EMPTY);
   const generation = React.useRef(0);
   const inFlight = React.useRef<AbortController | null>(null);
-  // The cursor and the end live in refs, updated when a page arrives: a second request must never reuse the
-  // cursor of a page that has landed but not yet rendered (that fetched the same page twice).
   const cursor = React.useRef<string | null>(null);
   const done = React.useRef(false);
 
@@ -86,7 +84,7 @@ function useSavedPages(filter: SavedFilter, query: string) {
           return { items: [...(reset ? [] : s.items), ...fresh], cursor: page.nextCursor, done: !page.nextCursor, loading: false, error: '' };
         });
       } catch (error) {
-        if (controller.signal.aborted || mine !== generation.current) return;
+        if (controller.signal.aborted || mine !== generation.current || (error instanceof Error && error.name === 'AbortError')) return;
         setState((s) => ({ ...s, loading: false, error: unavailable(error) }));
       } finally {
         if (inFlight.current === controller) inFlight.current = null;
@@ -381,6 +379,3 @@ function EditValue({ item, onClose, onChanged }: { item: SavedValue; onClose: ()
     </Modal>
   );
 }
-
-/** Compatibility for saved-secret previews and existing imports. */
-export const SavedSecrets = SavedValues;

@@ -1,10 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { apiRequest, openSignedInPage, signedInTest as test } from './sign-in';
+import { expect } from '@playwright/test';
 
 test.use({ serviceWorkers: 'block' });
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /local dev user/i }).click();
+  await openSignedInPage(page);
   await page.getByTestId('chat-screen').waitFor();
 });
 test('narrow History never focuses an input; explicit Search keeps focus after History exits', async ({ page }) => {
@@ -96,8 +96,8 @@ test('the last option keeps the panel inset below it, at rest and scrolled to th
 });
 test('search is semantic: chats are found by meaning through the local API', async ({ page }) => {
   for (const [title, text] of [['Trip packing list', 'Packing list for 3 days in Lisbon'], ['Regex help', 'Match a date like 2026-11-07']] as const) {
-    const chat = await (await page.request.post('/v1/chats', { data: { type: 'chat.input', title } })).json();
-    await page.request.post('/v1/runs', { data: { type: 'run.start', chatId: chat.id, text } });
+    const chat = await (await apiRequest(page, 'post', '/v1/chats', { data: { type: 'chat.input', title } })).json();
+    await apiRequest(page, 'post', '/v1/runs', { data: { type: 'run.start', chatId: chat.id, text } });
   }
   await page.keyboard.press('ControlOrMeta+k');
   const palette = page.getByTestId('search-palette');
@@ -134,28 +134,29 @@ test('choosing a chat closes the panel at once, even while its messages are stil
     items: [{ chat: { id: 'welcome', title: 'Welcome to Praxis Cloud' }, snippet: 'Welcome' }] } }));
   let release!: () => void;
   const slow = new Promise<void>((r) => { release = r; });
-  await page.route('**/v1/chats/welcome/messages**', async (route) => { await slow; await route.continue(); });
+  let entered!: () => void;
+  const requested = new Promise<void>(resolve => {entered = resolve;});
+  let responded = false;
+  await page.route('**/v1/chats/welcome/messages**', async route => {
+    entered();
+    await slow;
+    await route.continue();
+    responded = true;
+  });
   await page.keyboard.press('ControlOrMeta+k');
   const palette = page.getByTestId('search-palette');
   await palette.getByRole('combobox').fill('Welcome');
   const option = palette.getByRole('option', { name: /Welcome to Praxis Cloud/ });
   await option.waitFor();
-  const closedIn = await option.evaluate(async (el: HTMLElement) => {
-    const start = performance.now();
-    el.click();
-    return new Promise<number>((resolve) => {
-      const check = () => {
-        const p = document.querySelector('[data-testid="search-palette"]');
-        if (!p || p.getAttribute('data-state') === 'closing') resolve(performance.now() - start);
-        else requestAnimationFrame(check);
-      };
-      check();
-    });
-  });
-  expect(closedIn).toBeLessThan(50); // closing starts on the click, not after the fetch
-  await expect(palette).toHaveCount(0, { timeout: 1000 }); // and is gone with the usual close
+  try {
+    await option.click();
+    await requested;
+    await expect(palette).toHaveCount(0);
+    expect(responded).toBe(false);
+  } finally {
+    release();
+  }
   await expect(page).toHaveURL(/\/c\/welcome$/);
-  release();
 });
 test('the panel has the dropdowns\' material and subtle rim, light and dark (WP-I1)', async ({ page }) => {
   for (const theme of ['light', 'dark']) {

@@ -23,11 +23,7 @@ export function Highlight({ text, query }: { text: string; query: string }) {
   const pattern = new RegExp(`(?<![\\p{L}\\p{N}])(${words.join('|')})`, 'giu');
   return <>{text.split(pattern).map((part, i) => i % 2 ? <strong key={i}>{part}</strong> : part)}</>;
 }
-/**
- * Owns whether search is open, so opening and closing it re-renders only the palette. While this state lived
- * in App, every close re-rendered the sidebar and the whole chat inside the key or click handler (~37 ms in
- * Chromium on a 120 Hz Mac, a dropped frame at the start of the close; WP-J2).
- */
+/** Owns whether search is open, so opening and closing it re-renders only the palette. */
 export function SearchHost() {
   const { setPlusTrayOpen, setDesktopSidebarOpen } = usePraxisStore();
   const [open, setOpen] = React.useState(false);
@@ -47,8 +43,6 @@ export function SearchHost() {
       window.removeEventListener('praxis:search-toggle', toggle);
     };
   }, []);
-  // Work that would cost a frame (switching chats renders and commits the whole chat in one task) waits
-  // until the close has finished and the palette's last frame is painted.
   const after = React.useRef<(() => void) | null>(null);
   const close = React.useCallback((then?: () => void) => { after.current = then ?? null; setOpen(false); }, []);
   const openRef = React.useRef(open);
@@ -111,13 +105,12 @@ function Palette({ onClose }: { onClose: (then?: () => void) => void }) {
     const escape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
       event.preventDefault();
-      level ? back() : onClose();
+      if (level) back();
+      else onClose();
     };
     document.addEventListener('keydown', escape);
     return () => document.removeEventListener('keydown', escape);
   }, [level, onClose, present]);
-  // An action closes the palette at once, like a chat row; it runs once the close has finished, and a failure
-  // goes to the app's error banner instead of holding the palette open (New chat creates a chat first).
   const run = (fn: () => unknown) => onClose(() => {
     void Promise.resolve().then(fn).catch(() => store.reportError('Couldn’t apply that action. Try again.'));
   });
@@ -130,9 +123,6 @@ function Palette({ onClose }: { onClose: (then?: () => void) => void }) {
     ...commands.map(key => ({ id: key, label: ACTIONS[key].label, snippet: '', Icon: ACTIONS[key].Icon, selected: false,
       apply: () => { if ('options' in ACTIONS[key]) { setLevel(key); setQuery(''); setHits([]); } else void run(() => applyOption(key, store, '')); } })),
     ...(query.trim() ? hits : []).map(hit => ({ id: `chat-${hit.chat.id}`, label: hit.chat.title || 'New chat', snippet: hit.snippet,
-      // Close now, like any dismiss; the switch runs the moment the close has finished (selectChat reports its
-      // own errors). Awaiting it held the palette open for the whole message fetch; running it during the
-      // close dropped frames in Chromium.
       Icon: MessageCircle, selected: false, apply: () => onClose(() => { scheduleSearchJump({ chatId: hit.chat.id, title: hit.chat.title || '', query, snippet: hit.snippet }); store.setActiveSheet(null); void store.selectChat(hit.chat.id); }) })),
   ];
   if (level === 'model' && modelSearch.cursor) rows.push({ id: 'load-more', label: 'Load more models', snippet: '',
@@ -161,7 +151,7 @@ function Palette({ onClose }: { onClose: (then?: () => void) => void }) {
         placeholder={level ? ACTIONS[level].label : 'Search chats and actions'} value={query}
         onChange={e => setQuery(e.target.value)} onKeyDown={e => {
           if (e.nativeEvent.isComposing) return;
-          if (e.key === 'Escape' || (e.key === 'Backspace' && !query && level)) { e.preventDefault(); e.stopPropagation(); level ? back() : onClose(); }
+          if (e.key === 'Escape' || (e.key === 'Backspace' && !query && level)) { e.preventDefault(); e.stopPropagation(); if (level) back(); else onClose(); }
           else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); setActive(a => Math.max(0, Math.min(visibleRows.length - 1, a + (e.key === 'ArrowDown' ? 1 : -1)))); }
           else if (e.key === 'Enter') { e.preventDefault(); void visibleRows[activeIndex]?.apply(); }
         }} />
@@ -180,7 +170,7 @@ function Palette({ onClose }: { onClose: (then?: () => void) => void }) {
       </div>
     </motion.div>
   </>;
-  return <div ref={surface} className={styles.position} data-testid="search-palette" data-state={present ? 'open' : 'closing'}
+  return <><div className={styles.backdrop} aria-hidden="true"/><div ref={surface} className={styles.position} data-testid="search-palette" data-state={present ? 'open' : 'closing'}
     inert={!present} style={present ? undefined : { pointerEvents: 'none' }}>
     <GlassSurface material="thick" className={styles.surface}
       {...arrival}>
@@ -191,5 +181,5 @@ function Palette({ onClose }: { onClose: (then?: () => void) => void }) {
         <Search size={20} /><span>{query || (level ? ACTIONS[level].label : 'Search chats and actions')}</span>
       </motion.div> : null}
     </GlassSurface>
-  </div>;
+  </div></>;
 }

@@ -5,6 +5,11 @@ const apiTarget = process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8797';
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    'import.meta.env.PRAXIS_MOCK_OAUTH': JSON.stringify(
+      process.env.VERCEL_ENV === 'preview' ? (process.env.PRAXIS_PREVIEW_MOCK_OAUTH ?? '').split(',').map(name => name.trim()) : [],
+    ),
+  },
   server: {
     port: Number(process.env.PORT ?? 5173),
     strictPort: false,

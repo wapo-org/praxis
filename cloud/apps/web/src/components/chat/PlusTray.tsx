@@ -1,34 +1,49 @@
-import { GlassMorph, ScrollBlur, slideIn, slideUnder, usePreset } from '@praxis/glass';
+import { GlassMorph, PANEL, ScrollBlur, slideIn, slideUnder, usePreset } from '@praxis/glass';
 import { AnimatePresence, motion } from 'framer-motion';
 import React from 'react';
-import { ChevronRight, Globe, Link, Settings } from '../../lib/icons';
+import { ChevronRight, Globe, LayoutGrid, Settings } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store';
 import { SegmentedControl, Switch } from '../ui/controls';
 import { RowGroup, rowClass } from '../ui/RowGroup';
-import { ConnectorList } from './ConnectorList';
+import { useAppConnections } from '../../hooks/useAppConnections';
+import { AppList } from './AppList';
 import { ModelList } from './ModelList';
 import { ACTIONS, actionOptions, applyOption, ATTACHMENTS } from '../../actions/registry';
 import styles from './PlusTray.module.css';
 
-export { getUnpinnedModels } from './ModelList';
 export interface PlusTrayProps {
   onPickFiles: (accept?: string, capture?: boolean) => void;
 }
 
 export function PlusTray({ onPickFiles }: PlusTrayProps) {
   const open = usePraxisStore().plusTrayOpen;
-  return <AnimatePresence>{open ? <TrayPopover key="tray" onPickFiles={onPickFiles} /> : null}</AnimatePresence>;
+  return (
+    <AnimatePresence>
+      {open ? (
+        <motion.div
+          key="tray"
+          className={styles.popoverMotion}
+          initial={{ clipPath: 'circle(0% at 24px 100%)' }}
+          animate={{ clipPath: 'circle(150% at 24px 100%)' }}
+          exit={{ clipPath: 'circle(0% at 24px 100%)' }}
+          transition={PANEL}
+        >
+          <TrayPopover onPickFiles={onPickFiles} />
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
 }
 
 function TrayPopover({ onPickFiles }: PlusTrayProps) {
   const store = usePraxisStore();
   const push = usePreset(slideIn);
   const under = usePreset(slideUnder);
-  const [view, setView] = React.useState<'main' | 'models' | 'connectors'>('main');
+  const [view, setView] = React.useState<'main' | 'models' | 'apps'>('main');
   const [maxHeight, setMaxHeight] = React.useState<number | undefined>(undefined);
   const surface = React.useRef<HTMLDivElement>(null);
   const modelRow = React.useRef<HTMLButtonElement>(null);
-  const connectorsRow = React.useRef<HTMLButtonElement>(null);
+  const appsRow = React.useRef<HTMLButtonElement>(null);
   const viewRef = React.useRef(view);
   viewRef.current = view;
   const close = React.useRef(store.setPlusTrayOpen);
@@ -55,9 +70,9 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
     };
   }, []);
 
-  const backToMain = React.useCallback((target: 'models' | 'connectors') => {
+  const backToMain = React.useCallback((target: 'models' | 'apps') => {
     setView('main');
-    (target === 'connectors' ? connectorsRow.current : modelRow.current)?.focus({ preventScroll: true });
+    (target === 'apps' ? appsRow.current : modelRow.current)?.focus({ preventScroll: true });
   }, []);
 
   React.useEffect(() => {
@@ -67,8 +82,8 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
       event.preventDefault();
       if (viewRef.current === 'models') {
         backToMain('models');
-      } else if (viewRef.current === 'connectors') {
-        backToMain('connectors');
+      } else if (viewRef.current === 'apps') {
+        backToMain('apps');
       } else {
         plusButton()?.focus({ preventScroll: true });
         close.current(false);
@@ -89,16 +104,20 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
   }, [backToMain]);
 
   const model = store.models.find(
-    (m) => m.providerId === store.selectedProviderId && m.id === store.selectedModelId,
+    (m) => m.id === store.selectedModelId,
   );
   const modes = actionOptions('mode', store);
   const efforts = actionOptions('effort', store);
-  const searchSupported = !!model?.capabilities.serverWebSearch;
-  const enabledConnectors = store.connectors.filter((c) => c.enabled);
+  const webChat = store.activeChat;
+  const webToolsOn = webChat?.webToolsEnabled !== false;
+  const connections = useAppConnections();
+  const connectedApps = connections.state === 'ready'
+    ? [...connections.byToolkit.values()].filter((status) => status === 'connected').length
+    : 0;
   const inSubView = view !== 'main';
   const coarsePointer = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 
-  const openSheet = (sheet: 'connectors' | 'providers') => {
+  const openSheet = (sheet: 'apps' | 'models') => {
     store.setPlusTrayOpen(false);
     store.setActiveSheet(sheet);
   };
@@ -147,7 +166,7 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                 onClick={() => setView('models')}
               >
                 <span className={styles.modelCopy}>
-                  <span className={styles.modelName}>{model?.displayName || 'Select model'}</span>
+                  <span className={styles.modelName}>{model?.name || 'Select model'}</span>
                 </span>
                 <span className={styles.chevron}>
                   <ChevronRight size={18} />
@@ -179,38 +198,38 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                 ))}
               </div>
               <RowGroup>
-                <label className={`${rowClass(searchSupported)} ${styles.row}`}>
+                <label className={`${rowClass(!!webChat)} ${styles.row}`}>
                   <span className={styles.rowIcon}>
                     <Globe size={18} />
                   </span>
                   <span className={styles.rowCopy}>
                     <span className={styles.rowTitle}>{ACTIONS.web.label}</span>
-                    {!searchSupported ? (
-                      <span className={styles.rowDetail}>Not supported by this model</span>
-                    ) : null}
+                    <span className={styles.rowDetail}>
+                      {webChat ? 'Search and read the web in this chat' : 'Available once the chat starts'}
+                    </span>
                   </span>
                   <Switch
-                    label="Web search"
-                    checked={store.webSearch && searchSupported}
-                    disabled={!searchSupported}
-                    onChange={store.setWebSearch}
+                    label="Web tools"
+                    checked={webToolsOn}
+                    disabled={!webChat}
+                    onChange={(enabled) => { if (webChat) void store.setChatWebTools(webChat.id, enabled); }}
                   />
                 </label>
                 <button
-                  ref={connectorsRow}
+                  ref={appsRow}
                   type="button"
                   className={`${rowClass(true)} ${styles.row}`}
-                  data-testid="tray-connectors-trigger"
+                  data-testid="tray-apps-trigger"
                   aria-haspopup="dialog"
-                  aria-expanded={view === 'connectors'}
-                  onClick={() => setView('connectors')}
+                  aria-expanded={view === 'apps'}
+                  onClick={() => setView('apps')}
                 >
                   <span className={styles.rowIcon}>
-                    <Link size={18} />
+                    <LayoutGrid size={18} />
                   </span>
-                  <span className={styles.rowCopy}>{ACTIONS.connectors.label}</span>
+                  <span className={styles.rowCopy}>{ACTIONS.apps.label}</span>
                   <span className={styles.rowValue}>
-                    {enabledConnectors.length > 0 ? `· ${enabledConnectors.length}` : 'None'}
+                    {connectedApps > 0 ? `· ${connectedApps}` : 'None'}
                   </span>
                   <span className={styles.chevron}>
                     <ChevronRight size={16} />
@@ -219,7 +238,7 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
                 <button
                   type="button"
                   className={`${rowClass(true)} ${styles.row}`}
-                  onClick={() => openSheet('providers')}
+                  onClick={() => openSheet('models')}
                 >
                   <span className={styles.rowIcon}>
                     <Settings size={18} />
@@ -245,18 +264,19 @@ function TrayPopover({ onPickFiles }: PlusTrayProps) {
             >
               <ModelList onBack={() => backToMain('models')} autoFocus={!coarsePointer} />
             </motion.div>
-          ) : view === 'connectors' ? (
+          ) : view === 'apps' ? (
             <motion.div
-              key="connectors"
+              key="apps"
               className={styles.subView}
               initial={push.initial}
               animate={push.animate}
               exit={push.exit}
               transition={push.transition}
             >
-              <ConnectorList
-                onBack={() => backToMain('connectors')}
-                onOpenSettings={() => openSheet('connectors')}
+              <AppList
+                connections={connections}
+                onBack={() => backToMain('apps')}
+                onOpenDirectory={() => openSheet('apps')}
                 autoFocus={!coarsePointer}
               />
             </motion.div>

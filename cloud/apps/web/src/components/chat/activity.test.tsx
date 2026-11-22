@@ -161,7 +161,8 @@ describe('agent activity header (t3code TurnFoldTimelineRow + iOS parity)', () =
         isRunning={false}
         toolSteps={[]}
         pendingApprovals={[
-          { id: 'ap1', runId: 'r1', title: 'Delete file?', toolName: 'delete' } as never,
+          {type: 'approval', id: 'ap1', callId: 'call-1', title: 'Delete file?', toolName: 'delete',
+            source: {type: 'builtin'}, arguments: 'Path: test.txt', reason: 'Changes the workspace'},
         ]}
       />,
     );

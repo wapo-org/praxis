@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { ConvexRoot } from './auth/ConvexRoot';
 import { AccountGate } from './components/screens/AccountGate';
 import { BrowserRouter, useNavigate } from 'react-router-dom';
 const AuthenticatedApp = React.lazy(() => import('./AuthenticatedApp'));
@@ -13,6 +14,7 @@ if (typeof document !== 'undefined' && document.fonts) {
 }
 import './styles/theme.css';
 import { syncSidebarLook } from './lib/sidebarPalette';
+import { handOffToAppIfCallback } from './lib/openrouter-app-handoff';
 
 syncSidebarLook();
 
@@ -22,9 +24,6 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     });
   } else {
-    // Never run the shell worker in dev: an earlier dev session's worker served cached CSS/JS forever,
-    // mixing stale styles with fresh components (the owner's tall black composer and empty menu tops).
-    // Remove it and its caches, then reload once so this page is no longer served by it.
     const controlled = !!navigator.serviceWorker.controller;
     void navigator.serviceWorker
       .getRegistrations()
@@ -53,12 +52,14 @@ function RoutedApp() {
 }
 
 const rootEl = document.getElementById('root');
-if (rootEl) {
+if (rootEl && !handOffToAppIfCallback(window.location)) {
   ReactDOM.createRoot(rootEl).render(
     <React.StrictMode>
+      <ConvexRoot>
       <BrowserRouter>
         <RoutedApp />
       </BrowserRouter>
+      </ConvexRoot>
     </React.StrictMode>,
   );
 }

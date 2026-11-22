@@ -9,21 +9,12 @@ import { SidebarSettings } from './SidebarSettings';
 import { useIsNarrow } from './useIsNarrow';
 import styles from './Sidebar.module.css';
 
-/**
- * The floating sidebar: the owner's skeuomorphic slab (design v2, Chat Screen.dc.html), fading translucent
- * toward the bottom over a backdrop blur, with a conic border reflection; the glass's stretch and shadow but no lens. The floating navigation (docked at ≥1024 px; on narrow screens the
- * same panel floats over the page). One surface for the whole app: chats normally,
- * the settings sections while Settings is open, so opening Settings changes this
- * panel's content rather than adding a second rail. It sits over the full-bleed
- * content layer and is always the window height minus its margins.
- */
 export function Sidebar({ devTools = false }: { devTools?: boolean }) {
   const store = usePraxisStore();
   const narrow = useIsNarrow();
   const inSettings = isSettingsSheet(store.activeSheet);
   const atSettingsRoot = store.activeSheet === 'settings';
-  // Entering Settings reveals its navigation; on narrow screens only at the root,
-  // because a section link should land on its page.
+  // Entering Settings reveals its navigation; on narrow screens only at the root, because a section link should land on its page.
   React.useEffect(() => {
     if (inSettings && (!narrow || atSettingsRoot)) store.setDesktopSidebarOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,11 +62,6 @@ function SidebarBody({ onClose, onNavigate, devTools }: { onClose?: () => void; 
   );
 }
 
-/**
- * Narrow screens: the panel floats over the page, the same model as desktop. No
- * scrim, no modal trap; Escape or an outside press closes it and focus returns to
- * the button that opened it.
- */
 function SidebarPanel({ onClose, devTools }: { onClose: () => void; devTools: boolean }) {
   const asideRef = React.useRef<HTMLElement>(null);
   const close = React.useRef(onClose);

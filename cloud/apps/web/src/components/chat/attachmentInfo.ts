@@ -30,10 +30,6 @@ export function formatBytes(bytes: number): string {
 
 const isInlineText = (kind: AttachmentKind, mediaType: string) => kind === 'text' || kind === 'code' || kind === 'sheet' || mediaType.startsWith('text/');
 
-/**
- * What the attach-time chip says about size, mirroring how the API hands the file to the model
- * (apps/api attachments.ts): `block` files are never uploaded; a `warn` file uploads, but nothing can read it.
- */
 export function attachmentLimit(file: { name: string; mediaType: string; size: number }): { level: 'block' | 'warn'; message: string } | null {
   const { uploadBytes, inlineDocumentBytes, inlineTextBytes, codeReadBytes } = ATTACHMENT_LIMITS;
   if (file.size > uploadBytes) return { level: 'block', message: `Too large to attach. The limit is ${formatBytes(uploadBytes)}.` };
@@ -43,9 +39,4 @@ export function attachmentLimit(file: { name: string; mediaType: string; size: n
   if (isInlineText(kind, file.mediaType) && file.size <= inlineTextBytes) return null;
   if (file.size > codeReadBytes) return { level: 'warn', message: `Too large for Praxis to open. It reads files up to ${formatBytes(codeReadBytes)}.` };
   return null;
-}
-
-/** Messages stored before WP-J2 carried the model-facing note inside the user's text. Never show it. */
-export function visibleUserText(text: string): string {
-  return text.replace(/\n*\[Attached files?(?: hidden from code by the user)?: [^\n]*\]\s*$/gu, '').replace(/\n*\[Attached files?(?: hidden from code by the user)?: [^\n]*\]\s*$/gu, '');
 }

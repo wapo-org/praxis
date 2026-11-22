@@ -111,14 +111,10 @@ describe('the elicitation card (WP-I1)', () => {
     }
   });
 
-  it('URL mode: opens the link as the primary pill and Done accepts', async () => {
-    const resolve = mount({ id: 'u', message: 'Sign in', mode: 'url', url: 'https://github.com/login', schema: {} } as Elicitation);
-    const link = $<HTMLAnchorElement>('[data-testid="elicitation-open-link"]')!;
-    expect(link.href).toBe('https://github.com/login');
-    expect(link.textContent).toBe('Open github.com');
-    expect($('[data-testid="elicitation-submit"]')!.textContent).toBe('Done');
-    await click($('[data-testid="elicitation-submit"]'));
-    expect(resolve).toHaveBeenCalledWith('r', 'u', 'accept', {});
+  it('shows no card for a URL-mode elicitation: app sign-in is the App Directory connect card', () => {
+    mount({ id: 'u', message: 'Sign in', mode: 'url', url: 'https://github.com/login', schema: {} } as Elicitation);
+    expect($('[data-testid="elicitation-card-u"]')).toBeNull();
+    expect(host.querySelector('a')).toBeNull();
   });
 
   it('keeps the card and says so when sending fails', async () => {

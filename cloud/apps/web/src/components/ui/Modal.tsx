@@ -6,11 +6,6 @@ import styles from './Modal.module.css';
 
 export { styles as modalStyles };
 
-/**
- * A centred modal on the native <dialog>: the browser's top layer, focus trap, Escape and inert page. The glass
- * panel pops in with the consent popover's preset. Mount it while open; `onClose` runs on Escape, the close
- * button and a press on the backdrop.
- */
 export function Modal({
   title,
   onClose,

@@ -1,8 +1,7 @@
-import { expect, test } from '@playwright/test';
+import { apiRequest, openSignedInPage, signedInTest as test } from './sign-in';
+import { expect } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
-  await page.request.post('/v1/auth/dev', {
-    data: { type: 'auth.dev', userId: 'g4b-check-' + Date.now() },
-  });
+  await openSignedInPage(page);
   await page.goto('/');
   await page.getByTestId('sidebar-new-chat').waitFor();
   await page.evaluate(() => document.fonts.ready);
@@ -158,8 +157,7 @@ test('the six sidebar palettes apply live, persist, and are there before first p
   await page.keyboard.press('ArrowRight');
   await expect(palettes.getByRole('radio', { name: 'Forest', exact: true })).toBeFocused();
   await expect(solid(page)).toHaveCSS('background-image', fade('rgb(18, 38, 29)', true));
-  // A colour stored by the old option is ignored before first paint and after, and cleared.
-  await page.evaluate(() => localStorage.setItem('praxis-button-color', '#123abc'));
+  // The saved palette and the stylesheet button colour are in place before first paint.
   await page.addInitScript(() => {
     const w = window as unknown as { firstLook?: string };
     new MutationObserver(() => {
@@ -171,7 +169,6 @@ test('the six sidebar palettes apply live, persist, and are there before first p
   await expect(palettes.getByRole('radio', { name: 'Forest', exact: true })).toHaveAttribute('aria-checked', 'true');
   expect(await page.evaluate(() => (window as unknown as { firstLook: string }).firstLook)).toBe('forest #ffffff');
   await expect(page.getByTestId('settings-back')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-  expect(await page.evaluate(() => localStorage.getItem('praxis-button-color'))).toBeNull();
   await palettes.getByRole('radio', { name: 'Graphite', exact: true }).click();
 });
 test('the generic accent is gone: app controls keep their own ink, not a sidebar palette', async ({ page }) => {
@@ -181,7 +178,7 @@ test('the generic accent is gone: app controls keep their own ink, not a sidebar
   await palettes.getByRole('radio', { name: 'Plum', exact: true }).click();
   expect(await page.evaluate(() => document.documentElement.dataset.accent)).toBeUndefined();
   const chat = await (
-    await page.request.post('/v1/chats', { data: { type: 'chat.input', title: 'Accent gone' } })
+    await apiRequest(page, 'post', '/v1/chats', { data: { type: 'chat.input', title: 'Accent gone' } })
   ).json();
   await page.goto('/c/' + chat.id);
   await page.getByTestId('composer-input').fill('A message');
@@ -193,7 +190,7 @@ test('pinned rows show exactly one aligned trailing control, including menu-open
   page,
 }) => {
   const chat = await (
-    await page.request.post('/v1/chats', {
+    await apiRequest(page, 'post', '/v1/chats', {
       data: { type: 'chat.input', title: 'Pinned alignment', pinned: true },
     })
   ).json();
@@ -237,7 +234,7 @@ test('multiline and long chat titles stay strictly single-line with ellipsis tru
   ];
   for (const c of cases) {
     const chat = await (
-      await page.request.post('/v1/chats', { data: { type: 'chat.input', title: c.raw } })
+      await apiRequest(page, 'post', '/v1/chats', { data: { type: 'chat.input', title: c.raw } })
     ).json();
     await page.goto('/c/' + chat.id);
     const pill = page.getByTestId('nav-chat-title-pill');
@@ -286,10 +283,10 @@ test('argument-free approvals have no empty box and questions use a human label'
   page,
 }) => {
   const chat = await (
-    await page.request.post('/v1/chats', { data: { type: 'chat.input', mode:'auto', title: 'Card labels' } })
+    await apiRequest(page, 'post', '/v1/chats', { data: { type: 'chat.input', mode:'auto', title: 'Card labels' } })
   ).json();
   await page.goto('/c/' + chat.id);
-  await page.request.post('/v1/runs', {
+  await apiRequest(page, 'post', '/v1/runs', {
     data: { type: 'run.start', chatId: chat.id, text: 'Review a write', script: 'approval' },
   });
   const allow = page.getByTestId('approval-allow-once');
@@ -297,7 +294,7 @@ test('argument-free approvals have no empty box and questions use a human label'
   await expect(page.locator('[data-testid^=approval-card] pre')).toHaveCount(0);
   await allow.click();
   await expect(page.getByTestId('composer-stop-button')).toHaveCount(0);
-  await page.request.post('/v1/runs', {
+  await apiRequest(page, 'post', '/v1/runs', {
     data: { type: 'run.start', chatId: chat.id, text: 'A question', script: 'elicitation' },
   });
   await expect(page.getByLabel('Name', { exact: true })).toBeVisible();

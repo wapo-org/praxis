@@ -118,11 +118,6 @@ export function ReasoningView({ block }: { block: ReasoningBlock }) {
   );
 }
 
-/**
- * One thought inside the work group (Trace): a brain glyph on the column edge and the thought's
- * own short summary (`open ?? running`), which opens to the full text inside the Trace rail.
- * While streaming with no text yet, renders a static TraceLine; if finished empty, renders nothing.
- */
 export function ThoughtRow({
   block,
   onToggle,
@@ -223,10 +218,6 @@ export function reasoningLabel(live: boolean, ms: number | null | undefined): st
   return ms < 1000 ? 'Reasoned briefly' : `Reasoned for ${formatDuration(ms)}`;
 }
 
-/**
- * Splits **Title** lines from the prose. The newlines around a title are the title's own spacing, so they
- * are dropped from the prose beside it (pre-wrap would otherwise add a blank line under every heading).
- */
 export function reasoningSegments(text: string): Array<{ title: boolean; text: string }> {
   const parts = text.split(/(\*\*[^*\n]+\*\*)/g);
   const isTitle = (p: string | undefined) => !!p && /^\*\*[^*\n]+\*\*$/.test(p);

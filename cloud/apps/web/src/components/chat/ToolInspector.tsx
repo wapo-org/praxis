@@ -13,12 +13,6 @@ import styles from './ToolInspector.module.css';
 
 type FadeEdge = 'none' | 'top' | 'bottom' | 'both';
 
-/**
- * The expanded tool row (WP-N3): Input, Progress, Output, and Errors in CodeBlock size="sm".
- * Output is capped at 17rem and scrolls internally without trapping page wheel scroll,
- * with progressive edge fades only on overflowing edges and "Show all" in the footer.
- * The machine name (`mcp__exa__web_search_exa_<hash>`) is never shown.
- */
 export function ToolInspector({
   id,
   connectorName,
