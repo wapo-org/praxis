@@ -1,9 +1,5 @@
 import {ATTACHMENT_LIMITS, type MessagePart} from '@praxis/protocol';
 
-/**
- * Port of the app's AttachmentMedia.build / AttachmentMedia.text and ConversationTitle.
- * The transcript keeps attachment references; bytes are swapped in when a provider request is built.
- */
 export const MAX_INLINE_TEXT_BYTES = ATTACHMENT_LIMITS.inlineTextBytes;
 export const MAX_DOCUMENT_BYTES = ATTACHMENT_LIMITS.inlineDocumentBytes;
 
@@ -12,11 +8,6 @@ export interface AttachmentRow {id: string; name: string; mediaType: string; siz
 const isImage = (type: string) => type.startsWith('image/');
 export const isText = (type: string) => type.startsWith('text/') || ['application/json', 'application/xml', 'application/x-yaml', 'application/yaml', 'application/csv'].includes(type);
 
-/**
- * Images → image parts; PDFs ≤ 10 MB and text ≤ 200 KB → document parts; everything else → one `note` part per
- * file that names it for `fs`. The note carries the attachment ID, so the transcript shows the file as an
- * attachment and the model reads the note; the user's own text part stays exactly what they typed.
- */
 export function attachmentParts(rows: AttachmentRow[], text: string): MessagePart[] {
   const parts: MessagePart[] = [];
   const fileOnly: AttachmentRow[] = [];
@@ -41,7 +32,7 @@ export function fileOnlyNote(row: AttachmentRow): string {
 export const TITLE_PLACEHOLDER = 'New chat';
 const MAX_TITLE = 42;
 
-/** "Photo", a lone file's name, "3 photos", "2 files", "4 attachments". (No screenshot/camera kinds in the cloud.) */
+/** Formats concise title from attachment list (e.g. 'Photo', '3 photos', filename). */
 export function attachmentTitle(rows: AttachmentRow[]): string | undefined {
   const first = rows[0];
   if (!first) return undefined;
@@ -59,7 +50,7 @@ export function makeTitle(text: string, rows: AttachmentRow[]): string | undefin
   return collapsed ? collapsed.slice(0, MAX_TITLE) : attachmentTitle(rows);
 }
 
-/** Whether this message should (re)name the chat: untitled, or titled after attachments alone and now there are words. */
+/** True if untitled or previously titled from attachments before text arrived. */
 export function wantsTitle(current: string, text: string, firstTurn: {text: string; attachments: AttachmentRow[]} | undefined): boolean {
   const trimmed = current.trim();
   if (!trimmed || trimmed === TITLE_PLACEHOLDER) return true;

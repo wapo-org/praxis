@@ -4,14 +4,15 @@ import {z} from 'zod';
 import {SkillImportSchema,AttachmentSchema,IdSchema,PageQuerySchema,RegistryInputSchema,RegistrySchema,SkillInputSchema,SkillSchema,UploadCompleteSchema,UploadRequestSchema} from '@praxis/protocol';
 import type {FeatureContext} from '../../contracts.js';
 import {ApiError} from '../../service.js';
-import {jsonBody,page,readLimited} from './http.js';
+import {page} from '../../route-helpers.js';
+import {jsonBody,readLimited} from './http.js';
 import {requireRow,saveSkill} from './skills.js';
 import {installSkill,registryEntries,skillUpdates,updateSkill} from './registries.js';
 import {importSkill} from './import.js';
 import {transcribe} from './transcribe.js';
 import {createLocalToolsStorage} from './local-storage.js';
 import type {ToolsPorts} from './ports.js';
-export type {ToolsStorage,ToolsPorts,VisionProvider,UploadInput} from './ports.js';
+export type {PlatformVoice,ToolsStorage,ToolsPorts,VisionProvider,UploadInput} from './ports.js';
 export {createLocalToolsStorage} from './local-storage.js';
 export {parseSkillDocument} from './skills.js';
 export function createToolsRoutes(context:(req:Request)=>Promise<FeatureContext>,ports:ToolsPorts={}):Hono{

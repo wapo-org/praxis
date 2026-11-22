@@ -3,17 +3,16 @@ import type {FeatureContext} from '../../contracts.js';
 import {connector, McpError, now, readSecret, saveConnector, type McpOptions} from './shared.js';
 import {catalogKey, discoverTools, listConnectorsMemo} from './tools.js';
 
-/** Statuses whose tools are not offered to the model. */
 export const UNAVAILABLE: ReadonlySet<ConnectorStatus> = new Set(['unreachable', 'needs_auth', 'needs_reauth', 'error']);
 /** A failed check is trusted this long before run-time discovery tries the server again. */
 export const RECHECK_MS = 60_000;
 export const PROBE_TIMEOUT_MS = 8_000;
 
-/** Maps a failed handshake to a status and a machine code. Sign-in states depend on whether credentials ever existed. */
+/** Maps handshake errors to connector status based on prior credentials. */
 export async function classify(ctx: FeatureContext, value: Connector, error: unknown): Promise<{status: ConnectorStatus; code: string}> {
   if (!(error instanceof McpError)) return {status: 'error', code: 'internal_error'};
   if (error.code === 'authorization_required') {
-    // A server that was never signed in to needs sign-in; one whose saved credentials stopped working needs it again.
+    // Distinguishes never-signed-in vs expired credentials.
     const hadCredentials = !!(await readSecret(ctx, value.id, 'tokens').catch(() => undefined)) || !!(await readSecret(ctx, value.id, 'token').catch(() => undefined));
     return {status: hadCredentials ? 'needs_reauth' : 'needs_auth', code: error.code};
   }
@@ -37,11 +36,7 @@ async function record(ctx: FeatureContext, value: Connector, status: ConnectorSt
   }));
 }
 
-/**
- * Health check on create, on credential/URL change and on explicit refresh: the MCP `initialize` handshake
- * plus tool listing, through the guarded egress, bounded by a short timeout. Never throws for remote failures;
- * the result is persisted on the connector. Only a successful handshake yields `connected`.
- */
+/** Runs initialize + tool listing and persists status; only handshake success sets connected. */
 export async function probeConnector(ctx: FeatureContext, value: Connector, options: McpOptions = {}, timeoutMs = PROBE_TIMEOUT_MS): Promise<Connector> {
   await ctx.kv.del(catalogKey(ctx, value.id));
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -58,13 +53,13 @@ export async function probeConnector(ctx: FeatureContext, value: Connector, opti
   }
 }
 
-/** Run-time discovery failure: same classification, persisted so the next turn's note and listing reflect it. */
+/** Persists runtime discovery failure so next turn's note and listing match. */
 export async function recordFailure(ctx: FeatureContext, value: Connector, error: unknown): Promise<void> {
   const {status, code} = await classify(ctx, value, error);
   await record(ctx, value, status, code).catch(() => undefined);
 }
 
-/** True when the connector's last check failed recently enough (or needs sign-in) that its tools are skipped without contacting it. */
+/** True if recently failed or needing sign-in so runtime skips contacting server. */
 export function skipWithoutContact(value: Connector, clock = Date.now()): boolean {
   if (!value.status || !UNAVAILABLE.has(value.status)) return false;
   if (value.status === 'needs_auth' || value.status === 'needs_reauth') return true;
@@ -82,13 +77,9 @@ function note(value: Connector): string {
   }
 }
 
-/**
- * Turn notes for connectors in this chat whose availability changed since the last note about them: an
- * "unavailable" note while a connector is down, and one "available again" note when it recovers. Read back
- * from the transcript, so the same history always yields the same notes (like the mode note).
- */
+/** Emits connector status notes derived from transcript history for determinism. */
 export async function connectorTurnNotes(ctx: FeatureContext, chat: Chat, previousNotes: string[]): Promise<string[]> {
-  const off = new Set([...chat.disabledConnectorIds]);
+  const off = new Set(chat.disabledConnectorIds);
   const values = (await listConnectorsMemo(ctx))
     .filter(v => v.enabled && !off.has(v.id))
     .sort((a, b) => a.id.localeCompare(b.id));

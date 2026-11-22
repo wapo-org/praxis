@@ -1,21 +1,21 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Redis } from '@upstash/redis';
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
-/** Index entries are scored by key expiry (ms); entries past expiry (plus clock skew) are pruned on every owner write. */
+/** Index scores are key expiry ms; expired entries past skew are pruned on every owner write. */
 export const INDEX_SKEW_MS = 60000;
 const guard = (active: number, now: number) => `
 if redis.call('GET',KEYS[${active}]) ~= 'active' then return redis.error_reply('Account unavailable') end
 redis.call('ZREMRANGEBYSCORE',KEYS[${active + 1}],'-inf',tonumber(ARGV[${now}])-${INDEX_SKEW_MS})`;
-/** KEYS: data, active, index. ARGV: value, ttl seconds or '', now ms. Registers the key while the account is active. */
+/** KEYS: data, active, index; ARGV: value, ttlSec, nowMs (registers key while active). */
 export const OWNER_WRITE_LUA = `${guard(2, 3)}
 if ARGV[2] == '' then redis.call('ZADD',KEYS[3],'+inf',KEYS[1]) return redis.call('SET',KEYS[1],ARGV[1]) end
 redis.call('ZADD',KEYS[3],tonumber(ARGV[3])+tonumber(ARGV[2])*1000,KEYS[1])
 return redis.call('SET',KEYS[1],ARGV[1],'EX',ARGV[2])`;
-/** KEYS: lease, active, index. ARGV: token, ttl ms, now ms. */
+/** KEYS: lease, active, index; ARGV: token, ttlMs, nowMs. */
 export const OWNER_LEASE_LUA = `${guard(2, 3)}
 redis.call('ZADD',KEYS[3],tonumber(ARGV[3])+tonumber(ARGV[2]),KEYS[1])
 return redis.call('SET',KEYS[1],ARGV[1],'NX','PX',ARGV[2])`;
-/** Wraps the event append script (KEYS 1-3, ARGV 1-4 with ARGV[3] the TTL): owner keys are KEYS 4-5, now is ARGV[5]. */
+/** Wraps event-append Lua (KEYS 1-3, ARGV 1-4) with owner keys (KEYS 4-5, ARGV 5 nowMs). */
 export const ownerAppendLua = (append: string) => `${guard(4, 5)}
 local expires=tonumber(ARGV[5])+tonumber(ARGV[3])*1000
 redis.call('ZADD',KEYS[5],expires,KEYS[1],expires,KEYS[2],expires,KEYS[3])
@@ -57,7 +57,7 @@ export function accountRedis(
         [value, ttl === undefined ? '' : String(ttl), String(clock())],
       );
     },
-    /** Each round drops what it erased from the index, so an interrupted purge resumes where it stopped. */
+    /** Drops erased keys from index per round so interrupted purges resume. */
     async purge(u: string) {
       await redis.del(active(u));
       for (;;) {

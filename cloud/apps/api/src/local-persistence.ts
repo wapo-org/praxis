@@ -17,7 +17,7 @@ export function localRuntime(env:NodeJS.ProcessEnv=process.env,debounceMs=200){
  // Exclusive creation preserves the first generated key, including across restarts.
  let encryptionKey=explicitKey;
  if(!encryptionKey){
-  try{writeFileSync(keyFile,randomBytes(32).toString('base64'),{flag:'wx',mode:0o600});}catch(error){if((error as NodeJS.ErrnoException).code!=='EEXIST')throw new Error('Could not create local encryption key');}
+  try{writeFileSync(keyFile,randomBytes(32).toString('base64'),{flag:'wx',mode:0o600});}catch(error){if((error as NodeJS.ErrnoException).code!=='EEXIST')throw new Error('Could not create local encryption key', { cause: error });}
   chmodSync(keyFile,0o600);encryptionKey=readFileSync(keyFile,'utf8').trim();
   if(!/^[A-Za-z0-9+/]{43}=$/.test(encryptionKey))throw new Error('Invalid local encryption key file');
  }

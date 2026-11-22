@@ -1,14 +1,7 @@
 import {createCipheriv, createDecipheriv, createHash, randomBytes} from 'node:crypto';
 import {ApiError} from './service.js';
 
-/**
- * AES-256-GCM secrets bound to (owner, resource) as authenticated data.
- *
- * `key` is a keyring string: comma-separated base64 32-byte keys, current first (`PRAXIS_ENCRYPTION_KEYS`;
- * a single key, the old `PRAXIS_ENCRYPTION_KEY`, is a ring of one). New values are `v2.<kid>.<iv>.<tag>.<data>`
- * where kid is the first 12 hex chars of SHA-256(key), so decrypt picks the right key without trying all of them.
- * Legacy `v1.<iv>.<tag>.<data>` values (no kid) are tried against every key in the ring.
- */
+/** AES-256-GCM bound to (owner, resource) AAD; the 12-hex SHA-256 kid picks the key. */
 export interface Keyring {current: {kid: string; key: Buffer}; all: {kid: string; key: Buffer}[]}
 
 export const keyId = (key: Buffer) => createHash('sha256').update(key).digest('hex').slice(0, 12);
@@ -47,21 +40,9 @@ export function unseal(value: string, userId: string, resource: string, key: str
     if (!match) throw new Error('Encryption key for this value is not configured');
     return open(match.key, iv, tag, data, userId, resource);
   }
-  if (parts[0] === 'v1' && parts.length === 4) {
-    const [, iv, tag, data] = parts as [string, string, string, string];
-    for (const k of ring.all) {
-      try {
-        return open(k.key, iv, tag, data, userId, resource);
-      } catch {
-        // try the next key
-      }
-    }
-    throw new Error('No configured encryption key opens this value');
-  }
   throw new Error('Invalid encrypted value');
 }
 
-/** True when the value is already sealed with the ring's current key. */
 export function sealedWithCurrent(value: string, key: string): boolean {
   const parts = value.split('.');
   return parts[0] === 'v2' && parts[1] === parseKeyring(key).current.kid;

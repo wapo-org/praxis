@@ -1,6 +1,15 @@
-import {accountEraser} from './account-deletion.js';
+import {COMPOSIO_API, INTERNAL_CONTINUATION_PATH} from '@praxis/protocol';
+import {COMPOSIO_POOL_SERVICE} from './features/composio/constants.js';
+import {SealedSecret} from '@praxis/types';
+import {verifyAccountRecovery} from './account-recovery.js';
+import {productionWebPorts} from './features/web/production.js';
+import {composioEnvProblems, productionComposioPorts} from './features/composio/production.js';
+import {WEB_PROVIDERS} from './features/web/constants.js';
+import {GROQ_POOL, MODAL_POOL, pool, redisCooldownStore, type CredentialLogEvent} from '@praxis/credentials';
+import {confirmConvexDeletion, isAccountDeletion, verifiedConvexOwner} from './adapters/convex-session.js';
 import {createConvexRPC} from './adapters/convex.js';
-import {createAuth, parseOrigins} from './adapters/auth.js';
+import {accountEraser} from './account-deletion.js';
+import {parseOrigins} from './origins.js';
 import {createConvexStore} from './adapters/convex.js';
 import {createQStashScheduler, createQStashVerifier} from './adapters/qstash.js';
 import {createSafeFetch} from './adapters/security.js';
@@ -11,13 +20,10 @@ import {createPraxisApp, jsonLog} from './server.js';
 import {productionEmbedder} from './embedding.js';
 import {convexVectorIndex} from './search-index.js';
 
-/** Every variable production needs. Missing or malformed values stop startup with one message listing them all. */
+/** Required production env vars; any missing/invalid stops startup. */
 export const PRODUCTION_ENV = [
   'PRAXIS_API_URL',
   'PRAXIS_WEB_ORIGINS',
-  'CLERK_PUBLISHABLE_KEY',
-  'CLERK_SECRET_KEY',
-  'CLERK_JWT_KEY',
   'CONVEX_URL',
   'PRAXIS_CONVEX_SERVER_TOKEN',
   'UPSTASH_REDIS_REST_URL',
@@ -29,15 +35,33 @@ export const PRODUCTION_ENV = [
 
 export type ProductionEnv = Record<(typeof PRODUCTION_ENV)[number], string> & {PRAXIS_ENCRYPTION_KEYS?: string; PRAXIS_ENCRYPTION_KEY?: string; PRAXIS_RUN_BUDGET_MS?: string; PRAXIS_COOKIE_SAMESITE?: string; GROQ_API_KEY?: string};
 
-export const CONTINUATION_PATH = '/internal/continue';
+export const CONTINUATION_PATH = INTERNAL_CONTINUATION_PATH;
 
-/** The keyring: PRAXIS_ENCRYPTION_KEYS (current first, then previous keys) or the legacy single PRAXIS_ENCRYPTION_KEY. */
+/** Optional pooled platform keys using un-gapped _2, _3, ... suffixes. */
+export const PLATFORM_POOLS: readonly PoolSpec[] = [
+  {service: GROQ_POOL.service, names: GROQ_POOL.name},
+  ...Object.values(WEB_PROVIDERS).map(p => ({service: p.service, names: p.name})),
+  {service: COMPOSIO_POOL_SERVICE, names: COMPOSIO_API.KEY_ENV},
+  {service: MODAL_POOL.service, names: MODAL_POOL.names},
+];
+export interface PoolSpec {service: string; names: string | readonly string[]}
+export interface ReadEnvOptions {pools?: readonly PoolSpec[]; warn?: (message: string) => void}
+
+const readSinglePool = (name: string, env: Record<string, string | undefined>, service: string) => pool(name, env, {service});
+const readGroupPool = (names: readonly string[], env: Record<string, string | undefined>, service: string) => pool(names, env, {service});
+const readPool = (spec: PoolSpec, env: Record<string, string | undefined>) =>
+  typeof spec.names === 'string' ? readSinglePool(spec.names, env, spec.service) : readGroupPool(spec.names, env, spec.service);
+const warnJson = (message: string) => console.warn(JSON.stringify({type: 'startup.warning', message}));
+/** Pool events carry the service name and slot numbers only. */
+const credentialLog = (event: CredentialLogEvent) => console.warn(JSON.stringify({type: 'credentials', ...event}));
+
+/** Keyring ordered current-first, with single PRAXIS_ENCRYPTION_KEY fallback. */
 export function encryptionKeyring(env: Record<string, string | undefined>): string | undefined {
   return (env.PRAXIS_ENCRYPTION_KEYS ?? env.PRAXIS_ENCRYPTION_KEY)?.trim() || undefined;
 }
 
-export function readProductionEnv(env: Record<string, string | undefined>): ProductionEnv {
-  if (env.PRAXIS_LOCAL_DATA_DIR !== undefined) throw new Error("PRAXIS_LOCAL_DATA_DIR is only supported by dev:local, never production");
+export function readProductionEnv(env: Record<string, string | undefined>, options: ReadEnvOptions = {}): ProductionEnv {
+  if (env.PRAXIS_LOCAL_DATA_DIR !== undefined) throw new Error('PRAXIS_LOCAL_DATA_DIR is only supported by dev:local');
   const problems: string[] = [];
   for (const name of PRODUCTION_ENV) if (!env[name]?.trim()) problems.push(`${name} is missing`);
   const https = (name: string) => {
@@ -63,17 +87,24 @@ export function readProductionEnv(env: Record<string, string | undefined>): Prod
       problems.push('PRAXIS_WEB_ORIGINS must be a comma-separated list of https origins');
     }
   }
+  problems.push(...composioEnvProblems(env));
+  // Half-defined credential slots fail closed; post-gap slots warn.
+  const warnings: string[] = [];
+  for (const spec of options.pools ?? PLATFORM_POOLS) {
+    try {
+      warnings.push(...readPool(spec, env).warnings);
+    } catch (error) {
+      problems.push((error as Error).message);
+    }
+  }
   if (problems.length) throw new Error(`Praxis API cannot start in production:\n- ${problems.join('\n- ')}\nSee cloud/DEPLOY.md.`);
+  for (const warning of warnings) (options.warn ?? warnJson)(warning);
   return env as ProductionEnv;
 }
 
-/**
- * Production composition: Convex store + file storage, Upstash KV/events/lease/rate limits, Clerk,
- * QStash continuations, SSRF-guarded egress for providers/MCP/tools, redacted request logs. Never falls back
- * to memory adapters or dev auth: anything missing throws at startup.
- */
 export function createProductionApp(rawEnv: Record<string, string | undefined>, hooks: {defer?: (work: Promise<unknown>) => void} = {}) {
   if (rawEnv.PRAXIS_LOCAL_SMOKE) throw new Error('PRAXIS_LOCAL_SMOKE must not be set in production');
+  if (rawEnv.PRAXIS_LOCAL_DATA_DIR) throw new Error('PRAXIS_LOCAL_DATA_DIR is only supported by dev:local');
   const env = readProductionEnv(rawEnv);
   const origin = new URL(env.PRAXIS_API_URL).origin;
   const webOrigins = parseOrigins(env.PRAXIS_WEB_ORIGINS);
@@ -81,7 +112,7 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
   const store = createConvexStore({url: env.CONVEX_URL, serverToken: env.PRAXIS_CONVEX_SERVER_TOKEN});
   const storage = createConvexToolsStorage({url: env.CONVEX_URL, serverToken: env.PRAXIS_CONVEX_SERVER_TOKEN, baseUrl: origin});
   const accountRPC=createConvexRPC({url:env.CONVEX_URL,serverToken:env.PRAXIS_CONVEX_SERVER_TOKEN});
-  const auth = createAuth(rawEnv, upstash.kv,{isActive:upstash.ownership.isActive,activate:userId=>upstash.ownership.activate(userId,async()=>!!await accountRPC.query('account:active',{userId}))});
+  const eraseAccount = accountEraser(accountRPC, upstash.ownership);
   const egress = createSafeFetch();
   // Semantic search: off unless an embedder is configured (PRAXIS_EMBEDDER / PRAXIS_OPENAI_EMBEDDINGS_KEY).
   const embedder = productionEmbedder(rawEnv);
@@ -93,19 +124,41 @@ export function createProductionApp(rawEnv: Record<string, string | undefined>, 
     // Provider base URLs are user-supplied, so model calls use the same SSRF guard as tools and MCP.
     fetcher: egress,
     allowedOrigins: webOrigins,
-    resolveSession: request => auth.resolveSession(request),
-    authHandler: request => auth.handler(request),
-    accountDeletion:{confirm:auth.confirmDeletion,purge:accountEraser(accountRPC,upstash.ownership,auth.deleteExternal)},
+    resolveSession: async request => {
+      const id = await verifiedConvexOwner(request, env.CONVEX_URL);
+      if (!id) return null;
+      if (!isAccountDeletion(request) && !await upstash.ownership.isActive(id)) {
+        await upstash.ownership.activate(id, async () => await accountRPC.query('account:active', { userId: id }) === true);
+      }
+      // Convex returns the owner without a cache lifetime, so clients must revalidate immediately.
+      return { user: { type: 'user', id, name: 'Praxis user' }, expiresAt: new Date().toISOString() };
+    },
+    accountDeletion: {
+      confirm: (request, password) => confirmConvexDeletion(request, env.CONVEX_URL, password),
+      purge: eraseAccount,
+    },
     rateLimit: createRateLimiter(upstash.redis),
     scheduler: createQStashScheduler({token: env.QSTASH_TOKEN, callbackUrl}),
     lease: upstash.lease,
-    continuation: {path: CONTINUATION_PATH, verify: createQStashVerifier({currentSigningKey: env.QSTASH_CURRENT_SIGNING_KEY, nextSigningKey: env.QSTASH_NEXT_SIGNING_KEY, callbackUrl})},
+    continuation: {
+      path: CONTINUATION_PATH,
+      verify: createQStashVerifier({
+        currentSigningKey: env.QSTASH_CURRENT_SIGNING_KEY, nextSigningKey: env.QSTASH_NEXT_SIGNING_KEY, callbackUrl,
+      }),
+      accountRecovery: {
+        verify: verifyAccountRecovery(SealedSecret.of(env.PRAXIS_CONVEX_SERVER_TOKEN)),
+        resume: eraseAccount.resume,
+      },
+    },
     ...(env.PRAXIS_RUN_BUDGET_MS ? {budgetMs: Number(env.PRAXIS_RUN_BUDGET_MS)} : {}),
     ...(hooks.defer ? {defer: hooks.defer} : {}),
     ...(embedder ? {search: {embedder, vectors: convexVectorIndex(accountRPC)}} : {}),
     log: jsonLog,
     modules: service => featureModules(service, {
       storage,
+      web: context => productionWebPorts(context, accountRPC, upstash.redis, rawEnv),
+      composio: context => productionComposioPorts(context, accountRPC, upstash.redis, rawEnv, credentialLog),
+      platformVoice: {pool: pool(GROQ_POOL.name, rawEnv, {service: GROQ_POOL.service}), cooldowns: redisCooldownStore(upstash.redis), log: credentialLog},
       mcp: {publicOrigin: origin, webReturnOrigins: webOrigins, safeFetch: egress, consumeOAuthState: key => upstash.consumeOnce(key), lease: upstash.lease},
     }),
   });

@@ -1,8 +1,4 @@
-/**
- * Vercel's `waitUntil`, without the @vercel/functions package (its OIDC dependency chain pins a vulnerable zod).
- * Same mechanism: the platform exposes the request context on a well-known global symbol; locally there is none,
- * and the work simply keeps running in the process.
- */
+/** Vercel waitUntil via global symbol without @vercel/functions's vulnerable zod chain. */
 const REQUEST_CONTEXT = Symbol.for('@vercel/request-context');
 
 export function waitUntil(work: Promise<unknown>): void {

@@ -8,7 +8,6 @@ import {runSandbox, type SandboxFiles} from './sandbox.js';
 import {parseSkillDocument, skillByName, skillPath} from './skills.js';
 import type {ToolsStorage} from './ports.js';
 
-/** Enabled skills for the frozen system-prompt catalog (conversation.ts builds the section). */
 export async function listSkillsForCatalog(ctx: FeatureContext): Promise<{name: string; description: string}[]> {
   return (await ctx.store.list(ctx.userId, 'skill'))
     .filter(r => !r.deleted && r.value.enabled !== false)
@@ -20,7 +19,7 @@ const LoadSkill = z.object({name: z.string().min(1).max(64)});
 const ReadSkillFile = z.object({skill: z.string().min(1).max(64), path: z.string().min(1), offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(50_000).default(20_000)});
 const text = (value: string, isError = false) => ({content: [{type: 'text', text: value}], isError});
 
-/** Port of AgentSkills `load_skill` / `read_skill_file` (scripts stay dropped in v1). */
+/** Skill read tools; bundled scripts stay dropped in v1. */
 export function skillTools(ctx: FeatureContext, storage?: ToolsStorage): FeatureTool[] {
   return [
     ...skillAuthoringTools(ctx, storage),
@@ -110,10 +109,11 @@ export function javascriptTool(ctx: FeatureContext, input: {attachmentIds: strin
   };
   return {
     name: 'run_javascript',
-    description: 'Run JavaScript in an isolated QuickJS sandbox (no Node, no DOM). Use it for calculations, data processing and parsing attached files (fs.list(), fs.readText(name), fs.readBytes(name)). fetch(url, init) reaches the network (GET/HEAD only in plan mode); kv.get/kv.set persist small JSON values for this chat; tools.<name>(args) or callTool(name, args) calls other tools. Return a value or console.log the result. Default timeout 5 s, max 30 s; 16 MB memory.',
+    description: 'Run JavaScript in an isolated QuickJS sandbox (no Node, no DOM). Use it for calculations, data processing and parsing attached files (fs.list(), fs.readText(name), fs.readBytes(name)). It has no network access; use web_search and web_read for the web. kv.get/kv.set persist small JSON values for this chat; tools.<name>(args) or callTool(name, args) calls other tools. Return a value or console.log the result. Default timeout 5 s, max 30 s; 16 MB memory.',
     inputSchema: {type: 'object', properties: {env:{type:'object',additionalProperties:{type:'string'},description:'Environment variables, available as env.NAME. Pass opaque secret references here; never paste credentials into code.'},code: {type: 'string', description: 'JavaScript source; top-level await is allowed'}, timeout_ms: {type: 'integer', description: 'Time limit in milliseconds (default 5000, max 30000)'}}, required: ['code']},
     source: {type: 'builtin'},
-    traits: ['sandboxed', 'openWorld'],
+    traits: ['sandboxed'],
+    privateArguments: true,
     async execute(args: JsonValue, execution) {
       const output = await runSandbox(args, ctx, execution, files, input.hostToolNames, toolsState(ctx, input.storage));
       return text(JSON.stringify(output), !!output.error);

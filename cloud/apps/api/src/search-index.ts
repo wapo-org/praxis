@@ -2,12 +2,6 @@ import { createHash } from 'node:crypto';
 import type { Chat, Message } from '@praxis/protocol';
 import { cosine, type Embedder } from './embedding.js';
 
-/**
- * The semantic half of search: every chat's title and message chunks, embedded once and kept by content.
- * An item's id is `${chatId}:${hash(text)}`, so indexing is a set difference: new text is embedded, text that
- * is gone is dropped, unchanged text is never embedded twice. Writes schedule a debounced reindex of their
- * chat; a search reconciles whatever is still missing within a time budget (that is also the backfill).
- */
 export interface IndexItem {
   id: string;
   chatId: string;
@@ -99,10 +93,6 @@ export function chunk(text: string, size = CHUNK_CHARS): string[] {
   return out;
 }
 
-/**
- * Content hashes, memoised: every search recomputes every chat's items (the reconcile), and hashing ~30k
- * texts each time was most of a search over 2,000 chats. Bounded; cleared when full.
- */
 const hashes = new Map<string, string>();
 const MAX_HASHES = 200_000;
 function textHash(text: string) {
@@ -127,12 +117,6 @@ export const PHRASE_STRIDE = 2;
 /** Embedding cost cap per chat for phrase windows, taken from each message's opening in turn. */
 export const MAX_PHRASES_PER_CHAT = 48;
 
-/**
- * Overlapping short windows of a text. A sentence model scores a short query far better against a short phrase
- * than against the whole sentence around it ("debug code error" meets "script crashes with KeyError" at 0.40,
- * the full message at 0.26), so phrases lift recall without lowering the bar for noise. Texts no longer than a
- * window have none: their chunk already is the phrase.
- */
 export function phrases(text: string, size = PHRASE_WORDS, stride = PHRASE_STRIDE): string[] {
   const words = text.split(/\s+/u).filter(Boolean);
   if (words.length <= size) return [];
@@ -153,10 +137,6 @@ function chatPhrases(openings: string[]): string[] {
   return out;
 }
 
-/**
- * The items a chat should have in the index, content-addressed: its title, every message's chunks (user and
- * assistant), and phrase windows of each message's opening.
- */
 export function chatItems(doc: ChatDoc): { id: string; chatId: string; text: string }[] {
   // Unchanged chats (nearly all of them, on every search) reuse their items.
   const cached = itemCache.get(doc.chat.id);
@@ -236,11 +216,6 @@ export class SearchIndexer {
     if (this.options.defer) this.options.defer(guarded);
   }
 
-  /**
-   * Brings the index in line with `docs`: embeds missing items (newest chats first) until `budgetMs` runs out,
-   * drops items whose text is gone. With `chatIds`, only those chats are compared (a write); otherwise the
-   * whole owner (a search: this is also the backfill). Returns how many items are still missing.
-   */
   async sync(userId: string, docs: ChatDoc[], options: { chatIds?: string[]; budgetMs?: number } = {}): Promise<number> {
     const key = `${userId}\u0000${options.chatIds?.join(',') ?? '*'}`;
     // One sync per scope at a time; a concurrent caller waits for it and then compares again.

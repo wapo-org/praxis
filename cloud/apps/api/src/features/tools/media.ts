@@ -5,10 +5,10 @@ import {isText, MAX_INLINE_TEXT_BYTES} from '../../attachments.js';
 import {type ModelCapabilities} from '../../media-provider.js';
 import type {ToolsStorage} from './ports.js';
 
-/** Same limits as the app's AttachmentMedia: images above these are re-encoded (deterministically) before sending. */
+/** Images above this limit are re-encoded deterministically before sending. */
 export const MAX_IMAGE_BYTES = 3_500_000;
 export const MAX_IMAGE_SIDE = 2_000;
-/** Decoding past this is refused (≈160 MB of RGBA); sharp's default (268 MP) is too much for a shared instance. */
+/** Caps decoded RGBA around 160 MB to protect shared instance memory. */
 export const MAX_INPUT_PIXELS = 40_000_000;
 /** Re-encoded images are cached per stored file so history isn't decoded again on every slice. */
 export const IMAGE_CACHE_TTL_SECONDS = 7 * 24 * 3600;
@@ -25,7 +25,7 @@ async function decodeSlot<T>(task: () => Promise<T>): Promise<T> {
 }
 
 async function normalizedImage(bytes: Uint8Array, mediaType: string): Promise<{bytes: Uint8Array; mediaType: string; reencoded: boolean}> {
-  const meta = await sharp(bytes, {limitInputPixels: MAX_INPUT_PIXELS}).metadata(); // header only
+  const meta = await sharp(bytes, {limitInputPixels: MAX_INPUT_PIXELS}).metadata();
   const tooBig = bytes.byteLength > MAX_IMAGE_BYTES || (meta.width ?? 0) > MAX_IMAGE_SIDE || (meta.height ?? 0) > MAX_IMAGE_SIDE;
   if (!tooBig && ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(mediaType)) return {bytes, mediaType, reencoded: false};
   const out = await decodeSlot(() => sharp(bytes, {limitInputPixels: MAX_INPUT_PIXELS}).rotate().resize(MAX_IMAGE_SIDE, MAX_IMAGE_SIDE, {fit: 'inside', withoutEnlargement: true}).jpeg({quality: 85}).toBuffer());
@@ -46,7 +46,7 @@ async function imagePart(ctx: FeatureContext, storage: ToolsStorage, part: Messa
   return {...part, mediaType, data};
 }
 
-/** Text files reach every model as text (no provider takes base64 text documents), under the inline cap. */
+/** Inlines text files as text since no provider accepts base64 text docs. */
 async function textPart(ctx: FeatureContext, storage: ToolsStorage, name: string, storageId: string): Promise<MessagePart> {
   const file = await storage.read(ctx.userId, storageId);
   let text: string;
@@ -56,10 +56,7 @@ async function textPart(ctx: FeatureContext, storage: ToolsStorage, name: string
   return note(`[File: “${name}”]\n${text}${truncated}`);
 }
 
-/**
- * Swaps an attachment reference for what the model can take when a provider request is built (the transcript keeps
- * only the reference). Owner-scoped. Anything that can't be shown becomes a short text part (the caller logs it).
- */
+/** Resolves owner-scoped attachment refs to model parts or a short omission note. */
 export async function rehydrateAttachment(ctx: FeatureContext, storage: ToolsStorage | undefined, part: MessagePart, caps: ModelCapabilities): Promise<MessagePart> {
   if ((part.type !== 'image' && part.type !== 'document') || !part.attachmentId || part.data || part.url) return part;
   const text = part.type === 'document' && isText(part.mediaType ?? '');

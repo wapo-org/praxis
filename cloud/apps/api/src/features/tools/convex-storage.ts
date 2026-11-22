@@ -4,21 +4,28 @@ import {JsonObjectSchema} from '@praxis/protocol';
 import {createConvexRPC, type ConvexRPC, type ConvexOptions} from '../../adapters/convex.js';
 import {ApiError} from '../../service.js';
 import type {ToolsStorage, UploadInput} from './ports.js';
-/** Convex receives upload bytes and binds storageId to the pending ticket owner before returning it. */
-/** `fetcher` reads Convex storage URLs (the deployment's own origin, from CONVEX_URL; not user-controlled). */
+/** Convex binds uploaded bytes to the pending ticket owner before returning. */
+/** Reads Convex storage URLs from deployment origin; never user-controlled. */
 export function toolsStorageFromRPC(rpc:ConvexRPC,baseUrl:string,fetcher:typeof fetch=fetch):ToolsStorage {
  void baseUrl;
  const scope=(userId:string,kind:string,id:string)=>({userId,kind,id});
  return {
   state:{
    async get(userId,kind,id){const value=await rpc.query('tools:get',scope(userId,kind,id));return value===null?null:JsonObjectSchema.parse(value);},
-   async put(userId,kind,id,value){await rpc.mutation('tools:put',{...scope(userId,kind,id),value:JsonObjectSchema.parse(value)});},
+   async put(userId, kind, id, value) {
+    const valueJson = JSON.stringify(JsonObjectSchema.parse(value));
+    await rpc.mutation('tools:put', {...scope(userId, kind, id), valueJson});
+   },
    async delete(userId,kind,id){await rpc.mutation('tools:remove',scope(userId,kind,id));},
   },
   async createUpload(userId,input){
    const ticket=randomUUID(),expiresAt=Date.now()+600_000;
-   await rpc.mutation('files:createTicket',{userId,ticket,...input,expiresAt});
-   // The one-time Convex HTTP capability only uploads for this ticket; no API bearer token goes there.
+   // Routes pass the whole wire request; Convex validators reject any field the ticket does not declare.
+   await rpc.mutation('files:createTicket', {
+    userId, ticket, name: input.name, mediaType: input.mediaType, size: input.size, expiresAt,
+    ...(input.chatId === undefined ? {} : {chatId: input.chatId}),
+   });
+   // One-time upload capability for this ticket; never send API bearer token.
    const uploadUrl=z.string().url().parse(await rpc.mutation('files:generateUploadUrl',{userId,ticket}));
    return {uploadUrl,expiresAt:new Date(expiresAt).toISOString(),method:'POST'};
   },

@@ -52,7 +52,7 @@ describe('SSRF guard', () => {
   });
 });
 
-// REV-A2: URL canonicalization and multi-answer DNS must not bypass the dialer policy.
+// Canonicalization and multi-answer DNS must not bypass the dialer policy.
 it('rejects mapped IPv6, alternate numeric loopback, aliases and mixed DNS answers', async () => {
  for (const host of ['[::ffff:127.0.0.1]', '[::ffff:7f00:1]', '2130706433', '0177.0.0.1', '0x7f000001', 'localhost.', 'x.localhost', 'localtest.me']) {
   await expect(assertPublicUrl(`https://${host}/`, {resolve: async () => [{address: '127.0.0.1', family: 4}]})).rejects.toThrow();

@@ -1,10 +1,10 @@
-import type {Model} from '@praxis/protocol';
+import type {CatalogModel as Model} from '@praxis/protocol';
 
 export const TITLE_MAX_CHARS = 48;
 export const TITLE_MAX_WORDS = 6;
 
 const EXCLUDED_MODEL_RE =
-  /:free(?:$|:)|^openrouter\/(?:free|auto)$|(?:^|[\/-])(?:o[134](?:-|$)|.*reasoning|.*thinking|deepseek-r1|.*(?:embed|embedding|moderation|guard|safeguard|whisper|tts|audio|realtime|dall-e|imagen|flux|sora))/i;
+  /:free(?:$|:)|^openrouter\/(?:free|auto)$|(?:^|[/-])(?:o[134](?:-|$)|.*reasoning|.*thinking|deepseek-r1|.*(?:embed|embedding|moderation|guard|safeguard|whisper|tts|audio|realtime|dall-e|imagen|flux|sora))/i;
 
 const WEAK_MODEL_RE = /\b(?:0\.5b|1b|1\.5b|2b|3b|4b|7b|8b)\b|nemotron-nano/i;
 const FRONTIER_COMPACT_RE =
@@ -29,27 +29,17 @@ const STOPWORDS = new Set([
   'with', 'would', 'you', 'your',
 ]);
 
-/**
- * Ranks eligible chat-title models by instruction-following reliability first, then cost and speed.
- *
- * Tiers (highest first):
- *  4 — Frontier compact instruct models (`gpt-4.1-mini`/`nano`, `gpt-4o-mini`, `gpt-5-mini`/`nano`, `claude-*-haiku`, `gemini-2/3-flash`).
- *  3 — Strong flagship/mid instruct models (`gpt-4.1`, `gpt-4o`, `gpt-5`, `claude-sonnet`, `gemini-2/3-flash-lite`/`pro`, `qwen-32b+`, `llama-70b`) or `intelligence >= 4` (not ultra-tiny).
- *  2 — Generic compact families (`nano`, `mini`, `flash`, `flash-lite`, `haiku`, `small`) that are not ultra-tiny (`<= 8B` / `nemotron-nano`).
- *  1 — General eligible text models.
- *  0 — Ultra-tiny / low-intelligence models (`<= 8B`, `nemotron-nano`, or `intelligence <= 2`) which frequently answer prompts instead of following delimiter instructions.
- */
 export function instructionTier(m: Model): number {
-  if (WEAK_MODEL_RE.test(m.id) || (m.intelligence !== undefined && m.intelligence <= 2)) return 0;
+  if (WEAK_MODEL_RE.test(m.id)) return 0;
   if (FRONTIER_COMPACT_RE.test(m.id)) return 4;
-  if (STRONG_INSTRUCT_RE.test(m.id) || (m.intelligence !== undefined && m.intelligence >= 4)) return 3;
+  if (STRONG_INSTRUCT_RE.test(m.id)) return 3;
   if (GENERIC_COMPACT_RE.test(m.id)) return 2;
   return 1;
 }
 
 /** Paid text models without a mandatory reasoning budget, ranked by instruction-following then price/speed. */
 export function titleModels(models: Model[]): Model[] {
-  const cost = (m: Model) => (m.pricing ? 200 * m.pricing.prompt + 32 * m.pricing.completion : Infinity);
+  const cost = (m: Model) => (m.pricing ? 200 * Number(m.pricing.prompt) + 32 * Number(m.pricing.completion) : Infinity);
   const cmpCost = (a: Model, b: Model) => {
     const ca = cost(a);
     const cb = cost(b);
@@ -58,18 +48,13 @@ export function titleModels(models: Model[]): Model[] {
   return models
     .filter(
       (m) =>
-        !EXCLUDED_MODEL_RE.test(m.id) &&
-        (!m.pricing || (m.pricing.prompt > 0 && m.pricing.completion > 0)) &&
-        m.reasoningMandatory !== true &&
-        (!m.outputModalities || m.outputModalities.includes('text')) &&
-        (!m.capabilities.reasoningEffort || m.reasoningEfforts.some((e) => ['none', 'minimal', 'low'].includes(e))),
+        !EXCLUDED_MODEL_RE.test(m.id) && !m.reasoningMandatory &&
+        (!m.pricing || (Number(m.pricing.prompt) > 0 && Number(m.pricing.completion) > 0)),
     )
     .sort(
       (a, b) =>
         instructionTier(b) - instructionTier(a) ||
-        (b.intelligence ?? 0) - (a.intelligence ?? 0) ||
         cmpCost(a, b) ||
-        (b.speed ?? 0) - (a.speed ?? 0) ||
         a.id.localeCompare(b.id),
     );
 }

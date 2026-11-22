@@ -6,11 +6,12 @@ import {createLocalAdapters} from '../local-memory.js';
 import {localDriver} from '../runtime.js';
 import {ApiService} from '../service.js';
 import {canonicalJSON} from '../sync-routes.js';
+import {TEST_KEY, connectKey, fakeOpenRouter} from './harness.js';
 
 function setup() {
   const service = new ApiService(createLocalAdapters(), true);
   service.driver = localDriver(service);
-  const {app} = createApp({service, encryptionKey: randomBytes(32).toString('base64')});
+  const {app} = createApp({service, encryptionKey: randomBytes(32).toString('base64'), fetcher: fakeOpenRouter([]).fetcher});
   const req = async (path: string, body?: unknown, method = body ? 'POST' : 'GET') =>
     app.request(path, {method, headers: {Authorization: 'Bearer dev-local', 'Content-Type': 'application/json'}, ...(body ? {body: JSON.stringify(body)} : {})});
   return {service, req};
@@ -19,11 +20,12 @@ function setup() {
 describe('cursor sync', () => {
   it('pulls replica rows, never secrets, resumes from the bootstrap cursor and returns tombstones', async () => {
     const f = setup();
-    await f.req('/v1/providers', {type: 'provider.input', name: 'P', flavor: 'openAIChat', baseUrl: 'https://p.example.test/v1', apiKey: 'sk-secret-value'});
+    expect((await connectKey(f.req)).status).toBe(200);
     const full = SyncResponseSchema.parse(await (await f.req('/v1/sync/pull?cursor=0')).json());
     expect(full.entities.some(e => e.key === 'chat:welcome')).toBe(true);
-    expect(full.entities.some(e => e.key.startsWith('providerSecret:'))).toBe(false);
-    expect(JSON.stringify(full)).not.toContain('sk-secret-value');
+    expect(full.entities.some(e => e.key.startsWith('modelKey:'))).toBe(false);
+    expect(JSON.stringify(full)).not.toContain(TEST_KEY);
+    expect(JSON.stringify(full)).not.toContain('sealed');
 
     const boot = BootstrapSchema.parse(await (await f.req('/v1/bootstrap')).json());
     expect(boot.syncCursor).toBe(full.cursor);
@@ -94,14 +96,13 @@ describe('account setting conflict rules', () => {
 });
 
 describe('the retired button-colour setting (WP-I1)', () => {
-  it('accepts it from older clients without storing it, and never serves a row stored before the removal', async () => {
+  it('rejects it like any unknown field and stores nothing', async () => {
     const f = setup();
     const patch = (field: string, value: string) => f.req('/v1/sync/settings', {field,value}, 'PATCH');
-    expect((await patch('button', '#b6e36b')).status).toBe(200);
+    expect((await patch('button', '#b6e36b')).status).toBe(400);
+    expect((await patch('provider', 'openrouter')).status).toBe(400);
     const delta = await (await f.req('/v1/sync/pull?cursor=0')).json();
     expect(delta.entities.some((e: {key: string}) => e.key === 'accountSetting:button')).toBe(false);
-    await f.service.adapters.store.put('local-user', 'accountSetting', 'button', {field: 'button', value: '#123abc'});
-    expect((await f.service.adapters.store.list('local-user', 'accountSetting')).some(row => (row.value as {field: string}).field === 'button')).toBe(true);
     await patch('palette', 'plum');
     const items = (await (await f.req('/v1/sync/settings')).json()).items as {field: string}[];
     expect(items.map(i => i.field)).toEqual(['palette']);

@@ -7,8 +7,8 @@ import {HashTree, canonicalJSON, respondMerkle} from '@praxis/sync';
 import type {StoredRecord} from './contracts.js';
 import {ApiError, type ApiService} from './service.js';
 
-/** Kinds a client replica holds. Secrets, checkpoints, idempotency rows and other server state never sync. */
-export const SYNC_KINDS = new Set(['chat', 'message', 'provider', 'model', 'connector', 'skill', 'registry', 'consent', 'preferences', 'attachment', 'run', 'accountSetting', 'savedSecret', 'savedVariable']);
+/** Client-synced kinds; secrets, checkpoints, and idempotency rows stay server-only. */
+export const SYNC_KINDS = new Set(['chat', 'message', 'modelPreference', 'connector', 'skill', 'registry', 'consent', 'preferences', 'accountSetting', 'attachment', 'run']);
 
 export {canonicalJSON};
 export const entityHash = (value: unknown) => createHash('sha256').update(canonicalJSON(value), 'utf8').digest('hex');
@@ -30,12 +30,12 @@ function parseCursor(raw: string | undefined): number {
   return Number(raw);
 }
 
-/** Cursor sync over the store's monotonic revision log (never wall-clock), so simultaneous writes can't be skipped. */
+/** Reads monotonic per-owner revisions (never wall-clock) so concurrent writes aren't skipped. */
 export async function pullChanges(service: ApiService, userId: string, after: number, limit: number) {
   const entities = new Map<string, ReturnType<typeof entity>>();
   let cursor = after;
   let hasMore = true;
-  // Skip non-sync kinds without returning short pages forever; bounded by a few store reads per request.
+  // Bound inner reads when skipping non-sync kinds to avoid infinite short pages.
   for (let reads = 0; reads < 5 && hasMore && entities.size < limit; reads++) {
     const batch = await service.adapters.store.changes(userId, cursor, limit);
     for (const record of batch.records) {
@@ -59,18 +59,15 @@ export async function pullChanges(service: ApiService, userId: string, after: nu
 }
 
 export function registerSyncRoutes(app: Hono<any>, service: ApiService) {
-  // 'button' was the removed button-colour option (WP-I1): older clients may still send it, so it is accepted
-  // and dropped, and rows stored before the removal are never served.
-  const Setting = z.object({ field: z.enum(['theme', 'palette', 'button', 'model', 'provider', 'effort']), value: z.string().max(200) });
-  const RETIRED = new Set(['button']);
+  const Setting = z.object({ field: z.enum(['theme', 'palette', 'model', 'effort']), value: z.string().max(200) });
   app.get('/v1/sync/settings', async c => {
     const rows = await service.adapters.store.list(c.get('userId'), 'accountSetting');
-    const items = rows.map(row => row.value as { field: string; value: string }).filter(value => !RETIRED.has(value.field));
+    const items = rows.map(row => row.value as { field: string; value: string });
     return c.json({ items });
   });
   app.patch('/v1/sync/settings', async c => {
     const input = Setting.parse(await c.req.json());
-    const stored = RETIRED.has(input.field) ? input : (await service.adapters.store.put(c.get('userId'), 'accountSetting', input.field, input)).value;
+    const stored = (await service.adapters.store.put(c.get('userId'), 'accountSetting', input.field, input)).value;
     return c.json(stored as typeof input);
   });
   // Finite streams suit serverless hosts. Reopening resumes the durable revision cursor, including after sleep.
@@ -113,7 +110,7 @@ export function registerSyncRoutes(app: Hono<any>, service: ApiService) {
 }
 
 
-/** Cursor sync won the experiment (docs/SYNC_EXPERIMENT.md); Merkle stays available behind PRAXIS_SYNC_STRATEGY=merkle (and locally). */
+/** Cursor sync is default; Merkle requires PRAXIS_SYNC_STRATEGY=merkle. */
 export function syncStrategy(service: ApiService): 'cursor' | 'merkle' {
   void service;
   return process.env.PRAXIS_SYNC_STRATEGY === 'merkle' ? 'merkle' : 'cursor';
@@ -121,7 +118,7 @@ export function syncStrategy(service: ApiService): 'cursor' | 'merkle' {
 
 const trees = new Map<string, {head: number; tree: HashTree; rows: Map<string, StoredRecord>}>();
 
-/** Builds the owner's tree from the store; reused while the owner's head revision is unchanged. The cache is per-instance memory (each serverless instance rebuilds its own). */
+/** Builds and caches the owner's Merkle tree per instance while head revision matches. */
 async function serverTree(service: ApiService, userId: string) {
   const head = await service.adapters.store.head(userId);
   const cached = trees.get(userId);
@@ -143,7 +140,7 @@ async function serverTree(service: ApiService, userId: string) {
 }
 
 async function merkle(service: ApiService, userId: string, input: {root?: string | undefined; prefixes?: string[] | undefined}) {
-  // Off by default everywhere (cursor sync won, docs/SYNC_EXPERIMENT.md); only PRAXIS_SYNC_STRATEGY=merkle enables it.
+  // Merkle requires PRAXIS_SYNC_STRATEGY=merkle.
   if (syncStrategy(service) !== 'merkle') throw new ApiError(404, 'strategy_disabled', 'Merkle sync is disabled; use cursor sync');
   const {head, tree, rows} = await serverTree(service, userId);
   try {

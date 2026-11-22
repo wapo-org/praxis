@@ -1,10 +1,10 @@
-import {blobOwnerTag} from './blob-owner.js';
+import {blobOwnerTag} from './blobOwner.js';
 import {v} from 'convex/values';
 import {makeFunctionReference, type GenericActionCtx, type GenericDataModel} from 'convex/server';
 import {internalMutation} from './functions.js';
 import {MAX_BYTES} from './files.js';
 
-/** Consumes the capability before receiving bytes: concurrent POSTs cannot upload under one ticket. */
+/** Consumes ticket before reading bytes so concurrent POSTs cannot race. */
 export const begin = internalMutation({
   args: {ticket: v.string(), mediaType: v.string()},
   handler: async (ctx, a) => {
@@ -15,7 +15,7 @@ export const begin = internalMutation({
   },
 });
 
-/** Internal only: clients cannot bind arbitrary storage ids, even with their own ticket. */
+/** Internal only so clients cannot bind arbitrary storageIds. */
 export const finish = internalMutation({
   args: {id: v.id('files'), storageId: v.id('_storage')},
   handler: async (ctx, a) => {
@@ -34,10 +34,10 @@ export async function upload(ctx: GenericActionCtx<GenericDataModel>, request: R
   if (!mediaType || !/^[a-f0-9-]{36}$/.test(ticket)) return new Response('Invalid upload', {status: 400});
   const pending = await ctx.runMutation(makeFunctionReference<'mutation', {ticket: string; mediaType: string}, {id: import('convex/values').GenericId<'files'>; size: number;ownerId:string} | null>('uploads:begin'), {ticket, mediaType});
   if (!pending) return new Response('Upload ticket unavailable', {status: 404});
-  // Bound buffering even without Content-Length; no bytes are passed as a Convex function argument.
+  // Stream-read body to bound memory even without Content-Length.
   const reader = request.body?.getReader();
   if (!reader) return new Response('Missing upload', {status: 400});
-  // Chunks are kept as read (no per-chunk copy) so peak memory stays ~2× the file (chunks + Blob) inside the 64 MiB HTTP-action limit.
+  // Retain chunks as-is (~2x peak memory) inside the 64 MiB limit.
   const chunks: Uint8Array[] = [];
   let size = 0;
   try {

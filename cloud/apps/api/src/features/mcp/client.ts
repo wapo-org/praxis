@@ -14,7 +14,7 @@ export async function withClient<T>(ctx: FeatureContext, value: Connector, optio
   if (liveStatus.authStatus === 'required') throw new McpError(409, 'authorization_required', `${value.name} needs sign-in in connector settings`);
   const extra = await readSecret<Record<string, string>>(ctx, value.id, 'headers') ?? {};
   const token = await readSecret<string>(ctx, value.id, 'token');
-  // Refreshes OAuth tokens shortly before expiry; after a 401 the retry below forces one refresh.
+  // Refresh OAuth tokens before expiry; a 401 below forces one retry refresh.
   const oauth: OAuthTokens | undefined = token ? undefined : await ensureFreshTokens(ctx, value, options, retried);
   if (!token && !oauth && await readSecret(ctx, value.id, 'tokens')) return requireReauth(ctx, value);
   let headers = { ...extra, ...(value.id==='builtin-exa'&&token?{'x-api-key':token}:{}), ...(token || oauth?.access_token ? { Authorization: `Bearer ${token || oauth?.access_token}` } : {}) };
@@ -50,14 +50,12 @@ export async function withClient<T>(ctx: FeatureContext, value: Connector, optio
       return requireReauth(ctx, value);
     }
     if (error instanceof McpError) throw error;
-    // DNS, refused/reset connections, timeouts and blocked egress mean the server can't be reached at all.
     if (unreachable(error) || controller.signal.aborted) throw new McpError(502, 'mcp_unreachable', `${value.name} can't be reached`);
-    // Remote errors may echo authorization headers or request bodies. Do not return them.
+    // Never forward raw remote errors that may echo authorization headers.
     throw new McpError(502, 'mcp_failed', 'The remote MCP operation failed');
   } finally { clearTimeout(timeout); await client.close().catch(() => {}); }
 }
 const UNREACHABLE_CODES = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET']);
-/** Walks the cause chain for transport-level failures (fetch failed, DNS, connect, timeout, SSRF guard refusal). */
 function unreachable(error: unknown): boolean {
   for (let e: unknown = error, depth = 0; e && depth < 6; e = (e as { cause?: unknown }).cause, depth++) {
     const code = (e as { code?: unknown }).code;

@@ -8,7 +8,7 @@ async function png(){const pixels=Buffer.from([255,0,0,255,0,0,0,0,255,0,0,255])
 describe('image crops',()=>{
  it('crops top-left normalized pixels and enlarges small PNGs at most 4x',async()=>{
   const crop=await cropImage({type:'image',data:await png(),mediaType:'image/png'},{x:.5,y:0,width:.5,height:1},signal);
-  const decoded=await sharp(Buffer.from((crop as {data:string}).data,'base64')).raw().toBuffer({resolveWithObject:true});expect(decoded.info.width).toBe(8);expect(decoded.info.height).toBe(4);expect([...decoded.data.slice(0,3)]).toEqual([0,0,255]);expect(crop).toMatchObject({mediaType:'image/png'});
+  const decoded=await sharp(Buffer.from((crop as {data:string}).data,'base64')).raw().toBuffer({resolveWithObject:true});expect(decoded.info.width).toBe(8);expect(decoded.info.height).toBe(4);expect(Array.from(decoded.data.subarray(0,3))).toEqual([0,0,255]);expect(crop).toMatchObject({mediaType:'image/png'});
  });
  it('clamps overshooting regions, applies EXIF orientation, reencodes JPEG and caps large crops',async()=>{
   expect(imageRegion({x:.5,y:.5,width:4,height:4})).toEqual({x:.5,y:.5,width:.5,height:.5});

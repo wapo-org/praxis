@@ -1,9 +1,11 @@
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import { z } from 'zod';
-import { JsonObjectSchema, type JsonObject } from '@praxis/protocol';
+import { JsonObjectSchema, MessageSchema, type JsonObject } from '@praxis/protocol';
 import type { ListOptions, Store, StoredRecord } from '../contracts.js';
 import { ChangePageSchema, Limit, RecordSchema, Revision, Scope } from './validation.js';
+
+const MESSAGE_COMMIT = 'messages:commit';
 
 export interface ConvexOptions {
   url: string;
@@ -24,14 +26,13 @@ export function createConvexRPC(options: ConvexOptions): ConvexRPC {
   const withToken = (args: Record<string, unknown>) => ({ ...args, serverToken: options.serverToken });
   return {
     query: (name, args) => client.query(makeFunctionReference<'query'>(name), withToken(args)),
-    mutation: (name, args) => client.mutation(makeFunctionReference<'mutation'>(name), withToken({...args,...(args.userId && !name.startsWith('account:') ? {requireOwner:true}: {})})),
+    mutation: (name, args) => client.mutation(makeFunctionReference<'mutation'>(name), withToken(args)),
     action: (name, args) => client.action(makeFunctionReference<'action'>(name), withToken(args)),
   };
 }
 
-/** Store plus the compare-and-set write used for checkpoint versions. */
 export interface ConvexStore extends Store {
-  /** Writes only if the current revision equals `expectedRevision` (0 = absent). Returns null on conflict. */
+  /** CAS write against expectedRevision (0 = absent); returns null on conflict. */
   putIfRevision(
     userId: string,
     kind: string,
@@ -40,7 +41,6 @@ export interface ConvexStore extends Store {
     expectedRevision: number,
     options?: ListOptions,
   ): Promise<StoredRecord | null>;
-  /** Every owner with stored rows (maintenance scripts such as key rotation). */
   owners(): AsyncIterable<string>;
 }
 
@@ -57,6 +57,9 @@ function parent(options?: ListOptions) {
 }
 
 /** Drops absent optional fields so callers see the same shape as the memory adapter. */
+/** `store:list` returns one bounded page per call; the adapter follows the cursor. */
+const ListPageSchema = z.object({ rows: z.array(z.unknown()), cursor: z.string().nullable() });
+
 function toRecord(value: unknown): StoredRecord {
   const row = RecordSchema.parse(value);
   const { parentId, ...rest } = row;
@@ -65,6 +68,13 @@ function toRecord(value: unknown): StoredRecord {
 
 export function storeFromRPC(rpc: ConvexRPC): ConvexStore {
   return {
+    async commitMessages(userId, chatId, messages) {
+      const payload = z.array(MessageSchema).parse(messages);
+      const result = await rpc.mutation(MESSAGE_COMMIT, {
+        userId: Scope.parse(userId), chatId, messagesJson: JSON.stringify(payload),
+      });
+      return z.array(MessageSchema).parse(result);
+    },
     async *owners() {
       let cursor: string | null = null;
       do {
@@ -78,11 +88,17 @@ export function storeFromRPC(rpc: ConvexRPC): ConvexStore {
       return row === null ? null : toRecord(row);
     },
     async list(userId, kind, options) {
-      const rows = z.array(z.unknown()).parse(await rpc.query('store:list', { ...address(userId, kind), ...parent(options) }));
-      return rows.map(toRecord);
+      const records: StoredRecord[] = [];
+      let cursor: string | null = null;
+      do {
+        const page = ListPageSchema.parse(await rpc.query('store:list', { ...address(userId, kind), ...parent(options), cursor }));
+        records.push(...page.rows.map(toRecord));
+        cursor = page.cursor;
+      } while (cursor);
+      return records;
     },
     async put(userId, kind, id, value, options) {
-      const args = { ...address(userId, kind, id), ...parent(options), value: JsonObjectSchema.parse(value) };
+      const args = { ...address(userId, kind, id), ...parent(options), valueJson: JSON.stringify(JsonObjectSchema.parse(value)) };
       return toRecord(await rpc.mutation('store:put', args));
     },
     async delete(userId, kind, id) {
@@ -100,7 +116,7 @@ export function storeFromRPC(rpc: ConvexRPC): ConvexStore {
       const args = {
         ...address(userId, kind, id),
         ...parent(options),
-        value: JsonObjectSchema.parse(value),
+        valueJson: JSON.stringify(JsonObjectSchema.parse(value)),
         expectedRevision: Revision.parse(expectedRevision),
       };
       const row = await rpc.mutation('store:putIfRevision', args);
