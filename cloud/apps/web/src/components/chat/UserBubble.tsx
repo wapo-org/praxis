@@ -19,7 +19,11 @@ export const UserBubble: React.FC<UserBubbleProps> = ({ message, attachmentsById
   const textParts = message.parts.filter((p) => p.type === 'text');
   const mediaParts = message.parts.filter((p) => !!p.attachmentId && (p.type === 'image' || p.type === 'document' || p.type === 'note'));
 
-  const joined = textParts.map((p) => p.text ?? '').join('\n');
+  const joined = textParts
+    .map((p) => p.text ?? '')
+    .map((text) => text.replace(/\n?\[Attached file[^\]]*\]\s*$/i, ''))
+    .filter(Boolean)
+    .join('\n');
   // The composer sends this placeholder with attachment-only messages; the chips say it instead.
   const combinedText = joined === 'Attached files' && mediaParts.length > 0 ? '' : joined;
   const turnKey = message.clientTurnId ?? message.id;

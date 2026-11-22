@@ -304,7 +304,7 @@ export function ChatScreen() {
                     </p>
                   ) : undefined
                 }
-                onResolveApproval={(rId, aId, decision) => void resolveApproval(rId, aId, decision)}
+                onResolveApproval={(rId, aId, decision) => resolveApproval(rId, aId, decision)}
                 onResolveElicitation={(rId, eId, action, content) =>
                   resolveElicitation(rId, eId, action, content)
                 }

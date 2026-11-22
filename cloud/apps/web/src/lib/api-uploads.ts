@@ -98,7 +98,10 @@ export class UploadApiClient extends FeatureApiClient {
     audioBlob: Blob,
     options?: { model?: string; language?: string },
   ): Promise<Transcription> {
+    const session = this.getSessionSignal();
+    session.throwIfAborted();
     const buf = await audioBlob.arrayBuffer();
+    session.throwIfAborted();
     const bytes = new Uint8Array(buf);
     let binary = '';
     for (let i = 0; i < bytes.byteLength; i++) {
@@ -115,6 +118,7 @@ export class UploadApiClient extends FeatureApiClient {
         model: options?.model ?? 'whisper-large-v3-turbo',
         ...(options?.language ? { language: options.language } : {}),
       }),
+      session,
     });
   }
 }

@@ -184,8 +184,8 @@ export const Composer: React.FC = () => {
     try {
       const sent = await sendMessage(trimmed || 'Attached files', { attachmentIds });
       if (!sent) {
-        setText(current => current || text);
-        setQueued(current => current.length ? current : draft);
+        setText(current => current ? `${trimmed}\n${current}` : trimmed);
+        setQueued(current => [...draft, ...current]);
         cancelSendFlight();
         return;
       }

@@ -103,6 +103,7 @@ export function useReplica(
         })
         .catch(() => null);
       if (catalogue) { setModels(catalogue); state.setCatalogReady(true); }
+      else if (models.length > 0) state.setCatalogReady(true);
       if (!selectedModelId && catalogue?.[0]) setSelectedModelId(catalogue[0].id);
       setSkills(boot.skills);
       if (boot.consents) setConsents(boot.consents);
@@ -205,8 +206,10 @@ export function useReplica(
     }
   }, [activeChatId, routeChat?.modelId, models, state.catalogReady, selectedModelId]);
   React.useEffect(() => {
-    if (routeChat?.modelId) setSelectedModelId(routeChat.modelId);
-  }, [activeChatId, routeChat?.modelId]);
+    if (routeChat?.modelId && models.some((model) => model.id === routeChat.modelId)) {
+      setSelectedModelId(routeChat.modelId);
+    }
+  }, [activeChatId, routeChat?.modelId, models]);
   React.useEffect(() => {
     if (routeChat?.mode) setSelectedMode(fromWireMode(routeChat.mode)); // a stored plan reads as Auto
   }, [activeChatId, routeChat?.mode]);
