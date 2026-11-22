@@ -8,7 +8,9 @@ async function keyId(key: Uint8Array<ArrayBuffer>): Promise<string> {
 }
 
 function base64Bytes(text: string): Uint8Array<ArrayBuffer> {
-  const binary = atob(text);
+  const normalized = text.replace(/-/g, '+').replace(/_/g, '/').replace(/=+$/, '');
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+  const binary = atob(padded);
   const bytes = new Uint8Array(new ArrayBuffer(binary.length));
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;

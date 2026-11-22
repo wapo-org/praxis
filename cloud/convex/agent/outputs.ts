@@ -15,8 +15,11 @@ function storedText(text: string): string {
 
 function chunksOf(text: string): string[] {
   const chunks: string[] = [];
-  for (let at = 0; at < text.length; at += TOOL_OUTPUT_CHUNK_CHARACTERS_MAX) {
-    chunks.push(text.slice(at, at + TOOL_OUTPUT_CHUNK_CHARACTERS_MAX));
+  for (let at = 0; at < text.length;) {
+    let end = Math.min(at + TOOL_OUTPUT_CHUNK_CHARACTERS_MAX, text.length);
+    if (end < text.length && text.charCodeAt(end - 1) >= 0xd800 && text.charCodeAt(end - 1) <= 0xdbff) end--;
+    chunks.push(text.slice(at, end));
+    at = end;
   }
   return chunks;
 }

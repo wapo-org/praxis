@@ -49,9 +49,7 @@ export const writeChunks = internalMutation({
     const updatedAt = new Date().toISOString();
     for (const [offset, text] of texts.entries()) {
       const index = from + offset;
-      const last = index === owner.chunks - 1;
-      // Fixed-size chunks let the reader find an offset's chunk without reading the others.
-      if (last ? text.length > TOOL_OUTPUT_CHUNK_CHARACTERS_MAX : text.length !== TOOL_OUTPUT_CHUNK_CHARACTERS_MAX) {
+      if (text.length === 0 || text.length > TOOL_OUTPUT_CHUNK_CHARACTERS_MAX) {
         throw new ConvexError(OUTPUT_ERRORS.chunk);
       }
       const row = {userId, id: chunkId(ref, index), revision: 0, updatedAt, chatId: owner.chatId, parentId: ref, text};
@@ -69,12 +67,16 @@ export async function readOutputPage(
   const owner = await manifest(ctx, input.userId, input.id);
   if (!owner || owner.chatId !== input.chatId) return null;
   const end = Math.min(owner.characters, input.offset + input.limit);
-  const size = TOOL_OUTPUT_CHUNK_CHARACTERS_MAX;
   const texts: string[] = [];
-  for (let index = Math.floor(input.offset / size); index * size < end; index++) {
+  let start = 0;
+  for (let index = 0; index < owner.chunks && start < end; index++) {
     const row = await chunk(ctx, input.userId, input.id, index);
     if (!row) return null;
-    texts.push(row.text.slice(Math.max(0, input.offset - index * size), end - index * size));
+    const rowEnd = start + row.text.length;
+    if (rowEnd > input.offset && start < end) {
+      texts.push(row.text.slice(Math.max(0, input.offset - start), end - start));
+    }
+    start = rowEnd;
   }
   return ToolOutputPageSchema.parse({page: texts.join(''), characters: owner.characters});
 }

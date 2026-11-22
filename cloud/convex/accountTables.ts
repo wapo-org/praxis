@@ -1,7 +1,7 @@
 import type {QueryCtx} from './functions.js';
 import type {Id, TableNames} from './_generated/dataModel.js';
 
-export const ACCOUNT_PURGE_BATCH_MAX = 100;
+export const ACCOUNT_PURGE_BATCH_MAX = 8;
 
 // Every table names its deletion policy; `satisfies` makes a table added without one a type error.
 export const ACCOUNT_PURGE_POLICY = {

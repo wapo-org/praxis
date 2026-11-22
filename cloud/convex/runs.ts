@@ -13,10 +13,11 @@ import {convexValidator} from './zodValidator.js';
 import type {Doc, Id} from './_generated/dataModel.js';
 
 const turnIndexSchema = z.number().int().nonnegative().max(TURN_INDEX_MAX);
+const startTurnIndexSchema = z.number().int().nonnegative().lt(TURN_INDEX_MAX);
 const startInput = z.object({
   chatId: IdSchema,
   idempotencyKey: IdSchema.optional(),
-  startTurnIndex: turnIndexSchema.default(0),
+  startTurnIndex: startTurnIndexSchema.default(0),
 });
 type RunScope = {userId: string; chatId: string; runId: Id<'runs'>; generation: number};
 type ScopedRun = Doc<'runs'> & {workflow: NonNullable<Doc<'runs'>['workflow']>};
@@ -164,7 +165,8 @@ export const start = authedMutation({
       }
     }
     const active = await activeRun(ctx, userId, chatId);
-    const runId = active?._id ?? await createRun(ctx, userId, chatId, startTurnIndex);
+    const usableActive = active?.value.status === 'running' || active?.value.status === 'paused' ? active : null;
+    const runId = usableActive?._id ?? await createRun(ctx, userId, chatId, startTurnIndex);
     if (key !== undefined) await ctx.db.insert('runStarts', {userId, chatId, key, startTurnIndex, runId});
     return runId;
   },

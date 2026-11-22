@@ -24,7 +24,7 @@ export const dispatch = internalMutation({
 
 export const deliver = internalAction({
   args: { userId: v.id('users') },
-  returns: v.null(),
+  returns: v.number(),
   handler: async (_ctx, { userId }) => {
     const apiOrigin = new URL(process.env.PRAXIS_API_URL ?? '');
     const token = process.env.PRAXIS_CONVEX_SERVER_TOKEN;
@@ -46,6 +46,6 @@ export const deliver = internalAction({
       body,
     });
     if (!response.ok) throw new Error(`Account deletion recovery returned HTTP ${response.status}`);
-    return null;
+    return response.status;
   },
 });
