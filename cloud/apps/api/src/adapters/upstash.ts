@@ -3,7 +3,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {Redis} from '@upstash/redis';
 import {Ratelimit} from '@upstash/ratelimit';
 import {z} from 'zod';
-import {JsonObjectSchema} from '@praxis/protocol';
+import {JsonObjectSchema, type JsonObject} from '@praxis/protocol';
 import type {Events, KV} from '../contracts.js';
 import {EventSchema, Limit, Revision, Scope} from './validation.js';
 
@@ -35,6 +35,33 @@ export type RedisLike = Pick<Redis, 'get' | 'set' | 'del' | 'getdel' | 'eval' | 
 
 /** Hash owner/channel/kv names with SHA-256 so caller text never enters Redis keys. */
 export const opaque = (...parts: string[]) => createHash('sha256').update(JSON.stringify(parts.map(p => Scope.parse(p)))).digest('hex').slice(0, 40);
+
+/** Upstash with automaticDeserialization:false returns raw [id, [field, value, ...]] tuples from xrange. */
+function extractStreamPayload(fields: unknown): unknown {
+  if (Array.isArray(fields)) {
+    for (let i = 0; i + 1 < fields.length; i += 2) {
+      if (fields[i] === 'payload') return fields[i + 1];
+    }
+    return undefined;
+  }
+  if (fields && typeof fields === 'object' && 'payload' in fields) {
+    return (fields as {payload: unknown}).payload;
+  }
+  return undefined;
+}
+
+function parseStreamEntries(result: unknown): Array<{id: number; payload: JsonObject}> {
+  const entries: Array<[string, unknown]> = Array.isArray(result)
+    ? result.filter((item): item is [string, unknown] => Array.isArray(item) && typeof item[0] === 'string')
+    : result && typeof result === 'object'
+      ? Object.entries(result)
+      : [];
+  return entries.map(([id, fields]) => {
+    const raw = extractStreamPayload(fields);
+    const payload = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return EventSchema.parse({id: Number(id.split('-')[0]), payload});
+  });
+}
 
 export function createUpstashAdapters(options: UpstashOptions) {
   z.string().url().parse(options.url);
@@ -85,7 +112,7 @@ export function upstashFromRedis(redis: RedisLike, options: Omit<UpstashOptions,
       Limit.parse(limit);
       if (after === Number.MAX_SAFE_INTEGER) return [];
       const result = await redis.xrange<{payload: string}>(stream(u, c), `(${after}-0`, '+', limit);
-      return Object.entries(result ?? {}).map(([id, fields]) => EventSchema.parse({id: Number(id.split('-')[0]), payload: JSON.parse(fields.payload)}));
+      return parseStreamEntries(result);
     },
     // The per-stream sequence APPEND_EVENT_LUA increments is exactly the newest event id.
     latest: async (u, c) => Revision.parse(Number((await redis.get<string | number>(`${stream(u, c)}:seq`)) ?? 0)),

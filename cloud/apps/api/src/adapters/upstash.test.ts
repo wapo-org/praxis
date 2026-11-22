@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {createUpstashAdapters, upstashFromRedis} from './upstash.js';
+import {createUpstashAdapters, upstashFromRedis, type RedisLike} from './upstash.js';
 import {fakeRedis} from './testing/fake-redis.js';
 import {eventsContract, kvContract} from './testing/contract-suite.js';
 
@@ -51,5 +51,21 @@ describe('Upstash adapter specifics', () => {
     expect(await a.lease.acquire('run:1', 60_000)).toBeNull();
     await a.lease.release('run:1', t1!);
     expect(await a.lease.acquire('run:1', 60_000)).toBeTruthy();
+  });
+  it('parses raw Upstash xrange tuples returned when automaticDeserialization is false', async () => {
+    const fake = fakeRedis();
+    const rawRedis: RedisLike = {
+      ...fake.redis,
+      xrange: (async () => [
+        ['1-0', ['payload', JSON.stringify({type: 'run.started'})]],
+        ['2-0', ['other', 'ignored', 'payload', JSON.stringify({type: 'text.delta', text: 'hi'})]],
+      ]) as unknown as RedisLike['xrange'],
+    };
+    const adapters = upstashFromRedis(rawRedis);
+    const rows = await adapters.events.read('u', 'run:1', 0);
+    expect(rows).toEqual([
+      {id: 1, payload: {type: 'run.started'}},
+      {id: 2, payload: {type: 'text.delta', text: 'hi'}},
+    ]);
   });
 });
