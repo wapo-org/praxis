@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {randomBytes} from 'node:crypto';
-import {BootstrapSchema,RunSnapshotSchema} from '@praxis/protocol';
+import {BootstrapSchema, JsonObjectSchema, RunSnapshotSchema} from '@praxis/protocol';
 import {createApp} from '../app.js';
 import {ApiService} from '../service.js';
 import {localDriver} from '../runtime.js';
@@ -42,4 +42,16 @@ describe('API protocol end to end',()=>{
  it('searches and paginates the catalogue server-side and keeps pin preferences per user',async()=>{const f=fixture();const first=await (await f.req('/v1/models?limit=1')).json();expect(first.items).toHaveLength(1);expect(first.nextCursor).toBeTruthy();const second=await (await f.req(`/v1/models?limit=1&cursor=${first.nextCursor}`)).json();expect(second.items[0].id).not.toBe(first.items[0].id);const search=await (await f.req('/v1/models?q=beta')).json();expect(search.items.map((m:any)=>m.id)).toEqual(['vendor/beta']);const pref=await f.req('/v1/models/preferences','PATCH',{type:'model.preference',modelId:'vendor/beta',favorite:true,pinned:true});expect(await pref.json()).toEqual({type:'modelPreference',modelId:'vendor/beta',pinned:true,favorite:true});const pinned=await (await f.req('/v1/models')).json();expect(pinned.items[0]).toMatchObject({id:'vendor/beta',pinned:true,favorite:true});expect((await (await f.req('/v1/models?favorite=true')).json()).items).toHaveLength(1);const login=await f.req('/v1/auth/dev','POST',{type:'auth.dev',userId:'other'});const other=await (await f.req('/v1/models?pinned=true','GET',undefined,(await login.json()).bearerToken)).json();expect(other.items).toEqual([]);expect((await f.req('/v1/models/preferences','PATCH',{type:'model.preference',modelId:'vendor/gone',pinned:true})).status).toBe(404);await f.req('/v1/models/preferences','PATCH',{type:'model.preference',modelId:'vendor/beta',favorite:false,pinned:false});expect(await f.service.list('local-user','modelPreference')).toEqual([]);});
  it('invalidates bootstrap after preferences and chat changes',async()=>{const f=fixture();await f.req('/v1/bootstrap');const prefs=await f.req('/v1/preferences','PATCH',{type:'preferences.input',voice:{model:'custom-voice',apiKey:'never-return-me'},vision:{enabled:false}});expect(JSON.stringify(await prefs.json())).not.toContain('never-return-me');const updated=await (await f.req('/v1/bootstrap')).json();expect(updated.preferences.voice.model).toBe('custom-voice');expect(updated.preferences.vision.enabled).toBe(false);});
  it('rejects unsafe event and page cursors and unexpected browser origins',async()=>{const f=fixture();const {run}=await start(f);await f.service.drain();expect((await f.req(`/v1/runs/${run.id}/events?after=oops`)).status).toBe(400);expect((await f.req('/v1/models?cursor=oops')).status).toBe(400);expect((await f.app.request('/v1/chats',{method:'POST',headers:{Authorization:'Bearer dev-local',Origin:'https://evil.example','Content-Type':'application/json'},body:JSON.stringify({type:'chat.input'})})).status).toBe(403);});
+ it('strips undefined fields before appending run events so strict JSON adapters succeed', async () => {
+  const f = fixture();
+  const baseAppend = f.adapters.events.append.bind(f.adapters.events);
+  f.adapters.events.append = async (userId, channel, payload, eventKey) => {
+   JsonObjectSchema.parse(payload);
+   return baseAppend(userId, channel, payload, eventKey);
+  };
+  await f.req('/v1/bootstrap');
+  const {response} = await start(f, 'turn-strict-json');
+  expect(response.status).toBe(202);
+  await f.service.drain();
+ });
 });

@@ -213,7 +213,11 @@ export class ApiService{
    const eventKey = event.type === 'messages.committed' ? `messages:${JSON.stringify(event.messages.map(m => m.id))}`
     : event.type === 'approval.requested' ? `approval.requested:${event.approval.id}`
     : event.type === 'approval.resolved' ? `approval.resolved:${event.approvalId}` : undefined;
-   const record=await this.adapters.events.append(userId,`run:${runId}`,{event,createdAt:this.now(),chatId:run.chatId},eventKey);run.lastEventId=Math.max(run.lastEventId,record.id);
+   const eventPayload = JSON.parse(
+    JSON.stringify({event, createdAt: this.now(), chatId: run.chatId}),
+   ) as JsonObject;
+   const record = await this.adapters.events.append(userId, `run:${runId}`, eventPayload, eventKey);
+   run.lastEventId = Math.max(run.lastEventId, record.id);
    await Promise.all([
     this.put(userId,'run',runId,run),
     this.put(userId,'snapshot',runId,foldSnapshot(current,event,record.id,run)),
@@ -225,8 +229,12 @@ export class ApiService{
  private async commitMessages(userId: string, run: Run, messages: Message[]) {
   if (!messages.length) return;
   for (const message of messages) {
-   message.clientTurnId ??= run.clientTurnId;
-   message.promptStartedAt ??= run.promptStartedAt;
+   if (message.clientTurnId === undefined && run.clientTurnId !== undefined) {
+    message.clientTurnId = run.clientTurnId;
+   }
+   if (message.promptStartedAt === undefined && run.promptStartedAt !== undefined) {
+    message.promptStartedAt = run.promptStartedAt;
+   }
   }
   const store = this.adapters.store;
   if (store.commitMessages) {
