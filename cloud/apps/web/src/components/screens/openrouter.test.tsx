@@ -156,16 +156,16 @@ describe('OpenRouter card', () => {
 
 describe('PKCE helper', () => {
   it('makes a fresh verifier per attempt and hands it out exactly once', async () => {
-    const first = await beginOpenRouterConnect('https://app.example');
+    const first = await beginOpenRouterConnect('account-a', 'https://app.example');
     const firstVerifier = sessionStorage.getItem(VERIFIER_KEY);
-    const second = await beginOpenRouterConnect('https://app.example');
+    const second = await beginOpenRouterConnect('account-a', 'https://app.example');
     expect(new URL(second).searchParams.get('callback_url')).toBe('https://app.example/settings/openrouter/callback');
     expect(second).not.toBe(first);
-    const verifier = takeVerifier();
+    const verifier = takeVerifier('account-a');
     expect(verifier).not.toBe(firstVerifier);
     expect(verifier).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(sessionStorage.getItem(VERIFIER_KEY)).toBeNull();
-    expect(takeVerifier()).toBeNull();
+    expect(takeVerifier('account-a')).toBeNull();
   });
   it('derives the RFC 7636 example challenge', async () => {
     expect(await challengeFor('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk')).toBe('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');

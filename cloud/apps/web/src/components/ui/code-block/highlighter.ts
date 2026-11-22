@@ -43,11 +43,13 @@ const loaded = new Set<Language>(['ansi']);
 const loading = new Map<Language, Promise<void>>();
 
 function getCore() {
+  const target = (() => {
+    try { new RegExp('', 'v'); return 'ES2024' as const; } catch { return 'ES2018' as const; }
+  })();
   core ??= createHighlighterCore({
     themes: [praxisLight, praxisDark],
     langs: [],
-    // Pin the regex target so TypeScript token boundaries stay consistent across runtimes.
-    engine: createJavaScriptRegexEngine({ forgiving: true, target: 'ES2024' }),
+    engine: createJavaScriptRegexEngine({ forgiving: true, target }),
   }).then((highlighter) => {
     ready = highlighter;
     return highlighter;

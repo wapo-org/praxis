@@ -20,7 +20,7 @@ export function OpenRouterCard({
 
   const connect = () =>
     void task.run(async () => {
-      navigate(await beginOpenRouterConnect());
+      navigate(await beginOpenRouterConnect(store.user?.id ?? ''));
     });
   const paste = (event: React.FormEvent) => {
     event.preventDefault();

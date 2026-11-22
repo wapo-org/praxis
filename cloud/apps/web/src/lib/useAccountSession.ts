@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiClient, PraxisApiClient } from './api';
-import { clearReplica, loadReplica, setReplicaIdentity } from './idb';
+import { clearReplica, loadReplica, replicaIdentityMatches, setReplicaIdentity } from './idb';
 
 export function useAccountSession(
   user: string | null | undefined,
@@ -42,7 +42,7 @@ export function useAccountSession(
       return;
     }
     void setReplicaIdentity(apiClient.getBaseUrl(), user).then(loadReplica).then(() => {
-      if (active) setReadyUser(user);
+      if (active && replicaIdentityMatches(user)) setReadyUser(user);
     });
     return () => { active = false; apiClient.setSessionIdentity(null); };
   }, [user, hasToken, emailLanding]);

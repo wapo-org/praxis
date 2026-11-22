@@ -104,7 +104,7 @@ export function ElicitationCards({
 }) {
   const [settled, setSettled] = React.useState<Record<string, Settled>>({});
   // App sign-in is the App Directory's connect card now (PRA-49); URL elicitations from MCP servers are not shown.
-  const forms = pendingElicitations.filter((e) => e.mode !== 'url');
+  const forms = pendingElicitations;
   const pendingIds = new Set(forms.map((e) => e.id));
   const answered = Object.entries(settled).filter(([id]) => !pendingIds.has(id));
   return (
@@ -164,6 +164,7 @@ function ElicitationCard({
   settled?: Settled;
 }) {
   const fields = fieldsOf(elicitation);
+  const urlMode = elicitation.mode === 'url';
   const free = fields.length === 0;
   const [shown, setShown] = React.useState(false); // errors appear after the first submit, then follow the input
   const [busy, setBusy] = React.useState<Action | null>(null);
@@ -252,7 +253,7 @@ function ElicitationCard({
         <p>{hasSensitive?'Secure input is unavailable on this server. Update the server or retry.':'To save answers, update the server or retry loading saved values.'}</p>
         <button type="button" className={styles.secondary} onClick={()=>void loadSaved()}>Retry saved values</button>
       </div>:null}
-      {free ? (
+      {urlMode ? <p className={styles.message}>This request needs an external sign-in response.</p> : free ? (
         <div className={styles.field}>
           <input
             id={`${idBase}-response`}

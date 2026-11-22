@@ -27,6 +27,7 @@ const STORE_NAME = 'replica';
 let scope: { key: string; userId: string } | null = null;
 let memoryCache: LocalReplicaSnapshot | null = null;
 let queue = Promise.resolve();
+let identityRequest = 0;
 
 function database(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
@@ -50,18 +51,23 @@ async function remove(key: string) {
 
 /** Called only after the server has verified the current session. */
 export async function setReplicaIdentity(origin: string, userId: string): Promise<void> {
+  const request = ++identityRequest;
   const apiOrigin = new URL(origin || '/', globalThis.location?.origin ?? 'http://localhost').origin;
   const key = JSON.stringify([apiOrigin, userId]);
   if (scope?.key === key) return;
   if (scope) await clearReplica();
+  if (request !== identityRequest) return;
   const marker = `praxis-replica-owner:${apiOrigin}`;
   const previous = localStorage.getItem(marker);
   if (previous && previous !== key) await remove(previous);
+  if (request !== identityRequest) return;
   localStorage.setItem(marker, key);
   localStorage.removeItem('praxis-cloud-replica-v1');
   if (typeof indexedDB !== 'undefined') indexedDB.deleteDatabase('praxis-cloud-idb');
   scope = { key, userId };
 }
+
+export function replicaIdentityMatches(userId: string): boolean { return scope?.userId === userId; }
 
 export async function clearReplica(): Promise<void> {
   const previous = scope;

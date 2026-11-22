@@ -170,7 +170,7 @@ function Palette({ onClose }: { onClose: (then?: () => void) => void }) {
       </div>
     </motion.div>
   </>;
-  return <div ref={surface} className={styles.position} data-testid="search-palette" data-state={present ? 'open' : 'closing'}
+  return <><div className={styles.backdrop} aria-hidden="true"/><div ref={surface} className={styles.position} data-testid="search-palette" data-state={present ? 'open' : 'closing'}
     inert={!present} style={present ? undefined : { pointerEvents: 'none' }}>
     <GlassSurface material="thick" className={styles.surface}
       {...arrival}>
@@ -181,5 +181,5 @@ function Palette({ onClose }: { onClose: (then?: () => void) => void }) {
         <Search size={20} /><span>{query || (level ? ACTIONS[level].label : 'Search chats and actions')}</span>
       </motion.div> : null}
     </GlassSurface>
-  </div>;
+  </div></>;
 }

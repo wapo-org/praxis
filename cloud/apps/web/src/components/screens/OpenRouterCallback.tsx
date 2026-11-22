@@ -9,10 +9,11 @@ type Connect = (input: { method: 'pkce'; code: string; codeVerifier: string }) =
 
 /** One exchange per code: the verifier is single use, so a StrictMode remount must join the first exchange. */
 const exchanges = new Map<string, Promise<ModelKey>>();
-function exchangeOnce(code: string, connect: Connect): Promise<ModelKey> {
-  let exchange = exchanges.get(code);
+function exchangeOnce(code: string, accountId: string | undefined, connect: Connect): Promise<ModelKey> {
+  const exchangeKey = `${accountId ?? ''}:${code}`;
+  let exchange = exchanges.get(exchangeKey);
   if (!exchange) {
-    const codeVerifier = takeVerifier();
+    const codeVerifier = takeVerifier(accountId);
     exchange = codeVerifier
       ? connect({ method: 'pkce', code, codeVerifier })
       : Promise.reject(
@@ -20,7 +21,7 @@ function exchangeOnce(code: string, connect: Connect): Promise<ModelKey> {
             'This sign-in link was already used, or it was opened in a different tab than the one that started it. Start again from Settings.',
           ),
         );
-    exchanges.set(code, exchange);
+    exchanges.set(exchangeKey, exchange);
   }
   return exchange;
 }
@@ -28,6 +29,7 @@ function exchangeOnce(code: string, connect: Connect): Promise<ModelKey> {
 /** `/settings/openrouter/callback?code=…`: finishes the PKCE sign-in, then returns to Settings → Models. */
 export function OpenRouterCallback({ search = window.location.search }: { search?: string }) {
   const store = usePraxisStore();
+  const accountId = store.user?.id;
   const [error, setError] = React.useState<string | null>(null);
   const connect = React.useRef(store.connectModelKey);
   connect.current = store.connectModelKey;
@@ -43,7 +45,7 @@ export function OpenRouterCallback({ search = window.location.search }: { search
       setError('OpenRouter did not return a sign-in code. Start again from Settings.');
       return;
     }
-    exchangeOnce(code, (input) => connect.current(input)).then(
+    exchangeOnce(code, accountId, (input) => connect.current(input)).then(
       () => {
         if (current) finish.current('models');
       },
@@ -54,7 +56,7 @@ export function OpenRouterCallback({ search = window.location.search }: { search
     return () => {
       current = false;
     };
-  }, [search]);
+  }, [search, accountId]);
 
   return (
     <ScreenBody>

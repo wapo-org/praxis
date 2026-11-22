@@ -26,6 +26,9 @@ export function useChatActions(
     setSelectedMode,
   } = state;
   const selectSeqRef = React.useRef(0);
+  const scopeWritesRef = React.useRef(new Map<string, Promise<void>>());
+  const chatsRef = React.useRef(chats);
+  chatsRef.current = chats;
   const selectChat = React.useCallback(
     async (chatId: string) => {
       const seq = ++selectSeqRef.current;
@@ -159,12 +162,19 @@ export function useChatActions(
 
   const setChatApp = React.useCallback(
     async (chatId: string, toolkit: string, enabled: boolean) => {
-      const chat = chats.find((c) => c.id === chatId);
-      if (!chat) return;
-      const updated = await apiClient.patchChat(chatId, composioChatScopePatch(chat, toolkit, enabled));
-      setChats((prev) => prev.map((c) => (c.id === chatId ? updated : c)));
+      const previous = scopeWritesRef.current.get(chatId) ?? Promise.resolve();
+      const write = previous.catch(() => undefined).then(async () => {
+        const chat = chatsRef.current.find((c) => c.id === chatId);
+        if (!chat) return;
+        const updated = await apiClient.patchChat(chatId, composioChatScopePatch(chat, toolkit, enabled));
+        setChats((prev) => prev.map((c) => (c.id === chatId ? updated : c)));
+      });
+      scopeWritesRef.current.set(chatId, write);
+      try { await write; } finally {
+        if (scopeWritesRef.current.get(chatId) === write) scopeWritesRef.current.delete(chatId);
+      }
     },
-    [chats],
+    [setChats],
   );
 
   const setChatWebTools = React.useCallback(

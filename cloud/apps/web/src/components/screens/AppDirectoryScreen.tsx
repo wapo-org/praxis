@@ -15,6 +15,7 @@ export function AppDirectoryScreen() {
   const connections = useAppConnections();
   const actions = useAppConnect();
   const toggle = useScreenTask();
+  const toggleWrites = React.useRef(new Map<string, Promise<void>>());
   const [query, setQuery] = React.useState('');
   const catalog = useAppCatalog(query);
   const chat = store.activeChat;
@@ -22,7 +23,11 @@ export function AppDirectoryScreen() {
 
   const toggleChat = (toolkit: string, enabled: boolean) => {
     if (!chat) return;
-    void toggle.run(() => store.setChatApp(chat.id, toolkit, enabled));
+    const key = `${chat.id}:${toolkit}`;
+    const previous = toggleWrites.current.get(key) ?? Promise.resolve();
+    const write = previous.catch(() => undefined).then(() => toggle.run(() => store.setChatApp(chat.id, toolkit, enabled)));
+    toggleWrites.current.set(key, write);
+    void write.finally(() => { if (toggleWrites.current.get(key) === write) toggleWrites.current.delete(key); });
   };
 
   return (
