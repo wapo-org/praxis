@@ -13,7 +13,12 @@ describe('context embedding client', () => {
     let requests = 0;
     const fetcher = (async (_url, init) => {
       requests++;
-      if (requests === 1) return Response.json({error: {message: 'image unsupported'}}, {status: 400});
+      if (requests === 1) {
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+          input: [{content: [{type: 'text', text: 'question'}, {type: 'image_url', image_url: {url: 'data:image/png;base64,AA=='}}]}],
+        });
+        return Response.json({error: {message: 'image unsupported'}}, {status: 400});
+      }
       expect(JSON.parse(String(init?.body))).toMatchObject({input: ['question']});
       return Response.json({data: [{embedding: [3, 4]}]});
     }) as typeof fetch;

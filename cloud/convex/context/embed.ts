@@ -1,4 +1,5 @@
 import {internal} from '../_generated/api.js';
+import {ENCRYPTION_KEY_ENV, ENCRYPTION_KEYRING_ENV} from '../agent/constants.js';
 import {internalAction, internalMutation} from '../functions.js';
 import {v, ConvexError} from 'convex/values';
 import {SealedSecret} from '@praxis/types';
@@ -12,7 +13,7 @@ import {
   contextScopeKind,
 } from './constants.js';
 
-const encryptionKeys = () => process.env.PRAXIS_SECRET_ENCRYPTION_KEYS;
+const encryptionKeys = () => process.env[ENCRYPTION_KEYRING_ENV] ?? process.env[ENCRYPTION_KEY_ENV];
 
 export const embedPending = internalAction({
   args: {userId: v.string()},
@@ -33,14 +34,20 @@ export const embedPending = internalAction({
       vectors = await embedTexts(key, CONTEXT_EMBEDDING_MODEL, CONTEXT_EMBEDDING_DIMENSIONS, batch.map(row => row.summary));
     } catch (error) {
       const retryable = !(error instanceof Error && 'kind' in error && (error.kind === 'keyInvalid' || error.kind === 'creditExhausted'));
-      await ctx.runMutation(internal.context.embed.recordFailure, {userId, itemIds: batch.map(row => row._id), retryable});
+      await ctx.runMutation(internal.context.embed.recordFailure, {
+        userId,
+        rows: batch.map(row => ({itemId: row._id, contentHash: row.contentHash})),
+        retryable,
+      });
       return;
     }
     await ctx.runMutation(internal.context.embed.writeBatch, {
       userId,
       rows: batch.map((row, index) => ({itemId: row._id, kind: row.kind, contentHash: row.contentHash, vector: vectors[index]!})),
     });
-    if (items.length > batch.length) await ctx.scheduler.runAfter(0, internal.context.embed.embedPending, {userId});
+    if (items.length >= CONTEXT_REEMBED_BATCH_MAX) {
+      await ctx.scheduler.runAfter(0, internal.context.embed.embedPending, {userId});
+    }
   },
 });
 
@@ -50,8 +57,10 @@ export const writeBatch = internalMutation({
     for (const input of rows) {
       if (input.vector.length !== CONTEXT_EMBEDDING_DIMENSIONS) throw new ConvexError('CONTEXT_VECTOR_DIMENSIONS');
       const item = await ctx.db.get(input.itemId);
-      if (!item || item.contentHash !== input.contentHash || item.status !== 'pending') continue;
-      const vectorOwner = item.userId === CONTEXT_SHARED_OWNER ? userId : item.userId;
+      if (!item || (item.userId !== userId && item.userId !== CONTEXT_SHARED_OWNER)) continue;
+      if (item.contentHash !== input.contentHash || item.status !== 'pending') continue;
+      // Keep shared item vectors under the shared owner so readiness matches availability across accounts and purges.
+      const vectorOwner = item.userId;
       const scopeKind = contextScopeKind(vectorOwner, item.kind);
       const existing = await ctx.db.query('contextVectors').withIndex('by_item', q => q.eq('itemId', item._id)).collect();
       for (const old of existing) if (old.userId === vectorOwner) await ctx.db.delete(old._id);
@@ -66,12 +75,23 @@ export const writeBatch = internalMutation({
 });
 
 export const recordFailure = internalMutation({
-  args: {userId: v.string(), itemIds: v.array(v.id('contextItems')), retryable: v.boolean()},
-  handler: async (ctx, {userId, itemIds, retryable}) => {
+  args: {
+    userId: v.string(),
+    rows: v.array(v.object({itemId: v.id('contextItems'), contentHash: v.string()})),
+    retryable: v.boolean(),
+  },
+  handler: async (ctx, {userId, rows, retryable}) => {
     let retryDelay = 0;
-    for (const id of itemIds) {
+    for (const {itemId: id, contentHash} of rows) {
       const item = await ctx.db.get(id);
-      if (!item || item.userId !== userId && item.userId !== CONTEXT_SHARED_OWNER || item.status !== 'pending') continue;
+      if (
+        !item ||
+        (item.userId !== userId && item.userId !== CONTEXT_SHARED_OWNER) ||
+        item.status !== 'pending' ||
+        item.contentHash !== contentHash
+      ) {
+        continue;
+      }
       const attempts = item.attempts + 1;
       const status = retryable && attempts >= CONTEXT_EMBED_ATTEMPTS_MAX ? 'failed' : 'pending';
       await ctx.db.patch(id, {attempts, status});

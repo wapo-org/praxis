@@ -42,7 +42,7 @@ export async function embedQuery(
   fetcher: typeof fetch = fetch,
 ): Promise<EmbeddedQueryResult> {
   const content = input.images?.length
-    ? [{type: 'text', text: input.text}, ...input.images.map(image => ({type: 'image_url', image_url: {url: image}}))]
+    ? {content: [{type: 'text', text: input.text}, ...input.images.map(image => ({type: 'image_url', image_url: {url: image}}))]}
     : input.text;
   const response = await request(key, model, dimensions, [content], fetcher);
   if (!response.ok && input.images?.length && (response.status === 400 || response.status === 422)) {
