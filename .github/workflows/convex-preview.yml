@@ -1,0 +1,42 @@
+name: Convex preview
+# Every Vercel preview shares one Convex deployment; keep it on develop's backend so previews and the reviewer test current code.
+on:
+  push:
+    branches: [develop]
+    paths: ['cloud/convex/**', 'cloud/packages/protocol/**', 'cloud/package-lock.json', 'cloud/patches/**', '.github/workflows/convex-preview.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: convex-preview
+  cancel-in-progress: false
+jobs:
+  deploy:
+    name: Convex preview / deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+      - run: npm install --global --ignore-scripts npm@11.19.0
+      # Install without lifecycle scripts, then apply only the repo's own patches, which the deployed auth component needs.
+      - run: npm --prefix cloud ci --ignore-scripts
+      - run: npx --no-install patch-package --error-on-fail --error-on-warn
+        working-directory: cloud
+      - name: Deploy Convex functions
+        working-directory: cloud
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_PREVIEW_DEPLOY_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -n "$CONVEX_DEPLOY_KEY" || { echo "CONVEX_PREVIEW_DEPLOY_KEY is not set" >&2; exit 1; }
+          # A queued run for an older commit must not overwrite a newer backend.
+          head=$(gh api "repos/${{ github.repository }}/commits/develop" --jq .sha)
+          if [ "$head" != "$GITHUB_SHA" ]; then echo "develop moved to $head; skipping $GITHUB_SHA"; exit 0; fi
+          npx --no-install convex deploy --yes

@@ -1,0 +1,15 @@
+{
+  "name": "fail-open-store",
+  "description": "Production adapter silently falls back to an in-memory store.",
+  "pr_title": "Make run store resilient",
+  "pr_body": "If Convex is not configured we now keep working.",
+  "files": {
+    "cloud/apps/api/src/adapters/run-store.ts": "import type { RunStore } from '../contracts.js';\nimport { createConvexRunStore } from './convex-run-store.js';\nimport { createMemoryRunStore } from './testing/memory-run-store.js';\n\nexport function createRunStore(env: Record<string, string | undefined>): RunStore {\n  const url = env.CONVEX_URL;\n  if (!url) {\n    console.warn('CONVEX_URL missing, using in-memory run store');\n    return createMemoryRunStore();\n  }\n  return createConvexRunStore(url);\n}\n"
+  },
+  "expected": [
+    {
+      "rule_id": "R3.fail-closed",
+      "file": "cloud/apps/api/src/adapters/run-store.ts"
+    }
+  ]
+}

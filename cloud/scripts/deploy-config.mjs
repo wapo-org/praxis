@@ -17,12 +17,10 @@ export const required = [
   'QSTASH_CURRENT_SIGNING_KEY',
   'QSTASH_NEXT_SIGNING_KEY',
   'PRAXIS_ENCRYPTION_KEYS',
-  'BETTER_AUTH_SECRET',
 ];
 export const apiKeys = required
   .filter((k) => !k.startsWith('VERCEL_') && k !== 'CONVEX_DEPLOY_KEY')
   .concat([
-    'PRAXIS_COOKIE_SAMESITE',
     'PRAXIS_RUN_BUDGET_MS',
     'PRAXIS_SYNC_STRATEGY',
     'GROQ_API_KEY',
@@ -33,7 +31,7 @@ export async function loadEnv(file = new URL('../.env.deploy', import.meta.url))
     source = await readFile(file, 'utf8');
   } catch (e) {
     if (e.code === 'ENOENT') return {};
-    throw Error('Cannot read deploy env file');
+    throw Error('Cannot read deploy env file', { cause: e });
   }
   const env = {};
   for (const [i, line] of source.split(/\r?\n/).entries()) {
@@ -91,12 +89,11 @@ export function validate(env) {
     (v) => new URL(v).hostname.endsWith('.upstash.io'),
     'must be an Upstash REST URL',
   );
-  for (const k of ['BETTER_AUTH_SECRET', 'PRAXIS_CONVEX_SERVER_TOKEN'])
-    check(
-      k,
-      (v) => v.length >= 32 && !/\s/.test(v),
-      'must have at least 32 non-whitespace characters',
-    );
+  check(
+    'PRAXIS_CONVEX_SERVER_TOKEN',
+    (v) => v.length >= 32 && !/\s/.test(v),
+    'must have at least 32 non-whitespace characters',
+  );
   for (const k of [
     'VERCEL_TOKEN',
     'UPSTASH_REDIS_REST_TOKEN',
@@ -119,11 +116,6 @@ export function validate(env) {
             /^[A-Za-z0-9+/]{43}=$/.test(x.trim()) && Buffer.from(x.trim(), 'base64').length === 32,
         ),
     'must list base64 32-byte keys, current first',
-  );
-  check(
-    'PRAXIS_COOKIE_SAMESITE',
-    (v) => ['lax', 'strict', 'none'].includes(v),
-    'must be lax, strict, or none',
   );
   check(
     'PRAXIS_SYNC_STRATEGY',

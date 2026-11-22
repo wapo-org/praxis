@@ -194,7 +194,7 @@ Used at the top and bottom of `ChatScreen`, `HistorySheet`, `SettingsSheet`, `Pl
        - Virtualized list (smooth 60fps with 500+ models)
        - Speed & Intelligence `DotMeter` + Vision badge (`👁`) + Context window badge
     2. **Reasoning Effort Row** (shown when selected model `supportsReasoning` is true): `low` / `medium` / `high` segmented pill or dropdown submenu.
-    3. **Connectors / Tools Row**: Shows count of active connectors for this chat (`"2 enabled"`), with per-chat off-switch toggles so tools can be disabled for the current conversation (`Chat.disabledConnectorIds`).
+    3. **App Directory Row**: Shows the number of connected apps and opens a nested list with a per-chat switch for each, so an app can be turned off for the current conversation (`composio:<toolkit>` in `Chat.disabledConnectorIds`). **Manage** opens the App Directory.
 
 ### 6.3 `HistorySheet` (`HistorySheet.swift`)
 - **Reference Screenshots**: `reference/ios/light-history-0-top.png`, `light-history-1-scrolled.png`, `light-history-2-scrolled-far.png`.
@@ -205,10 +205,9 @@ Used at the top and bottom of `ChatScreen`, `HistorySheet`, `SettingsSheet`, `Pl
   - Row actions (hover menu on desktop / swipe or long-press context menu on mobile via `GlassDropdown`): **Pin / Unpin**, **Rename**, **Delete** (`DELETE /v1/chats/:id`).
   - **Batch Selection Mode**: Checkbox per row + bottom floating action bar with **Delete selected (N)**.
 
-### 6.4 `SettingsSheet` & Sub-Screens (`SettingsSheet.swift`, `ConnectorsScreen.swift`, `ImageReaderScreen.swift`)
+### 6.4 `SettingsSheet` & Sub-Screens (`SettingsSheet.swift`, `AppDirectoryScreen`, `ImageReaderScreen.swift`)
 - **Reference Screenshots**:
   - `reference/ios/light-settings-0-root.png`, `light-settings-1-root-scrolled.png`
-  - `reference/ios/light-settings-2-connectors.png`, `light-settings-3-add-url.png`, `light-settings-4-paste-config.png`
   - `reference/ios/light-settings-5-skills.png`, `light-settings-6-image-reader.png`
   - `reference/ios/light-settings-7-editor-top.png`, `light-settings-8-editor-scrolled.png`
   - `reference/ios/light-consent-0-sheet.png`
@@ -216,11 +215,12 @@ Used at the top and bottom of `ChatScreen`, `HistorySheet`, `SettingsSheet`, `Pl
   1. **Providers Section**: List of configured LLM providers (`OpenAI`, `Anthropic`, `Groq`, custom OpenAI-compatible endpoints) with status badge (`Connected` / `Missing key`) + **Add provider** button.
   2. **Provider Editor**: Preset selector (`OpenAI`, `Anthropic`, `Groq`, `OpenRouter`, `Custom`), Display Name, Base URL, API Key (write-only masked input), Default Model, Custom HTTP Headers (`key: value` pairs), **Verify & Refresh Models** (`POST /v1/providers/:id/models/refresh`), and **Delete Provider**.
   3. **Tools Section**:
-     - **Connectors (MCP)** (`ConnectorsScreen.swift`):
-       - List of configured MCP servers with status (`Connected · N tools`, `Needs sign-in`, `Error`), `"New tool"` badge when `hasNewTools` is true, expand/detail view with per-tool enable/disable switches (`PATCH /v1/connectors/:id/tools/:toolName`), **Probe/Refresh** (`POST /v1/connectors/:id/probe`), and **Sign in with OAuth** (`POST /v1/connectors/:id/oauth/start` popup flow).
-       - **Add by URL**: Name, MCP Server URL (SSE / Streamable HTTP), optional Bearer token / custom headers.
-       - **Paste a config**: Accepts Claude Desktop / Cursor `mcpServers` JSON or command snippet, parses and creates connectors.
-       - **Browse the MCP registry**: Searchable catalog from `/v1/registries` with 1-click **Install**.
+     - **App Directory** (web `AppDirectoryScreen`, PRA-49):
+       - Searchable grid of the curated Composio apps (`COMPOSIO_APPS`), each with its live connection state from the Convex `composio.connections.list` query: `Not connected`, `Waiting for sign-in`, `Connected` or `Needs reconnecting`.
+       - **Connect** calls `composio.connections.connect` and opens the hosted Connect Link in a popup that returns to `/settings/apps/connected` and closes itself. A blocked popup falls back to a full-page redirect that returns to the route it left.
+       - **Disconnect** calls `composio.connections.disconnect`. A connected app has a **Use in this chat** switch for the open chat.
+       - There are no URL, transport, header, config-paste or registry forms for raw MCP servers.
+     - **In-chat connect card**: a `composio.connect-required` tool result shows **Connect <App>** (or **Reconnect** for a failed connection) under the run, using the same connect flow.
      - **Skills**:
        - List of installed skills (`name`, `description`, `enabled` toggle, `content` markdown viewer/editor, delete) + **Import skill** (by URL or markdown paste) + **Browse skills** (from skill registries in `/v1/registries` with 1-click install).
   4. **Capabilities & Privacy Section**:
@@ -241,7 +241,7 @@ While mobile viewport (`402×874`) is a pixel-faithful match to iOS (`iPhone 17 
 | :--- | :--- | :--- | :--- |
 | **Reading & Composer Column** | Full width (`402px` minus `20px` margins) | Centered `680px` column (`Rhythm.maxReadingWidth`) inside flexible canvas | Preserves optimal `65ch` editorial line length |
 | **History Navigation** | Modal bottom sheet (`HistorySheet`) triggered from top-left button | Collapsible left glass sidebar (`280px` wide, toggleable via top-left button or `⌘S` / `⌘B`) + modal sheet option | Desktop users expect persistent or 1-keystroke thread switching without covering the active transcript |
-| **Settings & Connectors** | Full-height push navigation stack inside bottom sheet | Centered floating glass dialog (`640px × 720px`, `radius: 24px`) with internal breadcrumb/back stack | Prevents awkward full-screen stretching of form fields on 27" monitors |
+| **Settings & App Directory** | Full-height push navigation stack inside bottom sheet | Centered floating glass dialog (`640px × 720px`, `radius: 24px`) with internal breadcrumb/back stack | Prevents awkward full-screen stretching of form fields on 27" monitors |
 | **Model & Effort Picker** | Inside `PlusTray` or anchored above composer | Anchored **Improved GlassDropdown** (`morph` or `cascade` mode) directly on composer model pill + `⌘K` / `⌘M` shortcut | Immediate 1-click / keyboard access without two-step tray opening |
 | **Keyboard Shortcuts** | Virtual keyboard return key | `Enter` to send (`Shift+Enter` newline), `⌘K` command/model menu, `⌘/` toggle history, `Esc` close active dropdown/sheet or cancel stream | Desktop keyboard-first workflow |
 | **Screen Corners** | Device hardware squircle (`ScreenCorners.swift`) | Clean viewport edges on full-window web; optional device frame in `/lab/glass` | Browser window already owns outer chrome |

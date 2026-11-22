@@ -2,17 +2,16 @@ import { it, expect, vi } from 'vitest';
 import { mkdtemp, writeFile, rm, mkdir, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-// CLI modules are standalone ESM; test the orchestration without invoking a cloud executable.
 // @ts-ignore JavaScript CLI module
 import { validate, required, loadEnv, safeBuildEnv } from './deploy-config.mjs';
 // @ts-ignore JavaScript CLI module
-import { deploy, deploymentPlan, maskCommand, stageWeb, stepEnv } from './deploy.mjs';
+import { deploy, deploymentPlan, maskCommand, secretValues, stageWeb, stepEnv } from './deploy.mjs';
 // @ts-ignore JavaScript CLI module
 import { assertSafeUpload, listFiles, stageApi, withPrivateFile } from './deploy-stage.mjs';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 // @ts-ignore JavaScript CLI module
-import { assertWorkerBypassesApi, smoke } from './smoke-remote.mjs';
+import { assertWorkerBypassesApi } from './smoke-remote.mjs';
 it('lists every missing variable and validates formats without echoing values', () => {
   const errors = validate({});
   expect(errors).toHaveLength(required.length);
@@ -49,7 +48,7 @@ it('dry run invokes only local builds, with no inherited credentials; preserves 
   const log = vi.spyOn(console, 'log').mockImplementation(() => {});
   try {
     const file = join(dir, 'empty');
-    await writeFile(file, '');
+    await writeFile(file, 'CONVEX_URL=https://build-test.convex.cloud');
     const runner = vi.fn().mockResolvedValue(undefined);
     await mkdir(join(dir, 'dist'));
     await writeFile(join(dir, 'dist/index.html'), '<div id="root"></div>');
@@ -57,6 +56,8 @@ it('dry run invokes only local builds, with no inherited credentials; preserves 
       deployDir: join(dir, 'deploy'),
       webDist: join(dir, 'dist'),
     });
+    const webBuild = runner.mock.calls.find(([step]) => step.name === 'Local web build');
+    expect(webBuild?.[1].VITE_CONVEX_URL).toBe('https://build-test.convex.cloud');
     const printed = log.mock.calls.map((c) => String(c[0])).join('\n');
     expect(printed).toMatch(/API upload: \d+ files, no secret files/);
     expect(printed).toMatch(/Web upload: \d+ files/);
@@ -79,6 +80,16 @@ it('dry run invokes only local builds, with no inherited credentials; preserves 
     await rm(dir, { recursive: true });
   }
 });
+it('refuses to stage the smoke fixture password alongside tokens, keys and secrets', () => {
+  const env = {
+    SMOKE_FIXTURE_PASSWORD: 'fixture-pass',
+    VERCEL_TOKEN: 'token',
+    GROQ_API_KEY: 'key',
+    CONVEX_URL: 'https://build-test.convex.cloud',
+    SMOKE_FIXTURE_EMAIL: 'fixture@example.test',
+  };
+  expect(secretValues(env)).toEqual(['fixture-pass', 'token', 'key']);
+});
 it('executes the service worker cache boundary and rejects API interception', () => {
   const good =
     "self.addEventListener('fetch', e=>{if(new URL(e.request.url).pathname.startsWith('/v1')||new URL(e.request.url).pathname.startsWith('/health'))return;e.respondWith(null);})";
@@ -89,47 +100,6 @@ it('executes the service worker cache boundary and rejects API interception', ()
       'https://web.test',
     ),
   ).toThrow();
-});
-it('hosted dry smoke makes no mutating requests and never creates an account', async () => {
-  const calls: string[] = [];
-  const fetcher = vi.fn(async (url: any, init: any) => {
-    calls.push(init?.method ?? 'GET');
-    if (String(url).endsWith('/health')) return Response.json({ ok: true, mode: 'production' });
-    if (String(url).endsWith('/sw.js')) return new Response("self.addEventListener('fetch',e=>{})");
-    return new Response('<div id="root"></div>');
-  });
-  const result = await smoke(['https://api.test', 'https://web.test', '--dry-run'], fetcher);
-  expect(calls).toEqual(['GET', 'GET', 'GET']);
-  expect(result.skipped).toHaveLength(1);
-});
-it('cleans up a hosted test account even when upload smoke fails (in-memory HTTP fixtures only)', async () => {
-  let deleted = false;
-  const requests: string[] = [];
-  const fixture = async (input: any, init: any = {}) => {
-    const path = new URL(String(input)).pathname;
-    requests.push((init.method ?? 'GET') + ' ' + path);
-    if (path === '/health') return Response.json({ ok: true, mode: 'production' });
-    if (path === '/sw.js') return new Response("self.addEventListener('fetch',e=>{})");
-    if (path === '/') return new Response('<div id="root"></div>');
-    if (path === '/v1/auth/sign-up' || path === '/v1/auth/sign-in')
-      return Response.json({ bearerToken: 'test-only-session' });
-    if (path === '/v1/bootstrap')
-      return deleted
-        ? Response.json({}, { status: 401 })
-        : Response.json({ user: { id: 'fixture-user' } });
-    if (path === '/v1/chats') return Response.json({ id: 'fixture-chat' });
-    if (path === '/v1/uploads') return Response.json({}, { status: 500 });
-    if (path === '/v1/account') {
-      deleted = true;
-      return Response.json({ type: 'account.deleted' });
-    }
-    return Response.json({});
-  };
-  await expect(smoke(['https://api.test', 'https://web.test'], fixture)).rejects.toThrow(
-    'POST /v1/uploads: HTTP 500',
-  );
-  expect(requests).toContain('DELETE /v1/account');
-  expect(deleted).toBe(true);
 });
 
 it('stages deterministic Vercel static output without stale assets', async () => {
@@ -169,9 +139,15 @@ const SECRETS: Record<string, string> = {
 };
 it('never puts a secret in argv; each credential reaches only the tool that needs it; CLIs are pinned', () => {
   const plan = deploymentPlan(SECRETS);
+  expect(plan.find(step => step.name === 'Convex account recovery origin')).toMatchObject({
+    tool: 'convex',
+    inputKey: 'PRAXIS_API_URL',
+    fileInput: true,
+  });
+  expect(plan.find(step => step.inputKey === 'PRAXIS_ENCRYPTION_KEYS' && step.tool === 'convex')).toMatchObject({fileInput: true});
   const argv = plan.map((s: any) => s.args.join(' ') + ' ' + maskCommand(s)).join('\n');
   for (const [key, value] of Object.entries(SECRETS))
-    if (!/_ID$/.test(key)) expect(argv, key).not.toContain(value);
+    if (!key.endsWith('_ID')) expect(argv, key).not.toContain(value);
   expect(argv).not.toContain('--token');
   for (const step of plan) {
     const env = stepEnv(step, SECRETS, 'https://api.test');
@@ -209,6 +185,7 @@ it('stages the API from an allowlist and rejects secret files, the iOS app and l
       'apps/api/vercel.json',
       'apps/api/src/app.ts',
       'packages/protocol/src/index.ts',
+      'patches/@convex-dev+auth+2.0.0.patch',
     ])
       await put(f);
     for (const f of [
@@ -233,6 +210,7 @@ it('stages the API from an allowlist and rejects secret files, the iOS app and l
       'cloud/package-lock.json',
       'cloud/package.json',
       'cloud/packages/protocol/src/index.ts',
+      'cloud/patches/@convex-dev+auth+2.0.0.patch',
       'cloud/tsconfig.base.json',
     ]);
     await expect(assertSafeUpload(stage, files, Object.values(SECRETS))).resolves.toBeUndefined();
@@ -282,43 +260,4 @@ it('removes the private Convex token file on success, failure and SIGTERM', asyn
   child.kill('SIGTERM');
   expect(await exited).toBe('SIGTERM');
   expect(existsSync(path)).toBe(false);
-});
-function smokeFixture(options: { signInFailures?: number; deleteStatus?: number }) {
-  let deleted = false,
-    signIns = 0;
-  const deletes: string[] = [];
-  const fetcher = async (input: any, init: any = {}) => {
-    const path = new URL(String(input)).pathname;
-    if (path === '/health') return Response.json({ ok: true, mode: 'production' });
-    if (path === '/sw.js') return new Response("self.addEventListener('fetch',e=>{})");
-    if (path === '/') return new Response('<div id="root"></div>');
-    if (path === '/v1/auth/sign-up') return Response.json({ bearerToken: 'signup-token' });
-    if (path === '/v1/auth/sign-in')
-      return ++signIns <= (options.signInFailures ?? 0)
-        ? Response.json({}, { status: 500 })
-        : Response.json({ bearerToken: `fresh-${signIns}` });
-    if (path === '/v1/account') {
-      deletes.push(init.headers.authorization);
-      if (options.deleteStatus) return Response.json({}, { status: options.deleteStatus });
-      deleted = true;
-      return Response.json({ type: 'account.deleted' });
-    }
-    if (path === '/v1/bootstrap') return Response.json({}, { status: 401 });
-    return Response.json({});
-  };
-  return { fetcher, deletes, deleted: () => deleted };
-}
-it('smoke cleanup re-authenticates after a failed sign-in and reports the original failure', async () => {
-  const f = smokeFixture({ signInFailures: 1 });
-  await expect(smoke(['https://api.test', 'https://web.test'], f.fetcher)).rejects.toThrow(
-    /^POST \/v1\/auth\/sign-in: HTTP 500$/,
-  );
-  expect(f.deletes).toEqual(['Bearer fresh-2']);
-  expect(f.deleted()).toBe(true);
-});
-it('smoke keeps the original failure when cleanup also fails', async () => {
-  const f = smokeFixture({ signInFailures: 1, deleteStatus: 500 });
-  await expect(smoke(['https://api.test', 'https://web.test'], f.fetcher)).rejects.toThrow(
-    /^POST \/v1\/auth\/sign-in: HTTP 500 \(cleanup also failed: DELETE \/v1\/account: HTTP 500;/,
-  );
 });

@@ -1,0 +1,129 @@
+name: Cloud
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cloud-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    name: Cloud / ${{ matrix.check }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [typecheck, tests, lint, web-build, api-build, comments, convex-bundle, audit]
+        include:
+          - check: typecheck
+            command: npm --prefix cloud run typecheck
+          - check: tests
+            command: npm --prefix cloud test -- --reporter=default --reporter=json --outputFile=test-results.json
+          - check: lint
+            command: npm --prefix cloud run lint
+          - check: web-build
+            command: npm --prefix cloud run build -w @praxis/web
+          - check: api-build
+            command: npm --prefix cloud run build -w @praxis/api
+          - check: comments
+            command: node cloud/scripts/comment-sweep.mjs check
+          # Bundles cloud/convex like `convex deploy`, which otherwise first runs after merge (Convex preview).
+          - check: convex-bundle
+            command: node cloud/scripts/convex-bundle.mjs
+          - check: audit
+            command: npm --prefix cloud run audit
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+      - run: npm install --global npm@11.6.2 --ignore-scripts
+      - run: npm --prefix cloud ci --ignore-scripts
+      - run: npm --prefix cloud run postinstall
+      - run: ${{ matrix.command }}
+      - name: Fail on new skipped tests
+        if: matrix.check == 'tests'
+        env:
+          # Live-service suites (Convex, Upstash, storage, semantic search) skip without credentials; never raise this.
+          MAX_SKIPPED_TESTS: "12"
+        run: |
+          node --input-type=module - <<'JS'
+          import { readFileSync } from 'node:fs';
+          const results = JSON.parse(readFileSync('cloud/test-results.json', 'utf8'));
+          const skipped = results.numPendingTests + results.numTodoTests;
+          const max = Number(process.env.MAX_SKIPPED_TESTS);
+          console.log(`skipped/todo tests: ${skipped} (max ${max})`);
+          if (skipped > max) throw new Error(`New skipped/todo tests: ${skipped} > ${max}. Make them run or gate them on live credentials explicitly.`);
+          JS
+      - name: Check architectural rules when available
+        if: matrix.check == 'comments' && hashFiles('cloud/scripts/check-rules.mjs') != ''
+        run: npm --prefix cloud run check:rules
+  specs:
+    name: Cloud / specs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+      - run: npm install --global npm@11.6.2 --ignore-scripts
+      - run: npm --prefix cloud ci --ignore-scripts
+      - run: npm --prefix cloud run specs
+      - name: Retain counterexample traces
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: quint-traces
+          path: cloud/.spec-traces/
+          if-no-files-found: ignore
+  verify-web:
+    name: Cloud / verify-web
+    runs-on: ubuntu-24.04
+    # Measured ~15 s of flows locally; the budget covers npm ci and a cold browser install.
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+      # Exact npm and no lifecycle scripts, as in the specs job; vite and tsx run from their optional platform packages.
+      - run: npm install --global npm@11.6.2 --ignore-scripts
+      - run: npm --prefix cloud ci --ignore-scripts
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('cloud/package-lock.json') }}
+      - name: Install Chromium and its system libraries
+        working-directory: cloud
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+      # Ubuntu 24.04 runners restrict unprivileged user namespaces, which Chromium's sandbox needs for praxis-browser.
+      - name: Allow Chromium's sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Run the web flows
+        run: npm --prefix cloud run verify -- web
+      - name: Keep screenshots, snapshots and server logs
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: verify-web-${{ github.run_id }}-${{ github.run_attempt }}
+          path: cloud/artifacts/verify/
+          if-no-files-found: ignore
+          retention-days: 7

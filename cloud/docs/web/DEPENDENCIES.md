@@ -25,7 +25,7 @@ Per architectural decision `D15` ("Dependencies are a liability. Prefer zero-dep
 |---|---|---|---|
 | `vite` | `@praxis/web` | `^6.2.0` | Fast ESM dev server and Rollup-based production bundler for `cloud/apps/web`. |
 | `@vitejs/plugin-react` | `@praxis/web` | `^4.3.4` | JSX/TSX transform and Fast Refresh support for Vite. |
-| `@playwright/test` | `@praxis/web` | `^1.50.0` | Headless Chromium browser automation for E2E flows, performance mark verification (`PERF.md`), and side-by-side iOS parity screenshots (`PARITY.md`). |
+| `@playwright/test` | `@praxis/web` | `^1.50.0` | Headless Chromium browser automation for E2E flows, performance mark verification, and side-by-side iOS parity screenshots (`PARITY.md`). |
 | `jsdom` | `@praxis/web` | `^26.0.0` | Lightweight DOM implementation for fast Vitest interactive screen and dropdown tests. |
 | `@types/react` | `@praxis/web`, `@praxis/glass` | `^19.0.0` | Strict TypeScript type definitions for React 19 APIs. |
 | `@types/react-dom` | `@praxis/web`, `@praxis/glass` | `^19.0.0` | Strict TypeScript type definitions for `react-dom/client` and `react-dom/server`. |
@@ -42,3 +42,10 @@ and memory now provide cached rendering. The older localStorage claim above is o
 
 The web implementation now imports Tabler through `src/lib/icons.ts`; Lucide remains
 in the shared glass package (including the dropdown) and is not reworked by WP-B3.
+
+
+## PRA-34 authentication
+
+- `@convex-dev/auth@2.0.0`: React session provider and password, email-link and Google hooks.
+- `convex@1.50.0`: authenticated Convex client and reactive identity query.
+- Removed `@clerk/clerk-react` and the fake Clerk driver; no email-code or magic-link login is offered.

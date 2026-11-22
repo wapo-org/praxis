@@ -1,0 +1,10 @@
+{
+  "name": "clean-ui-copy",
+  "description": "Clean: UI copy inline in a component is allowed by the scoped constants rule.",
+  "pr_title": "Add empty history state",
+  "pr_body": "Shows a message when there are no chats.",
+  "files": {
+    "cloud/apps/web/src/components/EmptyHistory.tsx": "export function EmptyHistory() {\n  return (\n    <section className=\"empty-history\">\n      <h2>No chats yet</h2>\n      <p>Start a conversation and it will show up here.</p>\n    </section>\n  );\n}\n"
+  },
+  "expected": []
+}

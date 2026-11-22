@@ -1,0 +1,19 @@
+{
+  "name": "mechanical-any-vm",
+  "description": "Only script-owned violations: the gate must catch them and the model must stay silent.",
+  "pr_title": "Add snippet runner",
+  "pr_body": "Runs a short JS snippet for the calculator tool.",
+  "files": {
+    "cloud/apps/api/src/features/tools/run-snippet.ts": "import vm from 'node:vm';\n\nexport function runSnippet(code: string, context: any): unknown {\n  return vm.runInNewContext(code, context);\n}\n"
+  },
+  "expected": [
+    {
+      "rule_id": "R5.banned-primitives",
+      "file": "cloud/apps/api/src/features/tools/run-snippet.ts"
+    },
+    {
+      "rule_id": "R4.no-any",
+      "file": "cloud/apps/api/src/features/tools/run-snippet.ts"
+    }
+  ]
+}

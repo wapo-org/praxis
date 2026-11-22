@@ -1,0 +1,408 @@
+{
+  "$schema": "praxis-verify/feature-map@1",
+  "features": [
+    {
+      "id": "agents.context-index",
+      "title": "Owner-scoped context items, vector embeddings, and bounded re-embedding",
+      "issue": "PRA-177",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
+      "id": "agents.context-decision",
+      "title": "Celeris context selection with deterministic fallback and allowance accounting",
+      "issue": "PRA-179",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
+      "id": "agents.harness-tools",
+      "title": "Subagent harness registry, safe grants, model validation and deterministic collaboration instructions",
+      "issue": "PRA-115",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
+      "id": "agents.stateful-core",
+      "title": "Four-tool subagent contract, lifecycle invariants, permission narrowing and verified handoffs",
+      "issue": "PRA-79",
+      "surfaces": [
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "gate"
+        }
+      ]
+    },
+    {
+      "id": "agents.confined-workspaces",
+      "title": "Confined child execution and immutable snapshot handoffs",
+      "issue": "PRA-116",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}, {"command": "live", "suite": "subagent-workspaces"}]
+    },
+    {
+      "id": "web.worker-auth-session",
+      "title": "Playwright replacement workers reuse the latest Convex Auth session",
+      "issue": "PRA-118",
+      "surfaces": ["web"],
+      "covers": [{"command": "gate"}]
+    },
+    {
+      "id": "convex.owner-wrappers",
+      "title": "Authed and server Convex wrappers derive or verify the owner; no public function takes a client owner id",
+      "issue": "PRA-35",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
+      "id": "convex.owner-isolation",
+      "title": "Typed Convex rows, authenticated ownership, atomic message sequencing and account purge",
+      "issue": "PRA-24",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}, {"command": "live", "suite": "convex-typed-rows"}]
+    },
+    {
+      "id": "convex.workflow-skeleton",
+      "title": "Hosted durable workflow lifecycle, redelivery and account purge",
+      "issue": "PRA-29",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}, {"command": "live", "suite": "workflow-skeleton"}]
+    },
+    {
+      "id": "convex.workflow-turn-action",
+      "title": "Convex turn action, expectedTurnIndex idempotency and fenced commit",
+      "issue": "PRA-30",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
+      "id": "deploy.preview-env",
+      "title": "Vercel preview API runs the bundle and serves the develop web alias behind deployment protection",
+      "issue": "PRA-135",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}, {"command": "live", "suite": "preview-env"}]
+    },
+    {
+      "id": "repo.gate",
+      "title": "Typecheck, tests, boundary rules, lint, comment hygiene and both builds",
+      "issue": "PRA-72",
+      "surfaces": [
+        "web",
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "gate"
+        }
+      ]
+    },
+    {
+      "id": "repo.convex-bundle",
+      "title": "Convex functions bundle for their runtimes (no Node built-ins in the default runtime), as `convex deploy` bundles them",
+      "issue": "PRA-169",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
+      "id": "composio.connections",
+      "title": "Owner-scoped Connect Links, pending link reuse, revocation and account purge",
+      "issue": "PRA-47",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
+      "id": "composio.webhook",
+      "title": "Signature-verified Composio webhook, fail-closed secret and bounded pending-link expiry",
+      "issue": "PRA-47",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
+      "id": "composio.tool-router",
+      "title": "Composio Tool Router meta-tools, Firewall-on sessions, batch classification, exact-call approval and untrusted results",
+      "issue": "PRA-48",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
+      "id": "composio.app-directory",
+      "title": "App Directory grid, popup and full-page connect, live connection state, per-chat app toggles and the in-chat connect card",
+      "issue": "PRA-49",
+      "surfaces": ["web"],
+      "covers": [{"command": "gate"}, {"command": "web", "flows": ["app-directory-connect", "app-connect-card"]}]
+    },
+    {
+      "id": "account.deletion",
+      "title": "Convex-authenticated account deletion, interrupted purge recovery and session revocation",
+      "issue": "PRA-64",
+      "surfaces": ["web", "api"],
+      "covers": [{"command": "gate"}, {"command": "web", "flows": ["unavailable-account"]}]
+    },
+    {
+      "id": "web.preview-provider-guidance",
+      "title": "Preview Google simulation guidance keeps email sign-in available",
+      "issue": "PRA-64",
+      "surfaces": ["web"],
+      "covers": [{"command": "web", "flows": ["preview-provider-guidance"]}]
+    },
+    {
+      "id": "web.shell",
+      "title": "Signed-out shell, Convex Auth sign-in and an empty chat with a usable composer",
+      "issue": "PRA-28",
+      "surfaces": [
+        "web",
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "web",
+          "flows": [
+            "load-app"
+          ]
+        },
+        {
+          "command": "api",
+          "checks": [
+            "bootstrap"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "web.failure-surfaces",
+      "title": "Missing routes error instead of fabricating data; a 401 signs out; tool runs keep the API alive",
+      "issue": "PRA-28",
+      "surfaces": [
+        "web",
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "web",
+          "flows": [
+            "api-resilience"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "web.chat-fuzz",
+      "title": "Seeded random send, stop, reload, new and switch keep the composer usable",
+      "issue": "PRA-28",
+      "surfaces": [
+        "web"
+      ],
+      "covers": [
+        {
+          "command": "web",
+          "flows": [
+            "fuzz-chat"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chat.send-stream",
+      "title": "Send a message, stream the reply over SSE and read it back from the run snapshot",
+      "issue": "PRA-9",
+      "surfaces": [
+        "web",
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "web",
+          "flows": [
+            "scripted-chat"
+          ]
+        },
+        {
+          "command": "api",
+          "checks": [
+            "chat",
+            "text-sse",
+            "snapshot"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "runs.approvals",
+      "title": "A nested write parks for an exact-call decision and shows a redacted preview",
+      "issue": "PRA-56",
+      "surfaces": [
+        "api",
+        "web"
+      ],
+      "covers": [
+        {
+          "command": "api",
+          "checks": [
+            "nested-approval"
+          ]
+        },
+        {
+          "command": "web",
+          "flows": ["tool-approval"]
+        }
+      ]
+    },
+    {
+      "id": "runs.taint",
+      "title": "A side effect after an untrusted read needs a fresh exact-call approval that names the source",
+      "issue": "PRA-57",
+      "surfaces": [
+        "api",
+        "web"
+      ],
+      "covers": [
+        {
+          "command": "api",
+          "checks": [
+            "tainted-approval"
+          ]
+        },
+        {
+          "command": "web",
+          "flows": ["tainted-approval"]
+        }
+      ]
+    },
+    {
+      "id": "runs.stop-replay",
+      "title": "Disconnect, cancel and Last-Event-ID replay without duplicate events",
+      "issue": "PRA-58",
+      "surfaces": [
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "api",
+          "checks": [
+            "disconnect-cancel-replay"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "models.openrouter-key",
+      "title": "Settings \u2192 Models OpenRouter card; connecting, rejecting and using a real key",
+      "issue": "PRA-59",
+      "surfaces": [
+        "web",
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "web",
+          "flows": [
+            "settings-models"
+          ]
+        },
+        {
+          "command": "live",
+          "suite": "openrouter"
+        }
+      ]
+    },
+    {
+      "id": "models.catalogue",
+      "title": "Model catalogue lists and searches models, scripted models included in local dev",
+      "issue": "PRA-59",
+      "surfaces": [
+        "web",
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "web",
+          "flows": [
+            "model-search"
+          ]
+        },
+        {
+          "command": "api",
+          "checks": [
+            "models"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "credentials.pool",
+      "title": "Suffixed platform keys fail over, cool down in Upstash and never leak key material",
+      "issue": "PRA-61",
+      "surfaces": [
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "live",
+          "suite": "credential-pool"
+        }
+      ]
+    },
+    {
+      "id": "ios.unit",
+      "title": "PraxisChat builds for the simulator, passes its unit tests and launches",
+      "issue": "PRA-62",
+      "surfaces": [
+        "ios"
+      ],
+      "covers": [
+        {
+          "command": "ios"
+        }
+      ]
+    },
+    {
+      "id": "browser.cli",
+      "title": "praxis-browser: deterministic accessibility-tree browsing with refs, waits and hashed screenshots, no LLM",
+      "issue": "PRA-20",
+      "surfaces": [
+        "web"
+      ],
+      "covers": [
+        {
+          "command": "web",
+          "flows": [
+            "browser-cli"
+          ]
+        },
+        {
+          "command": "live",
+          "suite": "browser"
+        }
+      ]
+    },
+    {
+      "id": "api.turn-auth",
+      "title": "Convex HMAC caller, bounded turn contracts, durable replay rejection and expectedTurnIndex retry property",
+      "issue": "PRA-38",
+      "surfaces": [
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "gate"
+        }
+      ]
+    },
+    {
+      "id": "sandbox.notebook",
+      "title": "Persistent Python kernel, bounded text, rich artifacts and interrupt recovery",
+      "issue": "PRA-105",
+      "surfaces": [
+        "api"
+      ],
+      "covers": [
+        {
+          "command": "live",
+          "suite": "notebook"
+        }
+      ]
+    }
+  ]
+}
