@@ -50,8 +50,8 @@ export function setup(turns: string[][] = []) {
   const req = async (path: string, body?: unknown, method = body ? 'POST' : 'GET') =>
     app.request(path, {method, headers: {Authorization: 'Bearer dev-local', 'Content-Type': 'application/json'}, ...(body ? {body: JSON.stringify(body)} : {})});
   /** Connects the test key and opens a chat on model `m`, whose catalogue entry has the given capabilities. */
-  const chat = async (capabilities: {vision?: boolean; documents?: boolean; tools?: boolean} = {vision: true, documents: true, tools: true}) => {
-    fake.state.models = [{id: 'm', ...capabilities}];
+  const chat = async (capabilities?: {vision?: boolean; documents?: boolean; tools?: boolean}) => {
+    fake.state.models = [{id: 'm', vision: true, documents: true, tools: true, ...capabilities}];
     await connectKey(req);
     return (await req('/v1/chats', {type: 'chat.input', modelId: 'm'})).json();
   };
