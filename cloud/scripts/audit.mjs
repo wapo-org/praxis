@@ -10,12 +10,20 @@ const GHSA_PATTERN = /GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}/;
 
 function runAudit() {
   try {
-    return execFileSync('npm', ['audit', '--omit=dev', '--json'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    return parseAuditOutput(execFileSync('npm', ['audit', '--omit=dev', '--json'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
   } catch (error) {
     // npm audit exits non-zero when it finds anything; the JSON report is still on stdout.
-    if (typeof error.stdout === 'string' && error.stdout.length > 0) return error.stdout;
+    if (typeof error.stdout === 'string' && error.stdout.length > 0) return parseAuditOutput(error.stdout);
     throw error;
   }
+}
+
+function parseAuditOutput(output) {
+  const report = JSON.parse(output);
+  if (!report || typeof report !== 'object' || !report.vulnerabilities || typeof report.vulnerabilities !== 'object' || report.error) {
+    throw new Error('npm audit returned an invalid report');
+  }
+  return report;
 }
 
 function advisories(report) {
@@ -39,7 +47,7 @@ for (const entry of allowlist) {
 }
 
 const allowed = new Map(allowlist.map((entry) => [entry.id, entry]));
-for (const advisory of advisories(JSON.parse(runAudit()))) {
+for (const advisory of advisories(runAudit())) {
   const entry = allowed.get(advisory.id);
   if (entry) console.log(`allowed ${advisory.severity} ${advisory.id} (${advisory.name}): ${entry.reason} [expires ${entry.expires}]`);
   else problems.push(`${advisory.severity} ${advisory.id} in ${advisory.name}: ${advisory.title}`);

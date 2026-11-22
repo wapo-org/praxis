@@ -3,6 +3,7 @@ import {mkdtempSync, mkdirSync, writeFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 
 it('checks authored comments while excluding regenerated Convex utilities', () => {
   const directory = mkdtempSync(join(tmpdir(), 'comment-sweep-'));
@@ -12,7 +13,7 @@ it('checks authored comments while excluding regenerated Convex utilities', () =
     writeFileSync(join(directory, '_generated', 'api.ts'), comment);
     writeFileSync(join(directory, 'authored.ts'), comment);
     const result = spawnSync(process.execPath,
-      [new URL('./comment-sweep.mjs', import.meta.url).pathname, 'check', '--scope', directory], {encoding: 'utf8'});
+      [fileURLToPath(new URL('./comment-sweep.mjs', import.meta.url)), 'check', '--scope', directory], {encoding: 'utf8'});
     expect(result.status).toBe(2);
     expect(result.stdout).toContain('authored.ts');
     expect(result.stdout).not.toContain('_generated/api.ts');

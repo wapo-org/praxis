@@ -109,7 +109,10 @@ export const API_CHECKS: readonly ApiCheck[] = [
   }},
   {id: 'disconnect-cancel-replay', async run(client, state) {
     const run = await client.json('/v1/runs', RunSchema, {type: 'run.start', chatId: need(state, 'chatId'), text: 'Disconnect and cancel', script: 'long'});
-    const stream = await fetch(`${client.base}/v1/runs/${run.id}/events`, {headers: {Authorization: DEV_BEARER}});
+    const stream = await fetch(`${client.base}/v1/runs/${run.id}/events`, {
+      headers: {Authorization: DEV_BEARER},
+      signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
+    });
     const reader = stream.body!.getReader();
     assert((await reader.read()).value?.length, 'no first event');
     await reader.cancel();

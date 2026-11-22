@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { createRequire } from "node:module";
+import { threshold } from "./comment-sweep-args.mjs";
 
 const require = createRequire(import.meta.url);
 const ts = require("../node_modules/typescript");
@@ -523,7 +524,7 @@ function formatReplacement(entry, newText) {
   }
   switch (entry.style) {
     case "swiftdoc":
-      return `/// ${trimmed}`;
+      return trimmed.split("\n").map((line) => `/// ${line}`).join("\n");
     case "jsdoc":
       return `/** ${trimmed} */`;
     case "block":
@@ -532,7 +533,7 @@ function formatReplacement(entry, newText) {
       return `{/* ${trimmed} */}`;
     case "line":
     default:
-      return `// ${trimmed}`;
+      return trimmed.split("\n").map((line) => `// ${line}`).join("\n");
   }
 }
 
@@ -602,6 +603,7 @@ function runApply(flags) {
   let modifiedFiles = 0;
   let deletedCount = 0;
   let rewrittenCount = 0;
+  const stagedFiles = [];
 
   for (const [relFile, ops] of byFile.entries()) {
     const absFile = path.resolve(REPO_ROOT, relFile);
@@ -610,11 +612,15 @@ function runApply(flags) {
 
     ops.sort((a, b) => b.entry.start - a.entry.start);
 
-    for (const { entry, patch } of ops) {
-      const actual = src.slice(entry.start, entry.end);
+    for (const { entry } of ops) {
+      const actual = origSrc.slice(entry.start, entry.end);
       if (actual !== entry.original) {
         throw new Error(`Offset mismatch in ${relFile} for ${entry.id}. Re-run extract.`);
       }
+    }
+    for (const { entry, patch } of ops) {
+      const actual = src.slice(entry.start, entry.end);
+      if (actual !== entry.original) throw new Error(`Stored range is not a comment in ${relFile} for ${entry.id}. Re-run extract.`);
 
       const isDelete = patch === null || patch === "" || (typeof patch === "object" && patch.action === "delete");
       if (isDelete) {
@@ -629,12 +635,6 @@ function runApply(flags) {
           else if (delStart > 0 && src[delStart - 1] === "\n") delStart -= 1;
 
           src = src.slice(0, delStart) + src.slice(delEnd);
-          const aroundStart = Math.max(0, delStart - 4);
-          const aroundEnd = Math.min(src.length, delStart + 4);
-          const before = src.slice(0, aroundStart);
-          const mid = src.slice(aroundStart, aroundEnd).replace(/\n{3,}/g, "\n\n");
-          const after = src.slice(aroundEnd);
-          src = before + mid + after;
         } else {
           let delStart = entry.start;
           while (delStart > 0 && (src[delStart - 1] === " " || src[delStart - 1] === "\t")) {
@@ -658,11 +658,11 @@ function runApply(flags) {
     if (src !== origSrc) {
       src = src.replace(/^\n+/, "");
       modifiedFiles++;
-      if (!dryRun) {
-        fs.writeFileSync(absFile, src, "utf8");
-      }
+      if (!dryRun) stagedFiles.push({absFile, src});
     }
   }
+
+  for (const {absFile, src} of stagedFiles) fs.writeFileSync(absFile, src, "utf8");
 
   console.log(
     `${dryRun ? "[DRY RUN] " : ""}Files: ${modifiedFiles}, deleted: ${deletedCount}, rewritten: ${rewrittenCount}`
@@ -672,8 +672,8 @@ function runApply(flags) {
 function runCheck(flags) {
   const roots = resolveRoots(flags.scope);
   const files = walkFiles(roots);
-  const maxChars = Number(flags["max-chars"] || 130);
-  const maxLines = Number(flags["max-lines"] || 1);
+  const maxChars = threshold(flags, "max-chars", 130);
+  const maxLines = threshold(flags, "max-lines", 1);
 
   const violations = [];
   let total = 0;

@@ -2,8 +2,6 @@ import {REDACTED, SealedSecret} from '@praxis/types';
 
 /** Env names whose values are treated as secrets even when no step declares them. */
 const SECRET_NAME = /(KEY|TOKEN|SECRET|PASSWORD|PAT)(_\d+)?$/;
-/** Shorter values would redact ordinary words; real keys are far longer. */
-const SECRET_MIN_LENGTH = 8;
 /** Known key shapes, caught even when the value never passed through the environment. */
 const KEY_SHAPES: readonly RegExp[] = [
   /sk-or-v1-[A-Za-z0-9]{16,}/g,
@@ -24,7 +22,7 @@ export class Redactor {
 
   add(secret: SealedSecret | string): this {
     const value = typeof secret === 'string' ? secret : secret.reveal();
-    if (value.length < SECRET_MIN_LENGTH) return this;
+    if (!value) return this;
     this.#values.add(value);
     // JSON-escaped and URL-encoded forms reach logs too.
     this.#values.add(JSON.stringify(value).slice(1, -1));

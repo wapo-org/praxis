@@ -15,7 +15,9 @@ const StoredValue = z.string().nullable();
 const VercelEnvs = z.object({envs: z.array(z.object({key: z.string(), target: z.array(z.enum(['production', 'preview', 'development'])).optional()}))});
 
 async function upstash<S extends z.ZodType>(context: StepContext, command: string[], schema: S): Promise<z.infer<S>> {
-  const response = await fetch(context.config('UPSTASH_REDIS_REST_URL'), {
+  const url = new URL(context.config('UPSTASH_REDIS_REST_URL'));
+  if (url.protocol !== 'https:') throw new Error('Upstash REST URL must use HTTPS');
+  const response = await fetch(url, {
     method: 'POST',
     headers: {authorization: `Bearer ${context.secret('UPSTASH_REDIS_REST_TOKEN').reveal()}`, 'content-type': 'application/json'},
     body: JSON.stringify(command),
