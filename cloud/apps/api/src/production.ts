@@ -47,7 +47,10 @@ export const PLATFORM_POOLS: readonly PoolSpec[] = [
 export interface PoolSpec {service: string; names: string | readonly string[]}
 export interface ReadEnvOptions {pools?: readonly PoolSpec[]; warn?: (message: string) => void}
 
-const readPool = (spec: PoolSpec, env: Record<string, string | undefined>) => pool(spec.names, env, {service: spec.service});
+const readSinglePool = (name: string, env: Record<string, string | undefined>, service: string) => pool(name, env, {service});
+const readGroupPool = (names: readonly string[], env: Record<string, string | undefined>, service: string) => pool(names, env, {service});
+const readPool = (spec: PoolSpec, env: Record<string, string | undefined>) =>
+  typeof spec.names === 'string' ? readSinglePool(spec.names, env, spec.service) : readGroupPool(spec.names, env, spec.service);
 const warnJson = (message: string) => console.warn(JSON.stringify({type: 'startup.warning', message}));
 /** Pool events carry the service name and slot numbers only. */
 const credentialLog = (event: CredentialLogEvent) => console.warn(JSON.stringify({type: 'credentials', ...event}));

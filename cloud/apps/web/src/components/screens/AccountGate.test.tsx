@@ -41,7 +41,7 @@ vi.mock('@convex-dev/auth/react', () => ({
   useAuthActions: () => ({ signOut: hooks.signOut }), useAuthToken: () => hooks.token,
 }));
 vi.mock('../../lib/idb', () => ({
-  clearReplica: vi.fn(), loadReplica: vi.fn(), setReplicaIdentity: vi.fn().mockResolvedValue(undefined),
+  clearReplica: vi.fn(), loadReplica: vi.fn(), replicaIdentityMatches: vi.fn(() => true), setReplicaIdentity: vi.fn().mockResolvedValue(undefined),
 }));
 function Location() {
   const location = useLocation();

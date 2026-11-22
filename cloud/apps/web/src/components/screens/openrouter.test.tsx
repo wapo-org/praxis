@@ -13,6 +13,7 @@ let store: PraxisStoreContextValue;
 vi.mock('../../state/store.js', () => ({ usePraxisStore: () => store }));
 
 const VERIFIER_KEY = 'praxis.openrouter.pkce-verifier';
+const ACCOUNT_KEY = 'praxis.openrouter.pkce-account';
 const connected: ModelKey = {
   type: 'modelKey',
   maskedKey: '••••AAAA',
@@ -30,6 +31,7 @@ beforeAll(() => {
 beforeEach(() => {
   sessionStorage.clear();
   store = {
+    user: { id: 'account-a' },
     modelKey: null,
     setActiveSheet: vi.fn(),
     connectModelKey: vi.fn().mockResolvedValue(connected),
@@ -175,6 +177,7 @@ describe('PKCE helper', () => {
 describe('OpenRouter callback', () => {
   it('posts the code with the stored verifier, clears the verifier and returns to Models', async () => {
     sessionStorage.setItem(VERIFIER_KEY, 'v'.repeat(43));
+    sessionStorage.setItem(ACCOUNT_KEY, 'account-a');
     await mount(<OpenRouterCallback search="?code=code-ok" />);
     expect(container.querySelector('[role="status"]')!.textContent).toContain('Connecting OpenRouter');
     await settle();
@@ -187,6 +190,7 @@ describe('OpenRouter callback', () => {
 
   it('exchanges a code once even when React mounts the page twice', async () => {
     sessionStorage.setItem(VERIFIER_KEY, 'w'.repeat(43));
+    sessionStorage.setItem(ACCOUNT_KEY, 'account-a');
     await mount(<React.StrictMode><OpenRouterCallback search="?code=code-strict" /></React.StrictMode>);
     await settle();
     expect(store.connectModelKey).toHaveBeenCalledTimes(1);
@@ -206,6 +210,7 @@ describe('OpenRouter callback', () => {
 
   it('a callback without a code is an error and discards the pending verifier', async () => {
     sessionStorage.setItem(VERIFIER_KEY, 'x'.repeat(43));
+    sessionStorage.setItem(ACCOUNT_KEY, 'account-a');
     await mount(<OpenRouterCallback search="?error=access_denied" />);
     await settle();
     expect(store.connectModelKey).not.toHaveBeenCalled();
@@ -215,6 +220,7 @@ describe('OpenRouter callback', () => {
 
   it('a code OpenRouter refuses (replayed) shows the server message and does not leave the page', async () => {
     sessionStorage.setItem(VERIFIER_KEY, 'y'.repeat(43));
+    sessionStorage.setItem(ACCOUNT_KEY, 'account-a');
     store.connectModelKey = vi.fn().mockRejectedValue(new Error('OpenRouter did not accept this sign-in. The code may have expired or been used already; connect again.'));
     await mount(<OpenRouterCallback search="?code=code-replayed" />);
     await settle();
