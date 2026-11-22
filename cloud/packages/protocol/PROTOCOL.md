@@ -6,13 +6,13 @@ API prefix `/v1`. Errors: `{type:"error",code,message,requestId?,details?}`. Mis
 
 ## Sessions
 
-Production API authentication uses a server-verified session: web sends an HttpOnly Secure SameSite cookie (`credentials: include`); iOS sends `Authorization: Bearer <token>`. Neither client accesses Convex directly. `POST /v1/auth/sign-up` and `/v1/auth/sign-in` accept `auth.input` (email,password,name?). Return `session`, including bearerToken only in this direct session response. `GET /v1/auth/session` returns the session without its token. `POST /v1/auth/sign-out` revokes it. The chosen production auth integration is described in ARCHITECTURE.md.
+Production sign-in, sign-out and session refresh use Convex Auth v2. The web client sends its Convex bearer token to the API, which derives the owner from the verified Convex identity. `GET /v1/auth/session` reports the verified session identity.
 
 Local only: `POST /v1/auth/dev` accepts `{type:"auth.dev",userId?:string}` and returns a session. Or set `Authorization: Bearer dev-local` (seed user `local-user`). This path and token are disabled outside local mode and production cannot select local adapters. Default local origin `http://localhost:8787`. PORT is overridable; no account or keys needed.
 
 ## Bootstrap and local replicas
 
-`GET /v1/bootstrap` returns `bootstrap`: protocolVersion,user,chats,providers,models,connectors,skills,activeRuns,syncCursor,syncRoot,serverTime. Latest 50 chats and first model page only; paginate for the rest. Clients paint their saved replica first. `GET /v1/events` is a user-level resumable SSE stream of `user.event` envelopes (entity,entityId,operation,value?,syncCursor). On a change, reconcile the affected row or sync. Disconnections do not cancel runs.
+`GET /v1/bootstrap` returns `bootstrap`: protocolVersion,user,chats,modelKey?,modelPreferences,connectors,skills,activeRuns,syncCursor,syncRoot,serverTime. Latest 50 chats and first model page only; paginate for the rest. Clients paint their saved replica first. `GET /v1/events` is a user-level resumable SSE stream of `user.event` envelopes (entity,entityId,operation,value?,syncCursor). On a change, reconcile the affected row or sync. Disconnections do not cancel runs.
 
 ## Chats, messages and runs
 
@@ -20,7 +20,7 @@ Local only: `POST /v1/auth/dev` accepts `{type:"auth.dev",userId?:string}` and r
 - `POST /v1/chats` (`chat.input`) → `chat` (201).
 - `GET /v1/chats/:id` → `chat`. `PATCH` (`chat.patch`) → `chat`. `DELETE` → `ok` and sync tombstone. Deleting a chat cancels its run.
 - `GET /v1/chats/:id/messages?cursor=&limit=50` → `page<message>` in chronological order. The transcript is append-only. Tools and system prompt are frozen on first run in `chat.setup`.
-- `POST /v1/runs` (`run.start`) → `run` (202). Required chatId, optional text,providerId,modelId,mode,effort,attachmentIds,webSearch. Supply `idempotencyKey` or `clientTurnId` for safe retry; same user/chat/key returns the original run without duplicating the message, a changed body is 409. One active run per chat. Local `script` selects text/tools/approval/nestedApproval/elicitation/error/long/compaction/vision; ignored or rejected in production.
+- `POST /v1/runs` (`run.start`) → `run` (202). Required chatId, optional text,modelId,mode,effort,attachmentIds. Web tools are a chat setting (`chat.webToolsEnabled`, patched like other chat fields). Supply `idempotencyKey` or `clientTurnId` for safe retry; same user/chat/key returns the original run without duplicating the message, a changed body is 409. One active run per chat. Local `script` selects text/tools/approval/nestedApproval/elicitation/error/long/compaction/vision; ignored or rejected in production.
 - `GET /v1/runs/:id` → `run`. Active bootstrap entries have the same descriptor with id,chatId,status,lastEventId,createdAt,updatedAt,outcome?,error?. Terminal status is completed/cancelled/failed; completed may carry truncated/maxIterations/refused outcome.
 - `GET /v1/runs/:id/events` → SSE. `Last-Event-ID: 23` or `?after=23` resumes strictly after that ID. Header wins. SSE `id: 24`, `event: run.event`, `data: <run.event JSON>`. JSON envelope contains id,runId,chatId,createdAt,event. IDs increase monotonically per run and are preserved across reconnects and continuations. Deduplicate by runId + id. Replay includes terminal event then closes; active stream sends keepalives. Retention exhaustion returns 409 `cursor_expired`, requiring a snapshot refetch. No end-of-stream token in JSON.
 - `POST /v1/runs/:id/cancel` (`{type:"run.cancel"}`) → `run` (202). Cancellation is durable; tested between provider chunks/tool boundaries. Approvals/elicitation are cancelled with the run.
@@ -28,14 +28,22 @@ Local only: `POST /v1/auth/dev` accepts `{type:"auth.dev",userId?:string}` and r
 - `POST /v1/runs/:id/elicitations` (`elicitation.response`,elicitationId,action accept/decline/cancel,content?) → `run` (202).
 - `GET /v1/runs/:id/outputs/:outputId` → `{type:"tool.output",id,text,offset,nextOffset}` scoped to this run/chat/user; supports offset/limit for spilled output.
 
-Events cover iteration.started; text.delta/finished; reasoning.delta/finished; tool.started/arguments.delta/ready/running/progress/finished; approval.requested/resolved; elicitation.requested/resolved; attempt.discarded; retrying; usage; compaction; context.measured; messages.committed; policy.updated; vision.activity; run.started/parked/finished. See exact schema. `tool.finished.completion` carries summary,preview,status,content?,outputRef?. Compaction produces a request-time summary, preserving original messages. Provider-native raw payload lives on committed assistant messages for replay, including reasoning signatures.
+Events cover iteration.started; text.delta/finished; reasoning.delta/finished; tool.started/arguments.delta/ready/running/progress/finished; approval.requested/resolved; elicitation.requested/resolved; attempt.discarded; retrying; usage; compaction; context.measured; messages.committed; policy.updated; vision.activity; run.started/parked/finished. See exact schema. `tool.finished.completion` carries summary,preview,status,content?,outputRef?. Compaction produces a request-time summary, preserving original messages. Committed assistant messages may include provider-native raw payloads for replay, including reasoning signatures. Protected tool arguments and their raw provider payload stay in the server checkpoint. In an approval card, the `arguments` field carries a bounded, redacted preview string.
 
-## Providers and models
+## Model key and models (OpenRouter)
 
-- `GET /v1/providers` → `page<provider>`. `POST` (`provider.input`) → provider. `GET/PATCH/DELETE /v1/providers/:id`. PATCH uses provider.input; apiKey omitted preserves existing key. Secret values are write-only; reads expose maskedKey only. Provider URL + flavor + capabilities determine behavior, not its name.
-- `POST /v1/providers/:id/test` (`{type:"provider.test"}`) → `{type:"provider.test.result",ok,models}`. `POST /v1/providers/:id/refresh-models` (`{type:"models.refresh"}`) → page<model>.
-- `GET /v1/models?providerId=&q=&cursor=&limit=50&pinned=&favorite=` → page<model>, filtered and searched server-side. Models expose reasoningEfforts (empty = no dial), capability flags, contextWindow?,maxOutputTokens?,pinned,favorite.
-- `PATCH /v1/models/preferences` (`model.preference`,providerId,modelId,pinned?,favorite?) → model.
+OpenRouter is the only model provider. Each user connects their own key; connecting it is the consent. The key is sealed server-side and is never returned, logged or put in an event.
+
+- `GET /v1/model-key` → `modelKey` (maskedKey = last 4 characters, label?, connectedAt, lastError?, limit?, limitRemaining?; null limit = no limit) or 404 `not_found`.
+- `POST /v1/model-key` → `modelKey`. Body is `{method:"paste",apiKey}` or `{method:"pkce",code,codeVerifier}` (optional `type:"modelKey.connect"`). The server validates a pasted key against OpenRouter's key info, or exchanges the PKCE code. 400 `model_key_rejected` carries OpenRouter's message; 502 `openrouter_unavailable` when OpenRouter can't be reached.
+- `POST /v1/model-key/check` → `modelKey` with refreshed label, limit and limitRemaining. A key OpenRouter no longer accepts comes back with `lastError` set (still 200).
+- `DELETE /v1/model-key` → ok.
+- PKCE (web): send the user to `https://openrouter.ai/auth?callback_url=<https callback>&code_challenge=<S256>&code_challenge_method=S256`, then post the returned `code` with the verifier. OpenRouter accepts only https callbacks (and localhost); no custom schemes.
+- PKCE (iOS): open `ASWebAuthenticationSession` (scheme `praxis-app`) at the same OpenRouter URL with `callback_url=https://<web>/settings/openrouter/app-callback`. That page needs no session and redirects to `praxis-app://openrouter/callback?code=<code>`, or `?error=missing_code|invalid_code`. The app then posts the code with its own verifier as above. Codes match `OpenRouterAuthCodeSchema` (1–2000 chars).
+- `GET /v1/models?q=&cursor=&limit=50&pinned=&favorite=` → page<`catalogModel` + pinned,favorite,recommended>. The shared OpenRouter catalogue (cached 1 h; the last good copy is served if a refresh fails; 503 `catalog_unavailable` only when there has never been one). `q` searches id and name. Entries: id,name,contextLength,maxOutput?,pricing{prompt,completion} (USD per token, strings),capabilities{tools,reasoning,images}. Order: pinned, then `RECOMMENDED_MODELS`, then name.
+- `PATCH /v1/models/preferences` (`model.preference`,modelId,pinned?,favorite?) → `modelPreference` (modelId,pinned,favorite).
+- Runs: `run.start` takes `modelId` (a catalogue id; `DEFAULT_MODEL_ID` when absent). With no key `POST /v1/runs` fails with 400 `model_key_missing`. A chosen model that left the catalogue falls back to the default and `run.note` says so. A run that OpenRouter stops ends `failed` with `run.errorCode` and `run.finished.code`: `model_key_invalid` (401; the key record gets `lastError`), `model_credit_exhausted` (402) or `model_key_missing`. `usage.cost` (USD, summed over the run) comes from OpenRouter's usage accounting.
+- There is no `providerId` anywhere: chat, run.start and vision preferences name a model by its catalogue id only. Unknown fields sent by older clients are dropped.
 
 ## Connectors, consent and skills
 
@@ -66,3 +74,29 @@ v1 also adds chat.pinned (default false), optional model tagline/speed/intellige
 OAuth native returnUrl is exactly `praxis-app://oauth/callback`; callback redirects include the original oauth.authorization.state on both success and error (plus optional error), after the server consumes state exactly once and stores tokens. iOS validates scheme/host/path/state then GET connector for authStatus. Web return origins are allowlisted. Empty preferences.voice.language selects Auto (clears a prior explicit language). /transcribe accepts optional multipart prompt for split-audio tail continuity. Connector v1 installation is CRUD + tools discovery; remote config import/connector registry additions will be documented as their implementation lands.
 
 Connector `authStatus:"required"` represents needs-reauth; `error:"needs_reauth"` identifies revoked OAuth credentials. Calls stop until connector sign-in succeeds; refresh failures never downgrade an OAuth connector to anonymous MCP.
+
+## Turn results and commits
+
+The Convex action `turns.run` runs one turn and returns a `TurnResultSchema` result,
+which the workflow journals. Results carry `turnIndex`, `done`, `status` and `subagents` (unique addressed
+child IDs using PRA-79 `SubagentIdSchema` and
+`SUBAGENT_LIMITS.CHILDREN_MAX`, currently four). Status is ready/busy while active
+and stopped/completed/failed
+when terminal, matching the one-turn harness flags. `failed` carries a `TurnFailureSchema`
+(`model_key_invalid` / `model_credit_exhausted`, a message and remediation capped at
+`TURN_FAILURE_MESSAGE_MAX_BYTES` / `TURN_FAILURE_REMEDIATION_MAX_BYTES` of serialized UTF-8, so a
+failed result with every other field at its maximum still fits `TURN_RESULT_MAX_BYTES`). Child lifecycle/handoffs use
+PRA-79's durable subagent protocol; this result never embeds handoffs or messages.
+The harness writes a turn back with `TurnCommitSchema` through the internal mutation
+`turns.commitInternal`; no HTTP endpoint carries turns.
+
+
+## Subagent tool results
+
+Spawn, resume and configure return `SubagentAddressResultSchema` (`subagent_id`).
+Send returns `SendAgentMessageResultSchema` (`subagent_id`, `message_id`); close returns
+`CloseAgentResultSchema` (`subagent_id`, `status`). Discovery and wait use their existing
+`DiscoverAgentsResultSchema` and `WaitAgentsResultSchema` payloads. All result schemas
+are strict and validate addressed IDs. Invalid tool arguments return a schema `ToolError`
+with remediation before persistence; uncertain adapter outcomes remain fenced for recovery.
+Tool grants and wait target arrays publish `uniqueItems: true` alongside runtime uniqueness checks.

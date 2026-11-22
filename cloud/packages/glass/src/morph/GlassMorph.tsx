@@ -18,11 +18,6 @@ export interface GlassMorphProps extends Omit<GlassSurfaceProps, 'ref' | 'radius
   surfaceRef?: React.Ref<HTMLDivElement>;
 }
 
-/**
- * The lens the glass wears while it moves: frost and bend from the round map, stretched to this box.
- * No specular: the map's ring is an ellipse, and it would draw a bright line across a panel that has
- * already squared up. The rim comes from the transit layer's own inset shadows, which follow the shape.
- */
 const TransitFilter = React.memo(function TransitFilter({ id, url, width, height, chroma }: { id: string; url: string; width: number; height: number; chroma: BaseChroma | null }) {
   const source = chroma ? 'balanced' : 'SourceGraphic';
   return (
@@ -70,12 +65,6 @@ function assign<T>(ref: React.Ref<T> | undefined, value: T | null) {
   else if (ref) (ref as React.MutableRefObject<T | null>).current = value;
 }
 
-/**
- * A floating panel whose glass is one piece that changes shape: it grows out of its
- * button and goes back into it (DESIGN.md, Menu morph). Mount it under AnimatePresence;
- * it holds its own exit until the glass is back at the button, and a reopen during the
- * close reverses from wherever it is.
- */
 export function GlassMorph({ source, ready = true, shellRef, shellProps, surfaceRef, material = 'thick', children, ...surface }: GlassMorphProps) {
   const shell = React.useRef<HTMLDivElement | null>(null);
   const root = React.useRef<HTMLDivElement | null>(null);

@@ -1,8 +1,4 @@
-/**
- * Theme types and the iOS Paper palette (PraxisChat/PraxisChat/DesignSystem/Tokens.swift).
- * Runtime styling reads CSS custom properties from apps/web/src/styles/tokens.css; these
- * constants exist so tests can prove the CSS stays on the iOS palette.
- */
+/** Palette mirrored from PraxisChat Tokens.swift for token parity tests. */
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
 

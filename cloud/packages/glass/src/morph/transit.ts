@@ -1,8 +1,3 @@
-/**
- * The one lens the glass wears while it changes shape: a round map, stretched to each
- * menu's box by its own feImage rect and shaped by the transform. Built once, off the
- * frame, so a morph never generates a map.
- */
 import { generateMapsAsync, type GeneratedMaps } from '../displacement-map';
 import { glassTier } from '../material';
 

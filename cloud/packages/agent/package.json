@@ -3,8 +3,29 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc --noEmit" },
-  "dependencies": { "@praxis/protocol": "*", "zod": "^4.6.7" }
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./harness": "./src/harness/index.ts",
+    "./decision": "./src/decision/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/provider": "4.0.36",
+    "@ai-sdk/provider-utils": "5.0.75",
+    "@openrouter/ai-sdk-provider": "3.1.0",
+    "@praxis/credentials": "*",
+    "@praxis/protocol": "*",
+    "@praxis/types": "*",
+    "ai": "7.0.163",
+    "shell-quote": "1.12.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/shell-quote": "1.7.5"
+  }
 }

@@ -1,0 +1,313 @@
+import {EXPORT_FILE_MAX_BYTES, NOTEBOOK_ARTIFACTS_MAX, NOTEBOOK_INTERRUPT_SECONDS, NOTEBOOK_STARTUP_SECONDS, OUTPUT_MAX_BYTES} from './constants.js';
+
+/** File mailboxes survive API workers; the daemon alone owns the kernel and its interrupt channel. */
+export const NOTEBOOK_DRIVER = String.raw`
+import base64
+import fcntl
+import json
+from pathlib import Path
+import queue
+import subprocess
+import sys
+import time
+import uuid
+
+STATE = Path(sys.argv[2])
+POLL_SECONDS = 0.05
+STARTUP_SECONDS = ${NOTEBOOK_STARTUP_SECONDS}
+INTERRUPT_SECONDS = ${NOTEBOOK_INTERRUPT_SECONDS}
+TEXT_MAX_BYTES = ${OUTPUT_MAX_BYTES}
+ARTIFACT_MAX_BYTES = ${EXPORT_FILE_MAX_BYTES}
+ARTIFACTS_MAX = ${NOTEBOOK_ARTIFACTS_MAX}
+LOST = "variables were lost"
+
+
+def atomic(path, data):
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(data))
+    temporary.replace(path)
+
+
+def error(code, message):
+    return dict(status=code, message=message)
+
+
+class TextBuffer:
+    def __init__(self):
+        self.head = b""
+        self.tail = b""
+        self.total = 0
+
+    def append(self, chunk):
+        half = TEXT_MAX_BYTES // 2
+        if chunk.isascii():
+            self.total += len(chunk)
+            take = min(half - len(self.head), len(chunk))
+            self.head += chunk[:take].encode()
+            self.tail = (self.tail + chunk[max(take, len(chunk) - half):].encode())[-half:]
+            return
+        # Four UTF-8 bytes per character bounds encoding allocations even for one enormous Unicode message.
+        for offset in range(0, len(chunk), half // 4):
+            self.append_bytes(chunk[offset:offset + half // 4].encode())
+
+    def append_bytes(self, encoded):
+        self.total += len(encoded)
+        half = TEXT_MAX_BYTES // 2
+        take = min(half - len(self.head), len(encoded))
+        self.head += encoded[:take]
+        self.tail = (self.tail + encoded[max(take, len(encoded) - half):])[-half:]
+
+    def render(self):
+        omitted = self.total - len(self.head) - len(self.tail)
+        middle = ("\n… " + str(omitted) + " bytes omitted …\n") if omitted > 0 else ""
+        return self.head.decode(errors="replace") + middle + self.tail.decode(errors="replace")
+
+
+class ArtifactBudgetError(Exception):
+    pass
+
+
+def artifact_bytes(value, mime, count):
+    if count >= ARTIFACTS_MAX:
+        raise ArtifactBudgetError()
+    parts = value if isinstance(value, list) else (value,)
+    length = 0
+    for part in parts:
+        if not isinstance(part, str):
+            raise ValueError("Rich output must contain text")
+        length += len(part)
+    if mime == "image/png":
+        # Bound decoded bytes before joining fragments or invoking the base64 decoder.
+        suffix = ""
+        for part in reversed(parts):
+            suffix = (part[-2:] + suffix)[-2:]
+            if len(suffix) == 2:
+                break
+        padding = len(suffix) - len(suffix.rstrip("="))
+        if ((length + 3) // 4) * 3 - padding > ARTIFACT_MAX_BYTES:
+            raise ArtifactBudgetError()
+        return base64.b64decode("".join(parts), validate=True)
+    if length > ARTIFACT_MAX_BYTES:
+        raise ArtifactBudgetError()
+    payload = bytearray()
+    for part in parts:
+        for offset in range(0, len(part), 65536):
+            chunk = part[offset:offset + 65536].encode()
+            if len(payload) + len(chunk) > ARTIFACT_MAX_BYTES:
+                raise ArtifactBudgetError()
+            payload.extend(chunk)
+    return payload
+
+
+def execution_status(client, msg_id, deadline):
+    while time.monotonic() < deadline:
+        try:
+            reply = client.get_shell_msg(timeout=max(0, deadline - time.monotonic()))
+        except queue.Empty:
+            return None
+        if reply.get("parent_header", {}).get("msg_id") != msg_id:
+            continue
+        if reply.get("header", {}).get("msg_type") != "execute_reply":
+            return None
+        return reply.get("content", {}).get("status")
+    return None
+
+
+def run_cell(km, client, request, restarted):
+    root = request["root"]
+    # The persistent kernel may still be in a different chat, so setup must certify its canonical cwd before user code.
+    setup_code = ("import os as _praxis_os\n_praxis_os.chdir(" + repr(root) + ")\n"
+                  "if _praxis_os.getcwd() != " + repr(root) + ":\n"
+                  "    raise RuntimeError('Notebook workspace verification failed')")
+    setup = client.execute(setup_code, silent=True, allow_stdin=False, stop_on_error=True)
+    setup_status = execution_status(client, setup, time.monotonic() + STARTUP_SECONDS)
+    if setup_status != "ok":
+        message = "Workspace setup was not confirmed; user cell was not dispatched."
+        if setup_status not in ("error", "aborted"):
+            km.interrupt_kernel()
+            km.shutdown_kernel(now=True)
+            message += " Kernel stopped; " + LOST
+        return error("setup-error", message)
+    cell = client.execute(request["code"], allow_stdin=False, stop_on_error=True)
+    deadline = time.monotonic() + request["timeout_ms"] / 1000
+    interrupted = False
+    output_failure = None
+    text = TextBuffer()
+    artifacts = []
+    failed = False
+    artifact_dir = Path(root) / ("notebook-" + request["id"])
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            if interrupted:
+                # Never release the mailbox while an unresponsive execution can still block subsequent setup.
+                km.shutdown_kernel(now=True)
+                if output_failure is not None:
+                    return error("upstream", "Output recovery interrupt was not acknowledged; kernel stopped; " + LOST)
+                return error("timeout-reset", "Timeout interrupt was not acknowledged; kernel stopped; " + LOST)
+            km.interrupt_kernel()
+            interrupted = True
+            deadline = time.monotonic() + INTERRUPT_SECONDS
+        try:
+            message = client.get_iopub_msg(timeout=POLL_SECONDS)
+        except queue.Empty:
+            if not km.is_alive():
+                return error("upstream", "Kernel exited; " + LOST)
+            continue
+        if message.get("parent_header", {}).get("msg_id") != cell:
+            continue
+        kind = message["header"]["msg_type"]
+        content = message["content"]
+        if output_failure is None:
+            try:
+                chunk = ""
+                if kind == "stream":
+                    chunk = content["text"]
+                elif kind == "error":
+                    failed = True
+                    for index, line in enumerate(content.get("traceback", [])):
+                        if index:
+                            text.append("\n")
+                        text.append(line)
+                elif kind in ("display_data", "execute_result", "update_display_data"):
+                    data = content.get("data", {})
+                    chunk = data.get("text/plain", "")
+                    for mime, extension in (("image/png", "png"), ("text/html", "html")):
+                        if mime not in data:
+                            continue
+                        payload = artifact_bytes(data[mime], mime, len(artifacts))
+                        artifact_dir.mkdir(parents=True, exist_ok=True)
+                        path = artifact_dir / (str(len(artifacts)) + "." + extension)
+                        # Exclusive creation refuses existing symlinks planted by workspace code.
+                        with path.open("xb") as output:
+                            output.write(payload)
+                        artifacts.append(str(path))
+                if chunk:
+                    text.append(chunk)
+            except Exception as exc:
+                status = "budget" if isinstance(exc, ArtifactBudgetError) else "output-error"
+                output_failure = error(status, "Notebook artifact budget exceeded." if status == "budget" else "Notebook output processing failed.")
+                if not interrupted:
+                    km.interrupt_kernel()
+                    interrupted = True
+                    deadline = time.monotonic() + INTERRUPT_SECONDS
+        if kind == "status" and content.get("execution_state") == "idle":
+            if output_failure is not None:
+                output_failure["message"] += " Cell interrupted and drained to idle; variables remain available."
+                return output_failure
+            if interrupted:
+                return error("timeout", "Cell interrupted at its timeout; kernel and variables remain available.")
+            status = execution_status(client, cell, deadline)
+            if status not in ("ok", "error", "aborted"):
+                return error("upstream", "Kernel execution reply was not confirmed; retry after checking the kernel.")
+            if failed or status != "ok":
+                return error("execution", text.render() or "Cell execution failed (" + status + ").")
+            return dict(status="ok", text=text.render(), truncated=text.total > TEXT_MAX_BYTES,
+                        artifacts=artifacts, restarted=restarted,
+                        message=LOST if restarted else "")
+
+
+def daemon():
+    from jupyter_client import KernelManager
+    with (STATE / "daemon.lock").open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        km = None
+        client = None
+        restarted = (STATE / "started").exists()
+        try:
+            while True:
+                inbox = STATE / "request.json"
+                if not inbox.exists():
+                    time.sleep(POLL_SECONDS)
+                    continue
+                request = json.loads(inbox.read_text())
+                try:
+                    if km is None or not km.is_alive():
+                        restarted = restarted or km is not None
+                        if client:
+                            client.stop_channels()
+                        km = KernelManager(kernel_name="python3")
+                        km.start_kernel(cwd=request["root"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        client = km.blocking_client()
+                        client.start_channels()
+                        client.wait_for_ready(timeout=STARTUP_SECONDS)
+                        (STATE / "started").touch()
+                    result = run_cell(km, client, request, restarted)
+                    if restarted and result["status"] != "ok":
+                        result["message"] += "; " + LOST
+                    restarted = False
+                    if not km.is_alive():
+                        restarted = True
+                except Exception as exc:
+                    # A transport or startup exception cannot certify idle; discard this kernel before accepting another cell.
+                    if km:
+                        km.shutdown_kernel(now=True)
+                    if client:
+                        client.stop_channels()
+                    km = None
+                    client = None
+                    restarted = True
+                    result = error("upstream", "Notebook driver failed: " + str(exc) + "; " + LOST)
+                inbox.unlink()
+                atomic(STATE / (request["id"] + ".json"), result)
+        finally:
+            if client:
+                client.stop_channels()
+            if km:
+                km.shutdown_kernel(now=True)
+
+
+def submit_request(request):
+    with (STATE / "client.lock").open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return error("conflict", "Another notebook cell is running; retry when it finishes.")
+        inbox = STATE / "request.json"
+        with (STATE / "daemon.lock").open("w") as ownership:
+            try:
+                fcntl.flock(ownership, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                alive = False
+            except BlockingIOError:
+                alive = True
+            if inbox.exists():
+                if alive:
+                    return error("conflict", "A notebook cell is still recovering; retry shortly.")
+                inbox.unlink()
+        if not alive:
+            # The client lock excludes other submitters; release the ownership probe before the child acquires it.
+            subprocess.Popen([sys.executable, __file__, "daemon", str(STATE)],
+                             start_new_session=True, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        request["id"] = str(uuid.uuid4())
+        response = STATE / (request["id"] + ".json")
+        atomic(inbox, request)
+        deadline = time.monotonic() + request["timeout_ms"] / 1000 + STARTUP_SECONDS + INTERRUPT_SECONDS
+        while time.monotonic() < deadline:
+            if response.exists():
+                result = json.loads(response.read_text())
+                response.unlink()
+                return result
+            time.sleep(POLL_SECONDS)
+        return error("upstream", "Notebook driver unavailable; retry or recreate the sandbox.")
+
+
+def submit():
+    STATE.mkdir(parents=True, exist_ok=True)
+    source = Path(sys.argv[3])
+    try:
+        request = json.loads(source.read_text())
+        result = submit_request(request)
+        print(json.dumps(result))
+    finally:
+        source.unlink(missing_ok=True)
+
+
+if sys.argv[1] == "daemon":
+    daemon()
+else:
+    submit()
+`;

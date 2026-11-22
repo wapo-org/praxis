@@ -1,10 +1,4 @@
-/**
- * Continuous corners. `corner-shape` (tokens.css, --glass-corner) does it natively, for free. An engine
- * without it (Firefox today) gets the same superellipse as a clip path on the glass's layers, rebuilt only
- * when the size changes: nothing per frame. The exponent is measured from the iOS menu (IMG_7868).
- */
 export const CORNER_EXPONENT = 2.75;
-/** The token is the curve's span. The circle with the same apex is this much smaller: the no-corner-shape paint and the morph's round phase use it. */
 export const ROUND_PER_CURVE_RADIUS = 32 / 42;
 
 const CORNER_STEPS = 12;
@@ -13,10 +7,6 @@ export function hasCornerShape(): boolean {
   return typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('corner-shape', 'squircle');
 }
 
-/**
- * The superellipse exponent a `corner-shape` value paints: `superellipse(K)` is 2^K, the `squircle` keyword is
- * superellipse(2), `round` (or nothing) a circle.
- */
 export function cornerExponent(value: string): number {
   const v = value.trim();
   if (v === 'squircle') return 4;
@@ -34,10 +24,6 @@ export function clampedRadius(radius: number, w: number, h: number): number {
   return Math.max(0, Math.min(radius, w / 2, h / 2));
 }
 
-/**
- * The corner a lens map must trace: its span after clamping and its superellipse exponent, read from the
- * same tokens that paint it (`--glass-radius`, `--glass-corner`). Capsules and `round` corners are circles.
- */
 export function mapCorner(
   el: HTMLElement,
   w: number,
@@ -70,12 +56,6 @@ export function squirclePath(w: number, h: number, radius: number, exponent = CO
   return `M${points.join('L')}Z`;
 }
 
-/**
- * A card whose corner spans half its short side has no straight edge left between its corners: it is a
- * capsule. Chromium paints `corner-shape: superellipse(…)` there as a pinched, squarish end (and its lens map
- * traced the same curve), while Safari, without corner-shape, paints the round end. Marking the clamp makes
- * every engine, and the lens map (which reads --glass-corner), use the round capsule end.
- */
 export function isClampedToCapsule(radius: number, w: number, h: number): boolean {
   return w >= 8 && h >= 8 && radius >= Math.min(w, h) / 2 - 0.5;
 }
@@ -105,8 +85,6 @@ export function attachSquircle(el: HTMLElement): () => void {
     last = key;
     el.style.setProperty('--glass-radius-round', `${(radius * roundPerCurve(exponent)).toFixed(2)}px`);
     el.style.setProperty('--glass-squircle', `path("${squirclePath(w, h, radius, exponent)}")`);
-    // The rings come from the same path (L-ref/12). An inset box-shadow follows the circle under the path, and
-    // the path clip shaved up to half of its 1 px line where each corner starts to round.
     el.dataset.glassPath = 'true';
     const outline = el.querySelector<SVGSVGElement>(':scope > [data-glass-outline]');
     if (outline) {

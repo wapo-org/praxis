@@ -11,13 +11,38 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "npm run -ws --if-present typecheck",
+    "postinstall": "patch-package --error-on-fail --error-on-warn",
+    "preverify": "patch-package --error-on-fail --error-on-warn",
+    "typecheck": "npm run -ws --if-present typecheck && tsc --noEmit -p convex",
     "test": "vitest run --passWithNoTests",
-    "dev:local": "npm run dev:local -w @praxis/api"
+    "check:rules": "node scripts/check-rules.mjs",
+    "lint": "oxlint --deny-warnings",
+    "dev:local": "npm run dev:local -w @praxis/api",
+    "specs": "node scripts/specs.mjs",
+    "bench": "vitest bench --run scripts/bench/search.bench.ts",
+    "io:replay": "vitest run scripts/io-replay.test.ts",
+    "verify": "tsx packages/verify/src/cli.ts",
+    "audit": "node scripts/audit.mjs"
   },
   "devDependencies": {
+    "@informalsystems/quint": "0.33.1",
+    "@types/node": "^24.0.0",
+    "fast-check": "4.10.2",
+    "oxlint": "1.93.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.0",
-    "@types/node": "^24.0.0"
+    "vitest": "^4.0.0"
+  },
+  "dependencies": {
+    "@ai-sdk/provider": "4.0.36",
+    "@ai-sdk/provider-utils": "5.0.75",
+    "@convex-dev/agent": "0.7.9",
+    "@convex-dev/auth": "2.0.0",
+    "@convex-dev/resend": "0.2.10",
+    "@convex-dev/workflow": "0.4.10",
+    "@openrouter/ai-sdk-provider": "3.1.0",
+    "ai": "7.0.163",
+    "convex": "1.50.0",
+    "convex-helpers": "0.1.134",
+    "patch-package": "8.0.1"
   }
 }

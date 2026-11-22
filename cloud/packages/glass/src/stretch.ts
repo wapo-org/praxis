@@ -1,20 +1,3 @@
-/**
- * The elastic stretch: ported from wapo.dp `GlassSurface.tsx`, math verbatim.
- *
- * Hold the glass and pull: it grows toward the pointer in any direction, and
- * the far support point stays put, so the deformation is one-sided. Travel
- * saturates through tanh against an elliptical budget, so the material has mass
- * and never reaches the cursor. Strictly axis-aligned: a sheared rectangle reads
- * as a tilt in depth. Release springs back through zero with overshoot.
- *
- * Deliberate changes from the source (the owner asked for them):
- *  - Any point on the glass starts a pull, over any element. Only a text field
- *    holding text and an active selection refuse: selection wins.
- *  - No pointer capture and no preventDefault on press: capture would retarget
- *    the click away from the button, and a cancelled pointerdown drops focus.
- *  - The pose is written to the `scale` and `translate` CSS properties, which
- *    compose with whatever `transform` framer-motion owns on the same element.
- */
 import { animate, frame, motionValue, type MotionValue } from 'framer-motion';
 import { MATERIAL_RAMP, STRETCH_BUDGET, type GlassMaterial } from './material';
 import { morphStatus } from './morph/registry';
@@ -57,15 +40,6 @@ export interface StretchPose {
   translateY: number;
 }
 
-/**
- * Each axis grows by its own share of the pull, anchored on the far side. The
- * fixed point sits on the boundary opposite the pointer, scaled by the direction
- * cosines so it is smooth through every angle. No cross-axis squash and no
- * off-diagonal term (see the source's measurements).
- *
- * `originX/Y` is the element's transform-origin relative to its centre, so the
- * far side stays fixed for a menu that grows from a corner too.
- */
 export function computeStretch(pullX: number, pullY: number, w: number, h: number, originX = 0, originY = 0): StretchPose | null {
   if (w < 1 || h < 1) return null;
   const distance = Math.hypot(pullX, pullY);

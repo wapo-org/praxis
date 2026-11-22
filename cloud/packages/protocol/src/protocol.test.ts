@@ -1,8 +1,11 @@
 import { describe,it,expect } from 'vitest';
-import { StartRunSchema,RunEventSchema,ProviderInputSchema,CapabilitiesSchema } from './index.js';
+import { StartRunSchema,RunEventSchema,CapabilitiesSchema,ModelKeyConnectInputSchema,ModelKeySchema,CatalogModelSchema,UsageSchema } from './index.js';
 describe('plain JSON protocol',()=>{
  it('defaults local run options and rejects invalid modes',()=>{expect(StartRunSchema.parse({type:'run.start',chatId:'c'}).text).toBe('');expect(StartRunSchema.safeParse({type:'run.start',chatId:'c',mode:'admin'}).success).toBe(false);});
  it('round trips discriminated nested approvals',()=>{const e={type:'run.event',id:1,runId:'r',chatId:'c',createdAt:"2026-10-29T14:00:00.000Z",event:{type:'approval.requested',approval:{type:'approval',id:'a',callId:'t',toolName:'delete',source:{type:'mcp',serverId:'s'},arguments:{id:3},reason:'Destructive',title:'Delete',parentCallId:'js'}}};expect(RunEventSchema.parse(JSON.parse(JSON.stringify(e)))).toEqual(e);});
  it('requires valid IDs and known event payloads',()=>{expect(RunEventSchema.safeParse({type:'run.event',id:0,event:{type:'secret'}}).success).toBe(false);});
- it('defaults conservative capabilities and validates provider input',()=>{expect(CapabilitiesSchema.parse({}).vision).toBe(false);expect(ProviderInputSchema.safeParse({type:'provider.input',name:'custom',flavor:'openAIChat',baseUrl:'oops'}).success).toBe(false);});
+ it('defaults conservative capabilities',()=>{expect(CapabilitiesSchema.parse({}).vision).toBe(false);});
+ it('accepts a pasted key or a PKCE code, and nothing else',()=>{expect(ModelKeyConnectInputSchema.parse({method:'paste',apiKey:'sk-or-v1-x'}).type).toBe('modelKey.connect');expect(ModelKeyConnectInputSchema.safeParse({method:'pkce',code:'c',codeVerifier:'v'.repeat(43)}).success).toBe(true);expect(ModelKeyConnectInputSchema.safeParse({method:'pkce',code:'c',codeVerifier:'short'}).success).toBe(false);expect(ModelKeyConnectInputSchema.safeParse({method:'paste'}).success).toBe(false);});
+ it('strips anything but the masked fields from a model key record',()=>{const parsed=ModelKeySchema.parse({type:'modelKey',maskedKey:'••••abcd',connectedAt:'2026-11-15T10:00:00.000Z',limit:null,sealed:'v2.x.y.z.w'});expect(parsed).toEqual({type:'modelKey',maskedKey:'••••abcd',connectedAt:'2026-11-15T10:00:00.000Z',limit:null});});
+ it('describes a catalogue entry and carries cost on usage',()=>{expect(CatalogModelSchema.parse({id:'a/b',name:'B',contextLength:8192,pricing:{prompt:'0.000003',completion:'0.000015'},capabilities:{tools:true,reasoning:false,images:true}}).type).toBe('catalogModel');expect(UsageSchema.parse({inputTokens:1,outputTokens:2,cost:0.00014}).cost).toBe(0.00014);});
 });

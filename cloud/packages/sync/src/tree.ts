@@ -1,13 +1,4 @@
-/**
- * Portable hash-tree (Merkle) index over a replica's entities. Every rule here is spelled out so Swift can
- * reproduce it byte for byte:
- * - Content hash: SHA-256 hex of canonical JSON (sorted keys, no whitespace, UTF-8). See `canonicalJSON`.
- * - Bucket: FNV-1a 32-bit over the key's UTF-8 bytes, as 8 lowercase hex digits; a node's prefix is the
- *   first `level` digits (fan-out 16). Leaves are at `depth` (default 3 → 4096 leaves).
- * - Leaf hash: SHA-256 hex of the bucket's lines `<key>\n<hash>\n`, keys sorted by UTF-16 code units
- *   (ASCII keys in practice). Inner hash: SHA-256 hex of `<childPrefix>:<childHash>\n` for every
- *   non-empty child in hex order. An empty node's hash is the empty string.
- */
+/** Canonical JSON SHA-256 + FNV-1a 32-bit 16-way Merkle tree matching Swift byte-for-byte. */
 
 export function canonicalJSON(value: unknown): string {
   if (value === null || value === undefined || typeof value !== 'object') return JSON.stringify(value ?? null);
@@ -44,7 +35,7 @@ export interface TreeNode {prefix: string; hash: string; count: number}
 
 export class HashTree {
   readonly depth: number;
-  private leaves = new Map<string, Map<string, string>>(); // leaf prefix → key → hash
+  private leaves = new Map<string, Map<string, string>>();
   private cache = new Map<string, TreeNode>();
   private dirty = new Set<string>();
 
@@ -84,12 +75,10 @@ export class HashTree {
     return this.leaves.get(this.leafOf(key))?.get(key);
   }
 
-  /** Keys and hashes in one leaf bucket, sorted. */
   entries(leafPrefix: string): [string, string][] {
     return [...(this.leaves.get(leafPrefix) ?? new Map<string, string>())].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   }
 
-  /** Every key under a prefix (any level). */
   keysUnder(prefix: string): string[] {
     const keys: string[] = [];
     for (const [leaf, map] of this.leaves) if (leaf.startsWith(prefix)) keys.push(...map.keys());
@@ -118,7 +107,7 @@ export class HashTree {
     return node;
   }
 
-  /** All 16 children, including empty ones (hash '' and count 0), so a client sees subtrees that vanished. */
+  /** Always returns all 16 slots including empty ones to detect vanished subtrees. */
   async children(prefix: string): Promise<TreeNode[]> {
     if (prefix.length >= this.depth) throw new Error('leaves have no children');
     return Promise.all([...HEX].map(d => this.node(prefix + d)));

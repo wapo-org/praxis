@@ -1,8 +1,3 @@
-/* Liquid glass. The lens lives on a child so nested glass never sits inside this
-   root's backdrop, and the outer shadow on the root so its clip never eats it.
-   Recipe values are tokens (apps/web/src/styles/tokens.css → --glass-*). The held
-   rig (rig.ts) animates the shadows from these exact rest values. */
-
 :where(.glass) {
   --glass-radius: var(--radius-menu);
 }
@@ -35,8 +30,6 @@
   -webkit-user-drag: none;
 }
 
-/* A fade goes through --glass-fade (see routeFade): `opacity` on the root would
-   turn it into a backdrop root and blank the lens. Zero specificity on purpose. */
 :where(.glass) > * {
   opacity: var(--glass-fade, 1);
 }
@@ -56,8 +49,6 @@
   clip-path: var(--glass-squircle, none);
 }
 
-/* The morph animates a circle into the corner; the path returns the moment the corner has squared, while it
-   still moves (scaled with the glass by at most the overshoot), so it never swaps in at rest. */
 [data-morph-round='true'] > :is(.lens, .finish, .solid, .band, .spotClip) {
   clip-path: none;
 }
@@ -77,8 +68,6 @@
     inset 0 0 0 1px rgba(15, 15, 20, calc(0.07 * var(--glass-border)));
 }
 
-/* Opaque surfaces (lens={false}): one solid layer, so the border and the inset light follow the same
-   corner as the fill, and the held rig (which writes the root's shadow) never touches them. */
 .solid {
   box-sizing: border-box;
   background: var(--glass-solid-bg, var(--glass-fallback));
@@ -96,8 +85,6 @@
   backdrop-filter: blur(var(--glass-blur));
 }
 
-/* Progressive frost: a sharp core, the blur rising toward the rim. A single
-   uniform blur reads as a frosted card; the gradient reads as bending. */
 .band {
   -webkit-backdrop-filter: blur(var(--band-blur));
   backdrop-filter: blur(var(--band-blur));
@@ -160,9 +147,6 @@
   --glass-corner: round;
 }
 
-/* Engines without corner-shape (squircle.ts sets data-glass-path): the lines are strokes of the clip's own path,
-   so no ring is cut where a corner starts to round (L-ref/12). While the morph still paints the circle, the
-   box-shadow rings come back with it. */
 .outline {
   position: absolute;
   inset: 0;

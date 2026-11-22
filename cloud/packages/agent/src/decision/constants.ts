@@ -1,0 +1,11 @@
+export const CONTEXT_DECISION_MODEL = 'celeris-1.1-decision';
+export const CELERIS_DECISION_PATH_SEGMENT = 'celeris-1-decision';
+export const CELERIS_BASE_URL = 'https://inference.celeris.ai';
+export const CONTEXT_DECISION_QUERY_MAX_CHARACTERS = 4_000;
+export const CONTEXT_DECISION_THRESHOLD = 0.5;
+export const CONTEXT_DECISION_MIN_CANDIDATES = 6;
+export const CONTEXT_FALLBACK_TOP_K = 8;
+export const CONTEXT_DECISION_TIMEOUT_MS = 1_500;
+export const CONTEXT_DECISION_SENDS_MEMORIES = true;
+export const CONTEXT_PER_KIND_MAX = {tool: 6, toolkit: 3, skill: 3, memory: 8, document: 4, history: 4} as const;
+export const CONTEXT_KIND_ORDER = ['tool', 'toolkit', 'skill', 'memory', 'document', 'history'] as const;

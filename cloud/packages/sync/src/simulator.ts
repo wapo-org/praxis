@@ -1,10 +1,7 @@
 import {HashTree, contentHash} from './tree.js';
 import {respondMerkle, type SyncEntity, type SyncRequest, type SyncResponse} from './sync.js';
 
-/**
- * Reference sync server over a revision log, mirroring apps/api: cursor pulls read the log after a
- * revision; Merkle answers from an incrementally maintained tree. Used by tests and the benchmark.
- */
+/** Reference sync server over revision log and incremental Merkle tree. */
 export class SyncSimulator {
   revision = 0;
   rows = new Map<string, SyncEntity & {revision: number}>();
@@ -29,7 +26,7 @@ export class SyncSimulator {
       return respondMerkle(this.tree, request, String(this.revision), async keys => keys.map(k => strip(this.rows.get(k)!)));
     }
     const after = Number(request.cursor ?? 0);
-    // A real store reads an index by revision; the simulator sorts, which the benchmark excludes from timing claims.
+    // Simulates index scan via sort (excluded from benchmark timings).
     const changed = [...this.rows.values()].filter(r => r.revision > after).sort((a, b) => a.revision - b.revision);
     const page = changed.slice(0, request.limit);
     const cursor = page.at(-1)?.revision ?? after;

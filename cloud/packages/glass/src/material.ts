@@ -1,16 +1,3 @@
-/**
- * The liquid-glass material: tier negotiation, the per-material ramp and the
- * base-chroma probe. Ported from wapo.dp `src/lib/glass/engine-detect.ts` and
- * `glass-store.ts` (kube.io constants), tuned for this app's warm paper.
- *
- * Tiers:
- *  - `svg`   Chromium engines: `backdrop-filter: url(#id)`, the kube.io lens.
- *  - `frost` Safari, Firefox and anything else: three stacked, masked
- *            backdrop-blur bands. Never gated on CSS.supports(url()): that tests
- *            parsing, not rendering, and is true on engines that do not render it.
- *
- * The source's shader tier and DOM capture are deliberately not ported: that was the original lag.
- */
 import { useSyncExternalStore } from 'react';
 
 export type GlassMaterial = 'regular' | 'thick' | 'clear';
@@ -131,12 +118,6 @@ export interface BaseChroma {
 
 const LUMA = { r: 0.2126, g: 0.7152, b: 0.0722 };
 
-/**
- * Backdrop-filter samples the page canvas, and the saturate node would
- * multiply its colour (warm paper turns the rim yellow), so the chain opens by
- * moving the base colour onto its own luma. Surrounding material still tints
- * the glass; the page's own background cannot. Null when already neutral.
- */
 export function chromaOffsets(rgb: readonly [number, number, number] | null): BaseChroma | null {
   if (!rgb) return null;
   const [r, g, b] = rgb;
