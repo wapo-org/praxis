@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { createRequire } from "node:module";
-import { threshold } from "./comment-sweep-args.mjs";
+import { repoPath, threshold } from "./comment-sweep-args.mjs";
 
 const require = createRequire(import.meta.url);
 const ts = require("../node_modules/typescript");
@@ -49,7 +49,7 @@ function walkFiles(roots) {
     }
   }
   for (const r of roots) walk(path.resolve(REPO_ROOT, r));
-  return out.sort();
+  return out.sort((a, b) => a.localeCompare(b));
 }
 
 function resolveRoots(scope) {
@@ -562,7 +562,7 @@ function runExtract(flags) {
   };
 
   if (flags.out) {
-    fs.writeFileSync(flags.out, JSON.stringify(manifest, null, 2));
+    fs.writeFileSync(repoPath(REPO_ROOT, flags.out), JSON.stringify(manifest, null, 2));
     console.log(`Extracted ${allEntries.length} comments -> ${flags.out}`);
   } else {
     console.log(JSON.stringify(manifest, null, 2));
@@ -579,7 +579,7 @@ function runExtract(flags) {
       }
       lines.push("");
     }
-    fs.writeFileSync(flags.text, lines.join("\n"));
+    fs.writeFileSync(repoPath(REPO_ROOT, flags.text), lines.join("\n"));
     console.log(`Wrote readable dump -> ${flags.text}`);
   }
 }
@@ -589,8 +589,8 @@ function runApply(flags) {
     console.error("Usage: apply --manifest <manifest.json> --patches <patches.json> [--dry-run]");
     process.exit(1);
   }
-  const manifest = JSON.parse(fs.readFileSync(flags.manifest, "utf8"));
-  const patches = JSON.parse(fs.readFileSync(flags.patches, "utf8"));
+  const manifest = JSON.parse(fs.readFileSync(repoPath(REPO_ROOT, flags.manifest), "utf8"));
+  const patches = JSON.parse(fs.readFileSync(repoPath(REPO_ROOT, flags.patches), "utf8"));
   const dryRun = Boolean(flags["dry-run"]);
 
   const byFile = new Map();
@@ -606,7 +606,7 @@ function runApply(flags) {
   const stagedFiles = [];
 
   for (const [relFile, ops] of byFile.entries()) {
-    const absFile = path.resolve(REPO_ROOT, relFile);
+    const absFile = repoPath(REPO_ROOT, relFile);
     let src = fs.readFileSync(absFile, "utf8");
     const origSrc = src;
 

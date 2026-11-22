@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 // Production dependency audit with an expiring, reasoned allowlist; unlisted high/critical advisories fail CI.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const ALLOWLIST_PATH = fileURLToPath(new URL('./audit-allowlist.json', import.meta.url));
+const NPM_EXECUTABLE = ['/usr/bin/npm', '/usr/local/bin/npm'].find(existsSync) ?? process.execPath;
 const FAILING_SEVERITIES = new Set(['high', 'critical']);
 const GHSA_PATTERN = /GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}/;
 
 function runAudit() {
   try {
-    return parseAuditOutput(execFileSync('npm', ['audit', '--omit=dev', '--json'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
+    const args = NPM_EXECUTABLE === process.execPath ? ['node_modules/npm/bin/npm-cli.js', 'audit', '--omit=dev', '--json'] : ['audit', '--omit=dev', '--json'];
+    return parseAuditOutput(execFileSync(NPM_EXECUTABLE, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
   } catch (error) {
     // npm audit exits non-zero when it finds anything; the JSON report is still on stdout.
     if (typeof error.stdout === 'string' && error.stdout.length > 0) return parseAuditOutput(error.stdout);

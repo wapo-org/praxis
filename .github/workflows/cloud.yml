@@ -45,8 +45,9 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: cloud/package-lock.json
-      - run: npm install --global npm@11
-      - run: npm --prefix cloud ci
+      - run: npm install --global npm@11.6.2 --ignore-scripts
+      - run: npm --prefix cloud ci --ignore-scripts
+      - run: npm --prefix cloud exec -- patch-package --error-on-fail --error-on-warn
       - run: ${{ matrix.command }}
       - name: Fail on new skipped tests
         if: matrix.check == 'tests'

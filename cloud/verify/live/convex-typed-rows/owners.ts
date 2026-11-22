@@ -52,7 +52,7 @@ export type OwnerAccess = {
 
 /** Lowercase and short, so the address passes Convex Auth's format check and stays unique per run. */
 export function newRunId(now = new Date()): string {
-  const stamp = now.toISOString().replace(/[-:]/g, '').replace(/\..*$/, '').toLowerCase();
+  const stamp = now.toISOString().slice(0, 19).replaceAll('-', '').replaceAll(':', '').toLowerCase();
   return `${stamp}-${randomBytes(3).toString('hex')}`;
 }
 

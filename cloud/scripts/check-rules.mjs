@@ -11,6 +11,7 @@ const DEFAULT_BASELINE = path.join(DEFAULT_ROOT, 'scripts', 'check-rules.baselin
 const SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', 'build', 'coverage', '_generated']);
 const EXIT_VIOLATIONS = 1;
 const EXIT_USAGE = 2;
+const GIT_EXECUTABLE = ['/usr/bin/git', '/bin/git'].find(existsSync) ?? 'git';
 
 function toPosix(file) {
   return file.split(path.sep).join('/');
@@ -21,7 +22,7 @@ function isSkipped(file) {
 }
 
 function gitFiles(root, extra = []) {
-  const out = execFileSync('git', ['ls-files', '-co', '--exclude-standard', '-z', ...extra], {
+  const out = execFileSync(GIT_EXECUTABLE, ['ls-files', '-co', '--exclude-standard', '-z', ...extra], {
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
@@ -69,7 +70,7 @@ export function collectViolations(root, enabled = []) {
   for (const file of listSourceFiles(root)) {
     violations.push(...checkFile(file, readFileSync(path.join(root, file), 'utf8'), enabled));
   }
-  for (const file of [...listFiles(root), ...repoRootDocs(root)].sort()) {
+  for (const file of [...listFiles(root), ...repoRootDocs(root)].sort((a, b) => a.localeCompare(b))) {
     const violation = checkDocFile(file);
     if (violation) violations.push(violation);
   }

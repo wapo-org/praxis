@@ -25,7 +25,7 @@ function entryPoints(dir) {
       }
       const base = entry.name;
       const skipped = !ENTRY_EXTENSIONS.some(ext => base.endsWith(ext)) || base.startsWith('.') || base.startsWith('#')
-        || base === 'schema.ts' || (base.match(/\./g) ?? []).length > 1 || rel.includes(' ');
+        || base === 'schema.ts' || base.indexOf('.') !== base.lastIndexOf('.') || rel.includes(' ');
       if (!skipped && /^\s{0,100}(import|export)/m.test(readFileSync(full, 'utf8'))) out.push(full);
     }
   };
