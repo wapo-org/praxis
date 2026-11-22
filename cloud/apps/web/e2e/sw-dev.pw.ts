@@ -1,11 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { stackTest as test } from './sign-in';
 
-// The old shell worker cached every .css/.js forever, so dev browsers mixed stale styles with fresh
-// components (owner, Safari and Chrome: a tall black composer and menus with empty tops). Every other
-// spec blocks workers, which is why none of them saw it. Here a browser that still runs the old worker
-// must clean itself up on the next load.
 test.use({ serviceWorkers: 'allow' });
 
 const OLD_SW = readFileSync(fileURLToPath(new URL('./fixtures/old-sw-v1.js', import.meta.url)), 'utf8');

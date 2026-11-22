@@ -1,8 +1,3 @@
-/*
- * Code block (port of shadcn's base-nova Code Block) in the app's look: the transcript's quiet card, Geist Mono,
- * hairlines and ink on paper. Parts are styled through their data-slot / data-variant / data-size hooks so tool
- * output (size sm) and markdown fences share one stylesheet.
- */
 .root {
   --pad-x: 14px;
   --pad-top: 12px;
@@ -155,8 +150,7 @@
 .content[data-numbered] .code { grid-template-columns: auto 1fr; }
 .content[data-wrap] .code { min-width: 0; }
 
-/* A line: full-bleed to the scroller's padding so highlights reach both edges. Numbers and diff markers are
-   pseudo-elements, so a selection or a copy never includes them. */
+/* A line: full-bleed to the scroller's padding so highlights reach both edges. */
 .line {
   position: relative;
   display: block;

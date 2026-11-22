@@ -35,17 +35,6 @@ export interface SendBubblePose extends Box {
   overshoot: number;
 }
 
-/**
- * Pure trajectory math for the iMessage-style send animation, calibrated to the
- * 60 fps reference sheets (`IMG_7907`–`IMG_7926`, press at `0 ms`, settled at `820 ms`):
- * - `0..36 ms`: filled bubble materialises over the composer input field (`fromBox`)
- *   with text at the exact input-field coordinates while the field clears behind it.
- * - `40..200 ms`: left edge pulls right rapidly while right edge anchors toward
- *   `toBox.right`, narrowing from full input width to final bubble width.
- * - `40..320 ms`: rises toward `toBox.top`.
- * - `320..480 ms`: overshoots ~4–7 CSS px above `toBox.top`.
- * - `480..820 ms`: drifts gently back down into `toBox.top` with no second bounce.
- */
 export function sendBubbleShapeAt(elapsedMs: number, fromBox: Box, toBox: Box): SendBubblePose {
   const t = Math.max(0, elapsedMs);
   const fillOpacity = smoothstep(4, 28, t);
@@ -185,11 +174,7 @@ function tickFlight({ timestamp }: { delta: number; timestamp: number }) {
   writeFlightFrame(flight, elapsed);
 }
 
-/**
- * Starts the shared-element send flight from the composer textarea before it clears.
- * If an earlier flight is still running, it finishes immediately so its target
- * bubble is never left hidden.
- */
+/** Starts the shared-element send flight from the composer textarea before it clears. */
 export function launchSendFlight(inputEl: HTMLTextAreaElement | null, text: string): number | null {
   const trimmed = text.trim();
   if (!trimmed || !inputEl || reduced() || typeof document === 'undefined') {
@@ -263,8 +248,6 @@ export function launchSendFlight(inputEl: HTMLTextAreaElement | null, text: stri
       }
       flight.shellEl.remove();
       for (const target of flight.targets) {
-        // A retiring optimistic node may still be painted during a keyed handoff.
-        // Restore all targets together, only after the flight itself is removed.
         target.style.visibility = '';
         target.style.opacity = '';
         delete target.dataset.sendInFlight;
@@ -313,8 +296,7 @@ export function bindSendFlightTarget(
     flight.turnKey = turnKey;
   }
 
-  // Never reveal the retiring target while the flight is still visible. React
-  // can keep the optimistic and committed nodes connected for one frame.
+  // Never reveal the retiring target while the flight is still visible.
   flight.targets.add(bubbleEl);
   flight.targetBubbleEl = bubbleEl;
   flight.boundToTarget = true;
@@ -333,12 +315,6 @@ function currentY(el: HTMLElement): number {
   return transform && transform !== 'none' ? new DOMMatrixReadOnly(transform).m42 : 0;
 }
 
-/**
- * Assistant turns that arrive while you watch rise in on the spring; a loaded
- * history does not. Sent user messages fly from the composer via `launchSendFlight`
- * (with the real bubble hidden until landing and no entry fade), while existing
- * list items glide up smoothly using transform FLIP on the same spring.
- */
 export function useMessageArrival(
   column: React.RefObject<HTMLElement | null>,
   chatId: string | undefined,
@@ -420,11 +396,6 @@ export function useMessageArrival(
   }, [chatId, column, keys]);
 }
 
-/**
- * Staggered entrance on an explicit chat switch (`MorphRows` cadence: 30 ms per row,
- * TRANSITION.fast, up to 8 visible rows). Never replays on page load, same-chat clicks,
- * stream deltas, or brand-new sends. Runs after `useStreamAnchor` so scrollTop is settled.
- */
 export function useChatSwitchEntrance(
   column: React.RefObject<HTMLElement | null>,
   viewport: React.RefObject<HTMLElement | null>,
@@ -478,11 +449,6 @@ export function useChatSwitchEntrance(
   }, [chatId, column, viewport, pendingSwitchRef, rowSignal]);
 }
 
-/**
- * A disclosure changes height in layout once; what follows it glides there with
- * transforms (FLIP), so opening one never reflows per frame. Starts from wherever
- * the rows are, so toggling mid-flight reverses instead of jumping.
- */
 export function glideFollowing(anchor: HTMLElement, delta: number) {
   if (!delta || reduced()) return;
   const column = anchor.closest('[data-chat-column]');

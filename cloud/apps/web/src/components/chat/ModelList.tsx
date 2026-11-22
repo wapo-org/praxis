@@ -1,5 +1,7 @@
+import { getUnpinnedModels, modelDetail } from '../../lib/models';
+import type { ModelListItem } from '@praxis/protocol';
 import { ScrollBlur } from '@praxis/glass';
-import type { Model } from '@praxis/protocol';
+
 import React from 'react';
 import { Check, ChevronLeft, Search, Star, X } from '../../lib/icons';
 import { useModelSearch } from '../../lib/useModelSearch';
@@ -7,22 +9,20 @@ import { usePraxisStore } from '../../state/store';
 import { actionOptions, applyOption } from '../../actions/registry';
 import styles from './ModelList.module.css';
 
+type Model = ModelListItem;
+
 /** Rows are fixed-height so the window is plain arithmetic; these mirror the CSS tokens. */
 export const MODEL_ROW_HEIGHT = 56; // --row-model
 const LABEL_ROW_HEIGHT = 32; // --space-8
 const MORE_ROW_HEIGHT = 44; // --control-lg
 const OVERSCAN = 6;
 
-export function getUnpinnedModels<T extends { pinned?: boolean; favorite?: boolean }>(models: T[]) {
-  return models.filter((m) => !m.pinned && !m.favorite);
-}
-
 export type ModelListRow =
   | { kind: 'label'; key: string; text: string; height: number; top: number }
   | { kind: 'model'; key: string; model: Model; height: number; top: number }
   | { kind: 'more'; key: string; height: number; top: number };
 
-/** Pinned first, then the rest of the catalog. A section with no models has no header. */
+/** Pinned first, then the recommended models, then the rest of the catalogue. A section with no models has no header. */
 export function buildModelRows(items: Model[], searching: boolean, hasMore: boolean): ModelListRow[] {
   const rows: ModelListRow[] = [];
   let top = 0;
@@ -32,15 +32,21 @@ export function buildModelRows(items: Model[], searching: boolean, hasMore: bool
   };
   const addModels = (models: Model[]) => {
     for (const model of models)
-      push({ kind: 'model', key: `${model.providerId}/${model.id}`, model, height: MODEL_ROW_HEIGHT } as Omit<ModelListRow, 'top'>);
+      push({ kind: 'model', key: model.id, model, height: MODEL_ROW_HEIGHT } as Omit<ModelListRow, 'top'>);
   };
   if (searching) addModels(items);
   else {
     const pinned = items.filter((m) => m.pinned || m.favorite);
-    const others = getUnpinnedModels(items);
+    const unpinned = getUnpinnedModels(items);
+    const recommended = unpinned.filter((m) => m.recommended);
+    const others = unpinned.filter((m) => !m.recommended);
     if (pinned.length) {
       push({ kind: 'label', key: 'label-pinned', text: 'Pinned', height: LABEL_ROW_HEIGHT } as Omit<ModelListRow, 'top'>);
       addModels(pinned);
+    }
+    if (recommended.length) {
+      push({ kind: 'label', key: 'label-recommended', text: 'Recommended', height: LABEL_ROW_HEIGHT } as Omit<ModelListRow, 'top'>);
+      addModels(recommended);
     }
     if (others.length) {
       const text = `All models · ${others.length}${hasMore ? '+' : ''}`;
@@ -93,7 +99,7 @@ const ModelRow = React.memo(function ModelRow({
         onClick={() => onSelect(model)}
       >
         <span className={styles.copy}>
-          <span className={styles.name}>{model.displayName}</span>
+          <span className={styles.name}>{model.name}</span><span className={styles.meta}>{modelDetail(model)}</span>
 
         </span>
         {selected ? (
@@ -106,7 +112,7 @@ const ModelRow = React.memo(function ModelRow({
         type="button"
         className={styles.pin}
         aria-pressed={model.pinned}
-        aria-label={`${model.pinned ? 'Unpin' : 'Pin'} ${model.displayName}`}
+        aria-label={`${model.pinned ? 'Unpin' : 'Pin'} ${model.name}`}
         onClick={() => onTogglePin(model)}
       >
         <Star size={16} />
@@ -159,7 +165,7 @@ export function ModelList({ onBack, autoFocus = true }: { onBack: () => void; au
 
   const select = React.useCallback(
     (model: Model) => {
-      applyOption('model', store, `${model.providerId}/${model.id}`, [model]);
+      applyOption('model', store, model.id, [model]);
       onBack();
     },
     [store.cacheModels, store.setSelectedModel, onBack],
@@ -167,8 +173,8 @@ export function ModelList({ onBack, autoFocus = true }: { onBack: () => void; au
   const { patch, refresh } = search;
   const togglePin = React.useCallback(
     (model: Model) => {
-      patch({ providerId: model.providerId, id: model.id, pinned: !model.pinned });
-      void store.toggleModelPin(model.providerId, model.id, !model.pinned).catch(refresh);
+      patch({ id: model.id, pinned: !model.pinned });
+      void store.toggleModelPin(model.id, !model.pinned).catch(refresh);
     },
     [store.toggleModelPin, patch, refresh],
   );
@@ -248,6 +254,7 @@ export function ModelList({ onBack, autoFocus = true }: { onBack: () => void; au
         </p>
       ) : null}
       {showEmpty ? <p className={styles.note}>No models found.</p> : null}
+      {search.busy && rows.length === 0 ? <p className={styles.note} role="status">Loading models…</p> : null}
       <ScrollBlur
         className={styles.list}
         height="100%"
@@ -293,9 +300,7 @@ export function ModelList({ onBack, autoFocus = true }: { onBack: () => void; au
                   <ModelRow
                     model={row.model}
                     optionId={optionId(index)}
-                    selected={
-                      row.model.id === store.selectedModelId && row.model.providerId === store.selectedProviderId
-                    }
+                    selected={row.model.id === store.selectedModelId}
                     active={index === activeIndex}
                     onSelect={select}
                     onTogglePin={togglePin}

@@ -1,15 +1,14 @@
+import { OpenRouterCard } from './OpenRouterCard';
 import { SidebarLookControl } from './SidebarLookControl';
-import { Eye, FlaskConical, Mic, Plus } from '../../lib/icons';
+import { Eye, FlaskConical, Mic } from '../../lib/icons';
 import { usePraxisStore } from '../../state/store.js';
 import { SegmentedControl } from '../ui/controls';
 import { AccountSettings } from './AccountSettings';
 import styles from './Screen.module.css';
 import {
   Card,
-  hostLabel,
   NavRow,
   ScreenBody,
-  ScreenButton,
   Section,
   TaskError,
   Toggle,
@@ -51,50 +50,7 @@ export function ModelsSection() {
   const store = usePraxisStore();
   return (
     <ScreenBody>
-      <Section title="Providers">
-        {store.providers.length ? (
-          <Card>
-            {store.providers.map((provider) => (
-              <NavRow
-                key={provider.id}
-                title={provider.name}
-                detail={`${hostLabel(provider.baseUrl)} · ${provider.maskedKey || 'No API key'}`}
-                value={
-                  <span
-                    className={`${styles.badge} ${provider.maskedKey ? styles.badgeSuccess : ''}`}
-                  >
-                    {provider.id === 'scripted'
-                      ? 'Demo'
-                      : provider.maskedKey
-                        ? 'Configured'
-                        : 'Missing key'}
-                  </span>
-                }
-                onClick={() => {
-                  store.setEditingProviderId(provider.id);
-                  store.setActiveSheet('provider-editor');
-                }}
-              />
-            ))}
-          </Card>
-        ) : (
-          <p className={styles.intro}>
-            You’re chatting with the built-in demo. Add a provider with your own API key, or a
-            server on your network, to chat with a real model.
-          </p>
-        )}
-        <ScreenButton
-          tone="primary"
-          onClick={() => {
-            store.setEditingProviderId(null);
-            store.setActiveSheet('provider-editor');
-          }}
-        >
-          <Plus size={16} />
-          Add provider
-        </ScreenButton>
-        <p className={styles.footnote}>API keys are write-only. A saved key is never shown here.</p>
-      </Section>
+      <OpenRouterCard />
       <Section title="Tools">
         <Card>
           <NavRow

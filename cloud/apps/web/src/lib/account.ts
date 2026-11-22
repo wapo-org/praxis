@@ -1,8 +1,10 @@
 import React from 'react';
 export interface AccountSession {
   userId: string;
+  displayName?: string;
+  email?: string;
   signOut: () => Promise<void>;
-  /** Erases the account on the server, then this device's local data; rejects with the API's message. */
+  /** Erases server account then local data; rejects with API error. */
   deleteAccount: (password: string) => Promise<void>;
   busy: boolean;
   error: string;

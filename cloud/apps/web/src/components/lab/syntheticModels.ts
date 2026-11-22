@@ -39,7 +39,3 @@ export const SYNTHETIC_500_MODELS: SyntheticModel[] = Array.from({ length: 500 }
     contextWindow: i % 4 === 0 ? '1M' : i % 2 === 0 ? '200k' : '128k',
   };
 });
-
-/**
- * Exact 5 multi-line recent note previews from IMG_7773.PNG – IMG_7774.PNG
- */

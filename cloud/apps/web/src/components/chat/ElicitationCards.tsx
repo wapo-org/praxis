@@ -92,14 +92,6 @@ function summarise(fields: Field[], content: Record<string, unknown>) {
     .join(' · ');
 }
 
-const host = (url: string) => {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-};
-
 export function ElicitationCards({
   pendingElicitations = [],
   runId,
@@ -111,18 +103,20 @@ export function ElicitationCards({
   setElicitationValues: React.Dispatch<React.SetStateAction<Record<string, Record<string, unknown>>>>;
 }) {
   const [settled, setSettled] = React.useState<Record<string, Settled>>({});
-  const pendingIds = new Set(pendingElicitations.map((e) => e.id));
+  // App sign-in is the App Directory's connect card now (PRA-49); URL elicitations from MCP servers are not shown.
+  const forms = pendingElicitations.filter((e) => e.mode !== 'url');
+  const pendingIds = new Set(forms.map((e) => e.id));
   const answered = Object.entries(settled).filter(([id]) => !pendingIds.has(id));
   return (
     <>
-      {pendingElicitations.map((elicitation) => (
+      {forms.map((elicitation) => (
         <ElicitationCard
           key={elicitation.id}
           elicitation={elicitation}
           runId={runId}
           values={elicitationValues[elicitation.id] ?? {}}
           setValue={(key, value) =>
-            setElicitationValues((prev) => ({ ...prev, [elicitation.id]: { ...(prev[elicitation.id] ?? {}), [key]: value } }))
+            setElicitationValues((prev) => ({ ...prev, [elicitation.id]: { ...prev[elicitation.id], [key]: value } }))
           }
           onResolve={onResolveElicitation}
           onSettled={(entry) => setSettled((prev) => {const next={...prev};if(entry)next[elicitation.id]=entry;else delete next[elicitation.id];return next;})}
@@ -170,8 +164,7 @@ function ElicitationCard({
   settled?: Settled;
 }) {
   const fields = fieldsOf(elicitation);
-  const free = elicitation.mode !== 'url' && fields.length === 0;
-  const url = elicitation.mode === 'url' ? safeLink(elicitation.url) : undefined;
+  const free = fields.length === 0;
   const [shown, setShown] = React.useState(false); // errors appear after the first submit, then follow the input
   const [busy, setBusy] = React.useState<Action | null>(null);
   const [failed, setFailed] = React.useState('');
@@ -183,7 +176,7 @@ function ElicitationCard({
     try{const result=await apiClient.savedValues();setSavedSecrets(result.items);setSavedStatus('ready');}
     catch{setSavedStatus('unavailable');}
   },[elicitation.id]);
-  React.useEffect(()=>{if(elicitation.mode!=='url')void loadSaved();},[loadSaved,elicitation.mode]);
+  React.useEffect(()=>{void loadSaved();},[loadSaved]);
   const [revealed,setRevealed]=React.useState<Record<string,boolean>>({});
   const idBase = `elicit-${React.useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const valueOf = (field: Field) => (values[field.key] !== undefined ? values[field.key] : initialValue(field));
@@ -206,7 +199,6 @@ function ElicitationCard({
         return;
       }
       if (free) content = { response: String(values.response ?? '').trim() || 'confirmed' };
-      else if (url) content = {};
       else
         content = Object.fromEntries(
           fields
@@ -245,7 +237,6 @@ function ElicitationCard({
   return (
     <section
       data-testid={`elicitation-card-${elicitation.id}`}
-      data-mode={elicitation.mode ?? 'form'}
       data-state={busy ? 'sending' : 'open'}
       className={styles.card}
       aria-labelledby={`${idBase}-message`}
@@ -257,21 +248,11 @@ function ElicitationCard({
       {elicitation.connectorName ? <p className={styles.source}>Asked by {elicitation.connectorName}</p> : null}
 
       <div className={styles.body} data-testid="elicitation-form-surface">
-      {savedStatus==='unavailable'&&elicitation.mode!=='url'?<div className={styles.hint}>
+      {savedStatus==='unavailable'?<div className={styles.hint}>
         <p>{hasSensitive?'Secure input is unavailable on this server. Update the server or retry.':'To save answers, update the server or retry loading saved values.'}</p>
         <button type="button" className={styles.secondary} onClick={()=>void loadSaved()}>Retry saved values</button>
       </div>:null}
-      {elicitation.mode === 'url' ? (
-        url ? (
-          <p className={styles.hint}>
-            Continue on <span className={styles.host}>{host(url)}</span>, then come back and choose Done.
-          </p>
-        ) : (
-          <p className={styles.error} role="alert">
-            This link can’t be opened safely.
-          </p>
-        )
-      ) : free ? (
+      {free ? (
         <div className={styles.field}>
           <input
             id={`${idBase}-response`}
@@ -391,28 +372,25 @@ function ElicitationCard({
       ) : null}
 
       <div className={styles.actions}>
-        {url ? (
-          <a
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            className={styles.primary}
-            data-testid="elicitation-open-link"
-          >
-            Open {host(url)}
-          </a>
-        ) : null}
         <button
           type="button"
           data-testid="elicitation-submit"
-          data-tone={url ? 'secondary' : 'primary'}
-          className={url ? styles.secondary : styles.primary}
-          disabled={!!busy || (hasSensitive&&savedStatus!=='ready') || (elicitation.mode === 'url' && !url)}
+          data-tone="primary"
+          className={styles.primary}
+          disabled={!!busy || (hasSensitive && savedStatus !== 'ready')}
           onClick={() => void resolve('accept')}
         >
-          {busy === 'accept' ? 'Sending…' : url ? 'Done' : 'Submit'}
+          {busy === 'accept' ? 'Sending…' : 'Submit'}
         </button>
-        {elicitation.mode!=='url'?<button type="button" className={styles.secondary} data-testid="elicitation-submit-save" disabled={!!busy||savedStatus!=='ready'} onClick={()=>void resolve('accept',true)}>Submit and save</button>:null}
+        <button
+          type="button"
+          className={styles.secondary}
+          data-testid="elicitation-submit-save"
+          disabled={!!busy || savedStatus !== 'ready'}
+          onClick={() => void resolve('accept', true)}
+        >
+          Submit and save
+        </button>
         <button
           type="button"
           data-testid="elicitation-decline"

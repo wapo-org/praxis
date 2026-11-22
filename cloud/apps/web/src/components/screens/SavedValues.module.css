@@ -1,5 +1,3 @@
-/* Settings → Secrets & variables (WP-L2 §5, L-ref/10 and 15): search and filters outside, one grey squircle box
-   that scrolls itself and holds one line per value, and the forms in modals. */
 .screen {
   display: flex;
   flex-direction: column;
@@ -48,8 +46,6 @@
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
-/* Beat RowGroup's .row padding regardless of CSS bundle order so all four inner insets are --space-2 (8px),
-   concentric with the 22px squircle box around the 28px (14px-radius) Edit pill. */
 .box .row {
   min-height: var(--control-lg);
   padding: var(--space-2);

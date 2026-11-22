@@ -1,7 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
-// WP-K2b: a model the user picks stays picked: in a new chat, during a slow save, across a reload; a failed
-// save says so instead of silently reverting. A second provider with models is added to the local API's
-// responses (the local stack has only the scripted provider).
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import { expect, type Page } from '@playwright/test';
 test.use({ serviceWorkers: 'block' });
 
 const now = '2026-11-11T00:00:00.000Z';
@@ -36,14 +34,6 @@ async function withRouter(page: Page) {
   });
 }
 
-async function signIn(page: Page, path = '/') {
-  await page.goto(path);
-  const dev = page.getByRole('button', { name: 'Continue as local dev user' });
-  await Promise.race([dev.waitFor(), page.getByTestId('chat-top-bar').waitFor()]);
-  if (await dev.isVisible().catch(() => false)) await dev.click();
-  await page.getByTestId('chat-top-bar').waitFor();
-}
-
 const headerModel = (page: Page) => page.getByTestId('nav-chat-title-pill').locator('span').last();
 
 async function pick(page: Page, name: string) {
@@ -74,7 +64,7 @@ async function scriptedChat(page: Page, title: string) {
 
 test('a model picked in a new chat stays picked', async ({ page }) => {
   await withRouter(page);
-  await signIn(page);
+  await openSignedInPage(page);
   await page.getByTestId('nav-new-chat-desktop').click();
   await pick(page, 'K2b Muse');
   await holds(page, 'K2b Muse');
@@ -89,7 +79,7 @@ test('a model picked in a new chat stays picked', async ({ page }) => {
 
 test('a model picked in an existing chat stays picked while the save is slow', async ({ page }) => {
   await withRouter(page);
-  await signIn(page);
+  await openSignedInPage(page);
   const id = await scriptedChat(page, 'Slow save');
   await page.goto(`/c/${id}`);
   await expect(headerModel(page)).toHaveText(/Scripted/);
@@ -108,7 +98,7 @@ test('a model picked in an existing chat stays picked while the save is slow', a
 
 test('a failed save shows an error and does not silently revert', async ({ page }) => {
   await withRouter(page);
-  await signIn(page);
+  await openSignedInPage(page);
   const id = await scriptedChat(page, 'Failing save');
   await page.goto(`/c/${id}`);
   await expect(headerModel(page)).toHaveText(/Scripted/);
@@ -124,7 +114,7 @@ test('a failed save shows an error and does not silently revert', async ({ page 
 
 test('reload keeps the selection, in an existing chat and in a new one', async ({ page }) => {
   await withRouter(page);
-  await signIn(page);
+  await openSignedInPage(page);
   const id = await scriptedChat(page, 'Reload keeps');
   await page.goto(`/c/${id}`);
   await pick(page, 'K2b Lumen');

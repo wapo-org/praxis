@@ -1,42 +1,10 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
-
-async function signIn(page: Page, path = '/') {
-  await page.goto(path);
-  const dev = page.getByRole('button', { name: /local dev user/i });
-  await Promise.race([dev.waitFor(), page.getByTestId('chat-top-bar').waitFor(), page.getByTestId('settings-page').waitFor()]);
-  if (await dev.isVisible().catch(() => false)) await dev.click();
-  await Promise.race([page.getByTestId('chat-top-bar').waitFor(), page.getByTestId('settings-page').waitFor()]);
-  await page.waitForTimeout(900); // anything still settling from sign-in has stopped
-}
+import { apiRequest, openSignedInPage, signedInTest as test } from './sign-in';
+import { expect, type Locator, type Page } from '@playwright/test';
+import { landed } from './morph-clock';
+import { startSampling, stopSampling } from './stretch-sampling';
 
 const surfaceOf = (locator: Locator) => locator.locator('xpath=ancestor-or-self::*[@data-glass-surface][1]');
 const sidebar = (page: Page) => page.locator('[data-testid="app-sidebar"] [data-glass-surface]').first();
-
-type Edges = { t: number; l: number; r: number; top: number; b: number };
-const startSampling = (surface: Locator) =>
-  surface.evaluate((el) => {
-    const w = window as unknown as { __s: Edges[]; __on: boolean };
-    w.__s = [];
-    w.__on = true;
-    const tick = () => {
-      if (!w.__on) return;
-      const r = el.getBoundingClientRect();
-      w.__s.push({ t: performance.now(), l: r.left, r: r.right, top: r.top, b: r.bottom });
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  });
-const stopSampling = (page: Page) =>
-  page.evaluate(() => {
-    const w = window as unknown as { __s: Edges[]; __on: boolean };
-    w.__on = false;
-    return w.__s;
-  });
-
-/** Geometry is only meaningful once the glass has landed: the morph leaves nothing inline at rest. */
-async function landed(shell: Locator) {
-  await expect.poll(() => shell.evaluate((el: HTMLElement) => el.style.transform)).toBe('');
-}
 
 async function pull(page: Page, from: { x: number; y: number }, dx: number, dy: number, steps = 12) {
   await page.mouse.move(from.x, from.y);
@@ -51,7 +19,7 @@ const center = async (locator: Locator) => {
 };
 
 test.describe('the stretch', () => {
-  test.beforeEach(async ({ page }) => signIn(page));
+  test.beforeEach(async ({ page }) => openSignedInPage(page));
 
   test('pulling right moves only the right edge, from any start point', async ({ page }) => {
     const surface = sidebar(page);
@@ -152,7 +120,11 @@ test.describe('the stretch', () => {
   });
 
   test('a pull from a chat row stretches without selecting; a click selects', async ({ page }) => {
-    const row = page.locator('[data-sidebar-row-select]').nth(1); // the seeded list may run past the window
+    const title = 'Stretch chat row';
+    const response = await apiRequest(page, 'post', '/v1/chats', { data: { type: 'chat.input', title } });
+    await expect(response).toBeOK();
+    await openSignedInPage(page);
+    const row = page.getByRole('button', { name: title, exact: true });
     const url = page.url();
     expect(await realClickAfterPull(page, row, sidebar(page))).toBeGreaterThan(8);
     expect(page.url()).toBe(url);
@@ -293,7 +265,7 @@ test.describe('the stretch', () => {
 test.describe('reduced motion', () => {
   test.use({ reducedMotion: 'reduce' });
   test('turns the stretch off and keeps the click', async ({ page }) => {
-    await signIn(page);
+    await openSignedInPage(page);
     const surface = sidebar(page);
     const rest = (await surface.boundingBox())!;
     await pull(page, { x: rest.x + 130, y: rest.y + 500 }, 120, 0);
@@ -317,7 +289,7 @@ test.describe('the floating sidebar height', () => {
         return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
       };
     }, count);
-    await signIn(page);
+    await openSignedInPage(page);
   };
   for (const count of [1, 100]) {
     test(`is the window minus its margins with ${count} chats, and the account row stays visible`, async ({ page }) => {
@@ -338,7 +310,7 @@ test.describe('the floating sidebar height', () => {
 
 test.describe('settings takes over the floating nav', () => {
   test('the same panel changes to the sections, with no second rail and no Done', async ({ page }) => {
-    await signIn(page);
+    await openSignedInPage(page);
     const panel = sidebar(page);
     await panel.evaluate((el) => { el.setAttribute('data-probe', 'same-node'); });
     const rest = (await panel.boundingBox())!;
@@ -364,7 +336,7 @@ test.describe('settings takes over the floating nav', () => {
 
   test('narrow screens follow the same model', async ({ page }) => {
     await page.setViewportSize({ width: 402, height: 874 });
-    await signIn(page);
+    await openSignedInPage(page);
     await page.getByTestId('nav-history-button').click();
     await page.getByTestId('sidebar-account').click();
     await page.getByTestId('settings-page').waitFor();
@@ -414,7 +386,7 @@ test.describe('touch inside glass', () => {
 
   test('a vertical pan scrolls the list instead of stretching', async ({ page }) => {
     await manyChats(page);
-    await signIn(page);
+    await openSignedInPage(page);
     const surface = sidebar(page);
     const rest = (await surface.boundingBox())!;
     const list = listOf(page);
@@ -427,7 +399,7 @@ test.describe('touch inside glass', () => {
 
   test('sideways stretches, and a pull at the scroll limit stretches', async ({ page }) => {
     await manyChats(page);
-    await signIn(page);
+    await openSignedInPage(page);
     const surface = sidebar(page);
     const rest = (await surface.boundingBox())!;
     const box = (await listOf(page).boundingBox())!;

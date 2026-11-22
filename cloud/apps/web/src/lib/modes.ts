@@ -1,14 +1,5 @@
 import type { Chat } from '@praxis/protocol';
 
-/**
- * The composer's modes (WP-I1): Auto, Ask and Execute. The wire keeps the protocol's enum, which still has
- * `plan` and `build` so older clients and stored chats stay valid:
- *   auto    <-> auto
- *   ask     <-> ask
- *   execute  -> build   (Execute is what Build was)
- *   build    -> execute
- *   plan     -> auto    (Plan left the UI; a chat or default stored as plan reads as Auto)
- */
 export type WireMode = Chat['mode'];
 export const MODES = ['auto', 'ask', 'execute'] as const;
 export type Mode = (typeof MODES)[number];

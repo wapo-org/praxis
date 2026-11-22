@@ -45,13 +45,29 @@ export interface ApiClientConfig {
   bearerToken?: string;
 }
 
-
+// Multi-request operations pass the session signal that started them: a refresh keeps it live, an owner change aborts it.
+export type ApiRequestInit = RequestInit & { headers?: Record<string, string>; session?: AbortSignal };
 
 export class ApiTransport {
   onUnauthorized?: () => void;
-  tokenProvider?: () => Promise<string | null>;
+  // Cookie clients start unbound; a closed verified session requires an explicit owner before dispatch can resume.
+  private sessionIdentity: string | null | undefined;
+  private sessionController = new AbortController();
+
+  getSessionSignal(): AbortSignal {
+    return this.sessionController.signal;
+  }
+
+  setSessionIdentity(userId: string | null): void {
+    if (userId !== null && userId === this.sessionIdentity && !this.sessionController.signal.aborted) return;
+    this.sessionController.abort();
+    this.sessionIdentity = userId;
+    if (userId !== null) this.sessionController = new AbortController();
+  }
+
   async freshToken(): Promise<string> {
-    if (this.tokenProvider) this.bearerToken = await this.tokenProvider() ?? '';
+    const signal = this.getSessionSignal();
+    signal.throwIfAborted();
     return this.bearerToken;
   }
   private baseUrl: string;
@@ -107,25 +123,35 @@ export class ApiTransport {
     return h;
   }
 
-  async request<T>(
-    path: string,
-    init?: RequestInit & { headers?: Record<string, string> },
-  ): Promise<T> {
+  // A 401 from a scope that has since ended belongs to the old owner and must not sign out the current one.
+  protected reportUnauthorized(signal: AbortSignal): void {
+    signal.throwIfAborted();
+    this.onUnauthorized?.();
+  }
+
+  async request<T>(path: string, init?: ApiRequestInit): Promise<T> {
+    const { session, ...fetchInit } = init ?? {};
+    const sessionSignal = session ?? this.getSessionSignal();
+    const signal = fetchInit.signal ? AbortSignal.any([sessionSignal, fetchInit.signal]) : sessionSignal;
+    signal.throwIfAborted();
     await this.freshToken();
+    signal.throwIfAborted();
     const headers: Record<string, string> = {
-      ...(init?.body && typeof init.body === 'string'
+      ...(fetchInit.body && typeof fetchInit.body === 'string'
         ? { 'Content-Type': 'application/json' }
         : {}),
-      ...this.headers(init?.headers),
+      ...this.headers(fetchInit.headers),
     };
 
     const res = await fetch(this.url(path), {
-      ...init,
+      ...fetchInit,
       credentials: 'include',
       headers,
+      signal,
     });
 
-    if (res.status === 401) this.onUnauthorized?.();
+    signal.throwIfAborted();
+    if (res.status === 401) this.reportUnauthorized(signal);
     if (!res.ok) {
       let code = 'http_error';
       let message = `HTTP ${res.status}`;
@@ -145,7 +171,9 @@ export class ApiTransport {
       throw new PraxisApiError(res.status, code, message, requestId);
     }
 
-    return (await res.json()) as T;
+    const result = await res.json() as T;
+    signal.throwIfAborted();
+    return result;
   }
 
 }

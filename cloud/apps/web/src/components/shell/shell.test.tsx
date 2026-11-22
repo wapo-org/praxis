@@ -55,7 +55,6 @@ beforeEach(() => {
     activeLiveRun: null,
     models: [],
     selectedModelId: null,
-    selectedProviderId: null,
     setDesktopSidebarOpen: vi.fn(),
     setPlusTrayOpen: vi.fn(),
     startNewConversation: vi.fn(),

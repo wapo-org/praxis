@@ -104,7 +104,7 @@ describe('@praxis/web core chat & lab components', () => {
     expect(html).toContain('agent-activity-view');
     expect(html).toContain('approval-card-app-1');
     expect(html).toContain('Allow Once');
-    expect(html).toContain('Always Allow');
+    expect(html).toContain('Deny');
     expect(html).toContain('Deny');
     expect(html).toContain('elicitation-card-elic-1');
     expect(html).toContain('Confirm target environment');

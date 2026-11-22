@@ -109,8 +109,6 @@ export function ToolGlyph({
         </span>
       );
     }
-    // Lucide names arrive as PascalCase ("BookOpen") or kebab-case ("book-open"). A generic glyph (plug, wrench)
-    // says less than the row's own kind, so a specific kind keeps its glyph.
     const key = display.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
     const Named = named[key];
     if (Named && !(GENERIC.has(key) && kind !== 'tool')) {
@@ -143,27 +141,6 @@ export function WorkEntryIcon({
       role={failed || warning ? 'img' : undefined}
     >
       <Icon size={16} />
-    </span>
-  );
-}
-
-/** WorkLogLine: kept for compatibility; row layout now rides on TraceLine. */
-export function WorkLogLine({
-  icon,
-  children,
-  trailing,
-}: {
-  icon: React.ReactNode;
-  children: React.ReactNode;
-  trailing?: React.ReactNode;
-}) {
-  return (
-    <span className={styles.line}>
-      <span className={styles.main}>
-        <span className={styles.slot}>{icon}</span>
-        <span className={styles.label}>{children}</span>
-      </span>
-      {trailing}
     </span>
   );
 }

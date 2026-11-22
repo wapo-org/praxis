@@ -17,7 +17,7 @@ export function ChatHeader() {
   const pressProps = usePress();
   const pop = usePreset(popIn);
   const model = store.models.find(
-    (m) => m.id === store.selectedModelId && m.providerId === store.selectedProviderId,
+    (m) => m.id === store.selectedModelId,
   );
   return (
     <header className={styles.bar} data-testid="chat-top-bar">
@@ -47,12 +47,12 @@ export function ChatHeader() {
             type="button"
             className={styles.title}
             data-testid="nav-chat-title-pill"
-            onClick={() => store.setActiveSheet('settings')}
+            onClick={() => store.setActiveSheet('models')}
             aria-label="Chat and model settings"
             {...pressProps}
           >
             <span className={styles.titleText}>{<TitleText title={displayTitle(store.activeChat ? store.activeChat.title || 'New chat' : store.draftTitle)}/>}</span>
-            <span className={styles.model}>{model?.displayName || 'Select model'}</span>
+            <span className={styles.model}>{model?.name || 'Select model'}</span>
           </motion.button>
         </div>
       </motion.div>

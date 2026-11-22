@@ -1,3 +1,4 @@
+import { OpenRouterCallback } from './components/screens/OpenRouterCallback';
 import styles from './App.module.css';
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -15,6 +16,7 @@ const Sidebar = React.lazy(() =>
 );
 import { parseRoute } from './lib/navigation';
 import { usePraxisStore } from './state/store';
+import { DESKTOP_SIDEBAR_QUERY } from './state/usePraxisState';
 const GlassLabPage = import.meta.env.DEV
   ? React.lazy(() =>
       import('./components/lab/GlassLabPage').then((m) => ({
@@ -31,10 +33,10 @@ export function App() {
   restore.current = store.restoreRoute;
   React.useEffect(() => {
     const route = parseRoute(pathname);
-    restore.current(route.chatId ?? null, route.sheet, route.providerId);
+    restore.current(route.chatId ?? null, route.sheet);
   }, [pathname]);
   React.useEffect(() => {
-    const media = window.matchMedia('(min-width: 1024px)');
+    const media = window.matchMedia(DESKTOP_SIDEBAR_QUERY);
     const apply = () => store.setDesktopSidebarOpen(media.matches);
     apply();
     media.addEventListener('change', apply);
@@ -42,8 +44,7 @@ export function App() {
   }, []);
   React.useEffect(() => {
     const onSearchKey = (event: KeyboardEvent) => {
-      // ⌘K on macOS, Ctrl+K elsewhere, from anywhere (capture phase, so a focused field cannot swallow it);
-      // pressing it again closes. Any other modifier is the browser's or the OS's, so it passes through.
+      // ⌘K on macOS, Ctrl+K elsewhere, from anywhere (capture phase, so a focused field cannot swallow it); pressing it again closes.
       if (!isSearchShortcut(event)) return;
       event.preventDefault();
       event.stopPropagation();
@@ -56,8 +57,6 @@ export function App() {
         event.preventDefault();
         store.startNewConversation();
       }
-      // The tray handles Escape itself (models → main → close); stay out
-      // of the way when it already handled the key.
       if (event.key === 'Escape' && !event.defaultPrevented) store.setPlusTrayOpen(false);
     };
     window.addEventListener('keydown', onKey);
@@ -84,14 +83,14 @@ export function App() {
     );
   const sheet = parseRoute(pathname).sheet;
   // Settings is a routed page, not a modal: there are no sheets or scrims.
-  const settingsSheet: SettingsSheet | null = sheet && sheet !== 'history' ? sheet : null;
+  const settingsSheet: SettingsSheet | null = sheet && sheet !== 'history' && sheet !== 'openrouter-callback' ? sheet : null;
   return (
     <div data-testid="praxis-app-root" className="praxis-app-root">
       <React.Suspense fallback={null}>
         <Sidebar devTools={!!lab} />
       </React.Suspense>
       <div className="praxis-page">
-        {settingsSheet ? (
+        {sheet === 'openrouter-callback' ? <OpenRouterCallback /> : settingsSheet ? (
           <React.Suspense fallback={null}>
             <SettingsPage sheet={settingsSheet} onOpenGlassLab={lab} />
           </React.Suspense>

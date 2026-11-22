@@ -19,8 +19,7 @@
   padding: var(--space-4);
 }
 
-/* Only the details scroll; Allow/Cancel stay pinned and visible. When they must scroll they end on padding,
-   and a soft edge fades the cut line only while more lies below (L-ref/14). */
+/* Only the details scroll; Allow/Cancel stay pinned and visible. */
 .scroll {
   display: flex;
   flex-direction: column;

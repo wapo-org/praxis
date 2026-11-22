@@ -1,8 +1,9 @@
-import { expect, test, type Page } from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import { expect, type Page } from '@playwright/test';
 test.use({ serviceWorkers: 'allow' });
-async function signIn(page:Page){await page.goto('/');await page.getByRole('button',{name:'Continue as local dev user'}).click();await page.getByTestId('chat-top-bar').waitFor();}
+
 test('regenerate resets Working and persists only the new run duration after reload',async({page})=>{
- await signIn(page);
+ await openSignedInPage(page);
  await page.route('**/v1/runs',async route=>{
   if(route.request().method()!=='POST')return route.continue();
   return route.continue({postData:JSON.stringify({...route.request().postDataJSON(),providerId:'scripted',modelId:'scripted',script:'realShape'})});
@@ -21,7 +22,7 @@ test('regenerate resets Working and persists only the new run duration after rel
  await expect.poll(()=>page.locator('[data-chat-column] button[aria-expanded]').allTextContents()).toEqual(saved);
 });
 test('a completed burst drains through word-sized frames instead of snapping into the transcript',async({page})=>{
- await signIn(page);
+ await openSignedInPage(page);
  await page.route('**/v1/runs',async route=>{
   if(route.request().method()!=='POST')return route.continue();
   return route.continue({postData:JSON.stringify({...route.request().postDataJSON(),providerId:'scripted',modelId:'scripted',script:'bursty'})});
@@ -38,7 +39,7 @@ test('a completed burst drains through word-sized frames instead of snapping int
  await page.getByTestId('turn-retry-button').last().waitFor({timeout:30000});
 });
 test('real-shaped disclosures stay fixed at bottom, above and while streaming',async({page})=>{
- await signIn(page);
+ await openSignedInPage(page);
  const id=await page.evaluate(async()=>{
   // @ts-expect-error Vite import
   const {apiClient}=await import('/src/lib/api.ts');
@@ -69,9 +70,9 @@ test('real-shaped disclosures stay fixed at bottom, above and while streaming',a
 test('a message sent before the model list loads waits for the model instead of failing the new chat',async({page})=>{
  await page.route(/\/v1\/bootstrap/,async route=>{await new Promise(r=>setTimeout(r,2500));await route.continue();});
  const chatPosts:{status:number;body:string}[]=[];const runBodies:string[]=[];
- page.on('response',r=>{if(/\/v1\/chats$/.test(r.url())&&r.request().method()==='POST')chatPosts.push({status:r.status(),body:r.request().postData()??''});});
- page.on('request',r=>{if(/\/v1\/runs$/.test(r.url())&&r.method()==='POST')runBodies.push(r.postData()??'');});
- await page.goto('/');await page.getByRole('button',{name:'Continue as local dev user'}).click();await page.getByTestId('chat-top-bar').waitFor();
+ page.on('response',r=>{if(r.url().endsWith('/v1/chats')&&r.request().method()==='POST')chatPosts.push({status:r.status(),body:r.request().postData()??''});});
+ page.on('request',r=>{if(r.url().endsWith('/v1/runs')&&r.method()==='POST')runBodies.push(r.postData()??'');});
+ await openSignedInPage(page);await page.getByTestId('chat-top-bar').waitFor();
  await page.getByTestId('composer-input').fill('Sent before models');await page.getByTestId('composer-input').press('Enter');
  await expect(page.getByTestId('user-message-bubble').last()).toContainText('Sent before models');
  await page.getByTestId('turn-retry-button').last().waitFor({timeout:30000});

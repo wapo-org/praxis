@@ -81,10 +81,6 @@ export interface SearchMatchResolution {
   phrase?: string;
 }
 
-/**
- * Resolves which message in `messages` should be scrolled to & highlighted, or returns `null` when
- * the search result was a title-only match (in which case no scroll/highlight should run).
- */
 export function resolveMatchedMessage(
   messages: Message[],
   target: Pick<SearchJumpTarget, 'title' | 'query' | 'snippet'>,
@@ -305,10 +301,6 @@ async function expandActivityIfNeeded(
   await waitForFolds(turnEl, signal);
 }
 
-/**
- * Jumps to and subtly highlights the matched message/text when a search result is chosen.
- * Called once from `ChatScreen`.
- */
 export function useSearchJump(
   scrollRef: React.RefObject<HTMLElement | null>,
   columnRef: React.RefObject<HTMLElement | null>,

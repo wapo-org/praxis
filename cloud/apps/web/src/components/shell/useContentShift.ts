@@ -6,10 +6,7 @@ const COLUMN = 587; // --reading-width: the conversation column, 70ch of the 15 
 const NARROW = 1024;
 const PADDING = 24; // the chat viewport's inline padding (--space-6)
 
-/**
- * How far the centred column moves so it is centred in the area right of the docked sidebar (WP-J2), not on
- * the whole window. Clamped so a column that only just fits keeps its padding from the window's right edge.
- */
+/** How far the centred column moves so it is centred in the area right of the docked sidebar (WP-J2), not on the whole window. */
 export function contentShift(viewport: number, column: number, sidebarOpen: boolean, sidebarRight = SIDEBAR_RIGHT): number {
   if (!sidebarOpen || viewport < NARROW) return 0;
   const width = Math.min(column, viewport - PADDING * 2);
@@ -26,10 +23,6 @@ function measuredSidebarRight(): number {
   return Number.isFinite(width) && Number.isFinite(margin) ? width + margin : SIDEBAR_RIGHT;
 }
 
-/**
- * A number for a framer `x` on the column, the header pill and the composer: they glide on the sidebar's own
- * PANEL spring when it opens or closes, instead of reflowing.
- */
 export function useContentShift(column = COLUMN): number {
   const { desktopSidebarOpen } = usePraxisStore();
   const [viewport, setViewport] = React.useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth));

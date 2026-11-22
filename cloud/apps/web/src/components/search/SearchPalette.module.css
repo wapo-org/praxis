@@ -6,6 +6,7 @@
   width: min(var(--sheet-width), calc(100vw - var(--space-6)));
   z-index: 100;
 }
+.backdrop { position: fixed; inset: 0; z-index: 99; background: rgb(0 0 0 / 12%); pointer-events: none; }
 .surface { overflow: hidden; transform-origin: center var(--space-6); }
 /* The dropdown menus' material: their tint, and their rim (morph.module.css .rim at rest), in light and dark. */
 .surface.surface { --glass-tint: var(--glass-menu-tint); }
@@ -15,8 +16,7 @@
 .bar input { flex: 1; width: 0; border: 0; outline: none; background: transparent; color: var(--color-ink); font: var(--weight-regular) var(--text-lg) / var(--leading-lg) var(--font-sans); }
 .back { display: grid; place-items: center; width: var(--control-md); height: var(--control-md); border: 0; border-radius: var(--radius-full); background: transparent; color: inherit; cursor: pointer; }
 .reveal { overflow: hidden; }
-/* The last option keeps the same inset from the panel's bottom edge as the bar has from its top (8 px).
-   With nothing below the bar there is no list, so no extra inset: the bar's own padding is the inset (WP-I1). */
+/* The last option keeps the same inset from the panel's bottom edge as the bar has from its top (8 px). */
 .results { max-height: min(var(--popover-max-height), calc(100dvh - var(--topbar-height) * 4)); overflow-y: auto; padding: 0 var(--space-2) var(--space-2); }
 .results:empty { padding: 0; }
 .row { display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: var(--control-lg); padding: var(--space-2) var(--space-3); border: 0; background: transparent; color: var(--color-ink); text-align: start; cursor: pointer; font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);; border-radius: var(--radius-full); }

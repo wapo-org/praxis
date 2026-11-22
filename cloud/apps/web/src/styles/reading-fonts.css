@@ -1,10 +1,3 @@
-/*
- * The reading typeset (WP-L3, owner's choice L-ref/19): Noto Serif body, Noto Sans headings, Geist Mono code.
- * Self-hosted variable fonts (@fontsource-variable), subset to Latin, Latin Extended, Cyrillic and Cyrillic
- * Extended by unicode-range, so a page downloads only the subsets its text uses. main.tsx starts the Latin
- * downloads at boot. `swap` shows text at once in a fallback whose metrics are matched to the web font
- * (size-adjust from measured advance widths, ascent/descent from the font), so the swap does not reflow.
- */
 @font-face {
   font-family: 'Noto Sans Variable';
   font-style: normal;
@@ -171,8 +164,6 @@
 @font-face { font-family: 'Noto Sans Fallback'; src: local('Arial'), local('ArialMT'); size-adjust: 105.7%; ascent-override: 101.2%; descent-override: 27.4%; line-gap-override: 0%; }
 @font-face { font-family: 'Geist Mono Fallback'; src: local('Menlo'), local('Menlo-Regular'), local('Consolas'); size-adjust: 99.7%; ascent-override: 101.3%; descent-override: 29.1%; line-gap-override: 0%; }
 
-/* The streaming fade (Streamdown stamps `--sd-animation: sd-praxisIn` on new words): opacity only, on the
-   compositor, starting at arrival, so text is never later than the frame it arrived in. */
 @keyframes sd-praxisIn {
   from { opacity: 0.12; transform: translateY(2px); }
   to { opacity: 1; transform: translateY(0); }

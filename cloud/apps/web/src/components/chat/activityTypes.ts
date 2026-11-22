@@ -28,7 +28,7 @@ export interface AgentActivityViewProps {
     runId: string,
     approvalId: string,
     decision: 'allowOnce' | 'allowAlways' | 'deny',
-  ) => void;
+  ) => void | Promise<void>;
   onResolveElicitation?: (
     runId: string,
     elicitationId: string,

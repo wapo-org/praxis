@@ -1,7 +1,3 @@
-/**
- * Design v2 names a new chat at random from two word lists (Chat Screen.dc.html, `randomName()`), and sending a
- * message keeps that name: the first message no longer titles the chat. The user can still rename it.
- */
 export const NAME_ADJECTIVES = ['Quiet', 'Amber', 'Silver', 'Lazy', 'Brave', 'Hidden', 'Crimson', 'Gentle', 'Rapid', 'Misty', 'Golden', 'Curious', 'Velvet', 'Lunar', 'Wild', 'Cosmic'] as const;
 export const NAME_NOUNS = ['Harbor', 'Fox', 'Lantern', 'Orchard', 'Compass', 'Meadow', 'Comet', 'Anchor', 'Thicket', 'Ember', 'Canyon', 'Pebble', 'Sparrow', 'Atlas', 'Kettle', 'Willow'] as const;
 
@@ -13,10 +9,6 @@ export function randomChatName(random: () => number = Math.random): string {
 /** Random tries before falling back to a numbered name. */
 export const NAME_ATTEMPTS = 24;
 
-/**
- * A random name none of `taken` (the user's chat titles) already uses, ignoring case and outer spaces. After
- * NAME_ATTEMPTS collisions (a user with most of the 256 pairs) it numbers the last pick: "Quiet Harbor 2".
- */
 const key = (title: string | null | undefined) => (title ?? '').trim().toLocaleLowerCase();
 
 /** Whether one of `titles` already is `name` (ignoring case and outer spaces). */

@@ -1,14 +1,7 @@
-import { test, expect, type Page } from '@playwright/test';
+import { openSignedInPage, signedInTest as test } from './sign-in';
+import { expect, type Page } from '@playwright/test';
 // WP-K2: search shortcut, sidebar press, title without a box, the run background, the tray's own list.
 test.use({ serviceWorkers: 'block' });
-
-async function signIn(page: Page, path = '/') {
-  await page.goto(path);
-  const dev = page.getByRole('button', { name: 'Continue as local dev user' });
-  await Promise.race([dev.waitFor(), page.getByTestId('chat-top-bar').waitFor()]);
-  if (await dev.isVisible().catch(() => false)) await dev.click();
-  await page.getByTestId('chat-top-bar').waitFor();
-}
 
 async function scriptedChat(page: Page, title: string, script = 'text') {
   return page.evaluate(async ({ title, script }) => {
@@ -26,7 +19,7 @@ async function scriptedChat(page: Page, title: string, script = 'text') {
 }
 
 test('⌘K (Ctrl+K off macOS) opens search from anywhere, including the composer; again or Escape closes', async ({ page }) => {
-  await signIn(page);
+  await openSignedInPage(page);
   const palette = page.getByTestId('search-palette');
   await page.getByTestId('composer-input').click();
   await page.keyboard.type('half a thought');
@@ -49,7 +42,7 @@ test('⌘K (Ctrl+K off macOS) opens search from anywhere, including the composer
 });
 
 test('chat rows take the Settings rows\' press: scale and fill, by pointer and by keyboard', async ({ page }) => {
-  await signIn(page);
+  await openSignedInPage(page);
   await scriptedChat(page, 'Press me');
   await page.reload();
   await page.getByTestId('chat-top-bar').waitFor();
@@ -90,7 +83,7 @@ test('chat rows take the Settings rows\' press: scale and fill, by pointer and b
 });
 
 test('the chat title has no box: it sits on the stretched blur', async ({ page }) => {
-  await signIn(page);
+  await openSignedInPage(page);
   const title = page.getByTestId('nav-chat-title-pill');
   await expect(title.locator('xpath=ancestor-or-self::*[@data-glass-surface]')).toHaveCount(0);
   const look = await title.evaluate((el) => {
@@ -105,7 +98,7 @@ test('the chat title has no box: it sits on the stretched blur', async ({ page }
 });
 
 test('a run shows the living background while it streams, and only then', async ({ page }) => {
-  await signIn(page);
+  await openSignedInPage(page);
   const backdrop = page.getByTestId('run-backdrop');
   await expect(backdrop).toHaveCount(0);
   await page.route('**/v1/runs', async (route) => {
@@ -126,27 +119,26 @@ test('a run shows the living background while it streams, and only then', async 
   await expect(backdrop).toHaveCount(0, { timeout: 3000 });
 });
 
-test('reduced motion: no run background', async ({ browser }) => {
-  const context = await browser.newContext({ reducedMotion: 'reduce', serviceWorkers: 'block' });
-  const page = await context.newPage();
-  await signIn(page);
-  await page.route('**/v1/runs', async (route) => {
-    if (route.request().method() !== 'POST') return route.continue();
-    const body = JSON.parse(route.request().postData() ?? '{}');
-    await route.continue({ postData: JSON.stringify({ ...body, providerId: 'scripted', modelId: 'scripted', script: 'long' }) });
+test.describe('reduced motion', () => {
+  test.use({ reducedMotion: 'reduce' });
+
+  test('reduced motion: no run background', async ({ page }) => {
+    await openSignedInPage(page);
+    await page.route('**/v1/runs', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      const body = JSON.parse(route.request().postData() ?? '{}');
+      await route.continue({ postData: JSON.stringify({ ...body, providerId: 'scripted', modelId: 'scripted', script: 'long' }) });
+    });
+    await page.getByTestId('composer-input').fill('Write a long answer');
+    await page.getByTestId('composer-input').press('Enter');
+    await page.getByTestId('composer-stop-button').waitFor();
+    await page.waitForTimeout(700);
+    await expect(page.getByTestId('run-backdrop')).toHaveCount(0);
   });
-  await page.getByTestId('composer-input').fill('Write a long answer');
-  await page.getByTestId('composer-input').press('Enter');
-  await page.getByTestId('composer-stop-button').waitFor();
-  await page.waitForTimeout(700);
-  await expect(page.getByTestId('run-backdrop')).toHaveCount(0);
-  await context.close();
 });
 
-// WP-L2 (L-ref/08) supersedes K2's separate pills: rows next to each other are one translucent squircle group,
-// flat joins with an inset hairline, no gaps, the highlight clipped by the group.
 test('the tray\'s rows group into one translucent squircle with flat, hairline joins', async ({ page }) => {
-  await signIn(page);
+  await openSignedInPage(page);
   await page.getByTestId('composer-plus-button').click();
   const tray = page.getByTestId('plus-tray');
   await tray.waitFor();

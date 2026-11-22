@@ -1,13 +1,6 @@
 import React from 'react';
 import styles from './Fold.module.css';
 
-/**
- * One disclosure motion for every activity row (Reasoned for, Worked for, tool rows).
- * The height (grid 0fr → 1fr), the content's fade and the chevron's turn are three CSS transitions on the
- * same duration and curve (--fold-duration, --fold-ease), started by the same attribute change, so nothing
- * arrives early or late. What follows the fold moves with its height because it is in the flow below it.
- * Reverses from wherever it is. Content mounts on open and unmounts only once a close has finished.
- */
 export function Fold({
   open,
   id,

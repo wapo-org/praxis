@@ -2,11 +2,6 @@ import { createHighlighterCore, type GrammarState, type HighlighterCore, type Th
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
 import { praxisDark, praxisLight } from '../../chat/codeThemes';
 
-/**
- * Shiki for code blocks (port of shadcn's `lib/highlighter`). One core highlighter with the praxis themes and the
- * JavaScript regex engine; each grammar is its own chunk, loaded the first time a block uses it. Once a language is
- * loaded, highlighting is synchronous, so a block re-renders with its colours in the same frame as its text.
- */
 const grammars = {
   bash: () => import('shiki/langs/shellscript.mjs'),
   css: () => import('shiki/langs/css.mjs'),
@@ -48,8 +43,17 @@ const loaded = new Set<Language>(['ansi']);
 const loading = new Map<Language, Promise<void>>();
 
 function getCore() {
-  core ??= createHighlighterCore({ themes: [praxisLight, praxisDark], langs: [], engine: createJavaScriptRegexEngine({ forgiving: true }) })
-    .then((h) => { ready = h; return h; });
+  const target = (() => {
+    try { new RegExp('', 'v'); return 'ES2024' as const; } catch { return 'ES2018' as const; }
+  })();
+  core ??= createHighlighterCore({
+    themes: [praxisLight, praxisDark],
+    langs: [],
+    engine: createJavaScriptRegexEngine({ forgiving: true, target }),
+  }).then((highlighter) => {
+    ready = highlighter;
+    return highlighter;
+  });
   return core;
 }
 
@@ -59,8 +63,6 @@ export interface Highlighter {
   highlight(code: string, language: Language, state?: GrammarState): { lines: HighlightedLine[]; state?: GrammarState };
 }
 
-// ANSI text without a colour code comes back in the theme's foreground; it inherits the block's colour instead, so a
-// terminal's output stays muted around the coloured parts.
 function plainDefaults(tokens: ThemedToken[]): ThemedToken[] {
   for (const token of tokens) {
     const style = token.htmlStyle as Record<string, string> | undefined;

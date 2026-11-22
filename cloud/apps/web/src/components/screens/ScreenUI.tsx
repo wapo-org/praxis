@@ -71,7 +71,7 @@ export function Section({
   );
 }
 
-/** Grouped rows: an opaque card on the sheet. Content is never glass. */
+/** Opaque card surface; content is never glass. */
 export function Card({ children }: { children: React.ReactNode }) {
   return <div className={styles.card}>{children}</div>;
 }
@@ -171,7 +171,6 @@ export function Field({
 /** Shared select field backed by GlassDropdown. */
 export const Select = FieldSelect;
 
-/** One-of-many choice when the options can overflow a segmented control. */
 export function ChoiceChip({
   active,
   children,
@@ -253,9 +252,6 @@ export function ScreenBody({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Menu opened from a settings row: the content portals to the document root
- * (GlassDropdown `portal`), so it is never clipped by a scroll container,
- * an ancestor's overflow, or another glass surface's backdrop root. */
 export function ScreenMenu({
   label,
   children,

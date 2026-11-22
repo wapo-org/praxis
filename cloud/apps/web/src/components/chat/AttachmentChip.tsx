@@ -50,11 +50,6 @@ const KIND_LABEL: Record<AttachmentKind, string> = {
   file: 'File',
 };
 
-/**
- * A file attachment card backed by components/ui/attachment: shows a type icon or image preview,
- * file title (shimmering while uploading/processing), metadata or limit/error status, optional open trigger,
- * and optional remove action.
- */
 export function AttachmentChip({
   name,
   mediaType,

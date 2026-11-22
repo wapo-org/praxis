@@ -1,4 +1,4 @@
-import { ChatSchema, RunSchema, type UserEvent } from '@praxis/protocol';
+import { ChatSchema, ModelKeySchema, RunSchema, type UserEvent } from '@praxis/protocol';
 import React from 'react';
 import { apiClient } from '../lib/api';
 import { subscribeUserEvents } from '../lib/user-events';
@@ -9,16 +9,12 @@ import type { useRunStreams } from './useRunStreams';
 
 const terminal = (status: string) => ['completed', 'cancelled', 'failed'].includes(status);
 
-/**
- * Attaches live to runs started on another client (iOS, another tab, the API) for this account: chat and run
- * upserts on the user channel name the run; the snapshot restores text, tools and pending approvals/elicitations,
- * then the run stream continues it. Runs this tab started are attached by the send path instead.
- */
+/** Attaches via snapshot + SSE to runs started by other clients. */
 export function useLiveFollower(
   state: PraxisState,
   { attachRunStream, applySnapshotToLiveRun }: ReturnType<typeof useRunStreams> & ReturnType<typeof useRunState>,
 ) {
-  const { eventCursor, setChats, setMessagesByChat, activeRunUnsubMapRef, localTurnIdsRef } = state;
+  const { eventCursor, setChats, setMessagesByChat, setModelKey, activeRunUnsubMapRef, localTurnIdsRef } = state;
   const following = React.useRef(new Set<string>());
   const handlers = React.useRef({ attachRunStream, applySnapshotToLiveRun });
   handlers.current = { attachRunStream, applySnapshotToLiveRun };
@@ -38,7 +34,7 @@ export function useLiveFollower(
       handlers.current.applySnapshotToLiveRun(snapshot);
       if (!terminal(run.status)) handlers.current.attachRunStream(run, snapshot.lastEventId);
     } catch {
-      // A run that vanished or can't be read is simply not followed; the next chat upsert retries.
+      // Ignored here; the next chat upsert retries.
     } finally {
       following.current.delete(runId);
     }
@@ -59,6 +55,11 @@ export function useLiveFollower(
     } else if (event.entity === 'run' && event.operation === 'upsert') {
       const run = RunSchema.safeParse(event.value);
       if (run.success && !terminal(run.data.status)) void follow(run.data.id);
+    } else if (event.entity === 'modelKey') {
+      // Connected, checked, rejected by OpenRouter during a run, or removed, on this or another client.
+      const key = event.operation === 'delete' ? null : ModelKeySchema.safeParse(event.value);
+      if (key === null) setModelKey(null);
+      else if (key.success) setModelKey(key.data);
     }
   }, [follow]);
 
