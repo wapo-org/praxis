@@ -1,0 +1,99 @@
+{
+  "name": "owner-from-body",
+  "gates": [
+    {
+      "key": "check-rules",
+      "rule_id": "GATE.check-rules",
+      "status": "passed",
+      "findings": []
+    }
+  ],
+  "sessions": {
+    "abstractions": {
+      "findings": [
+        {
+          "confidence": "high",
+          "evidence": "const ShareRequestSchema = z.object({ userId: z.string(), fileId: z.string() });",
+          "failure_scenario": "Any unauthenticated caller can submit another user's `userId` and `fileId` to create a share link under that identity, because the handler trusts the request body as the owner.",
+          "file": "cloud/apps/api/src/features/media/share-routes.ts",
+          "line": 4,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "R4.boundary-parse",
+          "suggestion": "Could the route derive the owner from verified auth context and parse only the file identifier from the request?"
+        }
+      ],
+      "session": "abstractions",
+      "summary": "Client-supplied owner identity",
+      "ui_check": null
+    },
+    "maintainability": {
+      "findings": [],
+      "session": "maintainability",
+      "summary": "No leftovers in diff",
+      "ui_check": null
+    },
+    "conciseness": {
+      "findings": [
+        {
+          "confidence": "high",
+          "evidence": "export function registerShareRoutes(app: Hono, adapters: AdapterBundle): void {",
+          "failure_scenario": "No code calls `registerShareRoutes`, so the new `/v1/files/share` endpoint is never mounted and its route handler is unreachable.",
+          "file": "cloud/apps/api/src/features/media/share-routes.ts",
+          "line": 7,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "G.dead-code",
+          "suggestion": "Could this route be mounted by its feature module, or could the unused route file be removed? "
+        }
+      ],
+      "session": "conciseness",
+      "summary": "Unregistered route is unreachable",
+      "ui_check": null
+    },
+    "logic_bs": {
+      "findings": [
+        {
+          "confidence": "high",
+          "evidence": "const ShareRequestSchema = z.object({ userId: z.string(), fileId: z.string() });",
+          "failure_scenario": "An unauthenticated caller can POST an arbitrary userId and fileId, causing the store to create a share link for another user's file if that file exists.",
+          "file": "cloud/apps/api/src/features/media/share-routes.ts",
+          "line": 4,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "CORRECTNESS",
+          "suggestion": "Could this route derive the owner from verified auth context and validate file access before creating the link? "
+        }
+      ],
+      "session": "logic_bs",
+      "summary": "Caller can share others' files",
+      "ui_check": null
+    },
+    "security": {
+      "findings": [
+        {
+          "confidence": "high",
+          "evidence": "const { userId, fileId } = ShareRequestSchema.parse(await c.req.json());",
+          "failure_scenario": "A signed-in user can submit another user's ID with a file ID and create a share link for that user's file, since this route uses the body-supplied owner without verifying session ownership.",
+          "file": "cloud/apps/api/src/features/media/share-routes.ts",
+          "line": 9,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "R5.owner-from-auth",
+          "suggestion": "Could the owner be derived from the verified session and omitted from the request schema?"
+        }
+      ],
+      "session": "security",
+      "summary": "Request trusts supplied owner",
+      "ui_check": null
+    }
+  },
+  "live": {
+    "source": "praxis-review live stack (PRA-92)",
+    "model": "gpt-6.2-sol",
+    "reasoning_effort": "low",
+    "duration_seconds": 209.8,
+    "session_errors": {},
+    "gates_note": "check-rules re-run with npm dependencies installed (develop 2dd8454); sessions are the live Sol outputs"
+  }
+}

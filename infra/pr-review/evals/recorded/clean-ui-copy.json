@@ -1,0 +1,63 @@
+{
+  "name": "clean-ui-copy",
+  "gates": [
+    {
+      "key": "check-rules",
+      "rule_id": "GATE.check-rules",
+      "status": "passed",
+      "findings": []
+    }
+  ],
+  "sessions": {
+    "abstractions": {
+      "findings": [],
+      "session": "abstractions",
+      "summary": "No boundary changes found",
+      "ui_check": "The empty history state changes what users see. Open chat history with no chats and confirm the empty-state message appears."
+    },
+    "maintainability": {
+      "findings": [],
+      "session": "maintainability",
+      "summary": "No legacy paths found",
+      "ui_check": "History screen: open it with no chats and confirm the empty-state message appears."
+    },
+    "conciseness": {
+      "findings": [
+        {
+          "confidence": "high",
+          "evidence": "export function EmptyHistory() {",
+          "failure_scenario": "Nothing in `cloud/apps/web/src` imports or renders this export, so adding the component has no effect in the application.",
+          "file": "cloud/apps/web/src/components/EmptyHistory.tsx",
+          "line": 1,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "G.dead-code",
+          "suggestion": "Could this component be wired into the history view before it is added? "
+        }
+      ],
+      "session": "conciseness",
+      "summary": "Unreferenced empty state",
+      "ui_check": null
+    },
+    "logic_bs": {
+      "findings": [],
+      "session": "logic_bs",
+      "summary": "Looks okay, straightforward empty state",
+      "ui_check": "On the chat history screen with no chats, verify the empty state shows \u201cNo chats yet\u201d and the prompt to start a conversation."
+    },
+    "security": {
+      "findings": [],
+      "session": "security",
+      "summary": "No security issues found",
+      "ui_check": "No chats screen: verify the empty-history message appears when there are no chats and disappears when chats exist."
+    }
+  },
+  "live": {
+    "source": "praxis-review live stack (PRA-92)",
+    "model": "gpt-6.2-sol",
+    "reasoning_effort": "low",
+    "duration_seconds": 31.5,
+    "session_errors": {},
+    "gates_note": "check-rules re-run with npm dependencies installed (develop 2dd8454); sessions are the live Sol outputs"
+  }
+}

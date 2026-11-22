@@ -1,0 +1,23 @@
+import { getAuthUserId } from '@convex-dev/auth/server';
+import { v } from 'convex/values';
+import { mutation, query } from './_generated/server.js';
+import { components } from './_generated/api.js';
+
+export const latestEmail = query({
+  args: { email: v.string() },
+  handler: (ctx, args) => ctx.runQuery(components.resend.lib.latest, args),
+});
+
+// The disposable fixture keeps the genuine session alive so AccountGate sees a missing owner.
+export const removeTestOwner = mutation({
+  args: {},
+  handler: async ctx => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId || !await ctx.db.get(userId)) throw new Error('No authenticated fixture owner');
+    const emails = await ctx.runQuery(components.authEmail.verifiedEmails.getEmails, { userId });
+    if (!emails.some(({email}) => email.startsWith('browser-') && email.endsWith('@example.test'))) {
+      throw new Error('Only verification accounts can be removed by the fixture');
+    }
+    await ctx.db.delete(userId);
+  },
+});

@@ -1,0 +1,112 @@
+name: Apple
+on:
+  push:
+    branches: [main, develop]
+    paths: ['PraxisChat/**', 'Packages/**', '.swiftlint.yml', '.github/workflows/apple.yml']
+  pull_request:
+    paths: ['PraxisChat/**', 'Packages/**', '.swiftlint.yml', '.github/workflows/apple.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: apple-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  swiftlint:
+    name: Apple / SwiftLint
+    runs-on: macos-26
+    timeout-minutes: 10
+    env:
+      SWIFTLINT_VERSION: 0.65.1
+      SWIFTLINT_SHA256: c1e429b0599cf1b516f369a2d9ec04eaf0e436f3c12b637df8851fa52ff694d0
+      SWIFTLINT_BASELINE: PraxisChat/.swiftlint-baseline.json
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Install pinned SwiftLint
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -fsSL -o "$RUNNER_TEMP/swiftlint.zip" "https://github.com/realm/SwiftLint/releases/download/$SWIFTLINT_VERSION/portable_swiftlint.zip"
+          echo "$SWIFTLINT_SHA256  $RUNNER_TEMP/swiftlint.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/swiftlint.zip" -d "$RUNNER_TEMP/swiftlint"
+          echo "$RUNNER_TEMP/swiftlint" >> "$GITHUB_PATH"
+      # A missing baseline must fail: without it every violation would count as new, or none would be checked.
+      - name: Lint against the committed baseline
+        run: |
+          set -euo pipefail
+          if [ ! -s "$SWIFTLINT_BASELINE" ]; then
+            echo "::error::$SWIFTLINT_BASELINE is missing. Restore it from git; do not regenerate it to hide new violations."
+            exit 1
+          fi
+          swiftlint lint --strict --baseline "$SWIFTLINT_BASELINE"
+  ios:
+    name: Apple / iOS build and unit tests
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Select an available iPhone simulator
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available --json > "$RUNNER_TEMP/devices.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          devices = json.loads(Path(os.environ['RUNNER_TEMP'], 'devices.json').read_text())['devices']
+          iphones = [device for runtime, group in devices.items() if 'iOS-26' in runtime
+                     for device in group if device['name'].startswith('iPhone') and device['isAvailable']]
+          if not iphones:
+              raise SystemExit('No available iOS 26 iPhone simulator on this runner')
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write(f"SIMULATOR_ID={iphones[0]['udid']}\n")
+          PY
+      - name: Boot the selected simulator
+        run: |
+          xcrun simctl boot "$SIMULATOR_ID"
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+      - name: Build app and unit tests for iOS Simulator
+        run: >-
+          xcodebuild build-for-testing -project PraxisChat/PraxisChat.xcodeproj -scheme PraxisChat
+          -destination "platform=iOS Simulator,id=$SIMULATOR_ID"
+          -derivedDataPath "$RUNNER_TEMP/PraxisChatDerivedData"
+          -resultBundlePath "$RUNNER_TEMP/PraxisChatBuild.xcresult"
+          -only-testing:PraxisChatTests
+          CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+      - name: Run PraxisChat unit tests
+        run: >-
+          xcodebuild test-without-building -project PraxisChat/PraxisChat.xcodeproj -scheme PraxisChat
+          -destination "platform=iOS Simulator,id=$SIMULATOR_ID"
+          -derivedDataPath "$RUNNER_TEMP/PraxisChatDerivedData"
+          -resultBundlePath "$RUNNER_TEMP/PraxisChatTests.xcresult"
+          -parallel-testing-enabled NO
+          -only-testing:PraxisChatTests
+          CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+      - name: Upload failed test results
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: PraxisChatTests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/PraxisChatBuild.xcresult
+            ${{ runner.temp }}/PraxisChatTests.xcresult
+          retention-days: 7
+  packages:
+    name: Apple / Swift package tests
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Test Swift packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' manifest; do
+            swift test --package-path "$(dirname "$manifest")"
+          done < <(find Packages -name .build -prune -o -name Package.swift -print0)

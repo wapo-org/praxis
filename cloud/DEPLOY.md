@@ -25,9 +25,9 @@ Deploy-only inputs: `VERCEL_TOKEN`, `VERCEL_ORG_ID` (`team_…`/`user_…`), `VE
 
 The Vercel CLI is pinned (`npx --yes vercel@65.9.0`, see `VERCEL_CLI` in `scripts/deploy.mjs`); the Convex CLI is the locked local dependency (`npx --no-install convex`). Install dependencies first (`npm ci`).
 
-Smoke uses a throwaway user and `DELETE /v1/account` in a `finally` block, including on failure. It exercises email auth on hosted APIs, upload/download, app shell and the actual service-worker bypass control flow. A real paid LLM request requires explicit `--with-llm` plus `SMOKE_LLM_KEY`, `SMOKE_LLM_BASE_URL`, `SMOKE_LLM_MODEL` and optionally `SMOKE_LLM_FLAVOR` in the private env file. Otherwise production run/SSE are explicitly skipped; no scripted production fallback exists. Optional `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` may be validated by preflight but are never sent to the browser or automatically turned into a provider.
+Hosted smoke signs in as one **consenting, pre-provisioned fixture account** on an isolated target, through the deployment's Convex Auth `auth:signInWithEmailPassword` (the API has no email auth routes). Provision it once by hand: sign up and verify the email in the web app, and for `--with-llm` connect the fixture's own OpenRouter key there; smoke never writes credentials. Put these private bindings in the private env file (`--env`, default `.env.deploy`): `SMOKE_API_ORIGIN` (configured with the fixture, never derived from the target; it must equal the API argument or smoke refuses), `SMOKE_CONVEX_URL` (both bare HTTPS origins: no userinfo, path, query or fragment; validated before any request), `SMOKE_FIXTURE_EMAIL`, `SMOKE_FIXTURE_PASSWORD` and `SMOKE_FIXTURE_USER_ID` (the fixture's `users` id; any other identity is signed out before data is written), plus optional `SMOKE_OPENROUTER_MODEL`. A missing binding, a denied sign-in or a fixture without a connected key fails the run; it never reports success. Smoke exercises authenticated bootstrap, chat, upload/download, the app shell and the actual service-worker bypass control flow, then deletes its upload and chat and revokes every session it opened with `auth:signOut` (refresh token only), confirming each with `auth:refreshSession` → `noSession`, including on failure; a session it could not revoke is named in the error. Hosted account deletion is not exercised because the fixture persists; it is covered by `tests/account-credentials.test.ts` and Live Check. A real paid LLM request requires explicit `--with-llm`; otherwise production run/SSE are explicitly skipped, and no scripted production fallback exists. Optional `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` may be validated by preflight but are never sent to the browser or automatically turned into a provider.
 
-Local rehearsal: run `PORT=8822 npm run dev:local -w @praxis/api`, build web with `VITE_API_BASE_URL=http://127.0.0.1:8822 npm run build -w @praxis/web`, then `node node_modules/vite/bin/vite.js preview apps/web --host 127.0.0.1 --port 5196 --strictPort`. Run `node scripts/smoke-remote.mjs http://127.0.0.1:8822 http://127.0.0.1:5196 --dry-run`. Local email auth is genuinely unconfigured (503), so smoke reports that skip, tests disposable dev sessions/sign-out instead, and runs a deterministic local SSE transport check. Hosted `--dry-run` performs reads only, with no auth/account mutation. An empty preflight intentionally exits 1.
+Local rehearsal: run `PORT=8822 npm run dev:local -w @praxis/api`, build web with `VITE_API_BASE_URL=http://127.0.0.1:8822 npm run build -w @praxis/web`, then `node node_modules/vite/bin/vite.js preview apps/web --host 127.0.0.1 --port 5196 --strictPort`. Run `node scripts/smoke-remote.mjs http://127.0.0.1:8822 http://127.0.0.1:5196 --dry-run`. dev:local has no Convex Auth deployment, so smoke reports the password sign-in skip, tests disposable dev sessions/sign-out instead, checks that `/v1/auth/sign-up` and `/v1/auth/sign-in` answer 404 to an authenticated caller, and runs a deterministic local SSE transport check. Hosted `--dry-run` performs three reads only: it needs no fixture bindings and makes no auth, Convex or account request. An empty preflight intentionally exits 1.
 
 CLI references: [Vercel env force/stdin](https://vercel.com/docs/cli/env), [Convex deploy](https://docs.convex.dev/cli/reference/deploy).
 
@@ -35,7 +35,7 @@ CLI references: [Vercel env force/stdin](https://vercel.com/docs/cli/env), [Conv
 Local development needs no accounts (see README: `npm run dev:local`). This page is for the owner who creates the hosted services.
 Agents never create accounts, deploy or read credentials.
 
-The production composition is `apps/api/src/production.ts`; the Vercel entry is `apps/api/api/index.ts`.
+The production composition is `apps/api/src/production.ts`; the bundle entry is `apps/api/src/vercel.ts`. The Vercel function `apps/api/api/index.mjs` only re-exports the esbuild bundle `dist/index.mjs`: Vercel transpiles function files one by one, and the workspace packages export raw `.ts`, so a TypeScript function fails with `ERR_MODULE_NOT_FOUND`.
 At startup the API checks every required variable. If any are missing or malformed, it exits with one error listing all of them.
 It never falls back to memory adapters or dev auth.
 
@@ -46,10 +46,7 @@ It never falls back to memory adapters or dev auth.
 | `PRAXIS_API_URL` | yes | Public https origin of the API, no path (e.g. `https://api.example.com`). Used for OAuth callbacks, upload URLs and the QStash callback. |
 | `PRAXIS_WEB_ORIGINS` | yes | Comma-separated https origins of the web app (CORS, CSRF and auth trusted origins). |
 | `PRAXIS_ENCRYPTION_KEYS` | yes | AES-256-GCM keyring for provider keys, MCP tokens and the voice key: comma-separated base64 32-byte keys, **current first**, then previous ones. Generate a key with `openssl rand -base64 32`. A single legacy `PRAXIS_ENCRYPTION_KEY` is still accepted. See Key rotation. |
-| `CLERK_PUBLISHABLE_KEY` | yes | Clerk instance publishable key. |
-| `CLERK_SECRET_KEY` | yes | Server-only Clerk key for identity lookup and account deletion. |
-| `CLERK_JWT_KEY` | yes | Clerk instance PEM public key for networkless JWT verification. |
-| `VITE_CLERK_PUBLISHABLE_KEY` | web build | Same instance publishable key; enables the custom Clerk sign-in/register flow. |
+| `VITE_CONVEX_URL` | web build | Convex deployment client URL; web sign-in is Convex Auth v2, configured in the Convex deployment (see [Convex Auth v2 web](#convex-auth-v2-web-pra-34)). |
 | `CONVEX_URL` | yes | Convex dashboard → deployment → Settings → URL (`https://<name>.convex.cloud`). |
 | `PRAXIS_CONVEX_SERVER_TOKEN` | yes | API-to-Convex credential, ≥ 32 chars: `openssl rand -base64 48`. Set the **same value** in the Convex deployment env (below). |
 | `UPSTASH_REDIS_REST_URL` | yes | Upstash console → Redis database → REST API → URL. |
@@ -58,8 +55,23 @@ It never falls back to memory adapters or dev auth.
 | `QSTASH_CURRENT_SIGNING_KEY` | yes | QStash → Signing keys → current. |
 | `QSTASH_NEXT_SIGNING_KEY` | yes | QStash → Signing keys → next (needed for key rotation). |
 | `PRAXIS_RUN_BUDGET_MS` | no | Time budget per run slice, default `240000`. Keep it under `maxDuration` (300 s) minus about 30 s. |
-| `PRAXIS_SYNC_STRATEGY` | no | `cursor` (default, the winner of docs/SYNC_EXPERIMENT.md) or `merkle`. |
-| `GROQ_API_KEY` | no | Server-side fallback for `/v1/transcribe` (console.groq.com → API Keys). Users can also save their own key; it is stored encrypted. |
+| `PRAXIS_SYNC_STRATEGY` | no | `cursor` (default) or `merkle`. |
+| `GROQ_API_KEY` | no | Server-side fallback for `/v1/transcribe` (console.groq.com → API Keys). Users can also save their own key; it is stored encrypted. More keys: `GROQ_API_KEY_2`, … (see "Numbered siblings" below). |
+| `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` | no | Platform Modal account for sandboxes (modal.com → Settings → API Tokens). More accounts: `MODAL_TOKEN_ID_2` + `MODAL_TOKEN_SECRET_2`, … A user stays on the account they were first placed on, so removing a slot makes its users' sandboxes unavailable instead of moving them. |
+| `CELERIS_API_KEY` | no | Optional platform key for context selection. Set numbered siblings as `CELERIS_API_KEY_2`, etc. Missing keys use deterministic retrieval fallback. |
+
+### Numbered siblings: several keys for one service
+
+A platform-paid key can have siblings from other accounts of the same service: `NAME` is slot 1, then `NAME_2`, `NAME_3`, … **with no gaps**.
+Today this applies to `GROQ_API_KEY`, `CELERIS_API_KEY` (`NAME_2`, `NAME_3`, …), and the Modal token pair, whose slots are sticky per user rather than failover (PRA-99).
+
+- **To add a key:** set `NAME_n` in the Vercel project, and in the Convex deployment env too if the service is called from Convex, then redeploy. No code change.
+  `npm run deploy` forwards only the unsuffixed name from `.env.deploy`, so add the siblings in the dashboards (or with `vercel env add NAME_2 production`).
+- **Failover:** calls use the lowest-numbered healthy key. A key that answers 401/403, 402 (or a quota error), 429 or 5xx is put on a cool-down (an hour, an hour, the `Retry-After` time or 60 s, 15 s) and the next one is used.
+  Cool-downs live in Upstash Redis under `pool:<service>:<slot>:cooldown` and expire by themselves. If Redis is unreachable, every key is treated as healthy.
+- **A gap** (`NAME_2` missing, `NAME_3` set): `NAME_3` is ignored and a `startup.warning` log line names it.
+- **A credential made of several variables** forms one slot per suffix (`X_ID` + `X_SECRET`, `X_ID_2` + `X_SECRET_2`). A slot with only some of its variables stops startup.
+- Logs and Redis hold slot numbers only, never key values. Users' own keys, `PRAXIS_ENCRYPTION_KEYS` and the QStash signing keys are not pooled and keep their own rotation rules.
 
 Never set these in production: `PRAXIS_LOCAL_SMOKE` (the bundle refuses to start if it is set), `NODE_ENV=development`.
 Browser builds get only the API origin, never a secret.
@@ -68,13 +80,14 @@ Browser builds get only the API origin, never a secret.
 
 | Variable | Value |
 |---|---|
-| `PRAXIS_CONVEX_SERVER_TOKEN` | Same value as on Vercel. Every Convex function rejects calls without it. |
+| `PRAXIS_CONVEX_SERVER_TOKEN` | Same value as on Vercel. Authenticates server RPCs and signs account recovery callbacks. |
+| `PRAXIS_API_URL` | Same HTTPS API origin as on Vercel. Convex sends signed account recovery callbacks here. |
 
 ## 1. Convex
 
 1. Create a project at dashboard.convex.dev (production deployment).
 2. In `cloud/`, run `npx convex deploy`. It asks for login/`CONVEX_DEPLOY_KEY`, and pushes `cloud/convex/` (schema plus the store, auth, files and tools functions).
-3. Set `PRAXIS_CONVEX_SERVER_TOKEN` in the Convex env, and copy the deployment URL into `CONVEX_URL` on Vercel.
+3. Set `PRAXIS_CONVEX_SERVER_TOKEN`, `PRAXIS_API_URL` and `PRAXIS_ENCRYPTION_KEYS` in the Convex env, and copy the deployment URL into `CONVEX_URL` on Vercel. The agent turn runs in Convex (PRA-169) and unseals each user's OpenRouter key there, so the Convex keyring must equal the Vercel one, rotations included.
 4. Never ship `CONVEX_DEPLOY_KEY` to the API or clients. It is only for the deploy step.
 
 ## 2. Upstash
@@ -87,14 +100,36 @@ Browser builds get only the API origin, never a secret.
 ## 3. Vercel (API)
 
 1. Create a project from this repo with Root Directory `cloud/apps/api`. Enable "Include files outside the root directory" (npm workspaces).
-2. Framework: Other. `vercel.json` sets install (`cd ../.. && npm ci`), build (`npm run build`), Fluid compute, `maxDuration` 300 s, 1024 MB memory, and routes every path to `api/index.ts`.
+2. Framework: Other. `vercel.json` sets install (`cd ../.. && npm ci`), build (`npm run build`), Fluid compute, `maxDuration` 300 s, 1024 MB memory, and routes every path to `api/index.mjs`, which serves the bundle built by `npm run build`.
 3. Node.js version: 24.x. Add the variables above to Production (and Preview, with separate Convex and Upstash resources if possible).
-4. Deploy. Check `GET /health` → `{"mode":"production"}`.
+4. Deploy. Check `GET /health` → `{"mode":"production"}` (for a protected preview, `npm run verify -- live preview-env`, see [Preview environment](#preview-environment-pra-135)).
 5. Native dependencies: `sharp` (image crop) and `quickjs-emscripten` (JS sandbox) stay external and are installed by `npm ci` on Vercel.
 
 ## 4. Vercel (web)
 
 Create a second project with Root Directory `cloud/apps/web` (see `cloud/docs/web/`). Set its API origin to `PRAXIS_API_URL`, and add its origin to `PRAXIS_WEB_ORIGINS`.
+
+## Preview environment (PRA-135)
+
+Every Vercel preview shares one backend: the `develop` branch aliases of both projects and the shared preview Convex deployment (`convex-preview.yml`).
+
+| Where | Variable | Value |
+|---|---|---|
+| `praxis-api` Preview | `PRAXIS_API_URL` | `https://praxis-api-git-develop-artyazs-projects.vercel.app` |
+| `praxis-api` Preview | `PRAXIS_WEB_ORIGINS` | `https://praxis-web-git-develop-artyazs-projects.vercel.app` |
+| `praxis-api` Preview | `CONVEX_URL`, `PRAXIS_CONVEX_SERVER_TOKEN`, `PRAXIS_ENCRYPTION_KEYS` | preview Convex URL; token and keyring equal to the Convex values |
+| `praxis-api` Preview | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` | a separate preview Upstash database and QStash; until they exist the preview API refuses to start |
+| `praxis-web` Preview | `VITE_API_BASE_URL`, `VITE_CONVEX_URL` | the API `develop` alias; the preview Convex URL |
+| Convex preview | `PRAXIS_API_URL` | the API `develop` alias |
+| Convex preview | `SITE_URL` | the web `develop` alias |
+| Convex preview | `PRAXIS_CONVEX_SERVER_TOKEN`, `PRAXIS_ENCRYPTION_KEYS` | same values as `praxis-api` Preview |
+
+- **Why aliases.** `PRAXIS_API_URL`, `PRAXIS_WEB_ORIGINS` and `SITE_URL` are exact origins, and every deployment has its own URL. Vercel keeps `<project>-git-develop-<team>.vercel.app` on the newest `develop` build; branch aliases of other branches end in a per-project hash, so web and API aliases cannot be derived from each other.
+- **Per-PR previews** run their own web build against the `develop` API, whose `PRAXIS_WEB_ORIGINS` names only the `develop` web alias, so signed-in API calls from a PR web preview fail CORS. Hands-on checks with real data run on the `develop` previews.
+- **Auth redirects.** `SITE_URL` is the only allowed Google redirect origin and the base of verification, recovery and change-email links. They complete only on the `develop` web alias; on a PR preview, use email and password.
+- **Deployment protection** stays on for both projects. Automation sends `x-vercel-protection-bypass` with the project's Protection Bypass for Automation secret (Vercel → Settings → Deployment Protection); a browser gets a `SameSite=None` bypass cookie per host by adding `x-vercel-set-bypass-cookie: samesitenone`. `praxis-api` has an OPTIONS allowlist for `/`, because CORS preflights carry no cookie; the API answers them itself.
+- **Server-to-server callbacks.** QStash continuations and Convex recovery calls to the protected API preview carry no bypass secret, so Vercel rejects them; preview runs must finish within one slice until those callers send the bypass header.
+- **Check it** from `cloud/` with `PRAXIS_PREVIEW_API_URL`, `PRAXIS_PREVIEW_WEB_URL` (the two aliases) and `PRAXIS_PREVIEW_API_BYPASS_SECRET` set: `npm run verify -- live preview-env`. The reviewer QA profile (`/etc/praxis-review/qa-profile.json`) needs `vercel.api_project_id` and `vercel.api_bypass_secret`.
 
 ## OAuth and callback URLs to register
 
@@ -105,11 +140,11 @@ Create a second project with Root Directory `cloud/apps/web` (see `cloud/docs/we
 | Native app return after connector OAuth (handled by the app, nothing to register server-side) | `praxis-app://oauth/callback?state=…` |
 | Web return after connector OAuth | an origin listed in `PRAXIS_WEB_ORIGINS` |
 | QStash continuation (no registration; it must be publicly reachable) | `PRAXIS_API_URL/internal/continue` |
-| Clerk OAuth callback | Web origin + `/auth/callback`; enable Google and Apple in Clerk. |
+| Google sign-in redirect (Convex Auth v2) | `<CONVEX_SITE_URL>/oauth/google/callback` |
 
 ## Security notes
 
-- Provider base URLs, MCP servers, registry URLs and the JS `fetch` bridge all go through one SSRF guard (`adapters/security.ts`). It allows http(s) only, resolves DNS once and dials that pinned address, blocks private, loopback, link-local and metadata ranges, and limits redirects.
+- OpenRouter calls (a pinned URL, never user input), MCP servers, registry URLs and the JS `fetch` bridge all go through one SSRF guard (`adapters/security.ts`). It allows http(s) only, resolves DNS once and dials that pinned address, blocks private, loopback, link-local and metadata ranges, and limits redirects.
 - Request logs are JSON lines with request id, method, path, status and duration. They never include query strings, headers, cookies, bodies or provider responses.
 - Rate limits use an Upstash sliding window, 120 requests per minute per verified user, plus a per-IP bucket on public paths. Over the limit, the API answers 429 with `Retry-After`.
 - QStash signing keys: rotate them in QStash, then update both values.
@@ -131,7 +166,7 @@ Never drop a key before step 3 reports `failed: 0`: values sealed only with that
 cd cloud && npm ci && npm run -ws --if-present typecheck && npm test
 cd apps/api && npm run build                      # esbuild bundle → dist/index.mjs (~5.4 MB)
 PORT=8789 node scripts/serve-bundle.mjs &         # bundled handler on memory adapters (local only)
-PORT=8789 node scripts/smoke-local.mjs            # bootstrap → SSE → approval → cancel → resume
+npm --prefix ../.. run verify -- api --api http://127.0.0.1:8789   # bootstrap → SSE → approval → cancel → replay
 ```
 `npx vercel build` needs a Vercel login or token (`login_required` without one), so it was not run by agents.
 Live Convex and Upstash contract tests run when their env vars are set: `CONVEX_URL` + `PRAXIS_CONVEX_SERVER_TOKEN`, and `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`.
@@ -139,8 +174,95 @@ Live Convex and Upstash contract tests run when their env vars are set: `CONVEX_
 
 ## Account deletion protocol (additive)
 
-Production uses Clerk JWT bearer sessions. `DELETE /v1/account` requires a first-factor authentication less than five minutes old (`fva`); sign out and sign in again if necessary. The Clerk user is deleted through the backend interface after data purge and before the final auth batch; see the documented interrupted-deletion recovery limitation. Local development/legacy test adapters: `DELETE /v1/account` accepts `{ "type": "account.delete", "password": "…" }` (password optional only for a session created less than five minutes ago). Authentication and the normal origin/CSRF checks apply. Success returns `{ "type": "account.deleted" }`, clears the local cookie, and invalidates all credentials. Repeating erasure is harmless; replaying revoked credentials returns 401. Missing confirmation returns 403. Deletion attempts have a dedicated five/hour limit in addition to the normal authenticated limit; both still apply after deletion begins. Rate-limit counters are a single self-expiring key per limit under a SHA-256 key name, are never owner-indexed, and are not erased: they expire within their window (at most one hour).
+Hosted `DELETE /v1/account` requires a Convex Auth bearer and accepts `{ "type": "account.delete", "password": "…" }`. Password accounts must supply their current password. Google-only accounts can leave the password empty after signing in within the last five minutes. The normal origin and authenticated rate-limit checks apply. Missing confirmation returns 403. Success returns `{ "type": "account.deleted" }`. Revoked bearers return 401 and their refresh tokens cannot create a session. The rate-limit counters expire on their own.
 
-The production eraser locks account activation, marks the account as deleting, freezes owner Redis writes, purges indexed Redis data (streams, caches, OAuth state and leases), then hard-deletes every owner-scoped Convex table and uploaded blobs in bounded batches. The caller’s session and credential survive until the final atomic auth deletion, so interrupted deletion can retry. Redis ownership indexes are registered atomically with writes as a sorted set scored by key expiry, pruned on every owner write so it stays bounded; the purge removes keys in chunks and drops them from the index as it goes, so a retry resumes. Activation verifies that the Convex account remains active. The global blob sweep stores its cursor on the user row, so a retried request continues it. Generic Convex writes are fenced once deletion begins. Blob ownership tags also permit deleting interrupted, unbound uploads. New data tables must be included in `convex/account.ts`; new owner KV writes must carry `ownerId` (feature contexts do so automatically).
+The production eraser locks account activation, marks the account as deleting, freezes owner Redis writes, purges indexed Redis data (streams, caches, OAuth state and leases), then hard-deletes every owner-scoped Convex table and uploaded blobs in bounded batches. Other sessions are revoked when deletion starts, and sign-in is blocked until the credentials are erased. The initiating session can retry deletion while still signed in. Convex schedules signed recovery callbacks to `/internal/continue` every minute while the owner is marked for deletion, so sign-out or a worker failure cannot strand the purge. The final batch revokes the initiating session and erases the credentials. Redis ownership indexes are registered atomically with writes as a sorted set scored by key expiry, pruned on every owner write so it stays bounded; the purge removes keys in chunks and drops them from the index as it goes, so a retry resumes. Activation verifies that the Convex account remains active. The global blob sweep stores its cursor on the user row, so a retried request continues it. Generic Convex writes are fenced once deletion begins. Blob ownership tags also permit deleting interrupted, unbound uploads. Every Convex table must declare a deletion policy in `convex/accountTables.ts` (a missing one fails typecheck); in-flight workflows are cancelled and their journals cleaned before their runs are deleted; new owner KV writes must carry `ownerId` (feature contexts do so automatically).
 
-No hosted deletion, provider call, deployment, or credential access was performed by the implementation worker. Local tests use a fake Clerk interface and locally signed JWTs, plus legacy Better Auth migration/conformance fixtures. No hosted account is created. See `docs/WP-H1-AUTH-SYNC.md` for migration, conflict rules and the native client requirements.
+
+
+## CI
+
+GitHub Actions runs Node 22 / npm 11 typecheck, unit tests, web/API builds,
+comment sweep, and the production high-severity npm audit as parallel checks
+on `blacksmith-4vcpu-ubuntu-2404`. The comment job also runs `check:rules`
+when `cloud/scripts/check-rules.mjs` exists. PR reviewer pytest runs the
+locked Python 3.12 environment of `infra/pr-review`. Each push to `develop`
+that touches the backend deploys it to the shared preview Convex deployment
+(`convex-preview.yml`, repository secret `CONVEX_PREVIEW_DEPLOY_KEY`).
+Apple changes run the iOS Simulator build, `PraxisChatTests`, and every Swift
+package's tests on GitHub-hosted `macos-26`; UI tests are outside this check.
+The iOS job ad-hoc signs the simulator app so real Keychain tests retain their
+entitlements without a developer certificate. It builds once for testing and
+runs unit tests serially on one prebooted simulator, uploading `.xcresult`
+bundles on failure. Workflow changes also trigger their own checks. All jobs have timeouts,
+read-only repository permissions, pinned actions and cancellation of older runs.
+
+SonarCloud scans `wapo-org_praxis` in organization `wapo-org` on Blacksmith.
+In SonarCloud, open the project → Administration → Analysis Method and disable
+Automatic Analysis. Generate an analysis token under My Account → Security;
+in GitHub Settings → Secrets and variables → Actions add repository secret
+`SONAR_TOKEN`. Missing credentials fail explicitly. The scan publishes the gate
+without waiting for it: configure a new-code-only “Clean as You Code” gate under
+Quality Gates, baseline `develop`, then set `sonar.qualitygate.wait=true` once
+that gate passes. Coverage is omitted because no Vitest coverage provider is
+installed; adding dependencies is outside this change.
+
+The web e2e suite is omitted: it requires externally started servers, includes
+headed 120 Hz/display-specific probes and explicit browser skips, and writes
+worker-specific design captures. It has no deterministic headless CI contract.
+The cloud unit suite currently contains live Convex/Upstash/storage tests and a
+local MiniLM-cache probe that skip without their prerequisites. CI rejects a
+nonzero skipped/todo count rather than reporting that suite as fully passing.
+These tests need a separate explicit live-service contract before this check
+can be required; no tests are disabled by these workflows.
+
+Owner setup: install/enable the Blacksmith GitHub App for this repository;
+grant the pushing fine-grained PAT repository **Workflows: read and write**.
+After all checks pass, GitHub Settings → Rules → Rulesets (or Branches → branch
+protection) for `develop` and `main`: require `Cloud / typecheck`, `Cloud / tests`,
+`Cloud / web-build`, `Cloud / api-build`, `Cloud / comments`, and `Cloud / audit`.
+Do not require path-filtered Apple/Modal checks globally: unrelated PRs never
+create them. Require `SonarCloud / scan` only after the token and analysis method
+are configured; require the SonarCloud quality-gate check only after the new-code
+gate is green. There is no merge or deployment step in CI.
+
+
+## Convex Auth v2 web (PRA-34)
+
+Install with `cd cloud && npm install`, then run `CONVEX_AGENT_MODE=anonymous npx convex dev` for local development.
+Regenerate `convex/_generated` with `CONVEX_AGENT_MODE=anonymous npx convex dev --once`. It pushes to a local anonymous backend, which also loads every module the way a hosted deploy does; set the six variables below on that deployment first. PRs run `node scripts/convex-bundle.mjs` (a `verify -- gate` step) to catch Node imports in default-runtime modules without any deployment.
+Set deployment variables with `npx convex env set NAME` (enter secret values interactively):
+`RESEND_API_KEY`, `SENDER_EMAIL`, `SENDER_NAME`, `SITE_URL`,
+`AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET`.
+All are required; use a Resend-verified sender and the actual web origin for SITE_URL.
+Set web `VITE_CONVEX_URL` to the deployment's client URL; no provider credentials belong in Vite.
+For the local API, set `PRAXIS_LOCAL_CONVEX_URL` to the same loopback HTTP deployment:
+`PRAXIS_LOCAL_CONVEX_URL=http://127.0.0.1:3210 npm run dev:local`.
+Without this API variable, the legacy local API accepts dev tokens rather than Convex sessions.
+The managed browser verification stack sets both URLs automatically; the local API variable is not a production setting.
+Register the Google redirect URI listed under [OAuth and callback URLs](#oauth-and-callback-urls-to-register).
+The HTTPS page for the future iOS handoff must share the SITE_URL origin.
+No cloud deployment is part of PRA-34 verification.
+Component tests use the upstream fake Resend component, retaining the real password WASM and auth code.
+Run them with `npx vitest run tests/auth-v2.test.ts`.
+### Built-in web search and reading (PRA-60)
+
+Configure `EXA_API_KEY` and `FIRECRAWL_API_KEY` in the API environment. Both support
+contiguous `_2`, `_3`, … siblings through `@praxis/credentials`; cooldowns use Upstash.
+Missing keys return a structured unavailable result and never use a development key.
+Deploy the `convex/webTools.ts` actions and internal mutations alongside the API.
+
+Every active owner gets the free-tier platform allowance of $5 per UTC month
+(`FREE_TIER_PLATFORM_ALLOWANCE_MICRO_USD`, PRA-102 / PRA-170) for Exa, Firecrawl and Modal together.
+To override it for one owner, add an owner-scoped `toolState` row with kind `platformAllowance`,
+id equal to the UTC billing month (`YYYY-MM`) and value `{allowanceMicroUsd: integer}`; `0` blocks paid calls.
+The ledger itself is the `platformLedger` row for that month. Usage rows have kind
+`platformUsage` and contain payer, provider service, serving slot and micro-USD cost.
+PRA-22 reconciliation must settle or release interrupted web reservations
+and preserve `webSpendCall` receipts across the retry horizon.
+
+When the web tools move into the Convex harness (`convex/agent/turn.ts`), they must carry their
+`boundary` so `toolBoundaryClassifier` classifies them; external-egress retains PRA-76 approval requirements.
+The account deletion sweep already purges owner `toolState` and output records.
+Verify real search, scrape, credential failover, Upstash TTL and usage settlement in
+the `Live check: PRA-60` sub-issue before moving the parent to Done.

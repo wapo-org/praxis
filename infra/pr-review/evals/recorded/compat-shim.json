@@ -1,0 +1,87 @@
+{
+  "name": "compat-shim",
+  "gates": [
+    {
+      "key": "check-rules",
+      "rule_id": "GATE.check-rules",
+      "status": "passed",
+      "findings": []
+    }
+  ],
+  "sessions": {
+    "abstractions": {
+      "findings": [
+        {
+          "confidence": "high",
+          "evidence": "app.get('/v1/chats/legacy', async (c) => {",
+          "failure_scenario": "The PR adds a new public Hono route, which conflicts with the target API boundary that disallows new public Hono routes. Clients can continue calling this legacy endpoint outside the intended Convex function boundary.",
+          "file": "cloud/apps/api/src/features/chats/legacy-routes.ts",
+          "line": 7,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "R1.api-thin-routes",
+          "suggestion": "Could this legacy response shape be handled through the existing supported API boundary instead of adding a public Hono route?"
+        }
+      ],
+      "session": "abstractions",
+      "summary": "Legacy route crosses boundary",
+      "ui_check": null
+    },
+    "maintainability": {
+      "findings": [
+        {
+          "confidence": "high",
+          "evidence": "  app.get('/v1/chats/legacy', async (c) => {",
+          "failure_scenario": "The new route keeps the old `items` response alive for old clients, so future chat response changes must continue supporting both contracts despite the clean-break policy.",
+          "file": "cloud/apps/api/src/features/chats/legacy-routes.ts",
+          "line": 7,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "G.clean-break",
+          "suggestion": "Could the legacy route and its callers be removed while updating clients to the new `chats` field? "
+        }
+      ],
+      "session": "maintainability",
+      "summary": "Legacy response retained",
+      "ui_check": null
+    },
+    "conciseness": {
+      "findings": [
+        {
+          "confidence": "high",
+          "evidence": "export function registerLegacyChatRoutes(app: Hono, adapters: AdapterBundle): void {",
+          "failure_scenario": "No caller registers this function, so the legacy route is never mounted and the new export adds no behavior.",
+          "file": "cloud/apps/api/src/features/chats/legacy-routes.ts",
+          "line": 5,
+          "linear_issue": null,
+          "linear_quote": null,
+          "rule_id": "G.dead-code",
+          "suggestion": "Could this unreferenced route module be removed or wired into the app registration? "
+        }
+      ],
+      "session": "conciseness",
+      "summary": "Unreferenced legacy route",
+      "ui_check": null
+    },
+    "logic_bs": {
+      "findings": [],
+      "session": "logic_bs",
+      "summary": "No concrete regressions found",
+      "ui_check": null
+    },
+    "security": {
+      "findings": [],
+      "session": "security",
+      "summary": "No security issues found",
+      "ui_check": null
+    }
+  },
+  "live": {
+    "source": "praxis-review live stack (PRA-92)",
+    "model": "gpt-6.2-sol",
+    "reasoning_effort": "low",
+    "duration_seconds": 33.1,
+    "session_errors": {},
+    "gates_note": "check-rules re-run with npm dependencies installed (develop 2dd8454); sessions are the live Sol outputs"
+  }
+}

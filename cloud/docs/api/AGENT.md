@@ -27,42 +27,27 @@ Nested tool calls and elicitations unwind immediately when parked. On resume the
 
 The transcript is append-only, including repair results after interrupted tool calls. Compaction creates a fingerprinted request view and never rewrites the persisted prefix or frozen setup. Inject `ports.summarize` for real summarization; scripted facade supplies a deterministic local summary. Inject `ports.spill` for persistent large outputs and provide `read_tool_output` in the tool registry.
 
-Local scenarios: `text`, `tools`, `approval`, `nestedApproval`, `elicitation`, `error`, `long`, `compaction`, `vision`. `createScriptedRunner(ports, script)` supplies provider/tools/summary for immediate local API integration. `createScriptedProvider(script)` and `scriptedTools()` can be composed separately. Script state derives from the request transcript, so reconstructing the provider after a parked function works.
+The PRA-169 turn harness (`runTurn`, `packages/agent/README.md`) runs on the AI SDK and, in production, on the Convex Agent component inside `turns.run`. Its deterministic fake is `fakeLanguageModel(script)`, an AI SDK `LanguageModelV4` with fixed call ids, signed reasoning in OpenRouter metadata and scripted HTTP failures. It comes with `fakeTools()` and `fakeRegistry`. `harness/turn-scenarios.test.ts` covers text, tools, approval, nested approval, error, long, compaction and vision.
+
+Legacy runner scenarios: `text`, `tools`, `approval`, `nestedApproval`, `elicitation`, `error`, `long`, `compaction`, `vision`. `createScriptedRunner(ports, script)` supplies provider/tools/summary for immediate local API integration. `createScriptedProvider(script)` and `scriptedTools()` can be composed separately. Script state derives from the request transcript, so reconstructing the provider after a parked function works.
 
 Dependencies: `@praxis/protocol` supplies authoritative DTOs/event schemas; `zod` validates checkpoint, provider, tool and resume boundaries. No additional runtime dependency.
 
-## HTTP providers and model discovery
+## OpenRouter provider
 
 ```ts
-import {createHTTPProvider, AgentRunner} from '@praxis/agent';
-const provider = createHTTPProvider({
-  providerId: savedProvider.id,
-  flavor: savedProvider.flavor, // anthropicMessages | openAIChat | openAIResponses
-  baseUrl: savedProvider.baseUrl,
-  apiKey: decryptedKey,
-  capabilities: savedProvider.capabilities,
-  extraHeaders: decryptedHeaders,
-}, injectedFetch);
-const models = await provider.listModels(abortSignal); // protocol Model[]
+import {AgentRunner, createOpenRouterProvider} from '@praxis/agent';
+// apps/api resolves all of this in one call: OpenRouterModels.modelFor(userId, modelId, effort).
+const provider = createOpenRouterProvider({apiKey: unsealedUserKey, capabilities: capabilitiesOf(catalogModel)}, guardedFetch);
 const runner = new AgentRunner({provider, tools, ports});
 ```
 
-`createHTTPProvider(config, fetcher?)` validates configuration with Zod and returns an `HTTPProvider`: existing `ModelProvider.stream(request, signal)` plus `listModels(signal?)`. It adds API-family auth headers, uses a fixed Anthropic `2023-06-01` compatibility version unless `extraHeaders` overrides it, and preserves custom base URL prefixes. Known full endpoint URLs are normalized. HTTP redirects are rejected to prevent credentials moving to another endpoint. HTTP/stream error messages redact configured secrets. No key is stored in a checkpoint or returned in a model DTO.
+OpenRouter with the user's own key is the only model provider, and streaming chat completions is the only wire format (`ModelProvider.stream`; there is no non-streaming path). `collectResponse(provider, request, signal)` drains a stream to its completed response for callers that do not render deltas (titles). Every request asks for usage accounting, so the completed response carries tokens and `cost`. The endpoint is the pinned `OPENROUTER_API_BASE`, redirects are rejected, and the key travels as a `SealedSecret` that error text is redacted against.
 
-Optional config: `systemRole: 'system'|'developer'`, `maxTokensField: 'max_tokens'|'max_completion_tokens'|'omit'`, `replayReasoning`, `webSearchToolType`, `maxStreamBytes`, `maxEventBytes`. Chat defaults to `max_tokens` for compatible servers; select `max_completion_tokens` when the endpoint requires it. Model lists expose known capabilities and raw effort values; unknown metadata inherits configured capability defaults. Anthropic list pagination is bounded. Names-only lists cannot establish a model's exact capabilities or efforts.
+Capabilities (tools, images, files, reasoning) and the effort sent come from the model's catalogue entry before the call (`capabilitiesOf`, `resolveEffort` in `apps/api/src/openrouter/catalog.ts`); nothing is learned by failing. A rejected request is never retried with tools, images or effort stripped.
 
-`buildProviderRequest(flavor, request, options?)`, `clampEffort`, `parseModelMetadata`, `providerURL`, `parseSSE` and each decoder are exported for focused integration/tests. Streaming uses incremental UTF-8 decoding and CR/LF/CRLF SSE framing with bounded total, event and line buffers. Responses API completed encrypted reasoning items and Anthropic signatures/opaque blocks are retained for same-flavor raw replay. Request-time tool/image/effort fallbacks never mutate the frozen prefix or transcript.
+Failures are a typed `ProviderFailure` (`provider-error.ts`) with a `kind`, a `retryable` flag and user-facing `remediation`. HTTP statuses classify through `classifyHttp` from `@praxis/credentials`, by status alone (no message body is passed, so quota wording never decides credit): 401 `keyInvalid`; only 402 is `creditExhausted`; 403 is a moderation refusal (`fatal`, not a bad key, whatever its wording); every 429 is `rateLimited`, including quota-worded ones; 5xx/408 are `unavailable`. 429 and 5xx/408 honour an explicit Retry-After. Other statuses become `context` (413 or context-length text), `modelUnavailable` (404 or unknown-model text), and otherwise `fatal`. A 400 that mentions credits is `fatal`. Only `rateLimited` and `unavailable` retry inside a turn; `context` compacts once. `keyInvalid` and `creditExhausted` end the run with `model_key_invalid` / `model_credit_exhausted`. In the Convex harness, AI SDK `APICallError`s classify through the same table (`providerFailureOf`), and these two kinds end the turn as `failed` through `turns.fail`. Inside a tool (the image reader) a failure becomes a `ToolError` carrying the same remediation.
 
-Scripted scenarios now emit reasoning deltas/finished events. Newly committed messages inherit `run.clientTurnId`. The `compaction` script uses a deliberately low threshold but still requires at least two messages, with an earlier prefix to summarize; a first-ever single-message conversation has no history to compact. Seed history or send a second turn to exercise it.
-
-Wire formats were verified against official documentation and the frozen Swift fixture corpus:
-
-- [Anthropic streaming](https://platform.claude.com/docs/en/build-with-claude/streaming)
-- [Anthropic model listing](https://platform.claude.com/docs/en/api/models/list)
-- [OpenAI Chat streaming events](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events)
-- [OpenAI Responses streaming events](https://developers.openai.com/api/reference/resources/responses/streaming-events)
-- [OpenAI model listing](https://developers.openai.com/api/reference/resources/models/methods/list)
-
-No additional runtime dependency was added for HTTP providers: injected native fetch and Web Streams perform transport and streaming.
+`buildProviderRequest`, `parseSSE` and `decodeOpenAIChat` are exported for focused tests. `buildProviderRequest` renders the wire from the mapper's model view (`toModelMessages`), so tool results stored in an assistant-role message (what the turn harness commits) become `tool` messages after the replayed response. Streaming uses incremental UTF-8 decoding and CR/LF/CRLF SSE framing with bounded total, event and line buffers. Merged `reasoning_details` are kept on the assistant message's raw payload and replayed unchanged on the next request.
 
 Argument-sensitive tool policy: `AgentTool.classify?(args): {traits: ToolSpec['traits']; policyKey?: string}` lets trusted adapters classify a resolved target (for example `save_skill` create vs replacement). The runner applies those traits to the frozen spec for policy only. Classification traits plus `policyKey` are hashed into the approval key alongside the frozen description/schema. The frozen catalog stays byte-identical. A classification change during parking revokes the one-shot approval and asks again. The adapter must enforce the actual effect, including rejecting an existing-skill write when `replace` is false; classification does not replace execution-time checks.

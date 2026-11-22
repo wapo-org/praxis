@@ -13,7 +13,7 @@ Cloud paths are relative to `cloud/`. Audited 2026-10-31 (WP-A7). Status values:
 | JS persistent kv, attachment file scoping (`fs`, hidden-from-code) | AgentJS/JSSession.swift | sandbox.ts + builtin.ts `javascriptTool` | done |
 | JS nested tool calls through policy | RunJavaScriptTool.swift | sandbox `tools.<name>` → `execution.callTool` | done |
 | `look_at_image` (vision fallback), with crop | AgentRuntime/ImageReading.swift | packages/agent/src/image-reader.ts, modules.ts `visionTools`, tools/image-crop.ts | done |
-| Spilled tool output + `read_tool_output` | AgentCore/Tools/ToolRegistry.swift | runner spill → `output` rows; execution.ts `readToolOutputTool` | done (WP-A7) |
+| Spilled tool output + `read_tool_output` | AgentCore/Tools/ToolRegistry.swift | runner spill → `output` rows; Convex harness spill → `toolOutputs` + `outputs` chunks; shared `toolOutputReaderTool` | done (WP-A7, PRA-26) |
 | **Skills** | | | |
 | Catalog in the frozen system prompt + "new skills" turn notes | SkillCatalog.swift, TurnNotes.swift | apps/api/src/conversation.ts | done |
 | Skill CRUD | SkillStore.swift | features/tools/index.ts `/skills` | done |
@@ -36,13 +36,13 @@ Cloud paths are relative to `cloud/`. Audited 2026-10-31 (WP-A7). Status values:
 | Connector health status + unavailable turn notes | AgentRuntime unavailable reasons | features/mcp/health.ts | done (WP-A6) |
 | MCP server registry search/install | MCPRegistryClient.swift, MCPInstaller.swift | features/mcp/registry.ts `/connectors/registry` → existing health-checked create | done (WP-A8) |
 | **Providers** | | | |
-| Anthropic Messages, OpenAI Chat, OpenAI Responses (streaming) | AgentProviders/Anthropic, OpenAI | packages/agent/src/providers.ts, streams.ts, wire.ts | done |
+| OpenRouter streaming chat completions (the only provider and wire format) | AgentProviders/Anthropic, OpenAI | packages/agent/src/openrouter.ts, streams.ts, wire.ts | done (PRA-42) |
 | Capability flags gate features (never provider names) | ModelProvider capabilities | wire.ts, execution.ts `resolveProvider` | done |
-| Learned rejections (no tools/images, effort levels) persist 14 days | Services/ProviderSettings.swift | execution.ts `recordLearning`/`learnedFor` | done (WP-A7) |
-| Per-model reasoning efforts + clamping | Provider/EffortLevels.swift | wire.ts `clampEffort`, Model.reasoningEfforts | done |
+| Learned rejections (no tools/images, effort levels) | Services/ProviderSettings.swift | removed: capabilities come from the OpenRouter catalogue entry, never from failures | dropped (PRA-42) |
+| Per-model reasoning efforts + clamping | Provider/EffortLevels.swift | openrouter/catalog.ts `resolveEffort` | done (PRA-42) |
 | Model list: server-side search, pagination, pins, favorites | ProviderSettings (pins) | app.ts `/v1/models`, `/v1/models/preferences` | done |
-| Server web search tool when supported | wire builders | wire.ts `webSearch` + `serverWebSearch` | done |
-| Provider probe (check tool calling and vision actually work) | AgentProviders/ProviderProbe.swift | provider-probe.ts `/providers/:id/test` with modelId; persists learned rejections | done (WP-A8) |
+| Server web search tool when supported | wire builders | not wired: `ProviderRequest.webSearch` was never sent and was removed | dropped (PRA-42) |
+| Provider probe (check tool calling and vision actually work) | AgentProviders/ProviderProbe.swift | removed with learned rejections; the catalogue is the source | dropped (PRA-42) |
 | **Loop** | | | |
 | Modes ask/plan/build/auto, policy matrix | AgentCore Engine, policy | packages/agent/src/policy.ts | done |
 | Frozen system prompt + mode/effort turn notes | SystemPrompt.swift, TurnNotes.swift | conversation.ts | done |

@@ -10,7 +10,7 @@ import {
   withPrivateFile,
   writeUploadList,
 } from './deploy-stage.mjs';
-/** Pinned: the CLI runs with deployment credentials, so it must never float to a newly published release. */
+/** Pin CLI version because it runs with deployment credentials. */
 export const VERCEL_CLI = 'vercel@65.9.0';
 export function deploymentPlan(env) {
   const vercel = ['npx', '--yes', VERCEL_CLI],
@@ -39,12 +39,29 @@ export function deploymentPlan(env) {
       fileInput: true,
       tool: 'convex',
     },
+    {
+      name: 'Convex account recovery origin',
+      cwd: root,
+      args: [...convex, 'env', 'set', 'PRAXIS_API_URL', '--from-file', '<private-input>'],
+      remote: true,
+      inputKey: 'PRAXIS_API_URL',
+      fileInput: true,
+      tool: 'convex',
+    },
+    {
+      name: 'Convex turn keyring (PRA-169: turns unseal OpenRouter keys in Convex)',
+      cwd: root,
+      args: [...convex, 'env', 'set', 'PRAXIS_ENCRYPTION_KEYS', '--from-file', '<private-input>'],
+      remote: true,
+      inputKey: 'PRAXIS_ENCRYPTION_KEYS',
+      fileInput: true,
+      tool: 'convex',
+    },
     ...apiKeys
       .filter(
         (k) =>
           env[k] ||
           ![
-            'PRAXIS_COOKIE_SAMESITE',
             'PRAXIS_RUN_BUDGET_MS',
             'PRAXIS_SYNC_STRATEGY',
             'GROQ_API_KEY',
@@ -105,16 +122,15 @@ export function stepEnv(step, env, api) {
     };
   return base;
 }
-/** Stages and checks an upload; prints a per-directory summary and writes the full list. */
+/** Values no staged file may contain; PASSWORD covers the smoke fixture binding kept in the same private file. */
+export function secretValues(env) {
+  return Object.entries(env)
+    .filter(([k]) => /TOKEN|KEY|SECRET|PASSWORD/.test(k))
+    .map(([, v]) => v);
+}
 async function checkUpload(label, stage, env) {
   const files = await listFiles(stage);
-  await assertSafeUpload(
-    stage,
-    files,
-    Object.entries(env)
-      .filter(([k]) => /TOKEN|KEY|SECRET/.test(k))
-      .map(([, v]) => v),
-  );
+  await assertSafeUpload(stage, files, secretValues(env));
   const list = await writeUploadList(stage, files);
   const groups = {};
   for (const f of files) {
@@ -138,7 +154,7 @@ export function execute(step, env, input) {
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,
       });
-    // CLI output can contain sensitive diagnostics; never forward it. Only report command/status.
+    // Suppress CLI output so secrets never reach logs.
     child.stdout.resume();
     child.stderr.resume();
     child.on('error', () => reject(Error(`${step.name}: executable unavailable`)));
@@ -204,7 +220,7 @@ export async function deploy(args = process.argv.slice(2), runner = execute, pat
   };
   const api = origin(env.PRAXIS_API_URL, 'https://api.example.invalid'),
     web = origin(env.PRAXIS_WEB_ORIGINS?.split(',')[0].trim(), 'https://web.example.invalid');
-  // Staging is local and runs in dry mode too, so the rehearsal checks exactly what would upload.
+  // Runs local staging in dry mode to verify the exact upload manifest.
   await checkUpload('API', await stageApi(join(deployDir, 'api'), paths.source), env);
   for (const step of deploymentPlan(env)) {
     console.log(`${dry && step.remote ? 'SKIP remote' : 'RUN'} ${step.name}: ${maskCommand(step)}`);
@@ -214,7 +230,9 @@ export async function deploy(args = process.argv.slice(2), runner = execute, pat
     }
     if (dry && step.remote) continue;
     if (!step.remote) {
-      await runner(step, safeBuildEnv(api));
+      const buildEnv = safeBuildEnv(api);
+      if (step.web) buildEnv.VITE_CONVEX_URL = origin(env.CONVEX_URL, 'https://preview.example.invalid');
+      await runner(step, buildEnv);
       continue;
     }
     const childEnv = stepEnv(step, env, api);

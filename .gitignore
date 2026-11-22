@@ -6,3 +6,9 @@ build/
 .build/
 .swiftpm/
 Package.resolved
+cloud/docs/function-maps/
+
+cloud/.spec-traces/
+
+# praxis-verify run artifacts (screenshots, logs, proofs)
+cloud/artifacts/

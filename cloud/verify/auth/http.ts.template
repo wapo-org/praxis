@@ -1,0 +1,29 @@
+// The fake Composio hosted page: Connect marks the account connected (as the webhook would) and returns to the app.
+import { httpRouter } from 'convex/server';
+import { internal } from './_generated/api.js';
+import { httpAction } from './_generated/server.js';
+import { FIXTURE_CONNECT_PATH } from './composio/client.js';
+import { returnTarget } from './composio/returnTarget.js';
+
+function page(params: URLSearchParams): string {
+  const toolkit = (params.get('toolkit') ?? '').replace(/[^a-z0-9_]/gi, '');
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Fixture Composio</title></head>
+<body><main><h1>Connect ${toolkit}</h1><p>Verification stand-in for the Composio hosted page.</p>
+<form method="post"><input type="hidden" name="query" value="${encodeURIComponent(params.toString())}">
+<button type="submit">Allow access</button></form></main></body></html>`;
+}
+
+const http = httpRouter();
+http.route({path: FIXTURE_CONNECT_PATH, method: 'GET', handler: httpAction(async (_ctx, request) => {
+  return new Response(page(new URL(request.url).searchParams), {headers: {'content-type': 'text/html; charset=utf-8'}});
+})});
+http.route({path: FIXTURE_CONNECT_PATH, method: 'POST', handler: httpAction(async (ctx, request) => {
+  const params = new URLSearchParams(decodeURIComponent(String((await request.formData()).get('query') ?? '')));
+  const connectedAccountId = params.get('account') ?? '';
+  const callback = returnTarget(params.get('callback') ?? '', process.env);
+  await ctx.runMutation(internal.composio.connections.markFromWebhook, {connectedAccountId, status: 'connected'});
+  const target = new URL(callback);
+  target.search = new URLSearchParams({status: 'success', connected_account_id: connectedAccountId}).toString();
+  return new Response(null, {status: 303, headers: {location: target.href}});
+})});
+export default http;
