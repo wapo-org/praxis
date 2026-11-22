@@ -1,8 +1,7 @@
 import Foundation
 import AgentCore
 
-// Mirrors cloud/packages/protocol. These are presentation/catalog values;
-// authentication, transport and run DTOs belong to CloudProtocol (C-net).
+// Mirrors cloud protocol catalog types; transport/auth DTOs live in CloudProtocol.
 struct CloudCatalogPage<Item: Decodable & Sendable>: Decodable, Sendable {
     var type: String
     var items: [Item]
@@ -38,7 +37,7 @@ struct CloudCatalogProvider: Codable, Identifiable, Sendable, Equatable {
     var headerNames: [String]?
 }
 
-/// Never persisted. Only the editor's short-lived request owns apiKey.
+/// Short-lived request payload only; apiKey is never persisted.
 struct CloudCatalogProviderInput: Encodable, Sendable {
     var type = "provider.input"
     var name: String
@@ -68,8 +67,7 @@ struct CloudCatalogModel: Codable, Identifiable, Sendable, Equatable {
 
     var canReadImages: Bool { supportsImages ?? capabilities.vision }
 
-    /// Provider IDs and model IDs are opaque. A JSON pair avoids collisions
-    /// even when a model ID contains slashes or is offered by two providers.
+    /// JSON pair avoids ID collisions across slash-containing model IDs.
     var selectionID: String {
         let pair = (try? JSONEncoder().encode([providerId, id])) ?? Data()
         return "cloud:" + pair.base64EncodedString()
@@ -215,8 +213,7 @@ struct CloudCatalogOAuthAuthorization: Decodable, Sendable {
     var state: String
 }
 
-// The v0 document specifies MCP resource/prompt routes, retaining MCP's
-// typed names, arguments and text content. Unknown optional fields are ignored.
+// Keeps MCP prompt fields; ignores unknown optional fields.
 struct CloudCatalogPrompt: Decodable, Identifiable, Sendable, Equatable {
     struct Argument: Decodable, Sendable, Equatable {
         var name: String
@@ -268,8 +265,7 @@ struct CloudCatalogTranscription: Decodable, Sendable {
     var segments: [Segment]
 }
 
-/// Encodes path components and query items separately; model/tool IDs and
-/// search text must never escape into another API route or filter.
+/// Encodes path segments separately so opaque IDs never escape routes.
 enum CloudCatalogPath {
     static func component(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? ""

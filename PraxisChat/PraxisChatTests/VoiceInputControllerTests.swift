@@ -2,8 +2,6 @@ import Synchronization
 import XCTest
 @testable import PraxisChat
 
-/// Deterministic engine: no mic, no session, no timers of its own. The
-/// test drives `currentTime` and events by hand.
 @MainActor
 final class FakeVoiceEngine: VoiceRecorderEngine {
     var isRecording = false
@@ -46,8 +44,6 @@ final class FakeVoiceEngine: VoiceRecorderEngine {
     func emit(_ event: VoiceRecorderEvent) { eventHandler?(event) }
 }
 
-/// Scripted transcriber with a programmable outcome (the app-DEBUG
-/// `FakeTranscriber` only succeeds; UI seams use that one).
 struct StubTranscriber: Transcriber, Sendable {
     var result: Result<VoiceTranscript, VoiceTranscriptionError>
 
@@ -61,7 +57,6 @@ struct StubTranscriber: Transcriber, Sendable {
     }
 }
 
-/// A transcriber that waits for `release()` (review fix F4 test).
 final class GatedTranscriber: Transcriber, Sendable {
     private let state = Mutex<(released: Bool, waiter: CheckedContinuation<Void, Never>?)>((false, nil))
     let transcript = VoiceTranscript(text: "hello", language: nil, segments: [])
@@ -94,9 +89,6 @@ final class GatedTranscriber: Transcriber, Sendable {
     }
 }
 
-/// The controller state machine (VOICE_PLAN.md §2–3): record → stop →
-/// transcribe/review, pause/resume, interruptions, cancel rules, the
-/// sent-message deletion rule, and the DEBUG seams' argument parsing.
 @MainActor
 final class VoiceInputControllerTests: XCTestCase {
     private var directory: URL!
@@ -338,7 +330,6 @@ final class VoiceInputControllerTests: XCTestCase {
         let (controller, chat, _) = makeController(configured: false)
         _ = await startRecording(controller)
         controller.stopAndTranscribe()
-        // No async transcription involved: the guard fails synchronously.
         XCTAssertEqual(controller.phase, .review)
         XCTAssertEqual(controller.transcribeHint, "Add your Groq API key to use voice input")
         XCTAssertTrue(chat.isSettingsPresented)
@@ -357,8 +348,7 @@ final class VoiceInputControllerTests: XCTestCase {
         controller.noteDidSend(text: "please hello world")
         XCTAssertNil(RecordingStore(directory: directory).load(id: recording.id),
                      "sent transcript deletes its audio")
-        // Keep the chat alive to the end: the rule reads the sending chat
-        // from it (the controller holds it weakly).
+        // Keep chat alive: the controller holds it weakly and the rule reads the sending chat from it.
         _ = chat
     }
 
@@ -387,7 +377,7 @@ final class VoiceInputControllerTests: XCTestCase {
         let (controller, _, engine) = makeController()
         _ = await startRecording(controller)
         controller.stopAndReview()
-        controller.micTapped() // the review owns the session
+        controller.micTapped()
         try? await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(engine.startedURLs.count, 1)
         XCTAssertEqual(controller.phase, .review)
@@ -404,7 +394,7 @@ final class VoiceInputControllerTests: XCTestCase {
         XCTAssertTrue(controller.recoverable.isEmpty, "the review row owns it in its own chat")
         let chatA = chat.conversations.first { $0.id != chatB }!.id
         chat.select(chatA)
-        controller.refreshRecoverables() // ChatScreen does this on selection change
+        controller.refreshRecoverables()
         XCTAssertEqual(controller.recoverable.map(\.id), [recording.id])
     }
 
@@ -442,7 +432,7 @@ final class VoiceInputControllerTests: XCTestCase {
         let recording = await startRecording(controller)
         controller.stopAndTranscribe()
         controller.deleteRecording(id: recording.id)
-        try? await Task.sleep(for: .milliseconds(600)) // past the fake's late finish
+        try? await Task.sleep(for: .milliseconds(600))
         XCTAssertNil(RecordingStore(directory: directory).load(id: recording.id))
         XCTAssertTrue(RecordingStore(directory: directory).scan().isEmpty)
         XCTAssertTrue(chat.draft.isEmpty, "no late draft append")
@@ -494,14 +484,14 @@ final class VoiceInputControllerTests: XCTestCase {
         XCTAssertTrue(store.save(other))
         FileManager.default.createFile(atPath: store.audioURL(for: other).path, contents: Data([0x00]))
         controller.refreshRecoverables()
-        controller.transcribeTapped(id: other.id) // banner origin: phase stays idle
+        controller.transcribeTapped(id: other.id)
         XCTAssertEqual(controller.phase, .idle)
         controller.micTapped()
         await waitUntil { controller.phase == .recording }
         XCTAssertNotNil(controller.transcribingID, "both slots live at once")
         await waitUntil(timeout: 5) { chat.draft == "hello" }
         XCTAssertEqual(controller.phase, .recording, "the banner finish leaves live UI alone")
-        controller.cancelTapped() // seconds old: discards at once
+        controller.cancelTapped()
         XCTAssertEqual(controller.phase, .idle)
     }
 

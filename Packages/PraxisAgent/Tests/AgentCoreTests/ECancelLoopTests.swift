@@ -109,10 +109,17 @@ import AgentTestSupport
         let loop = AgentLoop(provider: SilentProvider(), tools: .empty)
         let clock = ContinuousClock()
         let elapsed = await clock.measure {
+            // Cancel only after the first delta arrived, so slow CI machines can't race the stream.
+            let (firstDelta, signal) = AsyncStream<Void>.makeStream()
             let task = Task {
-                await loop.run(transcript: [.user("hi")], configuration: eConfig()).collect()
+                var events: [AgentEvent] = []
+                for await event in loop.run(transcript: [.user("hi")], configuration: eConfig()) {
+                    events.append(event)
+                    if case .textDelta = event { signal.yield() }
+                }
+                return events
             }
-            try? await Task.sleep(for: .milliseconds(100))
+            for await _ in firstDelta { break }
             task.cancel()
             let events = await task.value
             #expect(events.contains { if case .textDelta = $0 { return true }; return false })

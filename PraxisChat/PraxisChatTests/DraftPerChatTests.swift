@@ -1,9 +1,7 @@
 import XCTest
 @testable import PraxisChat
 
-/// Attachments (and draft text) belong to the chat they were added in:
-/// switching chats stashes the composer's draft and restores the other
-/// chat's, instead of carrying the selection over.
+/// Stashes and restores draft text and attachments per chat across switches.
 @MainActor
 final class DraftPerChatTests: XCTestCase {
     private func makeStore() -> ChatStore {
@@ -87,7 +85,6 @@ final class DraftPerChatTests: XCTestCase {
     func testDepositStashesWhenChatSwitchedMidAttach() {
         let store = makeStore()
         let a = store.conversations[0].id, b = store.conversations[1].id
-        // A slow attach captured A, then the user switched to B.
         store.select(b)
         XCTAssertFalse(store.deposit([photo()], for: a))
         XCTAssertTrue(store.attachments.isEmpty, "B's composer must stay clean")

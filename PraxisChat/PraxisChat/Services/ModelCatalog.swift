@@ -1,14 +1,7 @@
 import Foundation
 
-/// The model picker's search: filters a provider-sized list live, as the
-/// user types in the composer (which becomes the search field while the
-/// Model page is open). Pure, so the unit tests cover the ranking.
 enum ModelSearch {
-    /// Filters `models` by `query`, ranked prefix-first. Matches the
-    /// display name, the model id and the tagline (which carries the
-    /// provider name for live models: "OpenRouter · 128K context"), case-
-    /// and diacritic-insensitively. An empty query returns the list
-    /// unchanged. Ties keep their original order.
+    /// Prefix-first search over name/id/tagline (case/diacritic-insensitive); stable on ties.
     static func filter(_ models: [AIModel], query: String) -> [AIModel] {
         let needle = normalized(query)
         guard !needle.isEmpty else { return models }
@@ -23,7 +16,6 @@ enum ModelSearch {
         return scored.map(\.model)
     }
 
-    /// Whether one line of text matches (for pinned ids with no row).
     static func matches(_ text: String, query: String) -> Bool {
         let needle = normalized(query)
         return needle.isEmpty || normalized(text).contains(needle)
@@ -34,8 +26,7 @@ enum ModelSearch {
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
     }
 
-    /// Lower wins: name prefix, id prefix, tagline prefix, then the same
-    /// three as substring matches. Nil = no match on any field.
+    /// Lower wins: name/id/tagline prefix, then substring; nil = no match.
     private static func tier(of model: AIModel, needle: String) -> Int? {
         let name = normalized(model.name)
         let id = normalized(model.id)
@@ -50,15 +41,10 @@ enum ModelSearch {
     }
 }
 
-/// The model page split into its sections: pinned models on top, then
-/// everything else. A pin whose model is no longer listed stays visible
-/// (dimmed, "Unavailable") so it can be unpinned, never silently dropped.
+/// Splits models into pinned + rest; unlisted pins stay visible as Unavailable, never dropped.
 struct ModelSections: Equatable {
-    /// Pinned and listed, in pin order (ranked by match while searching).
     var favorites: [AIModel] = []
-    /// Pinned but not listed, in pin order.
     var unavailableIDs: [String] = []
-    /// Unpinned, matching the query, in list order (ranked while searching).
     var rest: [AIModel] = []
 
     var isEmpty: Bool { favorites.isEmpty && unavailableIDs.isEmpty && rest.isEmpty }
@@ -66,8 +52,7 @@ struct ModelSections: Equatable {
     static func make(models: [AIModel], pinnedIDs: [String], query: String) -> ModelSections {
         var listedByID: [String: AIModel] = [:]
         for model in models where listedByID[model.id] == nil { listedByID[model.id] = model }
-        // The setter never stores empties or duplicates, but a hand-edited
-        // file might: drop them here so a row never shows twice.
+        // Deduplicate against hand-edited JSON so a model row never renders twice.
         var seen: Set<String> = []
         let pinned = pinnedIDs.filter { !$0.isEmpty && seen.insert($0).inserted }
         let listed = pinned.compactMap { listedByID[$0] }
@@ -83,9 +68,7 @@ struct ModelSections: Equatable {
 }
 
 extension ChatStore {
-    /// Whose pins apply to the model page: the selected provider, or the
-    /// demo key while no provider is configured (services exist in the
-    /// app even then; in tests without services there are no pins).
+    /// Uses selected profile ID, or demoProfileID before any provider is configured.
     var modelPinProfileID: UUID { services?.settings.selectedProfile?.id ?? ProviderSettings.demoProfileID }
 
     func pinnedModelIDs() -> [String] {

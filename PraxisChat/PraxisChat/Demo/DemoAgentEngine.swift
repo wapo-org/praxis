@@ -1,14 +1,7 @@
 import Foundation
 import AgentCore
 
-/// In-app demo engine — no backend (spec preamble). Plays the scenario
-/// scripts as runtime `AgentEvent`s, exactly the vocabulary a live run
-/// emits, so everything downstream (coalescer, reducer, views) is the
-/// real path. Realistic jittered timing: steps 300–1200ms, output lines
-/// 40–120ms, text chunks of 2–6 words every 25–60ms. Effort scales
-/// steps/length (~3s Low → ~15s Max); the model scales streaming speed;
-/// Web search off removes web steps. `timeScale` multiplies every pause
-/// (0 in unit tests: no sleeping at all).
+/// Local demo engine emitting real AgentEvents with jittered timing.
 struct DemoAgentEngine: ChatEngine {
     var timeScale: Double = 1
     var kind: EngineKind { .demo }
@@ -36,7 +29,6 @@ private struct Player: Sendable {
         MockData.models.first { $0.id == request.modelID }?.streamMultiplier ?? 1
     }
 
-    /// False once the run is cancelled.
     private func sleep(_ base: Double, _ jitter: Double) async -> Bool {
         guard timeScale > 0 else {
             await Task.yield()
@@ -49,15 +41,13 @@ private struct Player: Sendable {
 
     func play(_ out: AsyncStream<AgentEvent>.Continuation) async {
         let effort = request.effort
-        // Scale the step list by effort, always keeping ≥2 steps — and
-        // any step that asks for approval, which is the point of its script.
+        // Always keep at least 2 steps and any approval step.
         let keep = max(2, Int((Double(scenario.steps.count) * effort.stepScale).rounded()))
         let steps = Array(scenario.steps.prefix(keep)) + scenario.steps.dropFirst(keep).filter { $0.approval != nil }
-        let pace = effort.runSeconds / 8.0 // baseline script ≈8s at High
+        let pace = effort.runSeconds / 8.0
         var iteration = 1
         out.yield(.iterationStarted(iteration))
 
-        // Thinking out loud first, at the efforts that plan.
         if let plan = scenario.plan, effort == .high || effort == .max {
             let blockID = "\(iteration).reasoning"
             if await !stream(plan, block: blockID, reasoning: true, out) { return }
@@ -92,7 +82,6 @@ private struct Player: Sendable {
 
     // MARK: Steps
 
-    /// Plays one tool call. Nil when cancelled.
     private func runStep(_ script: StepScript, index: Int, iteration: Int, pace: Double,
                          _ out: AsyncStream<AgentEvent>.Continuation) async -> ToolStatus? {
         let id = "demo_\(iteration)_\(index)_\(UUID().uuidString.prefix(6))"
@@ -136,7 +125,6 @@ private struct Player: Sendable {
             }
             status = command.exitCode == 0 ? .succeeded : .failed
             preview = command.lines.last ?? ""
-            // A run never reads as instant.
             if await !sleep(0.4, 0) { return nil }
         }
         out.yield(.toolFinished(id: id, ToolCompletion(status: status, summary: script.final, preview: preview)))
@@ -144,8 +132,6 @@ private struct Player: Sendable {
         return status
     }
 
-    /// Runs the step through the real policy: true to go ahead, false
-    /// when declined or refused by the mode, nil when cancelled.
     private func authorize(_ approval: ApprovalScript, id: String,
                            _ out: AsyncStream<AgentEvent>.Continuation) async -> Bool? {
         let source = ToolSource.mcp(serverID: approval.serverID, serverName: approval.serverName)
@@ -192,7 +178,6 @@ private struct Player: Sendable {
         return true
     }
 
-    /// Streams in 2–6 word chunks (the store coalesces them per frame).
     private func stream(_ text: String, block: String, reasoning: Bool,
                         _ out: AsyncStream<AgentEvent>.Continuation) async -> Bool {
         let words = text.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
@@ -218,7 +203,6 @@ private struct Player: Sendable {
         var arguments: JSONValue
     }
 
-    /// The tool call a scripted step stands for.
     static func tool(for script: StepScript) -> DemoTool {
         let arguments = script.arguments ?? [:]
         if let approval = script.approval {

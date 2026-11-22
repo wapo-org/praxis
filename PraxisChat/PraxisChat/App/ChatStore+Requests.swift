@@ -22,16 +22,11 @@ extension ChatStore {
             conversationAttachments: conv.turns[...turnIndex].flatMap(\.attachments),
             hiddenFromCode: { await MainActor.run { store.value?.hiddenFromCode(in: conversationID) ?? [] } },
             policy: policy, approvals: approvals, setup: conv.setup,
-            // The freeze always takes the full enabled set: per-chat "off"
-            // is a refusal (`disabledServerIDs`), not an exclusion —
-            // excluding it would drop the connector from the frozen setup
-            // for good on every re-freeze (retry of the first turn).
+            // Freeze full enabled set so per-chat toggles survive a re-freeze.
             connectorIDs: enabledConnectorIDs(for: conv),
-            // Unknown ids are ignored by the runtime, so the full set is
-            // safe even when the setup is about to be (re-)frozen.
+            // Unknown IDs are ignored by runtime, safe across re-freeze.
             disabledServerIDs: conv.disabledServerIDs,
-            // Read live: toggling a tool applies to existing chats'
-            // next run (their calls refuse) and to new chats' freeze.
+            // Read live so disabled tools refuse on existing runs and omit from new ones.
             disabledTools: services?.connectors.disabledTools ?? [:],
             onSetup: { setup, failures in
                 await MainActor.run { store.value?.adopt(setup, failures: failures, conversationID: conversationID) }
@@ -48,9 +43,7 @@ extension ChatStore {
 
     // MARK: Code access
 
-    /// "Hide from code" / "Available to code" on an attachment, in the
-    /// composer or a sent turn. Sent turns are saved; a run in flight
-    /// sees the change at its next `fs` call (`ChatRunRequest.hiddenFromCode`).
+    /// Hide flag is polled dynamically so mid-run changes apply on next fs call.
     func setHiddenFromCode(_ hidden: Bool, attachmentID: UUID) {
         if let i = attachments.firstIndex(where: { $0.id == attachmentID }) { attachments[i].isHiddenFromCode = hidden }
         for conv in conversations {
@@ -65,33 +58,27 @@ extension ChatStore {
         }
     }
 
-    /// Attachments of a conversation the user hid from code.
     func hiddenFromCode(in conversationID: UUID) -> Set<UUID> {
         guard let conv = conversation(conversationID) else { return [] }
         return Set(conv.turns.flatMap(\.attachments).filter(\.isHiddenFromCode).map(\.id))
     }
 
-    /// Persists a context compaction; the turns keep the full transcript.
     private func adopt(_ compaction: ContextCompaction, conversationID: UUID) {
         guard let conv = conversation(conversationID) else { return }
         conv.compaction = compaction
         persistConversation(conv)
     }
 
-    /// Persists a freshly frozen setup with its conversation, before the
-    /// run sends anything.
     private func adopt(_ setup: ConversationSetup, failures: [MCPToolset.Failure], conversationID: UUID) {
         services?.connectors.record(failures)
         guard let conv = conversation(conversationID) else { return }
         conv.setup = setup
-        // The freeze keeps the full enabled set, so per-chat toggles
-        // survive a re-freeze; only ids that left the setup go.
+        // Keep per-chat off toggles across re-freeze unless connector was removed.
         conv.disabledServerIDs = conv.disabledServerIDs.intersection(setup.mcpServers.map(\.id))
         persistConversation(conv)
     }
 
-    /// The user message for a turn. Mode and effort changes ride along as
-    /// a note — appended, never edited into earlier history.
+    /// Mode and effort attach as appended notes, never mutating earlier history.
     func userMessage(_ text: String, in conv: Conversation, before index: Int) -> Message {
         let note = SystemPrompt.modeNote(mode: mode.agentMode, effort: effort)
         var parts: [Part] = []

@@ -4,12 +4,9 @@ import AgentCore
 import AgentRuntime
 @testable import PraxisChat
 
-/// Runs are per conversation; edit/delete/retry stop the runs they
-/// remove; approvals resolve through the store.
 @MainActor
 final class ChatStoreRunTests: XCTestCase {
 
-    /// Opens one tool step, then holds the run open until it's stopped.
     private func holdingEngine() -> ScriptedChatEngine {
         ScriptedChatEngine { _ in
             let call = tool("held-\(UUID().uuidString.prefix(4))", .readFile)
@@ -88,7 +85,6 @@ final class ChatStoreRunTests: XCTestCase {
         XCTAssertTrue(turn.activities[0].steps.allSatisfy { !$0.isRunning })
         XCTAssertTrue(turn.activities[0].steps.contains { $0.command?.exitCode == 0 })
         XCTAssertTrue(turn.markdownSources.first?.hasPrefix("## Haptics are in") ?? false)
-        // User message (with the mode note), tool calls/results, answer.
         XCTAssertEqual(turn.transcript.first?.role, .user)
         XCTAssertTrue(turn.transcript.first?.parts.contains(.note(SystemPrompt.modeNote(mode: .auto, effort: .high))) ?? false)
         XCTAssertEqual(turn.transcript.last?.text, Scenarios.haptics.answer)
@@ -213,7 +209,7 @@ final class ChatStoreRunTests: XCTestCase {
         let task = Task { await center.decide(request) }
         await waitUntil { center.pendingIDs.contains("y") }
         center.resolve("y", with: .allowAlways)
-        center.resolve("y", with: .deny) // no-op
+        center.resolve("y", with: .deny)
         let decision = await task.value
         XCTAssertEqual(decision, .allowAlways)
     }
@@ -229,8 +225,7 @@ final class ChatStoreRunTests: XCTestCase {
         let done = Mutex(false)
         Task { await pump.value; done.withLock { $0 = true } }
         store.stop()
-        // The engine sees the cancel flag, ends its stream, the pump unwinds.
-        // (The pump has no other exit, so its completion proves the engine ended.)
+        // Pump only exits when the engine stream ends, so waiting on done proves cancellation worked.
         await waitUntil { done.withLock { $0 } }
         XCTAssertEqual(conv.turns[0].outcome, .stopped)
         await store.settle()
@@ -242,8 +237,7 @@ final class ChatStoreRunTests: XCTestCase {
         store.send(text: "hold")
         await waitUntil { store.isRunning }
         let handle = try XCTUnwrap(store.runs[conv.id])
-        // An approval event arrives in the inbox, but no main-actor drain
-        // runs before the stop: the waiter must still be released.
+        // Verifies stop releases approval waiters even before a main-actor inbox drain runs.
         let request = ApprovalRequest(id: "late-card", toolName: "tool", source: .builtin, arguments: [:],
                                       reason: "r", title: "T")
         _ = handle.inbox.push(.toolAwaitingApproval(request))
@@ -291,8 +285,7 @@ final class ChatStoreRunTests: XCTestCase {
                 }
             }
         }
-        // A frozen setup with servers x and y (built through the public
-        // Codable shape; the memberwise init is package-internal).
+        // Uses JSON because the memberwise init for frozen setups is package-internal.
         let setupJSON = """
             {"version":1,"createdAt":784783194.0,"systemPrompt":"s","skillNames":[],
              "includesSkills":false,"includesJavaScript":false,
@@ -306,8 +299,7 @@ final class ChatStoreRunTests: XCTestCase {
         conv.disabledServerIDs = ["x"]
         store.send(text: "hi")
         await waitUntil { !store.isRunning }
-        // x stays off-here (still in the frozen setup); it must not vanish
-        // from the toggle the way a re-freeze used to drop it.
+        // Disabled server remains in disabledServerIDs rather than being dropped by re-freezing.
         XCTAssertEqual(conv.disabledServerIDs, ["x"])
         XCTAssertNotNil(conv.setup)
         await store.settle()

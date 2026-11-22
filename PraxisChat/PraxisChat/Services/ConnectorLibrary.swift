@@ -3,18 +3,7 @@ import Observation
 import AgentCore
 import AgentMCP
 
-/// Installed remote MCP servers ("connectors"): their configs, one shared
-/// `MCPClient` per server, and the protocol-era cache. Configs and the
-/// era snapshot are one JSON file; credentials (header secrets, OAuth
-/// tokens) live in the `SecretStore` (Keychain in the app).
-///
-/// The runtime reaches servers through `client(for:)`; a server that's
-/// removed returns nil, so frozen conversations report it as gone. Config
-/// changes (enable, trust, rename) replace the client — `MCPClient.config`
-/// is immutable, and the runtime always asks for the current one.
-///
-/// Part B's management UI binds to `servers`, `authRequirements`,
-/// `lastErrors` and calls the install / trust / enable / sign-in APIs.
+/// Holds MCP configs & clients (secrets in SecretStore); config edits replace immutable clients.
 @MainActor
 @Observable
 final class ConnectorLibrary {
@@ -22,41 +11,24 @@ final class ConnectorLibrary {
         var version = 1
         var servers: [MCPServerConfig] = []
         var eras = MCPEraCache.Snapshot()
-        /// Tool names the user turned off, by server id. A denylist, so
-        /// tools a server adds later start on.
+        /// Denylist of disabled tool names per server so newly added tools default to on.
         var disabledTools: [String: Set<String>] = [:]
-        /// Tool names the user has seen in the detail screen, by server
-        /// id. Names outside it get a "New" badge once.
         var seenTools: [String: Set<String>] = [:]
     }
 
     private(set) var servers: [MCPServerConfig] = []
-    /// What a server last said it needs before it can be used ("Sign in").
     private(set) var authRequirements: [String: MCPAuthRequirement] = [:]
-    /// Last connection / listing error per server, for display.
     private(set) var lastErrors: [String: String] = [:]
-    /// Tools from each server's last successful listing this session
-    /// (counts in the list, names in the detail screen).
     private(set) var tools: [String: [MCPToolDefinition]] = [:]
-    /// Sign-in the server advertises (RFC 9728) even though it answered
-    /// without credentials — e.g. Gmail lists tools anonymously and only
-    /// refuses `tools/call`. Shown as "Sign-in available".
+    /// RFC 9728 sign-in advertised despite anonymous response (e.g. tools/list works, call refuses).
     private(set) var signInOffers: [String: MCPSignInOffer] = [:]
-    /// Whether OAuth tokens are stored, as of the last check.
     private(set) var signedIn: [String: Bool] = [:]
-    /// Servers with a sign-in in progress (chat buttons show "Signing in…").
     private(set) var signingIn: Set<String> = []
-    /// Prompts of servers that offer them (the tray's prompt list).
     private(set) var prompts: [String: [MCPPrompt]] = [:]
-    /// When a server's tool list last changed (`tools/list_changed`).
-    /// Conversations keep their frozen tools; new chats get the new ones.
+    /// Last tools/list_changed timestamp; existing chats keep frozen tools, new chats get updates.
     private(set) var toolsChangedAt: [String: Date] = [:]
-    /// Tool names the user turned off, by server id (persisted). New
-    /// conversations leave them out; chats that froze them refuse
-    /// their calls. Tools a server adds later start on.
+    /// Persisted disabled-tool denylist; frozen chats refuse calls, new chats omit them.
     private(set) var disabledTools: [String: Set<String>] = [:]
-    /// Tool names the user has seen in the detail screen, by server id
-    /// (persisted). Anything else listed gets a "New" badge once.
     private(set) var seenTools: [String: Set<String>] = [:]
 
     @ObservationIgnored let fileURL: URL
@@ -70,8 +42,6 @@ final class ConnectorLibrary {
     /// Last era snapshot written, so config writes keep it.
     @ObservationIgnored private var lastEras: MCPEraCache.Snapshot
 
-    /// `listensForChanges`: keep change-notification streams open for
-    /// servers that announce list changes (off in tests).
     init(fileURL: URL, secrets: any SecretStore, transport: any HTTPTransport = URLSessionTransport(),
          auth: MCPAuthEnvironment = MCPAuthEnvironment(presenter: nil), elicitation: (any MCPElicitationHandler)? = nil,
          listensForChanges: Bool = false) {
@@ -91,16 +61,12 @@ final class ConnectorLibrary {
 
     func server(_ id: String) -> MCPServerConfig? { servers.first { $0.id == id } }
 
-    /// Servers a new conversation starts with (the per-conversation
-    /// toggles start from these).
     var defaultConversationServerIDs: [String] { servers.filter(\.enabled).map(\.id) }
 
-    /// The shared client for an installed server; nil once it's removed.
     func client(for id: String) -> MCPClient? {
         if let client = clients[id] { return client }
         guard let config = server(id) else { return nil }
-        // Events arrive off the main actor (tool calls, notification
-        // streams); they're applied here.
+        // Client events arrive off MainActor and hop back here to apply.
         let client = MCPClient(config: config, transport: transport, secrets: secrets, eraCache: eraCache,
                                auth: auth, elicitation: elicitation,
                                options: MCPClientOptions(listensForChanges: listensForChanges),
@@ -111,8 +77,6 @@ final class ConnectorLibrary {
         return client
     }
 
-    /// A client event: a refused call marks the server as needing sign-in;
-    /// list changes refresh what new chats will get.
     func handle(_ event: MCPClientEvent, serverID id: String) {
         guard server(id) != nil else { return }
         switch event {
@@ -129,17 +93,14 @@ final class ConnectorLibrary {
         }
     }
 
-    /// Re-lists after `tools/list_changed`. Frozen conversations are left
-    /// alone (their tool list can't change); new chats freeze the new list.
+    /// Refreshes tools for new chats after tools/list_changed; frozen chats stay unchanged.
     private func refreshTools(_ id: String) async {
         guard let client = client(for: id), let list = try? await client.listTools(refresh: true) else { return }
         if let old = tools[id], old != list { toolsChangedAt[id] = Date() }
         adoptListing(id, list)
     }
 
-    /// Keeps a fresh listing. The first listing is the baseline (nothing
-    /// in it is "New"); names that appear in later listings badge until
-    /// the user looks at them (`markToolsSeen`).
+    /// First listing sets the baseline (none marked New); later additions badge until seen.
     private func adoptListing(_ id: String, _ list: [MCPToolDefinition]) {
         if tools[id] == nil {
             seenTools[id, default: []].formUnion(list.map(\.name))
@@ -154,17 +115,12 @@ final class ConnectorLibrary {
         try MCPInstaller.parse(url: url, name: name)
     }
 
-    /// Pasted `mcp.json` / Claude Desktop / VS Code / registry JSON.
-    /// Entries that would run a local process come back in `rejected`.
+    /// Parses mcp.json-style configs; local-process (stdio) entries are returned in rejected.
     static func candidates(config: String) throws -> MCPImportResult {
         try MCPInstaller.parse(config: config)
     }
 
-    /// Installs a candidate once its inputs are filled in. Secret values
-    /// go to the `SecretStore`; the persisted config only references them.
-    /// Call `review(_:)` next to connect and show the tools.
-    /// `enabled: false` installs provisionally (the add flow, while the
-    /// user reviews the tools): new chats leave it out until confirmed.
+    /// Persists config with SecretStore refs only; enabled: false installs provisionally for review.
     @discardableResult
     func install(_ candidate: MCPInstallCandidate, values: [String: String] = [:], trusted: Bool = false,
                  auth: MCPAuthKind? = nil, enabled: Bool = true) throws -> MCPServerConfig {
@@ -176,8 +132,6 @@ final class ConnectorLibrary {
         return config
     }
 
-    /// Connects (signing in if the server asks and the config is OAuth)
-    /// and lists the tools, e.g. to review them right after install.
     func review(_ id: String) async throws -> [MCPToolDefinition] {
         guard let client = client(for: id) else { throw MCPInstallError.invalidConfig("That connector isn't installed.") }
         do {
@@ -195,9 +149,6 @@ final class ConnectorLibrary {
         }
     }
 
-    /// Whether we hold tokens, and — unless credentials travel in headers —
-    /// whether the server advertises sign-in even though it answered
-    /// anonymously (some servers only refuse `tools/call`).
     private func checkSignIn(_ id: String, _ client: MCPClient) async {
         signedIn[id] = await client.isSignedIn
         guard let config = server(id), config.auth != .headers else {
@@ -207,7 +158,6 @@ final class ConnectorLibrary {
         signInOffers[id] = await client.signInOffer()
     }
 
-    /// Keeps what a failure says the server needs ("Sign in", a token…).
     private func note(_ error: Error, for id: String) {
         guard server(id) != nil else { return }
         lastErrors[id] = error.localizedDescription
@@ -216,8 +166,7 @@ final class ConnectorLibrary {
         }
     }
 
-    /// Removes a server: closes its session, forgets its tokens and secrets.
-    /// Conversations that froze its tools keep them, refused as removed.
+    /// Closes session and wipes secrets; chats that froze its tools retain them as refused.
     func remove(_ id: String) async {
         guard let config = server(id) else { return }
         servers.removeAll { $0.id == id }
@@ -241,10 +190,7 @@ final class ConnectorLibrary {
         if case .manualOAuth(_, let key?) = config.auth { try? secrets.removeSecret(for: key) }
     }
 
-    /// Replaces the static headers. `value: nil` on a secret header keeps
-    /// the stored secret; secrets no longer referenced are deleted. Auth
-    /// follows: credentials in headers → `.headers`, none → `.none`
-    /// (OAuth kinds are left alone).
+    /// Replaces headers (nil secret keeps stored, unused deleted); updates non-OAuth auth.
     func setHeaders(_ id: String, _ edits: [HeaderEdit]) async throws {
         guard let config = server(id) else { return }
         var headers: [MCPHeader] = []
@@ -280,13 +226,7 @@ final class ConnectorLibrary {
         lastErrors[id] = nil
     }
 
-    /// Sign-in through a client the user registered with the provider
-    /// (servers without Dynamic Client Registration). The secret, if
-    /// any, goes to the `SecretStore`.
-    /// `redirectURI`: the redirect registered with that client when it
-    /// isn't Praxis's default (e.g. Google's reversed-client-ID scheme).
-    /// `scopes`: what to ask for; nil/empty = least-privilege defaults
-    /// (`MCPScopeSelection`: Google's Gmail pair, else what the server lists).
+    /// Manual OAuth without DCR; stores secret in SecretStore and defaults empty scopes.
     func setManualOAuth(_ id: String, clientID: String, clientSecret: String?, redirectURI: String? = nil,
                         scopes: [String]? = nil) async throws {
         guard var config = server(id) else { return }
@@ -300,8 +240,7 @@ final class ConnectorLibrary {
             }
         }
         if secret.isEmpty { try? secrets.removeSecret(for: key) } else { try secrets.setSecret(secret, for: key) }
-        // Fresh credentials, fresh issuer binding: re-saving is how the user
-        // confirms these credentials for whatever issuer the server now names.
+        // Clear pinned issuer on save so re-saving binds the new credentials to current server issuer.
         try? secrets.removeSecret(for: OAuthKeys.manualIssuer(secretKey: key))
         config.auth = .manualOAuth(clientID: trimmedID, clientSecretKey: secret.isEmpty ? nil : key)
         config.oauthRedirectURI = redirect.isEmpty ? nil : redirect
@@ -309,8 +248,6 @@ final class ConnectorLibrary {
         await replace(config)
     }
 
-    /// Switches a server to OAuth with automatic registration, e.g. when
-    /// it answered 401 and offers sign-in.
     func useAutomaticOAuth(_ id: String) async {
         guard var config = server(id), config.auth != .oauth else { return }
         if case .manualOAuth(_, let key?) = config.auth { try? secrets.removeSecret(for: key) }
@@ -323,8 +260,7 @@ final class ConnectorLibrary {
         await update(id) { $0.trusted = trusted }
     }
 
-    /// Turned-off servers are left out of new conversations, and frozen
-    /// conversations refuse their tools until they're back on.
+    /// Disabled servers are omitted from new chats and refused by frozen chats until re-enabled.
     func setEnabled(_ id: String, _ enabled: Bool) async {
         await update(id) { $0.enabled = enabled }
     }
@@ -335,7 +271,6 @@ final class ConnectorLibrary {
         await update(id) { $0.name = trimmed }
     }
 
-    /// Replaces a config wholesale (headers, auth kind, URL).
     func replace(_ config: MCPServerConfig) async {
         await update(config.id) { $0 = config }
     }
@@ -347,7 +282,7 @@ final class ConnectorLibrary {
         guard config != servers[i] else { return }
         servers[i] = config
         persist()
-        // The next `client(for:)` builds one from the new config.
+        // Drop cached client so the next client(for:) rebuilds with the new config.
         await clients.removeValue(forKey: id)?.close()
     }
 
@@ -357,10 +292,7 @@ final class ConnectorLibrary {
         !(disabledTools[id]?.contains(tool) ?? false)
     }
 
-    /// Turns one tool off (or back on). Off tools are left out of new
-    /// conversations; chats that froze them refuse their calls. Unlike
-    /// `update`, this never rebuilds the client: the runtime reads the
-    /// live set on every run.
+    /// Toggles a tool without rebuilding the client; runtime checks disabledTools on each run.
     func setToolEnabled(_ id: String, tool: String, on: Bool) {
         guard server(id) != nil else { return }
         var off = disabledTools[id, default: []]
@@ -371,8 +303,7 @@ final class ConnectorLibrary {
         persist()
     }
 
-    /// "Enable all" clears the list (tools the server adds later start
-    /// on); "Disable all" turns off every currently listed tool.
+    /// Enabling all clears the denylist so future server tools also start enabled.
     func setAllToolsEnabled(_ id: String, on: Bool) {
         guard server(id) != nil else { return }
         if on {
@@ -386,14 +317,10 @@ final class ConnectorLibrary {
         persist()
     }
 
-    /// Whether the tool arrived after the user last looked at the list
-    /// (it gets a "New" badge once).
     func isToolNew(_ id: String, tool: String) -> Bool {
         tools[id] != nil && !(seenTools[id]?.contains(tool) ?? false)
     }
 
-    /// The user looked at the connector's tools: nothing in the current
-    /// list is "New" anymore.
     func markToolsSeen(_ id: String) {
         guard let list = tools[id] else { return }
         var seen = seenTools[id, default: []]
@@ -405,10 +332,6 @@ final class ConnectorLibrary {
 
     // MARK: Sign-in
 
-    /// Signs in through the OAuth presenter ("Sign in"). Connecting may
-    /// already do it (a server that answers 401 at once); a server that
-    /// answered anonymously gets an explicit sign-in. `force` signs in
-    /// again even with tokens stored ("Sign in again").
     func signIn(_ id: String, force: Bool = false) async throws {
         guard let client = client(for: id) else { return }
         signingIn.insert(id)
@@ -425,7 +348,7 @@ final class ConnectorLibrary {
             note(error, for: id)
             throw error
         }
-        // Tools (and prompts) as the signed-in user sees them.
+        // Re-list tools and prompts under the newly signed-in identity.
         _ = try? await review(id)
     }
 
@@ -435,16 +358,12 @@ final class ConnectorLibrary {
         signedIn[id] = false
     }
 
-    /// What the server needs, from a refused call or its advertised
-    /// sign-in, while we hold no tokens.
     func signInNeed(_ id: String) -> MCPAuthRequirement? {
         if let requirement = authRequirements[id], requirement != .none { return requirement }
         guard signedIn[id] != true, let offer = signInOffers[id] else { return nil }
         return offer.requirement
     }
 
-    /// Whether a tap can sign in right away (no form to fill): the client
-    /// is configured, or the server registers apps automatically.
     func canSignInDirectly(_ id: String) -> Bool {
         guard let config = server(id) else { return false }
         switch (config.auth, signInNeed(id)) {
@@ -455,8 +374,6 @@ final class ConnectorLibrary {
         }
     }
 
-    /// "Sign in to <server>" from a chat step: switches a plain config to
-    /// OAuth when the server registers apps itself, then signs in.
     func signInDirectly(_ id: String) async throws {
         guard let config = server(id) else { return }
         switch config.auth {
@@ -468,8 +385,7 @@ final class ConnectorLibrary {
 
     // MARK: Prompts
 
-    /// Lists a server's prompts if it offers them. Never opens a sign-in
-    /// sheet: OAuth servers are only asked once signed in.
+    /// Fetches prompts silently; skips unauthenticated OAuth servers so it never triggers sign-in.
     func loadPrompts(_ id: String) async {
         guard let client = client(for: id) else { return }
         guard await client.features?.prompts == true else {
@@ -479,8 +395,6 @@ final class ConnectorLibrary {
         if let list = try? await client.listPrompts() { prompts[id] = list }
     }
 
-    /// Prompts for the tray: checks servers not looked at this session
-    /// (plain ones by listing; OAuth ones only when signed in).
     func refreshPrompts(for ids: [String]) async {
         for id in ids {
             guard let config = server(id), config.enabled, let client = client(for: id) else { continue }
@@ -497,14 +411,11 @@ final class ConnectorLibrary {
         }
     }
 
-    /// Fetches a prompt the user picked.
     func prompt(_ id: String, name: String, arguments: [String: String]) async throws -> MCPPromptResult {
         guard let client = client(for: id) else { throw MCPInstallError.invalidConfig("That connector isn't installed.") }
         return try await client.getPrompt(name, arguments: arguments)
     }
 
-    /// Notes what servers that failed to list their tools need, so the UI
-    /// can offer "Sign in" (from `AgentRuntime.prepare` failures).
     func record(_ failures: [MCPToolset.Failure]) {
         for failure in failures {
             lastErrors[failure.serverID] = failure.message
@@ -514,10 +425,7 @@ final class ConnectorLibrary {
 
     // MARK: UI-test seed
 
-    /// `-PraxisMockConnector YES` (UI tests): installs a hermetic
-    /// connector with scripted tools. Nothing reaches the network: the
-    /// install only parses a URL, and the detail screen never refreshes
-    /// it because a listing is already there.
+    /// UI test mock connector (-PraxisMockConnector YES); pre-populated tools avoid network calls.
     func installMockConnectorIfRequested() {
         guard UserDefaults.standard.bool(forKey: "PraxisMockConnector") else { return }
         guard !servers.contains(where: { $0.id == Self.mockConnectorID }) else { return }
@@ -539,8 +447,7 @@ final class ConnectorLibrary {
                               annotations: MCPToolAnnotations(destructiveHint: true)),
         ]
         seenTools[seeded.id] = Set(tools[seeded.id, default: []].map(\.name))
-        // `-PraxisMockConnectorNewTool YES`: one more tool the user
-        // hasn't seen, for the "New" badge.
+        // UI test flag adding an unseen tool to trigger the New badge.
         if UserDefaults.standard.bool(forKey: "PraxisMockConnectorNewTool") {
             tools[seeded.id]?.append(MCPToolDefinition(name: "summarize_thread", title: "Summarize thread",
                                                        description: "Summarizes the current support thread."))
@@ -572,8 +479,7 @@ final class ConnectorLibrary {
     }
 }
 
-/// One row of the headers editor. `value` nil on a secret = keep the
-/// stored one.
+/// Header editor row; nil value on a secret header preserves the stored secret.
 struct HeaderEdit: Equatable {
     var name: String
     var value: String?

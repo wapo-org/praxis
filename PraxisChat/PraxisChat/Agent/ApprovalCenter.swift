@@ -1,10 +1,7 @@
 import Foundation
 import AgentCore
 
-/// The human side of `ToolPolicy.ask`. An engine awaits `decide`; the
-/// approval card in the step resolves it. Every request resolves exactly
-/// once: by the user, or `.deny` when the run is stopped or its task is
-/// cancelled — a run can never hang on a card nobody will tap.
+/// Every approval resolves once (user or .deny on cancel) so a run never hangs.
 @MainActor
 @Observable
 final class ApprovalCenter: ApprovalHandler {
@@ -14,7 +11,6 @@ final class ApprovalCenter: ApprovalHandler {
     }
 
     @ObservationIgnored private var waiters: [String: Waiter] = [:]
-    /// Ids currently waiting, for views and tests.
     private(set) var pendingIDs: Set<String> = []
 
     nonisolated init() {}
@@ -28,8 +24,7 @@ final class ApprovalCenter: ApprovalHandler {
     }
 
     private func wait(for request: ApprovalRequest) async -> ApprovalDecision {
-        // Cancelled before we got here: the cancel handler found nothing
-        // to resolve, so answer now.
+        // Cancel handler ran before registration, so return .deny immediately.
         if Task.isCancelled { return .deny }
         // A duplicate id would orphan the first waiter: deny it.
         resolve(request.id, with: .deny)

@@ -99,8 +99,7 @@ struct CloudMessage: Decodable, Sendable {
                 return nil
             }, isError: part.isError ?? false))
             case "image", "document":
-                // Server attachment ids are not local file paths. Keep a small
-                // reference; cloud replay uses the authoritative server history.
+                // Stores small placeholder for server attachment IDs; replay uses server history.
                 let bytes = part.data.flatMap { Data(base64Encoded: $0) } ?? Data(("praxis-cloud-attachment:" + (part.attachmentId ?? "")).utf8)
                 let media = MediaData(mediaType: part.mediaType ?? "application/octet-stream", data: bytes, name: part.name)
                 return part.type == "image" ? .image(media) : .document(media)

@@ -5,8 +5,6 @@ import AgentMCP
 import AgentTestSupport
 @testable import PraxisChat
 
-/// Per-tool on/off switches: the persisted denylist, "New" badges for
-/// tools a server adds later, and what new conversations freeze.
 @MainActor
 final class ConnectorToolToggleTests: XCTestCase {
     private var directory: URL!
@@ -14,7 +12,6 @@ final class ConnectorToolToggleTests: XCTestCase {
     override func setUp() async throws { directory = temporaryDirectory() }
     override func tearDown() async throws { try? FileManager.default.removeItem(at: directory) }
 
-    /// A tool list a scripted transport can change between listings.
     private final class MutableTools: Sendable {
         private let box: Mutex<[JSONValue]>
         init(_ tools: [JSONValue]) { box = Mutex(tools) }
@@ -55,7 +52,7 @@ final class ConnectorToolToggleTests: XCTestCase {
         library.setToolEnabled(id, tool: "a", on: false)
         XCTAssertFalse(library.isToolEnabled(id, tool: "a"))
         XCTAssertTrue(library.isToolEnabled(id, tool: "b"), "untouched tools stay on")
-        library.setToolEnabled(id, tool: "missing", on: true) // no-op, no crash
+        library.setToolEnabled(id, tool: "missing", on: true)
 
         let reloaded = ConnectorLibrary(fileURL: file, secrets: InMemorySecretStore())
         XCTAssertFalse(reloaded.isToolEnabled(id, tool: "a"))
@@ -87,8 +84,7 @@ final class ConnectorToolToggleTests: XCTestCase {
         XCTAssertTrue(library.isToolNew(id, tool: "b"))
         XCTAssertFalse(library.isToolNew(id, tool: "a"))
 
-        // Seen state survives a relaunch (badges need a listing to
-        // render against, so the reloaded check reads the seen set).
+        // Reads seenTools directly after reload because badges require a live tool listing.
         XCTAssertEqual(ConnectorLibrary(fileURL: file, secrets: InMemorySecretStore()).seenTools[id], ["a"])
         library.markToolsSeen(id)
         XCTAssertFalse(library.isToolNew(id, tool: "b"))
@@ -132,8 +128,6 @@ final class ConnectorToolToggleTests: XCTestCase {
         XCTAssertNil(library.seenTools[id])
     }
 
-    /// A disabled tool never reaches a new conversation's frozen setup
-    /// or the provider request; its sibling does.
     func testDisabledToolIsLeftOutOfNewConversations() async throws {
         let secrets = InMemorySecretStore()
         let settings = ProviderSettings(fileURL: directory.appendingPathComponent("Providers.json"), secrets: secrets)

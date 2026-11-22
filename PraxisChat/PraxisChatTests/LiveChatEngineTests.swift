@@ -8,8 +8,6 @@ import AgentRuntime
 import AgentTestSupport
 @testable import PraxisChat
 
-/// `LiveChatEngine` end to end through `ChatStore`, against a scripted
-/// provider (and a scripted MCP server where a tool must ask).
 @MainActor
 final class LiveChatEngineTests: XCTestCase {
     private var directory: URL!
@@ -26,8 +24,7 @@ final class LiveChatEngineTests: XCTestCase {
 
     // MARK: Fixtures
 
-    /// `consented`: the provider host is already allowed to receive chat
-    /// data (the consent flow has its own tests).
+    /// consented pre-authorizes the provider host when testing flows other than consent.
     private func makeServices(withProvider: Bool = true, mcp: ScriptedTransport? = nil,
                               consented: Bool = true) throws -> AgentServices {
         let settings = ProviderSettings(fileURL: directory.appendingPathComponent("Providers.json"), secrets: secrets)
@@ -107,7 +104,6 @@ final class LiveChatEngineTests: XCTestCase {
         XCTAssertEqual(notes(second.messages.last), [SystemPrompt.modeNote(mode: .plan, effort: .high)])
         await first.flushPersistence()
 
-        // Relaunch: the setup comes back from disk and keeps being used.
         let provider2 = ScriptedProvider(steps: [ScriptedProvider.text("Still here")])
         let reloaded = store(services, provider2, fresh: false)
         let again = try XCTUnwrap(reloaded.conversations.first { $0.id == conv.id })
@@ -286,13 +282,11 @@ final class LiveChatEngineTests: XCTestCase {
         store.send(text: "b")
         await waitUntil { services.elicitations.queue.count == 2 }
 
-        // Fresh scope per run, both runs tagged.
         XCTAssertEqual(seen.scopeCount(), 2)
         let scopeA = try XCTUnwrap(seen.scope(for: a.id))
         let scopeB = try XCTUnwrap(seen.scope(for: b.id))
         XCTAssertNotEqual(scopeA, scopeB)
 
-        // Stop A's run: A's waiter resolves .cancel, B's elicitation stays.
         store.select(a.id)
         store.stop()
         await waitUntil { seen.result(for: a.id) != nil }
@@ -301,7 +295,6 @@ final class LiveChatEngineTests: XCTestCase {
         XCTAssertEqual(services.elicitations.queue.first?.scope, scopeB)
         XCTAssertTrue(store.isRunning(b.id))
 
-        // B answers and completes normally.
         let idB = try XCTUnwrap(services.elicitations.queue.first?.id)
         services.elicitations.respond(idB, with: .accept(["choice": "yes"]))
         await waitUntil { !store.isRunning(b.id) }
@@ -327,7 +320,6 @@ final class LiveChatEngineTests: XCTestCase {
             for await event in stream { events.append(event) }
             return events
         }
-        // Stop once the run is hanging in its second response.
         let start = Date()
         while provider.requestCount < 2, Date().timeIntervalSince(start) < 10 {
             try? await Task.sleep(for: .milliseconds(5))
@@ -335,21 +327,17 @@ final class LiveChatEngineTests: XCTestCase {
         XCTAssertEqual(provider.requestCount, 2, "the run never reached its hanging response")
         flag.set()
         let flipAt = Date()
-        // A hanging suite helps nobody: unblock the collector (whose
-        // `for await` ends on cancel) if the fix ever regresses.
+        // Unblock the collector's `for await` on timeout so a regression fails instead of hanging.
         Task { try? await Task.sleep(for: .seconds(10)); collector.cancel() }
         let events = await collector.value
         XCTAssertLessThan(Date().timeIntervalSince(flipAt), 2.0, "the stream must finish promptly after stop")
         XCTAssertEqual(provider.requestCount, 2, "nothing is sent after stop")
-        // The pre-stop tool executed exactly once (its result rode request 2).
         let results = provider.requests[1].messages.flatMap(\.toolResults)
         XCTAssertEqual(results.map(\.callID), ["a"])
         XCTAssertTrue(events.contains { if case .committed = $0 { return true }; return false })
     }
 }
 
-/// A run elicits once with its request scope, then finishes: cancelled
-/// when the waiter resolves `.cancel`, completed otherwise.
 private struct ElicitingEngine: ChatEngine {
     var kind: EngineKind { .scripted }
     let center: ElicitationCenter
@@ -372,7 +360,6 @@ private struct ElicitingEngine: ChatEngine {
     }
 }
 
-/// Collects elicitation scopes/results across tasks.
 private final class ElicitationProbe: Sendable {
     private let state = Mutex<(scopes: [UUID: UUID?], results: [UUID: MCPElicitationResult])>(([:], [:]))
     func noteRun(_ conversation: UUID, scope: UUID?) { state.withLock { $0.scopes[conversation] = scope } }
@@ -384,8 +371,6 @@ private final class ElicitationProbe: Sendable {
     func result(for conversation: UUID) -> MCPElicitationResult? { state.withLock { $0.results[conversation] } }
 }
 
-/// First request: one real tool call. Later requests: a text fragment,
-/// then silence forever (a run that never ends on its own).
 private final class ToolThenSilentProvider: ModelProvider, Sendable {
     let flavor: ProviderFlavor = .anthropicMessages
     let capabilities = Capabilities()
@@ -413,7 +398,6 @@ private final class ToolThenSilentProvider: ModelProvider, Sendable {
     }
 }
 
-/// A flippable stop flag for engine tests.
 private final class StopFlag: Sendable {
     private let box = Mutex(false)
     var isSet: Bool { box.withLock { $0 } }
@@ -524,11 +508,7 @@ final class AgentServicesPersistenceTests: XCTestCase {
                                  kind: .form(schema: ["type": "object", "required": ["env"],
                                                       "properties": ["env": ["type": "string", "enum": ["dev", "prod"]],
                                                                      "force": ["type": "boolean", "default": false]]]))
-        // Serialize registration: two concurrent `elicit` calls race to the
-        // MainActor, so creation order is NOT queue order (measured: the
-        // second task registers first ~20% of the time). Answering
-        // `queue[0]` before serializing hangs whenever it flips, because the
-        // answered task's waiter is then never resumed.
+        // Concurrent `elicit` calls race to MainActor; serialize registration so queue order matches.
         let answered = Task { await center.elicit(ask) }
         await waitUntil { center.queue.count == 1 }
         let cancelled = Task { await center.elicit(ask) }
@@ -555,8 +535,6 @@ final class AgentServicesPersistenceTests: XCTestCase {
         let center = ElicitationCenter()
         let ask = MCPElicitation(serverID: "s", serverName: "Acme", message: "Which env?",
                                  kind: .form(schema: ["type": "object"]))
-        // Cancelled before or while registering: either way the waiter (if
-        // any) resolves `.cancel` and nothing stays queued.
         let task = Task { await center.elicit(ask) }
         task.cancel()
         let result = await task.value

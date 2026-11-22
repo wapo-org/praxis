@@ -1,9 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// Praxis design tokens. Exact values from the Praxis spec §4.
-/// Doctrine: calm, monochrome, liquid glass — materials that bend light
-/// instead of casting shadows.
 enum Praxis {
     // MARK: Colour (light / dark, exact hex from spec)
 
@@ -40,13 +37,9 @@ enum Praxis {
     static let turnGap: CGFloat = 32
     static let bubbleToAnswer: CGFloat = 16
     static let activityToAnswer: CGFloat = 20
-    /// Composer / tray card corner: a full capsule at the 56pt idle height.
     static let composerRadius: CGFloat = 28
 
     // MARK: Reduce-Transparency hand-built glass (spec §3, Praxis ramp)
-    // Frosted fill 5–6% white over strong blur, saturation ×4–×9, 160°
-    // primary sheen 55→16→4→0% at 0/26/44/60%, 340° counter-sheen
-    // 22→7→0% at 0/22/42%, 1pt rim white 20%, hairline white 8%.
 
     static func frostedFill(reduceTransparency: Bool) -> some ShapeStyle {
         reduceTransparency ? AnyShapeStyle(Color.white.opacity(0.06)) : AnyShapeStyle(Color.clear)

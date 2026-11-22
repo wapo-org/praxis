@@ -1,17 +1,13 @@
 import Foundation
 import Network
 
-/// Is there a usable network right now, and if not, suspend until there is.
-/// `NWPathMonitor`-backed in production, scripted in tests.
 protocol NetworkStatusReader: Sendable {
     func isUsable() async -> Bool
-    /// Returns when the path is usable. Throws `CancellationError` when the
-    /// waiting task is cancelled. Never returns while unusable.
+    /// Suspends until the network path is usable or throws CancellationError on task cancel.
     func waitForUsable() async throws
 }
 
-/// `NWPathMonitor` as a `NetworkStatusReader`. The monitor dies with the
-/// actor (release stops callbacks); no explicit cancel needed.
+/// Deallocating the actor stops NWPathMonitor callbacks without needing explicit cancellation.
 actor PathMonitorNetworkStatus: NetworkStatusReader {
     private let monitor: NWPathMonitor
     private var usable = false
@@ -43,8 +39,7 @@ actor PathMonitorNetworkStatus: NetworkStatusReader {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 waiters[id] = continuation
-                // Already cancelled while storing: resume right away so no
-                // waiter dangles (the onCancel below may have run first).
+                // Re-checks cancellation after storing continuation because onCancel may have already fired.
                 if Task.isCancelled {
                     waiters.removeValue(forKey: id)
                     continuation.resume(throwing: CancellationError())
@@ -61,13 +56,7 @@ actor PathMonitorNetworkStatus: NetworkStatusReader {
     }
 }
 
-/// Retry/backoff/offline policy around Groq uploads. One `run` retries 429s
-/// (honouring `retry-after`), 5xx and transient network failures with
-/// exponential backoff (1 s, 2 s, 4 s … max 60 s, ~5 attempts), and suspends
-/// — without consuming attempts — while the network is unusable. Auth,
-/// consent, key, oversize and cancellation errors pass straight through:
-/// 413-halving is the transcriber's job (it owns the parts), and auth/user
-/// errors must surface, never spin.
+/// Retries 429/5xx/transient errors with backoff and suspends offline without burning attempts.
 actor TranscriptionQueue {
     enum QueueEvent: Sendable, Equatable {
         case waitingForNetwork
@@ -86,8 +75,7 @@ actor TranscriptionQueue {
         self.sleep = sleep ?? { try await Task.sleep(for: $0) }
     }
 
-    /// Delay before attempt `attempt` (1-based): the server's `retry-after`
-    /// when given, else exponential backoff, capped at 60 s. Pure.
+    /// Computes delay for 1-based attempt using retryAfter or exponential backoff, capped at 60 s.
     nonisolated static func backoffDelay(attempt: Int, retryAfter: TimeInterval?) -> TimeInterval {
         if let after = retryAfter, after.isFinite, after >= 0 { return min(after, maxDelay) }
         return min(pow(2.0, Double(max(0, attempt - 1))), maxDelay)
@@ -113,18 +101,11 @@ actor TranscriptionQueue {
                     try await pause(attempt: attempt, retryAfter: nil, onEvent: onEvent)
                 case .offline:
                     if await network.isUsable() {
-                        // A blip with the path up: bounded backoff, not a wait.
                         attempt += 1
                         guard attempt < Self.maxAttempts else { throw error }
                         try await pause(attempt: attempt, retryAfter: nil, onEvent: onEvent)
                     } else {
-                        // Sustained outage: suspend (no attempt consumed)
-                        // and auto-retry when the path is usable again. The
-                        // controller shows "Waiting for network…" and restows
-                        // the sidecar `.queued` (persisted: a relaunch lists
-                        // it with Retry, and the part cache resumes), so the
-                        // wait is never a silent stuck "Transcribing…".
-                        // Cancel stays responsive: it throws CancellationError.
+                        // Notifies UI before suspending so offline waits persist .queued without consuming attempts.
                         onEvent?(.waitingForNetwork)
                         try await network.waitForUsable()
                     }

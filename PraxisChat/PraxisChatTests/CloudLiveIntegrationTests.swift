@@ -91,12 +91,10 @@ final class CloudLiveIntegrationTests: XCTestCase {
                 if case .compaction(_, .finished(let value)) = event { return value.summary }; return nil
             }.last
             XCTAssertNotNil(summary)
-            // The local scripted provider echoes the first text in its input;
-            // compaction prepends this exact summary part to that input.
+            // Local scripted provider echoes its first input; compaction prepends this summary prefix.
             expected = "Scripted response: [Summary of earlier conversation]\n" + (summary ?? "")
         }
-        // Markdown presentation trims trailing whitespace; raw committed
-        // transcript text below must still match the original wire payload.
+        // Markdown presentation trims trailing whitespace, while raw transcript keeps exact wire text.
         XCTAssertEqual(text, expected.trimmingCharacters(in: .whitespacesAndNewlines), script)
         XCTAssertEqual(turn.transcript.last(where: { $0.role == .assistant })?.text, expected, script)
         if tools {
@@ -151,9 +149,7 @@ final class CloudLiveIntegrationTests: XCTestCase {
     func testLiveElicitationURL() async throws {
         let api = try await client()
         let chat = UUID()
-        // Prove the same request shape is accepted with a known script first.
-        // A validation error only after changing the script identifies an old
-        // local server missing this scenario, rather than hiding other failures.
+        // Baseline request separates stale local-server missing-scenario errors from request bugs.
         let (control, _) = try await drive("text", client: api, request: request(chat: chat))
         XCTAssertEqual(control.outcome, .completed)
         let (turn, _) = try await drive("elicitationURL", client: api, request: request(chat: chat), allowMissingURL: true)

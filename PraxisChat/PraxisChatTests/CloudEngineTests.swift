@@ -158,7 +158,7 @@ final class CloudEngineTests: XCTestCase {
         let engine = CloudChatEngine(client: try client(backend), onCursor: { _, _, _, _ in received.fulfill() })
         let task = Task { for await _ in engine.run(request) {} }
         await fulfillment(of: [received], timeout: 4)
-        flag.cancel(); task.cancel() // deliberately faster than the watcher
+        flag.cancel(); task.cancel() // Cancels deliberately faster than the watcher task to exercise the race.
         await task.value
         await waitUntil { backend.recordedRequests().contains { $0.path.hasSuffix("/cancel") } }
         XCTAssertTrue(backend.recordedRequests().contains { $0.path.hasSuffix("/cancel") })

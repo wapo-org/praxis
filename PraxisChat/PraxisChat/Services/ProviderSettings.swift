@@ -4,19 +4,14 @@ import AgentCore
 import AgentProviders
 import AgentMCP
 
-/// One configured model endpoint. Everything here is safe to write to
-/// disk: `ProviderEndpoint`'s Codable form never carries the API key,
-/// which lives in the Keychain under `ProviderSettings.keychainKey(for:)`,
-/// and secret-like extra header values are blanked on save into the
-/// Keychain the same way (`headerKeychainKey(for:header:)`).
+/// Safe to persist: API keys and secret-like headers live in Keychain and are blanked on disk.
 struct ProviderProfile: Codable, Identifiable, Hashable, Sendable {
     var id: UUID
     var name: String
-    /// Where the defaults came from; nothing downstream checks it.
+    /// Provenance only; nothing downstream branches on preset.
     var preset: ProviderPreset
-    /// Base URL, headers, capability overrides, wire options. Key always empty.
+    /// Endpoint config without secrets (API key is always empty in persisted form).
     var endpoint: ProviderEndpoint
-    /// The model new turns use (the tray's model picker writes it).
     var defaultModel: String
 
     init(id: UUID = UUID(), name: String, preset: ProviderPreset, endpoint: ProviderEndpoint, defaultModel: String) {
@@ -29,8 +24,6 @@ struct ProviderProfile: Codable, Identifiable, Hashable, Sendable {
         self.defaultModel = defaultModel
     }
 
-    /// A new profile with the preset's defaults; custom presets still
-    /// need a base URL before they can be saved.
     static func draft(_ preset: ProviderPreset) -> ProviderProfile {
         let endpoint = preset.endpoint() ?? ProviderEndpoint(
             flavor: preset.flavor, baseURL: URL(string: "http://localhost:1234/v1")!,
@@ -40,86 +33,54 @@ struct ProviderProfile: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-/// Settings → Image reading model: the profile + model that looks at
-/// images for chat models without image input (`look_at_image`).
 struct ImageReaderChoice: Codable, Hashable, Sendable {
     var profileID: UUID
     var model: String
 }
 
-/// What a live run needs from settings, resolved at send time.
 struct ProviderSelection: Sendable {
     var profileID: UUID
     var profileName: String
-    /// With the API key filled in.
+    /// Resolved endpoint with API key and header secrets populated.
     var endpoint: ProviderEndpoint
     var model: String
     var maxOutputTokens: Int?
-    /// The model's context window when the server lists it.
     var contextWindow: Int? = nil
-    /// What the app knows about the model's image input. `endpoint`'s
-    /// `vision` capability already follows it (off only when `.unsupported`).
+    /// Known image input support; endpoint.vision is already disabled when .unsupported.
     var imageSupport: ImageSupport = .supported
-    /// What the app knows about the model's tool use. `endpoint`'s `tools`
-    /// capability already follows it (off only when `.unsupported`).
+    /// Known tool-use support; endpoint.tools is already disabled when .unsupported.
     var toolSupport: ToolUseSupport = .supported
-    /// The model's display name (its id when the list has none).
     var modelName: String = ""
-    /// The model's supported effort wire values, when known. Nil = unknown
-    /// (send the effort unchanged); empty = no reasoning (drop the
-    /// parameter). Builders clamp to these (`EffortLevels.clamp`).
+    /// Supported effort values: nil = unknown (send as-is), empty = unsupported (drop parameter).
     var effortLevels: [String]?
 }
 
-/// Whether a chat model takes image input, as far as the app knows. Per
-/// model, because one provider (OpenRouter) mixes both kinds.
+/// Per-model image support, since multi-model providers (e.g. OpenRouter) mix capabilities.
 enum ImageSupport: Sendable, Equatable {
-    /// The model list says it takes images.
     case supported
-    /// Nothing says either way: the list is missing, predates the flag, or
-    /// the server doesn't report modalities. Images are tried (a model is
-    /// only treated as blind once that's confirmed); the first rejection
-    /// settles it (`ProviderSettings.markImagesUnsupported`).
+    /// Unspecified by server; images are attempted until a rejection confirms unsupported.
     case unknown
-    /// Confirmed: the profile's vision capability is off, the list says
-    /// text-only, or the provider turned images down. Images go out as
-    /// placeholders.
+    /// Confirmed blind (capability off, listed text-only, or rejected); sends placeholders.
     case unsupported
 }
 
-/// Whether a chat model takes tool use, as far as the app knows. Per
-/// model, because one provider (OpenRouter) mixes both kinds. Named for
-/// the capability, since `ToolSupport` is the package's rejection matcher.
+/// Per-model tool support (OpenRouter mixes models); named to avoid colliding with ToolSupport.
 enum ToolUseSupport: Sendable, Equatable {
-    /// The model list says it takes tools.
     case supported
-    /// Nothing says either way: the list is missing, predates the flag, or
-    /// the server doesn't report parameters. Tools are tried (a model is
-    /// only treated as plain-chat once that's confirmed); the first
-    /// rejection settles it (`ProviderSettings.markToolsUnsupported`).
+    /// Unspecified by server; tools are attempted until a rejection confirms unsupported.
     case unknown
-    /// Confirmed: the profile's tools capability is off, the list says
-    /// no tools, or the provider turned tool use down. Requests go out
-    /// without tools, with past calls flattened to text.
+    /// Confirmed no-tools (capability off, listed, or rejected); omits tools and flattens history.
     case unsupported
 }
 
-/// A model's effort levels as learned from a provider rejection: the
-/// narrowed wire values plus when they were learned (they lapse, like the
-/// image/tool rejections, so a provider that changes is noticed).
+/// Narrowed effort levels learned from a rejection; timestamped so they lapse if updated.
 struct LearnedEffortLevels: Sendable, Equatable, Codable {
     /// Supported wire values; empty = the parameter itself was rejected.
     var levels: [String]
     var learnedAt: Date
 }
 
-/// Provider profiles, the selected one, and each profile's model list.
-/// Non-secret parts are one JSON file in Application Support; API keys
-/// are Keychain items (`AfterFirstUnlockThisDeviceOnly`, via
-/// `KeychainSecretStore`) and never touch the JSON, logs or descriptions.
-///
-/// UI binds to `profiles`, `selectedProfileID`, `models(for:)` and
-/// `refreshingModels`; edits go through `save(_:apiKey:)`.
+/// Persists profiles as JSON; secrets stay in Keychain (AfterFirstUnlockThisDeviceOnly).
 @MainActor
 @Observable
 final class ProviderSettings {
@@ -127,14 +88,12 @@ final class ProviderSettings {
         var version = 1
         var profiles: [ProviderProfile] = []
         var selectedProfileID: UUID?
-        /// Last `listModels()` result per profile.
         var models: [UUID: [ModelInfo]] = [:]
         var imageReader: ImageReaderChoice?
         /// Optional, so files from before these existed still decode.
         var modelsFetchedAt: [UUID: Date]?
         var imageRejections: [UUID: [String: Date]]?
         var toolRejections: [UUID: [String: Date]]?
-        /// Pinned model ids per profile, in pin order.
         var pinnedModels: [UUID: [String]]?
         var learnedEffortLevels: [UUID: [String: LearnedEffortLevels]]?
     }
@@ -142,48 +101,27 @@ final class ProviderSettings {
     private(set) var profiles: [ProviderProfile] = []
     private(set) var selectedProfileID: UUID?
     private(set) var modelCache: [UUID: [ModelInfo]] = [:]
-    /// Profiles whose model list is loading.
     private(set) var refreshingModels: Set<UUID> = []
-    /// Last model-list error per profile (cleared by a successful refresh).
     private(set) var modelErrors: [UUID: String] = [:]
-    /// The image-reading model, if the user picked one.
     private(set) var imageReader: ImageReaderChoice?
-    /// When each profile's model list was last read successfully. Absent =
-    /// a list cached before this was recorded (it predates the image flag
-    /// too): stale.
+    /// Last model-list fetch time; absent means pre-vision legacy cache (treated as stale).
     private(set) var modelsFetchedAt: [UUID: Date] = [:]
-    /// Models a provider turned image input down for, by profile and when
-    /// (`markImagesUnsupported`). Persisted: the next send already uses
-    /// placeholders instead of failing once more.
+    /// Persisted image-input rejections by model so subsequent sends use placeholders immediately.
     private(set) var imageRejections: [UUID: [String: Date]] = [:]
-    /// Models a provider turned tool use down for, by profile and when
-    /// (`markToolsUnsupported`). Persisted: the next send already goes
-    /// without tools instead of failing once more.
+    /// Persisted tool-use rejections by model so subsequent sends omit tools immediately.
     private(set) var toolRejections: [UUID: [String: Date]] = [:]
-    /// Pinned model ids per profile, in pin order. A pin whose model is
-    /// no longer listed stays (shown dimmed) until unpinned or deleted
-    /// with its profile.
+    /// Pinned models in pin order; unlisted pins stay until explicitly unpinned or profile deleted.
     private(set) var pinnedModelIDs: [UUID: [String]] = [:]
-    /// Models whose effort levels were narrowed by a provider rejection,
-    /// by profile (`markEffortUnsupported`, `markEffortValueUnsupported`).
-    /// Persisted: the next send already clamps instead of failing once more.
+    /// Persisted effort-level rejections so subsequent sends clamp immediately without failing.
     private(set) var learnedEffortLevels: [UUID: [String: LearnedEffortLevels]] = [:]
 
-    /// A model list older than this is read again in the background.
     static let modelListLifetime: TimeInterval = 24 * 3600
-    /// A learned "no images" lapses after this, so a provider that adds
-    /// image support later is noticed (the list flipping to image-capable
-    /// clears it sooner, `store(_:for:)`).
+    /// Lapses learned image rejections after 14d (or sooner if model list flips to image-capable).
     static let imageRejectionLifetime: TimeInterval = 14 * 24 * 3600
-    /// A learned "no tools" lapses after this, so a provider that adds
-    /// tool support later is noticed (the list flipping to tool-capable
-    /// clears it sooner, `store(_:for:)`).
+    /// Lapses learned tool rejections after 14d (or sooner if model list flips to tool-capable).
     static let toolRejectionLifetime: TimeInterval = 14 * 24 * 3600
-    /// Learned effort levels lapse after this, so a provider that changes
-    /// its levels is noticed (the list reporting different levels clears
-    /// them sooner, `store(_:for:)`).
+    /// Lapses learned effort levels after 14d (or sooner if model list reports changed levels).
     static let effortRejectionLifetime: TimeInterval = 14 * 24 * 3600
-    /// Minimum gap between two list requests to one profile in a session.
     static let refreshRetryGap: TimeInterval = 600
 
     @ObservationIgnored private var modelsAttemptedAt: [UUID: Date] = [:]
@@ -211,8 +149,7 @@ final class ProviderSettings {
         }
     }
 
-    /// Moves secret-like extra-header values left in the JSON by older
-    /// builds into the Keychain, blanking them in the file (R3-L4).
+    /// Migrates legacy plaintext secret headers from JSON into Keychain, blanking JSON values.
     private func migrateHeaderSecretsToKeychain() {
         var moved = false
         for i in profiles.indices {
@@ -226,17 +163,14 @@ final class ProviderSettings {
         if moved { persist() }
     }
 
-    /// Pins for the demo catalogue (no profile while no provider is
-    /// configured) live under this fixed key.
+    /// Fixed storage key for demo-mode model pins before any provider is configured.
     static let demoProfileID = UUID(uuidString: "00000000-0000-0000-0000-0000000000a1")!
 
     static let keychainService = "PraxisChat.Providers"
 
     static func keychainKey(for id: UUID) -> String { "provider.\(id.uuidString).apiKey" }
 
-    /// Keychain account for one secret-like extra header value (R3-L4).
-    /// The name is slugified (header names are case-insensitive), so two
-    /// rows differing only by case share one secret.
+    /// Keychain key for a secret header; slugified so case-only variants share one secret.
     static func headerKeychainKey(for id: UUID, header name: String) -> String {
         "provider.\(id.uuidString).header.\(headerSlug(name))"
     }
@@ -247,9 +181,7 @@ final class ProviderSettings {
         }.joined()
     }
 
-    /// Header names whose values are secrets: exact well-known names plus
-    /// anything naming a credential. False positives only cost Keychain
-    /// storage (sends are unchanged), so this errs broad.
+    /// Errs broad on secret-header detection; false positives only move storage to Keychain.
     static func isSecretHeaderName(_ name: String) -> Bool {
         let lower = name.lowercased().trimmingCharacters(in: .whitespaces)
         if ["authorization", "proxy-authorization", "cookie", "x-api-key", "api-key"].contains(lower) { return true }
@@ -272,8 +204,6 @@ final class ProviderSettings {
 
     func apiKey(for id: UUID) -> String? { try? secrets.secret(for: Self.keychainKey(for: id)) }
 
-    /// The profile's endpoint with its key and header secrets, ready
-    /// for `ProviderFactory`.
     func endpoint(for id: UUID) -> ProviderEndpoint? {
         guard var endpoint = profile(id)?.endpoint else { return nil }
         endpoint.apiKey = apiKey(for: id) ?? ""
@@ -285,13 +215,9 @@ final class ProviderSettings {
         return endpoint
     }
 
-    /// Cached models, sorted as the server listed them.
     func models(for id: UUID) -> [ModelInfo] { modelCache[id] ?? [] }
 
-    /// What the app knows about a model's image input: off when the
-    /// profile's vision capability is off or the provider turned images
-    /// down (`markImagesUnsupported`), otherwise what the model list says;
-    /// `.unknown` when the list doesn't (nil `ModelInfo.supportsImages`).
+    /// Precedence: capability off / fresh rejection -> .unsupported, else list value or .unknown.
     func imageSupport(profileID: UUID, model: String, now: Date = Date()) -> ImageSupport {
         guard let profile = profile(profileID), profile.endpoint.capabilities.vision else { return .unsupported }
         if let learned = imageRejections[profileID]?[model], now.timeIntervalSince(learned) < Self.imageRejectionLifetime {
@@ -304,30 +230,22 @@ final class ProviderSettings {
         }
     }
 
-    /// Whether images should be sent to the model: everything but a
-    /// confirmed "no".
     func supportsImages(profileID: UUID, model: String) -> Bool {
         imageSupport(profileID: profileID, model: model) != .unsupported
     }
 
-    /// The model list's own answer (nil = it doesn't say).
     func listedImageSupport(profileID: UUID, model: String) -> Bool? {
         models(for: profileID).first { $0.id == model }?.supportsImages
     }
 
-    /// The selected chat model's image support.
     var selectedImageSupport: ImageSupport {
         guard let profile = selectedProfile else { return .supported }
         return imageSupport(profileID: profile.id, model: profile.defaultModel)
     }
 
-    /// The selected chat model can take images (or might: it isn't ruled out).
     var selectedModelSupportsImages: Bool { selectedImageSupport != .unsupported }
 
-    /// What the app knows about a model's tool use: off when the
-    /// profile's tools capability is off or the provider turned tool use
-    /// down (`markToolsUnsupported`), otherwise what the model list says;
-    /// `.unknown` when the list doesn't (nil `ModelInfo.supportsTools`).
+    /// Precedence: capability off / fresh rejection -> .unsupported, else list value or .unknown.
     func toolSupport(profileID: UUID, model: String, now: Date = Date()) -> ToolUseSupport {
         guard let profile = profile(profileID), profile.endpoint.capabilities.tools else { return .unsupported }
         if let learned = toolRejections[profileID]?[model], now.timeIntervalSince(learned) < Self.toolRejectionLifetime {
@@ -340,26 +258,19 @@ final class ProviderSettings {
         }
     }
 
-    /// Whether tools should be offered to the model: everything but a
-    /// confirmed "no".
     func supportsTools(profileID: UUID, model: String) -> Bool {
         toolSupport(profileID: profileID, model: model) != .unsupported
     }
 
-    /// The model list's own answer (nil = it doesn't say).
     func listedToolSupport(profileID: UUID, model: String) -> Bool? {
         models(for: profileID).first { $0.id == model }?.supportsTools
     }
 
-    /// The selected chat model's tool support.
     var selectedToolSupport: ToolUseSupport {
         guard let profile = selectedProfile else { return .supported }
         return toolSupport(profileID: profile.id, model: profile.defaultModel)
     }
 
-    /// The selected chat model can call tools (needed for `look_at_image`).
-    /// Per model, like images: a model the list (or a past rejection) rules
-    /// out counts as no-tools even when the endpoint allows them.
     var selectedModelSupportsTools: Bool {
         guard selectedProfile != nil else { return false }
         return selectedToolSupport != .unsupported
@@ -367,15 +278,13 @@ final class ProviderSettings {
 
     // MARK: Pinned models
 
-    /// Pinned model ids for the profile, in pin order.
     func pinnedModels(for id: UUID) -> [String] { pinnedModelIDs[id] ?? [] }
 
     func isPinned(profileID: UUID, model: String) -> Bool {
         pinnedModelIDs[profileID]?.contains(model) ?? false
     }
 
-    /// Pins or unpins a model. New pins go last; unpinning keeps the order
-    /// of the rest. The demo key needs no profile; real profiles must exist.
+    /// Appends new pins and preserves order on unpin; requires profile except for demoProfileID.
     func setPinned(_ pinned: Bool, profileID: UUID, model: String) {
         guard !model.isEmpty,
               profileID == Self.demoProfileID || profiles.contains(where: { $0.id == profileID }) else { return }
@@ -391,12 +300,7 @@ final class ProviderSettings {
         persist()
     }
 
-    /// What the app knows about a model's reasoning-effort levels, as raw
-    /// wire values: empty when the profile's effort capability is off or a
-    /// past rejection ruled reasoning out (`markEffortUnsupported`),
-    /// otherwise the learned narrowing when fresh, otherwise what the model
-    /// list says (`ModelInfo.reasoningEfforts`); nil when nothing does
-    /// (unknown: send the effort unchanged and learn from a rejection).
+    /// Precedence: off/rejected -> [], learned narrowing, listed levels, else nil (send as-is).
     func effortWireValues(profileID: UUID, model: String, now: Date = Date()) -> [String]? {
         guard let profile = profile(profileID), profile.endpoint.capabilities.reasoningEffort else { return [] }
         if let learned = learnedEffortLevels[profileID]?[model],
@@ -406,42 +310,32 @@ final class ProviderSettings {
         return models(for: profileID).first { $0.id == model }?.reasoningEfforts
     }
 
-    /// The selected chat model's effort levels as raw wire values (nil =
-    /// unknown, empty = no reasoning).
+    /// Selected model's effort wire values: nil = unknown, [] = reasoning unsupported.
     var selectedEffortWireValues: [String]? {
         guard let profile = selectedProfile else { return nil }
         return effortWireValues(profileID: profile.id, model: profile.defaultModel)
     }
 
-    /// The image reader's profile, endpoint (with key) and model, when set
-    /// and still valid.
     func imageReaderSelection() -> (profile: ProviderProfile, endpoint: ProviderEndpoint, model: String, info: ModelInfo?)? {
         guard let choice = imageReader, let profile = profile(choice.profileID),
               let endpoint = endpoint(for: choice.profileID), !choice.model.isEmpty else { return nil }
         return (profile, endpoint, choice.model, models(for: profile.id).first { $0.id == choice.model })
     }
 
-    /// "OpenRouter · GPT-5 mini" for the composer and Settings.
     var imageReaderDisplayName: String? {
         guard let reader = imageReaderSelection() else { return nil }
         return "\(reader.profile.name) · \(reader.info?.displayName ?? reader.model)"
     }
 
-    /// The selected profile and model, or nil when nothing is configured
-    /// (live runs then fail fast and point to Settings).
     func selection(model requested: String? = nil) -> ProviderSelection? {
         guard let profile = selectedProfile, var endpoint = endpoint(for: profile.id) else { return nil }
         let model = (requested?.isEmpty == false ? requested : nil) ?? profile.defaultModel
         guard !model.isEmpty else { return nil }
         let info = models(for: profile.id).first { $0.id == model }
-        // Vision is per model: a model known to be text-only gets
-        // placeholders instead of image bytes (no "no endpoints support
-        // image input" failures). Unknown is tried, not assumed blind.
+        // Vision is per model: unknown tries images; only confirmed text-only sends placeholders.
         let support = imageSupport(profileID: profile.id, model: model)
         endpoint.capabilities.vision = support != .unsupported
-        // Tools are per model too: a model known not to take them gets a
-        // plain request (no "no endpoints support tool use" failures).
-        // Unknown tries with tools; the first rejection settles it.
+        // Tools are per model: unknown tries tools; only confirmed unsupported sends plain chat.
         let tools = toolSupport(profileID: profile.id, model: model)
         endpoint.capabilities.tools = tools != .unsupported
         return ProviderSelection(profileID: profile.id, profileName: profile.name, endpoint: endpoint, model: model,
@@ -452,8 +346,7 @@ final class ProviderSettings {
 
     // MARK: Editing
 
-    /// Adds or replaces a profile. `apiKey`: nil keeps the stored key,
-    /// empty removes it. The first profile becomes the selected one.
+    /// Saves profile; apiKey nil keeps stored key, empty deletes it; first profile auto-selects.
     func save(_ profile: ProviderProfile, apiKey: String?) throws {
         var profile = profile
         profile.endpoint.apiKey = ""
@@ -462,10 +355,7 @@ final class ProviderSettings {
             let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { try secrets.removeSecret(for: key) } else { try secrets.setSecret(trimmed, for: key) }
         }
-        // Secret-like header values live in the Keychain like the API key;
-        // the file keeps only their names (blanked). A blanked row coming
-        // back keeps its secret (the editor never shows the value); a
-        // removed row forgets it.
+        // Blanked secret header keeps existing Keychain value; removing the row deletes the secret.
         let incomingSlugs = Set(profile.endpoint.extraHeaders.keys.filter { Self.isSecretHeaderName($0) }
             .map(Self.headerSlug(_:)))
         if let old = profiles.first(where: { $0.id == profile.id }) {
@@ -518,7 +408,6 @@ final class ProviderSettings {
         persist()
     }
 
-    /// Settings → Image reading model. Nil turns it off.
     func setImageReader(_ choice: ImageReaderChoice?) {
         guard choice != imageReader else { return }
         if let choice, !profiles.contains(where: { $0.id == choice.profileID }) { return }
@@ -532,7 +421,6 @@ final class ProviderSettings {
         persist()
     }
 
-    /// The model new turns use for this profile.
     func setModel(_ model: String, for id: UUID) {
         guard let i = profiles.firstIndex(where: { $0.id == id }), profiles[i].defaultModel != model else { return }
         profiles[i].defaultModel = model
@@ -541,9 +429,7 @@ final class ProviderSettings {
 
     // MARK: Network
 
-    /// Lists the profile's models and caches them. Servers without a model
-    /// list leave the cache empty: the UI falls back to manual entry. A
-    /// refresh already under way is joined, not repeated.
+    /// Coalesces concurrent refreshes per profile; empty cache lets UI fall back to manual entry.
     @discardableResult
     func refreshModels(for id: UUID) async -> [ModelInfo] {
         if let running = refreshesInFlight[id] { return await running.value }
@@ -569,8 +455,6 @@ final class ProviderSettings {
         return await task.value
     }
 
-    /// The profile's list is missing, older than a day, or from before
-    /// lists carried image support (no read time recorded).
     func modelListIsStale(_ id: UUID, now: Date = Date()) -> Bool {
         guard let fetched = modelsFetchedAt[id] else { return true }
         return now.timeIntervalSince(fetched) > Self.modelListLifetime
@@ -581,9 +465,7 @@ final class ProviderSettings {
         return now.timeIntervalSince(last) > Self.refreshRetryGap
     }
 
-    /// Reads, in the background, every profile's model list that's stale
-    /// (see `modelListIsStale`). Call at launch: it's what keeps cached
-    /// lists from predating the image flag forever.
+    /// Refreshes stale caches at launch so legacy pre-vision model lists eventually upgrade.
     func refreshStaleModelListsInBackground(now: Date = Date()) {
         for profile in profiles where modelListIsStale(profile.id, now: now) && mayRequestModelList(profile.id, now: now) {
             let id = profile.id
@@ -591,11 +473,7 @@ final class ProviderSettings {
         }
     }
 
-    /// Before a send with images: when the selected model's image support
-    /// isn't known, waits (up to `timeout`; the read goes on after that) for
-    /// a current model list, so a text-only model is recognized before
-    /// anything is sent. A no-op when the answer is already known, or the
-    /// list was just asked for.
+    /// Awaits list up to timeout if image support is unknown (refresh continues on timeout).
     func refreshForImages(model requested: String?, timeout: Duration = .seconds(4)) async {
         guard let profile = selectedProfile else { return }
         let model = (requested?.isEmpty == false ? requested : nil) ?? profile.defaultModel
@@ -619,46 +497,28 @@ final class ProviderSettings {
         timer.cancel()
     }
 
-    /// The provider turned image input down for this model (a "no endpoints
-    /// support image input" style error): remember it, so this and later
-    /// chats send placeholders from the start. Lapses on its own after
-    /// `imageRejectionLifetime`, or when the model list says the model
-    /// gained image input.
+    /// Records image rejection so future sends use placeholders; lapses in 14d or on list upgrade.
     func markImagesUnsupported(profileID: UUID, model: String, now: Date = Date()) {
         guard profiles.contains(where: { $0.id == profileID }), !model.isEmpty else { return }
         imageRejections[profileID, default: [:]][model] = now
         persist()
     }
 
-    /// The provider turned tool use down for this model (a "no endpoints
-    /// support tool use" style error): remember it, so this and later
-    /// chats send plain requests from the start. Lapses on its own after
-    /// `toolRejectionLifetime`, or when the model list says the model
-    /// gained tool support.
+    /// Records tool rejection so future sends omit tools; lapses in 14d or on list upgrade.
     func markToolsUnsupported(profileID: UUID, model: String, now: Date = Date()) {
         guard profiles.contains(where: { $0.id == profileID }), !model.isEmpty else { return }
         toolRejections[profileID, default: [:]][model] = now
         persist()
     }
 
-    /// The provider turned the effort parameter down for this model (an
-    /// "Unrecognized request argument supplied: reasoning_effort" style
-    /// error): remember it, so this and later chats drop the parameter
-    /// from the start. Lapses on its own after `effortRejectionLifetime`,
-    /// or when the model list reports levels for the model.
+    /// Records effort rejection so future sends omit it; lapses in 14d or when list reports levels.
     func markEffortUnsupported(profileID: UUID, model: String, now: Date = Date()) {
         guard profiles.contains(where: { $0.id == profileID }), !model.isEmpty else { return }
         learnedEffortLevels[profileID, default: [:]][model] = LearnedEffortLevels(levels: [], learnedAt: now)
         persist()
     }
 
-    /// The provider turned one effort value down for this model (a
-    /// "'reasoning_effort' does not support 'xhigh'" style error):
-    /// narrow the known levels around the rejected value
-    /// (`EffortLevels.narrow`) and remember them, so this and later chats
-    /// clamp from the start. Lapses on its own after
-    /// `effortRejectionLifetime`, or when the model list reports different
-    /// levels for the model.
+    /// Narrows supported effort values around rejected value; lapses in 14d or on list level change.
     func markEffortValueUnsupported(profileID: UUID, model: String, value: String, now: Date = Date()) {
         guard profiles.contains(where: { $0.id == profileID }), !model.isEmpty else { return }
         let current = effortWireValues(profileID: profileID, model: model, now: now) ?? EffortLevels.unknownBaseline
@@ -667,18 +527,13 @@ final class ProviderSettings {
         persist()
     }
 
-    /// "Test connection" for a draft that may not be saved yet.
     func test(_ endpoint: ProviderEndpoint, model: String?) async -> ProbeReport {
         await ProviderProbe(transport: transport).test(endpoint, model: model?.isEmpty == false ? model : nil)
     }
 
-    /// Caches a model list for a saved profile.
     func store(_ models: [ModelInfo], for id: UUID, now: Date = Date()) {
         guard profiles.contains(where: { $0.id == id }) else { return }
-        // A learned rejection is forgotten when the list newly says the
-        // model takes images (it went from text-only to image-capable). One
-        // that merely disagrees with an unchanged list stays: that's a
-        // provider whose routed endpoints lack what the list advertises.
+        // Clear rejection only if list newly gains support; unchanged list means routed endpoints lag.
         if var learned = imageRejections[id], !learned.isEmpty {
             let before = Dictionary((modelCache[id] ?? []).map { ($0.id, $0.supportsImages) }, uniquingKeysWith: { a, _ in a })
             for model in models where model.supportsImages == true && (before[model.id] ?? nil) == false {
@@ -693,11 +548,7 @@ final class ProviderSettings {
             }
             toolRejections[id] = learned.isEmpty ? nil : learned
         }
-        // Learned levels are forgotten when the list reports different
-        // levels for the model (it may have gained or lost support). A
-        // list that merely disagrees with an unchanged list stays learned:
-        // that's a provider whose routed endpoints lack what the list
-        // advertises.
+        // Clear learned levels only if list changes them; unchanged list means routed endpoints lag.
         if var learned = learnedEffortLevels[id], !learned.isEmpty {
             let before = Dictionary((modelCache[id] ?? []).map { ($0.id, $0.reasoningEfforts) }, uniquingKeysWith: { a, _ in a })
             for model in models where model.reasoningEfforts != (before[model.id] ?? nil) {

@@ -1,8 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// Glass segmented control with sliding thumb (§7): matchedGeometry,
-/// selection haptic fired by the caller.
 struct GlassSegmentedControl<Option: Identifiable & Equatable>: View {
     let options: [Option]
     let selection: Option
@@ -40,7 +38,6 @@ struct GlassSegmentedControl<Option: Identifiable & Equatable>: View {
     }
 }
 
-/// Speed / intelligence dot meter (§7).
 struct DotMeter: View {
     let speed: Int
     let intelligence: Int
@@ -66,7 +63,6 @@ struct DotMeter: View {
     }
 }
 
-/// IntegrationAvatar (§9.2): 16pt tile, 4pt radius, glyph Inter Semibold 9.
 struct IntegrationAvatar: View {
     let monogram: String
     var body: some View {
@@ -79,8 +75,6 @@ struct IntegrationAvatar: View {
     }
 }
 
-/// Camera via UIImagePickerController; disabled gracefully on Simulator
-/// by the caller (spec §7).
 struct CameraPicker: UIViewControllerRepresentable {
     var onImage: (UIImage) -> Void
     @Environment(\.dismiss) private var dismiss

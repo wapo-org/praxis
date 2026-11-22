@@ -1,33 +1,15 @@
 import SwiftUI
 import AgentCore
 
-/// The Praxis AgentActivity object (spec §9) — one expanding object,
-/// three levels:
-///
-/// 1. one line, folded by default — also while the run works: "Currently
-///    working… · Exa · Web search: recent AI" carries the live progress
-///    (the call running now), then "Worked for 6s";
-/// 2. tapped open, a compact list, one line per tool call: icon, who,
-///    what, what about, trimmed with an ellipsis. Never more than a line
-///    each, streaming or not;
-/// 3. tapping a line opens that call's details: the call with its
-///    parameters, the result or the error, a command's output, the calls
-///    its code made. A line with nothing to show isn't tappable.
-///
-/// What needs the user — an approval card, "Sign in to <server>" — never
-/// waits behind a tap: it shows under its line, and under the header when
-/// the activity is folded. Header ≥36pt, lines 28pt; VoiceOver reads each
-/// line as one element and the lines with details as expandable buttons.
+/// Three-level expandable activity row; pending approvals surface even when folded.
 struct AgentActivityView: View, Equatable {
     let activity: ActivityData
     let turnID: UUID
     var onToggle: (Bool) -> Void = { _ in }
-    /// A line's details opened or closed (a command's card included).
     var onCommandToggle: (UUID, Bool) -> Void = { _, _ in }
     var onApproval: (String, ApprovalDecision) -> Void = { _, _ in }
 
-    /// Closures never compare equal, so without this every streamed token
-    /// re-rendered every activity block in the visible transcript.
+    /// Ignore closures in Equatable so streaming skips unaffected activity rows.
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.turnID == rhs.turnID && lhs.activity == rhs.activity
     }
@@ -37,20 +19,15 @@ struct AgentActivityView: View, Equatable {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            // A connector refused a step for missing credentials: the
-            // way out stays visible even when the activity is folded.
+            // Keep sign-in bar visible even when collapsed.
             ConnectorSignInBar(steps: activity.steps)
             if activity.isExpanded {
                 steps
-                    // Opacity only: sliding from the top edge made the
-                    // rows spill over whatever sits above the header. The
-                    // exit is near-instant so collapsing rows never ghost
-                    // over the answer sliding up underneath them.
+                    // Opacity-only exit avoids spilling over above rows or ghosting under text.
                     .transition(.asymmetric(
                         insertion: .opacity.animation(Motion.reveal.delay(Motion.handoff)),
                         removal: .opacity.animation(Motion.exit)))
             } else {
-                // Folded, but a call is waiting for the user's answer.
                 ForEach(activity.steps.filter(\.isWaitingOnUser)) { step in
                     ApprovalStack(step: step, onApproval: onApproval)
                         .padding(.top, 4)
@@ -63,7 +40,6 @@ struct AgentActivityView: View, Equatable {
         .accessibilityLabel(activity.isRunning ? "Agent activity, currently working" : "Agent activity, \(activity.label)")
     }
 
-    // Level 1 — disclosure header
     private var header: some View {
         Button {
             onToggle(!activity.isExpanded)
@@ -73,9 +49,7 @@ struct AgentActivityView: View, Equatable {
                     .foregroundStyle(Praxis.mutedInk)
                     .rotationEffect(.degrees(activity.isExpanded ? 90 : 0))
                     .animation(reduceMotion ? Motion.reduced : Motion.snap, value: activity.isExpanded)
-                // "Currently working…" → "Worked for 6s" are different
-                // strings: a numeric morph drew both at once. Swap them in
-                // sequence — old label out, then the new one in.
+                // Swap working and done labels sequentially so numeric morph never overlaps.
                 ZStack(alignment: .leading) {
                     Group {
                         if activity.isRunning && !reduceMotion {
@@ -96,10 +70,7 @@ struct AgentActivityView: View, Equatable {
                 .truncationMode(.tail)
                 .fixedSize(horizontal: true, vertical: false)
                 .animation(Motion.reveal, value: activity.label)
-                // Folded and working: the call running now, after the
-                // label. Open, the list shows it instead. Stacked, so the
-                // next call's line fades in where the last one was rather
-                // than beside it.
+                // Overlay live step label so next call fades in cleanly in place.
                 ZStack(alignment: .leading) {
                     if !activity.isExpanded, let step = activity.liveStep {
                         LiveStepLine(step: step)
@@ -118,29 +89,24 @@ struct AgentActivityView: View, Equatable {
         .accessibilityValue(headerValue)
     }
 
-    /// The label, plus what's running when the line shows it.
     private var headerValue: String {
         guard !activity.isExpanded, let step = activity.liveStep else { return activity.label }
         return "\(activity.label) \(step.accessibilityLine)"
     }
 
-    // Level 2 — one line per call, flush under the header
     private var steps: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(activity.steps) { step in
                 StepRow(step: step, onToggle: { open in
                     onCommandToggle(step.id, open)
                 }, onApproval: onApproval)
-                // Streamed rows fade in as a render effect only; animating
-                // their height fought the transcript's bottom anchor.
+                // Opacity fade avoids animating height against bottom transcript anchor.
                 .appearFade()
             }
         }
     }
 }
 
-/// One call: its line (level 2), then — under it, in this order — what
-/// waits on the user and, when the line is open, its details (level 3).
 private struct StepRow: View {
     let step: Step
     var onToggle: (Bool) -> Void = { _ in }
@@ -166,7 +132,6 @@ private struct StepRow: View {
                     .accessibilityIdentifier("activityStep")
             }
 
-            // Waiting on the user: the card sits right under its line.
             ApprovalStack(step: step, onApproval: onApproval)
                 .padding(.top, 4)
 
@@ -177,9 +142,7 @@ private struct StepRow: View {
                         removal: .opacity.animation(Motion.exit)))
             }
         }
-        // Clipped to the row's animating frame, whose bottom edge is where
-        // the next row currently is: the details open like a drawer and
-        // never draw over the rows below.
+        // Clip to animating frame so details expand cleanly without overdraw.
         .clipped()
         .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.reflow, value: isOpen)
         .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.reflow, value: step.isWaitingOnUser)
@@ -187,7 +150,6 @@ private struct StepRow: View {
                    value: step.codeApprovals.map(\.requestID))
     }
 
-    /// Commands keep the label they always had; the rest read as the line.
     private var buttonLabel: String {
         if step.command != nil {
             return "\(isOpen ? "Hide" : "Show") command details: \(step.finalSummary)"
@@ -195,14 +157,9 @@ private struct StepRow: View {
         return step.accessibilityLine
     }
 
-    // Level 2 — the line
     private var line: some View {
         HStack(alignment: .center, spacing: 8) {
-            // The pulse lives in its own view that exists only while the
-            // step runs: a repeating animation on a shared modifier never
-            // stopped, and kept SwiftUI's async renderer drawing every
-            // frame after a run was stopped (invisible, but the phone warmed).
-            // Core Animation runs it, so frames cost the app nothing.
+            // Isolates Core Animation pulse so stopped runs draw zero idle frames.
             if step.isRunning && !reduceMotion {
                 PulsingLucideIcon(name: step.kind.lucide, size: 14)
                     .frame(width: 14, height: 18)
@@ -241,9 +198,6 @@ private struct StepRow: View {
 }
 
 private extension Text {
-    /// "Exa · Web search: recent AI breakthroughs" — who in medium weight,
-    /// then what, then what about. One line; the ellipsis lands in the
-    /// last part.
     init(stepLine step: Step) {
         let body = Text(step.lineBody)
         if let source = step.source {
@@ -254,9 +208,6 @@ private extension Text {
     }
 }
 
-/// The folded header's live progress: "· Exa · Web search: recent AI…",
-/// lighter than the label, trimmed to what's left of the line. Exists
-/// only while the run works.
 private struct LiveStepLine: View {
     let step: Step
 
@@ -275,8 +226,6 @@ private struct LiveStepLine: View {
     }
 }
 
-/// Level 3 — what the call did, under its open line. Flush with the
-/// line's text (icon width + gap), so the details read as its children.
 private struct StepDetails: View {
     let step: Step
 
@@ -287,7 +236,6 @@ private struct StepDetails: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // The outcome, when the line says something shorter.
             if let note = step.outcomeNote {
                 Text(note)
                     .font(Type.inter(12, .caption))
@@ -317,9 +265,7 @@ private struct StepDetails: View {
     }
 }
 
-/// A labelled mono block: the call's parameters, a result, an error.
-/// Text wraps and clips at `lines`: no nested scrolling inside the
-/// transcript, and the model already keeps the head of long values.
+/// Clamped line count avoids nested scrolling inside transcript.
 private struct DetailBlock: View {
     let label: String
     let text: String
@@ -347,7 +293,6 @@ private struct DetailBlock: View {
     }
 }
 
-/// Micro-traces: notes, skill reads, the calls a script made, images read.
 private struct TraceList: View {
     let traces: [Trace]
     let droppedCount: Int
@@ -394,8 +339,6 @@ private struct TraceList: View {
     }
 }
 
-/// The approval cards a step is waiting on: its own call's, then one per
-/// call its code made. Shown under the line whether or not it is open.
 private struct ApprovalStack: View {
     let step: Step
     var onApproval: (String, ApprovalDecision) -> Void
@@ -407,8 +350,6 @@ private struct ApprovalStack: View {
                 if let approval = step.approval {
                     card(approval)
                 }
-                // Calls the step's code made: inside the run that asked,
-                // one card per waiting call.
                 ForEach(step.codeApprovals, id: \.requestID) { card($0) }
             }
         }
@@ -423,11 +364,6 @@ private struct ApprovalStack: View {
     }
 }
 
-/// Inline approval (spec §9 language): what will run, why it asks, the
-/// exact arguments, and three answers. Lives inside the step it gates,
-/// so the decision reads in context and folds away once given. A call
-/// made from inside code says so: the model didn't call the tool itself,
-/// its JavaScript did.
 private struct ApprovalCard: View {
     let approval: PendingApproval
     var onDecision: (ApprovalDecision) -> Void

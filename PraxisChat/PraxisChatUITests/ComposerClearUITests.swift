@@ -1,9 +1,6 @@
 import XCTest
 
-/// The composer must be empty after a send, whatever the keyboard is doing
-/// with the word being typed (autocorrect candidate, predictive bar,
-/// multilingual or IME composition). A real device kept the sent text in
-/// the field while the run was already going.
+/// Composer must clear on send even with active autocorrect, predictive bar, or IME composition.
 final class ComposerClearUITests: XCTestCase {
     var app: XCUIApplication!
 
@@ -21,7 +18,6 @@ final class ComposerClearUITests: XCTestCase {
         return tv.exists ? tv : app.textFields["Message"]
     }
 
-    /// The field's text; the placeholder stands in for an empty field.
     private var fieldText: String {
         let value = (field.value as? String) ?? ""
         return value == "Plan, ask, build..." ? "" : value
@@ -33,8 +29,6 @@ final class ComposerClearUITests: XCTestCase {
         _ = app.buttons["Record voice message"].waitForExistence(timeout: 4)
     }
 
-    /// Types, then sends at once (no pause for the keyboard to settle),
-    /// and checks the field after the keyboard has had time to react.
     func testSendClearsFieldWithPendingAutocorrect() {
         let drafts = ["teh", "adn wirte a long essay", "write a long essay", "recieve", "dont", "Im", "hte quick brown fox"]
         var failures: [String] = []
@@ -42,7 +36,6 @@ final class ComposerClearUITests: XCTestCase {
             field.tap()
             field.typeText(draft)
             app.buttons["Send message"].tap()
-            // Poll: a re-committed text may land a beat later.
             var leftover = ""
             for _ in 0..<8 {
                 Thread.sleep(forTimeInterval: 0.12)
@@ -53,7 +46,6 @@ final class ComposerClearUITests: XCTestCase {
                 failures.append("#\(i) \"\(draft)\" left \"\(leftover)\" in the field")
                 let shot = XCTAttachment(screenshot: app.screenshot())
                 shot.name = "leftover-\(i)"; shot.lifetime = .keepAlways; add(shot)
-                // Clear it so the next iteration starts clean.
                 field.tap()
                 field.press(forDuration: 1.0)
                 if app.menuItems["Select All"].waitForExistence(timeout: 2) { app.menuItems["Select All"].tap() }
@@ -64,12 +56,7 @@ final class ComposerClearUITests: XCTestCase {
         XCTAssertTrue(failures.isEmpty, failures.joined(separator: "; "))
     }
 
-    /// The device bug, made deterministic: the keyboard commits an edit
-    /// (a candidate, marked text, an autocorrection) right after send is
-    /// tapped, before SwiftUI pushes the cleared draft into the text view.
-    /// That edit used to copy the whole sent message back into the field.
-    /// The app replays such an edit after every send under
-    /// `-PraxisSimulateKeyboardCommit`.
+    /// Replays a post-send keyboard commit before SwiftUI clears the text view to guard the race.
     func testSendClearsFieldWhenKeyboardCommitsAfterSend() {
         app.terminate()
         app = XCUIApplication()

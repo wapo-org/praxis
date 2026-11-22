@@ -1,11 +1,6 @@
 import XCTest
 
-/// CPU measurement probe (not part of the regular suite): scripted runs a
-/// host-side sampler measures. Skipped unless `PRAXIS_PERF` is set
-/// (`TEST_RUNNER_PRAXIS_PERF=1 xcodebuild test -only-testing:…/PerfProbe`).
-/// Each phase writes a wall-clock marker so the sampler's CPU-time deltas
-/// can be cut to exactly that window. Nothing queries the app inside a
-/// window: accessibility snapshots would add app CPU of their own.
+/// Perf probe gated on PRAXIS_PERF; avoid querying the app mid-window as AX snapshots add app CPU.
 final class PerfProbe: XCTestCase {
     private func mark(_ label: String) {
         let line = "\(label) \(Date().timeIntervalSince1970)\n"
@@ -24,8 +19,6 @@ final class PerfProbe: XCTestCase {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["PRAXIS_PERF"] != nil, "Optional performance measurement requires PRAXIS_PERF")
     }
 
-    /// New chat → "Research progressive blur" → the whole run (activity,
-    /// then the streamed answer), then the settled thread.
     func testPerfDemoRun() {
         let app = XCUIApplication()
         app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES"]
@@ -46,8 +39,6 @@ final class PerfProbe: XCTestCase {
         mark("settled-end")
     }
 
-    /// The long seeded thread, untouched: idle cost of a big transcript.
-    /// Then a retry of its last turn: a run at the bottom of a long thread.
     func testPerfLongThread() {
         let app = XCUIApplication()
         app.launchArguments += ["-PraxisEngine", "demo", "-PraxisResetData", "YES", "-PraxisLongThread", "YES"]

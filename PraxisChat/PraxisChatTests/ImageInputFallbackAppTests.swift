@@ -8,12 +8,7 @@ import AgentMCP
 import AgentTestSupport
 @testable import PraxisChat
 
-/// The device bug: an OpenRouter model whose image support the app didn't
-/// know ("Inception: Mercury 3") got the photo and the run died with
-/// "HTTP 404: No endpoints found that support image input". Now unknown
-/// support is settled from a fresh model list before sending, and a
-/// rejection is learned, persisted and answered by resending once with
-/// placeholders.
+/// Refreshes unknown model image support pre-send; learns rejections and resends with placeholders.
 @MainActor
 final class ImageInputFallbackAppTests: XCTestCase {
     private var directory: URL!
@@ -112,7 +107,6 @@ final class ImageInputFallbackAppTests: XCTestCase {
         store.send(text: "What's on the screenshot?")
         await waitUntil { !store.isRunning }
 
-        // One rejected request with the image, then the same run as text.
         XCTAssertEqual(chat.requests.count, 2)
         XCTAssertTrue(body(chat.requests.first).contains("image_url"))
         let resent = body(chat.requests.last)
@@ -133,7 +127,6 @@ final class ImageInputFallbackAppTests: XCTestCase {
         XCTAssertTrue(turn.transcript[0].parts.contains { if case .image = $0 { return true }; return false },
                       "the transcript keeps the image; placeholders are applied per request")
 
-        // Learned and persisted: the next send goes as text from the start.
         XCTAssertEqual(settings.imageSupport(profileID: profile.id, model: Self.mercury), .unsupported)
         XCTAssertEqual(self.settings().imageSupport(profileID: profile.id, model: Self.mercury), .unsupported,
                        "survives a relaunch")
@@ -149,9 +142,7 @@ final class ImageInputFallbackAppTests: XCTestCase {
 
     // MARK: Settling unknown support up front
 
-    /// What the device had: a list cached before lists carried image
-    /// support (no `supportsImages`, no read time). It counts as stale and
-    /// is read again, and the fresh list settles Mercury as text-only.
+    /// Cached model lists lacking supportsImages/timestamp count as stale and trigger a refresh.
     func testAListFromBeforeTheImageFlagIsStaleAndTheRefreshSettlesIt() async throws {
         let first = settings()
         let profile = openRouterProfile()
@@ -222,7 +213,6 @@ final class ImageInputFallbackAppTests: XCTestCase {
                               attachments: attachments, services: services)
         store.attachments = [Attachment(kind: .photo, name: "shot", imageData: png(), store: attachments)]
 
-        // Listed as text-only: caught before anything is asked.
         settings.setImageReader(ImageReaderChoice(profileID: chat.id, model: Self.mercury))
         guard case .unavailable(let message) = AgentServices.imageReaderAccess(settings: settings, consent: consent) else {
             return XCTFail("a text-only reader isn't used")
@@ -231,7 +221,6 @@ final class ImageInputFallbackAppTests: XCTestCase {
         XCTAssertTrue(message.contains("Settings → Image reading model"), message)
         XCTAssertEqual(store.imageInputHint, .readerCantSeeImages("OpenRouter · Inception: Mercury 3"))
 
-        // Unknown until its provider turns an image down: then remembered.
         settings.setImageReader(ImageReaderChoice(profileID: chat.id, model: "some/unlisted-model"))
         guard case .ready(let reader) = AgentServices.imageReaderAccess(settings: settings, consent: consent) else {
             return XCTFail("unknown is tried")

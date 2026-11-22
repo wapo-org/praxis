@@ -1,8 +1,7 @@
 import Foundation
 import Observation
 
-/// A verified bearer identity selects the namespace. Cached UI paints before
-/// network verification; disk cleanup is serialized with subsequent sign-in.
+/// Caches UI on launch; serializes disk cleanup with sign-in by bearer identity.
 @MainActor
 @Observable
 final class CloudAccountReplica {
@@ -63,8 +62,7 @@ final class CloudAccountReplica {
                 await persistence?.flush()
                 do {
                     if let oldDirectory { try await disk.remove(oldDirectory) }
-                    // select() may still be suspended: the identity file is the
-                    // durable account selector even before directory is installed.
+                    // Identity file selects account durably before directory setup finishes.
                     if let data = await disk.read(identityURL), let identity = try? JSONDecoder().decode(Identity.self, from: data) {
                         try await disk.remove(CloudReplicaScope.directory(root: root, origin: origin, userID: identity.userID))
                     }

@@ -1,8 +1,7 @@
 import Foundation
 
 extension CloudServices {
-    /// Small configuration lists exhaust opaque cursor pages. A repeated
-    /// cursor is an explicit server error, never an infinite request loop.
+    /// Exhausts cursor pages and errors on repeated cursor to prevent loops.
     nonisolated static func allPages<Item: Decodable & Sendable>(_ client: CloudAPIClient, _ path: String, filters: [URLQueryItem] = []) async throws -> [Item] {
         var result: [Item] = []
         var cursor: String?

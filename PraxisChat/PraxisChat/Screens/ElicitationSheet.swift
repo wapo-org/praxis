@@ -2,17 +2,11 @@ import SwiftUI
 import AgentCore
 import AgentMCP
 
-/// A connector asking the user for something mid-call: a small form, or
-/// consent to open a URL. Always names the server and offers all three
-/// answers the protocol has: accept (Submit / Open), Decline (an explicit
-/// no) and Cancel (dismissed without deciding; swiping away does the
-/// same). URLs show their host up front and in full below, and open only
-/// after the user taps Open, in a Safari view the app can't read.
+/// MCP elicitation sheet: offers accept/decline/cancel and opens URLs only in isolated Safari.
 struct ElicitationSheet: View {
     let pending: ElicitationCenter.Pending
     @Environment(ChatStore.self) private var store
     @State private var form: ElicitationForm
-    /// Fields the user has left (their errors show from then on).
     @State private var touched: Set<String> = []
     @State private var showAllErrors = false
     @State private var showSafari: URL?
@@ -62,7 +56,6 @@ struct ElicitationSheet: View {
         .onChange(of: focused) { old, _ in
             if let old { touched.insert(old) }
         }
-        // Swiped away without an answer: the asking call gets `cancel`.
         .onDisappear {
             if store.elicitationCenter?.queue.contains(where: { $0.id == pending.id }) == true {
                 store.elicitationCenter?.respond(pending.id, with: .cancel)
@@ -108,8 +101,6 @@ struct ElicitationSheet: View {
         .animation(reduceMotion ? Motion.reduced : Motion.reflow, value: shownProblems)
     }
 
-    /// Errors appear once a field has been left, or after a submit try —
-    /// not while the user is still typing the first characters.
     private func shownProblem(_ field: ElicitationField) -> String? {
         guard showAllErrors || touched.contains(field.key) else { return nil }
         return form.problem(for: field)
@@ -147,7 +138,6 @@ struct ElicitationSheet: View {
         }
     }
 
-    /// `auth.acme.com` and `mcp.acme.com` are the same site for this note.
     private static func sameSite(_ a: String, _ b: String) -> Bool {
         func site(_ host: String) -> String { host.lowercased().split(separator: ".").suffix(2).joined(separator: ".") }
         return site(a) == site(b)
@@ -277,8 +267,6 @@ private struct FieldRow: View {
         }
     }
 
-    /// Date formats get a picker; the value stays the ISO text the
-    /// schema asks for. Optional dates start empty ("Add").
     @ViewBuilder
     private var dateControl: some View {
         let isDateTime = field.format == .dateTime
@@ -332,7 +320,6 @@ private struct FieldRow: View {
         }
     }
 
-    /// The description, plus the bounds a number or text must keep to.
     private var hint: String? {
         var parts: [String] = []
         if let detail = field.detail, !detail.isEmpty { parts.append(detail) }

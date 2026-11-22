@@ -7,8 +7,6 @@ import AgentRuntime
 import AgentTestSupport
 @testable import PraxisChat
 
-/// Per-conversation connector toggles after a chat froze its tools, and
-/// AI-data consent gating, through `ChatStore` with the live engine.
 @MainActor
 final class ConnectorsConsentTests: XCTestCase {
     private var directory: URL!
@@ -71,7 +69,6 @@ final class ConnectorsConsentTests: XCTestCase {
         await waitUntil { !store.isRunning }
     }
 
-    /// A modern-era MCP server with one tool.
     private static func fakeMCPServer() -> ScriptedTransport {
         ScriptedTransport { request, _ in
             let rpc = request.httpBody.flatMap { try? JSONValue(parsing: $0) } ?? [:]
@@ -133,12 +130,10 @@ final class ConnectorsConsentTests: XCTestCase {
         XCTAssertFalse(methods(mcp).contains("tools/call"), "nothing reached the server")
         XCTAssertTrue(store.approvals.pendingIDs.isEmpty, "refused, not asked")
 
-        // Persisted with the conversation.
         await store.flushPersistence()
         let saved = try XCTUnwrap(ConversationStore(directory: directory.appendingPathComponent("Conversations")).load())
         XCTAssertEqual(saved.conversations.first { $0.id == conv.id }?.disabledServerIDs, [acme.id])
 
-        // Back on: removed from the set (and saved).
         store.setConnector(acme.id, isOn: true)
         XCTAssertTrue(conv.disabledServerIDs.isEmpty)
         XCTAssertEqual(store.trayConnectors.map(\.isOn), [true])
@@ -176,7 +171,6 @@ final class ConnectorsConsentTests: XCTestCase {
         XCTAssertEqual(recorder.requests.last?.disabledServerIDs, [])
         XCTAssertEqual(recorder.requests.count, 3)
 
-        // A connector turned off in Settings shows as such, not toggleable.
         await services.connectors.setEnabled(acme.id, false)
         XCTAssertEqual(store.trayConnectors.first?.lockedReason, "Off in Settings")
     }
@@ -223,7 +217,6 @@ final class ConnectorsConsentTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertTrue(provider.requests.isEmpty, "declining sends nothing")
 
-        // Asked again; allowing sends the held message once.
         store.send(text: store.draft)
         XCTAssertNotNil(store.pendingConsent)
         store.resolveConsent(allow: true)
@@ -237,7 +230,6 @@ final class ConnectorsConsentTests: XCTestCase {
         XCTAssertTrue(store.attachments.isEmpty)
         XCTAssertTrue(services.consent.isGranted("localhost:9"))
 
-        // Remembered: the next send doesn't ask.
         await send(store, "again")
         XCTAssertNil(store.pendingConsent)
         XCTAssertEqual(provider.requests.count, 2)
@@ -311,8 +303,7 @@ final class ConnectorsConsentTests: XCTestCase {
         store.select(a.id)
         store.send(text: "hello")
         XCTAssertNotNil(store.pendingConsent)
-        // The selection moves while the sheet is up; the answer must still
-        // land the held send in the chat it started in.
+        // Switching chats while consent is open must still deliver the held send to its origin chat.
         store.select(b.id)
         store.resolveConsent(allow: true)
         XCTAssertEqual(store.selectedID, a.id)
@@ -325,7 +316,6 @@ final class ConnectorsConsentTests: XCTestCase {
     // MARK: Connector library additions
 
     func testTokenRequirementThenHeadersFixIt() async throws {
-        // 401 without OAuth metadata anywhere → "paste a token".
         let transport = ScriptedTransport { request, _ in
             guard request.value(forHTTPHeaderField: "Authorization") == "Bearer pat-1" else {
                 return .json(#"{"error":"unauthorized"}"#, status: 401)
@@ -358,7 +348,6 @@ final class ConnectorsConsentTests: XCTestCase {
         await library.setEnabled(config.id, true)
         XCTAssertEqual(library.state(of: config.id), .connected(toolCount: 1))
 
-        // Keeping the saved secret (nil value), then dropping it.
         try await library.setHeaders(config.id, [HeaderEdit(name: "Authorization", value: nil, isSecret: true)])
         XCTAssertEqual(secrets.allKeys.count, 1)
         try await library.setHeaders(config.id, [])
@@ -398,7 +387,6 @@ final class ConnectorsConsentTests: XCTestCase {
     }
 }
 
-/// Records each request and finishes at once (no network, no runtime).
 private final class RecordingEngine: ChatEngine {
     private let recorded = Mutex<[ChatRunRequest]>([])
     var requests: [ChatRunRequest] { recorded.withLock { $0 } }
@@ -414,8 +402,6 @@ private final class RecordingEngine: ChatEngine {
     }
 }
 
-/// The elicitation form: fields from the schema, validation, and what an
-/// accept carries.
 final class ElicitationFormTests: XCTestCase {
     private let schema: JSONValue = [
         "type": "object",

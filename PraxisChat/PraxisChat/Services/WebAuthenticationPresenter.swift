@@ -2,11 +2,7 @@ import AuthenticationServices
 import UIKit
 import AgentMCP
 
-/// MCP sign-in through `ASWebAuthenticationSession` (ephemeral: no shared
-/// cookies, nothing the app can read). Custom-scheme redirects come back
-/// through the session's callback. For `callbackScheme == "http"` the
-/// redirect lands on the runtime's loopback listener instead, so the
-/// sheet just stays open until the auth task cancels it.
+/// Uses ephemeral ASWebAuthenticationSession; http loopback redirects cancel via the auth task.
 struct WebAuthenticationPresenter: OAuthPresenter {
     func authorize(url: URL, callbackScheme: String) async throws -> URL {
         let session = await MainActor.run { AuthSession() }
@@ -27,8 +23,7 @@ private final class AuthSession: NSObject, ASWebAuthenticationPresentationContex
     private var cancelled = false
     private var anchor: UIWindow?
 
-    /// Never matched: loopback redirects go to the in-app listener, and
-    /// the session needs some callback to start.
+    /// Dummy scheme required to start ASWebAuthenticationSession; http redirects hit local listener.
     private static let loopbackPlaceholder = "praxischat-loopback"
 
     func start(url: URL, scheme: String, continuation: CheckedContinuation<URL, Error>) {
@@ -64,7 +59,7 @@ private final class AuthSession: NSObject, ASWebAuthenticationPresentationContex
         if let url { continuation.resume(returning: url) } else { continuation.resume(throwing: error ?? CancellationError()) }
     }
 
-    /// Set before the session starts; it only asks while presenting.
+    /// Anchor is set before session start and only queried while presenting.
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         MainActor.assumeIsolated { anchor ?? Self.window()! }
     }

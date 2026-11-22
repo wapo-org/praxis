@@ -1,8 +1,7 @@
 import Foundation
 import AgentCore
 
-/// Keeps the presentation stream open across transport detaches. Only an
-/// explicit cancellation flag sends cancel; backgrounding cancels the reader.
+/// Keeps stream open across background reader detaches; only explicit flag cancels.
 actor CloudLifecycleEngine: ChatEngine {
     nonisolated let kind: EngineKind = .cloud
     nonisolated let buildsUserMessage = true
@@ -55,9 +54,7 @@ actor CloudLifecycleEngine: ChatEngine {
             let runID = state.runID ?? records.first(where: { $0.turnID == key })?.runID
             if let runID { try? await CloudChatEngine(client: client).cancel(runID: runID) }
             else if state.request.cloudMayStart {
-                // A background detach can interrupt the POST response after
-                // the server created the run. Retry the same persisted turn
-                // key, obtain its id and let the flagged engine cancel it.
+                // Retry same persisted turn key to cancel a run created during background detach.
                 for await _ in CloudChatEngine(client: client).run(state.request) {}
             }
         }
@@ -67,8 +64,7 @@ actor CloudLifecycleEngine: ChatEngine {
         transition = revision
         backgrounded = value
         if !value {
-            // Retain the drain barriers until this transition actually wins.
-            // A newer foreground must not bypass a suspended older foreground.
+            // Retain drain barriers until winning transition so newer foreground never skips.
             for reader in detachedReaders {
                 await reader.wait()
                 guard transition == revision, !backgrounded else { return }
@@ -152,8 +148,7 @@ actor CloudLifecycleEngine: ChatEngine {
                 }, onEvent: { _, _, id, data in
                     guard try await journal.append(data, runID: id) else { return }
                     let event = try JSONDecoder().decode(CloudRunEvent.self, from: data)
-                    // Publish from the durable hook, before transport acknowledgment.
-                    // Cancellation cannot strand a journaled delta in an inner buffer.
+                    // Publish pre-ack so reader cancel cannot strand journaled deltas.
                     let mapped = await mapper.map(event.event)
                     await self.publish(mapped, key: key, identity: state.identity, token: "event:\(event.id)", generation: generation)
                 }, onSnapshot: { _, _, id, data in
@@ -168,8 +163,7 @@ actor CloudLifecycleEngine: ChatEngine {
                                                    pendingEvents: Array(approvals.values) + Array(forms.values)) } ?? engine.run(state.request)
             for await event in stream {
                 guard valid(key, generation), !Task.isCancelled else { return }
-                // Wire events were published by the pre-ack hook. Only local
-                // transport/cancellation verdicts have no corresponding wire event.
+                // Only local transport/cancel verdicts lack a pre-ack wire event.
                 if case .finished = event, active[key]?.terminalPublished != true {
                     deliver([event], key: key, identity: state.identity)
                 }
@@ -186,8 +180,7 @@ actor CloudLifecycleEngine: ChatEngine {
         guard let state = active[key], state.identity == identity,
               generation == nil || state.generation == generation,
               !state.uiReplayed.contains(token) else { return }
-        // Per-event commit is synchronous with publication. A suspended replay
-        // can resume under another generation without delivering the prefix twice.
+        // Commit event cursor synchronously with publish to avoid duplicate replay.
         deliver(events, key: key, identity: identity)
         active[key]?.uiReplayed.insert(token)
     }
@@ -206,7 +199,6 @@ actor CloudLifecycleEngine: ChatEngine {
     }
 }
 
-/// Actor-owned continuations are resumed with no locks or cancellation handlers.
 private actor CloudReaderShutdown {
     private var finished = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
