@@ -9,6 +9,13 @@
       "covers": [{"command": "gate"}]
     },
     {
+      "id": "agents.context-decision",
+      "title": "Celeris context selection with deterministic fallback and allowance accounting",
+      "issue": "PRA-179",
+      "surfaces": ["api"],
+      "covers": [{"command": "gate"}]
+    },
+    {
       "id": "agents.harness-tools",
       "title": "Subagent harness registry, safe grants, model validation and deterministic collaboration instructions",
       "issue": "PRA-115",

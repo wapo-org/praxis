@@ -15,6 +15,10 @@ export const EXA_CONTENTS_PAGE_MICRO_USD = 1_000;
 
 /** Hobby PAYG is the dearest credit ($5/1,000): https://docs.firecrawl.dev/billing */
 export const FIRECRAWL_CREDIT_MICRO_USD = 5_000;
+/** Celeris Decision input rate: $0.004 per million tokens, per PRA-179 pricing review. */
+export const CELERIS_DECISION_INPUT_MICRO_USD_PER_MILLION_TOKENS = 4_000;
+/** Keeps a dispatched platform call chargeable when usage is below one micro-USD. */
+export const PLATFORM_CALL_MINIMUM_MICRO_USD = 1;
 /** Every regular scrape starts at one credit: https://docs.firecrawl.dev/billing */
 export const FIRECRAWL_BASE_PAGE_CREDITS = 1;
 /** JSON, question/query, highlights, PII, injection, audio, video and lockdown each stack: https://docs.firecrawl.dev/billing */
@@ -94,4 +98,8 @@ export function modalSandboxAffordableMs(budgetMicroUsd: number, cores = MODAL_D
 /** Converts the provider's billed amount, in dollars, to whole micro-USD rounded up, so settlement never undercounts. */
 export function microUsdFromUsd(usd: number): number {
   return wholeMicroUsd(usd * 1_000_000);
+}
+
+export function celerisDecisionMaxMicroUsd(inputTokens: number): number {
+  return Math.max(PLATFORM_CALL_MINIMUM_MICRO_USD, wholeMicroUsd(inputTokens * CELERIS_DECISION_INPUT_MICRO_USD_PER_MILLION_TOKENS / 1_000_000));
 }
