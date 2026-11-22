@@ -1,7 +1,7 @@
 import Foundation
 import AgentCore
 
-/// Expired-window fallback snapshot; never advances stream cursor.
+/// Expired-window fallback snapshot; sets the replay cursor to `lastEventId`.
 struct CloudRunSnapshot: Decodable, Sendable {
     struct Block: Decodable, Sendable {
         let type: String
@@ -31,7 +31,7 @@ struct CloudRunSnapshot: Decodable, Sendable {
         return pendingApprovals.map(CloudEventPayload.approval) + pendingElicitations.map(CloudEventPayload.elicitation)
     }
 
-    /// Rebuilds a fresh reducer with bounded counts; preserves unknown block types.
+    /// Rebuilds a fresh reducer with bounded counts; ignores unknown block types.
     func presentationEvents() throws -> [CloudEventPayload] {
         guard lastEventId >= 0, lastEventId <= 9_007_199_254_740_991,
               blocks.count <= 10_000, tools.count <= 1_000, messages.count <= 10_000,

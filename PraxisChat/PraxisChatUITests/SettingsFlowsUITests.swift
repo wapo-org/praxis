@@ -107,7 +107,7 @@ final class SettingsFlowsUITests: XCTestCase {
 
     // MARK: Consent
 
-    /// Uses an unresolvable .invalid host to prove consent blocks sending before any request.
+    /// Checks that consent appears before the message enters the thread and restores the draft on decline.
     func testConsentSheetOnFirstLiveSendAndDeclineRestoresTheDraft() {
         launch(["-PraxisNativeLoopEnabled", "YES", "-PraxisEngine", "live", "-PraxisTestProviderURL", "https://praxis-consent.invalid/v1"])
         el(.button, "New chat").tap()
