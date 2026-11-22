@@ -9,6 +9,7 @@ import {
   httpActionGeneric,
   internalMutationGeneric,
   internalQueryGeneric,
+  internalActionGeneric,
   mutationGeneric,
   queryGeneric,
   type ActionBuilder,
@@ -32,6 +33,7 @@ export const mutation: MutationBuilder<DataModel, 'public'> = mutationGeneric;
 export const action: ActionBuilder<DataModel, 'public'> = actionGeneric;
 export const internalQuery: QueryBuilder<DataModel, 'internal'> = internalQueryGeneric;
 export const internalMutation: MutationBuilder<DataModel, 'internal'> = internalMutationGeneric;
+export const internalAction: ActionBuilder<DataModel, 'internal'> = internalActionGeneric;
 export const httpAction = httpActionGeneric;
 
 /** The wrappers supply the owner; a definition that declared one would let its caller choose it. */
