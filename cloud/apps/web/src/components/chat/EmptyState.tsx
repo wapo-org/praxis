@@ -1,4 +1,4 @@
-import { usePress } from '@praxis/glass';
+import { DURATION, EASE_STANDARD, STAGGER, usePress, useReducedMotion } from '@praxis/glass';
 import { motion } from 'framer-motion';
 import styles from './ChatScreen.module.css';
 
@@ -29,23 +29,46 @@ const SUGGESTIONS: Array<{ label: string; prompt: string; script: Script }> = [
 
 export function EmptyState({ onPick }: { onPick: (prompt: string, script: Script) => void }) {
   const pressProps = usePress();
+  const reduced = useReducedMotion();
+  const revealInitial = reduced ? false : { opacity: 0, y: 12 };
+  const revealAnimate = { opacity: 1, y: 0 };
+
   return (
     <div data-testid="chat-empty-state" className={styles.empty}>
-      <h1 className={styles.greeting}>What are we working on?</h1>
-      <p className={styles.lede}>Plan, research and build with live tools and connectors.</p>
-      <div data-testid="starter-suggestions" className={styles.suggestions}>
-        {SUGGESTIONS.map((item, idx) => (
-          <motion.button
-            key={item.label}
-            type="button"
-            className={styles.suggestion}
-            data-testid={`starter-chip-${idx}`}
-            onClick={() => onPick(item.prompt, item.script)}
-            {...pressProps}
-          >
-            {item.label}
-          </motion.button>
-        ))}
+      <motion.h1
+        className={styles.greeting}
+        initial={revealInitial}
+        animate={revealAnimate}
+        transition={{ duration: DURATION.slow, ease: EASE_STANDARD }}
+      >
+        What are we working on?
+      </motion.h1>
+      <motion.p
+        className={styles.lede}
+        initial={revealInitial}
+        animate={revealAnimate}
+        transition={{ duration: DURATION.slow, delay: STAGGER, ease: EASE_STANDARD }}
+      >
+        Plan, research and build with live tools and connectors.
+      </motion.p>
+      <div className={styles.suggestionsReveal}>
+        <div data-testid="starter-suggestions" className={styles.suggestions}>
+          {SUGGESTIONS.map((item, idx) => (
+            <motion.button
+              key={item.label}
+              type="button"
+              className={styles.suggestion}
+              data-testid={`starter-chip-${idx}`}
+              onClick={() => onPick(item.prompt, item.script)}
+              {...pressProps}
+              initial={revealInitial}
+              animate={revealAnimate}
+              transition={{ duration: DURATION.slow, delay: STAGGER * (idx + 2), ease: EASE_STANDARD }}
+            >
+              {item.label}
+            </motion.button>
+          ))}
+        </div>
       </div>
     </div>
   );
